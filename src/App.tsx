@@ -1,0 +1,3994 @@
+import { useEffect, useRef, useState } from 'react';
+import { useIsDesktop } from './hooks/useIsDesktop';
+import type { DesktopNavKey } from './components/ui/DesktopChrome';
+import type { AccountTarget } from './components/AccountRows';
+import { Icon } from './components/ui/Icon';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
+import { CartProvider } from './context/CartContext';
+import { BookingProvider, useBooking } from './context/BookingContext';
+import { ProductDetailScreen } from './scripts/ProductDetailScreen';
+import { CheckoutScreen } from './scripts/CheckoutScreen';
+import { OrderPlacedScreen } from './scripts/OrderPlacedScreen';
+import type { OrderSummary } from './scripts/orderData';
+import { useCart } from './context/CartContext';
+import { URBAN_BUSINESS, SPA_BUSINESS, resolveBusinessPath, productPath, servicePath } from './scripts/businessData';
+import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
+import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
+import { ServiceDetailScreen } from './scripts/ServiceDetailScreen';
+import { SpaBookingScheduleScreen } from './scripts/SpaBookingScheduleScreen';
+import { BookingCheckoutScreen } from './scripts/BookingCheckoutScreen';
+import { BookingConfirmedScreen } from './scripts/BookingConfirmedScreen';
+import { WelcomeScreen } from './scripts/WelcomeScreen';
+import { DiscoverDealsScreen } from './scripts/DiscoverDealsScreen';
+import { StartVemtapScreen } from './scripts/StartVemtapScreen';
+import { AccountScreen } from './scripts/AccountScreen';
+import { SettingsScreen } from './scripts/SettingsScreen';
+import { SupportLegalScreen } from './scripts/SupportLegalScreen';
+import { EditProfileScreen } from './scripts/EditProfileScreen';
+import { RewardsScreen } from './scripts/RewardsScreen';
+import { SavingsScreen } from './scripts/SavingsScreen';
+import { SavedItemsScreen } from './scripts/SavedItemsScreen';
+import { ActivityScreen } from './scripts/ActivityScreen';
+import { NotificationsScreen } from './scripts/NotificationsScreen';
+import { HelpCentreScreen } from './scripts/HelpCentreScreen';
+import { AccountSettingsScreen } from './scripts/AccountSettingsScreen';
+import { DashboardScreen } from './scripts/DashboardScreen';
+import { MyDealsScreen } from './scripts/MyDealsScreen';
+import { MessagesScreen } from './scripts/MessagesScreen';
+import { ConversationScreen } from './scripts/ConversationScreen';
+import { OrdersScreen } from './scripts/OrdersScreen';
+import { OrderDetailScreen } from './scripts/OrderDetailScreen';
+import { BookingDetailScreen } from './scripts/BookingDetailScreen';
+import { getMobileThread } from './scripts/messagesData';
+import { AuthCodeScreen } from './scripts/AuthCodeScreen';
+import { SignInScreen } from './scripts/SignInScreen';
+import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
+import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
+import { LocationPermissionScreen } from './scripts/LocationPermissionScreen';
+import { ManualLocationScreen } from './scripts/ManualLocationScreen';
+import { ConfirmLocationScreen } from './scripts/ConfirmLocationScreen';
+import { DiscoveringScreen } from './scripts/DiscoveringScreen';
+import { DesktopWelcomeScreen } from './scripts/desktop/DesktopWelcomeScreen';
+import { DesktopDiscoverDealsScreen } from './scripts/desktop/DesktopDiscoverDealsScreen';
+import { DesktopStartVemtapScreen } from './scripts/desktop/DesktopStartVemtapScreen';
+import { DesktopAuthCodeScreen } from './scripts/desktop/DesktopAuthCodeScreen';
+import { DesktopSignInScreen } from './scripts/desktop/DesktopSignInScreen';
+import { DesktopVerifyEmailScreen } from './scripts/desktop/DesktopVerifyEmailScreen';
+import { DesktopProfileSetupScreen } from './scripts/desktop/DesktopProfileSetupScreen';
+import { DesktopLocationPermissionScreen } from './scripts/desktop/DesktopLocationPermissionScreen';
+import { DesktopManualLocationScreen } from './scripts/desktop/DesktopManualLocationScreen';
+import { DesktopConfirmLocationScreen } from './scripts/desktop/DesktopConfirmLocationScreen';
+import { DesktopAccountScreen } from './scripts/desktop/DesktopAccountScreen';
+import { DesktopSavedItemsScreen } from './scripts/desktop/DesktopSavedItemsScreen';
+import { DesktopBusinessHubScreen } from './scripts/desktop/DesktopBusinessHubScreen';
+import { DesktopBusinessMoreScreen } from './scripts/desktop/DesktopBusinessMoreScreen';
+import { DesktopBoostHubScreen } from './scripts/desktop/DesktopBoostHubScreen';
+import { DesktopBoostMetricsScreen } from './scripts/desktop/DesktopBoostMetricsScreen';
+import { DesktopBoostWalletScreen } from './scripts/desktop/DesktopBoostWalletScreen';
+import { DesktopSegmentsHubScreen } from './scripts/desktop/DesktopSegmentsHubScreen';
+import { DesktopSegmentActionsScreen } from './scripts/desktop/DesktopSegmentActionsScreen';
+import { DesktopSegmentCreateScreen } from './scripts/desktop/DesktopSegmentCreateScreen';
+import { DesktopSegmentDetailScreen } from './scripts/desktop/DesktopSegmentDetailScreen';
+import { DesktopHowToClaimScreen } from './scripts/desktop/DesktopHowToClaimScreen';
+import { DesktopClaimSuccessScreen } from './scripts/desktop/DesktopClaimSuccessScreen';
+import { DesktopGiftSentScreen } from './scripts/desktop/DesktopGiftSentScreen';
+import { DesktopClaimedDealScreen } from './scripts/desktop/DesktopClaimedDealScreen';
+import { DesktopMerchantChatScreen } from './scripts/desktop/DesktopMerchantChatScreen';
+import { DesktopDealTermsScreen } from './scripts/desktop/DesktopDealTermsScreen';
+import { DesktopStorefrontMenuScreen } from './scripts/desktop/DesktopStorefrontMenuScreen';
+import { DesktopCheckoutScreen } from './scripts/desktop/DesktopCheckoutScreen';
+import { DesktopOrderPlacedScreen } from './scripts/desktop/DesktopOrderPlacedScreen';
+import { ContactBusinessModal } from './components/desktop/dialogs/ContactBusinessModal';
+import { ClaimedTermsModal } from './components/desktop/dialogs/ClaimedTermsModal';
+import { DesktopSettingsScreen } from './scripts/desktop/DesktopSettingsScreen';
+import { DesktopSupportLegalScreen } from './scripts/desktop/DesktopSupportLegalScreen';
+import { DesktopEditProfileScreen } from './scripts/desktop/DesktopEditProfileScreen';
+import { DesktopPrivacyScreen } from './scripts/desktop/DesktopPrivacyScreen';
+import { DesktopAddressesScreen } from './scripts/desktop/DesktopAddressesScreen';
+import { DesktopPreferencesScreen } from './scripts/desktop/DesktopPreferencesScreen';
+import { DesktopTermsScreen } from './scripts/desktop/DesktopTermsScreen';
+import { DesktopRewardsScreen } from './scripts/desktop/DesktopRewardsScreen';
+import { DesktopSavingsScreen } from './scripts/desktop/DesktopSavingsScreen';
+import { DesktopNotificationsScreen } from './scripts/desktop/DesktopNotificationsScreen';
+import { DesktopHelpCentreScreen } from './scripts/desktop/DesktopHelpCentreScreen';
+import { DesktopSupportScreen } from './scripts/desktop/DesktopSupportScreen';
+import { DesktopActivityScreen } from './scripts/desktop/DesktopActivityScreen';
+import { DesktopScanScreen } from './scripts/desktop/DesktopScanScreen';
+import { DesktopDiscoveringScreen } from './scripts/desktop/DesktopDiscoveringScreen';
+import { SupportScreen } from './scripts/SupportScreen';
+import { TermsScreen } from './scripts/TermsScreen';
+import { PrivacyScreen } from './scripts/PrivacyScreen';
+import { PreferencesScreen } from './scripts/PreferencesScreen';
+import { AddressesScreen } from './scripts/AddressesScreen';
+import { ScanScreen } from './scripts/ScanScreen';
+import { HomeScreen } from './scripts/HomeScreen';
+import { DealsScreen } from './scripts/DealsScreen';
+import { FeaturedDealsScreen } from './scripts/FeaturedDealsScreen';
+import { FiltersScreen } from './scripts/FiltersScreen';
+import { DealDetailScreen } from './scripts/DealDetailScreen';
+import { HowToClaimScreen } from './scripts/HowToClaimScreen';
+import { ClaimSuccessScreen } from './scripts/ClaimSuccessScreen';
+import { GiftSentScreen, type GiftRecipientSummary } from './scripts/GiftSentScreen';
+import { ClaimedDealScreen } from './scripts/ClaimedDealScreen';
+import { MerchantChatScreen } from './scripts/MerchantChatScreen';
+import { DealTermsScreen } from './scripts/DealTermsScreen';
+import { DiscoverScreen } from './scripts/DiscoverScreen';
+import { MerchantDealsScreen } from './scripts/MerchantDealsScreen';
+import { ProductsCatalogueScreen } from './scripts/ProductsCatalogueScreen';
+import { MenuProductsScreen } from './scripts/MenuProductsScreen';
+import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
+import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
+import { BusinessVerificationScreen } from './scripts/BusinessVerificationScreen';
+import { VerificationStatusCenterScreen } from './scripts/VerificationStatusCenterScreen';
+import { SubscriptionScreen } from './scripts/SubscriptionScreen';
+import { BusinessOrdersScreen } from './scripts/BusinessOrdersScreen';
+import { BusinessMessagesScreen } from './scripts/BusinessMessagesScreen';
+import { BusinessOverviewScreen } from './scripts/BusinessOverviewScreen';
+import { BusinessHubScreen } from './scripts/BusinessHubScreen';
+import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
+import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
+import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
+import { DesktopStaffDirectoryScreen } from './scripts/desktop/DesktopStaffDirectoryScreen';
+import { BusinessInviteStaffScreen } from './scripts/BusinessInviteStaffScreen';
+import { DesktopStaffInviteScreen } from './scripts/desktop/DesktopStaffInviteScreen';
+import { BusinessLoyaltyScreen } from './scripts/BusinessLoyaltyScreen';
+import { BusinessLoyaltyRewardsScreen } from './scripts/BusinessLoyaltyRewardsScreen';
+import { BusinessAnalyticsScreen } from './scripts/BusinessAnalyticsScreen';
+import { BusinessBranchComparisonScreen } from './scripts/BusinessBranchComparisonScreen';
+import { AnalyticsBusinessScreen } from './scripts/AnalyticsBusinessScreen';
+import { AnalyticsCustomersScreen } from './scripts/AnalyticsCustomersScreen';
+import { AnalyticsDealsScreen } from './scripts/AnalyticsDealsScreen';
+import { AnalyticsLocationsScreen } from './scripts/AnalyticsLocationsScreen';
+import { AnalyticsPosScreen } from './scripts/AnalyticsPosScreen';
+import { AnalyticsExportScreen } from './scripts/AnalyticsExportScreen';
+import { AnalyticsFilterScreen } from './scripts/AnalyticsFilterScreen';
+import type { AnalyticsTabKey } from './components/AnalyticsChrome';
+import { BusinessPosDisplayOrderScreen } from './scripts/BusinessPosDisplayOrderScreen';
+import { BusinessPosDisplayTipScreen } from './scripts/BusinessPosDisplayTipScreen';
+import { BusinessPosDisplayPayScreen } from './scripts/BusinessPosDisplayPayScreen';
+import { BusinessPosDisplayReceiptScreen } from './scripts/BusinessPosDisplayReceiptScreen';
+import { BusinessSplitBillScreen } from './scripts/BusinessSplitBillScreen';
+import { BusinessPosHomeScreen } from './scripts/BusinessPosHomeScreen';
+import { BusinessPosRegisterScreen } from './scripts/BusinessPosRegisterScreen';
+import { BusinessPosCartScreen } from './scripts/BusinessPosCartScreen';
+import { BusinessPosSwitchScreen } from './scripts/BusinessPosSwitchScreen';
+import { BusinessPosCustomerScreen } from './scripts/BusinessPosCustomerScreen';
+import { BusinessPosSaleCompleteScreen } from './scripts/BusinessPosSaleCompleteScreen';
+import { BusinessPosPaymentScreen } from './scripts/BusinessPosPaymentScreen';
+import { BusinessPosProductShiftScreen } from './scripts/BusinessPosProductShiftScreen';
+import { BusinessPosStockScreen } from './scripts/BusinessPosStockScreen';
+import { BusinessPosLedgerScreen } from './scripts/BusinessPosLedgerScreen';
+import { BusinessPosCustomerLookupScreen } from './scripts/BusinessPosCustomerLookupScreen';
+import { BusinessPosCustomerDossierScreen } from './scripts/BusinessPosCustomerDossierScreen';
+import { BusinessPosOfflineCheckoutScreen } from './scripts/BusinessPosOfflineCheckoutScreen';
+import { BusinessPosTransactionDetailScreen } from './scripts/BusinessPosTransactionDetailScreen';
+import { BusinessPosSyncScreen } from './scripts/BusinessPosSyncScreen';
+import { BusinessPosOfflineBufferScreen } from './scripts/BusinessPosOfflineBufferScreen';
+import { BusinessPosKitchenStreamScreen } from './scripts/BusinessPosKitchenStreamScreen';
+import { BusinessPosHardwareScreen } from './scripts/BusinessPosHardwareScreen';
+import { BusinessPosSettingsScreen } from './scripts/BusinessPosSettingsScreen';
+import { BusinessPosReceiptScreen } from './scripts/BusinessPosReceiptScreen';
+import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
+import { BusinessPosPermissionsScreen } from './scripts/BusinessPosPermissionsScreen';
+import { PublicPosMenuScreen } from './scripts/PublicPosMenuScreen';
+import { PublicPosCartReviewScreen } from './scripts/PublicPosCartReviewScreen';
+import { PublicPosOrderTrackingScreen } from './scripts/PublicPosOrderTrackingScreen';
+import type { PosTabKey } from './components/PosTabBar';
+import { SEED_POS_CART, type PosCartLine } from './scripts/posCartData';
+import { SEED_PUBLIC_CART, type PublicCartLine } from './scripts/publicPosData';
+import type { BusinessTabKey } from './components/BusinessTabBar';
+import { BusinessBoostHubScreen } from './scripts/BusinessBoostHubScreen';
+import { BusinessBoostMetricsScreen } from './scripts/BusinessBoostMetricsScreen';
+import { BusinessBoostWalletScreen } from './scripts/BusinessBoostWalletScreen';
+import { BusinessSegmentsHubScreen, type SegmentRef } from './scripts/BusinessSegmentsHubScreen';
+import { BusinessSegmentActionsScreen } from './scripts/BusinessSegmentActionsScreen';
+import { BusinessSegmentCreateScreen } from './scripts/BusinessSegmentCreateScreen';
+import { BusinessSegmentDetailScreen } from './scripts/BusinessSegmentDetailScreen';
+import { ConsumerCartScreen } from './scripts/ConsumerCartScreen';
+import type { BoostTabKey } from './components/BoostTabBar';
+import { ServicesCatalogueScreen } from './scripts/ServicesCatalogueScreen';
+import { CommentsSheet } from './components/sheets/CommentsSheet';
+import { ReviewsSheet } from './components/sheets/ReviewsSheet';
+import { ShareSheet } from './components/sheets/ShareSheet';
+import { ClaimAuthSheet } from './components/sheets/ClaimAuthSheet';
+import { ClaimConfirmSheet } from './components/sheets/ClaimConfirmSheet';
+import { ClaimIdentitySheet } from './components/sheets/ClaimIdentitySheet';
+import { ClaimIdentityModal } from './components/desktop/dialogs/ClaimIdentityModal';
+import { CommentsDrawer } from './components/desktop/dialogs/CommentsDrawer';
+import { ClaimAuthModal } from './components/desktop/dialogs/ClaimAuthModal';
+import { ClaimConfirmationModal } from './components/desktop/dialogs/ClaimConfirmationModal';
+import { ReviewsModal } from './components/desktop/dialogs/ReviewsModal';
+import { ShareModal } from './components/desktop/dialogs/ShareModal';
+import { GiftRecipientDetailsModal } from './components/desktop/dialogs/GiftRecipientDetailsModal';
+import { ConfirmGiftSendModal } from './components/desktop/dialogs/ConfirmGiftSendModal';
+import { SomeoneElseModal } from './components/desktop/dialogs/SomeoneElseModal';
+import { RecipientVerificationModal } from './components/desktop/dialogs/RecipientVerificationModal';
+import { RecipientSummaryModal } from './components/desktop/dialogs/RecipientSummaryModal';
+import { RecipientDetailsSheet } from './components/sheets/RecipientDetailsSheet';
+import { RecipientVerificationSheet } from './components/sheets/RecipientVerificationSheet';
+import { RecipientSummarySheet } from './components/sheets/RecipientSummarySheet';
+import { GiftRecipientDetailsSheet } from './components/sheets/GiftRecipientDetailsSheet';
+import { ConfirmGiftSendSheet } from './components/sheets/ConfirmGiftSendSheet';
+import { ContactBusinessSheet } from './components/sheets/ContactBusinessSheet';
+import { ClaimedTermsSheet } from './components/sheets/ClaimedTermsSheet';
+import { DesktopHomeScreen } from './scripts/desktop/DesktopHomeScreen';
+import { DesktopDealsScreen } from './scripts/desktop/DesktopDealsScreen';
+import { DesktopDiscoverScreen } from './scripts/desktop/DesktopDiscoverScreen';
+import { DesktopFeaturedDealsScreen } from './scripts/desktop/DesktopFeaturedDealsScreen';
+import { DesktopFiltersScreen } from './scripts/desktop/DesktopFiltersScreen';
+import { DesktopDealDetailScreen } from './scripts/desktop/DesktopDealDetailScreen';
+import { DesktopUrbanGrillStorefrontScreen } from './scripts/desktop/DesktopUrbanGrillStorefrontScreen';
+import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDetailScreen';
+import { DesktopSpaStorefrontScreen } from './scripts/desktop/DesktopSpaStorefrontScreen';
+import { DesktopAllProductsScreen } from './scripts/desktop/DesktopAllProductsScreen';
+import { DesktopAllServicesScreen } from './scripts/desktop/DesktopAllServicesScreen';
+import { DesktopSpaBookingScreen } from './scripts/desktop/DesktopSpaBookingScreen';
+import { DesktopDashboardScreen } from './scripts/desktop/DesktopDashboardScreen';
+import { DesktopOrdersScreen } from './scripts/desktop/DesktopOrdersScreen';
+import { DesktopOrderDetailScreen } from './scripts/desktop/DesktopOrderDetailScreen';
+import { DesktopBookingDetailScreen } from './scripts/desktop/DesktopBookingDetailScreen';
+import { DesktopMyDealsScreen } from './scripts/desktop/DesktopMyDealsScreen';
+import { DesktopMessagesScreen } from './scripts/desktop/DesktopMessagesScreen';
+import { DesktopCartScreen } from './scripts/desktop/DesktopCartScreen';
+import { DesktopAccountSettingsScreen } from './scripts/desktop/DesktopAccountSettingsScreen';
+import { DesktopBusinessOnboardingScreen } from './scripts/desktop/DesktopBusinessOnboardingScreen';
+import { DesktopBusinessVerificationScreen } from './scripts/desktop/DesktopBusinessVerificationScreen';
+import { DesktopVerificationStatusCenterScreen } from './scripts/desktop/DesktopVerificationStatusCenterScreen';
+import { DesktopSubscriptionScreen } from './scripts/desktop/DesktopSubscriptionScreen';
+import { DesktopBusinessOrdersScreen } from './scripts/desktop/DesktopBusinessOrdersScreen';
+import { DesktopBusinessPosOrdersScreen } from './scripts/desktop/DesktopBusinessPosOrdersScreen';
+import { DesktopBusinessMessagesWorkspaceScreen } from './scripts/desktop/DesktopBusinessMessagesWorkspaceScreen';
+import { DesktopDealsWorkspaceScreen } from './scripts/desktop/DesktopDealsWorkspaceScreen';
+import { DesktopBusinessProfilePreviewStudioScreen } from './scripts/desktop/DesktopBusinessProfilePreviewStudioScreen';
+import { DesktopBusinessOverviewScreen } from './scripts/desktop/DesktopBusinessOverviewScreen';
+import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealLocationPricingScreen';
+import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
+import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
+import { SIGN_OUT_EVENT } from './scripts/desktop/PortalShell';
+import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
+import { DesktopBusinessBranchPricingScreen } from './scripts/desktop/DesktopBusinessBranchPricingScreen';
+import { DesktopBusinessCustomersScreen } from './scripts/desktop/DesktopBusinessCustomersScreen';
+import { DesktopCustomerProfileScreen } from './scripts/desktop/DesktopCustomerProfileScreen';
+import { DesktopLoyaltyProgrammeScreen } from './scripts/desktop/DesktopLoyaltyProgrammeScreen';
+import { DesktopLoyaltyRewardsScreen } from './scripts/desktop/DesktopLoyaltyRewardsScreen';
+import { DesktopBusinessCatalogHubScreen } from './scripts/desktop/DesktopBusinessCatalogHubScreen';
+import { DesktopBusinessLocationsHubScreen } from './scripts/desktop/DesktopBusinessLocationsHubScreen';
+import { DesktopBranchDetailScreen } from './scripts/desktop/DesktopBranchDetailScreen';
+import { DesktopServicesCategoriesScreen } from './scripts/desktop/DesktopServicesCategoriesScreen';
+import { DesktopAnalyticsBusinessScreen } from './scripts/desktop/DesktopAnalyticsBusinessScreen';
+import { DesktopAnalyticsDealsScreen } from './scripts/desktop/DesktopAnalyticsDealsScreen';
+import { DesktopAnalyticsPosScreen } from './scripts/desktop/DesktopAnalyticsPosScreen';
+import { DesktopAnalyticsExportScreen } from './scripts/desktop/DesktopAnalyticsExportScreen';
+import { DesktopAnalyticsFilterScreen } from './scripts/desktop/DesktopAnalyticsFilterScreen';
+import { DesktopAnalyticsLocationsScreen } from './scripts/desktop/DesktopAnalyticsLocationsScreen';
+import { DesktopAnalyticsCustomersScreen } from './scripts/desktop/DesktopAnalyticsCustomersScreen';
+import { DesktopPosDisplayOrderScreen } from './scripts/desktop/DesktopPosDisplayOrderScreen';
+import { DesktopPosDisplayTipScreen } from './scripts/desktop/DesktopPosDisplayTipScreen';
+import { DesktopPosDisplayPayScreen } from './scripts/desktop/DesktopPosDisplayPayScreen';
+import { DesktopSplitBillScreen } from './scripts/desktop/DesktopSplitBillScreen';
+import { DesktopPosDisplayReceiptScreen } from './scripts/desktop/DesktopPosDisplayReceiptScreen';
+import { DesktopPosHomeScreen } from './scripts/desktop/DesktopPosHomeScreen';
+import { DesktopPosRegisterScreen } from './scripts/desktop/DesktopPosRegisterScreen';
+import { DesktopPosPaymentScreen } from './scripts/desktop/DesktopPosPaymentScreen';
+import { DesktopPosSaleCompleteScreen } from './scripts/desktop/DesktopPosSaleCompleteScreen';
+import { DesktopPosStockScreen } from './scripts/desktop/DesktopPosStockScreen';
+import { DesktopPosLedgerScreen } from './scripts/desktop/DesktopPosLedgerScreen';
+import { DesktopPosOfflineSaleScreen } from './scripts/desktop/DesktopPosOfflineSaleScreen';
+import { DesktopPosSyncScreen } from './scripts/desktop/DesktopPosSyncScreen';
+import { DesktopPosBufferScreen } from './scripts/desktop/DesktopPosBufferScreen';
+import { DesktopPosKitchenScreen } from './scripts/desktop/DesktopPosKitchenScreen';
+import { DesktopPosCartScreen } from './scripts/desktop/DesktopPosCartScreen';
+import { DesktopPosSwitchScreen } from './scripts/desktop/DesktopPosSwitchScreen';
+import { DesktopPosCustomerScreen } from './scripts/desktop/DesktopPosCustomerScreen';
+import { DesktopPosProductShiftScreen } from './scripts/desktop/DesktopPosProductShiftScreen';
+import { DesktopPosCustomerLookupScreen } from './scripts/desktop/DesktopPosCustomerLookupScreen';
+import { DesktopPosCustomerDossierScreen } from './scripts/desktop/DesktopPosCustomerDossierScreen';
+import { DesktopPosTransactionDetailScreen } from './scripts/desktop/DesktopPosTransactionDetailScreen';
+import { DesktopPosHardwareScreen } from './scripts/desktop/DesktopPosHardwareScreen';
+import { DesktopPosReceiptScreen } from './scripts/desktop/DesktopPosReceiptScreen';
+import { DesktopPosTaxesScreen } from './scripts/desktop/DesktopPosTaxesScreen';
+import { DesktopPublicPosCartScreen } from './scripts/desktop/DesktopPublicPosCartScreen';
+import { DesktopPublicPosTrackingScreen } from './scripts/desktop/DesktopPublicPosTrackingScreen';
+import { DesktopPublicPosMenuScreen } from './scripts/desktop/DesktopPublicPosMenuScreen';
+import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGeneralSettingsScreen';
+import { DesktopPosPermissionsScreen } from './scripts/desktop/DesktopPosPermissionsScreen';
+import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
+import { SEED_POS_TERMINAL_LINES, type PosTerminalLine } from './scripts/desktop/posTerminalData';
+import type { BusinessPortalNavKey } from './scripts/desktop/BusinessPortalChrome';
+
+type Route =
+  | 'welcome'
+  | 'discover-deals'
+  | 'start-vemtap'
+  | 'auth-code'
+  | 'sign-in'
+  | 'verify-email'
+  | 'profile-setup'
+  | 'location-permission'
+  | 'manual-location'
+  | 'confirm-location'
+  | 'discovering'
+  | 'home'
+  | 'deals'
+  | 'featured-deals'
+  | 'filters'
+  | 'discover'
+  | 'saved'
+  | 'account'
+  | 'savings'
+  | 'notifications'
+  | 'privacy'
+  | 'addresses'
+  | 'preferences'
+  | 'help'
+  | 'support'
+  | 'terms'
+  | 'settings'
+  | 'support-legal'
+  | 'edit-profile'
+  | 'rewards'
+  | 'scan'
+  | 'activity'
+  | 'business-onboarding'
+  | 'business-verification'
+  | 'verification-status'
+  | 'subscription'
+  | 'subscription-ending'
+  | 'subscription-expired'
+  | 'business-orders'
+  | 'business-pos-orders'
+  | 'business-messages'
+  | 'business-overview'
+  | 'business-hub'
+  | 'hub-locations'
+  | 'hub-branch-detail'
+  | 'hub-catalog'
+  | 'hub-services'
+  | 'hub-deals'
+  | 'hub-customers'
+  | 'hub-profile'
+  | 'deal-location-pricing'
+  | 'deal-create-locations'
+  | 'business-profile-studio'
+  | 'hub-deal-detail'
+  | 'business-branch-pricing'
+  | 'hub-loyalty'
+  | 'hub-loyalty-rewards'
+  | 'hub-staff'
+  | 'hub-staff-invite'
+  | 'hub-customer-profile'
+  | 'analytics-overview'
+  | 'analytics-audience'
+  | 'analytics-branches'
+  | 'analytics-business'
+  | 'analytics-customers'
+  | 'analytics-deals'
+  | 'analytics-locations'
+  | 'analytics-pos'
+  | 'analytics-export'
+  | 'analytics-filter'
+  | 'pos-display-order'
+  | 'pos-display-tip'
+  | 'pos-display-pay'
+  | 'pos-display-receipt'
+  | 'pos-split-bill'
+  | 'pos-home'
+  | 'pos-home-offline'
+  | 'pos-register'
+  | 'pos-cart'
+  | 'pos-switch'
+  | 'pos-customer'
+  | 'pos-sale-complete'
+  | 'pos-payment'
+  | 'pos-product-shift'
+  | 'pos-stock'
+  | 'pos-ledger'
+  | 'pos-customers-lookup'
+  | 'pos-dossier'
+  | 'pos-offline'
+  | 'pos-txn-detail'
+  | 'pos-sync'
+  | 'pos-buffer'
+  | 'pos-kitchen'
+  | 'pos-settings'
+  | 'pos-hardware'
+  | 'pos-receipt'
+  | 'pos-taxes'
+  | 'pos-permissions'
+  | 'public-pos-menu'
+  | 'public-pos-cart'
+  | 'public-pos-tracking'
+  | 'business-more'
+  | 'boost'
+  | 'boost-hub'
+  | 'boost-metrics'
+  | 'boost-wallet'
+  | 'segments-hub'
+  | 'segment-actions'
+  | 'segment-create'
+  | 'segment-detail'
+  | 'business-add-ons'
+  | 'deal-detail'
+  | 'how-to-claim'
+  | 'claim-success'
+  | 'gift-sent'
+  | 'claimed-deal'
+  | 'merchant-chat'
+  | 'deal-terms'
+  | 'storefront'
+  | 'storefront-products'
+  | 'storefront-menu'
+  | 'business-profile'
+  | 'spa-profile'
+  | 'spa-services'
+  | 'product-detail'
+  | 'checkout'
+  | 'order-placed'
+  | 'spa-storefront'
+  | 'spa-booking'
+  | 'service-detail'
+  | 'spa-booking-checkout'
+  | 'spa-booking-confirmed'
+  | 'dashboard'
+  | 'orders'
+  | 'conversation'
+  | 'order-detail'
+  | 'booking-detail'
+  | 'my-deals'
+  | 'messages'
+  | 'cart'
+  | 'account-settings'
+  | 'comments'
+  | 'reviews'
+  | 'share'
+  | 'claim-auth'
+  | 'claim-confirm'
+  | 'claim-identity'
+  | 'claim-recipient'
+  | 'claim-verify'
+  | 'claim-summary'
+  | 'claim-gift'
+  | 'claim-gift-confirm'
+  | 'claimed-contact'
+  | 'claimed-terms';
+
+const ROUTE_PATH: Record<Route, string> = {
+  welcome: '/onboarding',
+  'discover-deals': '/discover-deals',
+  'start-vemtap': '/start-vemtap',
+  'auth-code': '/auth-code',
+  'sign-in': '/sign-in',
+  'verify-email': '/verify-email',
+  'profile-setup': '/profile-setup',
+  'location-permission': '/location-permission',
+  'manual-location': '/manual-location',
+  'confirm-location': '/confirm-location',
+  discovering: '/discovering',
+  home: '/',
+  deals: '/deals',
+  'featured-deals': '/featured-deals',
+  filters: '/filters',
+  discover: '/discover',
+  saved: '/saved',
+  account: '/account',
+  savings: '/account/savings',
+  notifications: '/account/notifications',
+  privacy: '/account/privacy',
+  addresses: '/account/addresses',
+  preferences: '/account/preferences',
+  help: '/account/help',
+  support: '/account/support',
+  terms: '/account/terms',
+  settings: '/settings',
+  'support-legal': '/support',
+  'edit-profile': '/account/edit-profile',
+  rewards: '/account/rewards',
+  scan: '/scan',
+  activity: '/account/activity',
+  'business-onboarding': '/business-onboarding',
+  'business-verification': '/business-verification',
+  'verification-status': '/business-verification/status',
+  subscription: '/subscription',
+  'subscription-ending': '/subscription/trial-ending',
+  'subscription-expired': '/subscription/expired',
+  'business-orders': '/business/orders',
+  'business-pos-orders': '/business/orders/pos',
+  'business-messages': '/business/messages',
+  'business-overview': '/business/overview',
+  'business-hub': '/business/hub',
+  'hub-locations': '/business/hub/locations',
+  'hub-branch-detail': '/business/hub/locations/branch',
+  'hub-catalog': '/business/hub/catalog',
+  'hub-services': '/business/hub/catalog/services',
+  'hub-deals': '/business/hub/deals',
+  'hub-customers': '/business/hub/customers',
+  'hub-profile': '/business/hub/profile',
+  'deal-location-pricing': '/business/deals/location-pricing',
+  'deal-create-locations': '/business/deals/create/locations',
+  'business-profile-studio': '/business/settings/profile',
+  'hub-deal-detail': '/business/hub/deals/detail',
+  'business-branch-pricing': '/business/catalog/branch-pricing',
+  'hub-loyalty': '/business/hub/loyalty',
+  'hub-loyalty-rewards': '/business/hub/loyalty/rewards',
+  'hub-staff': '/business/hub/staff',
+  'hub-staff-invite': '/business/hub/staff/invite',
+  'hub-customer-profile': '/business/hub/customers/profile',
+  'analytics-overview': '/analytics/overview',
+  'analytics-audience': '/analytics/audience',
+  'analytics-branches': '/analytics/branches',
+  'analytics-business': '/analytics/business',
+  'analytics-customers': '/analytics/customers',
+  'analytics-deals': '/analytics/deals',
+  'analytics-locations': '/analytics/locations',
+  'analytics-pos': '/analytics/pos',
+  'analytics-export': '/analytics/export',
+  'analytics-filter': '/analytics/filter',
+  'pos-display-order': '/pos/display/order',
+  'pos-display-tip': '/pos/display/tip',
+  'pos-display-pay': '/pos/display/pay',
+  'pos-display-receipt': '/pos/display/receipt',
+  'pos-split-bill': '/pos/split-bill',
+  'pos-home': '/pos/home',
+  'pos-home-offline': '/pos/home/offline',
+  'pos-register': '/pos/register',
+  'pos-cart': '/pos/cart',
+  'pos-switch': '/pos/switch',
+  'pos-customer': '/pos/customer',
+  'pos-sale-complete': '/pos/sale-complete',
+  'pos-payment': '/pos/payment',
+  'pos-product-shift': '/pos/product/shift',
+  'pos-stock': '/pos/stock',
+  'pos-ledger': '/pos/ledger',
+  'pos-customers-lookup': '/pos/customers',
+  'pos-dossier': '/pos/customer/dossier',
+  'pos-offline': '/pos/offline',
+  'pos-txn-detail': '/pos/txn/detail',
+  'pos-sync': '/pos/sync',
+  'pos-buffer': '/pos/buffer',
+  'pos-kitchen': '/pos/kitchen',
+  'pos-settings': '/pos/settings',
+  'pos-hardware': '/pos/settings/hardware',
+  'pos-receipt': '/pos/settings/receipt',
+  'pos-taxes': '/pos/settings/taxes',
+  'pos-permissions': '/pos/settings/permissions',
+  'public-pos-menu': '/public/pos/menu',
+  'public-pos-cart': '/public/pos/cart',
+  'public-pos-tracking': '/public/pos/tracking',
+  'business-more': '/business/more',
+  boost: '/boost',
+  'boost-hub': '/boost-hub',
+  'boost-metrics': '/boost-metrics',
+  'boost-wallet': '/boost-wallet',
+  'segments-hub': '/segments',
+  'segment-actions': '/segments/actions',
+  'segment-create': '/segments/create',
+  'segment-detail': '/segments/detail',
+  'business-add-ons': '/business/add-ons',
+  'deal-detail': '/deals/lunch-combo',
+  'how-to-claim': '/how-to-claim',
+  'claim-success': '/claim/success',
+  'gift-sent': '/gift/sent',
+  'claimed-deal': '/my/claimed-deal',
+  'merchant-chat': '/messages/urban-grill',
+  'deal-terms': '/deal-terms',
+  storefront: '/business/urban-grill-bistro-104/deals',
+  'storefront-products': '/business/urban-grill-bistro-104/products',
+  'storefront-menu': '/business/urban-grill-bistro-104/menu',
+  'business-profile': '/business/urban-grill-bistro-104',
+  'spa-profile': '/business/glow-serenity-spa-219',
+  'spa-services': '/business/glow-serenity-spa-219/services',
+  'service-detail': '/business/glow-serenity-spa-219/services/deep-hydration-radiance-facial',
+  'product-detail': '/business/urban-grill-bistro-104/products/woodfire-ribeye-400g',
+  checkout: '/business/urban-grill-bistro-104/checkout',
+  'order-placed': '/business/urban-grill-bistro-104/order-placed',
+  'spa-storefront': '/business/glow-serenity-spa-219/shop',
+  'spa-booking': '/business/glow-serenity-spa-219/booking',
+  'spa-booking-checkout': '/business/glow-serenity-spa-219/booking/checkout',
+  'spa-booking-confirmed': '/business/glow-serenity-spa-219/booking/confirmed',
+  dashboard: '/dashboard',
+  orders: '/orders',
+  'order-detail': '/orders/order',
+  'booking-detail': '/orders/booking',
+  'my-deals': '/my-deals',
+  messages: '/messages',
+  conversation: '/messages/conversation',
+  cart: '/cart',
+  'account-settings': '/account/settings',
+  comments: '/comments',
+  reviews: '/reviews',
+  share: '/share',
+  'claim-auth': '/claim/sign-in',
+  'claim-confirm': '/claim/confirm',
+  'claim-identity': '/claim/identity',
+  'claim-recipient': '/claim/recipient',
+  'claim-verify': '/claim/verify',
+  'claim-summary': '/claim/summary',
+  'claim-gift': '/claim/gift',
+  'claim-gift-confirm': '/claim/gift/confirm',
+  'claimed-contact': '/my/claimed-deal/contact',
+  'claimed-terms': '/my/claimed-deal/terms',
+};
+
+const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
+
+const OVERLAY_ROUTES = new Set<Route>([
+  'comments',
+  'reviews',
+  'share',
+  'claim-auth',
+  'claim-confirm',
+  'claim-identity',
+  'claim-recipient',
+  'claim-verify',
+  'claim-summary',
+  'claim-gift',
+  'claim-gift-confirm',
+  'claimed-contact',
+  'claimed-terms',
+]);
+
+const CLAIM_STEP_ROUTES = new Set<Route>([
+  'claim-confirm',
+  'claim-identity',
+  'claim-recipient',
+  'claim-verify',
+  'claim-summary',
+  'claim-gift',
+  'claim-gift-confirm',
+]);
+
+const AUTH_ROUTES = new Set<Route>([
+  'account',
+  'savings',
+  'notifications',
+  'privacy',
+  'addresses',
+  'preferences',
+  'help',
+  'support',
+  'terms',
+  'settings',
+  'support-legal',
+  'edit-profile',
+  'rewards',
+  'account-settings',
+  'scan',
+  'activity',
+  'dashboard',
+  'orders',
+  'order-detail',
+  'booking-detail',
+  'my-deals',
+  'messages',
+  'conversation',
+  'claimed-deal',
+  'claim-success',
+  'gift-sent',
+  'merchant-chat',
+  'claimed-contact',
+  'claimed-terms',
+  ...CLAIM_STEP_ROUTES,
+]);
+
+const DESKTOP_ONLY_ROUTES = new Set<Route>([
+  'spa-storefront',
+]);
+
+const ONBOARDED_KEY = 'vemtap_onboarded';
+
+const hasOnboarded = () => window.localStorage.getItem(ONBOARDED_KEY) === '1';
+
+function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
+  if (DESKTOP_ONLY_ROUTES.has(found) && !isDesktop) return authed ? 'home' : 'welcome';
+  if (authed) return found;
+  if (CLAIM_STEP_ROUTES.has(found)) return 'claim-auth';
+  if (AUTH_ROUTES.has(found)) return 'welcome';
+  return found;
+}
+
+function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSlug?: string): Route {
+  switch (section) {
+    case 'deals':
+      return 'storefront';
+    case 'products':
+      return 'product-detail';
+    case 'checkout':
+      return 'checkout';
+    case 'order-placed':
+      return 'order-placed';
+    case 'menu':
+      return 'storefront-menu';
+    case 'services':
+      return serviceSlug ? 'service-detail' : 'spa-services';
+    case 'shop':
+      return 'spa-storefront';
+    case 'booking':
+      return 'spa-booking';
+    case 'booking/checkout':
+      return 'spa-booking-checkout';
+    case 'booking/confirmed':
+      return 'spa-booking-confirmed';
+    default:
+      return venue === 'spa' ? 'spa-profile' : 'business-profile';
+  }
+}
+
+function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
+  const direct = PATH_ROUTE.get(path);
+  if (direct && direct !== 'welcome' && direct !== 'home') {
+    return guardRoute(direct, authed, isDesktop);
+  }
+  const businessPathMatch = resolveBusinessPath(path);
+  if (businessPathMatch) {
+    return guardRoute(
+      businessSectionRoute(businessPathMatch.section, businessPathMatch.business.venue, businessPathMatch.serviceSlug),
+      authed,
+      isDesktop,
+    );
+  }
+  return (authed || hasOnboarded()) ? 'home' : 'welcome';
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BusinessBranchProvider>
+        <CartProvider>
+          <BookingProvider>
+            <AppInner />
+            <BranchSwitchOverlay />
+          </BookingProvider>
+        </CartProvider>
+      </BusinessBranchProvider>
+    </AuthProvider>
+  );
+}
+
+function AppInner() {
+  const { authed, claimed, signIn, signOut, markClaimed, resetClaim } = useAuth();
+  const cart = useCart();
+  const booking = useBooking();
+  const isDesktop = useIsDesktop();
+  const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
+  const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
+  const [feedFrom, setFeedFrom] = useState<Route>('home');
+  const [dealFrom, setDealFrom] = useState<Route>('home');
+  const [bizFrom, setBizFrom] = useState<Route>('discover');
+  const [profileFrom, setProfileFrom] = useState<Route>('discover');
+  const [catalogueFrom, setCatalogueFrom] = useState<Route>('storefront');
+  const [detailFrom, setDetailFrom] = useState<Route>('storefront-products');
+  const [detailProduct, setDetailProduct] = useState<CatalogueProduct | null>(() => {
+    const match = resolveBusinessPath(window.location.pathname);
+    return (match?.productId ? findProduct(match.productId) : undefined) ?? null;
+  });
+  const [detailService, setDetailService] = useState<SpaCatalogueService | null>(() => {
+    const match = resolveBusinessPath(window.location.pathname);
+    return (match?.serviceSlug ? findSpaService(match.serviceSlug) : undefined) ?? null;
+  });
+  const [serviceFrom, setServiceFrom] = useState<Route>('spa-services');
+  const [bookingFrom, setBookingFrom] = useState<Route>('spa-profile');
+  const [orderSummary, setOrderSummary] = useState<OrderSummary | null>(null);
+  const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
+  const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
+  const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
+  const [activeConversation, setActiveConversation] = useState('urban');
+  const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary>({
+    name: 'Amara Okafor',
+    email: 'amara@email.com',
+  });
+  const [posCart, setPosCart] = useState<PosCartLine[]>(SEED_POS_CART);
+  const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>(SEED_POS_TERMINAL_LINES);
+  const [posCustomer, setPosCustomer] = useState<string | null>(null);
+  const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
+  const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
+
+  const posTab = (key: PosTabKey) => {
+    switch (key) {
+      case 'register':
+        setRoute('pos-register');
+        break;
+      case 'orders':
+        setRoute('business-pos-orders');
+        break;
+      case 'customers':
+        setRoute('pos-customers-lookup');
+        break;
+      case 'products':
+        setRoute('pos-stock');
+        break;
+      case 'ledger':
+        setRoute('pos-ledger');
+        break;
+      case 'drawer':
+        setRoute('pos-home');
+        break;
+      case 'more':
+        setRoute('business-more');
+        break;
+    }
+  };
+
+  const posTerminalNav = (key: PosTerminalNavKey) => {
+    switch (key) {
+      case 'register':
+        setRoute('pos-register');
+        break;
+      case 'orders':
+        setRoute('business-pos-orders');
+        break;
+      case 'products':
+        setRoute('pos-stock');
+        break;
+      case 'ledger':
+        setRoute('pos-ledger');
+        break;
+      case 'hardware-and-sync':
+        setRoute('pos-sync');
+        break;
+      case 'settings':
+        setRoute('pos-settings');
+        break;
+    }
+  };
+
+  const setRoute = (target: Route) => {
+    if (target === route) return;
+    window.history.pushState(null, '', ROUTE_PATH[target]);
+    setRouteState(target);
+  };
+
+  const openProduct = (id: string, display?: Partial<CatalogueProduct>, from?: Route) => {
+    const base = findProduct(id);
+    if (!base) return;
+    setDetailProduct({ ...base, ...display, id: base.id });
+    if (from) setDetailFrom(from);
+    const target = productPath(URBAN_BUSINESS.slug, base.id);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('product-detail');
+  };
+
+  const startCheckout = () => {
+    if (cart.count === 0) return;
+    setRoute('checkout');
+  };
+
+  const openService = (key: string, from?: Route) => {
+    const base = findSpaService(key);
+    if (!base) return;
+    setDetailService(base);
+    if (from) setServiceFrom(from);
+    const target = servicePath(SPA_BUSINESS.slug, base.slug);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('service-detail');
+  };
+
+  const placeOrder = (order: OrderSummary) => {
+    setOrderSummary(order);
+    cart.clear();
+    setRoute('order-placed');
+  };
+
+  useEffect(() => {
+    // The shared portal account menu clears the session, then asks the router
+    // to move to the sign-in screen.
+    const handleSignOut = () => setRouteState('sign-in');
+    window.addEventListener(SIGN_OUT_EVENT, handleSignOut);
+    return () => window.removeEventListener(SIGN_OUT_EVENT, handleSignOut);
+  }, []);
+
+  useEffect(() => {
+    const expected =
+      route === 'product-detail'
+        ? detailProduct
+          ? productPath(URBAN_BUSINESS.slug, detailProduct.id)
+          : null
+        : route === 'service-detail'
+          ? detailService
+            ? servicePath(SPA_BUSINESS.slug, detailService.slug)
+            : null
+          : ROUTE_PATH[route];
+    if (expected && window.location.pathname !== expected) {
+      window.history.replaceState(null, '', expected);
+    }
+    const onPopState = () => {
+      const path = window.location.pathname;
+      setRouteState(entryRoute(path, authed, isDesktop));
+      const match = resolveBusinessPath(path);
+      if (match?.section === 'products') {
+        const base = findProduct(match.productId);
+        if (base) setDetailProduct((prev) => (prev && prev.id === base.id ? prev : base));
+      }
+      if (match?.section === 'services' && match.serviceSlug) {
+        const base = findSpaService(match.serviceSlug);
+        if (base) setDetailService((prev) => (prev && prev.id === base.id ? prev : base));
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [authed, isDesktop, route, detailProduct, detailService]);
+
+  useEffect(() => {
+    if (route !== 'product-detail' || detailProduct) return;
+    const match = resolveBusinessPath(window.location.pathname);
+    const base = match?.productId ? findProduct(match.productId) : undefined;
+    if (base) setDetailProduct(base);
+    else setRouteState('storefront-products');
+  }, [route, detailProduct]);
+
+  useEffect(() => {
+    if (route !== 'service-detail' || detailService) return;
+    const match = resolveBusinessPath(window.location.pathname);
+    const base = match?.serviceSlug ? findSpaService(match.serviceSlug) : undefined;
+    if (base) setDetailService(base);
+    else setRouteState('spa-services');
+  }, [route, detailService]);
+
+  useEffect(() => {
+    if (route === 'spa-booking-confirmed' && !booking.confirmedRef) setRouteState('spa-booking');
+  }, [route, booking.confirmedRef]);
+
+  useEffect(() => {
+    if (route === 'order-placed' && !orderSummary) setRouteState('home');
+  }, [route, orderSummary]);
+
+  useEffect(() => {
+    if (OVERLAY_ROUTES.has(route)) return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+  }, [route]);
+
+  const openDeal = (from: Route) => {
+    setDealFrom(from);
+    setRoute('deal-detail');
+  };
+
+  const startClaim = (from: Route) => {
+    if (claimed) {
+      setClaimedFrom(from);
+      setRoute('claimed-deal');
+      return;
+    }
+    setRoute(authed ? 'claim-confirm' : 'claim-auth');
+  };
+
+  const completeClaim = () => {
+    markClaimed();
+    setRoute('claim-success');
+  };
+
+  const completeGift = () => {
+    markClaimed();
+    setRoute('gift-sent');
+  };
+
+  const [claimPopupOpen, setClaimPopupOpen] = useState(false);
+  const [claimDialog, setClaimDialog] = useState<'gift' | 'giftConfirm' | 'other' | 'verify' | 'summary' | null>(null);
+  const [claimToast, setClaimToast] = useState<string | null>(null);
+  const claimToastTimer = useRef<number | undefined>(undefined);
+  const claimSuccessRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (claimToastTimer.current) window.clearTimeout(claimToastTimer.current);
+    };
+  }, []);
+
+  const showClaimToast = (message: string) => {
+    if (claimToastTimer.current) window.clearTimeout(claimToastTimer.current);
+    setClaimToast(message);
+    claimToastTimer.current = window.setTimeout(() => setClaimToast(null), 3500);
+  };
+
+  const openClaimPopup = (onClaimed?: () => void) => {
+    claimSuccessRef.current = onClaimed ?? null;
+    setClaimPopupOpen(true);
+  };
+
+  const closeClaimPopup = () => {
+    claimSuccessRef.current = null;
+    setClaimPopupOpen(false);
+  };
+
+  const finishClaimChoice = (choice: 'self' | 'gift' | 'other') => {
+    setClaimPopupOpen(false);
+    if (choice === 'self') {
+      const onClaimed = claimSuccessRef.current;
+      claimSuccessRef.current = null;
+      onClaimed?.();
+      if (isDesktop) {
+        if (!claimed) markClaimed();
+        if (!onClaimed) showClaimToast('Deal Claimed! Voucher saved to your wallet.');
+        return;
+      }
+      if (claimed) {
+        setClaimedFrom(route);
+        setRoute('claimed-deal');
+      } else {
+        completeClaim();
+      }
+      return;
+    }
+    claimSuccessRef.current = null;
+    if (isDesktop) {
+      setClaimDialog(choice === 'gift' ? 'gift' : 'other');
+    } else {
+      setRoute(choice === 'gift' ? 'claim-gift' : 'claim-recipient');
+    }
+  };
+
+  const finishDesktopClaim = (message: string) => {
+    setClaimDialog(null);
+    if (!claimed) markClaimed();
+    showClaimToast(message);
+  };
+
+  useEffect(() => {
+    if (route === 'discovering') {
+      window.localStorage.setItem(ONBOARDED_KEY, '1');
+      signIn();
+    }
+  }, [route, signIn]);
+
+  const openFeedRoute = (target: 'featured-deals' | 'filters', from: Route) => {
+    setFeedFrom(from);
+    setRoute(target);
+  };
+
+  const accountNav = (target: AccountTarget) => {
+    setRoute(target);
+  };
+
+  const feedNav = (key: DesktopNavKey) => {
+    switch (key) {
+      case 'home':
+        setRoute('home');
+        break;
+      case 'discover':
+        setRoute('discover');
+        break;
+      case 'deals':
+        setRoute('deals');
+        break;
+      case 'exclusive-deals':
+        setRoute('deals');
+        break;
+      case 'how-it-works':
+        setRoute('welcome');
+        break;
+      case 'for-business':
+        setRoute('business-onboarding');
+        break;
+      case 'sign-in':
+        setRoute('sign-in');
+        break;
+      case 'get-started':
+        setRoute('start-vemtap');
+        break;
+      case 'businesses':
+        setRoute('storefront');
+        break;
+      case 'storefront':
+        setRoute('storefront');
+        break;
+      case 'all-products':
+        setRoute('storefront-products');
+        break;
+      case 'all-services':
+        setRoute('spa-services');
+        break;
+      case 'product-detail':
+        setRoute('product-detail');
+        break;
+      case 'spa-storefront':
+        setRoute('spa-storefront');
+        break;
+      case 'spa-booking':
+        setRoute('spa-booking');
+        break;
+      case 'dashboard':
+        setRoute('dashboard');
+        break;
+      case 'orders':
+        setRoute('orders');
+        break;
+      case 'my-deals':
+        setRoute('my-deals');
+        break;
+      case 'messages':
+        setRoute('messages');
+        break;
+      case 'cart':
+        setRoute('cart');
+        break;
+      case 'account-settings':
+        setRoute('account-settings');
+        break;
+      case 'deal-detail':
+        setRoute('deal-detail');
+        break;
+      case 'for-merchants':
+        setRoute('business-onboarding');
+        break;
+    }
+  };
+
+  const nav = (getStartedRoute: Route) => (key: DesktopNavKey) => {
+    switch (key) {
+      case 'home':
+        setRoute('home');
+        break;
+      case 'discover':
+        setRoute('discover');
+        break;
+      case 'deals':
+        setRoute('deals');
+        break;
+      case 'exclusive-deals':
+        setRoute('discover-deals');
+        break;
+      case 'how-it-works':
+        setRoute('welcome');
+        break;
+      case 'for-business':
+        setRoute('business-onboarding');
+        break;
+      case 'sign-in':
+        setRoute('sign-in');
+        break;
+      case 'get-started':
+        setRoute(getStartedRoute);
+        break;
+      case 'businesses':
+      case 'storefront':
+        setRoute('storefront');
+        break;
+      case 'all-products':
+        setRoute('storefront-products');
+        break;
+      case 'all-services':
+        setRoute('spa-services');
+        break;
+      case 'product-detail':
+        setRoute('product-detail');
+        break;
+      case 'spa-storefront':
+        setRoute('spa-storefront');
+        break;
+      case 'spa-booking':
+        setRoute('spa-booking');
+        break;
+      case 'dashboard':
+        setRoute('dashboard');
+        break;
+      case 'orders':
+        setRoute('orders');
+        break;
+      case 'my-deals':
+        setRoute('my-deals');
+        break;
+      case 'messages':
+        setRoute('messages');
+        break;
+      case 'cart':
+        setRoute('cart');
+        break;
+      case 'account-settings':
+        setRoute('account-settings');
+        break;
+      case 'deal-detail':
+        setRoute('deal-detail');
+        break;
+      case 'for-merchants':
+        setRoute('business-onboarding');
+        break;
+    }
+  };
+
+  const [boostReturnRoute, setBoostReturnRoute] = useState<Route>('business-overview');
+  const [boostItem, setBoostItem] = useState<string | null>(null);
+  const [hubCustomerName, setHubCustomerName] = useState('Michael James');
+
+  const openBoost = (item?: string) => {
+    setBoostReturnRoute(route);
+    setBoostItem(item ?? null);
+    setRoute('boost');
+  };
+
+  const boostTab = (key: BoostTabKey) => {
+    switch (key) {
+      case 'overview':
+        setRoute('boost-hub');
+        break;
+      case 'boost':
+        openBoost();
+        break;
+      case 'metrics':
+        setRoute('boost-metrics');
+        break;
+      case 'wallet':
+        setRoute('boost-wallet');
+        break;
+    }
+  };
+
+  const [activeSegment, setActiveSegment] = useState<SegmentRef>({
+    name: 'Returning Customers',
+    count: '294',
+    meta: '68.2% repeat interaction rate',
+    desc: 'Interacted or placed 2+ orders at Urban Grill & Bistro in the trailing 90 days.',
+  });
+
+  const useSegment = (segment: SegmentRef) => {
+    setActiveSegment(segment);
+    setRoute('segment-actions');
+  };
+
+  const openHubModule = (module: HubModuleKey) => {
+    const moduleRoute: Record<HubModuleKey, Route> = {
+      deals: 'hub-deals',
+      catalog: 'hub-catalog',
+      customers: 'hub-customers',
+      loyalty: 'hub-loyalty',
+      locations: 'hub-locations',
+      staff: 'hub-staff',
+      profile: 'hub-profile',
+    };
+    setRoute(moduleRoute[module]);
+  };
+
+  const goBackToPrevious = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      setRoute('business-overview');
+    }
+  };
+
+  const businessTab = (key: BusinessTabKey) => {
+    switch (key) {
+      case 'overview':
+        setRoute('business-overview');
+        break;
+      case 'orders':
+        setRoute('business-orders');
+        break;
+      case 'messages':
+        setRoute('business-messages');
+        break;
+      case 'business':
+        setRoute('business-hub');
+        break;
+      case 'more':
+        setRoute('business-more');
+        break;
+    }
+  };
+
+  const businessPortalNav = (key: BusinessPortalNavKey) => {
+    switch (key) {
+      case 'overview':
+        setRoute('business-overview');
+        break;
+      case 'orders':
+        setRoute('business-orders');
+        break;
+      case 'messages':
+        setRoute('business-messages');
+        break;
+      case 'catalog':
+        setRoute('hub-catalog');
+        break;
+      case 'deals':
+        setRoute('hub-deals');
+        break;
+      case 'locations':
+        setRoute('hub-locations');
+        break;
+      case 'customers':
+        setRoute('hub-customers');
+        break;
+      case 'analytics':
+        setRoute('analytics-overview');
+        break;
+      case 'pos':
+        setRoute('business-pos-orders');
+        break;
+      case 'settings':
+        setRoute('hub-profile');
+        break;
+    }
+  };
+
+  const goToAnalyticsTab = (tab: AnalyticsTabKey) => {
+    setRoute(`analytics-${tab}` as Route);
+  };
+
+  const renderDetail = () =>
+    isDesktop ? (
+      <DesktopDealDetailScreen onNav={feedNav} onBack={() => setRoute(dealFrom)} />
+    ) : (
+      <DealDetailScreen
+        onBack={() => setRoute(dealFrom)}
+        onHowToClaim={() => setRoute('how-to-claim')}
+        onTerms={() => {
+          setTermsFrom('deal-detail');
+          setRoute('deal-terms');
+        }}
+        onComments={() => setRoute('comments')}
+        onReviews={() => setRoute('reviews')}
+        onShare={() => setRoute('share')}
+        onClaim={() => startClaim('deal-detail')}
+        onMerchant={() => {
+          setProfileFrom('deal-detail');
+          setRoute('business-profile');
+        }}
+        claimed={claimed}
+        onViewWallet={() => {
+          setClaimedFrom('deal-detail');
+          setRoute('claimed-deal');
+        }}
+      />
+    );
+
+  const renderClaimed = () =>
+    isDesktop ? (
+      <DesktopClaimedDealScreen
+        onNav={feedNav}
+        onBack={() => setRoute(claimedFrom)}
+        onContact={() => setRoute('claimed-contact')}
+        onReview={() => setRoute('support')}
+        onCancelClaim={() => {
+          resetClaim();
+          setRoute('home');
+        }}
+      />
+    ) : (
+      <ClaimedDealScreen
+        onBack={() => setRoute(claimedFrom)}
+        onContact={() => setRoute('claimed-contact')}
+        onReview={() => setRoute('support')}
+        onCancelClaim={() => {
+          resetClaim();
+          setRoute('home');
+        }}
+      />
+    );
+
+  const renderRoute = () => {
+    switch (route) {
+    case 'welcome':
+      if (isDesktop) return <DesktopWelcomeScreen onNav={nav('start-vemtap')} />;
+      return <WelcomeScreen onGetStarted={() => setRoute('start-vemtap')} onSignIn={() => setRoute('sign-in')} />;
+
+    case 'discover-deals':
+      if (isDesktop)
+        return (
+          <DesktopDiscoverDealsScreen
+            onNav={nav('start-vemtap')}
+            onNext={() => setRoute('start-vemtap')}
+            onSkip={() => setRoute('start-vemtap')}
+            onOpenDeal={() => openDeal('discover-deals')}
+          />
+        );
+      return (
+        <DiscoverDealsScreen
+          onBack={() => setRoute('welcome')}
+          onNext={() => setRoute('start-vemtap')}
+          onSkip={() => setRoute('start-vemtap')}
+          onOpenDeal={() => openDeal('discover-deals')}
+        />
+      );
+
+    case 'start-vemtap':
+      if (isDesktop) return <DesktopStartVemtapScreen onNav={nav('auth-code')} onGetStarted={() => setRoute('auth-code')} />;
+      return (
+        <StartVemtapScreen
+          onBack={() => setRoute('welcome')}
+          onGetStarted={() => {
+            setAuthFrom('start-vemtap');
+            setRoute('auth-code');
+          }}
+          onSkip={() => {
+            setAuthFrom('start-vemtap');
+            setRoute('auth-code');
+          }}
+          onBusinessSetup={() => setRoute('business-onboarding')}
+        />
+      );
+
+    case 'auth-code':
+      if (isDesktop)
+        return (
+          <DesktopAuthCodeScreen
+            onContinue={() => setRoute('verify-email')}
+            onSignIn={() => setRoute('sign-in')}
+            onBusinessRegister={() => setRoute('business-onboarding')}
+          />
+        );
+      return (
+        <AuthCodeScreen
+          onBack={() => setRoute(authFrom)}
+          onContinue={() => setRoute('verify-email')}
+          onBusinessRegister={() => setRoute('business-onboarding')}
+        />
+      );
+
+    case 'sign-in':
+      if (isDesktop)
+        return (
+          <DesktopSignInScreen
+            onSignIn={() => {
+              signIn();
+              setRoute('discovering');
+            }}
+            onGoogleSignIn={() => {
+              signIn();
+              setRoute('discovering');
+            }}
+            onCreateAccount={() => {
+              setAuthFrom('sign-in');
+              setRoute('auth-code');
+            }}
+            onBusinessRegister={() => setRoute('business-onboarding')}
+            onCustomerSignIn={() => {
+              signIn();
+              setRoute('dashboard');
+            }}
+            onBusinessSignIn={() => {
+              signIn();
+              setRoute('business-overview');
+            }}
+          />
+        );
+      return (
+        <SignInScreen
+          onBack={() => setRoute('welcome')}
+          onSignIn={() => {
+            signIn();
+            setRoute('discovering');
+          }}
+          onGoogleSignIn={() => {
+            signIn();
+            setRoute('discovering');
+          }}
+          onCreateAccount={() => {
+            setAuthFrom('sign-in');
+            setRoute('auth-code');
+          }}
+          onBusinessRegister={() => setRoute('business-onboarding')}
+          onCustomerSignIn={() => {
+            signIn();
+            setRoute('dashboard');
+          }}
+          onBusinessSignIn={() => {
+            signIn();
+            setRoute('business-overview');
+          }}
+        />
+      );
+
+    case 'verify-email':
+      if (isDesktop)
+        return (
+          <DesktopVerifyEmailScreen
+            onBack={() => setRoute('auth-code')}
+            onContinue={() => setRoute('profile-setup')}
+            onEditEmail={() => setRoute('auth-code')}
+            onBusinessSetup={() => setRoute('business-onboarding')}
+          />
+        );
+      return (
+        <VerifyEmailScreen
+          onBack={() => setRoute('auth-code')}
+          onContinue={() => setRoute('profile-setup')}
+          onEditEmail={() => setRoute('auth-code')}
+        />
+      );
+
+    case 'profile-setup':
+      if (isDesktop)
+        return (
+          <DesktopProfileSetupScreen
+            onBack={() => setRoute('verify-email')}
+            onComplete={() => setRoute('location-permission')}
+            onBusinessSetup={() => setRoute('business-onboarding')}
+          />
+        );
+      return <ProfileSetupScreen onBack={() => setRoute('verify-email')} onComplete={() => setRoute('location-permission')} />;
+
+    case 'location-permission':
+      if (isDesktop)
+        return (
+          <DesktopLocationPermissionScreen
+            onNav={nav('confirm-location')}
+            onUseLocation={() => {
+              setConfirmFrom('location-permission');
+              setRoute('confirm-location');
+            }}
+            onManualLocation={() => setRoute('manual-location')}
+          />
+        );
+      return (
+        <LocationPermissionScreen
+          onBack={() => setRoute('profile-setup')}
+          onUseLocation={() => {
+            setConfirmFrom('location-permission');
+            setRoute('confirm-location');
+          }}
+          onManualLocation={() => setRoute('manual-location')}
+        />
+      );
+
+    case 'manual-location':
+      if (isDesktop)
+        return (
+          <DesktopManualLocationScreen
+            onNav={nav('confirm-location')}
+            onBack={() => setRoute('location-permission')}
+            onContinue={() => {
+              setConfirmFrom('manual-location');
+              setRoute('confirm-location');
+            }}
+          />
+        );
+      return (
+        <ManualLocationScreen
+          onBack={() => setRoute('location-permission')}
+          onContinue={() => {
+            setConfirmFrom('manual-location');
+            setRoute('confirm-location');
+          }}
+          onBusinessSetup={() => setRoute('business-onboarding')}
+        />
+      );
+
+    case 'confirm-location':
+      if (isDesktop)
+        return (
+          <DesktopConfirmLocationScreen
+            onNav={nav('discovering')}
+            onBack={() => setRoute(confirmFrom)}
+            onChangeLocation={() => setRoute('manual-location')}
+            onContinue={() => setRoute('discovering')}
+            onBusinessSetup={() => setRoute('business-onboarding')}
+          />
+        );
+      return (
+        <ConfirmLocationScreen
+          onBack={() => setRoute(confirmFrom)}
+          onChangeLocation={() => setRoute('manual-location')}
+          onContinue={() => setRoute('discovering')}
+          onBusinessSetup={() => setRoute('business-onboarding')}
+        />
+      );
+
+    case 'discovering':
+      if (isDesktop) return <DesktopDiscoveringScreen onNav={nav('home')} onReady={() => setRoute('home')} />;
+      return <DiscoveringScreen onReady={() => setRoute('home')} />;
+
+    case 'home':
+      if (isDesktop)
+        return (
+          <DesktopHomeScreen
+            onNav={feedNav}
+            onOpenFilters={() => openFeedRoute('filters', 'home')}
+            onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
+            onOpenDeals={() => setRoute('deals')}
+            onOpenDeal={() => openDeal('home')}
+            onClaim={openClaimPopup}
+          />
+        );
+      return (
+        <HomeScreen
+          onTab={(tab) => setRoute(tab)}
+          onOpenFilters={() => openFeedRoute('filters', 'home')}
+          onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
+          onOpenDeals={() => setRoute('deals')}
+          onOpenDeal={() => openDeal('home')}
+          onOpenNotifications={() => setRoute('notifications')}
+          onEnroll={() => setRoute('business-onboarding')}
+          onAccount={() => setRoute('account')}
+        />
+      );
+
+    case 'deals':
+      if (isDesktop)
+        return (
+          <DesktopDealsScreen
+            onNav={feedNav}
+            onOpenFilters={() => openFeedRoute('filters', 'deals')}
+            onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
+            onOpenDeal={() => openDeal('deals')}
+            onClaim={openClaimPopup}
+          />
+        );
+      return (
+        <DealsScreen
+          onTab={(tab) => setRoute(tab)}
+          onOpenFilters={() => openFeedRoute('filters', 'deals')}
+          onOpenDeal={() => openDeal('deals')}
+          onOpenNotifications={() => setRoute('notifications')}
+          onClaim={openClaimPopup}
+          onAccount={() => setRoute('account')}
+        />
+      );
+
+    case 'featured-deals':
+      if (isDesktop)
+        return (
+          <DesktopFeaturedDealsScreen
+            onNav={feedNav}
+            onOpenFilters={() => openFeedRoute('filters', 'featured-deals')}
+            onOpenDeal={() => openDeal('featured-deals')}
+          />
+        );
+      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={() => openDeal('featured-deals')} />;
+
+    case 'filters':
+      if (isDesktop) return <DesktopFiltersScreen onNav={feedNav} onClose={() => setRoute(feedFrom)} />;
+      return <FiltersScreen onClose={() => setRoute(feedFrom)} />;
+
+    case 'deal-detail':
+      if (isDesktop)
+        return <DesktopDealDetailScreen onNav={feedNav} onBack={() => setRoute(dealFrom)} />;
+      return <>{renderDetail()}</>;
+
+    case 'comments':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <CommentsDrawer
+              open
+              onClose={() => setRoute('deal-detail')}
+              onClaim={() => {
+                setRoute('deal-detail');
+                openClaimPopup();
+              }}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <CommentsSheet open onClose={() => setRoute('deal-detail')} />
+        </>
+      );
+
+    case 'reviews':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <ReviewsModal open onClose={() => setRoute('deal-detail')} />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <ReviewsSheet open onClose={() => setRoute('deal-detail')} />
+        </>
+      );
+
+    case 'share':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <ShareModal open onClose={() => setRoute('deal-detail')} />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <ShareSheet open onClose={() => setRoute('deal-detail')} />
+        </>
+      );
+
+    case 'claim-auth':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <ClaimAuthModal
+              open
+              onAuthenticated={() => {
+                signIn();
+                setRoute('claim-confirm');
+              }}
+              onClose={() => setRoute('deal-detail')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <ClaimAuthSheet
+            open
+            onAuthenticated={() => {
+              signIn();
+              setRoute('claim-confirm');
+            }}
+            onClose={() => setRoute('deal-detail')}
+          />
+        </>
+      );
+
+    case 'claim-confirm':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <ClaimConfirmationModal
+              open
+              onClose={() => setRoute('deal-detail')}
+              onConfirm={() => setRoute('claim-identity')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <ClaimConfirmSheet open onClose={() => setRoute('deal-detail')} onConfirm={() => setRoute('claim-identity')} />
+        </>
+      );
+
+    case 'claim-identity':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <ClaimIdentityModal
+              open
+              onClaimSelf={completeClaim}
+              onGift={() => setRoute('claim-gift')}
+              onSomeoneElse={() => setRoute('claim-recipient')}
+              onClose={() => setRoute('deal-detail')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <ClaimIdentitySheet
+            open
+            onClaimSelf={completeClaim}
+            onGift={() => setRoute('claim-gift')}
+            onSomeoneElse={() => setRoute('claim-recipient')}
+            onClose={() => setRoute('deal-detail')}
+          />
+        </>
+      );
+
+    case 'claim-recipient':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <SomeoneElseModal open onContinue={() => setRoute('claim-verify')} onClose={() => setRoute('deal-detail')} />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <RecipientDetailsSheet
+            open
+            onContinue={() => setRoute('claim-verify')}
+            onBack={() => setRoute('claim-identity')}
+            onClose={() => setRoute('deal-detail')}
+          />
+        </>
+      );
+
+    case 'claim-verify':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <RecipientVerificationModal
+              open
+              onVerify={() => setRoute('claim-summary')}
+              onBack={() => setRoute('claim-identity')}
+              onClose={() => setRoute('deal-detail')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <RecipientVerificationSheet
+            open
+            onVerify={() => setRoute('claim-summary')}
+            onBack={() => setRoute('claim-recipient')}
+            onClose={() => setRoute('deal-detail')}
+          />
+        </>
+      );
+
+    case 'claim-summary':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <RecipientSummaryModal
+              open
+              onConfirm={completeClaim}
+              onEdit={() => setRoute('claim-recipient')}
+              onClose={() => setRoute('deal-detail')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <RecipientSummarySheet
+            open
+            onContinue={completeClaim}
+            onEdit={() => setRoute('claim-recipient')}
+            onClose={() => setRoute('deal-detail')}
+          />
+        </>
+      );
+
+    case 'claim-gift':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <GiftRecipientDetailsModal
+              open
+              onContinue={() => setRoute('claim-gift-confirm')}
+              onClose={() => setRoute('deal-detail')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <GiftRecipientDetailsSheet
+            open
+            onContinue={(values) => {
+              setGiftRecipient({
+                name: `${values.firstName} ${values.lastName}`.trim(),
+                email: values.email,
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : '0801 234 5678',
+              });
+              setRoute('claim-gift-confirm');
+            }}
+            onClose={() => setRoute('deal-detail')}
+          />
+        </>
+      );
+
+    case 'claim-gift-confirm':
+      if (isDesktop)
+        return (
+          <>
+            {renderDetail()}
+            <ConfirmGiftSendModal
+              open
+              onSend={completeGift}
+              onEdit={() => setRoute('claim-gift')}
+              onClose={() => setRoute('deal-detail')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderDetail()}
+          <ConfirmGiftSendSheet
+            open
+            recipient={giftRecipient}
+            onConfirm={completeGift}
+            onEdit={() => setRoute('claim-gift')}
+            onClose={() => setRoute('deal-detail')}
+          />
+        </>
+      );
+
+    case 'how-to-claim':
+      if (isDesktop)
+        return (
+          <DesktopHowToClaimScreen
+            onNav={feedNav}
+            onBack={() => setRoute('deal-detail')}
+            onClaim={() => startClaim('how-to-claim')}
+            onTerms={() => {
+              setTermsFrom('how-to-claim');
+              setRoute('deal-terms');
+            }}
+          />
+        );
+      return (
+        <HowToClaimScreen
+          onBack={() => setRoute('deal-detail')}
+          onClaim={() => startClaim('how-to-claim')}
+          onTerms={() => {
+            setTermsFrom('how-to-claim');
+            setRoute('deal-terms');
+          }}
+        />
+      );
+
+    case 'claim-success':
+      if (isDesktop)
+        return (
+          <DesktopClaimSuccessScreen
+            onNav={feedNav}
+            onBack={() => setRoute('deal-detail')}
+            onViewMyDeal={() => {
+              setClaimedFrom('claim-success');
+              setRoute('claimed-deal');
+            }}
+            onContinue={() => setRoute('home')}
+          />
+        );
+      return (
+        <ClaimSuccessScreen
+          onBack={() => setRoute('deal-detail')}
+          onViewMyDeal={() => {
+            setClaimedFrom('claim-success');
+            setRoute('claimed-deal');
+          }}
+          onContinue={() => setRoute('home')}
+        />
+      );
+
+    case 'gift-sent':
+      if (isDesktop)
+        return (
+          <DesktopGiftSentScreen
+            onNav={feedNav}
+            recipient={giftRecipient}
+            onBack={() => setRoute('deal-detail')}
+            onDone={() => setRoute('home')}
+            onSendAnother={() => setRoute('claim-identity')}
+          />
+        );
+      return (
+        <GiftSentScreen
+          recipient={giftRecipient}
+          onBack={() => setRoute('deal-detail')}
+          onDone={() => setRoute('home')}
+          onSendAnother={() => setRoute('claim-identity')}
+        />
+      );
+
+    case 'claimed-deal':
+      return <>{renderClaimed()}</>;
+
+    case 'claimed-contact':
+      if (isDesktop)
+        return (
+          <>
+            {renderClaimed()}
+            <ContactBusinessModal
+              open
+              onChat={() => setRoute('merchant-chat')}
+              onClose={() => setRoute('claimed-deal')}
+            />
+          </>
+        );
+      return (
+        <>
+          {renderClaimed()}
+          <ContactBusinessSheet open onChat={() => setRoute('merchant-chat')} onClose={() => setRoute('claimed-deal')} />
+        </>
+      );
+
+    case 'claimed-terms':
+      if (isDesktop)
+        return (
+          <>
+            {renderClaimed()}
+            <ClaimedTermsModal open onClose={() => setRoute('claimed-deal')} />
+          </>
+        );
+      return (
+        <>
+          {renderClaimed()}
+          <ClaimedTermsSheet open onClose={() => setRoute('claimed-deal')} />
+        </>
+      );
+
+    case 'merchant-chat':
+      if (isDesktop)
+        return (
+          <DesktopMerchantChatScreen
+            onNav={feedNav}
+            onBack={() => setRoute(chatFrom)}
+            onViewQr={() => {
+              setClaimedFrom('merchant-chat');
+              setRoute('claimed-deal');
+            }}
+          />
+        );
+      return (
+        <MerchantChatScreen
+          onBack={() => setRoute(chatFrom)}
+          onViewQr={() => {
+            setClaimedFrom('merchant-chat');
+            setRoute('claimed-deal');
+          }}
+        />
+      );
+
+    case 'deal-terms':
+      if (isDesktop)
+        return (
+          <DesktopDealTermsScreen
+            onNav={feedNav}
+            onBack={() => setRoute(termsFrom)}
+            onClaim={() => startClaim('deal-terms')}
+          />
+        );
+      return (
+        <DealTermsScreen
+          onBack={() => setRoute(termsFrom)}
+          onClaim={() => startClaim('deal-terms')}
+        />
+      );
+
+    case 'storefront':
+      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
+      return (
+        <MerchantDealsScreen
+          onBack={() => setRoute(bizFrom)}
+          onOpenDeal={() => openDeal('storefront')}
+          onBusinessSetup={() => setRoute('business-onboarding')}
+          onShowGrid={() => {
+            setCatalogueFrom('storefront');
+            setRoute('storefront-products');
+          }}
+          onClaim={openClaimPopup}
+        />
+      );
+
+    case 'storefront-products':
+      if (isDesktop)
+        return <DesktopAllProductsScreen onNav={feedNav} onBack={() => setRoute('storefront')} />;
+      return (
+        <ProductsCatalogueScreen
+          onBack={() => setRoute(catalogueFrom)}
+          onListView={() => setRoute('storefront-menu')}
+          onOpenProduct={(id, display) => openProduct(id, display, 'storefront-products')}
+          onCheckout={startCheckout}
+        />
+      );
+
+    case 'storefront-menu':
+      if (isDesktop)
+        return (
+          <DesktopStorefrontMenuScreen
+            onNav={feedNav}
+            onBack={() => setRoute(bizFrom)}
+            onOpenDeals={() => {
+              setBizFrom(bizFrom);
+              setRoute('storefront');
+            }}
+            onGridView={() => {
+              setCatalogueFrom('storefront-menu');
+              setRoute('storefront-products');
+            }}
+            onOpenProduct={(id, display) => openProduct(id, display, 'storefront-menu')}
+            onCheckout={startCheckout}
+          />
+        );
+      return (
+        <MenuProductsScreen
+          onBack={() => setRoute(bizFrom)}
+          onOpenDeals={() => {
+            setBizFrom(bizFrom);
+            setRoute('storefront');
+          }}
+          onGridView={() => {
+            setCatalogueFrom('storefront-menu');
+            setRoute('storefront-products');
+          }}
+          onOpenProduct={(id, display) => openProduct(id, display, 'storefront-menu')}
+          onCheckout={startCheckout}
+        />
+      );
+
+    case 'business-profile':
+      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} activeNav="discover" onClaim={openClaimPopup} />;
+      return (
+        <BusinessProfileScreen
+          venue="urban"
+          onBack={() => setRoute(profileFrom)}
+          onOpenDeals={() => {
+            setBizFrom('business-profile');
+            setRoute('storefront');
+          }}
+          onOpenProducts={() => {
+            setCatalogueFrom('business-profile');
+            setRoute('storefront-products');
+          }}
+          onClaim={openClaimPopup}
+        />
+      );
+
+    case 'spa-profile':
+      if (isDesktop) return <DesktopSpaStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
+      return (
+        <BusinessProfileScreen
+          venue="spa"
+          onBack={() => setRoute(profileFrom)}
+          onOpenDeals={() => setRoute(profileFrom)}
+          onOpenServices={() => {
+            setBizFrom('spa-profile');
+            setRoute('spa-services');
+          }}
+          onOpenService={(name) => openService(name, 'spa-profile')}
+          onClaim={openClaimPopup}
+        />
+      );
+
+    case 'spa-services':
+      if (isDesktop) return <DesktopAllServicesScreen onNav={feedNav} onBack={() => setRoute('spa-profile')} />;
+      return (
+        <ServicesCatalogueScreen
+          onBack={() => setRoute(bizFrom)}
+          onOpenDeals={() => setRoute('spa-profile')}
+          onOpenService={(name) => openService(name, 'spa-services')}
+          onContinueBook={() => {
+            setBookingFrom('spa-services');
+            setRoute('spa-booking');
+          }}
+        />
+      );
+
+    case 'service-detail':
+      if (isDesktop) return <DesktopSpaStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
+      if (!detailService) return null;
+      return (
+        <ServiceDetailScreen
+          service={detailService}
+          onBack={() => setRoute(serviceFrom)}
+          onBook={() => {
+            booking.ensureService(detailService.id);
+            setBookingFrom('service-detail');
+            setRoute('spa-booking');
+          }}
+        />
+      );
+
+    case 'product-detail':
+      if (isDesktop) return <DesktopProductDetailScreen onNav={feedNav} onBack={() => setRoute('storefront')} />;
+      if (!detailProduct) return null;
+      return (
+        <ProductDetailScreen
+          product={detailProduct}
+          onBack={() => setRoute(detailFrom)}
+          onCheckout={startCheckout}
+          onOpenBusiness={() => {
+            setProfileFrom('product-detail');
+            setRoute('business-profile');
+          }}
+        />
+      );
+
+    case 'checkout':
+      if (isDesktop)
+        return (
+          <DesktopCheckoutScreen onNav={feedNav} onBack={() => setRoute('storefront-menu')} onPlaced={placeOrder} />
+        );
+      return <CheckoutScreen onBack={() => setRoute('storefront-menu')} onPlaced={placeOrder} />;
+
+    case 'order-placed':
+      if (!orderSummary) return null;
+      if (isDesktop)
+        return (
+          <DesktopOrderPlacedScreen
+            onNav={feedNav}
+            order={orderSummary}
+            onClose={() => setRoute('home')}
+            onHome={() => setRoute('discover')}
+            onTrack={() => {
+              setChatFrom('order-placed');
+              setRoute('merchant-chat');
+            }}
+          />
+        );
+      return (
+        <OrderPlacedScreen
+          order={orderSummary}
+          onClose={() => setRoute('home')}
+          onHome={() => setRoute('discover')}
+          onTrack={() => {
+            setChatFrom('order-placed');
+            setRoute('merchant-chat');
+          }}
+        />
+      );
+
+    case 'spa-storefront':
+      if (isDesktop) return <DesktopSpaStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
+      return null;
+
+    case 'spa-booking':
+      if (isDesktop) return <DesktopSpaBookingScreen onNav={feedNav} onBack={() => setRoute('spa-storefront')} />;
+      return (
+        <SpaBookingScheduleScreen
+          onBack={() => setRoute(bookingFrom)}
+          onReview={() => setRoute('spa-booking-checkout')}
+        />
+      );
+
+    case 'spa-booking-checkout':
+      if (isDesktop) return <DesktopSpaBookingScreen onNav={feedNav} onBack={() => setRoute('spa-storefront')} />;
+      return (
+        <BookingCheckoutScreen
+          onBack={() => setRoute('spa-booking')}
+          onConfirm={() => {
+            booking.confirm();
+            setRoute('spa-booking-confirmed');
+          }}
+        />
+      );
+
+    case 'spa-booking-confirmed':
+      if (isDesktop) return <DesktopSpaBookingScreen onNav={feedNav} onBack={() => setRoute('spa-storefront')} />;
+      if (!booking.confirmedRef) return null;
+      return (
+        <BookingConfirmedScreen
+          refCode={booking.confirmedRef}
+          onBack={() => setRoute('spa-services')}
+          onHome={() => setRoute('home')}
+          onChat={() => {
+            setChatFrom('spa-booking-confirmed');
+            setRoute('merchant-chat');
+          }}
+        />
+      );
+
+    case 'dashboard':
+      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} />;
+      return (
+        <DashboardScreen
+          onTab={(tab) => setRoute(tab)}
+          onNavigate={(target) => setRoute(target)}
+          onShowQR={() => {
+            setClaimedFrom('dashboard');
+            setRoute('claimed-deal');
+          }}
+        />
+      );
+
+    case 'orders':
+      if (isDesktop)
+        return (
+          <DesktopOrdersScreen
+            onNav={feedNav}
+            onOpenOrder={() => setRoute('order-detail')}
+            onOpenBooking={() => setRoute('booking-detail')}
+          />
+        );
+      return (
+        <OrdersScreen
+          onTab={(tab) => setRoute(tab)}
+          onOpenConversation={(threadId) => {
+            setActiveConversation(threadId);
+            setRoute('conversation');
+          }}
+          onOpenOrder={() => setRoute('order-detail')}
+          onOpenBooking={() => setRoute('booking-detail')}
+          onNavigate={(target) => setRoute(target)}
+        />
+      );
+
+    case 'order-detail':
+      if (isDesktop)
+        return <DesktopOrderDetailScreen onNav={feedNav} onBack={() => setRoute('orders')} />;
+      return (
+        <OrderDetailScreen
+          onBack={() => setRoute('orders')}
+          onChat={() => {
+            setActiveConversation('urban');
+            setRoute('conversation');
+          }}
+          onReorder={() => setRoute('storefront')}
+          onSupport={() => setRoute('support')}
+        />
+      );
+
+    case 'booking-detail':
+      if (isDesktop)
+        return <DesktopBookingDetailScreen onNav={feedNav} onBack={() => setRoute('orders')} />;
+      return (
+        <BookingDetailScreen
+          onBack={() => setRoute('orders')}
+          onReschedule={() => setRoute('spa-booking')}
+          onChat={() => {
+            setActiveConversation('glow');
+            setRoute('conversation');
+          }}
+        />
+      );
+
+    case 'my-deals':
+      if (isDesktop) return <DesktopMyDealsScreen onNav={feedNav} />;
+      return (
+        <MyDealsScreen
+          onTab={(tab) => setRoute(tab)}
+          onShowPass={() => {
+            setClaimedFrom('my-deals');
+            setRoute('claimed-deal');
+          }}
+          onNavigate={(target) => setRoute(target)}
+        />
+      );
+
+    case 'messages':
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} />;
+      return (
+        <MessagesScreen
+          onTab={(tab) => setRoute(tab)}
+          onOpen={(threadId) => {
+            setActiveConversation(threadId);
+            setRoute('conversation');
+          }}
+        />
+      );
+
+    case 'conversation':
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} />;
+      return (
+        <ConversationScreen
+          threadId={activeConversation}
+          onBack={() => setRoute('messages')}
+          onViewPass={() => {
+            setClaimedFrom('messages');
+            setRoute('claimed-deal');
+          }}
+          onSecondary={() => setRoute(getMobileThread(activeConversation).secondaryRoute)}
+        />
+      );
+
+    case 'cart':
+      if (isDesktop) return <DesktopCartScreen onNav={feedNav} />;
+      return (
+        <ConsumerCartScreen
+          onBack={() => setRoute('dashboard')}
+          onCheckout={startCheckout}
+          onBrowseDeals={() => setRoute('deals')}
+          onOpenStorefront={() => setRoute('storefront-menu')}
+        />
+      );
+
+    case 'account-settings':
+      if (isDesktop) return <DesktopAccountSettingsScreen onNav={feedNav} />;
+      return (
+        <AccountSettingsScreen
+          onBack={() => setRoute('settings')}
+          onOpenPrivacy={() => setRoute('privacy')}
+          onOpenTerms={() => setRoute('terms')}
+          onSignOut={() => {
+            signOut();
+            setRoute('home');
+          }}
+        />
+      );
+
+    case 'discover':
+      if (isDesktop)
+        return (
+          <DesktopDiscoverScreen
+            onNav={feedNav}
+            onOpenFilters={() => openFeedRoute('filters', 'discover')}
+            onOpenBusiness={(index) => {
+              setProfileFrom('discover');
+              setRoute(index === 1 ? 'spa-storefront' : 'storefront');
+            }}
+            onBusinessSetup={() => setRoute('business-onboarding')}
+          />
+        );
+      return (
+        <DiscoverScreen
+          onTab={(tab) => {
+            if (tab === 'home') setRoute('home');
+            else if (tab === 'deals') setRoute('deals');
+            else if (tab === 'saved') setRoute('saved');
+            else if (tab === 'account') setRoute('account');
+          }}
+          onOpenUrban={() => {
+            setProfileFrom('discover');
+            setRoute('business-profile');
+          }}
+          onOpenSpa={() => {
+            setProfileFrom('discover');
+            setRoute('spa-profile');
+          }}
+          onOpenFilters={() => openFeedRoute('filters', 'discover')}
+          onOpenNotifications={() => setRoute('notifications')}
+          onBusinessSetup={() => setRoute('business-onboarding')}
+        />
+      );
+
+    case 'saved':
+      if (isDesktop)
+        return (
+          <DesktopSavedItemsScreen
+            onNav={feedNav}
+            onBack={() => setRoute('account')}
+            onOpenDeal={() => setRoute('deal-detail')}
+            onOpenBusiness={() => {
+              setProfileFrom('saved');
+              setRoute('spa-profile');
+            }}
+            onBrowse={() => setRoute('discover')}
+          />
+        );
+      return (
+        <SavedItemsScreen
+          onBack={() => setRoute('home')}
+          onOpenDeal={() => setRoute('deal-detail')}
+          onOpenBusiness={() => {
+            setProfileFrom('saved');
+            setRoute('spa-profile');
+          }}
+          onBrowse={() => setRoute('discover')}
+        />
+      );
+
+    case 'account':
+      if (isDesktop)
+        return (
+          <DesktopAccountScreen
+            onNav={feedNav}
+            onBack={() => setRoute('home')}
+            onNavigate={accountNav}
+            onSignOut={() => {
+              signOut();
+              setRoute('home');
+            }}
+          />
+        );
+      return (
+        <AccountScreen
+          onTab={(tab) => setRoute(tab)}
+          onNavigate={(target) => setRoute(target)}
+          onSignOut={() => {
+            signOut();
+            setRoute('home');
+          }}
+        />
+      );
+
+    case 'settings':
+      if (isDesktop)
+        return (
+          <DesktopSettingsScreen onNav={feedNav} onBack={() => setRoute('account')} onNavigate={accountNav} />
+        );
+      return <SettingsScreen onBack={() => setRoute('account')} onNavigate={(target) => setRoute(target)} />;
+
+    case 'support-legal':
+      if (isDesktop)
+        return (
+          <DesktopSupportLegalScreen onNav={feedNav} onBack={() => setRoute('account')} onNavigate={accountNav} />
+        );
+      return <SupportLegalScreen onBack={() => setRoute('account')} onNavigate={(target) => setRoute(target)} />;
+
+    case 'edit-profile':
+      if (isDesktop) return <DesktopEditProfileScreen onNav={feedNav} onBack={() => setRoute('account')} />;
+      return <EditProfileScreen onBack={() => setRoute('account')} />;
+
+    case 'rewards':
+      if (isDesktop) return <DesktopRewardsScreen onNav={feedNav} onBack={() => setRoute('account')} />;
+      return <RewardsScreen onBack={() => setRoute('savings')} />;
+
+    case 'savings':
+      if (isDesktop)
+        return (
+          <DesktopSavingsScreen
+            onNav={feedNav}
+            onBack={() => setRoute('account')}
+            onOpenRewards={() => setRoute('rewards')}
+            onSupport={() => setRoute('support')}
+          />
+        );
+      return (
+        <SavingsScreen
+          onBack={() => setRoute('account')}
+          onOpenRewards={() => setRoute('rewards')}
+          onSupport={() => setRoute('support')}
+        />
+      );
+
+    case 'notifications':
+      if (isDesktop)
+        return (
+          <DesktopNotificationsScreen
+            onNav={feedNav}
+            onBack={() => setRoute('settings')}
+            onOpenPass={() => {
+              setClaimedFrom('notifications');
+              setRoute('claimed-deal');
+            }}
+            onOpenBooking={() => setRoute('booking-detail')}
+            onOpenGift={() => {
+              setClaimedFrom('notifications');
+              setRoute('claimed-deal');
+            }}
+            onOpenRewards={() => setRoute('rewards')}
+            onBrowseDeals={() => setRoute('discover')}
+            onOpenPreferences={() => setRoute('preferences')}
+          />
+        );
+      return (
+        <NotificationsScreen
+          onBack={() => setRoute('settings')}
+          onOpenPass={() => {
+            setClaimedFrom('notifications');
+            setRoute('claimed-deal');
+          }}
+          onOpenBooking={() => setRoute('booking-detail')}
+          onOpenGift={() => {
+            setClaimedFrom('notifications');
+            setRoute('claimed-deal');
+          }}
+          onOpenRewards={() => setRoute('rewards')}
+          onBrowseDeals={() => setRoute('discover')}
+          onOpenPreferences={() => setRoute('preferences')}
+        />
+      );
+
+    case 'privacy':
+      if (isDesktop)
+        return (
+          <DesktopPrivacyScreen
+            onNav={feedNav}
+            onBack={() => setRoute('settings')}
+            onOpenTerms={() => setRoute('terms')}
+          />
+        );
+      return (
+        <PrivacyScreen
+          onBack={() => setRoute('settings')}
+          onOpenTerms={() => setRoute('terms')}
+        />
+      );
+
+    case 'addresses':
+      if (isDesktop) return <DesktopAddressesScreen onNav={feedNav} onBack={() => setRoute('settings')} />;
+      return <AddressesScreen onBack={() => setRoute('settings')} />;
+
+    case 'preferences':
+      if (isDesktop) return <DesktopPreferencesScreen onNav={feedNav} onBack={() => setRoute('settings')} />;
+      return <PreferencesScreen onBack={() => setRoute('settings')} />;
+
+    case 'help':
+      if (isDesktop)
+        return (
+          <DesktopHelpCentreScreen
+            onNav={feedNav}
+            onBack={() => setRoute('support-legal')}
+            onStartChat={() => setRoute('support')}
+            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenTerms={() => setRoute('terms')}
+          />
+        );
+      return (
+        <HelpCentreScreen
+          onBack={() => setRoute('support-legal')}
+          onStartChat={() => setRoute('support')}
+          onOpenMerchant={() => setRoute('business-onboarding')}
+          onOpenTerms={() => setRoute('terms')}
+        />
+      );
+
+    case 'support':
+      if (isDesktop)
+        return (
+          <DesktopSupportScreen
+            onNav={feedNav}
+            onBack={() => setRoute('support-legal')}
+            onOpenHelp={() => setRoute('help')}
+          />
+        );
+      return (
+        <SupportScreen
+          onBack={() => setRoute('support-legal')}
+          onOpenHelp={() => setRoute('help')}
+        />
+      );
+
+    case 'terms':
+      if (isDesktop) return <DesktopTermsScreen onNav={feedNav} onBack={() => setRoute('support-legal')} />;
+      return <TermsScreen onBack={() => setRoute('support-legal')} />;
+
+    case 'scan':
+      if (isDesktop)
+        return (
+          <DesktopScanScreen
+            onNav={feedNav}
+            onBack={() => setRoute('dashboard')}
+            onOpenTableMenu={() => setRoute('public-pos-menu')}
+          />
+        );
+      return (
+        <ScanScreen
+          onBack={() => setRoute('dashboard')}
+          onOpenTableMenu={() => setRoute('public-pos-menu')}
+        />
+      );
+
+    case 'activity':
+      if (isDesktop)
+        return (
+          <DesktopActivityScreen
+            onNav={feedNav}
+            onBack={() => setRoute('dashboard')}
+            onOpenReceipt={() => setRoute('order-detail')}
+            onWriteReview={() => setRoute('reviews')}
+            onOpenOrders={() => setRoute('orders')}
+            onOpenService={() => setRoute('service-detail')}
+            onBrowse={() => setRoute('discover')}
+          />
+        );
+      return (
+        <ActivityScreen
+          onBack={() => setRoute('dashboard')}
+          onOpenReceipt={() => setRoute('order-detail')}
+          onWriteReview={() => setRoute('reviews')}
+          onOpenOrders={() => setRoute('orders')}
+          onOpenService={() => setRoute('service-detail')}
+          onBrowse={() => setRoute('discover')}
+        />
+      );
+
+    case 'business-onboarding':
+      if (isDesktop)
+        return (
+          <DesktopBusinessOnboardingScreen
+            onBack={() => setRoute('start-vemtap')}
+            onComplete={() => setRoute('business-verification')}
+          />
+        );
+      return (
+        <BusinessOnboardingScreen
+          onBack={() => setRoute('start-vemtap')}
+          onComplete={() => setRoute('business-verification')}
+        />
+      );
+
+    case 'business-verification':
+      if (isDesktop)
+        return (
+          <DesktopBusinessVerificationScreen
+            onBack={() => setRoute('home')}
+            onComplete={() => setRoute('home')}
+            onActivate={() => setRoute('subscription')}
+            onPreviewStorefront={() => setRoute('storefront')}
+            onConfigureStorefront={() => setRoute('storefront')}
+            onCreateDeal={() => setRoute('deals')}
+            onQrStands={() => setRoute('business-overview')}
+          />
+        );
+      return (
+        <BusinessVerificationScreen
+          onBack={() => setRoute('home')}
+          onComplete={() => setRoute('home')}
+          onActivate={() => setRoute('subscription')}
+          onPreviewStorefront={() => setRoute('storefront')}
+        />
+      );
+
+    case 'verification-status':
+      if (isDesktop)
+        return (
+          <DesktopVerificationStatusCenterScreen
+            onBack={() => setRoute('home')}
+            onUpdateInfo={() => setRoute('business-verification')}
+          />
+        );
+      return (
+        <VerificationStatusCenterScreen
+          onBack={() => setRoute('home')}
+          onUpdateInfo={() => setRoute('business-verification')}
+        />
+      );
+
+    case 'subscription':
+      if (isDesktop)
+        return (
+          <DesktopSubscriptionScreen
+            initialStep="overview"
+            onExit={() => setRoute('business-overview')}
+            onViewBusiness={() => setRoute('storefront')}
+            onBoost={() => setRoute('boost')}
+          />
+        );
+      return (
+        <SubscriptionScreen
+          initialStep="overview"
+          onExit={() => setRoute('business-overview')}
+          onViewBusiness={() => setRoute('storefront')}
+          onBoost={() => setRoute('boost')}
+        />
+      );
+
+    case 'subscription-ending':
+      if (isDesktop)
+        return (
+          <DesktopSubscriptionScreen
+            initialStep="trialEnding"
+            onExit={() => setRoute('business-overview')}
+            onViewBusiness={() => setRoute('storefront')}
+            onBoost={() => setRoute('boost')}
+          />
+        );
+      return (
+        <SubscriptionScreen
+          initialStep="trialEnding"
+          onExit={() => setRoute('business-overview')}
+          onViewBusiness={() => setRoute('storefront')}
+          onBoost={() => setRoute('boost')}
+        />
+      );
+
+    case 'subscription-expired':
+      if (isDesktop)
+        return (
+          <DesktopSubscriptionScreen
+            initialStep="trialExpired"
+            onExit={() => setRoute('business-overview')}
+            onViewBusiness={() => setRoute('storefront')}
+            onBoost={() => setRoute('boost')}
+          />
+        );
+      return (
+        <SubscriptionScreen
+          initialStep="trialExpired"
+          onExit={() => setRoute('business-overview')}
+          onViewBusiness={() => setRoute('storefront')}
+          onBoost={() => setRoute('boost')}
+        />
+      );
+
+    case 'boost':
+      if (isDesktop)
+        return (
+          <DesktopSubscriptionScreen
+            initialStep="boost"
+            onExit={() => setRoute(boostReturnRoute)}
+            onViewBusiness={() => setRoute('storefront')}
+            onBoost={() => setRoute('boost')}
+            boostOnBack={() => setRoute(boostReturnRoute)}
+            boostItem={boostItem}
+          />
+        );
+      return (
+        <SubscriptionScreen
+          initialStep="boost"
+          onExit={() => setRoute(boostReturnRoute)}
+          onViewBusiness={() => setRoute('storefront')}
+          onBoost={() => setRoute('boost')}
+          boostOnBack={() => setRoute(boostReturnRoute)}
+          boostItem={boostItem}
+        />
+      );
+
+    case 'boost-hub':
+      if (isDesktop)
+        return (
+          <DesktopBoostHubScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('business-more')}
+            onTab={boostTab}
+            onBoost={(item) => openBoost(item)}
+            onOpenMetrics={() => setRoute('boost-metrics')}
+            onOpenSegments={() => setRoute('segments-hub')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessBoostHubScreen
+            onBack={() => setRoute('business-more')}
+            onTab={boostTab}
+            onBoost={(item) => openBoost(item)}
+            onOpenMetrics={() => setRoute('boost-metrics')}
+            onOpenSegments={() => setRoute('segments-hub')}
+          />
+        </div>
+      );
+
+    case 'boost-metrics':
+      if (isDesktop)
+        return <DesktopBoostMetricsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
+      return (
+        <div className="biz-flow">
+          <BusinessBoostMetricsScreen onBack={() => setRoute('boost-hub')} onTab={boostTab} />
+        </div>
+      );
+
+    case 'boost-wallet':
+      if (isDesktop)
+        return <DesktopBoostWalletScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
+      return (
+        <div className="biz-flow">
+          <BusinessBoostWalletScreen onBack={() => setRoute('boost-hub')} onTab={boostTab} />
+        </div>
+      );
+
+    case 'segments-hub':
+      if (isDesktop)
+        return (
+          <DesktopSegmentsHubScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('boost-hub')}
+            onOpenBoost={() => openBoost()}
+            onOpenCampaigns={() => setRoute('boost-hub')}
+            onCreate={() => setRoute('segment-create')}
+            onUseSegment={useSegment}
+            onViewCohort={() => setRoute('segment-detail')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessSegmentsHubScreen
+            onBack={() => setRoute('boost-hub')}
+            onOpenBoost={() => openBoost()}
+            onOpenCampaigns={() => setRoute('boost-hub')}
+            onCreate={() => setRoute('segment-create')}
+            onUseSegment={useSegment}
+            onViewCohort={() => setRoute('segment-detail')}
+          />
+        </div>
+      );
+
+    case 'segment-actions':
+      if (isDesktop)
+        return (
+          <DesktopSegmentActionsScreen
+            onNav={businessPortalNav}
+            segment={activeSegment}
+            onBack={() => setRoute('segments-hub')}
+            onLaunchCampaign={() => openBoost()}
+            onOpenMessages={() => setRoute('messages')}
+            onOpenDeals={() => setRoute('hub-deals')}
+            onOpenCrm={() => setRoute('hub-customers')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessSegmentActionsScreen
+            segment={activeSegment}
+            onBack={() => setRoute('segments-hub')}
+            onLaunchCampaign={() => openBoost()}
+            onOpenMessages={() => setRoute('messages')}
+            onOpenDeals={() => setRoute('hub-deals')}
+            onOpenCrm={() => setRoute('hub-customers')}
+          />
+        </div>
+      );
+
+    case 'segment-create':
+      if (isDesktop)
+        return (
+          <DesktopSegmentCreateScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('segments-hub')}
+            onSaved={() => setRoute('segments-hub')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessSegmentCreateScreen onBack={() => setRoute('segments-hub')} onSaved={() => setRoute('segments-hub')} />
+        </div>
+      );
+
+    case 'segment-detail':
+      if (isDesktop)
+        return (
+          <DesktopSegmentDetailScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('segments-hub')}
+            onUseSegment={useSegment}
+            onEditRules={() => setRoute('segment-create')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessSegmentDetailScreen
+            onBack={() => setRoute('segments-hub')}
+            onUseSegment={useSegment}
+            onEditRules={() => setRoute('segment-create')}
+          />
+        </div>
+      );
+
+    case 'business-add-ons':
+      if (isDesktop)
+        return (
+          <DesktopSubscriptionScreen
+            initialStep="addons"
+            onExit={() => setRoute('business-overview')}
+            onViewBusiness={() => setRoute('storefront')}
+            onBoost={() => setRoute('boost')}
+          />
+        );
+      return (
+        <SubscriptionScreen
+          initialStep="addons"
+          onExit={() => setRoute('business-overview')}
+          onViewBusiness={() => setRoute('storefront')}
+          onBoost={() => setRoute('boost')}
+        />
+      );
+
+    case 'business-overview':
+      if (isDesktop)
+        return (
+          <DesktopBusinessOverviewScreen
+            onNav={businessPortalNav}
+            onSubscribe={() => setRoute('subscription')}
+            onBoost={() => openBoost()}
+            onAddOns={() => setRoute('business-add-ons')}
+            onOpenOrders={() => setRoute('business-orders')}
+            onOpenMessages={() => setRoute('business-messages')}
+          />
+        );
+      return (
+        <BusinessOverviewScreen
+          onTab={businessTab}
+          onSubscribe={() => setRoute('subscription')}
+          onBoost={() => openBoost()}
+          onAddOns={() => setRoute('business-add-ons')}
+          onOpenOrders={() => setRoute('business-orders')}
+          onOpenMessages={() => setRoute('business-messages')}
+        />
+      );
+
+    case 'business-branch-pricing':
+      if (isDesktop)
+        return (
+          <DesktopBusinessBranchPricingScreen
+            onNav={businessPortalNav}
+            onBackToCatalog={() => setRoute('hub-catalog')}
+          />
+        );
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'business-hub':
+      if (isDesktop)
+        return (
+          <DesktopBusinessHubScreen
+            onNav={businessPortalNav}
+            onBoost={(item) => openBoost(item)}
+            onPreviewStorefront={() => setRoute('storefront')}
+            onOpenModule={openHubModule}
+          />
+        );
+      return (
+        <BusinessHubScreen
+          initialStep="hub"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+        />
+      );
+
+    case 'hub-locations':
+      if (isDesktop)
+        return (
+          <DesktopBusinessLocationsHubScreen
+            onNav={businessPortalNav}
+            onAddBranch={() => setRoute('business-onboarding')}
+            onOpenBranch={() => setRoute('hub-branch-detail')}
+          />
+        );
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'hub-branch-detail':
+      if (isDesktop)
+        return (
+          <DesktopBranchDetailScreen
+            onNav={businessPortalNav}
+            onBackToLocations={() => setRoute('hub-locations')}
+          />
+        );
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'hub-catalog':
+      if (isDesktop)
+        return (
+          <DesktopBusinessCatalogHubScreen
+            onNav={businessPortalNav}
+            onOpenBranchPricing={() => setRoute('business-branch-pricing')}
+            onOpenServices={() => setRoute('hub-services')}
+          />
+        );
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'hub-services':
+      if (isDesktop)
+        return (
+          <DesktopServicesCategoriesScreen
+            onNav={businessPortalNav}
+            onBackToCatalog={() => setRoute('hub-catalog')}
+          />
+        );
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'hub-deals':
+      if (isDesktop)
+        return (
+          <DesktopDealsWorkspaceScreen
+            onNav={businessPortalNav}
+            onCreateDeal={() => setRoute('deal-create-locations')}
+            onEditDeal={() => setRoute('deal-location-pricing')}
+            onOpenDealDetail={() => setRoute('hub-deal-detail')}
+            onOpenLogs={() => setRoute('analytics-deals')}
+            onOpenPos={() => setRoute('business-pos-orders')}
+            onBoost={() => openBoost()}
+          />
+        );
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'hub-customers':
+      if (isDesktop)
+        return (
+          <DesktopBusinessCustomersScreen
+            onNav={businessPortalNav}
+            onViewProfile={(name) => {
+              setHubCustomerName(name);
+              setRoute('hub-customer-profile');
+            }}
+          />
+        );
+      return (
+        <BusinessHubScreen
+          initialStep="customers"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onViewCustomerProfile={(name) => {
+            setHubCustomerName(name);
+            setRoute('hub-customer-profile');
+          }}
+          onOpenAnalytics={() => setRoute('analytics-customers')}
+        />
+      );
+
+    case 'hub-profile':
+      if (isDesktop)
+        return (
+          <DesktopBusinessProfilePreviewStudioScreen
+            onNav={businessPortalNav}
+            onPreviewStorefront={() => setRoute('storefront')}
+          />
+        );
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'deal-location-pricing':
+      if (isDesktop)
+        return (
+          <DesktopDealLocationPricingScreen
+            onNav={businessPortalNav}
+            onCancel={() => setRoute('hub-deals')}
+            onSave={() => setRoute('hub-deals')}
+          />
+        );
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'deal-create-locations':
+      if (isDesktop)
+        return (
+          <DesktopDealCreateLocationsScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('hub-deals')}
+            onReview={() => setRoute('hub-deal-detail')}
+          />
+        );
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'business-profile-studio':
+      if (isDesktop)
+        return (
+          <DesktopBusinessProfileStorefrontScreen
+            onNav={businessPortalNav}
+            onDiscard={() => setRoute('business-overview')}
+          />
+        );
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'hub-deal-detail':
+      if (isDesktop)
+        return (
+          <DesktopDealAnalyticsScreen
+            onNav={businessPortalNav}
+            onEditPricing={() => setRoute('deal-location-pricing')}
+            onConfigureCap={() => setRoute('deal-location-pricing')}
+            onChat={() => setRoute('business-messages')}
+          />
+        );
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'hub-customer-profile':
+      if (isDesktop)
+        return <DesktopCustomerProfileScreen onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} />;
+      return (
+        <BusinessHubScreen
+          initialStep="customerProfile"
+          initialCustomer={hubCustomerName}
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onViewCustomerProfile={(name) => setHubCustomerName(name)}
+          onBackCustomerProfile={() => setRoute('hub-customers')}
+        />
+      );
+
+    case 'hub-staff':
+      if (isDesktop)
+        return <DesktopStaffDirectoryScreen onNav={businessPortalNav} onInvite={() => setRoute('hub-staff-invite')} />;
+      return <BusinessStaffScreen onTab={businessTab} onInvite={() => setRoute('hub-staff-invite')} />;
+
+    case 'hub-staff-invite':
+      if (isDesktop)
+        return (
+          <DesktopStaffInviteScreen onNav={businessPortalNav} onBack={() => setRoute('hub-staff')} />
+        );
+      return (
+        <>
+          <div aria-hidden="true" className="pointer-events-none">
+            <BusinessStaffScreen onTab={businessTab} onInvite={() => undefined} />
+          </div>
+          <div className="biz-flow">
+            <BusinessInviteStaffScreen onBack={() => setRoute('hub-staff')} />
+          </div>
+        </>
+      );
+
+    case 'hub-loyalty':
+      if (isDesktop)
+        return (
+          <DesktopLoyaltyProgrammeScreen
+            onNav={businessPortalNav}
+            onOpenRewards={() => setRoute('hub-loyalty-rewards')}
+          />
+        );
+      return <BusinessLoyaltyScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />;
+
+    case 'hub-loyalty-rewards':
+      if (isDesktop)
+        return (
+          <DesktopLoyaltyRewardsScreen
+            onNav={businessPortalNav}
+            onOpenProgramme={() => setRoute('hub-loyalty')}
+          />
+        );
+      return <BusinessLoyaltyRewardsScreen onBack={() => setRoute('hub-loyalty')} />;
+
+    case 'analytics-overview':
+      if (isDesktop) return <DesktopAnalyticsBusinessScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <BusinessAnalyticsScreen
+            initialTab="overview"
+            onExit={() => setRoute('business-hub')}
+            onNavigate={(target) => setRoute(target === 'overview' ? 'analytics-overview' : target === 'audience' ? 'analytics-audience' : 'analytics-branches')}
+          />
+        </div>
+      );
+
+    case 'analytics-audience':
+      if (isDesktop) return <DesktopAnalyticsCustomersScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <BusinessAnalyticsScreen
+            initialTab="audience"
+            onExit={() => setRoute('hub-customers')}
+            onNavigate={(target) => setRoute(target === 'overview' ? 'analytics-overview' : target === 'audience' ? 'analytics-audience' : 'analytics-branches')}
+          />
+        </div>
+      );
+
+    case 'analytics-branches':
+      if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <BusinessBranchComparisonScreen onBack={() => setRoute('analytics-overview')} />
+        </div>
+      );
+
+    case 'analytics-business':
+      if (isDesktop) return <DesktopAnalyticsBusinessScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <AnalyticsBusinessScreen
+            onAnalyticsTab={goToAnalyticsTab}
+            onOpenFilter={() => setRoute('analytics-filter')}
+            onOpenExport={() => setRoute('analytics-export')}
+            onTab={businessTab}
+          />
+        </div>
+      );
+
+    case 'analytics-customers':
+      if (isDesktop) return <DesktopAnalyticsCustomersScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <AnalyticsCustomersScreen
+            onAnalyticsTab={goToAnalyticsTab}
+            onOpenFilter={() => setRoute('analytics-filter')}
+            onOpenExport={() => setRoute('analytics-export')}
+            onTab={businessTab}
+          />
+        </div>
+      );
+
+    case 'analytics-deals':
+      if (isDesktop)
+        return (
+          <DesktopAnalyticsDealsScreen
+            onNav={businessPortalNav}
+            onAnalyticsTab={goToAnalyticsTab}
+            onOpenFilter={() => setRoute('analytics-filter')}
+            onOpenExport={() => setRoute('analytics-export')}
+            onManageDeals={() => setRoute('hub-deals')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <AnalyticsDealsScreen
+            onAnalyticsTab={goToAnalyticsTab}
+            onOpenFilter={() => setRoute('analytics-filter')}
+            onOpenExport={() => setRoute('analytics-export')}
+            onTab={businessTab}
+            onManageDeals={() => setRoute('hub-deals')}
+          />
+        </div>
+      );
+
+    case 'analytics-locations':
+      if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <AnalyticsLocationsScreen
+            onAnalyticsTab={goToAnalyticsTab}
+            onOpenFilter={() => setRoute('analytics-filter')}
+            onOpenExport={() => setRoute('analytics-export')}
+            onTab={businessTab}
+            onManageLocations={() => setRoute('hub-locations')}
+          />
+        </div>
+      );
+
+    case 'analytics-pos':
+      if (isDesktop)
+        return (
+          <DesktopAnalyticsPosScreen
+            onNav={businessPortalNav}
+            onAnalyticsTab={goToAnalyticsTab}
+            onOpenFilter={() => setRoute('analytics-filter')}
+            onOpenExport={() => setRoute('analytics-export')}
+            onOpenCatalog={() => setRoute('hub-catalog')}
+            onOpenSync={() => setRoute('pos-sync')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <AnalyticsPosScreen
+            onAnalyticsTab={goToAnalyticsTab}
+            onOpenFilter={() => setRoute('analytics-filter')}
+            onOpenExport={() => setRoute('analytics-export')}
+            onTab={businessTab}
+            onOpenCatalog={() => setRoute('hub-catalog')}
+            onOpenSync={() => setRoute('pos-sync')}
+          />
+        </div>
+      );
+
+    case 'analytics-export':
+      if (isDesktop) return <DesktopAnalyticsExportScreen onNav={businessPortalNav} onBack={goBackToPrevious} />;
+      return (
+        <div className="biz-flow">
+          <AnalyticsExportScreen onBack={goBackToPrevious} />
+        </div>
+      );
+
+    case 'analytics-filter':
+      if (isDesktop) return <DesktopAnalyticsFilterScreen onNav={businessPortalNav} onBack={goBackToPrevious} />;
+      return (
+        <div className="biz-flow">
+          <AnalyticsFilterScreen onBack={goBackToPrevious} />
+        </div>
+      );
+
+    case 'pos-display-order':
+      if (isDesktop) return <DesktopPosDisplayOrderScreen />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosDisplayOrderScreen
+            onBack={() => setRoute('business-pos-orders')}
+            onProceed={() => setRoute('pos-display-tip')}
+            onSplit={() => setRoute('pos-split-bill')}
+          />
+        </div>
+      );
+
+    case 'pos-display-tip':
+      if (isDesktop)
+        return <DesktopPosDisplayTipScreen onProceed={() => setRoute('pos-display-pay')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosDisplayTipScreen onBack={() => setRoute('pos-display-order')} onProceed={() => setRoute('pos-display-pay')} />
+        </div>
+      );
+
+    case 'pos-display-pay':
+      if (isDesktop) return <DesktopPosDisplayPayScreen onSplit={() => setRoute('pos-split-bill')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosDisplayPayScreen
+            onBack={() => setRoute('pos-display-tip')}
+            onSplit={() => setRoute('pos-split-bill')}
+            onPaid={() => setRoute('pos-display-receipt')}
+          />
+        </div>
+      );
+
+    case 'pos-split-bill':
+      if (isDesktop) return <DesktopSplitBillScreen onPay={() => setRoute('pos-display-pay')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessSplitBillScreen onBack={goBackToPrevious} onPay={() => setRoute('pos-display-pay')} />
+        </div>
+      );
+
+    case 'pos-display-receipt':
+      if (isDesktop) return <DesktopPosDisplayReceiptScreen onDone={() => setRoute('business-pos-orders')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosDisplayReceiptScreen onBack={goBackToPrevious} onDone={() => setRoute('business-pos-orders')} />
+        </div>
+      );
+
+    case 'pos-home':
+      if (isDesktop)
+        return (
+          <DesktopPosHomeScreen
+            onNav={posTerminalNav}
+            onNewSale={() => setRoute('pos-register')}
+            onOpenLedger={() => setRoute('pos-ledger')}
+            onOpenProducts={() => setRoute('pos-stock')}
+            onOpenCustomers={() => setRoute('pos-customers-lookup')}
+            onOpenKitchen={() => setRoute('pos-kitchen')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosHomeScreen
+            onNewSale={() => setRoute('pos-register')}
+            onOpenOrders={() => setRoute('business-pos-orders')}
+            onOpenLedger={() => setRoute('pos-ledger')}
+            onOpenCustomers={() => setRoute('pos-customers-lookup')}
+            onOpenProducts={() => setRoute('pos-stock')}
+            onSwitchTill={() => setRoute('pos-switch')}
+            onOpenDisplay={() => setRoute('pos-display-order')}
+            onNavMore={() => setRoute('business-more')}
+            onOpenQueue={() => setRoute('pos-buffer')}
+            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSettings={() => setRoute('pos-settings')}
+            onOpenKitchen={() => setRoute('pos-kitchen')}
+          />
+        </div>
+      );
+
+    case 'pos-home-offline':
+      if (isDesktop)
+        return (
+          <DesktopPosHomeScreen
+            onNav={posTerminalNav}
+            onNewSale={() => setRoute('pos-offline')}
+            onOpenLedger={() => setRoute('pos-ledger')}
+            onOpenProducts={() => setRoute('pos-stock')}
+            onOpenCustomers={() => setRoute('pos-customers-lookup')}
+            onOpenKitchen={() => setRoute('pos-kitchen')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosHomeScreen
+            initialOffline
+            onNewSale={() => setRoute('pos-offline')}
+            onOpenOrders={() => setRoute('business-pos-orders')}
+            onOpenLedger={() => setRoute('pos-ledger')}
+            onOpenCustomers={() => setRoute('pos-customers-lookup')}
+            onOpenProducts={() => setRoute('pos-stock')}
+            onSwitchTill={() => setRoute('pos-switch')}
+            onOpenDisplay={() => setRoute('pos-display-order')}
+            onNavMore={() => setRoute('business-more')}
+            onOpenQueue={() => setRoute('pos-buffer')}
+            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSettings={() => setRoute('pos-settings')}
+            onOpenKitchen={() => setRoute('pos-kitchen')}
+          />
+        </div>
+      );
+
+    case 'pos-register':
+      if (isDesktop)
+        return (
+          <DesktopPosRegisterScreen
+            onNav={posTerminalNav}
+            cart={posTermCart}
+            onCartChange={setPosTermCart}
+            customer={posCustomer}
+            onCharge={() => setRoute('pos-payment')}
+            onSplit={() => setRoute('pos-split-bill')}
+            onOpenCustomer={() => setRoute('pos-customer')}
+            onOpenOrders={() => setRoute('business-pos-orders')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosRegisterScreen
+            cart={posCart}
+            onCartChange={setPosCart}
+            onBack={() => setRoute('pos-home')}
+            onCharge={() => setRoute('pos-cart')}
+            onOpenCustomer={() => setRoute('pos-customer')}
+            onOpenOrders={() => setRoute('business-pos-orders')}
+          />
+        </div>
+      );
+
+    case 'pos-cart':
+      if (isDesktop)
+        return (
+          <DesktopPosCartScreen
+            onNav={posTerminalNav}
+            cart={posTermCart}
+            onCartChange={setPosTermCart}
+            customer={posCustomer}
+            onBack={() => setRoute('pos-register')}
+            onCharge={() => setRoute('pos-payment')}
+            onOpenCustomer={() => setRoute('pos-customer')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosCartScreen
+            cart={posCart}
+            onCartChange={setPosCart}
+            customer={posCustomer}
+            onBack={() => setRoute('pos-register')}
+            onCharge={() => setRoute('pos-payment')}
+            onOpenCustomer={() => setRoute('pos-customer')}
+          />
+        </div>
+      );
+
+    case 'pos-switch':
+      if (isDesktop)
+        return (
+          <DesktopPosSwitchScreen onNav={posTerminalNav} onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosSwitchScreen onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
+        </div>
+      );
+
+    case 'pos-customer':
+      if (isDesktop)
+        return (
+          <DesktopPosCustomerScreen
+            onNav={posTerminalNav}
+            onBack={goBackToPrevious}
+            onAttach={(name) => {
+              setPosCustomer(name);
+              setRoute('pos-cart');
+            }}
+            onRegisterNew={() => setRoute('hub-customers')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosCustomerScreen
+            onBack={goBackToPrevious}
+            onAttach={(name) => {
+              setPosCustomer(name);
+              setRoute('pos-cart');
+            }}
+            onRegisterNew={() => setRoute('hub-customers')}
+          />
+        </div>
+      );
+
+    case 'pos-sale-complete':
+      if (isDesktop)
+        return (
+          <DesktopPosSaleCompleteScreen
+            onNav={posTerminalNav}
+            cart={posTermCart}
+            customer={posCustomer}
+            onNewSale={() => {
+              setPosTermCart(SEED_POS_TERMINAL_LINES);
+              setPosCustomer(null);
+              setRoute('pos-register');
+            }}
+            onOpenOrders={() => setRoute('business-pos-orders')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosSaleCompleteScreen
+            cart={posCart}
+            customer={posCustomer}
+            onBack={() => setRoute('pos-home')}
+            onNewSale={() => {
+              setPosCart([]);
+              setPosCustomer(null);
+              setRoute('pos-register');
+            }}
+          />
+        </div>
+      );
+
+    case 'pos-payment':
+      if (isDesktop)
+        return (
+          <DesktopPosPaymentScreen
+            onNav={posTerminalNav}
+            cart={posTermCart}
+            customer={posCustomer}
+            onBack={() => setRoute('pos-register')}
+            onComplete={() => setRoute('pos-sale-complete')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosPaymentScreen
+            cart={posCart}
+            customer={posCustomer}
+            onBack={() => setRoute('pos-cart')}
+            onReceipt={() => setRoute('pos-sale-complete')}
+            onNewSale={() => {
+              setPosCart([]);
+              setPosCustomer(null);
+              setRoute('pos-register');
+            }}
+          />
+        </div>
+      );
+
+    case 'pos-product-shift':
+      if (isDesktop)
+        return (
+          <DesktopPosProductShiftScreen
+            onNav={posTerminalNav}
+            onBack={goBackToPrevious}
+            onAddToSale={() => {
+              setPosTermCart((prev) => {
+                const id = 'ribeye-400g';
+                const existing = prev.find((line) => line.id === id);
+                if (existing) return prev.map((line) => (line.id === id ? { ...line, qty: line.qty + 1 } : line));
+                return [
+                  ...prev,
+                  { id, name: 'Woodfire Aged Ribeye Steak (400g)', mods: 'Grills Station • Made to order', unit: 14000, qty: 1 },
+                ];
+              });
+              setRoute('pos-register');
+            }}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosProductShiftScreen
+            onBack={goBackToPrevious}
+            onAddToSale={() => {
+              setPosCart((prev) => {
+                const id = 'woodfire-ribeye-400g';
+                const existing = prev.find((line) => line.id === id);
+                if (existing) return prev.map((line) => (line.id === id ? { ...line, qty: line.qty + 1 } : line));
+                return [...prev, { id, name: 'Woodfire Aged Ribeye Steak', unit: 14000, member: 14000, qty: 1 }];
+              });
+              setRoute('pos-register');
+            }}
+          />
+        </div>
+      );
+
+    case 'pos-stock':
+      if (isDesktop)
+        return (
+          <DesktopPosStockScreen
+            onNav={posTerminalNav}
+            onOpenProduct={() => setRoute('pos-product-shift')}
+            onOpenCatalogue={() => setRoute('hub-catalog')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosStockScreen
+            onNav={posTab}
+            onOpenProduct={() => setRoute('pos-product-shift')}
+            onOpenCatalogue={() => setRoute('hub-catalog')}
+          />
+        </div>
+      );
+
+    case 'pos-ledger':
+      if (isDesktop)
+        return <DesktopPosLedgerScreen onNav={posTerminalNav} onOpenOrder={() => setRoute('pos-txn-detail')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosLedgerScreen onNav={posTab} onOpenOrder={() => setRoute('pos-txn-detail')} />
+        </div>
+      );
+
+    case 'pos-customers-lookup':
+      if (isDesktop)
+        return (
+          <DesktopPosCustomerLookupScreen
+            onNav={posTerminalNav}
+            onAttach={(name) => {
+              setPosCustomer(name);
+              setRoute('pos-cart');
+            }}
+            onOpenDossier={(name) => {
+              setPosDossierCustomer(name);
+              setRoute('pos-dossier');
+            }}
+            onRegisterNew={() => setRoute('hub-customers')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosCustomerLookupScreen
+            onNav={posTab}
+            onAttach={(name) => {
+              setPosCustomer(name);
+              setRoute('pos-cart');
+            }}
+            onOpenDossier={(name) => {
+              setPosDossierCustomer(name);
+              setRoute('pos-dossier');
+            }}
+            onRegisterNew={() => setRoute('hub-customers')}
+          />
+        </div>
+      );
+
+    case 'pos-dossier':
+      if (isDesktop)
+        return (
+          <DesktopPosCustomerDossierScreen
+            onNav={posTerminalNav}
+            customer={posDossierCustomer}
+            onBack={goBackToPrevious}
+            onAttach={() => {
+              setPosCustomer(posDossierCustomer);
+              setRoute('pos-cart');
+            }}
+            onOpenCrm={() => setRoute('hub-customers')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosCustomerDossierScreen
+            customer={posDossierCustomer}
+            onBack={goBackToPrevious}
+            onAttach={() => {
+              setPosCustomer(posDossierCustomer);
+              setRoute('pos-cart');
+            }}
+            onOpenCrm={() => setRoute('hub-customers')}
+          />
+        </div>
+      );
+
+    case 'pos-offline':
+      if (isDesktop)
+        return <DesktopPosOfflineSaleScreen onNav={posTerminalNav} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosOfflineCheckoutScreen onBack={() => setRoute('pos-home-offline')} onOpenQueue={() => setRoute('pos-buffer')} />
+        </div>
+      );
+
+    case 'pos-txn-detail':
+      if (isDesktop)
+        return <DesktopPosTransactionDetailScreen onNav={posTerminalNav} onBack={goBackToPrevious} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosTransactionDetailScreen onBack={goBackToPrevious} />
+        </div>
+      );
+
+    case 'pos-sync':
+      if (isDesktop) return <DesktopPosSyncScreen onNav={posTerminalNav} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosSyncScreen onBack={goBackToPrevious} />
+        </div>
+      );
+
+    case 'pos-buffer':
+      if (isDesktop)
+        return <DesktopPosBufferScreen onNav={posTerminalNav} onReturnToRegister={() => setRoute('pos-offline')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosOfflineBufferScreen onBack={goBackToPrevious} onReturnToRegister={() => setRoute('pos-offline')} />
+        </div>
+      );
+
+    case 'public-pos-menu':
+      if (isDesktop)
+        return (
+          <DesktopPublicPosMenuScreen
+            cart={publicCart}
+            onCartChange={setPublicCart}
+            onOpenCart={() => setRoute('public-pos-cart')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <PublicPosMenuScreen
+            cart={publicCart}
+            onAddItem={(item) =>
+              setPublicCart((prev) => {
+                const existing = prev.find((line) => line.id === item.id);
+                if (existing)
+                  return prev.map((line) => (line.id === item.id ? { ...line, qty: line.qty + 1 } : line));
+                return [...prev, { ...item, qty: 1 }];
+              })
+            }
+            onOpenCart={() => setRoute('public-pos-cart')}
+          />
+        </div>
+      );
+
+    case 'public-pos-cart':
+      if (isDesktop)
+        return (
+          <DesktopPublicPosCartScreen
+            cart={publicCart}
+            onCartChange={setPublicCart}
+            onBack={() => setRoute('public-pos-menu')}
+            onAddMore={() => setRoute('public-pos-menu')}
+            onTrack={() => setRoute('public-pos-tracking')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <PublicPosCartReviewScreen
+            cart={publicCart}
+            onCartChange={setPublicCart}
+            onBack={() => setRoute('public-pos-menu')}
+            onAddMore={() => setRoute('public-pos-menu')}
+            onTrack={() => setRoute('public-pos-tracking')}
+          />
+        </div>
+      );
+
+    case 'public-pos-tracking':
+      if (isDesktop)
+        return (
+          <DesktopPublicPosTrackingScreen
+            cart={publicCart}
+            onBack={goBackToPrevious}
+            onReopenMenu={() => setRoute('public-pos-menu')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <PublicPosOrderTrackingScreen
+            cart={publicCart}
+            onBack={goBackToPrevious}
+            onReopenMenu={() => setRoute('public-pos-menu')}
+          />
+        </div>
+      );
+
+    case 'pos-kitchen':
+      if (isDesktop)
+        return <DesktopPosKitchenScreen onNav={posTerminalNav} onReturnToRegister={() => setRoute('pos-register')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosKitchenStreamScreen
+            onBack={goBackToPrevious}
+            onReturnToRegister={() => setRoute('pos-register')}
+          />
+        </div>
+      );
+
+    case 'pos-settings':
+      if (isDesktop)
+        return (
+          <DesktopPosGeneralSettingsScreen
+            onNav={posTerminalNav}
+            onOpenHardware={() => setRoute('pos-hardware')}
+            onOpenReceipt={() => setRoute('pos-receipt')}
+            onOpenTaxes={() => setRoute('pos-taxes')}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessPosSettingsScreen
+            onBack={goBackToPrevious}
+            onOpenReceipt={() => setRoute('pos-receipt')}
+            onOpenHardware={() => setRoute('pos-hardware')}
+            onOpenTaxes={() => setRoute('pos-taxes')}
+            onOpenPermissions={() => setRoute('pos-permissions')}
+            onOpenKitchen={() => setRoute('pos-kitchen')}
+          />
+        </div>
+      );
+
+    case 'pos-hardware':
+      if (isDesktop)
+        return <DesktopPosHardwareScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosHardwareScreen onBack={() => setRoute('pos-settings')} />
+        </div>
+      );
+
+    case 'pos-receipt':
+      if (isDesktop)
+        return <DesktopPosReceiptScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosReceiptScreen onBack={() => setRoute('pos-settings')} />
+        </div>
+      );
+
+    case 'pos-taxes':
+      if (isDesktop)
+        return <DesktopPosTaxesScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosTaxesScreen onBack={() => setRoute('pos-settings')} />
+        </div>
+      );
+
+    case 'pos-permissions':
+      if (isDesktop) return <DesktopPosPermissionsScreen onNav={posTerminalNav} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosPermissionsScreen onBack={() => setRoute('pos-settings')} />
+        </div>
+      );
+
+    case 'business-more':
+      if (isDesktop)
+        return (
+          <DesktopBusinessMoreScreen
+            onNav={businessPortalNav}
+            onOpenPos={() => setRoute('pos-home')}
+            onOpenAnalytics={() => setRoute('analytics-business')}
+            onOpenMarketing={() => setRoute('boost-hub')}
+            onOpenStorefront={() => setRoute('storefront')}
+            onOpenSubscription={() => setRoute('subscription')}
+            onOpenVerification={() => setRoute('business-verification')}
+            onOpenSupport={() => setRoute('support')}
+            onSwitchConsumer={() => setRoute('home')}
+            onSignOut={() => {
+              signOut();
+              setRoute('welcome');
+            }}
+          />
+        );
+      return (
+        <BusinessMoreScreen
+          onTab={businessTab}
+          onOpenPos={() => setRoute('pos-home')}
+          onOpenAnalytics={() => setRoute('analytics-business')}
+          onOpenMarketing={() => setRoute('boost-hub')}
+          onOpenStorefront={() => setRoute('storefront')}
+          onOpenSubscription={() => setRoute('subscription')}
+          onOpenVerification={() => setRoute('business-verification')}
+          onOpenSupport={() => setRoute('support')}
+          onSwitchConsumer={() => setRoute('home')}
+          onSignOut={() => {
+            signOut();
+            setRoute('welcome');
+          }}
+        />
+      );
+
+    case 'business-orders':
+      if (isDesktop) return <DesktopBusinessOrdersScreen onNav={businessPortalNav} initialView="orders" />;
+      return (
+        <BusinessOrdersScreen
+          initialStep="orders"
+          onTab={businessTab}
+          onOpenBooking={() => setRoute('booking-detail')}
+        />
+      );
+
+    case 'business-pos-orders':
+      if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} />;
+      return (
+        <BusinessOrdersScreen
+          initialStep="pos"
+          onTab={businessTab}
+          onOpenBooking={() => setRoute('booking-detail')}
+          onOpenDisplay={() => setRoute('pos-display-order')}
+        />
+      );
+
+    case 'business-messages':
+      if (isDesktop) return <DesktopBusinessMessagesWorkspaceScreen onNav={businessPortalNav} />;
+      return <BusinessMessagesScreen initialStep="home" onTab={businessTab} />;
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <>
+      {renderRoute()}
+
+      {claimPopupOpen &&
+        (isDesktop ? (
+          <ClaimIdentityModal
+            open
+            onClose={closeClaimPopup}
+            onClaimSelf={() => finishClaimChoice('self')}
+            onGift={() => finishClaimChoice('gift')}
+            onSomeoneElse={() => finishClaimChoice('other')}
+          />
+        ) : (
+          <ClaimIdentitySheet
+            open
+            onClose={closeClaimPopup}
+            onClaimSelf={() => finishClaimChoice('self')}
+            onGift={() => finishClaimChoice('gift')}
+            onSomeoneElse={() => finishClaimChoice('other')}
+          />
+        ))}
+
+      {isDesktop && claimDialog === 'gift' && (
+        <GiftRecipientDetailsModal open onClose={() => setClaimDialog(null)} onContinue={() => setClaimDialog('giftConfirm')} />
+      )}
+      {isDesktop && claimDialog === 'giftConfirm' && (
+        <ConfirmGiftSendModal
+          open
+          onClose={() => setClaimDialog(null)}
+          onEdit={() => setClaimDialog('gift')}
+          onSend={() => finishDesktopClaim('Gift claim sent! Voucher delivered to your recipient.')}
+        />
+      )}
+      {isDesktop && claimDialog === 'other' && (
+        <SomeoneElseModal open onClose={() => setClaimDialog(null)} onContinue={() => setClaimDialog('verify')} />
+      )}
+      {isDesktop && claimDialog === 'verify' && (
+        <RecipientVerificationModal
+          open
+          onClose={() => setClaimDialog(null)}
+          onVerify={() => setClaimDialog('summary')}
+          onBack={() => setClaimDialog('other')}
+        />
+      )}
+      {isDesktop && claimDialog === 'summary' && (
+        <RecipientSummaryModal
+          open
+          onClose={() => setClaimDialog(null)}
+          onConfirm={() => finishDesktopClaim('Claim authorized! Voucher issued for your recipient.')}
+          onEdit={() => setClaimDialog('other')}
+        />
+      )}
+
+      {isDesktop && claimToast && (
+        <div className="fixed bottom-6 right-6 z-[70] bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-2xl flex items-center gap-space-sm">
+          <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
+          <span className="font-label-md text-label-md">{claimToast}</span>
+        </div>
+      )}
+    </>
+  );
+}

@@ -1,0 +1,48 @@
+export interface ProductDraft {
+  title: string;
+  producer: string;
+  unbranded: boolean;
+  primaryCategory: string;
+  subCategory: string;
+  classification: string;
+  description: string;
+  condition: 'fresh' | 'packaged' | 'surplus';
+  basePrice: string;
+  comparePrice: string;
+  costPrice: string;
+  variantsEnabled: boolean;
+  variants: Array<{ id: string; name: string; cut: string; price: string; inventory: string }>;
+  skuCode: string;
+  lowStock: string;
+  backorder: boolean;
+  branches: Record<string, boolean>;
+  pricingMode: 'uniform' | 'custom';
+  prepWindow: string;
+}
+
+export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
+  title: 'Woodfire Aged Angus Ribeye Steak (400g)',
+  producer: 'Urban Grill Kitchen',
+  unbranded: false,
+  primaryCategory: 'Food & Dining',
+  subCategory: 'Grill, Steaks & BBQ',
+  classification: 'Fresh Cooked / Made to Order',
+  description:
+    'Prime grass-fed Angus beef aged 28 days. Flame-seared with artisanal house herb butter and served with crisp rosemary sea-salt potatoes.',
+  condition: 'fresh',
+  basePrice: '14,000',
+  comparePrice: '16,000',
+  costPrice: '8,500',
+  variantsEnabled: true,
+  variants: [
+    { id: 'regular-300g', name: 'Regular', cut: '300g', price: '12,000', inventory: '25' },
+    { id: 'king-cut-450g', name: 'King Cut', cut: '450g', price: '15,000', inventory: '15' },
+    { id: 'chefs-reserve-600g', name: "Chef's Reserve", cut: '600g', price: '19,500', inventory: '8' },
+  ],
+  skuCode: 'UG-RB-042',
+  lowStock: '5',
+  backorder: false,
+  branches: { wuse: true, garki: true, maitama: false },
+  pricingMode: 'uniform',
+  prepWindow: '20-30',
+};
