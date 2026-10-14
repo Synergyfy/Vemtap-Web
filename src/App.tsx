@@ -353,6 +353,7 @@ type Route =
   | 'subscription-ending'
   | 'subscription-expired'
   | 'business-orders'
+  | 'business-bookings'
   | 'business-pos-orders'
   | 'business-messages'
   | 'business-overview'
@@ -513,6 +514,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'subscription-ending': '/subscription/trial-ending',
   'subscription-expired': '/subscription/expired',
   'business-orders': '/business/orders',
+  'business-bookings': '/business/orders/bookings',
   'business-pos-orders': '/business/orders/pos',
   'business-messages': '/business/messages',
   'business-overview': '/business/overview',
@@ -828,6 +830,7 @@ function AppInner() {
   const [posCustomer, setPosCustomer] = useState<string | null>(null);
   const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
+  const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
   const posTab = (key: PosTabKey) => {
     switch (key) {
@@ -857,11 +860,14 @@ function AppInner() {
 
   const posTerminalNav = (key: PosTerminalNavKey) => {
     switch (key) {
+      case 'home':
+        setRoute('pos-home');
+        break;
       case 'register':
         setRoute('pos-register');
         break;
       case 'orders':
-        setRoute('business-pos-orders');
+        setRoute('pos-order-lookup');
         break;
       case 'products':
         setRoute('pos-stock');
@@ -1370,8 +1376,9 @@ function AppInner() {
       case 'orders-all':
         setRoute('business-orders');
         break;
+      case 'bookings':
       case 'orders-bookings':
-        setRoute('business-orders');
+        setRoute('business-bookings');
         break;
       case 'orders-history':
         setRoute('business-orders');
@@ -1411,17 +1418,24 @@ function AppInner() {
         setRoute('analytics-overview');
         break;
       case 'pos':
+        setPosActiveNav('pos-transactions');
+        setRoute('business-pos-orders');
+        break;
       case 'pos-home':
-        setRoute('pos-home');
+        setPosActiveNav('pos-home');
+        setRoute('business-pos-orders');
         break;
       case 'pos-sale':
+        // Intentionally launches the full POS terminal register (leaves business sidebar)
         setRoute('pos-register');
         break;
       case 'pos-transactions':
+        setPosActiveNav('pos-transactions');
         setRoute('business-pos-orders');
         break;
       case 'pos-sync':
-        setRoute('pos-sync');
+        setPosActiveNav('pos-sync');
+        setRoute('business-pos-orders');
         break;
       case 'settings':
       case 'more-settings':
@@ -1439,6 +1453,9 @@ function AppInner() {
         setRoute('store-ordering-settings');
         break;
       // More section
+      case 'more':
+        setRoute('business-more');
+        break;
       case 'more-marketing':
         setRoute('boost-hub');
         break;
@@ -3665,7 +3682,7 @@ function AppInner() {
       );
 
     case 'pos-display-receipt':
-      if (isDesktop) return <DesktopPosDisplayReceiptScreen onDone={() => setRoute('business-pos-orders')} />;
+      if (isDesktop) return <DesktopPosDisplayReceiptScreen onDone={() => setRoute('pos-order-lookup')} />;
       return (
         <div className="biz-flow">
           <BusinessPosDisplayReceiptScreen onBack={goBackToPrevious} onDone={() => setRoute('business-pos-orders')} />
@@ -3749,7 +3766,7 @@ function AppInner() {
             onCharge={() => setRoute('pos-payment')}
             onSplit={() => setRoute('pos-split-bill')}
             onOpenCustomer={() => setRoute('pos-customer')}
-            onOpenOrders={() => setRoute('business-pos-orders')}
+            onOpenOrders={() => setRoute('pos-order-lookup')}
           />
         );
       return (
@@ -3840,7 +3857,7 @@ function AppInner() {
               setPosCustomer(null);
               setRoute('pos-register');
             }}
-            onOpenOrders={() => setRoute('business-pos-orders')}
+            onOpenOrders={() => setRoute('pos-order-lookup')}
           />
         );
       return (
@@ -4258,8 +4275,18 @@ function AppInner() {
         />
       );
 
+    case 'business-bookings':
+      if (isDesktop) return <DesktopBusinessOrdersScreen onNav={businessPortalNav} initialView="bookings" />;
+      return (
+        <BusinessOrdersScreen
+          initialStep="bookings"
+          onTab={businessTab}
+          onOpenBooking={() => setRoute('booking-detail')}
+        />
+      );
+
     case 'business-pos-orders':
-      if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} />;
+      if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} activeNav={posActiveNav} />;
       return (
         <BusinessOrdersScreen
           initialStep="pos"

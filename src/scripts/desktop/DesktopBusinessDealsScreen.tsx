@@ -147,7 +147,7 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
   });
 
   return (
-    <BusinessPortalChrome activeNav="deals" onNav={onNav}>
+    <BusinessPortalChrome activeNav="business-deals" onNav={onNav}>
       <aside aria-label="Surge Announcement" className="w-full bg-gradient-to-r from-tertiary-container via-tertiary to-on-tertiary-fixed text-on-tertiary px-space-lg py-2.5 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-xs text-center sm:text-left">
           <div className="flex items-center gap-space-xs min-w-0">

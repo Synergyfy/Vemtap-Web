@@ -12,6 +12,7 @@ import {
 } from './PortalShell';
 
 export type PosTerminalNavKey =
+  | 'home'
   | 'register'
   | 'orders'
   | 'products'
@@ -20,6 +21,7 @@ export type PosTerminalNavKey =
   | 'settings';
 
 const NAV_ITEMS: Array<{ key: PosTerminalNavKey; label: string }> = [
+  { key: 'home', label: 'POS Home' },
   { key: 'register', label: 'Register' },
   { key: 'orders', label: 'Orders' },
   { key: 'products', label: 'Products' },
@@ -31,7 +33,7 @@ const NAV_ITEMS: Array<{ key: PosTerminalNavKey; label: string }> = [
 const navItem = (key: PosTerminalNavKey) => NAV_ITEMS.find((item) => item.key === key)!;
 
 const NAV_GROUPS: ReadonlyArray<RailGroup<PosTerminalNavKey>> = [
-  { label: 'Point of Sale', items: [navItem('register'), navItem('orders')] },
+  { label: 'Point of Sale', items: [navItem('home'), navItem('register'), navItem('orders')] },
   { label: 'Inventory', items: [navItem('products'), navItem('ledger')] },
   { label: 'Terminal', items: [navItem('hardware-and-sync'), navItem('settings')] },
 ];
@@ -56,14 +58,26 @@ interface PosTerminalChromeProps {
   children: ReactNode;
   activeNav?: PosTerminalNavKey;
   onNav: (key: PosTerminalNavKey) => void;
+  onExitToDashboard?: () => void;
   onSignOut?: () => void;
 }
 
-export function PosTerminalChrome({ children, activeNav, onNav, onSignOut }: PosTerminalChromeProps) {
+export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboard, onSignOut }: PosTerminalChromeProps) {
   const sessionTime = useWatClock();
+
+  const exitToDashboard = () => {
+    if (onExitToDashboard) {
+      onExitToDashboard();
+    } else {
+      window.history.pushState(null, '', '/business/overview');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
+
   const handleAccount = (key: ShellAccountKey) => {
     if (key === 'sign-out') onSignOut?.();
-    else onNav(key === 'overview' ? 'register' : 'settings');
+    else if (key === 'overview') exitToDashboard();
+    else onNav('settings');
   };
 
   return (
@@ -71,12 +85,17 @@ export function PosTerminalChrome({ children, activeNav, onNav, onSignOut }: Pos
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center shrink-0">
-            <div className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0">
+            <button
+              type="button"
+              onClick={exitToDashboard}
+              className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0 cursor-pointer text-left hover:opacity-85 transition-opacity"
+              title="Return to Business Dashboard"
+            >
               <Logo variant="full" className="h-10 md:h-11 w-auto" />
               <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant shrink-0 leading-none">
                 POS
               </span>
-            </div>
+            </button>
             <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
             <button
               type="button"
@@ -88,7 +107,16 @@ export function PosTerminalChrome({ children, activeNav, onNav, onSignOut }: Pos
             </button>
           </div>
 
-          <div className="flex items-center gap-space-md shrink-0">
+          <div className="flex items-center gap-space-sm shrink-0">
+            <button
+              type="button"
+              onClick={exitToDashboard}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border-subtle bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer"
+              title="Return to Business Management Dashboard"
+            >
+              <Icon name="arrow_back" className="text-[16px] text-primary" />
+              <span className="font-medium">Exit to Dashboard</span>
+            </button>
             <div className="hidden md:flex items-center gap-space-xs px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
               <span className="font-caption text-caption font-semibold tracking-wide uppercase">Live Edge Mesh Synced</span>

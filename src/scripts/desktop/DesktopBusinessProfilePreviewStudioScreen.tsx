@@ -87,7 +87,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   };
 
   return (
-    <MerchantPortalChrome activeNav="settings" onNav={onNav}>
+    <MerchantPortalChrome activeNav="business-profile" onNav={onNav}>
       <div className="w-full py-space-lg flex flex-col gap-space-xl">
         {/* Top Context & Action Bar */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">

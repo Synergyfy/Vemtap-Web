@@ -183,7 +183,7 @@ export function DesktopDealsWorkspaceScreen({
   ];
 
   return (
-    <MerchantPortalChrome activeNav="deals" onNav={onNav} content="full">
+    <MerchantPortalChrome activeNav="business-deals" onNav={onNav} content="full">
       <div className="w-full px-margin py-space-xl flex flex-col gap-space-xl max-w-[1600px] mx-auto">
         {/* Top Workspace Header & Breadcrumbs */}
         <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-lg">

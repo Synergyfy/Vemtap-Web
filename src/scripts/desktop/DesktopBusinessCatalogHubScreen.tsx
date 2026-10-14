@@ -758,7 +758,7 @@ export function DesktopBusinessCatalogHubScreen({
   });
 
   return (
-    <MerchantShell activeNav="catalog" onNav={onNav}>
+    <MerchantShell activeNav="business-catalog" onNav={onNav}>
       <div className="flex flex-col gap-space-lg">
         {/* Breadcrumbs & Meta Top Strip */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">

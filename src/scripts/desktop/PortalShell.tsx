@@ -37,6 +37,7 @@ const RAIL_ICONS: Record<string, string> = {
   pos: 'point_of_sale',
   settings: 'settings',
   // POS terminal sections
+  home: 'dashboard',
   register: 'point_of_sale',
   products: 'sell',
   ledger: 'account_balance',

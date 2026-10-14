@@ -25,7 +25,7 @@ export function DesktopDealAnalyticsScreen({
   onChat,
 }: DesktopDealAnalyticsScreenProps) {
   return (
-    <MerchantWorkspaceChrome activeNav="deals" onNav={onNav}>
+    <MerchantWorkspaceChrome activeNav="business-deals" onNav={onNav}>
       <div className="w-full py-space-xl flex flex-col gap-space-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-sm">
           <nav className="flex items-center gap-space-2xs text-text-secondary font-caption text-caption">

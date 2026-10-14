@@ -383,7 +383,7 @@ export function DesktopSegmentsHubScreen({
   );
 
   return (
-    <BusinessPortalChrome activeNav="customers" onNav={onNav}>
+    <BusinessPortalChrome activeNav="business-customers" onNav={onNav}>
       <div className="w-full py-space-xl flex flex-col gap-space-lg">
         <div className="flex flex-col gap-space-xs">
           <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm flex-wrap">

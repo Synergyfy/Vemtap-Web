@@ -34,23 +34,32 @@ export function BusinessSidebarRail({
   });
 
   // When user is currently in any dropdown page, keep that dropdown open.
-  // When switching to another section, previous dropdown auto-closes so no 2 are open simultaneously.
+  // When switching to a section without children, auto-collapse so the layout stays clean.
   useEffect(() => {
     if (activeSectionHasChildren) {
       setOpenSectionKey(activeSectionKey);
+    } else {
+      setOpenSectionKey(null);
     }
   }, [activeSectionKey, activeSectionHasChildren]);
-
-  const toggleSection = (sectionKey: string) => {
-    setOpenSectionKey((prev) => (prev === sectionKey ? null : sectionKey));
-  };
 
   const handleParentClick = (section: BusinessSidebarSection) => {
     if (!section.items || section.items.length === 0) {
       onSelect?.(section.defaultKey);
       return;
     }
-    toggleSection(section.key);
+    // If clicking an inactive section header, navigate to its default page and expand its items
+    if (activeSectionKey !== section.key) {
+      setOpenSectionKey(section.key);
+      onSelect?.(section.defaultKey);
+      return;
+    }
+    // If already inside this section: if collapsed, just expand it; if already expanded, navigate to default
+    if (openSectionKey !== section.key) {
+      setOpenSectionKey(section.key);
+    } else {
+      onSelect?.(section.defaultKey);
+    }
   };
 
   const handleSubItemClick = (subItem: BusinessSidebarSubItem) => {
@@ -122,8 +131,8 @@ export function BusinessSidebarRail({
               {hasChildren && (
                 <div
                   className={`flex-col pl-4 pr-1 mt-0.5 space-y-0.5 border-l-2 border-border-subtle/80 ml-5 ${
-                    isOpen ? 'flex' : 'hidden'
-                  } xl:${isOpen ? 'flex' : 'hidden'}`}
+                    isOpen ? 'hidden xl:flex' : 'hidden'
+                  }`}
                 >
                   {section.items!.map((subItem) => {
                     const isSubItemActive = activeItemKey === subItem.key;

@@ -4,6 +4,7 @@ import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPorta
 
 interface DesktopBusinessPosOrdersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
+  activeNav?: string;
 }
 
 type PosFilter = 'all' | 'online' | 'pos';
@@ -20,7 +21,10 @@ const RECENT = [
   { id: '#POS-1045', time: '10:41 AM', channel: 'POS', total: '₦8,900.00', method: 'Card ****8821' },
 ];
 
-export function DesktopBusinessPosOrdersScreen({ onNav }: DesktopBusinessPosOrdersScreenProps) {
+export function DesktopBusinessPosOrdersScreen({
+  onNav,
+  activeNav = 'pos-transactions',
+}: DesktopBusinessPosOrdersScreenProps) {
   const [filter, setFilter] = useState<PosFilter>('pos');
   const [shiftState, setShiftState] = useState<'open' | 'closing' | 'printed'>('open');
   const [syncing, setSyncing] = useState(false);
@@ -40,7 +44,7 @@ export function DesktopBusinessPosOrdersScreen({ onNav }: DesktopBusinessPosOrde
   };
 
   return (
-    <BusinessPortalChrome activeNav="pos" onNav={onNav}>
+    <BusinessPortalChrome activeNav={activeNav} onNav={onNav}>
       <div className="w-full bg-background">
         <div className="w-full py-space-xl space-y-space-lg">
           <div className="flex flex-wrap items-center gap-space-sm">

@@ -66,7 +66,7 @@ const DOSSIER_ROWS: Array<{ label: string; value: string; valueClass?: string; m
 
 export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopBranchDetailScreenProps) {
   return (
-    <MerchantShell activeNav="catalog" onNav={onNav}>
+    <MerchantShell activeNav="business-locations" onNav={onNav}>
       {/* Breadcrumb Bar */}
       <div className="flex items-center gap-space-2xs text-text-secondary font-caption text-caption pb-space-sm">
         <button

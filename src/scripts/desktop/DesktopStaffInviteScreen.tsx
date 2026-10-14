@@ -169,7 +169,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
   const submitIcon = submitState === 'idle' ? 'send' : submitState === 'sending' ? 'sync' : 'check_circle';
 
   return (
-    <EnterpriseShell onNav={onNav}>
+    <EnterpriseShell activeNav="business-staff" onNav={onNav}>
       <div className="relative w-full overflow-hidden">
         <div className="absolute -top-32 -left-20 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute top-80 right-0 w-[30rem] h-[30rem] bg-secondary-container/20 rounded-full blur-3xl pointer-events-none" />

@@ -313,7 +313,7 @@ export function DesktopBusinessMoreScreen({
   );
 
   return (
-    <BusinessPortalChrome onNav={onNav}>
+    <BusinessPortalChrome activeNav="more" onNav={onNav}>
       <div className="w-full py-space-xl space-y-space-lg">
         {/* Eyebrow, title & subtitle */}
         <section className="flex flex-col gap-space-2xs max-w-3xl">

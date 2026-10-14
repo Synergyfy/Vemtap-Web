@@ -171,7 +171,7 @@ export function DesktopBusinessOrdersScreen({
   };
 
   return (
-    <BusinessPortalChrome activeNav="orders" onNav={onNav}>
+    <BusinessPortalChrome activeNav="orders-all" onNav={onNav}>
       <div className="w-full bg-background">
         <div className="w-full py-space-xl space-y-space-lg">
           {/* Header Operational Bar */}
