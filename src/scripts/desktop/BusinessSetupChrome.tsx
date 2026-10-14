@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Logo } from '../../components/ui/Logo';
 
 export type BusinessSetupNavKey = 'profile' | 'locations' | 'catalog' | 'payouts' | 'deals';
 
@@ -25,9 +26,9 @@ export function BusinessSetupChrome({ children, activeNav = 'profile', onBrand }
         <div className="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between">
           <div className="flex items-center gap-space-md">
             <button type="button" onClick={onBrand} className="flex items-center gap-space-xs text-left">
-              <span className="font-display-hero text-heading-md text-primary font-bold tracking-tight">VEMTAP</span>
-              <span className="px-space-xs py-space-2xs rounded-full bg-surface-container-high text-primary font-label-sm text-caption font-semibold">
-                for Business
+              <Logo variant="full" className="h-10 md:h-11 w-auto" />
+              <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
+                BUSINESS
               </span>
             </button>
             <div className="hidden md:flex items-center gap-space-xs pl-space-md text-on-surface-variant">

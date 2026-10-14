@@ -15,13 +15,36 @@ export interface ProductOptionGroup {
   choices: ProductOptionChoice[];
 }
 
+export interface CentralCategory {
+  id: string;
+  name: string;
+  slug: string;
+  type: 'product' | 'service';
+  description: string;
+  icon: string;
+  image?: string;
+  productCount: number;
+  activeBranches: string[];
+  isArchived?: boolean;
+  qrDestinationUrl: string;
+  stats: {
+    scans: number;
+    uniqueScans: number;
+    ordersCount: number;
+    unitsOrdered: number;
+    totalRevenue: number;
+  };
+}
+
 export interface CatalogueProduct {
   id: string;
   name: string;
+  sku?: string;
   desc: string;
-  category?: string;
+  category: string; // Required link to CentralCategory id
   price: number;
   was?: number;
+  stock?: number;
   rating?: string;
   reviews?: string;
   badge?: string;
@@ -33,6 +56,9 @@ export interface CatalogueProduct {
   dietary?: string[];
   warnings?: string[];
   optionGroups?: ProductOptionGroup[];
+  branchAvailability?: string[];
+  qrDestinationUrl?: string;
+  scansCount?: number;
 }
 
 export const URBAN_PRODUCTS: CatalogueProduct[] = [
@@ -255,3 +281,196 @@ export const MENU_PRODUCT_ID: Record<string, string> = {
   'Hibiscus Zobo & Mint Fizz': 'hibiscus-zobo-mint-fizz',
   'Chapman Royale': 'chapman-royale',
 };
+
+export const CENTRAL_CATEGORIES: CentralCategory[] = [
+  {
+    id: 'grills',
+    name: 'Woodfire Grills & Steaks',
+    slug: 'grills',
+    type: 'product',
+    description: 'Dry-aged Angus steaks, woodfire smoked cuts, artisanal sausages, and herb-buttered flame specialties.',
+    icon: 'local_fire_department',
+    productCount: 4,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=grills',
+    stats: {
+      scans: 386,
+      uniqueScans: 312,
+      ordersCount: 91,
+      unitsOrdered: 142,
+      totalRevenue: 1274000,
+    },
+  },
+  {
+    id: 'burgers',
+    name: 'Artisan Burgers & Sandwiches',
+    slug: 'burgers',
+    type: 'product',
+    description: 'Freshly ground smoked Wagyu beef patties, brioche buns, aged cheddar, and house-cured BBQ brisket.',
+    icon: 'lunch_dining',
+    productCount: 2,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=burgers',
+    stats: {
+      scans: 240,
+      uniqueScans: 198,
+      ordersCount: 63,
+      unitsOrdered: 89,
+      totalRevenue: 623000,
+    },
+  },
+  {
+    id: 'mains',
+    name: 'Signature Mains & Bowls',
+    slug: 'mains',
+    type: 'product',
+    description: 'Firewood smoked jollof rice, seafood platters, buttermilk chicken, and Nigerian gourmet chef creations.',
+    icon: 'restaurant',
+    productCount: 2,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=mains',
+    stats: {
+      scans: 215,
+      uniqueScans: 180,
+      ordersCount: 54,
+      unitsOrdered: 76,
+      totalRevenue: 486000,
+    },
+  },
+  {
+    id: 'sides',
+    name: 'Appetizers, Fries & Sides',
+    slug: 'sides',
+    type: 'product',
+    description: 'Crisp parmesan potato wedges, garden chopped salads, truffle chips, and plantain bites.',
+    icon: 'fastfood',
+    productCount: 2,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=sides',
+    stats: {
+      scans: 174,
+      uniqueScans: 155,
+      ordersCount: 38,
+      unitsOrdered: 58,
+      totalRevenue: 192000,
+    },
+  },
+  {
+    id: 'drinks',
+    name: 'Craft Cocktails & Beverages',
+    slug: 'drinks',
+    type: 'product',
+    description: 'Small-batch artisanal mocktails, signature Chapman Royale, botanical zobo spritz, and chilled juices.',
+    icon: 'local_bar',
+    productCount: 2,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=drinks',
+    stats: {
+      scans: 310,
+      uniqueScans: 260,
+      ordersCount: 82,
+      unitsOrdered: 135,
+      totalRevenue: 385000,
+    },
+  },
+  {
+    id: 'desserts',
+    name: 'Boutique Pastries & Desserts',
+    slug: 'desserts',
+    type: 'product',
+    description: 'Molten chocolate lava cake, vanilla bean gelato, warm caramel tarts, and fresh seasonal berry parfaits.',
+    icon: 'cake',
+    productCount: 1,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=desserts',
+    stats: {
+      scans: 95,
+      uniqueScans: 80,
+      ordersCount: 24,
+      unitsOrdered: 32,
+      totalRevenue: 112000,
+    },
+  },
+];
+
+export const SERVICE_CATEGORIES: CentralCategory[] = [
+  {
+    id: 'private-dining',
+    name: 'Private Dining & Room Booking',
+    slug: 'private-dining',
+    type: 'service',
+    description: 'Exclusive private chef tables and VIP lounge reservations with customized tasting menus.',
+    icon: 'table_restaurant',
+    productCount: 2,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=private-dining',
+    stats: {
+      scans: 142,
+      uniqueScans: 120,
+      ordersCount: 18,
+      unitsOrdered: 18,
+      totalRevenue: 720000,
+    },
+  },
+  {
+    id: 'event-catering',
+    name: 'Corporate & Event Catering',
+    slug: 'event-catering',
+    type: 'service',
+    description: 'On-site barbecue catering, corporate buffet setups, and custom celebration packages.',
+    icon: 'room_service',
+    productCount: 2,
+    activeBranches: ['all'],
+    qrDestinationUrl: '/storefront?category=event-catering',
+    stats: {
+      scans: 88,
+      uniqueScans: 75,
+      ordersCount: 12,
+      unitsOrdered: 12,
+      totalRevenue: 1450000,
+    },
+  },
+];
+
+// In-memory / session persistent category store
+let memoryCategories: CentralCategory[] = [...CENTRAL_CATEGORIES, ...SERVICE_CATEGORIES];
+
+export function getCentralCategories(type?: 'product' | 'service'): CentralCategory[] {
+  if (!type) return memoryCategories.filter((c) => !c.isArchived);
+  return memoryCategories.filter((c) => !c.isArchived && c.type === type);
+}
+
+export function addCentralCategory(newCat: Omit<CentralCategory, 'stats'>): CentralCategory {
+  const categoryWithStats: CentralCategory = {
+    ...newCat,
+    stats: {
+      scans: 0,
+      uniqueScans: 0,
+      ordersCount: 0,
+      unitsOrdered: 0,
+      totalRevenue: 0,
+    },
+  };
+  memoryCategories = [categoryWithStats, ...memoryCategories];
+  return categoryWithStats;
+}
+
+export function updateCentralCategory(id: string, updates: Partial<CentralCategory>): CentralCategory | undefined {
+  const index = memoryCategories.findIndex((c) => c.id === id);
+  if (index === -1) return undefined;
+  memoryCategories[index] = { ...memoryCategories[index], ...updates };
+  return memoryCategories[index];
+}
+
+export function archiveCentralCategory(id: string): void {
+  const cat = memoryCategories.find((c) => c.id === id);
+  if (cat) cat.isArchived = true;
+}
+
+export function getCategoryById(id: string): CentralCategory | undefined {
+  return memoryCategories.find((c) => c.id === id);
+}
+
+export function getCategoryBySlug(slug: string): CentralCategory | undefined {
+  return memoryCategories.find((c) => c.slug === slug || c.id === slug);
+}

@@ -1,4 +1,4 @@
-import fullBlue from '../../hooks/VEMTAP FULL LOGO HEADER.png';
+import fullBlue from '../../hooks/VEMTAP FULL LOGO NEW PNG.png';
 import fullWhite from '../../hooks/Vemtap Logo full White Header.png';
 import markBlue from '../../hooks/VEMTAP LOGO NEW PNG.png';
 import markWhite from '../../hooks/Vemtap Logo White.png';

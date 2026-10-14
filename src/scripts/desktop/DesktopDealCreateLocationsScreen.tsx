@@ -39,7 +39,7 @@ export function DesktopDealCreateLocationsScreen({
   const toggleClass =
     "w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-canvas after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container";
   return (
-    <MerchantPortalChrome activeNav="deals" onNav={onNav}>
+    <MerchantPortalChrome activeNav="business-deals" onNav={onNav}>
       <div className="relative w-full overflow-hidden">
         <div className="absolute -top-32 right-1/4 w-96 h-96 bg-primary-container/5 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute top-1/2 -left-20 w-80 h-80 bg-secondary-container/20 rounded-full blur-3xl pointer-events-none" />

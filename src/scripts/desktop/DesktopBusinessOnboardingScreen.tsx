@@ -118,11 +118,14 @@ const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
 export function DesktopBusinessOnboardingScreen({
   onBack,
   onComplete,
+  initialStep = 'intro',
 }: {
   onBack: () => void;
   onComplete: () => void;
+  /** `'basic'` skips the marketing intro and lands directly on profile details (existing-account flow). */
+  initialStep?: 'intro' | 'basic';
 }) {
-  const [step, setStep] = useState<BusinessOnboardingStep>('intro');
+  const [step, setStep] = useState<BusinessOnboardingStep>(initialStep);
   const [draft, setDraft] = useState<BusinessProfileDraft>(INITIAL_DRAFT);
   const [productDraft, setProductDraft] = useState<ProductDraft>(INITIAL_PRODUCT_DRAFT);
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(INITIAL_SERVICE_DRAFT);
@@ -157,7 +160,7 @@ export function DesktopBusinessOnboardingScreen({
         <DesktopBusinessProfileBasicScreen
           draft={draft}
           onDraftChange={updateDraft}
-          onPrevious={() => setStep('intro')}
+          onPrevious={initialStep === 'basic' ? onBack : () => setStep('intro')}
           onNext={() => setStep('branding')}
           onSaveDraft={onBack}
         />

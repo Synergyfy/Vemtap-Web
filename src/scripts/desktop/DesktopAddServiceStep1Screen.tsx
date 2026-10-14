@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 
 interface DesktopAddServiceStep1ScreenProps {
@@ -9,6 +11,7 @@ interface DesktopAddServiceStep1ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const COVER_IMAGE =
@@ -96,7 +99,9 @@ export function DesktopAddServiceStep1Screen({
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopAddServiceStep1ScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [gender, setGender] = useState('All Welcome');
   const [consent, setConsent] = useState(true);
 
@@ -111,7 +116,7 @@ export function DesktopAddServiceStep1Screen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <section className="w-full bg-surface-canvas shadow-[0_1px_3px_rgba(13,37,76,0.03)]">
         <div className="max-w-7xl mx-auto px-margin py-space-md">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
@@ -651,6 +656,6 @@ export function DesktopAddServiceStep1Screen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

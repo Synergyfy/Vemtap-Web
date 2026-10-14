@@ -351,7 +351,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: Desktop
   };
 
   return (
-    <EnterpriseShell activeNav="overview" onNav={onNav}>
+    <EnterpriseShell activeNav="business-customers" onNav={onNav}>
       <div className="w-full py-space-xl flex flex-col gap-space-xl">
         <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-lg">
           <div className="flex flex-col gap-space-xs max-w-3xl">

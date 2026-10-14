@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 
 interface DesktopProductPublishedScreenProps {
@@ -8,6 +10,7 @@ interface DesktopProductPublishedScreenProps {
   onMakeDeal: () => void;
   onViewCatalog: () => void;
   onAddAnother: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const PUBLISHED_IMAGES: Array<{ src: string; alt: string }> = [
@@ -36,7 +39,9 @@ export function DesktopProductPublishedScreen({
   onMakeDeal,
   onViewCatalog,
   onAddAnother,
+  onNav,
 }: DesktopProductPublishedScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [mode, setMode] = useState<'live' | 'draft'>('live');
   const [dealState, setDealState] = useState<'idle' | 'importing' | 'success'>('idle');
   const timers = useRef<number[]>([]);
@@ -62,7 +67,7 @@ export function DesktopProductPublishedScreen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="relative w-full overflow-hidden bg-gradient-to-b from-surface-tint-blue/70 via-surface to-background pb-space-3xl">
         <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[720px] h-[360px] bg-primary/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute top-12 right-12 w-72 h-72 bg-tertiary-fixed/30 rounded-full blur-2xl pointer-events-none" />
@@ -358,6 +363,6 @@ export function DesktopProductPublishedScreen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

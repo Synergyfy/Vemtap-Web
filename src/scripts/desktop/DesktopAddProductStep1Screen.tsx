@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
+import { getCentralCategories, addCentralCategory, type CentralCategory } from '../catalogueData';
 
 interface DesktopAddProductStep1ScreenProps {
   draft: ProductDraft;
@@ -9,6 +12,7 @@ interface DesktopAddProductStep1ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const COVER_IMAGE =
@@ -39,12 +43,6 @@ const PREVIEW_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDMsdhr5eSit0fTdi28nHbQgC9t055vUYQWAqiJfi_0Z_IQrRaIES5CzLBe6FGBeHuh8dgcXMY6A1s73WBWwO_Ah5-xMmv0hQj6BmxXdftwxgVhs7wH92XhAumirAzalP24jKt5tCD-XHAGEyMEsXqIyMFXqV0zjwLSW_BLE6pELhp716pqB6XaFkCMF7GZqaFHm-AsdrSipPxRgIHhYTrdLFrPk_KwuJLV7jRuI7B8VLuBcv5-GSEi6w';
 
 const PREVIEW_ALT = 'Plated woodfire grilled lamb chops with herbs on customer discovery screen preview.';
-
-const PRIMARY_CATEGORIES = ['Food & Dining', 'Artisan Pantry & Deli', 'Fresh Produce & Meats', 'Beverages & Cellar'];
-
-const SUB_CATEGORIES = ['Grill, Steaks & BBQ', 'Burgers & Sliders', 'Sides & Starters', 'Chef Specials'];
-
-const CLASSIFICATIONS = ['Made to Order', 'Chilled Pre-packaged', 'Frozen Heat-and-eat', 'Pantry Staple'];
 
 const DIETARY_CHIPS: Array<{ label: string; icon: string; active: boolean; tone: 'default' | 'tertiary' }> = [
   { label: 'Gluten-free', icon: 'eco', active: false, tone: 'default' },
@@ -78,24 +76,63 @@ const CONDITION_OPTIONS: Array<{
   },
 ];
 
-function cycleValue(current: string, options: string[]): string {
-  const index = options.indexOf(current);
-  return options[(index + 1) % options.length];
-}
-
 export function DesktopAddProductStep1Screen({
   draft,
   onDraftChange,
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopAddProductStep1ScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [activeChips, setActiveChips] = useState<string[]>(
     DIETARY_CHIPS.filter((chip) => chip.active).map((chip) => chip.label),
   );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const timers = useRef<number[]>([]);
+
+  // Category management & inline category creation
+  const [categories, setCategories] = useState<CentralCategory[]>(() => getCentralCategories('product'));
+  const [showInlineCategoryModal, setShowInlineCategoryModal] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatDescription, setNewCatDescription] = useState('');
+  const [newCatIcon, setNewCatIcon] = useState('restaurant');
+
+  const handleCreateCategoryInline = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    const slug = newCatName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const created = addCentralCategory({
+      id: slug,
+      name: newCatName.trim(),
+      slug,
+      type: 'product',
+      description: newCatDescription.trim() || `${newCatName.trim()} selections`,
+      icon: newCatIcon,
+      productCount: 1,
+      activeBranches: ['all'],
+      qrDestinationUrl: `/storefront?category=${slug}`,
+    });
+    setCategories(getCentralCategories('product'));
+    onDraftChange({
+      categoryId: created.id,
+      subCategory: created.name,
+      primaryCategory: 'Food & Dining',
+    });
+    setNewCatName('');
+    setNewCatDescription('');
+    setShowInlineCategoryModal(false);
+    showToast(`Category "${created.name}" created and selected!`);
+  };
+
+  const handleNext = () => {
+    if (!draft.categoryId && !draft.subCategory) {
+      showToast('Please select or create a category before continuing.');
+      return;
+    }
+    onNext();
+  };
 
   useEffect(
     () => () => {
@@ -121,7 +158,7 @@ export function DesktopAddProductStep1Screen({
   };
 
   return (
-    <MerchantShell activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="w-full pb-space-3xl flex flex-col gap-space-xl">
         <nav aria-label="Breadcrumb" className="flex items-center gap-space-xs text-caption font-caption text-text-secondary">
           <button
@@ -374,74 +411,182 @@ export function DesktopAddProductStep1Screen({
               </div>
             </section>
 
-            <section className="bg-surface-canvas rounded-xl shadow-sm p-space-xl flex flex-col gap-space-md">
+            <section className="bg-surface-canvas rounded-xl shadow-sm p-space-xl flex flex-col gap-space-md border border-border-subtle">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-space-xs">
                   <Icon name="category" className="text-primary text-[22px]" />
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Category Placement</h2>
+                  <div>
+                    <h2 className="font-heading-sm text-heading-sm text-text-primary">
+                      Product Category <span className="text-error">*</span>
+                    </h2>
+                    <p className="font-caption text-caption text-text-secondary">
+                      Every product must link to a central category for POS menus, storefront display, and QR ordering.
+                    </p>
+                  </div>
                 </div>
-                <span className="font-caption text-caption text-badge-discount-text font-semibold flex items-center gap-1 bg-badge-discount-bg px-space-xs py-0.5 rounded">
-                  <Icon name="check" className="text-[14px]" /> Feed Calibrated
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowInlineCategoryModal(true)}
+                  className="px-space-md py-1.5 rounded-xl bg-surface-tint-blue hover:bg-surface-tint-blue/80 text-primary font-label-sm text-label-sm font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+                >
+                  <Icon name="add" className="text-[16px]" />
+                  <span>Create Category Inline</span>
+                </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md">
-                <div className="bg-surface-subtle p-space-md rounded-xl flex flex-col justify-between hover:bg-surface-container-low transition-colors">
-                  <div>
-                    <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-semibold">
-                      Primary Category
-                    </span>
-                    <p className="font-label-md text-label-md font-semibold text-text-primary mt-1">
-                      {draft.primaryCategory}
-                    </p>
-                    <p className="font-caption text-caption text-text-secondary mt-0.5">Top-level directory</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onDraftChange({ primaryCategory: cycleValue(draft.primaryCategory, PRIMARY_CATEGORIES) })}
-                    className="mt-space-md font-label-sm text-label-sm text-primary font-semibold hover:underline flex items-center gap-1 self-start"
+
+              {/* Category Dropdown and Details */}
+              <div className="space-y-space-sm pt-2">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-label-sm font-semibold text-text-primary flex items-center justify-between">
+                    <span>Select Assigned Category</span>
+                    <span className="text-caption text-text-tertiary">{categories.length} Central Categories Available</span>
+                  </label>
+                  <select
+                    value={draft.categoryId || 'grills'}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const found = categories.find((c) => c.id === selectedId);
+                      onDraftChange({
+                        categoryId: selectedId,
+                        subCategory: found ? found.name : draft.subCategory,
+                        primaryCategory: 'Food & Dining',
+                      });
+                    }}
+                    className="w-full px-4 py-3 rounded-xl bg-surface-subtle border border-border text-body-md font-medium text-text-primary focus:outline-hidden focus:border-primary"
                   >
-                    <span>Change</span>
-                    <Icon name="arrow_outward" className="text-[14px]" />
-                  </button>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name} ({cat.productCount} items)
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="bg-surface-subtle p-space-md rounded-xl flex flex-col justify-between hover:bg-surface-container-low transition-colors">
-                  <div>
-                    <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-semibold">
-                      Sub-Category
-                    </span>
-                    <p className="font-label-md text-label-md font-semibold text-text-primary mt-1">{draft.subCategory}</p>
-                    <p className="font-caption text-caption text-text-secondary mt-0.5">Dishes and Platters</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onDraftChange({ subCategory: cycleValue(draft.subCategory, SUB_CATEGORIES) })}
-                    className="mt-space-md font-label-sm text-label-sm text-primary font-semibold hover:underline flex items-center gap-1 self-start"
-                  >
-                    <span>Change</span>
-                    <Icon name="arrow_outward" className="text-[14px]" />
-                  </button>
-                </div>
-                <div className="bg-surface-subtle p-space-md rounded-xl flex flex-col justify-between hover:bg-surface-container-low transition-colors">
-                  <div>
-                    <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-semibold">
-                      Item Classification
-                    </span>
-                    <p className="font-label-md text-label-md font-semibold text-text-primary mt-1">
-                      {draft.classification}
-                    </p>
-                    <p className="font-caption text-caption text-text-secondary mt-0.5">Requires prep time</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onDraftChange({ classification: cycleValue(draft.classification, CLASSIFICATIONS) })}
-                    className="mt-space-md font-label-sm text-label-sm text-primary font-semibold hover:underline flex items-center gap-1 self-start"
-                  >
-                    <span>Change</span>
-                    <Icon name="arrow_outward" className="text-[14px]" />
-                  </button>
-                </div>
+
+                {/* Selected Category Preview Info Card */}
+                {(() => {
+                  const activeCat = categories.find((c) => c.id === (draft.categoryId || 'grills')) || categories[0];
+                  if (!activeCat) return null;
+                  return (
+                    <div className="p-space-md rounded-xl bg-surface-subtle/80 border border-border-subtle flex items-start gap-space-sm">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <Icon name={activeCat.icon || 'restaurant'} className="text-[20px]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-label-md font-bold text-text-primary">{activeCat.name}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-badge-discount-bg text-badge-discount-text">
+                            Active in Storefront &amp; QR
+                          </span>
+                        </div>
+                        <p className="text-caption text-text-secondary mt-0.5">{activeCat.description}</p>
+                        <div className="mt-2 flex items-center gap-3 text-[11px] text-text-tertiary font-mono">
+                          <span>Destination: {activeCat.qrDestinationUrl}</span>
+                          <span>•</span>
+                          <span>Live in POS Mesh</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </section>
+
+            {/* Inline Category Creation Modal */}
+            {showInlineCategoryModal && (
+              <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+                <div
+                  className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+                  onClick={() => setShowInlineCategoryModal(false)}
+                />
+                <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 animate-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                        <Icon name="create_new_folder" className="text-[18px]" />
+                      </div>
+                      <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                        Create Category Inline
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowInlineCategoryModal(false)}
+                      className="p-1.5 rounded-lg text-text-tertiary hover:bg-surface-subtle"
+                    >
+                      <Icon name="close" className="text-[18px]" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateCategoryInline} className="mt-space-md space-y-space-md">
+                    <div className="space-y-1">
+                      <label className="text-caption font-semibold text-text-primary">
+                        Category Name <span className="text-error">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newCatName}
+                        onChange={(e) => setNewCatName(e.target.value)}
+                        placeholder="e.g. Woodfire Artisan Pizzas"
+                        className="w-full px-3 py-2.5 rounded-xl bg-surface-subtle border border-border text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-caption font-semibold text-text-primary">Description</label>
+                      <textarea
+                        rows={2}
+                        value={newCatDescription}
+                        onChange={(e) => setNewCatDescription(e.target.value)}
+                        placeholder="e.g. Sourdough woodfired crust with imported mozzarella"
+                        className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-sm text-text-primary focus:outline-hidden focus:border-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-caption font-semibold text-text-primary">Display Icon</label>
+                      <div className="grid grid-cols-6 gap-2">
+                        {['outdoor_grill', 'lunch_dining', 'local_pizza', 'tapas', 'local_bar', 'cake'].map((iconName) => (
+                          <button
+                            key={iconName}
+                            type="button"
+                            onClick={() => setNewCatIcon(iconName)}
+                            className={`p-2.5 rounded-xl border flex items-center justify-center transition-all ${
+                              newCatIcon === iconName
+                                ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20'
+                                : 'border-border bg-surface-subtle text-text-secondary hover:text-text-primary'
+                            }`}
+                          >
+                            <Icon name={iconName} className="text-[20px]" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-text-tertiary">
+                      The category will be created immediately in your central catalogue and selected for this product. Your draft changes will not be lost.
+                    </p>
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowInlineCategoryModal(false)}
+                        className="px-4 py-2 rounded-xl border border-border text-text-secondary hover:bg-surface-subtle text-label-md font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-label-md shadow-sm"
+                      >
+                        Save &amp; Select
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-space-xl">
@@ -651,7 +796,7 @@ export function DesktopAddProductStep1Screen({
             </button>
             <button
               type="button"
-              onClick={onNext}
+              onClick={handleNext}
               className="flex-1 sm:flex-none px-space-xl py-space-xs rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-space-xs"
             >
               <span>Continue to Pricing &amp; Availability</span>
@@ -671,6 +816,6 @@ export function DesktopAddProductStep1Screen({
           <span className="font-label-md text-label-md">{toast ?? ''}</span>
         </div>
       </div>
-    </MerchantShell>
+    </Shell>
   );
 }

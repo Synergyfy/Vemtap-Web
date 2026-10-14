@@ -10,6 +10,13 @@ interface ConversationScreenProps {
   onSecondary: () => void;
 }
 
+const ATTACHMENT_OPTIONS = [
+  { icon: 'photo_camera', iconBox: 'bg-surface-tint-blue text-primary', title: 'Camera', sub: 'Take live photo' },
+  { icon: 'image', iconBox: 'bg-secondary-container text-on-secondary-container', title: 'Gallery', sub: 'Photos & videos' },
+  { icon: 'description', iconBox: 'bg-tertiary-fixed text-tertiary', title: 'Document', sub: 'Receipts & PDFs' },
+  { icon: 'local_offer', iconBox: 'bg-badge-discount-bg text-badge-discount-text', title: 'Deal Pass', sub: 'Attach voucher code' },
+];
+
 function formatTime(date: Date): string {
   const period = date.getHours() >= 12 ? 'PM' : 'AM';
   const hour = date.getHours() % 12 || 12;
@@ -21,15 +28,13 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
   const thread = MOBILE_THREADS.find((item) => item.id === threadId) ?? MOBILE_THREADS[0];
   const [messages, setMessages] = useState<MobileMessage[]>(thread.messages);
   const [draft, setDraft] = useState('');
-  const [pinnedVisible, setPinnedVisible] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const toastTimers = useRef<number[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (message: string) => {
     setToast(message);
-    const timer = window.setTimeout(() => setToast(null), 2400);
-    toastTimers.current.push(timer);
+    window.setTimeout(() => setToast((curr) => (curr === message ? null : curr)), 2400);
   };
 
   const appendMessage = (body: string) => {
@@ -39,165 +44,141 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
     ]);
   };
 
-  const sendMessage = (event: FormEvent) => {
-    event.preventDefault();
+  const sendMessage = (event?: FormEvent) => {
+    if (event) event.preventDefault();
     const text = draft.trim();
     if (!text) return;
     appendMessage(text);
     setDraft('');
-    inputRef.current?.focus();
+    setSheetOpen(false);
+    window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 
   const useReply = (text: string) => {
     appendMessage(text);
-    inputRef.current?.focus();
+    window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
+  };
+
+  const handleAttachment = (title: string) => {
+    setSheetOpen(false);
+    if (title === 'Deal Pass' && thread.deal) {
+      appendMessage(`Attached Deal Pass: ${thread.deal.code} (${thread.deal.title})`);
+    } else {
+      showToast(`${title} picker opened.`);
+    }
   };
 
   return (
     <AppScreen>
-      <header className="sticky top-0 z-30 bg-surface-container-lowest/95 backdrop-blur-md shadow-sm">
-        <div className="flex items-center justify-between px-margin py-space-xs">
-          <div className="flex items-center space-x-space-sm min-w-0">
+      {/* Sticky Header — matches BusinessChatHeader */}
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+        <div className="h-16 px-space-sm flex items-center justify-between gap-space-2xs">
+          <div className="flex items-center gap-space-xs min-w-0 flex-1">
             <button
-              aria-label="Go back"
+              aria-label="Back to messages"
+              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface hover:text-primary transition-colors"
               type="button"
               onClick={onBack}
-              className="p-space-2xs text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center -ml-space-2xs"
             >
-              <Icon name="arrow_back_ios_new" className="text-[24px]" />
+              <Icon name="arrow_back" className="text-[24px]" />
             </button>
-
             <div className="relative flex-shrink-0">
               {thread.avatar ? (
                 <img
-                  className="w-11 h-11 rounded-full object-cover shadow-sm"
+                  className="w-10 h-10 rounded-full object-cover shadow-sm"
                   alt={thread.alt ?? thread.name}
                   src={thread.avatar}
                 />
               ) : (
-                <div className="w-11 h-11 rounded-full bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center font-label-sm text-label-sm font-bold shadow-sm">
+                <div className="w-10 h-10 rounded-full bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center font-label-sm text-label-sm font-bold shadow-sm">
                   {thread.initials}
                 </div>
               )}
-              <span
-                className="absolute bottom-0 right-0 w-3 h-3 bg-badge-discount-text rounded-full ring-2 ring-surface-container-lowest"
-                title="Active now"
-              />
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-badge-discount-text ring-2 ring-surface" />
             </div>
-
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center space-x-space-2xs">
-                <h1 className="font-heading-sm text-heading-sm text-text-primary truncate">{thread.name}</h1>
-                {thread.verified && (
-                  <span title="Verified Merchant" className="flex-shrink-0">
-                    <Icon name="verified" filled className="text-primary text-[18px]" />
-                  </span>
-                )}
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-1">
+                <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">{thread.name}</h1>
+                {thread.verified && <Icon name="verified" filled className="text-primary text-[16px] shrink-0" />}
               </div>
-              <div className="flex items-center space-x-1 text-badge-discount-text font-caption text-caption truncate">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                <span className="font-medium">Open</span>
-                <span className="text-text-tertiary text-[10px]">•</span>
-                <span className="text-text-secondary truncate">{thread.status}</span>
-              </div>
+              <span className="font-caption text-caption text-text-secondary truncate">
+                Active now • {thread.status}
+              </span>
             </div>
           </div>
-
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center gap-space-2xs">
             <a
               aria-label={`Call ${thread.name}`}
               href={`tel:${thread.phone}`}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-text-secondary hover:text-primary hover:bg-surface-tint-blue transition-colors"
+              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-primary transition-colors"
             >
               <Icon name="call" className="text-[22px]" />
             </a>
             <button
+              aria-label="More options"
+              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
               type="button"
               onClick={onSecondary}
-              className="flex items-center gap-1 px-space-sm h-9 rounded-full bg-surface-container-low text-primary font-label-sm text-label-sm font-semibold hover:bg-surface-tint-blue transition-colors"
             >
-              <span>{thread.secondaryLabel}</span>
+              <Icon name="more_vert" className="text-[22px]" />
             </button>
-          </div>
-        </div>
-
-        {thread.deal && pinnedVisible && (
-          <div className="px-margin pb-space-xs">
-            <div className="bg-surface-container-low rounded-xl p-space-sm shadow-sm">
-              <div className="flex items-start justify-between gap-space-xs">
-                <div className="flex items-start space-x-space-xs min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center flex-shrink-0">
-                    <Icon name="confirmation_number" filled className="text-[20px]" />
-                  </div>
-                  <div className="min-w-0 flex flex-col">
-                    <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">
-                      {thread.deal.title}
-                    </span>
-                    <p className="text-text-secondary font-caption text-caption mt-0.5 truncate">
-                      Active deal context for this chat
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-space-xs shrink-0">
-                  <button
-                    type="button"
-                    onClick={onViewPass}
-                    className="flex items-center space-x-0.5 text-primary font-label-sm text-label-sm font-semibold hover:underline"
-                  >
-                    <span>View Pass</span>
-                    <Icon name="arrow_forward" className="text-[16px]" />
-                  </button>
-                  <button
-                    aria-label="Dismiss deal context"
-                    type="button"
-                    onClick={() => setPinnedVisible(false)}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-container transition-colors"
-                  >
-                    <Icon name="close" className="text-[16px]" />
-                  </button>
-                </div>
-              </div>
-              <div className="mt-space-xs pt-space-xs flex items-center justify-between bg-surface-container-lowest rounded-lg px-space-sm py-1.5">
-                <span className="text-text-tertiary font-caption text-[11px] uppercase tracking-wide">Pass Code</span>
-                <span className="font-label-sm text-label-sm font-bold text-text-primary tracking-wider">
-                  {thread.deal.code}
-                </span>
-              </div>
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
+              <Icon name="person" className="text-on-primary text-[18px]" />
             </div>
-          </div>
-        )}
-
-        <div className="px-margin pb-space-xs">
-          <div className="flex items-center space-x-2 py-1.5 px-space-sm bg-surface-subtle rounded-lg text-text-secondary font-caption text-[11px] leading-tight">
-            <Icon name="lock" filled className="text-[14px] text-primary flex-shrink-0" />
-            <span className="truncate">End-to-end encrypted • Protected under NDPR standards</span>
           </div>
         </div>
       </header>
 
-      <div className="flex flex-col space-y-space-md px-margin py-space-sm pb-space-sm">
-        <div className="flex justify-center my-space-xs">
-          <span className="bg-surface-container text-on-surface-variant font-caption text-caption px-space-sm py-0.5 rounded-full shadow-sm">
-            Today
-          </span>
-        </div>
+      {/* Main Conversation Stream */}
+      <div className="flex flex-col w-full flex-1 relative">
+        <div className="flex flex-col px-space-md py-space-sm space-y-space-md pb-44">
+          {/* Context Anchor Card — matches BusinessChatGeneralScreen */}
+          {thread.deal ? (
+            <div className="bg-surface-subtle p-space-sm rounded-xl shadow-sm flex flex-col space-y-space-2xs">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full font-label-sm font-semibold tracking-wide bg-secondary-container text-on-secondary-container">
+                  ACTIVE DEAL PASS
+                </span>
+                <span className="font-caption text-caption text-text-tertiary">Code: {thread.deal.code}</span>
+              </div>
+              <p className="font-label-sm text-label-sm text-on-surface-variant font-medium">
+                {thread.deal.title}
+              </p>
+              <button
+                className="inline-flex items-center gap-1 font-label-sm text-label-sm text-primary font-medium hover:underline self-start pt-1"
+                type="button"
+                onClick={onViewPass}
+              >
+                <span>View Deal Pass</span>
+                <Icon name="arrow_forward" className="text-[16px]" />
+              </button>
+            </div>
+          ) : (
+            <div className="bg-surface-subtle p-space-sm rounded-xl shadow-sm flex flex-col space-y-space-2xs">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full font-label-sm font-semibold tracking-wide bg-secondary-container text-on-secondary-container">
+                  DIRECT CONVERSATION
+                </span>
+                <span className="font-caption text-caption text-text-tertiary">Secure Socket</span>
+              </div>
+              <p className="font-label-sm text-label-sm text-on-surface-variant">
+                You are messaging directly with the verified management team at <span className="font-semibold text-on-surface">{thread.name}</span>.
+              </p>
+            </div>
+          )}
 
-        {messages.map((message) =>
-          message.sender === 'merchant' ? (
-            <div className="flex items-start space-x-space-xs pr-space-xl" key={message.id}>
-              {message.avatar ? (
-                <img
-                  className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-1 shadow-sm"
-                  alt={message.avatarAlt ?? message.author}
-                  src={message.avatar}
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center font-caption text-[11px] font-bold flex-shrink-0 mt-1">
-                  {thread.initials}
-                </div>
-              )}
-              <div className="flex flex-col space-y-1">
-                <div className="bg-surface-container-lowest text-text-primary rounded-2xl rounded-tl-sm p-space-sm shadow-sm border border-outline-variant/30">
+          {/* Date Divider */}
+          <div className="flex items-center justify-center my-space-2xs">
+            <span className="px-3 py-1 rounded-full bg-surface-container-high font-caption text-caption text-text-secondary font-medium tracking-wide">
+              TODAY
+            </span>
+          </div>
+
+          {/* Message Bubbles */}
+          {messages.map((message) =>
+            message.sender === 'merchant' ? (
+              <div className="flex flex-col items-start max-w-[82%]" key={message.id}>
+                <div className="bg-surface-canvas text-on-surface p-3.5 rounded-2xl rounded-tl-sm shadow-sm border border-outline-variant/30">
                   <div className="flex items-center space-x-1 mb-1">
                     <span className="font-label-sm text-[12px] font-semibold text-text-secondary">{message.author}</span>
                     {message.badge && (
@@ -208,103 +189,140 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                   </div>
                   <p className="font-body-md text-body-md leading-relaxed">{message.body}</p>
                 </div>
-                <span className="font-caption text-[11px] text-text-tertiary pl-2">{message.time}</span>
+                <span className="font-caption text-caption text-text-tertiary mt-1 px-1">{message.time}</span>
               </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-end space-y-1 pl-space-xl" key={message.id}>
-              <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm p-space-sm shadow-md">
-                <p className="font-body-md text-body-md leading-relaxed">{message.body}</p>
+            ) : (
+              <div className="flex flex-col items-end self-end max-w-[82%]" key={message.id}>
+                <div className="bg-primary-container text-on-primary p-3.5 rounded-2xl rounded-tr-sm shadow-sm">
+                  <p className="font-body-md text-body-md leading-relaxed">{message.body}</p>
+                </div>
+                <div className="flex items-center gap-1 mt-1 px-1">
+                  <span className="font-caption text-caption text-text-tertiary">{message.time}</span>
+                  <Icon
+                    name={message.delivered ? 'done_all' : 'done'}
+                    filled={message.delivered}
+                    className={`text-[15px] ${message.delivered ? 'text-primary' : 'text-text-tertiary'}`}
+                  />
+                </div>
               </div>
-              <div className="flex items-center space-x-1 pr-1">
-                <span className="font-caption text-[11px] text-text-tertiary">{message.time}</span>
-                <Icon name={message.delivered ? 'done_all' : 'done'} filled className="text-[14px] text-primary" />
-              </div>
-            </div>
-          ),
-        )}
-
-        {thread.deal && (
-          <div className="flex justify-center pt-space-xs">
-            <div className="w-full max-w-[320px] bg-surface-tint-blue rounded-xl p-space-sm flex items-center gap-space-sm">
-              <div className="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shrink-0">
-                <Icon name="local_activity" filled className="text-[18px]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-label-sm text-label-sm font-semibold text-text-primary leading-tight">
-                  Pass reminder: show {thread.deal.code} at checkout
-                </p>
-                <p className="font-caption text-caption text-text-secondary mt-0.5">
-                  20% off is applied when your server scans the pass.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onViewPass}
-                className="shrink-0 text-primary font-label-sm text-label-sm font-bold hover:underline"
-              >
-                View
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <footer className="sticky bottom-0 z-30 bg-surface-container-lowest/95 backdrop-blur-md shadow-lg pt-space-xs pb-space-sm px-margin flex flex-col space-y-space-xs">
-        <div className="flex items-center space-x-space-xs overflow-x-auto py-1 -mx-margin px-margin no-scrollbar">
-          {thread.quickReplies.map((reply) => (
-            <button
-              key={reply}
-              type="button"
-              onClick={() => useReply(reply)}
-              className="flex-shrink-0 bg-surface-subtle hover:bg-surface-tint-blue text-text-secondary hover:text-primary font-label-sm text-label-sm py-1.5 px-space-sm rounded-full transition-colors shadow-sm"
-            >
-              {reply}
-            </button>
-          ))}
+            ),
+          )}
         </div>
 
-        <form className="flex items-center space-x-space-xs" onSubmit={sendMessage}>
-          <button
-            aria-label="Add attachment or image"
-            type="button"
-            onClick={() => showToast('Attachment picker coming soon')}
-            className="w-11 h-11 rounded-full bg-surface-container-low text-text-secondary hover:text-primary flex items-center justify-center transition-colors flex-shrink-0"
-          >
-            <Icon name="add" className="text-[22px]" />
-          </button>
+        {/* Modal Backdrop Dim for Attachment options */}
+        {sheetOpen && (
+          <div
+            className="fixed inset-0 bg-on-surface/40 backdrop-blur-[2px] z-30"
+            onClick={() => setSheetOpen(false)}
+          />
+        )}
 
-          <div className="flex-1 flex items-center bg-surface-container-low rounded-full px-space-sm py-1.5 focus-within:bg-surface-container-lowest focus-within:shadow-sm transition-all">
-            <input
-              className="w-full bg-transparent border-none outline-none font-body-md text-body-md text-text-primary placeholder:text-text-tertiary px-1"
-              placeholder={`Message ${thread.name}...`}
-              type="text"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              ref={inputRef}
-            />
-            <button
-              aria-label="Add emoji"
-              type="button"
-              onClick={() => showToast('Emoji picker coming soon')}
-              className="text-text-tertiary hover:text-text-secondary transition-colors p-1 flex items-center"
-            >
-              <Icon name="sentiment_satisfied" className="text-[20px]" />
-            </button>
+        {/* Bottom Interactive Deck: Sheet + Quick Replies + Composer */}
+        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 flex flex-col justify-end">
+          {/* Attachment Modal Card — identical to Business chat */}
+          {sheetOpen && (
+            <div className="bg-surface-canvas rounded-t-3xl shadow-xl px-space-md pt-3 pb-space-md flex flex-col space-y-space-md">
+              <div className="w-10 h-1.5 bg-outline-variant/60 rounded-full mx-auto" />
+              <div className="flex items-center justify-between">
+                <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Share Attachment</h2>
+                <button
+                  aria-label="Dismiss attachment options"
+                  className="w-8 h-8 rounded-full bg-surface-subtle flex items-center justify-center text-text-secondary hover:text-on-surface"
+                  type="button"
+                  onClick={() => setSheetOpen(false)}
+                >
+                  <Icon name="close" className="text-[20px]" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-space-sm">
+                {ATTACHMENT_OPTIONS.map((option) => (
+                  <button
+                    className="flex items-center gap-3 p-3 bg-surface-subtle hover:bg-surface-container transition-colors rounded-2xl text-left group"
+                    key={option.title}
+                    type="button"
+                    onClick={() => handleAttachment(option.title)}
+                  >
+                    <div
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform ${option.iconBox}`}
+                    >
+                      <Icon name={option.icon} className="text-[22px]" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md text-on-surface font-semibold truncate">
+                        {option.title}
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary truncate">{option.sub}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quick Replies chips row */}
+          {!sheetOpen && thread.quickReplies?.length > 0 && (
+            <div className="px-space-md py-1 bg-surface-canvas/90 backdrop-blur-md flex items-center gap-space-xs overflow-x-auto no-scrollbar">
+              {thread.quickReplies.map((reply) => (
+                <button
+                  key={reply}
+                  type="button"
+                  onClick={() => useReply(reply)}
+                  className="flex-shrink-0 bg-surface-subtle hover:bg-surface-tint-blue text-text-secondary hover:text-primary font-label-sm text-label-sm py-1.5 px-space-sm rounded-full transition-colors shadow-sm"
+                >
+                  {reply}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Composer Deck */}
+          <div className="bg-surface-canvas p-space-sm pb-safe shadow-[0_-4px_16px_rgba(0,0,0,0.05)] border-t border-border">
+            <form className="flex items-center gap-space-xs" onSubmit={sendMessage}>
+              <button
+                aria-label="Toggle attachments menu"
+                className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm transition-all active:scale-95 ${
+                  sheetOpen ? 'bg-primary text-on-primary' : 'bg-surface-subtle text-text-secondary'
+                }`}
+                type="button"
+                onClick={() => setSheetOpen((open) => !open)}
+              >
+                <Icon
+                  name="add"
+                  className={`text-[22px] transition-transform duration-200 ${sheetOpen ? 'rotate-45' : ''}`}
+                />
+              </button>
+              <div className="flex-1 bg-surface-subtle rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  className="w-full bg-transparent font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none"
+                  placeholder={`Message ${thread.name}...`}
+                  type="text"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                />
+                <button
+                  aria-label="Insert emoji"
+                  className="text-text-tertiary hover:text-on-surface flex items-center justify-center"
+                  type="button"
+                  onClick={() => showToast('Emoji keyboard')}
+                >
+                  <Icon name="sentiment_satisfied" className="text-[20px]" />
+                </button>
+              </div>
+              <button
+                aria-label="Send message"
+                className="w-11 h-11 rounded-full bg-primary text-on-primary flex items-center justify-center flex-shrink-0 shadow-sm transition-transform active:scale-95"
+                type="submit"
+              >
+                <Icon name={draft.trim().length > 0 ? 'send' : 'mic'} className="text-[20px]" />
+              </button>
+            </form>
           </div>
-
-          <button
-            aria-label="Send message"
-            type="submit"
-            className="w-11 h-11 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md active:scale-95 transition-transform flex-shrink-0"
-          >
-            <Icon name="send" className="text-[20px] ml-0.5" />
-          </button>
-        </form>
-      </footer>
+        </div>
+      </div>
 
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[400px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

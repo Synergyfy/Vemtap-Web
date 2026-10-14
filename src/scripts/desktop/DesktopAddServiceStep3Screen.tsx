@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 
 interface DesktopAddServiceStep3ScreenProps {
@@ -9,6 +11,7 @@ interface DesktopAddServiceStep3ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const CATCHMENT_MAP_IMAGE =
@@ -116,7 +119,9 @@ export function DesktopAddServiceStep3Screen({
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopAddServiceStep3ScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [leadNotice, setLeadNotice] = useState('Same day (2 hrs)');
   const [horizon, setHorizon] = useState('30 days in advance');
   const [concurrent, setConcurrent] = useState(2);
@@ -131,7 +136,7 @@ export function DesktopAddServiceStep3Screen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="w-full max-w-7xl mx-auto px-margin py-space-xl">
         <div className="mb-8">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
@@ -644,6 +649,6 @@ export function DesktopAddServiceStep3Screen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

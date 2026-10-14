@@ -53,7 +53,7 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrd
 
   if (!order) {
     return (
-      <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders">
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders" withCustomerRail>
         <div className="w-full bg-surface-canvas min-h-[calc(100vh-80px)] flex flex-col items-center justify-center gap-4">
           <Icon name="receipt_long" className="text-[48px] text-text-tertiary" />
           <p className="font-body-lg text-body-lg text-text-secondary">No order found.</p>
@@ -85,7 +85,7 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrd
   ];
 
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders">
+    <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders" withCustomerRail>
       <div className="w-full bg-surface-canvas min-h-[calc(100vh-80px)]">
         <div className="max-w-7xl mx-auto px-6 lg:px-12 py-6">
           <nav aria-label="Breadcrumb" className="mb-4">

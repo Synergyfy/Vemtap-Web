@@ -42,6 +42,13 @@ export interface Announcement {
   published: boolean;
 }
 
+/**
+ * Audiences a customer-dashboard visitor belongs to. `AnnouncementBanner`
+ * defaults to this set so consumer surfaces filter business-only
+ * announcements out.
+ */
+export const CUSTOMER_AUDIENCES: readonly AnnouncementAudience[] = ['all', 'new-customers', 'returning'];
+
 const MONTHS = 1000 * 60 * 60 * 24 * 30;
 
 export const ANNOUNCEMENTS: readonly Announcement[] = [

@@ -53,7 +53,7 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
   const goBack = () => onBackToCatalog?.();
 
   return (
-    <MerchantShell activeNav="catalog" onNav={onNav}>
+    <MerchantShell activeNav="business-catalog" onNav={onNav}>
       <nav
         aria-label="Breadcrumb"
         className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm mb-space-md flex-wrap"

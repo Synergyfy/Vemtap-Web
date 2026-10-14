@@ -163,7 +163,7 @@ export function DesktopServicesCategoriesScreen({
   };
 
   return (
-    <MerchantShell activeNav="catalog" onNav={onNav}>
+    <MerchantShell activeNav="business-catalog" onNav={onNav}>
       <div className="flex flex-col w-full space-y-space-xl">
         {/* Top Navigation & Context Hierarchy */}
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-lg">

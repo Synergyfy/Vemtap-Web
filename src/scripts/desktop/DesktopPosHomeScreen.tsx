@@ -142,7 +142,7 @@ export function DesktopPosHomeScreen({
   };
 
   return (
-    <PosTerminalChrome activeNav="register" onNav={onNav}>
+    <PosTerminalChrome activeNav="home" onNav={onNav}>
       {/* Operational Hub Context Strip */}
       <section className="w-full py-space-md">
         <div className="w-full bg-surface-canvas rounded-xl shadow-sm p-space-lg flex flex-col xl:flex-row items-start xl:items-center justify-between gap-space-md">

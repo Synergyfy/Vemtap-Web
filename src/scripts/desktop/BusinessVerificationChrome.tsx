@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Logo } from '../../components/ui/Logo';
 
 export type BusinessVerificationNavKey =
   | 'profile'
@@ -42,8 +43,8 @@ export function BusinessVerificationChrome({
           <div className="h-16 flex items-center justify-between">
             <div className="flex items-center gap-space-lg">
               <button type="button" onClick={onBrand} className="flex items-center gap-space-xs">
-                <span className="font-heading-md text-heading-md text-primary tracking-tight font-bold">VEMTAP</span>
-                <span className="px-space-xs py-space-2xs rounded-full bg-surface-container-high text-primary font-caption text-caption uppercase font-semibold tracking-wider">
+                <Logo variant="full" className="h-10 md:h-11 w-auto" />
+                <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
                   BUSINESS
                 </span>
               </button>

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
-import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { BusinessPortalChrome } from './BusinessPortalChrome';
 
 interface DesktopBusinessMoreScreenProps {
-  onNav: (key: BusinessPortalNavKey) => void;
+  onNav: (key: string) => void;
   onOpenPos: () => void;
   onOpenAnalytics: () => void;
   onOpenMarketing: () => void;
@@ -13,6 +13,7 @@ interface DesktopBusinessMoreScreenProps {
   onOpenSupport: () => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
+  onOpenStoreOrdering?: (sub?: 'dashboard' | 'qr' | 'settings') => void;
 }
 
 interface RowData {
@@ -55,6 +56,7 @@ export function DesktopBusinessMoreScreen({
   onOpenSupport,
   onSwitchConsumer,
   onSignOut,
+  onOpenStoreOrdering,
 }: DesktopBusinessMoreScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -73,6 +75,44 @@ export function DesktopBusinessMoreScreen({
   };
 
   const sections: SectionData[] = [
+    {
+      key: 'store-ordering',
+      label: 'Store Ordering & QR Touchpoints',
+      badge: 'Live',
+      badgeClass: GREEN_BADGE,
+      rows: [
+        {
+          key: 'ordering-dash',
+          icon: 'qr_code_scanner',
+          title: 'Store Ordering Dashboard',
+          sub: 'Live customer orders from QR codes & storefront',
+          badge: 'Live',
+          badgeClass: GREEN_BADGE,
+          onClick: () =>
+            onOpenStoreOrdering
+              ? onOpenStoreOrdering('dashboard')
+              : onNav('store-ordering-dashboard'),
+        },
+        {
+          key: 'ordering-qr',
+          icon: 'qr_code_2',
+          title: 'QR Codes & Placement',
+          sub: 'Store, Section, Product & Table placement codes',
+          onClick: () =>
+            onOpenStoreOrdering ? onOpenStoreOrdering('qr') : onNav('store-ordering-qr'),
+        },
+        {
+          key: 'ordering-settings',
+          icon: 'tune',
+          title: 'Ordering Settings',
+          sub: 'Pickup lead times, branch policies & rules',
+          onClick: () =>
+            onOpenStoreOrdering
+              ? onOpenStoreOrdering('settings')
+              : onNav('store-ordering-settings'),
+        },
+      ],
+    },
     {
       key: 'pos',
       label: 'Point of Sale (POS)',
@@ -273,7 +313,7 @@ export function DesktopBusinessMoreScreen({
   );
 
   return (
-    <BusinessPortalChrome onNav={onNav}>
+    <BusinessPortalChrome activeNav="more" onNav={onNav}>
       <div className="w-full py-space-xl space-y-space-lg">
         {/* Eyebrow, title & subtitle */}
         <section className="flex flex-col gap-space-2xs max-w-3xl">

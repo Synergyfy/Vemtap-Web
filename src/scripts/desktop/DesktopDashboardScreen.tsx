@@ -1,7 +1,9 @@
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { AnnouncementBanner } from '../../components/AnnouncementBanner';
 import { useLocation } from '../../context/LocationContext';
 import { useProfile } from '../../context/ProfileContext';
+import type { AnnouncementDestination } from '../../scripts/announcementsData';
 
 interface DesktopDashboardScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -136,8 +138,37 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
   const { fullName } = useProfile();
   const { district, city } = useLocation();
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+
+  const handleAnnouncementNavigate = (destination: AnnouncementDestination) => {
+    switch (destination) {
+      case 'deals':
+        onNav('deals');
+        break;
+      case 'featured':
+        onNav('exclusive-deals');
+        break;
+      case 'my-deals':
+        onNav('my-deals');
+        break;
+      case 'orders':
+        onNav('orders');
+        break;
+      case 'saved':
+        onNav('cart');
+        break;
+      case 'subscription':
+        onNav('for-business');
+        break;
+      case 'dashboard':
+      case 'notifications':
+      default:
+        onNav('dashboard');
+        break;
+    }
+  };
+
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="dashboard">
+    <DesktopPage withHeader withFooter onNav={onNav} activeNav="dashboard" withCustomerRail>
       <div className="w-full bg-surface-canvas pb-14">
         <div className="w-full bg-surface-subtle pb-14">
           <div className="max-w-7xl mx-auto px-6 lg:px-12">
@@ -192,6 +223,8 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
                 </button>
               </div>
             </section>
+
+            <AnnouncementBanner className="mb-10" onNavigate={handleAnnouncementNavigate} />
 
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
               {STATS.map((stat) => (

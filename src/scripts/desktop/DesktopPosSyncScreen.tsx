@@ -67,7 +67,7 @@ export function DesktopPosSyncScreen({ onNav }: DesktopPosSyncScreenProps) {
   };
 
   return (
-    <PosTerminalChrome onNav={onNav}>
+    <PosTerminalChrome activeNav="hardware-and-sync" onNav={onNav}>
       {/* Status Banner (Connection Restored) */}
       <div className="py-space-xs bg-badge-discount-bg text-badge-discount-text">
         <div className="w-full flex items-center justify-between">

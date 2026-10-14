@@ -156,7 +156,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
   const showKemi = (roleFilter === 'all' || roleFilter === 'pending') && matches('kemi davies kemi.d@example.com pending invite wuse branch');
 
   return (
-    <EnterpriseShell activeNav="settings" onNav={onNav}>
+    <EnterpriseShell activeNav="business-staff" onNav={onNav}>
       <div className="w-full py-space-xl flex flex-col gap-space-xl">
         <div className="flex flex-col gap-space-sm">
           <nav className="flex items-center gap-space-xs text-text-tertiary font-label-sm text-label-sm">

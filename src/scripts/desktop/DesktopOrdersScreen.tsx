@@ -81,7 +81,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
   const [activeTab, setActiveTab] = useState('active');
 
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders">
+    <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders" withCustomerRail>
       <div className="w-full bg-surface-canvas">
         <div className="w-full bg-surface-subtle pb-14">
           <div className="max-w-7xl mx-auto px-6 lg:px-12">

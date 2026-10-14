@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 
 interface DesktopProductPricingConfigScreenProps {
@@ -8,6 +10,7 @@ interface DesktopProductPricingConfigScreenProps {
   onDraftChange: (patch: Partial<ProductDraft>) => void;
   onSaved: () => void;
   onCancel: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const PRODUCT_IMAGE =
@@ -21,7 +24,9 @@ export function DesktopProductPricingConfigScreen({
   onDraftChange,
   onSaved,
   onCancel,
+  onNav,
 }: DesktopProductPricingConfigScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [inStock, setInStock] = useState(true);
   const [wusePrice, setWusePrice] = useState('12,000');
   const [garkiPrice, setGarkiPrice] = useState('12,500');
@@ -36,7 +41,7 @@ export function DesktopProductPricingConfigScreen({
   const perBranchSelected = draft.pricingMode === 'custom';
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="max-w-7xl mx-auto w-full px-margin py-space-xl flex flex-col gap-space-2xl">
         <section className="flex flex-col md:flex-row md:items-end justify-between gap-space-lg bg-surface-container-lowest p-space-xl rounded-xl shadow-sm">
           <div className="flex flex-col gap-space-xs">
@@ -564,6 +569,6 @@ export function DesktopProductPricingConfigScreen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }
