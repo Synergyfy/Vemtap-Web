@@ -1,10 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
+import { useLocation } from '../context/LocationContext';
+import { useProfile } from '../context/ProfileContext';
+import {
+  activeAnnouncements,
+  type AnnouncementDestination,
+  type AnnouncementTone,
+} from './announcementsData';
 
-export type DashboardTarget = 'my-deals' | 'orders' | 'savings' | 'notifications' | 'cart' | 'scan' | 'activity';
+export type DashboardTarget =
+  | 'my-deals'
+  | 'orders'
+  | 'savings'
+  | 'notifications'
+  | 'cart'
+  | 'scan'
+  | 'activity'
+  | 'saved'
+  | 'subscription'
+  | 'dashboard'
+  | 'featured-deals';
 
 interface DashboardScreenProps {
   onTab: (tab: MobileTabKey) => void;
@@ -35,7 +53,16 @@ interface HeroSlide {
   pill: string;
   title: string;
   subtitle: string;
+  cta?: string;
+  destination?: AnnouncementDestination;
 }
+
+const TONE_LABEL: Record<AnnouncementTone, string> = {
+  promo: 'Promo',
+  info: 'Update',
+  upgrade: 'Upgrade',
+  alert: 'Alert',
+};
 
 const HERO_SLIDES: HeroSlide[] = [
   {
@@ -120,15 +147,44 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
 
 export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreenProps) {
   const [locationOpen, setLocationOpen] = useState(false);
+  const { district, city, radius, setLocation } = useLocation();
   const [hero, setHero] = useState(0);
   const [favs, setFavs] = useState<Record<string, boolean>>({});
+  const { fullName } = useProfile();
 
-  useEffect(() => {
-    const id = window.setInterval(() => setHero((current) => (current + 1) % HERO_SLIDES.length), 5000);
-    return () => window.clearInterval(id);
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+
+  // Admin-configured announcements rotate in the dashboard banner; when the
+  // (local stand-in for `GET /announcements`) list is empty we keep the
+  // editorial slides so the banner never renders blank.
+  const banners = useMemo<HeroSlide[]>(() => {
+    const active = activeAnnouncements();
+    if (active.length === 0) return HERO_SLIDES;
+    return active.map((item) => ({
+      image: item.image || CAFE_IMG,
+      pill: TONE_LABEL[item.tone],
+      title: item.title,
+      subtitle: item.message,
+      cta: item.cta,
+      destination: item.destination,
+    }));
   }, []);
 
-  const slide = HERO_SLIDES[hero];
+  const goToDestination = (destination?: AnnouncementDestination) => {
+    if (!destination) {
+      onTab('deals');
+      return;
+    }
+    if (destination === 'deals' || destination === 'featured') onTab('deals');
+    else onNavigate(destination === 'dashboard' ? 'dashboard' : destination);
+  };
+
+  useEffect(() => {
+    const id = window.setInterval(() => setHero((current) => (current + 1) % banners.length), 5000);
+    return () => window.clearInterval(id);
+  }, [banners.length]);
+
+  const slide = banners[hero % banners.length] ?? banners[0];
 
   const toggleFav = (id: string) => setFavs((current) => ({ ...current, [id]: !current[id] }));
 
@@ -137,14 +193,18 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
       <main className="flex flex-col w-full gap-space-lg pb-28">
         <section className="flex items-center justify-between px-margin pt-space-xs">
           <div className="flex flex-col min-w-0">
-            <h1 className="font-heading-md text-heading-md text-on-surface tracking-tight truncate">Hello, Zainab 👋</h1>
+            <h1 className="font-heading-md text-heading-md text-on-surface tracking-tight truncate">
+              Hello, {firstName} 👋
+            </h1>
             <button
               type="button"
               onClick={() => setLocationOpen(true)}
               className="flex items-center gap-space-2xs text-text-secondary hover:text-primary transition-colors text-left mt-0.5"
             >
               <Icon name="location_on" className="text-primary text-[18px]" />
-              <span className="font-label-md text-label-md text-text-secondary font-medium">Apo, Abuja</span>
+              <span className="font-label-md text-label-md text-text-secondary font-medium">
+                {district}, {city}
+              </span>
               <Icon name="expand_more" className="text-[16px] text-text-tertiary" />
             </button>
           </div>
@@ -207,16 +267,16 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
                 <div className="flex items-center justify-between mt-space-2xs">
                   <button
                     type="button"
-                    onClick={() => onTab('deals')}
+                    onClick={() => goToDestination(slide.destination)}
                     className="h-9 px-space-md rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center gap-1 shadow-md hover:bg-primary transition-colors active:scale-95"
                   >
-                    <span>Explore Deals</span>
+                    <span>{slide.cta ?? 'Explore Deals'}</span>
                     <Icon name="arrow_forward" className="text-[16px]" />
                   </button>
                   <div className="flex items-center gap-1.5 pr-1">
-                    {HERO_SLIDES.map((item, index) => (
+                    {banners.map((item, index) => (
                       <button
-                        key={item.title}
+                        key={`${item.title}-${index}`}
                         type="button"
                         aria-label={`Slide ${index + 1}`}
                         onClick={() => setHero(index)}
@@ -612,7 +672,13 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
         </div>
       </main>
 
-      <LocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+      <LocationRadiusModal
+        open={locationOpen}
+        onClose={() => setLocationOpen(false)}
+        onApply={setLocation}
+        district={district}
+        radius={radius}
+      />
       <MobileTabBar active="account" onTab={onTab} />
     </AppScreen>
   );

@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
+import { useLocation } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useAuth } from '../context/AuthContext';
 
@@ -50,6 +51,7 @@ function GreetingHeader({
   onNotifications: () => void;
   onAccount: () => void;
 }) {
+  const { district, city, radius } = useLocation();
   return (
     <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="px-margin py-3 flex items-center justify-between">
@@ -64,13 +66,15 @@ function GreetingHeader({
             className="flex items-center gap-1.5 text-left group transition-transform active:scale-95"
           >
             <Icon name="location_on" className="text-primary text-[20px]" filled />
-            <span className="font-button-primary text-button-primary text-text-primary">Apo, Abuja</span>
+            <span className="font-button-primary text-button-primary text-text-primary">
+              {district}, {city}
+            </span>
             <Icon
               name="keyboard_arrow_down"
               className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform"
             />
             <span className="ml-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-medium">
-              Within 5 km
+              Within {radius} km
             </span>
           </button>
         </div>
@@ -466,6 +470,7 @@ export function DealsScreen({
   const { claimed } = useAuth();
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [locationOpen, setLocationOpen] = useState(false);
+  const { district, city, radius, setLocation } = useLocation();
 
   return (
     <AppScreen>
@@ -481,11 +486,11 @@ export function DealsScreen({
               >
                 <Icon name="location_on" className="text-primary text-[18px] shrink-0" filled />
                 <span className="font-label-md text-label-md font-bold text-text-primary group-hover:text-primary transition-colors">
-                  Apo, Abuja
+                  {district}, {city}
                 </span>
                 <Icon name="keyboard_arrow_down" className="text-text-secondary text-[18px]" />
                 <span className="ml-1 px-1.5 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-[11px] font-medium">
-                  Within 5 km
+                  Within {radius} km
                 </span>
               </button>
             </div>
@@ -629,7 +634,9 @@ export function DealsScreen({
 
             <div className="px-margin mb-space-sm flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <span className="font-label-md text-label-md text-text-primary font-bold">Deals in Apo, Abuja</span>
+                <span className="font-label-md text-label-md text-text-primary font-bold">
+                  Deals in {district}, {city}
+                </span>
                 <span className="font-caption text-caption text-text-tertiary">(6)</span>
               </div>
               <div className="flex items-center p-0.5 rounded-lg bg-surface-container border border-border-subtle">
@@ -703,7 +710,13 @@ export function DealsScreen({
       )}
 
       <MobileTabBar active="deals" onTab={onTab} />
-      <LocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+      <LocationRadiusModal
+        open={locationOpen}
+        onClose={() => setLocationOpen(false)}
+        onApply={setLocation}
+        district={district}
+        radius={radius}
+      />
     </AppScreen>
   );
 }

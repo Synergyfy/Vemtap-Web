@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { CalendarPicker } from '../components/ui/CalendarPicker';
+import { FormDropdown, type DropdownOption } from '../components/ui/FormDropdown';
+import { SheetShell } from '../components/sheets/SheetShell';
 import { useBooking } from '../context/BookingContext';
-import { SPA_DAYS, SPA_MERCHANT, SPA_TIME_PERIODS, SPA_THERAPISTS, type SpaDay } from './spaBookingData';
+import { SPA_MERCHANT, spaIsDayOpen } from './spaBookingData';
 
 interface SpaBookingScheduleScreenProps {
   onBack: () => void;
@@ -11,75 +14,11 @@ interface SpaBookingScheduleScreenProps {
 
 const naira = (value: number) => `₦${value.toLocaleString('en-US')}`;
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DAY_NOTES: { note: string; tone: SpaDay['noteTone'] }[] = [
-  { note: 'Available', tone: 'discount' },
-  { note: 'Few left', tone: 'tertiary' },
-  { note: 'Open', tone: 'discount' },
-  { note: '4 slots', tone: 'tertiary' },
-  { note: 'Popular', tone: 'default' },
-];
-
-function buildMonthDays(offset: number): SpaDay[] {
-  const target = new Date(2024, 9 + offset, 1);
-  const year = target.getFullYear();
-  const month = target.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startDay = offset === 0 ? 16 : 1;
-  const endDay = Math.min(daysInMonth, startDay + 13);
-  const result: SpaDay[] = [];
-  for (let d = startDay; d <= endDay; d += 1) {
-    const date = new Date(year, month, d);
-    const noteInfo = DAY_NOTES[(d - startDay) % DAY_NOTES.length];
-    result.push({
-      id: `cal-${offset}-d${d}`,
-      weekday: WEEKDAYS[date.getDay()],
-      day: d,
-      monthLabel: `${MONTH_NAMES[month]} ${year}`,
-      note: noteInfo.note,
-      noteTone: noteInfo.tone,
-      dateLong: date.toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-      dateShort: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-    });
-  }
-  return result;
-}
-
 export function SpaBookingScheduleScreen({ onBack, onReview }: SpaBookingScheduleScreenProps) {
   const booking = useBooking();
-  const [periodId, setPeriodId] = useState('afternoon');
-  const [monthOffset, setMonthOffset] = useState(0);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
-  const activePeriod = SPA_TIME_PERIODS.find((period) => period.id === periodId) ?? SPA_TIME_PERIODS[1];
-
-  const browsedDays = useMemo(
-    () => (monthOffset === 0 ? SPA_DAYS : buildMonthDays(monthOffset)),
-    [monthOffset],
-  );
-  const browsedMonthLabel = useMemo(() => {
-    const target = new Date(2024, 9 + monthOffset, 1);
-    return `${MONTH_NAMES[target.getMonth()]} ${target.getFullYear()}`;
-  }, [monthOffset]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -92,16 +31,25 @@ export function SpaBookingScheduleScreen({ onBack, onReview }: SpaBookingSchedul
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
-  const goToMonth = (nextOffset: number) => {
-    if (nextOffset < 0 || nextOffset > 2) return;
-    setMonthOffset(nextOffset);
-    if (nextOffset === 0) {
-      booking.setDay('thu-17');
-    } else {
-      const days = buildMonthDays(nextOffset);
-      if (days[0]) booking.setDayObj(days[0]);
-    }
-  };
+  const periodOptions: DropdownOption[] = booking.periods.map((period) => {
+    const openCount = period.slots.filter((slot) => slot.status === 'available').length;
+    return {
+      value: period.id,
+      label: period.label,
+      description: openCount === 0 ? 'No open times' : `${openCount} time${openCount === 1 ? '' : 's'} available`,
+    };
+  });
+
+  const timeOptions: DropdownOption[] = useMemo(
+    () =>
+      booking.activePeriod.slots.map((slot) => ({
+        value: slot.time,
+        label: slot.time,
+        description: slot.status === 'booked' ? 'Booked — not selectable' : 'Available',
+        disabled: slot.status === 'booked',
+      })),
+    [booking.activePeriod],
+  );
 
   return (
     <AppScreen>
@@ -131,7 +79,7 @@ export function SpaBookingScheduleScreen({ onBack, onReview }: SpaBookingSchedul
         <section className="flex flex-col gap-2 p-4 bg-surface-subtle border-b border-border-subtle">
           <div className="flex items-center justify-between">
             <p className="text-on-surface text-label-md font-label-md font-semibold">
-              Step 1 of 2: Date, Time &amp; Therapist
+              Step 1 of 2: Date, Time &amp; Details
             </p>
             <span className="px-2 py-0.5 rounded-full text-caption text-caption font-semibold bg-surface-container text-primary">
               1 / 2
@@ -220,27 +168,6 @@ export function SpaBookingScheduleScreen({ onBack, onReview }: SpaBookingSchedul
                 </div>
               </div>
             ))}
-            {booking.addons.map((addon) => (
-              <div
-                key={addon.id}
-                className="flex items-center justify-between p-3 rounded-lg border border-dashed border-border-subtle bg-surface-subtle"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-badge-discount-bg text-badge-discount-text">
-                    <Icon name="add" className="text-[18px]" />
-                  </div>
-                  <div className="truncate">
-                    <p className="text-on-surface text-label-md text-label-md font-semibold truncate">{addon.name}</p>
-                    <p className="text-text-secondary text-caption text-caption">
-                      {addon.minutes} mins • {naira(addon.price)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-badge-discount-bg text-badge-discount-text">
-                  <Icon name="check" className="text-[16px]" />
-                </div>
-              </div>
-            ))}
           </div>
           <div className="flex items-center justify-between mt-3 pt-2 text-caption text-caption border-t border-dashed border-border-subtle text-text-secondary">
             <span>Est. Session Subtotal</span>
@@ -248,191 +175,112 @@ export function SpaBookingScheduleScreen({ onBack, onReview }: SpaBookingSchedul
           </div>
         </section>
 
+        {/* BUG-024: Specialist selection is Coming Soon — kept for a later release. */}
         <section className="p-4 border-b border-border-subtle">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Icon name="face" className="text-primary text-[20px]" />
               <h3 className="text-on-surface text-label-md text-label-md font-bold uppercase tracking-wider">
-                Preferred Therapist
+                Preferred Specialist
               </h3>
             </div>
-            <span className="text-caption text-caption text-text-secondary">Instant match</span>
           </div>
-          <div className="flex gap-2.5 overflow-x-auto pb-1 no-scrollbar">
-            {SPA_THERAPISTS.map((therapist) => {
-              const selected = booking.therapist.id === therapist.id;
-              return (
-                <button
-                  key={therapist.id}
-                  type="button"
-                  onClick={() => booking.setTherapist(therapist.id)}
-                  className={`flex flex-col items-center p-3 rounded-xl text-center min-w-[120px] shrink-0 transition-all active:scale-95 ${
-                    selected
-                      ? 'bg-surface-tint-blue ring-2 ring-primary-container/30'
-                      : 'bg-surface-subtle hover:bg-surface-container-low'
-                  }`}
-                >
-                  {therapist.image ? (
-                    <div className="w-11 h-11 rounded-full overflow-hidden mb-2 bg-surface-container-high">
-                      <img className="w-full h-full object-cover" alt={therapist.name} src={therapist.image} />
-                    </div>
-                  ) : (
-                    <div className="w-11 h-11 rounded-full bg-primary text-on-primary flex items-center justify-center mb-2 shadow-sm">
-                      <Icon name="bolt" className="text-[20px]" />
-                    </div>
-                  )}
-                  <span className="text-label-md text-label-md text-on-surface font-semibold truncate w-full">
-                    {therapist.name}
-                  </span>
-                  <span
-                    className={`text-caption text-caption truncate w-full ${
-                      selected ? 'text-primary' : 'text-text-secondary'
-                    }`}
-                  >
-                    {therapist.hint ?? therapist.role}
-                  </span>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-3 p-3.5 rounded-xl border border-dashed border-border-subtle bg-surface-subtle">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-text-tertiary">
+              <Icon name="hourglass_empty" className="text-[20px]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-label-md text-label-md font-semibold text-on-surface">Specialist selection</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-surface-container text-text-tertiary">
+                  Coming Soon
+                </span>
+              </div>
+              <p className="text-caption text-caption text-text-secondary mt-0.5">
+                You&apos;ll be matched with the next available specialist at check-in.
+              </p>
+            </div>
           </div>
         </section>
 
-        <section className="py-4 border-b border-border-subtle">
-          <div className="px-4 flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Icon name="calendar_month" className="text-primary text-[20px]" />
-              <h3 className="text-on-surface text-label-md text-label-md font-bold uppercase tracking-wider">
-                {browsedMonthLabel}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                aria-label="Previous month"
-                type="button"
-                disabled={monthOffset <= 0}
-                onClick={() => goToMonth(monthOffset - 1)}
-                className="flex size-8 items-center justify-center rounded-lg border border-border-subtle text-text-secondary hover:bg-surface-container-low disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Icon name="chevron_left" className="text-[18px]" />
-              </button>
-              <button
-                aria-label="Next month"
-                type="button"
-                disabled={monthOffset >= 2}
-                onClick={() => goToMonth(monthOffset + 1)}
-                className="flex size-8 items-center justify-center rounded-lg border border-border-subtle text-text-secondary hover:bg-surface-container-low disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Icon name="chevron_right" className="text-[18px]" />
-              </button>
-            </div>
+        {/* BUG-020: single-line date control opening a full calendar. */}
+        <section className="p-4 border-b border-border-subtle">
+          <div className="flex items-center gap-1.5 mb-3">
+            <Icon name="calendar_month" className="text-primary text-[20px]" />
+            <h3 className="text-on-surface text-label-md text-label-md font-bold uppercase tracking-wider">
+              Preferred Date
+            </h3>
           </div>
-          <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 no-scrollbar snap-x">
-            {browsedDays.map((day) => {
-              const selected = booking.day.id === day.id;
-              const noteTone =
-                day.noteTone === 'discount'
-                  ? 'text-badge-discount-text'
-                  : day.noteTone === 'tertiary'
-                    ? 'text-tertiary'
-                    : 'text-text-tertiary';
-              return (
-                <button
-                  key={day.id}
-                  type="button"
-                  onClick={() => booking.setDayObj(day)}
-                  className={`flex w-16 shrink-0 flex-col items-center rounded-xl p-2.5 text-center snap-start transition ${
-                    selected
-                      ? 'bg-primary-container text-white shadow-md ring-2 ring-primary-container ring-offset-2'
-                      : 'border border-border-subtle bg-surface-container-lowest hover:border-outline-variant'
-                  }`}
-                >
-                  <span className={`text-caption text-caption font-medium ${selected ? 'text-white/90' : 'text-text-secondary'}`}>
-                    {day.weekday}
-                  </span>
-                  <span className={`text-heading-sm text-heading-sm font-bold my-0.5 ${selected ? 'text-white' : 'text-on-surface'}`}>
-                    {day.day}
-                  </span>
-                  <span
-                    className={`text-[10px] font-semibold ${
-                      selected ? 'bg-white/20 rounded-full px-1.5' : noteTone
-                    }`}
-                  >
-                    {selected ? 'Selected' : day.note}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            onClick={() => setCalendarOpen(true)}
+            className="w-full min-h-12 px-4 py-2.5 rounded-xl bg-surface-container-lowest shadow-sm flex items-center justify-between gap-2 text-left border border-border-subtle hover:border-primary transition-colors"
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Icon name="event" className="text-[20px] text-primary shrink-0" />
+              <span className="flex flex-col min-w-0">
+                <span className="font-label-md text-label-md text-on-surface font-medium truncate">
+                  {booking.day.dateLong}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">
+                  Tap to open calendar • salon closed Sundays
+                </span>
+              </span>
+            </span>
+            <Icon name="expand_more" className="text-[20px] text-text-tertiary shrink-0" />
+          </button>
         </section>
 
+        {/* BUG-022 + BUG-021: period dropdown and start-time dropdown. */}
         <section className="p-4 border-b border-border-subtle">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1.5">
               <Icon name="schedule" className="text-primary text-[20px]" />
               <h3 className="text-on-surface text-label-md text-label-md font-bold uppercase tracking-wider">
-                Available Times
+                Available Start Time
               </h3>
             </div>
             <span className="text-caption text-caption text-text-secondary">WAT (GMT+1)</span>
           </div>
-          <div className="flex gap-2 mb-3.5 overflow-x-auto no-scrollbar">
-            {SPA_TIME_PERIODS.map((period) => (
-              <button
-                key={period.id}
-                type="button"
-                onClick={() => setPeriodId(period.id)}
-                className={`px-3 py-1.5 rounded-full text-caption text-caption whitespace-nowrap transition ${
-                  period.id === periodId
-                    ? 'bg-primary text-white shadow-sm font-semibold'
-                    : 'bg-surface-container-low text-text-secondary hover:text-on-surface font-medium'
-                }`}
-              >
-                {period.label}
-              </button>
-            ))}
+
+          <label className="block text-caption text-caption text-text-secondary mb-1.5" htmlFor="period-dropdown">
+            Time of day
+          </label>
+          <div id="period-dropdown" className="mb-3">
+            <FormDropdown
+              ariaLabel="Time of day"
+              value={booking.periodId}
+              options={periodOptions}
+              onChange={booking.setPeriod}
+              placeholder="Select time of day"
+            />
           </div>
-          <div className="grid grid-cols-3 gap-2.5">
-            {activePeriod.slots.map((slot) => {
-              const selected = booking.time === slot.time;
-              const booked = slot.status === 'booked';
-              if (booked) {
-                return (
-                  <button
-                    key={slot.time}
-                    type="button"
-                    disabled
-                    className="flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border border-border-subtle bg-surface-container text-text-tertiary cursor-not-allowed opacity-60"
-                  >
-                    <span className="text-label-md text-label-md font-medium line-through">{slot.time}</span>
-                    <span className="text-[10px] uppercase font-semibold">Booked</span>
-                  </button>
-                );
-              }
-              return (
-                <button
-                  key={slot.time}
-                  type="button"
-                  onClick={() => booking.setTime(slot.time)}
-                  className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl transition ${
-                    selected
-                      ? 'bg-primary-container text-white shadow-md ring-2 ring-primary-container ring-offset-1'
-                      : 'border border-border-subtle bg-surface-container-lowest text-on-surface hover:border-primary'
-                  }`}
-                >
-                  <span className={`text-label-md text-label-md ${selected ? 'font-bold' : 'font-semibold'}`}>
-                    {slot.time}
-                  </span>
-                  <span
-                    className={`text-[10px] font-semibold ${
-                      selected ? 'text-white/90' : 'text-badge-discount-text font-medium'
-                    }`}
-                  >
-                    {selected ? 'Selected' : 'Available'}
-                  </span>
-                </button>
-              );
-            })}
+
+          <label className="block text-caption text-caption text-text-secondary mb-1.5" htmlFor="time-dropdown">
+            Start time for {booking.day.dateShort}
+          </label>
+          <div id="time-dropdown">
+            <FormDropdown
+              ariaLabel="Appointment start time"
+              value={booking.timeAvailable ? booking.time : ''}
+              options={timeOptions}
+              onChange={booking.setTime}
+              placeholder={booking.availableTimes.length ? 'Select a start time' : 'No times available'}
+            />
           </div>
+
+          {!booking.timeAvailable && booking.availableTimes.length > 0 && (
+            <p className="text-[11px] text-badge-discount-text mt-2 flex items-center gap-1">
+              <Icon name="info" className="text-[13px]" />
+              Pick an available start time to continue.
+            </p>
+          )}
+          {booking.availableTimes.length === 0 && (
+            <p className="text-[11px] text-text-secondary mt-2 flex items-center gap-1">
+              <Icon name="event_busy" className="text-[13px]" />
+              Fully booked for this date — try another day or time of day.
+            </p>
+          )}
         </section>
 
         <section className="p-4">
@@ -465,27 +313,62 @@ export function SpaBookingScheduleScreen({ onBack, onReview }: SpaBookingSchedul
         <div className="flex items-center justify-between mb-2.5">
           <div>
             <p className="text-caption text-caption text-text-secondary leading-tight">Total Payable</p>
-            <p className="text-heading-md text-heading-md font-bold text-on-surface">{naira(booking.subtotal)}</p>
+            <p className="text-heading-md text-heading-md font-bold text-on-surface">{naira(booking.payable)}</p>
           </div>
           <div className="text-right">
             <span className="inline-flex items-center gap-1 text-label-sm text-label-sm font-semibold text-primary bg-surface-tint-blue px-2.5 py-1 rounded-lg">
               <Icon name="event" className="text-[16px]" />
-              {booking.day.dateShort} @ {booking.time}
+              {booking.day.dateShort} @ {booking.timeAvailable ? booking.time : '—'}
             </span>
             <p className="text-caption text-caption text-text-secondary mt-0.5">
-              Specialist: {booking.therapist.id === 'any' ? 'Any Available' : booking.therapist.name}
+              Specialist: Any Available
             </p>
           </div>
         </div>
         <button
           type="button"
+          disabled={!booking.timeAvailable}
           onClick={onReview}
-          className="w-full h-11 rounded-xl bg-primary-container text-white font-semibold text-button-primary flex items-center justify-center gap-2 hover:bg-primary transition-all shadow-md active:scale-[0.99]"
+          className="w-full h-11 rounded-xl bg-primary-container text-white font-semibold text-button-primary flex items-center justify-center gap-2 hover:bg-primary transition-all shadow-md active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-container"
         >
           <span>Review Booking Details</span>
           <Icon name="arrow_forward" className="text-[20px]" />
         </button>
       </div>
+
+      <SheetShell open={calendarOpen} onClose={() => setCalendarOpen(false)}>
+        <div className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-heading-sm text-heading-sm font-heading-sm text-on-surface font-semibold">
+                Choose a date
+              </h3>
+              <p className="text-caption text-caption text-text-secondary mt-0.5">
+                Available days only • navigate months with the arrows
+              </p>
+            </div>
+            <button
+              aria-label="Close calendar"
+              type="button"
+              onClick={() => setCalendarOpen(false)}
+              className="flex size-9 items-center justify-center rounded-full bg-surface-container text-on-surface-variant"
+            >
+              <Icon name="close" className="text-[20px]" />
+            </button>
+          </div>
+          <CalendarPicker
+            valueISO={booking.dateISO}
+            isDateDisabled={(date) => !spaIsDayOpen(date)}
+            onSelect={(iso) => {
+              booking.setDateISO(iso);
+              setCalendarOpen(false);
+            }}
+          />
+          <p className="text-[11px] text-text-tertiary mt-3">
+            Available times refresh automatically for the date you choose.
+          </p>
+        </div>
+      </SheetShell>
 
       {toast && (
         <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">

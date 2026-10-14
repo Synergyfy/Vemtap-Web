@@ -8,6 +8,8 @@ export interface ClaimIdentityModalProps {
   onClaimSelf: () => void;
   onGift: () => void;
   onSomeoneElse: () => void;
+  /** Signed-in customer's profile so the copy names the real account holder. */
+  identity?: { name: string } | null;
 }
 
 type Option = 'myself' | 'gift' | 'other';
@@ -25,7 +27,7 @@ const OPTIONS: Array<{
     icon: 'person',
     iconClass: 'bg-primary-container text-on-primary-container',
     title: 'Claim for Myself',
-    copy: 'Voucher code will be issued instantly to your VEMTAP account (Zainab Ahmed) and saved to My Deals.',
+    copy: 'Voucher code will be issued instantly to your VEMTAP account and saved to My Deals.',
   },
   {
     value: 'gift',
@@ -44,8 +46,16 @@ const OPTIONS: Array<{
   },
 ];
 
-export function ClaimIdentityModal({ open, onClose, onClaimSelf, onGift, onSomeoneElse }: ClaimIdentityModalProps) {
+export function ClaimIdentityModal({
+  open,
+  onClose,
+  onClaimSelf,
+  onGift,
+  onSomeoneElse,
+  identity,
+}: ClaimIdentityModalProps) {
   const [selected, setSelected] = useState<Option>('myself');
+  const customerName = identity?.name?.trim();
 
   const handleContinue = () => {
     if (selected === 'gift') onGift();
@@ -138,7 +148,11 @@ export function ClaimIdentityModal({ open, onClose, onClaimSelf, onGift, onSomeo
                       </span>
                     ) : null}
                   </div>
-                  <p className="font-body-md text-body-md text-text-secondary mt-0.5">{option.copy}</p>
+                  <p className="font-body-md text-body-md text-text-secondary mt-0.5">
+                    {option.value === 'myself' && customerName
+                      ? `Voucher code will be issued instantly to your VEMTAP account (${customerName}) and saved to My Deals.`
+                      : option.copy}
+                  </p>
                 </div>
                 <div className="shrink-0 mt-1">
                   <div

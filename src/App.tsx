@@ -2,15 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import { useIsDesktop } from './hooks/useIsDesktop';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
-import { Icon } from './components/ui/Icon';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
+import { ProfileProvider, useProfile } from './context/ProfileContext';
+import { LocationProvider } from './context/LocationContext';
+import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
+import { OrdersProvider } from './context/OrdersContext';
+import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
+import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
 import { ProductDetailScreen } from './scripts/ProductDetailScreen';
 import { CheckoutScreen } from './scripts/CheckoutScreen';
 import { OrderPlacedScreen } from './scripts/OrderPlacedScreen';
-import type { OrderSummary } from './scripts/orderData';
+import { ContactsProvider, useContacts } from './context/ContactsContext';
+import { AccountDeletionProvider } from './context/AccountDeletionContext';
+import type { SubmittedOrder } from './context/OrdersContext';
 import { useCart } from './context/CartContext';
 import { URBAN_BUSINESS, SPA_BUSINESS, resolveBusinessPath, productPath, servicePath } from './scripts/businessData';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
@@ -160,6 +167,7 @@ import { BusinessPosProductShiftScreen } from './scripts/BusinessPosProductShift
 import { BusinessPosStockScreen } from './scripts/BusinessPosStockScreen';
 import { BusinessPosLedgerScreen } from './scripts/BusinessPosLedgerScreen';
 import { BusinessPosCustomerLookupScreen } from './scripts/BusinessPosCustomerLookupScreen';
+import { BusinessPosOrderLookupScreen } from './scripts/BusinessPosOrderLookupScreen';
 import { BusinessPosCustomerDossierScreen } from './scripts/BusinessPosCustomerDossierScreen';
 import { BusinessPosOfflineCheckoutScreen } from './scripts/BusinessPosOfflineCheckoutScreen';
 import { BusinessPosTransactionDetailScreen } from './scripts/BusinessPosTransactionDetailScreen';
@@ -283,6 +291,7 @@ import { DesktopPosSwitchScreen } from './scripts/desktop/DesktopPosSwitchScreen
 import { DesktopPosCustomerScreen } from './scripts/desktop/DesktopPosCustomerScreen';
 import { DesktopPosProductShiftScreen } from './scripts/desktop/DesktopPosProductShiftScreen';
 import { DesktopPosCustomerLookupScreen } from './scripts/desktop/DesktopPosCustomerLookupScreen';
+import { DesktopPosOrderLookupScreen } from './scripts/desktop/DesktopPosOrderLookupScreen';
 import { DesktopPosCustomerDossierScreen } from './scripts/desktop/DesktopPosCustomerDossierScreen';
 import { DesktopPosTransactionDetailScreen } from './scripts/desktop/DesktopPosTransactionDetailScreen';
 import { DesktopPosHardwareScreen } from './scripts/desktop/DesktopPosHardwareScreen';
@@ -385,6 +394,7 @@ type Route =
   | 'pos-stock'
   | 'pos-ledger'
   | 'pos-customers-lookup'
+  | 'pos-order-lookup'
   | 'pos-dossier'
   | 'pos-offline'
   | 'pos-txn-detail'
@@ -541,6 +551,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'pos-stock': '/pos/stock',
   'pos-ledger': '/pos/ledger',
   'pos-customers-lookup': '/pos/customers',
+  'pos-order-lookup': '/pos/orders/lookup',
   'pos-dossier': '/pos/customer/dossier',
   'pos-offline': '/pos/offline',
   'pos-txn-detail': '/pos/txn/detail',
@@ -733,14 +744,26 @@ function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
 export default function App() {
   return (
     <AuthProvider>
-      <BusinessBranchProvider>
-        <CartProvider>
-          <BookingProvider>
-            <AppInner />
-            <BranchSwitchOverlay />
-          </BookingProvider>
-        </CartProvider>
-      </BusinessBranchProvider>
+      <ProfileProvider>
+        <LocationProvider>
+          <ClaimsProvider>
+            <OrdersProvider>
+              <ContactsProvider>
+              <BusinessBranchProvider>
+                <CartProvider>
+                  <BookingProvider>
+                    <AccountDeletionProvider>
+                      <AppInner />
+                      <BranchSwitchOverlay />
+                    </AccountDeletionProvider>
+                  </BookingProvider>
+                </CartProvider>
+              </BusinessBranchProvider>
+              </ContactsProvider>
+            </OrdersProvider>
+          </ClaimsProvider>
+        </LocationProvider>
+      </ProfileProvider>
     </AuthProvider>
   );
 }
@@ -749,6 +772,9 @@ function AppInner() {
   const { authed, claimed, signIn, signOut, markClaimed, resetClaim } = useAuth();
   const cart = useCart();
   const booking = useBooking();
+  const profile = useProfile();
+  const claims = useClaims();
+  const contacts = useContacts();
   const isDesktop = useIsDesktop();
   const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
@@ -769,7 +795,8 @@ function AppInner() {
   });
   const [serviceFrom, setServiceFrom] = useState<Route>('spa-services');
   const [bookingFrom, setBookingFrom] = useState<Route>('spa-profile');
-  const [orderSummary, setOrderSummary] = useState<OrderSummary | null>(null);
+  const [orderSummary, setOrderSummary] = useState<SubmittedOrder | null>(null);
+  const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
   const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
@@ -778,6 +805,9 @@ function AppInner() {
     name: 'Amara Okafor',
     email: 'amara@email.com',
   });
+  const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
+  const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
+  const [claimSelfConfirmOpen, setClaimSelfConfirmOpen] = useState(false);
   const [posCart, setPosCart] = useState<PosCartLine[]>(SEED_POS_CART);
   const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>(SEED_POS_TERMINAL_LINES);
   const [posCustomer, setPosCustomer] = useState<string | null>(null);
@@ -864,7 +894,10 @@ function AppInner() {
     setRouteState('service-detail');
   };
 
-  const placeOrder = (order: OrderSummary) => {
+  const placeOrder = (order: SubmittedOrder) => {
+    // BUG-017: a completed purchase becomes a business contact record
+    // (idempotent on phone, marketing consent stored separately).
+    contacts.upsertFromOrder(order);
     setOrderSummary(order);
     cart.clear();
     setRoute('order-placed');
@@ -953,32 +986,76 @@ function AppInner() {
   };
 
   const completeClaim = () => {
+    const record = claims.recordClaim({
+      kind: claimRecipient ? 'someone-else' : 'self',
+      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+      recipient: claimRecipient ?? undefined,
+    });
+    setActiveClaim(record);
+    setClaimRecipient(null);
     markClaimed();
     setRoute('claim-success');
   };
 
   const completeGift = () => {
+    const record = claims.recordClaim({
+      kind: 'gift',
+      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+      recipient: giftRecipient
+        ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
+        : undefined,
+    });
+    setActiveClaim(record);
     markClaimed();
     setRoute('gift-sent');
   };
 
+  /**
+   * BUG-006/008/009 — the desktop deal-detail screen records its own claim and
+   * hands the record here so the customer lands on a real outcome screen
+   * (claim success / gift sent) instead of a transient toast.
+   */
+  const handleClaimComplete = (record: ClaimRecord) => {
+    setActiveClaim(record);
+    markClaimed();
+    if (record.kind === 'gift') {
+      if (record.recipient) {
+        setGiftRecipient({
+          name: record.recipient.name,
+          email: record.recipient.email,
+          phone: record.recipient.phone,
+        });
+      }
+      setRoute('gift-sent');
+      return;
+    }
+    setClaimRecipient(null);
+    setRoute('claim-success');
+  };
+
+  /** BUG-005/BUG-006/BUG-009 — "Claim for myself" only completes after the identity confirmation step. */
+  const confirmSelfClaim = () => {
+    setClaimSelfConfirmOpen(false);
+    const onClaimed = claimSuccessRef.current;
+    claimSuccessRef.current = null;
+    onClaimed?.();
+    const record = claims.recordClaim({
+      kind: 'self',
+      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+    });
+    setActiveClaim(record);
+    if (claimed) {
+      setClaimedFrom(route);
+      setRoute('claimed-deal');
+      return;
+    }
+    markClaimed();
+    setRoute('claim-success');
+  };
+
   const [claimPopupOpen, setClaimPopupOpen] = useState(false);
   const [claimDialog, setClaimDialog] = useState<'gift' | 'giftConfirm' | 'other' | 'verify' | 'summary' | null>(null);
-  const [claimToast, setClaimToast] = useState<string | null>(null);
-  const claimToastTimer = useRef<number | undefined>(undefined);
   const claimSuccessRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (claimToastTimer.current) window.clearTimeout(claimToastTimer.current);
-    };
-  }, []);
-
-  const showClaimToast = (message: string) => {
-    if (claimToastTimer.current) window.clearTimeout(claimToastTimer.current);
-    setClaimToast(message);
-    claimToastTimer.current = window.setTimeout(() => setClaimToast(null), 3500);
-  };
 
   const openClaimPopup = (onClaimed?: () => void) => {
     claimSuccessRef.current = onClaimed ?? null;
@@ -993,23 +1070,12 @@ function AppInner() {
   const finishClaimChoice = (choice: 'self' | 'gift' | 'other') => {
     setClaimPopupOpen(false);
     if (choice === 'self') {
-      const onClaimed = claimSuccessRef.current;
-      claimSuccessRef.current = null;
-      onClaimed?.();
-      if (isDesktop) {
-        if (!claimed) markClaimed();
-        if (!onClaimed) showClaimToast('Deal Claimed! Voucher saved to your wallet.');
-        return;
-      }
-      if (claimed) {
-        setClaimedFrom(route);
-        setRoute('claimed-deal');
-      } else {
-        completeClaim();
-      }
+      // BUG-005: never submit the claim before the customer confirms their identity.
+      setClaimSelfConfirmOpen(true);
       return;
     }
     claimSuccessRef.current = null;
+    setClaimRecipient(null);
     if (isDesktop) {
       setClaimDialog(choice === 'gift' ? 'gift' : 'other');
     } else {
@@ -1017,10 +1083,17 @@ function AppInner() {
     }
   };
 
-  const finishDesktopClaim = (message: string) => {
+  /**
+   * BUG-006/BUG-008/BUG-009: desktop previously stopped at a toast. Every claim
+   * method now lands on a real outcome screen carrying the recorded claim.
+   */
+  const finishDesktopClaim = (kind: 'self' | 'gift' | 'someone-else') => {
     setClaimDialog(null);
-    if (!claimed) markClaimed();
-    showClaimToast(message);
+    if (kind === 'gift') {
+      completeGift();
+      return;
+    }
+    completeClaim();
   };
 
   useEffect(() => {
@@ -1306,7 +1379,11 @@ function AppInner() {
 
   const renderDetail = () =>
     isDesktop ? (
-      <DesktopDealDetailScreen onNav={feedNav} onBack={() => setRoute(dealFrom)} />
+      <DesktopDealDetailScreen
+        onNav={feedNav}
+        onBack={() => setRoute(dealFrom)}
+        onClaimComplete={handleClaimComplete}
+      />
     ) : (
       <DealDetailScreen
         onBack={() => setRoute(dealFrom)}
@@ -1331,6 +1408,14 @@ function AppInner() {
       />
     );
 
+  const cancelActiveClaim = () => {
+    const active = claims.claims.find((entry) => entry.kind !== 'gift');
+    if (active) claims.removeClaim(active.ref);
+    setActiveClaim(null);
+    resetClaim();
+    setRoute('home');
+  };
+
   const renderClaimed = () =>
     isDesktop ? (
       <DesktopClaimedDealScreen
@@ -1338,20 +1423,14 @@ function AppInner() {
         onBack={() => setRoute(claimedFrom)}
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
-        onCancelClaim={() => {
-          resetClaim();
-          setRoute('home');
-        }}
+        onCancelClaim={cancelActiveClaim}
       />
     ) : (
       <ClaimedDealScreen
         onBack={() => setRoute(claimedFrom)}
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
-        onCancelClaim={() => {
-          resetClaim();
-          setRoute('home');
-        }}
+        onCancelClaim={cancelActiveClaim}
       />
     );
 
@@ -1631,7 +1710,13 @@ function AppInner() {
 
     case 'deal-detail':
       if (isDesktop)
-        return <DesktopDealDetailScreen onNav={feedNav} onBack={() => setRoute(dealFrom)} />;
+        return (
+          <DesktopDealDetailScreen
+            onNav={feedNav}
+            onBack={() => setRoute(dealFrom)}
+            onClaimComplete={handleClaimComplete}
+          />
+        );
       return <>{renderDetail()}</>;
 
     case 'comments':
@@ -1741,9 +1826,13 @@ function AppInner() {
             {renderDetail()}
             <ClaimIdentityModal
               open
-              onClaimSelf={completeClaim}
+              identity={{ name: profile.fullName }}
+              onClaimSelf={() => setClaimSelfConfirmOpen(true)}
               onGift={() => setRoute('claim-gift')}
-              onSomeoneElse={() => setRoute('claim-recipient')}
+              onSomeoneElse={() => {
+                setClaimRecipient(null);
+                setRoute('claim-recipient');
+              }}
               onClose={() => setRoute('deal-detail')}
             />
           </>
@@ -1753,9 +1842,13 @@ function AppInner() {
           {renderDetail()}
           <ClaimIdentitySheet
             open
-            onClaimSelf={completeClaim}
+            identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
+            onClaimSelf={() => setClaimSelfConfirmOpen(true)}
             onGift={() => setRoute('claim-gift')}
-            onSomeoneElse={() => setRoute('claim-recipient')}
+            onSomeoneElse={() => {
+              setClaimRecipient(null);
+              setRoute('claim-recipient');
+            }}
             onClose={() => setRoute('deal-detail')}
           />
         </>
@@ -1766,7 +1859,18 @@ function AppInner() {
         return (
           <>
             {renderDetail()}
-            <SomeoneElseModal open onContinue={() => setRoute('claim-verify')} onClose={() => setRoute('deal-detail')} />
+            <SomeoneElseModal
+              open
+              onContinue={(values) => {
+                setClaimRecipient({
+                  name: `${values.firstName} ${values.lastName}`.trim(),
+                  email: values.email,
+                  phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                });
+                setRoute('claim-verify');
+              }}
+              onClose={() => setRoute('deal-detail')}
+            />
           </>
         );
       return (
@@ -1774,7 +1878,14 @@ function AppInner() {
           {renderDetail()}
           <RecipientDetailsSheet
             open
-            onContinue={() => setRoute('claim-verify')}
+            onContinue={(values) => {
+              setClaimRecipient({
+                name: `${values.firstName} ${values.lastName}`.trim(),
+                email: values.email,
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+              });
+              setRoute('claim-verify');
+            }}
             onBack={() => setRoute('claim-identity')}
             onClose={() => setRoute('deal-detail')}
           />
@@ -1788,8 +1899,9 @@ function AppInner() {
             {renderDetail()}
             <RecipientVerificationModal
               open
+              recipient={claimRecipient}
               onVerify={() => setRoute('claim-summary')}
-              onBack={() => setRoute('claim-identity')}
+              onBack={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
             />
           </>
@@ -1799,6 +1911,7 @@ function AppInner() {
           {renderDetail()}
           <RecipientVerificationSheet
             open
+            recipient={claimRecipient}
             onVerify={() => setRoute('claim-summary')}
             onBack={() => setRoute('claim-recipient')}
             onClose={() => setRoute('deal-detail')}
@@ -1813,6 +1926,7 @@ function AppInner() {
             {renderDetail()}
             <RecipientSummaryModal
               open
+              recipient={claimRecipient}
               onConfirm={completeClaim}
               onEdit={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
@@ -1824,6 +1938,7 @@ function AppInner() {
           {renderDetail()}
           <RecipientSummarySheet
             open
+            recipient={claimRecipient}
             onContinue={completeClaim}
             onEdit={() => setRoute('claim-recipient')}
             onClose={() => setRoute('deal-detail')}
@@ -1838,7 +1953,14 @@ function AppInner() {
             {renderDetail()}
             <GiftRecipientDetailsModal
               open
-              onContinue={() => setRoute('claim-gift-confirm')}
+              onContinue={(values) => {
+                setGiftRecipient({
+                  name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+                  email: values.email,
+                  phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                });
+                setRoute('claim-gift-confirm');
+              }}
               onClose={() => setRoute('deal-detail')}
             />
           </>
@@ -1868,6 +1990,7 @@ function AppInner() {
             {renderDetail()}
             <ConfirmGiftSendModal
               open
+              recipient={giftRecipient}
               onSend={completeGift}
               onEdit={() => setRoute('claim-gift')}
               onClose={() => setRoute('deal-detail')}
@@ -1917,6 +2040,7 @@ function AppInner() {
           <DesktopClaimSuccessScreen
             onNav={feedNav}
             onBack={() => setRoute('deal-detail')}
+            claim={activeClaim}
             onViewMyDeal={() => {
               setClaimedFrom('claim-success');
               setRoute('claimed-deal');
@@ -1927,6 +2051,7 @@ function AppInner() {
       return (
         <ClaimSuccessScreen
           onBack={() => setRoute('deal-detail')}
+          claim={activeClaim}
           onViewMyDeal={() => {
             setClaimedFrom('claim-success');
             setRoute('claimed-deal');
@@ -1941,16 +2066,18 @@ function AppInner() {
           <DesktopGiftSentScreen
             onNav={feedNav}
             recipient={giftRecipient}
+            claim={activeClaim}
             onBack={() => setRoute('deal-detail')}
-            onDone={() => setRoute('home')}
+            onDone={() => setRoute('my-deals')}
             onSendAnother={() => setRoute('claim-identity')}
           />
         );
       return (
         <GiftSentScreen
           recipient={giftRecipient}
+          claim={activeClaim}
           onBack={() => setRoute('deal-detail')}
-          onDone={() => setRoute('home')}
+          onDone={() => setRoute('my-deals')}
           onSendAnother={() => setRoute('claim-identity')}
         />
       );
@@ -2208,7 +2335,14 @@ function AppInner() {
       return null;
 
     case 'spa-booking':
-      if (isDesktop) return <DesktopSpaBookingScreen onNav={feedNav} onBack={() => setRoute('spa-storefront')} />;
+      if (isDesktop)
+        return (
+          <DesktopSpaBookingScreen
+            onNav={feedNav}
+            onBack={() => setRoute('spa-storefront')}
+            onChat={() => setRoute('messages')}
+          />
+        );
       return (
         <SpaBookingScheduleScreen
           onBack={() => setRoute(bookingFrom)}
@@ -2217,19 +2351,37 @@ function AppInner() {
       );
 
     case 'spa-booking-checkout':
-      if (isDesktop) return <DesktopSpaBookingScreen onNav={feedNav} onBack={() => setRoute('spa-storefront')} />;
+      if (isDesktop)
+        return (
+          <DesktopSpaBookingScreen
+            onNav={feedNav}
+            onBack={() => setRoute('spa-storefront')}
+            onChat={() => {
+              // BUG-026: open the receptionist conversation directly.
+              setActiveConversation('glow');
+              setRoute('conversation');
+            }}
+          />
+        );
       return (
         <BookingCheckoutScreen
           onBack={() => setRoute('spa-booking')}
-          onConfirm={() => {
-            booking.confirm();
-            setRoute('spa-booking-confirmed');
-          }}
+          onConfirmed={() => setRoute('spa-booking-confirmed')}
         />
       );
 
     case 'spa-booking-confirmed':
-      if (isDesktop) return <DesktopSpaBookingScreen onNav={feedNav} onBack={() => setRoute('spa-storefront')} />;
+      if (isDesktop)
+        return (
+          <DesktopSpaBookingScreen
+            onNav={feedNav}
+            onBack={() => setRoute('spa-storefront')}
+            onChat={() => {
+              setActiveConversation('glow');
+              setRoute('conversation');
+            }}
+          />
+        );
       if (!booking.confirmedRef) return null;
       return (
         <BookingConfirmedScreen
@@ -2237,8 +2389,9 @@ function AppInner() {
           onBack={() => setRoute('spa-services')}
           onHome={() => setRoute('home')}
           onChat={() => {
-            setChatFrom('spa-booking-confirmed');
-            setRoute('merchant-chat');
+            // BUG-026: open the business conversation for the spa receptionist.
+            setActiveConversation('glow');
+            setRoute('conversation');
           }}
         />
       );
@@ -2261,7 +2414,10 @@ function AppInner() {
         return (
           <DesktopOrdersScreen
             onNav={feedNav}
-            onOpenOrder={() => setRoute('order-detail')}
+            onOpenOrder={(ref) => {
+              setActiveOrderRef(ref);
+              setRoute('order-detail');
+            }}
             onOpenBooking={() => setRoute('booking-detail')}
           />
         );
@@ -2272,7 +2428,10 @@ function AppInner() {
             setActiveConversation(threadId);
             setRoute('conversation');
           }}
-          onOpenOrder={() => setRoute('order-detail')}
+          onOpenOrder={(ref) => {
+            setActiveOrderRef(ref);
+            setRoute('order-detail');
+          }}
           onOpenBooking={() => setRoute('booking-detail')}
           onNavigate={(target) => setRoute(target)}
         />
@@ -2280,9 +2439,10 @@ function AppInner() {
 
     case 'order-detail':
       if (isDesktop)
-        return <DesktopOrderDetailScreen onNav={feedNav} onBack={() => setRoute('orders')} />;
+        return <DesktopOrderDetailScreen orderRef={activeOrderRef} onNav={feedNav} onBack={() => setRoute('orders')} />;
       return (
         <OrderDetailScreen
+          orderRef={activeOrderRef}
           onBack={() => setRoute('orders')}
           onChat={() => {
             setActiveConversation('urban');
@@ -2333,7 +2493,7 @@ function AppInner() {
       );
 
     case 'conversation':
-      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} initialThread={activeConversation} />;
       return (
         <ConversationScreen
           threadId={activeConversation}
@@ -3363,6 +3523,7 @@ function AppInner() {
             onOpenProducts={() => setRoute('pos-stock')}
             onOpenCustomers={() => setRoute('pos-customers-lookup')}
             onOpenKitchen={() => setRoute('pos-kitchen')}
+            onOpenOrderLookup={() => setRoute('pos-order-lookup')}
           />
         );
       return (
@@ -3380,6 +3541,7 @@ function AppInner() {
             onOpenSync={() => setRoute('pos-sync')}
             onOpenSettings={() => setRoute('pos-settings')}
             onOpenKitchen={() => setRoute('pos-kitchen')}
+            onOpenOrderLookup={() => setRoute('pos-order-lookup')}
           />
         </div>
       );
@@ -3394,6 +3556,7 @@ function AppInner() {
             onOpenProducts={() => setRoute('pos-stock')}
             onOpenCustomers={() => setRoute('pos-customers-lookup')}
             onOpenKitchen={() => setRoute('pos-kitchen')}
+            onOpenOrderLookup={() => setRoute('pos-order-lookup')}
           />
         );
       return (
@@ -3658,6 +3821,15 @@ function AppInner() {
             }}
             onRegisterNew={() => setRoute('hub-customers')}
           />
+        </div>
+      );
+
+    case 'pos-order-lookup':
+      if (isDesktop)
+        return <DesktopPosOrderLookupScreen onNav={posTerminalNav} onBack={() => setRoute('pos-home')} />;
+      return (
+        <div className="biz-flow">
+          <BusinessPosOrderLookupScreen onBack={() => setRoute('pos-home')} />
         </div>
       );
 
@@ -3937,6 +4109,7 @@ function AppInner() {
         (isDesktop ? (
           <ClaimIdentityModal
             open
+            identity={{ name: profile.fullName }}
             onClose={closeClaimPopup}
             onClaimSelf={() => finishClaimChoice('self')}
             onGift={() => finishClaimChoice('gift')}
@@ -3945,6 +4118,7 @@ function AppInner() {
         ) : (
           <ClaimIdentitySheet
             open
+            identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
             onClose={closeClaimPopup}
             onClaimSelf={() => finishClaimChoice('self')}
             onGift={() => finishClaimChoice('gift')}
@@ -3952,23 +4126,71 @@ function AppInner() {
           />
         ))}
 
+      {/* BUG-005 — identity confirmation step before any "Claim for myself" is submitted. */}
+      {claimSelfConfirmOpen &&
+        (isDesktop ? (
+          <ClaimSelfConfirmModal
+            open
+            onClose={() => setClaimSelfConfirmOpen(false)}
+            onConfirm={confirmSelfClaim}
+            onCompleteProfile={() => {
+              setClaimSelfConfirmOpen(false);
+              setRoute('edit-profile');
+            }}
+          />
+        ) : (
+          <ClaimSelfConfirmSheet
+            open
+            onClose={() => setClaimSelfConfirmOpen(false)}
+            onConfirm={confirmSelfClaim}
+            onCompleteProfile={() => {
+              setClaimSelfConfirmOpen(false);
+              setRoute('edit-profile');
+            }}
+          />
+        ))}
+
       {isDesktop && claimDialog === 'gift' && (
-        <GiftRecipientDetailsModal open onClose={() => setClaimDialog(null)} onContinue={() => setClaimDialog('giftConfirm')} />
+        <GiftRecipientDetailsModal
+          open
+          onClose={() => setClaimDialog(null)}
+          onContinue={(values) => {
+            setGiftRecipient({
+              name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+              email: values.email,
+              phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+            });
+            setClaimDialog('giftConfirm');
+          }}
+        />
       )}
       {isDesktop && claimDialog === 'giftConfirm' && (
         <ConfirmGiftSendModal
           open
+          recipient={giftRecipient}
           onClose={() => setClaimDialog(null)}
           onEdit={() => setClaimDialog('gift')}
-          onSend={() => finishDesktopClaim('Gift claim sent! Voucher delivered to your recipient.')}
+          onSend={() => finishDesktopClaim('gift')}
         />
       )}
       {isDesktop && claimDialog === 'other' && (
-        <SomeoneElseModal open onClose={() => setClaimDialog(null)} onContinue={() => setClaimDialog('verify')} />
+        <SomeoneElseModal
+          open
+          onClose={() => setClaimDialog(null)}
+          onContinue={(values) => {
+            setClaimRecipient({
+              name: `${values.firstName} ${values.lastName}`.trim(),
+              email: values.email,
+              phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+            });
+            setClaimDialog('verify');
+          }}
+        />
       )}
       {isDesktop && claimDialog === 'verify' && (
         <RecipientVerificationModal
           open
+          recipient={claimRecipient}
           onClose={() => setClaimDialog(null)}
           onVerify={() => setClaimDialog('summary')}
           onBack={() => setClaimDialog('other')}
@@ -3977,17 +4199,11 @@ function AppInner() {
       {isDesktop && claimDialog === 'summary' && (
         <RecipientSummaryModal
           open
+          recipient={claimRecipient}
           onClose={() => setClaimDialog(null)}
-          onConfirm={() => finishDesktopClaim('Claim authorized! Voucher issued for your recipient.')}
+          onConfirm={() => finishDesktopClaim('someone-else')}
           onEdit={() => setClaimDialog('other')}
         />
-      )}
-
-      {isDesktop && claimToast && (
-        <div className="fixed bottom-6 right-6 z-[70] bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-2xl flex items-center gap-space-sm">
-          <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
-          <span className="font-label-md text-label-md">{claimToast}</span>
-        </div>
       )}
     </>
   );

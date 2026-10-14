@@ -1,10 +1,19 @@
+import { useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+
+export interface SomeoneElseValues {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+}
 
 export interface SomeoneElseModalProps {
   open: boolean;
   onClose: () => void;
-  onContinue: () => void;
+  /** Receives the collected recipient details so later steps can show and store them. */
+  onContinue: (values: SomeoneElseValues) => void;
 }
 
 const inputClass =
@@ -13,6 +22,11 @@ const inputClass =
 const labelClass = 'block font-label-sm text-label-sm text-text-secondary mb-1.5 font-medium';
 
 export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModalProps) {
+  const [firstName, setFirstName] = useState('Samuel');
+  const [lastName, setLastName] = useState('Adeleke');
+  const [email, setEmail] = useState('samuel.adeleke@example.com');
+  const [phone, setPhone] = useState('802 345 6789');
+
   return (
     <DesktopModal
       open={open}
@@ -59,14 +73,33 @@ export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModal
           className="mt-6 flex flex-col gap-5"
           onSubmit={(event) => {
             event.preventDefault();
-            onContinue();
+            onContinue({
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+              email: email.trim(),
+              phone: phone.trim(),
+            });
           }}
         >
           <div>
             <label className={labelClass}>Recipient Name</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className={inputClass} placeholder="First Name" type="text" defaultValue="Samuel" />
-              <input className={inputClass} placeholder="Last Name" type="text" defaultValue="Adeleke" />
+              <input
+                className={inputClass}
+                placeholder="First Name"
+                type="text"
+                required
+                value={firstName}
+                onChange={(event) => setFirstName(event.target.value)}
+              />
+              <input
+                className={inputClass}
+                placeholder="Last Name"
+                type="text"
+                required
+                value={lastName}
+                onChange={(event) => setLastName(event.target.value)}
+              />
             </div>
           </div>
 
@@ -77,7 +110,9 @@ export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModal
                 className={inputClass}
                 placeholder="samuel@example.com"
                 type="email"
-                defaultValue="samuel.adeleke@example.com"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
               />
             </div>
             <div>
@@ -97,7 +132,9 @@ export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModal
                   className="w-full bg-transparent text-text-primary font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none"
                   placeholder="800 000 0000"
                   type="tel"
-                  defaultValue="802 345 6789"
+                  required
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
                 />
               </div>
             </div>

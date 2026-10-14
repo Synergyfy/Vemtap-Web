@@ -1,5 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { useLocation } from '../../context/LocationContext';
+import { useProfile } from '../../context/ProfileContext';
 
 interface DesktopDashboardScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -131,6 +133,9 @@ const ACTIVE_DEALS = [
 ];
 
 export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
+  const { fullName } = useProfile();
+  const { district, city } = useLocation();
+  const firstName = fullName.trim().split(/\s+/)[0] || 'there';
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="dashboard">
       <div className="w-full bg-surface-canvas pb-14">
@@ -163,10 +168,10 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
                   <span>VEMTAP Elite Consumer Tier</span>
                 </div>
                 <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
-                  Hello, Zainab 👋
+                  Hello, {firstName} 👋
                 </h1>
                 <p className="font-body-lg text-body-lg text-text-secondary">
-                  Here is your neighborhood activity, active deals, and saved spots in Apo, Abuja.
+                  Here is your neighborhood activity, active deals, and saved spots in {district}, {city}.
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">

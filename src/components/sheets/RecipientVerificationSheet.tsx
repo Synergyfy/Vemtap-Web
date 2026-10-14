@@ -2,18 +2,29 @@ import { useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
+import { maskPhone } from '../../utils/format';
 
 export interface RecipientVerificationSheetProps {
   open: boolean;
   onClose: () => void;
   onVerify: () => void;
   onBack: () => void;
+  /** Recipient whose contact details should be verified. */
+  recipient?: { name: string; email: string; phone?: string } | null;
 }
 
-export function RecipientVerificationSheet({ open, onClose, onVerify, onBack }: RecipientVerificationSheetProps) {
+export function RecipientVerificationSheet({
+  open,
+  onClose,
+  onVerify,
+  onBack,
+  recipient,
+}: RecipientVerificationSheetProps) {
   const [digits, setDigits] = useState(['5', '8', '2', '9', '', '']);
   const [focusedIndex, setFocusedIndex] = useState(4);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+
+  const maskedTarget = recipient?.phone ? maskPhone(recipient.phone) : recipient?.email ?? 'recipient@example.com';
 
   const focusInput = (index: number) => {
     setFocusedIndex(index);
@@ -57,19 +68,20 @@ export function RecipientVerificationSheet({ open, onClose, onVerify, onBack }: 
 
         <div className="mb-5">
           <h1 className="text-[26px] leading-tight font-bold text-text-primary tracking-tight mb-2">
-            Verify recipient's email
+            Verify recipient's contact
           </h1>
           <p className="text-[14px] leading-relaxed text-text-secondary font-normal">
             We sent a 6-digit verification code to{' '}
-            <span className="font-semibold text-text-primary">recipient@example.com</span> to confirm their identity for
-            this claim voucher.
+            <span className="font-semibold text-text-primary">{maskedTarget}</span> to confirm their identity for this
+            claim voucher.
           </p>
           <button
             type="button"
+            onClick={onBack}
             className="inline-flex items-center gap-1.5 mt-2.5 text-xs font-semibold text-primary-container hover:text-primary active:opacity-80 transition-opacity"
           >
             <Icon name="edit" className="text-[14px]" />
-            <span>Change email address</span>
+            <span>Change contact details</span>
           </button>
         </div>
 

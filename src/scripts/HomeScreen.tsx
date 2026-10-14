@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
+import { useLocation } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { URBAN_PRODUCTS } from './catalogueData';
 
@@ -236,6 +237,7 @@ function GreetingHeader({
   onNotifications: () => void;
   onAccount: () => void;
 }) {
+  const { district, city, radius } = useLocation();
   return (
     <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="px-margin py-3 flex items-center justify-between">
@@ -250,13 +252,15 @@ function GreetingHeader({
             className="flex items-center gap-1.5 text-left group transition-transform active:scale-95"
           >
             <Icon name="location_on" className="text-primary text-[20px]" filled />
-            <span className="font-button-primary text-button-primary text-text-primary">Apo, Abuja</span>
+            <span className="font-button-primary text-button-primary text-text-primary">
+              {district}, {city}
+            </span>
             <Icon
               name="keyboard_arrow_down"
               className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform"
             />
             <span className="ml-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-medium">
-              Within 5 km
+              Within {radius} km
             </span>
           </button>
         </div>
@@ -523,6 +527,7 @@ export function HomeScreen({
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [category, setCategory] = useState('All');
   const [locationOpen, setLocationOpen] = useState(false);
+  const { district, radius, setLocation } = useLocation();
   const [likes, setLikes] = useState<Record<string, boolean>>({});
   const [featured, setFeatured] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -1127,7 +1132,13 @@ export function HomeScreen({
       )}
 
       <MobileTabBar active="home" onTab={onTab} />
-      <LocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+      <LocationRadiusModal
+        open={locationOpen}
+        onClose={() => setLocationOpen(false)}
+        onApply={setLocation}
+        district={district}
+        radius={radius}
+      />
     </AppScreen>
   );
 }

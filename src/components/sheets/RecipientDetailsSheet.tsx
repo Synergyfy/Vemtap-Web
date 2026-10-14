@@ -2,10 +2,18 @@ import { useState } from 'react';
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
 
+export interface RecipientValues {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+}
+
 export interface RecipientDetailsSheetProps {
   open: boolean;
   onClose: () => void;
-  onContinue: () => void;
+  /** Receives the collected recipient details so later steps can show and store them. */
+  onContinue: (values: RecipientValues) => void;
   onBack: () => void;
 }
 
@@ -66,7 +74,7 @@ export function RecipientDetailsSheet({ open, onClose, onContinue, onBack }: Rec
           className="flex flex-col mt-space-lg gap-space-md"
           onSubmit={(event) => {
             event.preventDefault();
-            onContinue();
+            onContinue({ firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), phone: phone.trim() });
           }}
         >
           <div className="flex items-center justify-between">

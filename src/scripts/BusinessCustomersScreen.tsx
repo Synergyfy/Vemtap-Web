@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { useIsDesktop } from '../hooks/useIsDesktop';
+import { useContacts } from '../context/ContactsContext';
 
 interface BusinessCustomersScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -138,8 +139,13 @@ const activityMeta = (customer: CustomerRow) =>
 const lastActivity = (customer: CustomerRow) =>
   customer.historyParts[customer.historyParts.length - 1]?.strong ?? '';
 
+/** Neutral silhouette used for purchase-derived contacts (no photo on file). */
+const CONTACT_AVATAR =
+  'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Ccircle cx="20" cy="15" r="7" fill="%236750a4"/%3E%3Cpath d="M8 36c0-7 5.4-11 12-11s12 4 12 11" fill="%236750a4"/%3E%3C/svg%3E';
+
 export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpenAnalytics }: BusinessCustomersScreenProps) {
   const isDesktop = useIsDesktop();
+  const { search: searchContacts } = useContacts();
   const [filter, setFilter] = useState<CrmFilterKey>('frequent');
   const [search, setSearch] = useState('');
   const [drawerCustomer, setDrawerCustomer] = useState<string | null>(null);
@@ -159,12 +165,54 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  const visibleCustomers = CUSTOMERS.filter((customer) => {
-    const matchesFilter = filter === 'all' || customer.category === filter;
-    const matchesQuery =
-      search.trim() === '' || customer.name.toLowerCase().includes(search.trim().toLowerCase());
-    return matchesFilter && matchesQuery;
-  });
+  const visibleCustomers = (() => {
+    // BUG-017: purchase-derived contacts first, deduped against the seeded
+    // CRM rows by name so a returning patron never appears twice.
+    const purchaseRows: CustomerRow[] = searchContacts(search).map((contact) => ({
+      key: contact.key,
+      name: contact.name,
+      img: CONTACT_AVATAR,
+      alt: `${contact.name} profile`,
+      tierIcon: contact.marketingConsent ? 'loyalty' : 'receipt_long',
+      tierLabel: contact.marketingConsent ? 'Patron • Marketing Opt-in' : 'Patron • No Marketing Opt-in',
+      tierClass: contact.marketingConsent
+        ? 'bg-badge-discount-bg text-badge-discount-text'
+        : 'bg-surface-container text-text-secondary',
+      contact: contact.phone ?? contact.email ?? '—',
+      activityLine: {
+        leading: `${contact.orderCount} ${contact.orderCount === 1 ? 'Order' : 'Orders'}`,
+        segments: [
+          {
+            text: `₦${contact.totalSpend.toLocaleString('en-US')} spend`,
+            class: 'text-badge-discount-text font-medium',
+          },
+        ],
+      },
+      activityTag: contact.marketingConsent ? 'Marketing consented' : undefined,
+      historyIcon: 'schedule',
+      historyParts: [
+        {
+          text: 'Last order: ',
+          strong: contact.lastOrderRef ?? contact.orderRefs[contact.orderRefs.length - 1] ?? '—',
+          strongClass: 'text-primary font-medium',
+        },
+      ],
+      category: 'frequent',
+    }));
+
+    const seededRows = CUSTOMERS.filter((customer) => {
+      if (purchaseRows.some((row) => row.name.toLowerCase() === customer.name.toLowerCase())) return false;
+      const matchesFilter = filter === 'all' || customer.category === filter;
+      const matchesQuery =
+        search.trim() === '' || customer.name.toLowerCase().includes(search.trim().toLowerCase());
+      return matchesFilter && matchesQuery;
+    });
+
+    const filterPurchaseRows =
+      filter === 'all' || filter === 'frequent' ? purchaseRows : [];
+
+    return [...filterPurchaseRows, ...seededRows];
+  })();
 
   const openCustomer = (customer: CustomerRow) => {
     if (onViewProfile) {
@@ -174,7 +222,10 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
     setDrawerCustomer(customer.name);
   };
 
-  const drawer = drawerCustomer ? CUSTOMERS.find((customer) => customer.name === drawerCustomer) : undefined;
+  const drawer = drawerCustomer
+    ? (visibleCustomers.find((customer) => customer.name === drawerCustomer) ??
+      CUSTOMERS.find((customer) => customer.name === drawerCustomer))
+    : undefined;
 
   return (
     <AppScreen>

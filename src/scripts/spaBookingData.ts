@@ -52,6 +52,8 @@ export interface SpaDay {
   noteTone: 'default' | 'discount' | 'tertiary';
   dateLong: string;
   dateShort: string;
+  /** Local calendar date in `YYYY-MM-DD` form. */
+  iso?: string;
 }
 
 export interface SpaTimeSlot {
@@ -554,3 +556,175 @@ export function formatSpaDuration(mins: number) {
 
 export const spaServicePath = (service: SpaCatalogueService) =>
   `/business/${SPA_BUSINESS.slug}/services/${service.slug}`;
+
+/* ------------------------------------------------------------------ */
+/* Calendar + availability (BUG-020 / BUG-021 / BUG-025)              */
+/* ------------------------------------------------------------------ */
+
+export const SPA_PERIOD_LABELS: Record<string, string> = {
+  morning: 'Morning (9A - 12P)',
+  afternoon: 'Afternoon (12P - 4P)',
+  evening: 'Evening (4P - 8P)',
+};
+
+const BASE_PERIOD_SLOTS: Record<string, string[]> = {
+  morning: ['9:30 AM', '10:15 AM', '11:00 AM', '11:45 AM'],
+  afternoon: ['12:30 PM', '1:15 PM', '2:00 PM', '3:15 PM', '3:45 PM'],
+  evening: ['4:15 PM', '4:45 PM', '5:30 PM', '6:15 PM', '7:00 PM'],
+};
+
+const SPA_CAL_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+const SPA_CAL_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Max booking window (days ahead). */
+export const SPA_MAX_BOOKING_DAYS_AHEAD = 120;
+
+/** Local calendar date as `YYYY-MM-DD`. */
+export function spaDateKey(date: Date): string {
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** Parse a `YYYY-MM-DD` key as a local date (no UTC shift). */
+export function spaParseDate(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+export function spaToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * A day is bookable when it is not in the past, not beyond the booking
+ * window, not a Sunday (salon closed) and not a deterministically "closed"
+ * day (public-holiday style blackout so the calendar shows real variety).
+ */
+export function spaIsDayOpen(date: Date): boolean {
+  const today = spaToday();
+  if (date.getTime() < today.getTime()) return false;
+  const max = new Date(today);
+  max.setDate(max.getDate() + SPA_MAX_BOOKING_DAYS_AHEAD);
+  if (date.getTime() > max.getTime()) return false;
+  if (date.getDay() === 0) return false;
+  if (hashString(spaDateKey(date)) % 13 === 0) return false;
+  return true;
+}
+
+/** Build a SpaDay (with iso) from any calendar date. */
+export function spaDayFrom(date: Date, noteOverride?: { note: string; noteTone: SpaDay['noteTone'] }): SpaDay {
+  const iso = spaDateKey(date);
+  const open = spaIsDayOpen(date);
+  const note =
+    noteOverride ??
+    (open
+      ? hashString(iso) % 3 === 0
+        ? { note: 'Few left', noteTone: 'tertiary' as const }
+        : { note: 'Available', noteTone: 'discount' as const }
+      : { note: date.getDay() === 0 ? 'Closed' : 'Unavailable', noteTone: 'tertiary' as const });
+  return {
+    id: iso,
+    weekday: SPA_CAL_WEEKDAYS[date.getDay()],
+    day: date.getDate(),
+    monthLabel: `${SPA_CAL_MONTHS[date.getMonth()]} ${date.getFullYear()}`,
+    note: note.note,
+    noteTone: note.noteTone,
+    dateLong: date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    dateShort: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+    iso,
+  };
+}
+
+/** First open day on/after today (used as the default selection). */
+export function spaNextOpenDay(from: Date = spaToday()): SpaDay {
+  const cursor = new Date(from);
+  for (let i = 0; i < SPA_MAX_BOOKING_DAYS_AHEAD; i += 1) {
+    if (spaIsDayOpen(cursor)) return spaDayFrom(cursor);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return spaDayFrom(from);
+}
+
+/** Slot keys already reserved by confirmed appointments. */
+export type SpaBookedKey = `${string}|${string}`;
+
+export const spaSlotKey = (dateISO: string, time: string): SpaBookedKey => `${dateISO}|${time}`;
+
+/**
+ * Deterministic per-date availability for the three periods.
+ * `taken` marks slots reserved by confirmed appointments; those always
+ * show as booked so a second customer cannot double-book the slot.
+ */
+export function spaSlotsForDate(
+  dateISO: string,
+  taken: readonly SpaBookedKey[] = [],
+): SpaTimePeriod[] {
+  const date = spaParseDate(dateISO);
+  const open = spaIsDayOpen(date);
+  const takenSet = new Set(taken);
+  return Object.entries(BASE_PERIOD_SLOTS).map(([id, times]) => ({
+    id,
+    label: SPA_PERIOD_LABELS[id] ?? id,
+    slots: times.map((time) => {
+      const reserved = takenSet.has(spaSlotKey(dateISO, time));
+      const pseudoBooked = open && hashString(`${dateISO}|${time}`) % 5 === 0;
+      return {
+        time,
+        status: reserved || !open || pseudoBooked ? ('booked' as const) : ('available' as const),
+      };
+    }),
+  }));
+}
+
+/** A start time is bookable when the slot is open and the session fits before close (8 PM). */
+export function spaIsSlotAvailable(
+  dateISO: string,
+  time: string,
+  durationMinutes: number,
+  taken: readonly SpaBookedKey[] = [],
+): boolean {
+  if (!spaIsDayOpen(spaParseDate(dateISO))) return false;
+  if (taken.includes(spaSlotKey(dateISO, time))) return false;
+  const [rawHour, rawMinute] = time.split(/[: ]/);
+  const period = time.includes('PM') ? 'pm' : 'am';
+  let hour = Number(rawHour) % 12;
+  if (period === 'pm') hour += 12;
+  const startMinutes = hour * 60 + Number(rawMinute ?? 0);
+  const closeMinutes = 20 * 60;
+  if (startMinutes + durationMinutes > closeMinutes) return false;
+  const periods = spaSlotsForDate(dateISO, taken);
+  for (const group of periods) {
+    const slot = group.slots.find((item) => item.time === time);
+    if (slot) return slot.status === 'available';
+  }
+  return false;
+}

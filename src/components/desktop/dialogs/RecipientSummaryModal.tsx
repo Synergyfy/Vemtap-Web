@@ -1,11 +1,14 @@
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import { maskPhone } from '../../../utils/format';
 
 export interface RecipientSummaryModalProps {
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
   onEdit: () => void;
+  /** Recipient details collected in the previous steps. */
+  recipient?: { name: string; email: string; phone?: string } | null;
 }
 
 const VALIDITY: Array<{ label: string; value: string; note: string }> = [
@@ -28,7 +31,17 @@ function ContactTile({ icon, label, value }: { icon: string; label: string; valu
   );
 }
 
-export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit }: RecipientSummaryModalProps) {
+export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipient }: RecipientSummaryModalProps) {
+  const recipientName = recipient?.name ?? 'Samuel Adeleke';
+  const recipientEmail = recipient?.email ?? 'samuel.adeleke@example.com';
+  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
+  const initials =
+    recipientName
+      .split(/\s+/)
+      .map((part) => part.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'SA';
   return (
     <DesktopModal
       open={open}
@@ -60,7 +73,7 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit }: Reci
             <div className="flex items-center gap-3.5">
               <div className="relative shrink-0">
                 <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-heading-sm text-heading-sm font-bold tracking-tight shadow-sm">
-                  SA
+                  {initials}
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-badge-discount-text text-on-primary flex items-center justify-center ring-2 ring-surface-container-lowest">
                   <Icon name="check" className="text-[13px] leading-none" />
@@ -69,11 +82,11 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit }: Reci
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate">
-                    Samuel Adeleke
+                    {recipientName}
                   </span>
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                     <Icon name="verified" className="text-[13px]" />
-                    Verified Email
+                    Verified Contact
                   </span>
                 </div>
                 <span className="font-label-sm text-label-sm text-text-secondary">
@@ -83,8 +96,8 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit }: Reci
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
-            <ContactTile icon="mail" label="Email Address" value="samuel.adeleke@example.com" />
-            <ContactTile icon="phone_iphone" label="Mobile Number" value="+234 802 345 6789" />
+            <ContactTile icon="mail" label="Email Address" value={recipientEmail} />
+            <ContactTile icon="phone_iphone" label="Mobile Number (masked)" value={recipientPhoneDisplay} />
           </div>
         </div>
 

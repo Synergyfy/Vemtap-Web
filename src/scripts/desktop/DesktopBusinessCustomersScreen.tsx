@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
+import { useContacts, type BusinessContact } from '../../context/ContactsContext';
 
 interface DesktopBusinessCustomersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -257,22 +258,93 @@ const KPIS = [
   },
 ];
 
+/** Neutral silhouette for purchase-derived contacts (no photo on file). */
+const CONTACT_AVATAR =
+  'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Ccircle cx="20" cy="15" r="7" fill="%236750a4"/%3E%3Cpath d="M8 36c0-7 5.4-11 12-11s12 4 12 11" fill="%236750a4"/%3E%3C/svg%3E';
+
+/** BUG-017: map a purchase-derived contact onto the patron table row. */
+function contactToPatron(contact: BusinessContact): PatronRow {
+  const avg = contact.orderCount > 0 ? Math.round(contact.totalSpend / contact.orderCount) : contact.totalSpend;
+  return {
+    name: contact.name,
+    avatar: CONTACT_AVATAR,
+    avatarAlt: `${contact.name} profile`,
+    verified: false,
+    segment: {
+      label: contact.marketingConsent ? 'From Purchase • Marketing Opt-in' : 'From Purchase • No Marketing Opt-in',
+      className: contact.marketingConsent
+        ? 'bg-badge-discount-bg text-badge-discount-text'
+        : 'bg-surface-container text-text-secondary',
+      icon: contact.marketingConsent ? 'loyalty' : 'receipt_long',
+    },
+    phone: contact.phone ?? '—',
+    email: contact.email ?? '—',
+    memberId: `#${contact.key.replace(/[^a-zA-Z0-9:-]/g, '').slice(-10).toUpperCase()}`,
+    metrics: [
+      {
+        icon: 'receipt_long',
+        label: `${contact.orderCount} ${contact.orderCount === 1 ? 'Order' : 'Orders'}`,
+        title: 'Completed Orders',
+        className: 'text-secondary',
+      },
+      {
+        icon: 'payments',
+        label: `₦${contact.totalSpend.toLocaleString('en-US')} spend`,
+        title: 'Total Spend',
+        className: 'text-primary',
+      },
+    ],
+    deal: {
+      label: contact.marketingConsent ? 'Marketing consented' : 'No marketing consent',
+      className: contact.marketingConsent
+        ? 'bg-badge-discount-bg text-badge-discount-text'
+        : 'bg-surface-container text-text-secondary',
+    },
+    points: '—',
+    ltv: `₦${contact.totalSpend.toLocaleString('en-US')}`,
+    ltvNote: 'Purchase-derived contact',
+    ltvTrend: { text: `₦${avg.toLocaleString('en-US')} avg / order`, className: 'text-badge-discount-text' },
+    lastDot: true,
+    lastWhen: new Date(contact.updatedAt).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }),
+    lastRef: contact.lastOrderRef ? `Order #${contact.lastOrderRef}` : '—',
+    lastTag: {
+      text: contact.marketingConsent ? 'Marketing Opt-in' : 'Transactional Only',
+      className: contact.marketingConsent
+        ? 'bg-badge-discount-bg text-badge-discount-text'
+        : 'bg-surface-container text-text-secondary',
+    },
+    tabs: ['frequent', 'returning', 'new'],
+  };
+}
+
 export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: DesktopBusinessCustomersScreenProps) {
+  const { search: searchContacts } = useContacts();
   const [activeTab, setActiveTab] = useState<FilterTab['key']>('all');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [page, setPage] = useState(1);
 
-  const visibleRows = PATRONS.filter((patron) => {
-    const matchesTab = activeTab === 'all' || patron.tabs.includes(activeTab);
-    const q = query.trim().toLowerCase();
-    const matchesQuery =
-      !q ||
-      patron.name.toLowerCase().includes(q) ||
-      patron.phone.toLowerCase().includes(q) ||
-      patron.memberId.toLowerCase().includes(q);
-    return matchesTab && matchesQuery;
-  });
+  // BUG-017: purchase-derived contacts first, deduped by name against seeds.
+  const purchaseRows = searchContacts(query).map(contactToPatron);
+  const visibleRows = [
+    ...purchaseRows,
+    ...PATRONS.filter((patron) => {
+      if (purchaseRows.some((row) => row.name.toLowerCase() === patron.name.toLowerCase())) return false;
+      const matchesTab = activeTab === 'all' || patron.tabs.includes(activeTab);
+      const q = query.trim().toLowerCase();
+      const matchesQuery =
+        !q ||
+        patron.name.toLowerCase().includes(q) ||
+        patron.phone.toLowerCase().includes(q) ||
+        patron.memberId.toLowerCase().includes(q);
+      return matchesTab && matchesQuery;
+    }),
+  ];
 
   const toggleRow = (name: string) => {
     setSelected((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));

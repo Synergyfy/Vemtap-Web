@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useBooking } from '../context/BookingContext';
 
 interface BookingDetailScreenProps {
   onBack: () => void;
@@ -25,11 +26,24 @@ const SERVICES = [
 ];
 
 export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDetailScreenProps) {
+  const booking = useBooking();
+  /** Latest real appointment record (BUG-025); falls back to the demo booking. */
+  const appointment = booking.appointments.find((item) => item.status === 'confirmed') ?? booking.appointments[0];
+  const bookingRef = appointment?.ref ?? BOOKING_REF;
+  const slotLabel = appointment ? `${appointment.dateShort} • ${appointment.time}` : 'Thu, Oct 17 • 1:15 PM';
+  const durationLabel = appointment ? `~${appointment.durationLabel}` : '~1h 45m';
+  const servicesList = appointment
+    ? appointment.serviceNames.map((name) => ({ name, meta: appointment.durationLabel, price: '' }))
+    : SERVICES;
+  const subtotal = appointment?.servicesSubtotal ?? 29000;
+  const discount = appointment?.discount ?? 5000;
+  const payable = appointment?.payable ?? 24000;
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [inCalendar, setInCalendar] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
+  const [cancelledLocal, setCancelledLocal] = useState(false);
+  const cancelled = cancelledLocal || appointment?.status === 'cancelled';
 
   const showToast = (message: string) => {
     setToast(message);
@@ -52,7 +66,8 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
 
   const confirmCancel = () => {
     setConfirmOpen(false);
-    setCancelled(true);
+    setCancelledLocal(true);
+    if (appointment) booking.cancelAppointment(appointment.ref);
     showToast('Booking cancelled — your slot was released');
   };
 
@@ -70,7 +85,7 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
           </button>
           <div className="flex flex-col min-w-0">
             <h1 className="font-heading-sm text-heading-sm text-text-primary truncate">Booking Details</h1>
-            <span className="font-mono font-caption text-caption text-text-tertiary">#{BOOKING_REF}</span>
+            <span className="font-mono font-caption text-caption text-text-tertiary">#{bookingRef}</span>
           </div>
         </div>
       </header>
@@ -99,7 +114,7 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
                 'Your slot was released. Contact the spa anytime to rebook.'
               ) : (
                 <>
-                  Happening <span className="font-semibold text-text-primary">Tomorrow</span> • Glow &amp; Serenity Spa
+                  Happening <span className="font-semibold text-text-primary">{slotLabel}</span> • Glow &amp; Serenity Spa
                 </>
               )}
             </p>
@@ -114,10 +129,10 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
               </div>
               <div className="min-w-0">
                 <span className="font-label-md text-label-md font-semibold text-text-primary block">
-                  Thu, Oct 17 • 1:15 PM
+                  {slotLabel}
                 </span>
                 <span className="font-caption text-caption text-text-secondary">
-                  Duration ~1h 45m • Arrive by 1:00 PM
+                  Duration {durationLabel} • Arrive 15 minutes early
                 </span>
               </div>
             </div>
@@ -176,7 +191,7 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
             Reserved Services
           </h2>
           <ul className="flex flex-col gap-space-sm">
-            {SERVICES.map((service) => (
+            {servicesList.map((service) => (
               <li key={service.name} className="flex items-start justify-between gap-space-sm">
                 <div className="min-w-0">
                   <span className="font-body-md text-body-md text-text-primary block truncate">{service.name}</span>
@@ -191,18 +206,22 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
           <div className="border-t border-outline-variant/40 pt-space-xs flex flex-col gap-space-xs">
             <div className="flex items-center justify-between">
               <span className="font-body-md text-body-md text-text-secondary">Subtotal</span>
-              <span className="font-body-md text-body-md text-text-primary">₦29,000</span>
+              <span className="font-body-md text-body-md text-text-primary">₦{subtotal.toLocaleString('en-US')}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-body-md text-body-md text-text-secondary flex items-center gap-1">
                 <Icon name="confirmation_number" className="text-[15px] text-badge-discount-text" />
                 VEMTAP Deal Applied
               </span>
-              <span className="font-body-md text-body-md text-badge-discount-text font-semibold">−₦5,000</span>
+              <span className="font-body-md text-body-md text-badge-discount-text font-semibold">
+                −₦{discount.toLocaleString('en-US')}
+              </span>
             </div>
             <div className="flex items-center justify-between pt-space-xs border-t border-outline-variant/40">
               <span className="font-label-md text-label-md font-bold text-text-primary">Pay at the spa</span>
-              <span className="font-heading-sm text-heading-sm font-bold text-text-primary">₦24,000</span>
+              <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                ₦{payable.toLocaleString('en-US')}
+              </span>
             </div>
           </div>
           <div className="flex items-start gap-1.5 bg-surface-tint-blue rounded-lg px-space-sm py-space-xs">
@@ -227,13 +246,13 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
           <div className="grid grid-cols-2 gap-space-xs">
             <button
               type="button"
-              onClick={() => copyValue(BOOKING_REF, 'Booking reference')}
+              onClick={() => copyValue(bookingRef, 'Booking reference')}
               className="bg-surface-container-low rounded-lg px-space-sm py-space-xs flex flex-col items-start gap-0.5 hover:bg-surface-container transition-colors"
             >
               <span className="font-caption text-caption text-text-tertiary">Booking Reference</span>
               <span className="flex items-center gap-1 font-mono font-label-md text-label-md font-bold text-text-primary">
-                #{BOOKING_REF}
-                <Icon name={copied === BOOKING_REF ? 'check' : 'content_copy'} className="text-[14px] text-primary" />
+                #{bookingRef}
+                <Icon name={copied === bookingRef ? 'check' : 'content_copy'} className="text-[14px] text-primary" />
               </span>
             </button>
             <button
@@ -350,8 +369,7 @@ export function BookingDetailScreen({ onBack, onReschedule, onChat }: BookingDet
             </div>
             <h3 className="font-heading-md text-heading-md text-text-primary text-center">Cancel this booking?</h3>
             <p className="font-body-md text-body-md text-text-secondary text-center mt-space-xs leading-relaxed">
-              Your slot with Amara K. on Thu, Oct 17 at 1:15 PM will be released. You can rebook anytime, subject to
-              availability.
+              Your appointment on {slotLabel} will be released. You can rebook anytime, subject to availability.
             </p>
             <div className="flex flex-col gap-space-xs mt-space-md">
               <button

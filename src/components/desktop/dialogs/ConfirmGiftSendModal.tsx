@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import { maskPhone } from '../../../utils/format';
 
 export interface ConfirmGiftSendModalProps {
   open: boolean;
   onClose: () => void;
   onEdit: () => void;
   onSend: () => void;
+  /** Gift recipient collected in the previous step. */
+  recipient?: { name: string; email: string; phone?: string } | null;
 }
 
 type DispatchState = 'idle' | 'sending' | 'sent';
 
-export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend }: ConfirmGiftSendModalProps) {
+export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient }: ConfirmGiftSendModalProps) {
+  const recipientName = recipient?.name ?? 'Samuel Adeleke';
+  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
+  const firstName = recipientName.split(/\s+/)[0] || recipientName || 'recipient';
   const [agreed, setAgreed] = useState(true);
   const [state, setState] = useState<DispatchState>('idle');
   const timers = useRef<Array<number>>([]);
@@ -87,7 +93,7 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend }: ConfirmG
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-xl">🎁</span>
                 <span className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">
-                  A Special Treat for Samuel Adeleke
+                  A Special Treat for {recipientName}
                 </span>
               </div>
               <span className="px-2.5 py-1 rounded-full bg-surface-container-highest text-primary font-caption text-caption font-semibold uppercase tracking-wider shrink-0">
@@ -167,9 +173,9 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend }: ConfirmG
               <span className="font-caption text-caption text-text-tertiary">Recipient</span>
               <span className="font-label-md text-label-md text-text-primary font-medium flex items-center gap-1">
                 <Icon name="person" className="text-[16px] text-text-secondary" />
-                Samuel Adeleke
+                {recipientName}
               </span>
-              <span className="font-caption text-caption text-text-secondary">+234 802 345 6789</span>
+              <span className="font-caption text-caption text-text-secondary">{recipientPhoneDisplay}</span>
             </div>
             <div className="flex flex-col">
               <span className="font-caption text-caption text-text-tertiary">Delivery Channel</span>
@@ -250,7 +256,7 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend }: ConfirmG
           ) : state === 'sent' ? (
             <>
               <Icon name="check_circle" filled className="text-[20px] text-on-primary" />
-              <span>Pass Dispatched to Samuel!</span>
+              <span>Pass Dispatched to {firstName}!</span>
             </>
           ) : (
             <>

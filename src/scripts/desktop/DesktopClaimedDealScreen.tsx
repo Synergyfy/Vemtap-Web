@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { useClaims } from '../../context/ClaimsContext';
+import { useProfile } from '../../context/ProfileContext';
 
 interface DesktopClaimedDealScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -10,6 +12,7 @@ interface DesktopClaimedDealScreenProps {
   onCancelClaim: () => void;
 }
 
+/** Fallback shown only when no claim record exists (deep link / cleared storage). */
 const CLAIM_CODE = 'VT-48F261';
 const CASHIER_PIN = '8821';
 
@@ -21,26 +24,26 @@ const MAP_IMG =
 
 const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Apo%20Boulevard%2C%20Abuja';
 
-const REDEEM_STEPS: { title: string; body: ReactNode }[] = [
+const REDEEM_STEPS = (business: string, code: string): { title: string; body: ReactNode }[] => [
   {
     title: 'Visit the Branch',
-    body: 'Head to Urban Grill & Bistro located at Apo Boulevard, Abuja.',
+    body: `Head to ${business} to redeem your voucher.`,
   },
   {
     title: 'Notify Your Server',
-    body: 'Mention you have an active VEMTAP voucher when placing your lunch combo order.',
+    body: 'Mention you have an active VEMTAP voucher when placing your order.',
   },
   {
     title: 'Scan or Enter Code',
     body: (
       <>
-        Show your QR Code or provide Claim Code <span className="font-semibold text-primary">{CLAIM_CODE}</span>.
+        Show your QR Code or provide Claim Code <span className="font-semibold text-primary">{code}</span>.
       </>
     ),
   },
   {
     title: 'Enjoy & Save',
-    body: 'Pay the discounted bill of ₦9,600 right at checkout counter.',
+    body: 'Pay the discounted bill directly at the checkout counter.',
   },
 ];
 
@@ -105,6 +108,17 @@ export function DesktopClaimedDealScreen({
   const qrRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
 
+  // Most recent redeemable claim (localStorage-backed; backend gap: `GET /claims/:ref`).
+  const { claims } = useClaims();
+  const profile = useProfile();
+  const claim = claims.find((entry) => entry.kind !== 'gift') ?? null;
+  const claimCode = claim?.code ?? CLAIM_CODE;
+  const businessName = claim?.dealBusiness ?? 'Urban Grill & Bistro';
+  const offerTitle = claim?.dealTitle ?? 'Prime Lunch Gourmet Combo';
+  const holderName = claim?.recipient?.name || profile.fullName;
+  const holderContact = claim?.recipient?.phone || claim?.recipient?.email || profile.maskedPhone;
+  const redeemSteps = REDEEM_STEPS(businessName, claimCode);
+
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
   const showToast = (message: string) => {
@@ -115,14 +129,14 @@ export function DesktopClaimedDealScreen({
   };
 
   const copyCode = () => {
-    navigator.clipboard?.writeText(CLAIM_CODE).catch(() => undefined);
+    navigator.clipboard?.writeText(claimCode).catch(() => undefined);
     setCopied(true);
-    showToast(`Merchant Code Copied: ${CLAIM_CODE}`);
+    showToast(`Merchant Code Copied: ${claimCode}`);
     timers.current.push(window.setTimeout(() => setCopied(false), 2000));
   };
 
   const sharePass = () => {
-    const text = `Urban Grill & Bistro — 20% Off Prime Lunch Gourmet Combo (${CLAIM_CODE})`;
+    const text = `${businessName} — ${offerTitle} (${claimCode})`;
     if (navigator.share) {
       navigator.share({ title: 'Claimed Deal Pass', text }).catch(() => undefined);
       return;
@@ -193,7 +207,7 @@ export function DesktopClaimedDealScreen({
             </span>
             <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">Claimed Deal Pass</h1>
             <p className="font-body-lg text-body-lg text-text-secondary mt-space-2xs leading-relaxed">
-              Your Urban Grill &amp; Bistro lunch combo is active — present the QR pass or claim code below to your
+              Your {businessName} claim is active — present the QR pass or claim code below to your
               server or cashier before billing.
             </p>
           </div>
@@ -229,12 +243,12 @@ export function DesktopClaimedDealScreen({
                   <div>
                     <div className="flex items-center gap-1">
                       <span className="font-label-md text-label-md font-semibold text-text-primary">
-                        Urban Grill &amp; Bistro
+                        {businessName}
                       </span>
                       <Icon name="verified" className="text-[16px] text-primary" filled />
                     </div>
                     <h2 className="font-heading-md text-heading-md text-text-primary font-semibold tracking-tight">
-                      20% Off Prime Lunch Gourmet Combo
+                      {offerTitle}
                     </h2>
                     <div className="flex items-start gap-1 text-text-secondary mt-1">
                       <Icon name="pin_drop" className="text-[16px] mt-0.5 text-primary" />
@@ -279,7 +293,7 @@ export function DesktopClaimedDealScreen({
                       <span className="font-caption text-caption text-text-secondary">Merchant Code</span>
                       <div className="flex items-center gap-1 mt-0.5">
                         <span className="font-heading-sm text-heading-sm font-bold text-text-primary tracking-wider">
-                          {CLAIM_CODE}
+                          {claimCode}
                         </span>
                         <button
                           type="button"
@@ -310,9 +324,9 @@ export function DesktopClaimedDealScreen({
                         Pass Holder
                       </span>
                       <p className="font-label-md text-label-md font-semibold text-text-primary mt-0.5">
-                        Zainab Ahmed
+                        {holderName}
                       </p>
-                      <p className="font-caption text-caption text-text-secondary">+234 803 555 0192</p>
+                      <p className="font-caption text-caption text-text-secondary">{holderContact}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-surface-canvas shadow-sm">
                       <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
@@ -349,8 +363,9 @@ export function DesktopClaimedDealScreen({
                   <div className="p-3 rounded-xl bg-surface-tint-blue flex items-start gap-2 text-text-primary text-left">
                     <Icon name="info" className="text-primary text-[20px] shrink-0 mt-0.5" />
                     <p className="font-caption text-caption leading-relaxed">
-                      <strong>Settlement Notice:</strong> Pay <strong>₦9,600</strong> directly to Urban Grill &amp;
-                      Bistro cashier at redemption via card or cash. Zero upfront checkout fees charged by VEMTAP.
+                      <strong>Settlement Notice:</strong> Pay the discounted bill directly to the{' '}
+                      <strong>{businessName}</strong> cashier at redemption via card or cash. Zero upfront checkout
+                      fees charged by VEMTAP.
                     </p>
                   </div>
                 </div>
@@ -360,20 +375,34 @@ export function DesktopClaimedDealScreen({
                 <div className="flex items-center justify-between">
                   <h3 className="font-heading-sm text-heading-sm text-text-primary">Claim Verification</h3>
                   <span className="bg-surface-container-high text-text-secondary px-2 py-0.5 rounded-full font-label-sm text-label-sm">
-                    #CLM-982410
+                    #{claim?.ref ?? 'CLM-982410'}
                   </span>
                 </div>
                 <div className="space-y-space-xs text-body-md font-body-md">
                   <div className="flex items-center justify-between py-1">
                     <span className="text-text-secondary font-caption text-caption">Claimed On</span>
-                    <span className="text-text-primary font-medium text-caption">Oct 15, 2024 • 10:42 AM</span>
+                    <span className="text-text-primary font-medium text-caption">
+                      {claim
+                        ? new Date(claim.createdAt).toLocaleString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })
+                        : 'Oct 15, 2024 • 10:42 AM'}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between py-1">
                     <span className="text-text-secondary font-caption text-caption">Claim Holder</span>
                     <div className="flex items-center gap-1">
-                      <span className="text-text-primary font-medium text-caption">Zainab Ahmed</span>
+                      <span className="text-text-primary font-medium text-caption">{holderName}</span>
                       <Icon name="verified_user" className="text-primary text-[14px]" filled />
                     </div>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-text-secondary font-caption text-caption">Contact</span>
+                    <span className="text-text-primary font-medium text-caption text-right">{holderContact}</span>
                   </div>
                   <div className="flex items-center justify-between py-1">
                     <span className="text-text-secondary font-caption text-caption">Payment Mode</span>
@@ -384,7 +413,9 @@ export function DesktopClaimedDealScreen({
                   <div className="flex items-center justify-between py-1">
                     <span className="text-text-secondary font-caption text-caption">Usage Allocation</span>
                     <span className="bg-surface-tint-blue text-primary px-2 py-0.5 rounded-md font-label-sm text-label-sm font-medium">
-                      Personal Use
+                      {claim?.kind === 'someone-else' && claim.recipient
+                        ? `For ${claim.recipient.name}`
+                        : 'Personal Use'}
                     </span>
                   </div>
                 </div>
@@ -401,7 +432,7 @@ export function DesktopClaimedDealScreen({
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-space-sm">
-                  {REDEEM_STEPS.map((step, index) => (
+                  {redeemSteps.map((step, index) => (
                     <div
                       className="flex items-start gap-space-sm p-3 rounded-xl bg-surface-subtle"
                       key={step.title}
@@ -437,7 +468,7 @@ export function DesktopClaimedDealScreen({
                       UG
                     </div>
                     <div>
-                      <h4 className="font-heading-sm text-heading-sm text-text-primary">Urban Grill &amp; Bistro</h4>
+                      <h4 className="font-heading-sm text-heading-sm text-text-primary">{businessName}</h4>
                       <span className="inline-flex items-center gap-1 font-caption text-caption text-badge-discount-text font-medium">
                         <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" /> Open Now • Closes 10:00 PM
                       </span>
@@ -530,7 +561,7 @@ export function DesktopClaimedDealScreen({
                     className="h-11 px-2 rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-md hover:bg-primary active:scale-[0.98] transition-all"
                   >
                     <Icon name="bolt" className="text-[20px]" />
-                    <span>Use Deal (₦9,600)</span>
+                    <span>Use Deal</span>
                   </button>
                 </div>
 
@@ -567,8 +598,8 @@ export function DesktopClaimedDealScreen({
               <div className="px-4 py-3 rounded-xl bg-surface-tint-blue flex items-start gap-2">
                 <Icon name="info" className="text-primary text-[18px] shrink-0 mt-0.5" />
                 <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                  In-person settlement: pay the discounted bill of <strong className="text-text-primary">₦9,600</strong>{' '}
-                  at the checkout counter via card or cash.
+                  In-person settlement: pay the discounted bill directly at{' '}
+                  <strong className="text-text-primary">{businessName}</strong> via card or cash.
                 </p>
               </div>
             </aside>
@@ -589,7 +620,7 @@ export function DesktopClaimedDealScreen({
               <p className="font-body-md text-body-md text-text-secondary">
                 {confirming === 'cancel'
                   ? 'This voucher will be returned to the pool for other foodies. This cannot be undone.'
-                  : `Make sure your server is ready to scan or note code ${CLAIM_CODE} before closing this session.`}
+                  : `Make sure your server is ready to scan or note code ${claimCode} before closing this session.`}
               </p>
             </div>
             <div className="space-y-2 pt-2">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
+import { useLocation } from '../../context/LocationContext';
 
 interface DesktopFeaturedDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -149,6 +150,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [sort, setSort] = useState('closest');
   const [locationOpen, setLocationOpen] = useState(false);
+  const { district, city, radius, setLocation } = useLocation();
   const [saved, setSaved] = useState<Record<string, boolean>>({});
 
   const toggleSave = (store: string) => {
@@ -214,7 +216,9 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                   onClick={() => setLocationOpen(true)}
                 >
                   <Icon name="location_on" className="text-[16px]" />
-                  <span className="font-semibold">Apo, Abuja</span>
+                  <span className="font-semibold">
+                    {district}, {city}
+                  </span>
                   <span className="text-text-tertiary">•</span>
                   <span>Within 10km</span>
                 </button>
@@ -473,7 +477,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
           </div>
         </section>
       </DesktopPage>
-      <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+      <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
     </>
   );
 }

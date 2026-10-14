@@ -17,6 +17,8 @@ interface BusinessPosHomeScreenProps {
   onOpenSync?: () => void;
   onOpenSettings?: () => void;
   onOpenKitchen?: () => void;
+  /** BUG-016: cashier lookup by QR / order number / phone. */
+  onOpenOrderLookup?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -86,6 +88,7 @@ export function BusinessPosHomeScreen({
   onOpenSync,
   onOpenSettings,
   onOpenKitchen,
+  onOpenOrderLookup,
 }: BusinessPosHomeScreenProps) {
   const { branch } = useBusinessBranch();
   const [offline, setOffline] = useState(initialOffline);
@@ -268,6 +271,13 @@ export function BusinessPosHomeScreen({
                 meta="Type SKU when scanner is unavailable"
                 trailing={<Icon name="chevron_right" className="text-[18px]" />}
                 onClick={() => showToast('Manual entry keypad opened')}
+              />
+              <ControlRow
+                icon="qr_code_scanner"
+                title="Find Customer Order"
+                meta="QR scan • order number • phone"
+                trailing={<Icon name="chevron_right" className="text-[18px]" />}
+                onClick={onOpenOrderLookup ?? (() => showToast('Order lookup opened'))}
               />
               <ControlRow
                 icon="database"

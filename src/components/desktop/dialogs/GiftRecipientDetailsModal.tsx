@@ -2,10 +2,19 @@ import { useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal } from '../DesktopModal';
 
+export interface GiftRecipientValues {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  channel: 'whatsapp' | 'email' | 'sms';
+}
+
 export interface GiftRecipientDetailsModalProps {
   open: boolean;
   onClose: () => void;
-  onContinue: () => void;
+  /** Receives the collected recipient details so the review step and gift record can use them. */
+  onContinue: (values: GiftRecipientValues) => void;
 }
 
 type Channel = 'whatsapp' | 'email' | 'sms';
@@ -36,8 +45,13 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRec
   const [theme, setTheme] = useState<Theme>('celebration');
   const [scheduled, setScheduled] = useState(false);
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const [fullName, setFullName] = useState('Samuel Adeleke');
+  const [email, setEmail] = useState('samuel.adeleke@example.com');
+  const [phone, setPhone] = useState('0802 345 6789');
 
   const field = CHANNEL_FIELDS[channel];
+  const [firstName = '', ...rest] = fullName.trim().split(/\s+/);
+  const lastName = rest.join(' ');
 
   return (
     <DesktopModal
@@ -114,7 +128,13 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRec
         className="px-6 py-5 flex flex-col gap-4 overflow-y-auto"
         onSubmit={(event) => {
           event.preventDefault();
-          onContinue();
+          onContinue({
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            channel,
+          });
         }}
       >
         <div className="flex flex-col gap-1.5">
@@ -128,7 +148,9 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRec
               className="w-full h-[50px] pl-11 pr-4 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md placeholder:text-text-tertiary focus:bg-surface-canvas focus:outline-none transition-all"
               placeholder="e.g. Samuel Adeleke"
               type="text"
-              defaultValue="Samuel Adeleke"
+              required
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
             />
           </div>
         </div>
@@ -168,7 +190,11 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRec
                 className="w-full h-[50px] px-4 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md placeholder:text-text-tertiary focus:bg-surface-canvas focus:outline-none transition-all tracking-wide"
                 placeholder={field.placeholder}
                 type={field.type}
-                defaultValue={field.type === 'email' ? 'samuel.adeleke@example.com' : '0802 345 6789'}
+                required
+                value={channel === 'email' ? email : phone}
+                onChange={(event) =>
+                  channel === 'email' ? setEmail(event.target.value) : setPhone(event.target.value)
+                }
               />
               <span className="absolute right-3.5 flex items-center text-badge-discount-text">
                 <Icon name="check_circle" filled className="text-[18px]" />

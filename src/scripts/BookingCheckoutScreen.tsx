@@ -11,14 +11,17 @@ import {
 
 interface BookingCheckoutScreenProps {
   onBack: () => void;
-  onConfirm: () => void;
+  /** Called only after the appointment record is successfully created. */
+  onConfirmed: () => void;
 }
 
 const naira = (value: number) => `₦${value.toLocaleString('en-US')}`;
 
-export function BookingCheckoutScreen({ onBack, onConfirm }: BookingCheckoutScreenProps) {
+export function BookingCheckoutScreen({ onBack, onConfirmed }: BookingCheckoutScreenProps) {
   const booking = useBooking();
   const [toast, setToast] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
   const serviceDuration = booking.services.reduce((total, service) => total + service.time, 0);
   const sessionDuration = booking.durationMinutes;
@@ -31,6 +34,23 @@ export function BookingCheckoutScreen({ onBack, onConfirm }: BookingCheckoutScre
   const showToast = (message: string) => {
     setToast(message);
     const timer = window.setTimeout(() => setToast(null), 2400);
+    toastTimers.current.push(timer);
+  };
+
+  /** BUG-025: confirm revalidates the slot and persists a real appointment record. */
+  const handleConfirm = () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setConfirmError(null);
+    const timer = window.setTimeout(() => {
+      const result = booking.confirm();
+      setSubmitting(false);
+      if (!result.ok) {
+        setConfirmError(result.error);
+        return;
+      }
+      onConfirmed();
+    }, 500);
     toastTimers.current.push(timer);
   };
 
@@ -114,13 +134,7 @@ export function BookingCheckoutScreen({ onBack, onConfirm }: BookingCheckoutScre
             <div>
               <span className="text-caption text-caption text-text-secondary block">Specialist Assigned</span>
               <p className="text-label-md text-label-md font-heading-sm text-text-primary">
-                {booking.therapist.id === 'any' ? (
-                  <>Any Available <span className="text-text-secondary font-normal">(Instant match)</span></>
-                ) : (
-                  <>
-                    {booking.therapist.name} <span className="text-text-secondary font-normal">({booking.therapist.role})</span>
-                  </>
-                )}
+                Any Available <span className="text-text-secondary font-normal">(matched at check-in — coming soon)</span>
               </p>
             </div>
           </div>
@@ -348,13 +362,33 @@ export function BookingCheckoutScreen({ onBack, onConfirm }: BookingCheckoutScre
             </span>
           </div>
         </div>
+        {confirmError && (
+          <div className="p-3 rounded-xl bg-error-container/40 border border-error/40 flex items-start gap-2" role="alert">
+            <Icon name="error" className="text-error text-[18px] shrink-0 mt-0.5" />
+            <div>
+              <p className="text-label-md text-label-md font-semibold text-error">Could not confirm booking</p>
+              <p className="text-caption text-caption text-text-secondary mt-0.5">{confirmError}</p>
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
-          onClick={onConfirm}
-          className="w-full h-12 bg-primary-container hover:bg-primary text-on-primary font-button-primary rounded-xl flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-[0.99] transition-all"
+          disabled={submitting || !booking.timeAvailable}
+          onClick={handleConfirm}
+          className="w-full h-12 bg-primary-container hover:bg-primary text-on-primary font-button-primary rounded-xl flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-primary-container"
         >
-          <span>Confirm Booking with Glow &amp; Serenity</span>
-          <Icon name="arrow_forward" className="text-[20px]" />
+          {submitting ? (
+            <>
+              <Icon name="progress_activity" className="text-[20px] animate-spin" />
+              <span>Confirming Appointment…</span>
+            </>
+          ) : (
+            <>
+              <span>Confirm Booking with Glow &amp; Serenity</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </>
+          )}
         </button>
         <p className="text-[11px] text-text-tertiary text-center mt-2">
           By booking you agree to salon reservation rules &amp; VEMTAP terms.

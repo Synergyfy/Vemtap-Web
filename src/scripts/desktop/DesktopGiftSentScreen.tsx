@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import type { GiftRecipientSummary } from '../GiftSentScreen';
+import type { ClaimRecord } from '../../context/ClaimsContext';
+import { maskPhone } from '../../utils/format';
 
 interface DesktopGiftSentScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -9,6 +11,7 @@ interface DesktopGiftSentScreenProps {
   onBack: () => void;
   onDone: () => void;
   onSendAnother: () => void;
+  claim?: ClaimRecord | null;
 }
 
 export function DesktopGiftSentScreen({
@@ -17,17 +20,20 @@ export function DesktopGiftSentScreen({
   onBack,
   onDone,
   onSendAnother,
+  claim,
 }: DesktopGiftSentScreenProps) {
   const [copied, setCopied] = useState(false);
   const timers = useRef<number[]>([]);
 
   const recipientName = recipient?.name || 'Amara Okafor';
   const recipientEmail = recipient?.email || 'amara@email.com';
+  const recipientPhone = recipient?.phone || claim?.recipient?.phone;
+  const reference = claim?.ref ?? '#VT-GIFT-83921';
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
   const copyCode = () => {
-    navigator.clipboard?.writeText('#VT-GIFT-83921').catch(() => undefined);
+    navigator.clipboard?.writeText(reference).catch(() => undefined);
     setCopied(true);
     timers.current.push(window.setTimeout(() => setCopied(false), 2000));
   };
@@ -57,7 +63,8 @@ export function DesktopGiftSentScreen({
             <p className="font-body-lg text-body-lg text-text-secondary mt-space-2xs leading-relaxed">
               We've sent the verification instructions to{' '}
               <span className="font-button-secondary text-text-primary">{recipientName}</span> (
-              <span className="text-text-primary">{recipientEmail}</span>).
+              <span className="text-text-primary">{recipientEmail}</span>
+              {recipientPhone ? <>, {maskPhone(recipientPhone)}</> : null}).
             </p>
           </div>
 
@@ -104,7 +111,7 @@ export function DesktopGiftSentScreen({
                         Claim Code Reserved
                       </span>
                       <span className="font-button-primary text-text-primary tracking-wide truncate">
-                        #VT-GIFT-83921
+                        {reference}
                       </span>
                     </div>
                     <button
@@ -146,12 +153,12 @@ export function DesktopGiftSentScreen({
                 </span>
                 <p className="font-heading-sm text-heading-sm text-text-primary mt-1 truncate">{recipientName}</p>
                 <p className="font-body-md text-body-md text-text-secondary break-all">{recipientEmail}</p>
-                {recipient.phone && (
-                  <p className="font-body-md text-body-md text-text-secondary break-all">{recipient.phone}</p>
+                {recipientPhone && (
+                  <p className="font-body-md text-body-md text-text-secondary break-all">{maskPhone(recipientPhone)}</p>
                 )}
                 <div className="mt-3 pt-3 border-t border-border-subtle flex items-center justify-between">
                   <span className="font-caption text-caption text-text-tertiary">Claim Code Reserved</span>
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">#VT-GIFT-83921</span>
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">{reference}</span>
                 </div>
               </div>
 
@@ -161,7 +168,7 @@ export function DesktopGiftSentScreen({
                   onClick={onDone}
                   className="w-full h-[52px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
                 >
-                  Done
+                  <span>View Gift in My Deals</span>
                 </button>
                 <button
                   type="button"

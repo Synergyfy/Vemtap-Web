@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import type { ClaimRecord } from '../context/ClaimsContext';
+import { maskPhone } from '../utils/format';
 
 interface ClaimSuccessScreenProps {
   onViewMyDeal: () => void;
   onContinue: () => void;
   onBack: () => void;
+  claim?: ClaimRecord | null;
 }
 
 const STOREFRONT_IMAGE =
@@ -15,11 +18,16 @@ const STOREFRONT_IMAGE =
 const STOREFRONT_ALT =
   'Warm modern bistro interior with contemporary wooden tables, soft ambient warm ceiling pendant lamps, indoor plants, and a bustling artisan open kitchen, commercial photography style, crisp clean lighting';
 
-export function ClaimSuccessScreen({ onViewMyDeal, onContinue, onBack }: ClaimSuccessScreenProps) {
+export function ClaimSuccessScreen({ onViewMyDeal, onContinue, onBack, claim }: ClaimSuccessScreenProps) {
   const [copied, setCopied] = useState(false);
 
+  const claimRef = claim?.ref ?? 'VT-48291';
+  const isSomeoneElseClaim = claim?.kind === 'someone-else' && Boolean(claim.recipient);
+  const recipientName = isSomeoneElseClaim ? claim?.recipient?.name : undefined;
+  const recipientPhone = isSomeoneElseClaim ? claim?.recipient?.phone : undefined;
+
   const copyClaimCode = () => {
-    navigator.clipboard?.writeText('VT-48291').catch(() => undefined);
+    navigator.clipboard?.writeText(claimRef).catch(() => undefined);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
@@ -61,9 +69,27 @@ export function ClaimSuccessScreen({ onViewMyDeal, onContinue, onBack }: ClaimSu
             Deal Claimed!
           </h1>
           <p className="font-body-md text-body-md text-text-secondary max-w-[290px]">
-            Your deal has been saved to My Deals and is ready to use.
+            {isSomeoneElseClaim
+              ? `Claim authorized for ${recipientName}. The redemption pass is ready to share.`
+              : 'Your deal has been saved to My Deals and is ready to use.'}
           </p>
         </div>
+
+        {isSomeoneElseClaim ? (
+          <div className="w-full bg-surface-container-low rounded-xl p-space-sm mb-space-md flex items-start gap-space-sm">
+            <Icon name="person_pin" className="text-primary text-[20px] shrink-0 mt-0.5" filled />
+            <div className="flex flex-col min-w-0">
+              <span className="font-label-sm text-label-sm text-text-primary">Redeemer: {recipientName}</span>
+              <span className="font-caption text-caption text-text-secondary">
+                {claim?.recipient?.email}
+                {recipientPhone ? ` • ${maskPhone(recipientPhone)}` : ''}
+              </span>
+              <span className="font-caption text-caption text-text-tertiary">
+                You made the claim; the voucher is registered under the recipient's name.
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         <div className="relative w-full bg-surface-canvas rounded-2xl shadow-xl overflow-hidden mb-space-md">
           <div className="p-space-md pb-space-sm bg-surface-canvas">
@@ -81,7 +107,7 @@ export function ClaimSuccessScreen({ onViewMyDeal, onContinue, onBack }: ClaimSu
                 className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-surface-container-low active:bg-surface-container-highest transition-colors cursor-pointer"
               >
                 <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                  {copied ? 'Copied!' : 'Claim #VT-48291'}
+                  {copied ? 'Copied!' : `Claim #${claimRef}`}
                 </span>
                 <Icon name={copied ? 'check' : 'content_copy'} className="text-text-secondary text-sm" />
               </button>

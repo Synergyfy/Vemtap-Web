@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
+import { useLocation } from '../../context/LocationContext';
 
 interface DesktopHomeScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -434,6 +435,7 @@ export function DesktopHomeScreen({
 }: DesktopHomeScreenProps) {
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [locationOpen, setLocationOpen] = useState(false);
+  const { district, city, radius, setLocation } = useLocation();
   const [listCategory, setListCategory] = useState('All');
   const [gridCategory, setGridCategory] = useState('All Deals');
   const [liked, setLiked] = useState<Record<number, boolean>>({});
@@ -493,7 +495,7 @@ export function DesktopHomeScreen({
                     <span className="text-primary font-bold">•</span>
                     <span className="flex items-center gap-1 text-text-secondary">
                       <Icon name="location_on" className="text-primary text-[18px]" />
-                      Apo, Abuja (Within 5km)
+                      {district}, {city} (Within {radius}km)
                     </span>
                   </div>
                   <p className="font-heading-lg text-heading-lg text-text-primary tracking-tight mt-0.5">
@@ -1005,7 +1007,7 @@ export function DesktopHomeScreen({
 
           {toastElement}
         </DesktopPage>
-        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
       </>
     );
   }
@@ -1430,7 +1432,7 @@ export function DesktopHomeScreen({
 
         {toastElement}
       </DesktopPage>
-      <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+      <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
     </>
   );
 }

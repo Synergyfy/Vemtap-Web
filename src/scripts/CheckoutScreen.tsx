@@ -2,32 +2,45 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { useCart } from '../context/CartContext';
+import { useOrders, type SubmittedOrder } from '../context/OrdersContext';
+import { useProfile } from '../context/ProfileContext';
 import { naira } from './catalogueData';
 import {
   DELIVERY_FEE,
   MERCHANT_IMAGE,
   MERCHANT_NAME,
-  MERCHANT_PHONE_DISPLAY,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
   VOUCHER_CODE,
   VOUCHER_RATE,
   estimateReadyBy,
-  newOrderRef,
   type FulfillmentMode,
-  type OrderSummary,
+  type PaymentMethod,
 } from './orderData';
 
 interface CheckoutScreenProps {
   onBack: () => void;
-  onPlaced: (order: OrderSummary) => void;
+  onPlaced: (order: SubmittedOrder) => void;
 }
+
+/** How the customer will settle. Online methods stay unverified until the merchant confirms. */
+const PAYMENT_CHOICES: { method: PaymentMethod; blurb: string; icon: string }[] = [
+  { method: 'pay-at-counter', blurb: 'Cash or POS when you collect', icon: 'point_of_sale' },
+  { method: 'card', blurb: 'Debit / credit card (verified before pickup)', icon: 'credit_card' },
+  { method: 'transfer', blurb: 'Bank transfer (verified before pickup)', icon: 'account_balance' },
+  { method: 'wallet', blurb: 'VEMTAP wallet (verified before pickup)', icon: 'account_balance_wallet' },
+];
 
 export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
   const cart = useCart();
+  const orders = useOrders();
+  const profile = useProfile();
   const [mode, setMode] = useState<FulfillmentMode>('pickup');
   const [note, setNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pay-at-counter');
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [pendingRef, setPendingRef] = useState('UG-00000');
-  const [pendingOrder, setPendingOrder] = useState<OrderSummary | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<SubmittedOrder | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
 
@@ -49,9 +62,14 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
   const readyBy = estimateReadyBy();
 
   const placeOrder = () => {
-    const ref = newOrderRef();
-    const order: OrderSummary = {
-      ref,
+    // BUG-015 Step 3: submit through the shared order store. The order is
+    // never marked paid here — pay-at-counter stays `submitted`, online
+    // methods stay `payment-pending` until the merchant verifies payment.
+    const result = orders.submit({
+      merchantId: 'urban',
+      merchantName: MERCHANT_NAME,
+      customerName: profile.fullName,
+      customerPhone: profile.phone || undefined,
       lines: cart.lines.map((line) => ({
         id: line.id,
         productId: line.productId,
@@ -67,10 +85,16 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
       deliveryFee,
       total,
       fulfillment: mode,
-    };
-    setPendingRef(ref);
+      note: note.trim() || undefined,
+      paymentMethod,
+      marketingConsent,
+    });
+    if (!result.ok) {
+      showToast(result.error);
+      return;
+    }
     setDialogOpen(true);
-    setPendingOrder(order);
+    setPendingOrder(result.order);
   };
 
   const confirmOrder = () => {
@@ -221,7 +245,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   <span>Customer Contact Number</span>
                   <span className="text-primary font-medium flex items-center gap-0.5">
                     <Icon name="lock" className="text-[14px]" />
-                    Verified
+                    On your VEMTAP profile
                   </span>
                 </label>
                 <div className="flex items-center gap-space-xs bg-surface-subtle px-space-md py-3 rounded-lg">
@@ -230,16 +254,19 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                     className="bg-transparent font-body-md text-body-md text-text-primary focus:outline-none w-full"
                     readOnly
                     type="tel"
-                    value={MERCHANT_PHONE_DISPLAY}
+                    value={profile.phone || profile.maskedPhone}
                   />
                   <button
                     type="button"
-                    onClick={() => showToast('Verified contact numbers are managed in your account')}
+                    onClick={() => showToast('Update your number in Account Settings')}
                     className="font-label-sm text-label-sm text-primary font-medium px-2 py-0.5 rounded hover:bg-primary-fixed/30 transition-colors"
                   >
                     Edit
                   </button>
                 </div>
+                <p className="font-caption text-caption text-text-tertiary">
+                  Used by {MERCHANT_NAME} to identify your order at collection.
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -385,34 +412,68 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
           </section>
 
           <section className="px-margin mb-space-xl">
-            <div className="bg-surface-container-high rounded-xl p-space-md shadow-sm">
-              <div className="flex items-start gap-space-sm">
-                <Icon name="account_balance_wallet" className="text-primary text-[24px] shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <h4 className="font-label-md text-label-md font-bold text-on-surface">
-                    Pay Directly to Urban Grill
-                  </h4>
-                  <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                    VEMTAP guarantees your deal discount and reserves your food, but never collects customer card funds.
-                    You will pay <strong className="text-on-surface font-semibold">{naira(total)}</strong> directly via{' '}
-                    <span className="font-semibold text-on-surface">POS Card Swipe, Cash, or Direct Bank Transfer</span>.
-                  </p>
-                  <div className="pt-2 flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-container-lowest text-text-secondary font-caption text-caption">
-                      <Icon name="point_of_sale" className="text-[14px]" />
-                      POS Terminal Ready
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-container-lowest text-text-secondary font-caption text-caption">
-                      <Icon name="payments" className="text-[14px]" />
-                      Cash Accepted
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-container-lowest text-text-secondary font-caption text-caption">
-                      <Icon name="account_balance" className="text-[14px]" />
-                      Bank App Transfer
-                    </span>
-                  </div>
-                </div>
+            <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm space-y-space-sm">
+              <h3 className="font-label-md text-label-md font-semibold text-text-primary">Payment Method</h3>
+              <p className="font-caption text-caption text-text-secondary">
+                Choose how you&apos;ll settle {MERCHANT_NAME}. Your order is never marked paid until payment is
+                verified.
+              </p>
+              <div className="space-y-space-xs">
+                {PAYMENT_CHOICES.map((choice) => {
+                  const active = paymentMethod === choice.method;
+                  return (
+                    <button
+                      key={choice.method}
+                      type="button"
+                      onClick={() => setPaymentMethod(choice.method)}
+                      className={`w-full flex items-center gap-space-sm p-space-sm rounded-lg border text-left transition-colors ${
+                        active
+                          ? 'border-primary bg-surface-tint-blue'
+                          : 'border-subtle bg-surface-container-lowest hover:border-outline-variant'
+                      }`}
+                    >
+                      <Icon
+                        name={choice.icon}
+                        className={`text-[20px] shrink-0 ${active ? 'text-primary' : 'text-text-tertiary'}`}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-label-md text-label-md font-semibold text-text-primary">
+                          {PAYMENT_METHOD_LABELS[choice.method]}
+                        </span>
+                        <span className="block font-caption text-caption text-text-secondary truncate">
+                          {choice.blurb}
+                        </span>
+                      </span>
+                      {active && <Icon name="check_circle" filled className="text-primary text-[20px] shrink-0" />}
+                    </button>
+                  );
+                })}
               </div>
+              {paymentMethod !== 'pay-at-counter' && (
+                <div className="flex items-start gap-space-xs bg-surface-tint-blue/60 p-space-sm rounded-lg">
+                  <Icon name="shield_lock" className="text-primary text-[18px] shrink-0 mt-0.5" />
+                  <p className="font-caption text-caption text-text-secondary">
+                    This order will be created as <strong className="text-text-primary">Payment Pending</strong>. The
+                    merchant confirms the payment before your order is prepared — VEMTAP never marks an order paid
+                    without that verification.
+                  </p>
+                </div>
+              )}
+
+              <div className="h-px bg-surface-container my-space-xs" />
+
+              <label className="flex items-start gap-space-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={marketingConsent}
+                  onChange={(event) => setMarketingConsent(event.target.checked)}
+                  className="mt-0.5 accent-primary w-4 h-4 rounded"
+                />
+                <span className="font-caption text-caption text-text-secondary">
+                  Also send me occasional offers from {MERCHANT_NAME} (optional). Your order works either way —
+                  transactional messages about this order are always allowed.
+                </span>
+              </label>
             </div>
           </section>
         </div>
@@ -452,23 +513,32 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
               <div className="w-16 h-16 rounded-full bg-badge-discount-bg text-badge-discount-text mx-auto flex items-center justify-center">
                 <Icon name="check_circle" filled className="text-[36px]" />
               </div>
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Transmitted to Kitchen!</h3>
+              <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Submitted to Kitchen!</h3>
               <p className="font-body-md text-body-md text-text-secondary">
-                {MERCHANT_NAME} has acknowledged your ticket. Please present your VEMTAP voucher reference{' '}
-                <span className="font-mono font-semibold text-text-primary">{VOUCHER_CODE}</span> upon payment.
+                {MERCHANT_NAME} has received your ticket. Present order reference{' '}
+                <span className="font-mono font-semibold text-text-primary">
+                  #{pendingOrder?.ref ?? '—'}
+                </span>{' '}
+                to the cashier when you collect.
               </p>
               <div className="bg-surface-subtle p-space-sm rounded-lg text-left text-text-secondary font-caption text-caption space-y-1">
                 <div className="flex justify-between">
-                  <span>Ticket Ref:</span>
-                  <span className="font-mono font-medium text-text-primary">#{pendingRef}</span>
+                  <span>Order Ref:</span>
+                  <span className="font-mono font-medium text-text-primary">#{pendingOrder?.ref ?? '—'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Expected by:</span>
-                  <span className="font-medium text-text-primary">{readyBy}</span>
+                  <span>Payment:</span>
+                  <span className="font-medium text-text-primary">
+                    {pendingOrder ? PAYMENT_STATUS_LABELS[pendingOrder.paymentStatus] : '—'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Settlement:</span>
                   <span className="font-medium text-primary">{naira(total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Expected by:</span>
+                  <span className="font-medium text-text-primary">{readyBy}</span>
                 </div>
               </div>
               <button

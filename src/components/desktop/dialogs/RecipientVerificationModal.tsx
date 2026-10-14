@@ -1,18 +1,30 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import { maskPhone } from '../../../utils/format';
 
 export interface RecipientVerificationModalProps {
   open: boolean;
   onClose: () => void;
   onVerify: () => void;
   onBack: () => void;
+  /** Recipient whose contact details should be verified. */
+  recipient?: { name: string; email: string; phone?: string } | null;
 }
 
-export function RecipientVerificationModal({ open, onClose, onVerify, onBack }: RecipientVerificationModalProps) {
+export function RecipientVerificationModal({
+  open,
+  onClose,
+  onVerify,
+  onBack,
+  recipient,
+}: RecipientVerificationModalProps) {
   const [digits, setDigits] = useState(['5', '8', '2', '9', '', '']);
   const [focusedIndex, setFocusedIndex] = useState(4);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+
+  const recipientName = recipient?.name ?? 'Samuel Adeleke';
+  const maskedTarget = recipient?.phone ? maskPhone(recipient.phone) : recipient?.email ?? 'recipient@example.com';
 
   const focusInput = (index: number) => {
     setFocusedIndex(index);
@@ -52,18 +64,19 @@ export function RecipientVerificationModal({ open, onClose, onVerify, onBack }: 
         </h2>
         <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
           We sent a 6-digit authorization code to{' '}
-          <span className="font-label-md text-label-md text-on-surface font-medium">recipient@example.com</span> to
-          verify <span className="text-on-surface font-medium">Samuel Adeleke</span> for this claim voucher pass.
+          <span className="font-label-md text-label-md text-on-surface font-medium">{maskedTarget}</span> to verify{' '}
+          <span className="text-on-surface font-medium">{recipientName}</span> for this claim voucher pass.
         </p>
       </div>
 
       <div className="flex items-center">
         <button
           type="button"
+          onClick={onBack}
           className="inline-flex items-center gap-1.5 text-primary hover:text-on-primary-fixed-variant font-label-sm text-label-sm font-medium group transition-colors"
         >
           <Icon name="edit" className="text-[16px] group-hover:scale-110 transition-transform" />
-          <span>Change email address</span>
+          <span>Change contact details</span>
         </button>
       </div>
 

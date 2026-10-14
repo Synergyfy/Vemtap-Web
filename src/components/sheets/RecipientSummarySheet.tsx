@@ -1,14 +1,27 @@
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
+import { maskPhone } from '../../utils/format';
 
 export interface RecipientSummarySheetProps {
   open: boolean;
   onClose: () => void;
   onContinue: () => void;
   onEdit: () => void;
+  /** Recipient details collected in the previous steps. */
+  recipient?: { name: string; email: string; phone?: string } | null;
 }
 
-export function RecipientSummarySheet({ open, onClose, onContinue, onEdit }: RecipientSummarySheetProps) {
+export function RecipientSummarySheet({ open, onClose, onContinue, onEdit, recipient }: RecipientSummarySheetProps) {
+  const recipientName = recipient?.name ?? 'Samuel Adeleke';
+  const recipientEmail = recipient?.email ?? 'samuel.adeleke@example.com';
+  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
+  const initials =
+    recipientName
+      .split(/\s+/)
+      .map((part) => part.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'SA';
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="flex justify-center pt-3 pb-3">
@@ -42,7 +55,7 @@ export function RecipientSummarySheet({ open, onClose, onContinue, onEdit }: Rec
           <div className="flex items-center justify-between pb-3 border-b border-border-subtle/80">
             <div className="flex items-center gap-3">
               <div className="relative w-12 h-12 rounded-full bg-gradient-to-tr from-primary-container to-primary flex items-center justify-center text-on-primary font-bold text-lg shadow-sm">
-                <span>SA</span>
+                <span>{initials}</span>
                 <span
                   className="absolute -bottom-0.5 -right-0.5 bg-primary-container text-on-primary p-0.5 rounded-full ring-2 ring-surface-canvas"
                   title="Verified"
@@ -52,10 +65,10 @@ export function RecipientSummarySheet({ open, onClose, onContinue, onEdit }: Rec
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <h2 className="text-base font-bold text-text-primary">Samuel Adeleke</h2>
+                  <h2 className="text-base font-bold text-text-primary">{recipientName}</h2>
                 </div>
                 <span className="inline-flex items-center text-xs font-semibold text-badge-discount-text bg-badge-discount-bg border border-badge-discount-text/20 px-2 py-0.5 rounded-full mt-0.5">
-                  ✓ Verified Email
+                  ✓ Verified Contact
                 </span>
               </div>
             </div>
@@ -70,14 +83,14 @@ export function RecipientSummarySheet({ open, onClose, onContinue, onEdit }: Rec
                 <Icon name="mail" className="text-[16px]" />
                 <span>Email</span>
               </div>
-              <span className="font-medium text-text-primary">samuel.adeleke@example.com</span>
+              <span className="font-medium text-text-primary">{recipientEmail}</span>
             </div>
             <div className="flex items-center justify-between text-text-secondary">
               <div className="flex items-center gap-2 text-text-tertiary">
                 <Icon name="call" className="text-[16px]" />
                 <span>Phone</span>
               </div>
-              <span className="font-medium text-text-primary">+234 802 345 6789</span>
+              <span className="font-medium text-text-primary">{recipientPhoneDisplay}</span>
             </div>
           </div>
         </section>

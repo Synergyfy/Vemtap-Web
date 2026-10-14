@@ -1,22 +1,25 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { OrderQrArt } from '../../components/ui/OrderQrArt';
+import { useOrders, type SubmittedOrder } from '../../context/OrdersContext';
 import {
   MERCHANT_ADDRESS,
   MERCHANT_NAME,
   MERCHANT_PHONE_DISPLAY,
   MERCHANT_PHONE_TEL,
   MAP_IMAGE,
+  PAYMENT_STATUS_LABELS,
   VOUCHER_CODE,
+  orderStatusLabel,
   type FulfillmentMode,
-  type OrderSummary,
 } from '../orderData';
 
 const naira = (value: number) => `₦${value.toLocaleString('en-US')}`;
 
 interface DesktopOrderPlacedScreenProps {
   onNav: (key: DesktopNavKey) => void;
-  order: OrderSummary;
+  order: SubmittedOrder;
   onClose: () => void;
   onHome: () => void;
   onTrack: () => void;
@@ -29,6 +32,8 @@ export function DesktopOrderPlacedScreen({
   onHome,
   onTrack,
 }: DesktopOrderPlacedScreenProps) {
+  const orders = useOrders();
+  const live = orders.byRef(order.ref) ?? order;
   const [mode, setMode] = useState<FulfillmentMode>(order.fulfillment);
   const [accordionOpen, setAccordionOpen] = useState(true);
 
@@ -115,7 +120,7 @@ export function DesktopOrderPlacedScreen({
             <div className="inline-flex items-center gap-space-xs px-space-md py-1 rounded-full bg-surface-tint-blue shadow-sm">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary-container animate-pulse" />
               <span className="font-label-md text-label-md text-primary font-semibold">
-                Merchant Preparing Your Order
+                {orderStatusLabel(live.status)}
               </span>
               <span className="font-caption text-caption text-text-secondary">(~20–25 mins)</span>
             </div>
@@ -281,6 +286,47 @@ export function DesktopOrderPlacedScreen({
             </div>
 
             <aside className="lg:sticky lg:top-24 flex flex-col gap-6 min-w-0">
+              {/* BUG-015 Step 4: collection pass — also reopenable from Orders. */}
+              <section className="rounded-xl bg-surface-canvas border border-border-subtle shadow-sm p-6 flex flex-col items-center gap-space-sm">
+                <div className="flex items-center gap-space-xs self-start">
+                  <Icon name="qr_code_2" className="text-primary text-[20px]" />
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Collection Pass</h2>
+                </div>
+                <OrderQrArt value={live.ref} size={180} className="rounded-lg border border-subtle" />
+                <span className="font-mono text-heading-sm text-heading-sm font-bold text-text-primary tracking-widest">
+                  {live.ref}
+                </span>
+                <span className="font-caption text-caption text-text-secondary text-center">
+                  Show this pass or quote the order number to the cashier.
+                </span>
+                <div className="w-full grid grid-cols-2 gap-space-xs text-left">
+                  <div className="p-space-xs rounded-lg bg-surface-subtle">
+                    <p className="font-caption text-caption text-text-tertiary uppercase tracking-wider">Business</p>
+                    <p className="font-label-md text-label-md font-semibold text-text-primary truncate">
+                      {live.merchantName}
+                    </p>
+                  </div>
+                  <div className="p-space-xs rounded-lg bg-surface-subtle">
+                    <p className="font-caption text-caption text-text-tertiary uppercase tracking-wider">Payment</p>
+                    <p
+                      className={`font-label-md text-label-md font-semibold truncate ${
+                        live.paymentStatus === 'verified' || live.paymentStatus === 'not-required'
+                          ? 'text-badge-discount-text'
+                          : 'text-error'
+                      }`}
+                    >
+                      {PAYMENT_STATUS_LABELS[live.paymentStatus]}
+                    </p>
+                  </div>
+                </div>
+                {live.paymentStatus === 'pending' && (
+                  <p className="font-caption text-caption text-text-secondary text-center">
+                    This order stays Payment Pending until {live.merchantName} verifies payment — it has not been
+                    marked paid.
+                  </p>
+                )}
+              </section>
+
               <section className="rounded-xl bg-surface-canvas border border-border-subtle shadow-sm overflow-hidden">
                 <button
                   type="button"

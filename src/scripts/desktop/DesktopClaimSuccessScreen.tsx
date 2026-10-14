@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import type { ClaimRecord } from '../../context/ClaimsContext';
+import { maskPhone } from '../../utils/format';
 
 interface DesktopClaimSuccessScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
   onViewMyDeal: () => void;
   onContinue: () => void;
+  claim?: ClaimRecord | null;
 }
 
 const STOREFRONT_IMAGE =
@@ -20,14 +23,19 @@ export function DesktopClaimSuccessScreen({
   onBack,
   onViewMyDeal,
   onContinue,
+  claim,
 }: DesktopClaimSuccessScreenProps) {
   const [copied, setCopied] = useState(false);
   const timers = useRef<number[]>([]);
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
+  const claimRef = claim?.ref ?? 'VT-48291';
+  const isSomeoneElseClaim = claim?.kind === 'someone-else' && Boolean(claim.recipient);
+  const dealTitle = claim?.dealTitle ?? 'Lunch Combo — 20% Off';
+
   const copyClaimCode = () => {
-    navigator.clipboard?.writeText('VT-48291').catch(() => undefined);
+    navigator.clipboard?.writeText(claimRef).catch(() => undefined);
     setCopied(true);
     timers.current.push(window.setTimeout(() => setCopied(false), 2000));
   };
@@ -55,9 +63,29 @@ export function DesktopClaimSuccessScreen({
             </span>
             <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">Deal Claimed!</h1>
             <p className="font-body-lg text-body-lg text-text-secondary mt-space-2xs leading-relaxed">
-              Your deal has been saved to My Deals and is ready to use.
+              {isSomeoneElseClaim
+                ? `Claim authorized for ${claim?.recipient?.name}. The redemption pass is ready to share.`
+                : 'Your deal has been saved to My Deals and is ready to use.'}
             </p>
           </div>
+
+          {isSomeoneElseClaim ? (
+            <div className="mb-8 p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex items-start gap-space-sm">
+              <Icon name="person_pin" className="text-primary text-[20px] shrink-0 mt-0.5" filled />
+              <div className="flex flex-col min-w-0">
+                <span className="font-label-md text-label-md text-text-primary">
+                  Redeemer: {claim?.recipient?.name}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">
+                  {claim?.recipient?.email}
+                  {claim?.recipient?.phone ? ` • ${maskPhone(claim.recipient.phone)}` : ''}
+                </span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  You made the claim; the voucher is registered under the recipient's name.
+                </span>
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6 items-start">
             <div className="flex flex-col gap-4 min-w-0">
@@ -91,10 +119,12 @@ export function DesktopClaimSuccessScreen({
                 </div>
 
                 <p className="font-heading-md text-heading-md text-text-primary text-center">
-                  Your Urban Grill &amp; Bistro lunch combo is reserved.
+                  Your {claim?.dealBusiness ?? 'Urban Grill &amp; Bistro'} {dealTitle} is reserved.
                 </p>
                 <p className="font-body-md text-body-md text-text-secondary text-center mt-space-2xs max-w-md">
-                  Show the claim code below to the attendant when you arrive at the Apo, Abuja branch.
+                  {isSomeoneElseClaim
+                    ? `Show the claim code below to the attendant when ${claim?.recipient?.name} arrives at the Apo, Abuja branch.`
+                    : 'Show the claim code below to the attendant when you arrive at the Apo, Abuja branch.'}
                 </p>
               </div>
 
@@ -125,7 +155,7 @@ export function DesktopClaimSuccessScreen({
                       className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-surface-container-low hover:bg-surface-container-highest transition-colors cursor-pointer"
                     >
                       <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                        {copied ? 'Copied!' : 'Claim #VT-48291'}
+                        {copied ? 'Copied!' : `Claim #${claimRef}`}
                       </span>
                       <Icon name={copied ? 'check' : 'content_copy'} className="text-text-secondary text-sm" />
                     </button>
@@ -137,10 +167,10 @@ export function DesktopClaimSuccessScreen({
                     </div>
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                        Urban Grill &amp; Bistro
+                        {claim?.dealBusiness ?? 'Urban Grill & Bistro'}
                       </span>
                       <h2 className="font-heading-sm text-heading-sm text-primary font-bold tracking-tight line-clamp-1">
-                        Lunch Combo — 20% Off
+                        {dealTitle}
                       </h2>
                       <div className="flex items-center gap-1 mt-0.5 text-text-secondary">
                         <Icon name="location_on" filled className="text-sm shrink-0" />

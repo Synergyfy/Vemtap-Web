@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useLocation } from '../../context/LocationContext';
+import { DesktopLocationRadiusModal } from '../DesktopLocationRadiusModal';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 
@@ -57,10 +59,13 @@ const ACCOUNT_MENU_ITEMS: Array<{ key: DesktopNavKey; label: string; icon: strin
 
 export function DesktopNavHeader({ active, onNav, onOpenLocation }: DesktopNavHeaderProps) {
   const { authed, signOut } = useAuth();
+  const { district, city, radius, setLocation } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement | null>(null);
 
   const closeMenu = () => setMenuOpen(false);
+  const openLocation = onOpenLocation ?? (() => setLocationOpen(true));
 
   // The header uses `backdrop-blur`, which turns it into the containing block
   // for `position: fixed` children — so a fixed overlay would be trapped
@@ -89,6 +94,7 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation }: DesktopNavHe
     }`;
 
   return (
+    <>
     <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="h-20 max-w-7xl mx-auto px-margin flex items-center justify-between gap-gutter">
         <div className="flex items-center gap-space-2xl shrink-0">
@@ -105,10 +111,12 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation }: DesktopNavHe
             <button
               type="button"
               className="hidden xl:flex items-center gap-space-xs bg-surface-container-low px-space-sm py-space-2xs rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
-              onClick={onOpenLocation}
+              onClick={openLocation}
             >
               <Icon name="location_on" className="text-[18px] text-primary-container" />
-              <span className="font-label-sm text-label-sm text-on-surface">Apo, Abuja • Within 5km</span>
+              <span className="font-label-sm text-label-sm text-on-surface">
+                {district}, {city} • Within {radius}km
+              </span>
               <Icon name="keyboard_arrow_down" className="text-[16px] text-outline" />
             </button>
           ) : (
@@ -246,6 +254,14 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation }: DesktopNavHe
         </div>
       </div>
     </header>
+    <DesktopLocationRadiusModal
+      open={locationOpen}
+      onClose={() => setLocationOpen(false)}
+      onApply={setLocation}
+      district={district}
+      radius={radius}
+    />
+    </>
   );
 }
 

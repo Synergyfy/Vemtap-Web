@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import type { ClaimRecord } from '../context/ClaimsContext';
+import { maskPhone } from '../utils/format';
 
 export interface GiftRecipientSummary {
   name: string;
@@ -14,15 +16,19 @@ interface GiftSentScreenProps {
   onDone: () => void;
   onSendAnother: () => void;
   onBack: () => void;
+  claim?: ClaimRecord | null;
 }
 
-export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack }: GiftSentScreenProps) {
+export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack, claim }: GiftSentScreenProps) {
   const [copied, setCopied] = useState(false);
   const recipientName = recipient?.name || 'Amara Okafor';
   const recipientEmail = recipient?.email || 'amara@email.com';
+  const recipientPhone = recipient?.phone || claim?.recipient?.phone;
+  const maskedPhone = recipientPhone ? maskPhone(recipientPhone) : null;
+  const reference = claim?.ref ?? '#VT-GIFT-83921';
 
   const copyCode = () => {
-    navigator.clipboard?.writeText('#VT-GIFT-83921').catch(() => undefined);
+    navigator.clipboard?.writeText(reference).catch(() => undefined);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
@@ -46,7 +52,8 @@ export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack }: Gif
           <p className="font-body-md text-body-md text-text-secondary max-w-xs">
             We've sent the verification instructions to{' '}
             <span className="font-button-secondary text-text-primary">{recipientName}</span> (
-            <span className="text-text-primary">{recipientEmail}</span>).
+            <span className="text-text-primary">{recipientEmail}</span>
+            {maskedPhone ? <>, {maskedPhone}</> : null}).
           </p>
         </div>
 
@@ -75,7 +82,7 @@ export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack }: Gif
                 <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">
                   Claim Code Reserved
                 </span>
-                <span className="font-button-primary text-text-primary tracking-wide">#VT-GIFT-83921</span>
+                <span className="font-button-primary text-text-primary tracking-wide">{reference}</span>
               </div>
               <button
                 type="button"
@@ -102,7 +109,8 @@ export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack }: Gif
             <div className="flex items-start gap-space-sm p-space-sm rounded-lg bg-surface-container-low">
               <Icon name="schedule" className="text-primary-container text-[20px] shrink-0 mt-0.5" />
               <p className="font-caption text-caption text-on-surface-variant leading-relaxed">
-                The recipient will have&nbsp;to activate and redeem this deal at checkout.
+                {recipientName} must verify the link and redeem the deal themselves — this gift is reserved for them,
+                not your account.
               </p>
             </div>
           </div>
@@ -114,7 +122,7 @@ export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack }: Gif
             onClick={onDone}
             className="w-full h-[52px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
           >
-            Done
+            <span>View Gift in My Deals</span>
           </button>
           <button
             type="button"

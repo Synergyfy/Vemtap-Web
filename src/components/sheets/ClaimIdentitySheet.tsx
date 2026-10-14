@@ -7,9 +7,29 @@ export interface ClaimIdentitySheetProps {
   onClaimSelf: () => void;
   onGift: () => void;
   onSomeoneElse: () => void;
+  /** Signed-in customer's profile so the card shows the real account holder. */
+  identity?: { name: string; email: string; initials: string } | null;
 }
 
-export function ClaimIdentitySheet({ open, onClose, onClaimSelf, onGift, onSomeoneElse }: ClaimIdentitySheetProps) {
+export function ClaimIdentitySheet({
+  open,
+  onClose,
+  onClaimSelf,
+  onGift,
+  onSomeoneElse,
+  identity,
+}: ClaimIdentitySheetProps) {
+  const customerName = identity?.name?.trim() || 'John Doe';
+  const customerEmail = identity?.email?.trim() || 'john@email.com';
+  const customerInitials =
+    identity?.initials?.trim() ||
+    customerName
+      .split(/\s+/)
+      .map((part) => part.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) ||
+    'JD';
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="w-full flex justify-center pt-3 pb-space-xs">
@@ -47,11 +67,7 @@ export function ClaimIdentitySheet({ open, onClose, onClaimSelf, onGift, onSomeo
           <div className="flex items-center gap-space-sm">
             <div className="relative flex-shrink-0">
               <div className="w-12 h-12 rounded-full overflow-hidden bg-secondary-container flex items-center justify-center text-on-secondary-container font-heading-sm text-heading-sm font-semibold">
-                <img
-                  className="w-full h-full object-cover"
-                  alt="Close up warm lifestyle portrait of a happy smiling male professional in his late 20s with soft cinematic studio lighting, clear natural skin, modern aesthetic, deep blue background accents"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDFZHGyc5MAgmj7Jz780eJWG_z84IByVk44rdWqHsT8sqgpIUmV1Ou2NweIW9IXmcHzswJLInaHLQ6eUMpjb18hvvQRQWb4PtywRPQaiSfPJ5KTMGnmpdy1zjFJUWCdzZr3Rpc-qjpfhjgNMmH6dwbSAU-fPAmsxFhtOoXxb89h5Iul73k59dE_dR4EW5AgSoONmvWe_nsZCm2dEfbYHsLCHDZsRklUp_b5nwZW8IcA"
-                />
+                {customerInitials}
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-primary-container flex items-center justify-center text-on-primary shadow-sm">
                 <Icon name="verified" className="text-[13px]" filled />
@@ -59,9 +75,11 @@ export function ClaimIdentitySheet({ open, onClose, onClaimSelf, onGift, onSomeo
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-space-2xs">
-                <span className="font-button-primary text-button-primary text-text-primary truncate">John Doe</span>
+                <span className="font-button-primary text-button-primary text-text-primary truncate">
+                  {customerName}
+                </span>
               </div>
-              <span className="font-body-md text-body-md text-text-secondary truncate">john@email.com</span>
+              <span className="font-body-md text-body-md text-text-secondary truncate">{customerEmail}</span>
               <div className="pt-1">
                 <span className="inline-flex items-center gap-1 bg-surface-tint-blue px-2 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary-container" />

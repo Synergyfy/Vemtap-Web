@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { DeleteAccountSheet } from '../../components/DeleteAccountSheet';
+import { useAuth } from '../../context/AuthContext';
 
 interface DesktopAccountSettingsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -57,6 +59,8 @@ const TOGGLES = [
 export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsScreenProps) {
   const [activeTab, setActiveTab] = useState('personal-profile');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const { signOut } = useAuth();
   const [toggles, setToggles] = useState<Record<string, boolean>>(
     Object.fromEntries(TOGGLES.map((toggle) => [toggle.id, toggle.defaultChecked])),
   );
@@ -82,7 +86,8 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
   };
 
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
+    <>
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
       <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-8">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -215,12 +220,16 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                 ))}
                 <div className="my-1 border-0 h-px bg-surface-container" />
                 <button
+                  onClick={() => {
+                    signOut();
+                    onNav('home');
+                  }}
                   className="flex items-center justify-between px-3 py-3 rounded-lg text-error hover:bg-error-container/20 font-label-md text-label-md transition-all"
                   type="button"
                 >
                   <div className="flex items-center gap-3">
                     <Icon name="logout" className="text-[20px]" />
-                    <span>Sign Out / Deactivation</span>
+                    <span>Sign Out</span>
                   </div>
                   <Icon name="arrow_forward" className="text-[16px]" />
                 </button>
@@ -727,6 +736,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       </div>
                     </div>
                     <button
+                      onClick={() => setShowDeleteAccount(true)}
                       className="text-error hover:text-on-error-container text-xs font-semibold px-2 py-1 rounded hover:bg-error-container/20 transition-colors shrink-0"
                       type="button"
                     >
@@ -814,6 +824,16 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
           </div>
         </div>
       </div>
-    </DesktopPage>
+      </DesktopPage>
+      <DeleteAccountSheet
+        open={showDeleteAccount}
+        onClose={() => setShowDeleteAccount(false)}
+        onCompleted={() => {
+          setShowDeleteAccount(false);
+          signOut();
+          onNav('home');
+        }}
+      />
+    </>
   );
 }

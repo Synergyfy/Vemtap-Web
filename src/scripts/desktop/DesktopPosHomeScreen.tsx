@@ -9,6 +9,8 @@ interface DesktopPosHomeScreenProps {
   onOpenProducts: () => void;
   onOpenCustomers: () => void;
   onOpenKitchen: () => void;
+  /** BUG-016: cashier lookup by QR / order number / phone. */
+  onOpenOrderLookup?: () => void;
 }
 
 const HOTKEYS: Array<{ keys: string; label: string }> = [
@@ -87,6 +89,7 @@ export function DesktopPosHomeScreen({
   onOpenProducts,
   onOpenCustomers,
   onOpenKitchen,
+  onOpenOrderLookup,
 }: DesktopPosHomeScreenProps) {
   const [drawerState, setDrawerState] = useState<'idle' | 'popping' | 'open'>('idle');
   const [kioskArmed, setKioskArmed] = useState(false);
@@ -307,13 +310,21 @@ export function DesktopPosHomeScreen({
                 18 loyalty discounts redeemed today (₦18,200 saved)
               </p>
             </div>
-            <div className="mt-space-md pt-space-xs">
+            <div className="mt-space-md pt-space-xs flex flex-col gap-2">
               <button
                 type="button"
                 onClick={onOpenCustomers}
                 className="font-button-secondary text-button-secondary text-primary hover:text-primary-container flex items-center gap-1 group font-medium"
               >
                 <span>Direct phone & rewards lookup</span>
+                <Icon name="arrow_forward" className="text-[16px] group-hover:translate-x-1 transition-transform" />
+              </button>
+              <button
+                type="button"
+                onClick={onOpenOrderLookup ?? (() => onNav('orders'))}
+                className="font-button-secondary text-button-secondary text-primary hover:text-primary-container flex items-center gap-1 group font-medium"
+              >
+                <span>Find customer order (QR / ref / phone)</span>
                 <Icon name="arrow_forward" className="text-[16px] group-hover:translate-x-1 transition-transform" />
               </button>
             </div>

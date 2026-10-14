@@ -1,59 +1,38 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { useClaims, type ClaimRecord } from '../../context/ClaimsContext';
+import { useProfile } from '../../context/ProfileContext';
+import { maskPhone } from '../../utils/format';
 
 interface DesktopMyDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
 }
 
 const FILTERS = [
-  { key: 'active', label: 'Active Deals', count: '2', pill: true },
-  { key: 'past', label: 'Redeemed & Past', count: '7', pill: false },
-  { key: 'gifted', label: 'Gifted to Others', count: '2', pill: false },
-];
+  { key: 'active', label: 'Active Deals', pill: true },
+  { key: 'past', label: 'Redeemed & Past', pill: false },
+  { key: 'gifted', label: 'Gifted to Others', pill: false },
+] as const;
 
-const PASSES = [
-  {
-    id: 'urban',
-    discount: '-20%',
-    zoneIcon: 'storefront',
-    zone: 'Apo Legislative Zone',
-    badge: 'Ready',
-    badgeClass: 'bg-surface-tint-blue text-primary font-semibold',
-    title: 'Urban Grill & Bistro',
-    desc: 'Prime 3-Course Lunch Combo & Craft Beverage',
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-    save: '(Save ₦2,400)',
-    expiry: '44 hrs left',
-    expiryClass: 'text-error',
-    expiryIcon: 'timer',
-    claimed: 'Claimed: Today, 10:42 AM',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuACA2_s6VgseINON_78-r4Pkf6y8AqwAUIXCd_QFPm6NkjyMn5sybZsp_qM5EkpDTPNcXHwNOvBw-ph91WYFofBYQzkWV8rh4GEHYe3Uq2AN3TIBbzUEfyMpSuNfvRtfnmIyIT3JxIRVoLrus6WLgwBjvq4RoOrEy2GdlFgiBQdyBMh4RXnwneQFsTFt4Um4A2iLljlBCGBM4oSTOqAA5aok2RreaZLt259MZ6_KEPD',
-    alt: 'Succulent flame grilled Angus gourmet burger with golden parmesan truffle fries and cold pressed peach beverage arranged on wooden tabletop at Urban Grill & Bistro Apo Abuja, warm cinematic indoor ambient restaurant lighting',
-  },
-  {
-    id: 'sky',
-    discount: '-50%',
-    zoneIcon: 'location_on',
-    zone: 'Maitama Heights',
-    badge: 'Active Pass',
-    badgeClass: 'bg-surface-subtle text-text-secondary font-medium',
-    title: 'The Sky Lounge & Grill',
-    desc: "50% Off Chef's 5-Course Signature Tasting Menu",
-    price: '₦24,500',
-    oldPrice: '₦49,000',
-    save: '(Save ₦24,500)',
-    expiry: '3 days left',
-    expiryClass: 'text-text-secondary',
-    expiryIcon: 'event_repeat',
-    claimed: 'Claimed: Yesterday, 4:15 PM',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDUXLX7XEsTI_RnUf48SC4PNyzGcgmy9_P0Oep84Pv-AthultZzFeshIqV6hnr4CZ_g8UPdWKVOR193l3KAe7STNGj44bpLNoI-8OU8OisBaZWL5qvxxPBGGePct_Zf_l6hIzwFV52Xm8iddHaTURb6Vqh0q6e98851FIPqb0IUPFD4Yex5ngq3NovlecXZWdh5Yg_MmIUsVro8zeME6PughuNPC7Vuc9rVzef1mZxt',
-    alt: 'Fine dining presentation of five course tasting menu at luxury rooftop restaurant overlooking Abuja skyline at twilight, sleek glassware, soft dramatic architectural illumination',
-  },
-];
+type FilterKey = (typeof FILTERS)[number]['key'];
+
+const formatDate = (timestamp: number) =>
+  new Date(timestamp).toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'VT';
 
 const INCLUDED = [
   'Choice of Dry-aged Angus burger or marinated grilled chicken supreme',
@@ -62,8 +41,28 @@ const INCLUDED = [
 ];
 
 export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
-  const [activeFilter, setActiveFilter] = useState('active');
-  const [selectedPass, setSelectedPass] = useState('urban');
+  const { claims, removeClaim } = useClaims();
+  const profile = useProfile();
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('active');
+  const [selectedRef, setSelectedRef] = useState<string | null>(null);
+
+  const activeClaims = claims.filter((claim) => claim.kind !== 'gift');
+  const giftedClaims = claims.filter((claim) => claim.kind === 'gift');
+  const counts: Record<FilterKey, number> = {
+    active: activeClaims.length,
+    // Backend gap: redeemed/expired status is not tracked yet.
+    past: 0,
+    gifted: giftedClaims.length,
+  };
+  const list: ClaimRecord[] =
+    activeFilter === 'gifted' ? giftedClaims : activeFilter === 'active' ? activeClaims : [];
+  const selected = list.find((claim) => claim.ref === selectedRef) ?? list[0] ?? null;
+  const pass = selected;
+  const isGiftPass = pass?.kind === 'gift';
+  const passHolderName = pass?.recipient?.name || profile.fullName;
+  const passHolderContact = pass?.recipient?.phone
+    ? maskPhone(pass.recipient.phone)
+    : pass?.recipient?.email || profile.maskedPhone;
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="my-deals">
@@ -123,11 +122,11 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                           : 'px-1 rounded-full bg-surface-container-high text-text-secondary font-caption text-caption'
                       }
                     >
-                      {filter.count}
+                      {counts[filter.key]}
                     </span>
                   ) : (
                     <span className="px-1 rounded-full bg-surface-container-high text-text-secondary font-caption text-caption">
-                      {filter.count}
+                      {counts[filter.key]}
                     </span>
                   )}
                 </button>
@@ -162,7 +161,11 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
             <div className="lg:col-span-5 flex flex-col gap-4">
               <div className="flex items-center justify-between px-1">
                 <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-semibold">
-                  Your Active Passes (2)
+                  {activeFilter === 'gifted'
+                    ? `Gifts You Sent (${giftedClaims.length})`
+                    : activeFilter === 'past'
+                      ? `Redeemed & Past (${counts.past})`
+                      : `Your Active Passes (${activeClaims.length})`}
                 </span>
                 <span className="font-caption text-caption text-primary flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
@@ -170,88 +173,123 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 </span>
               </div>
 
-              {PASSES.map((pass) => {
-                const isSelected = selectedPass === pass.id;
-                return (
-                  <article
-                    key={pass.id}
-                    onClick={() => setSelectedPass(pass.id)}
-                    className={`relative flex flex-col bg-surface-canvas rounded-xl overflow-hidden cursor-pointer transition-all group ${
-                      isSelected ? 'shadow-md hover:shadow-lg' : 'shadow-sm hover:shadow-md'
-                    }`}
+              {list.length === 0 ? (
+                <div className="p-6 rounded-xl bg-surface-canvas shadow-sm flex flex-col items-center gap-2 text-center">
+                  <Icon name="confirmation_number" className="text-[28px] text-primary" />
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary">
+                    {activeFilter === 'past'
+                      ? 'No redeemed or expired passes yet'
+                      : activeFilter === 'gifted'
+                        ? 'No gifts sent yet'
+                        : 'No active passes yet'}
+                  </h3>
+                  <p className="font-caption text-caption text-text-secondary max-w-sm leading-relaxed">
+                    {activeFilter === 'past'
+                      ? 'Once a merchant scans your pass it moves here together with its redemption receipt.'
+                      : activeFilter === 'gifted'
+                        ? 'Gift a deal from any voucher screen and its dispatch receipt will appear here.'
+                        : 'Claim a deal to get an offline-ready QR pass you can present in store.'}
+                  </p>
+                  <button
+                    className="mt-1 h-10 px-4 rounded-lg bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-sm hover:bg-primary transition-colors"
+                    onClick={() => onNav('deals')}
+                    type="button"
                   >
-                    {isSelected && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary-container z-10" />}
-                    <div className="flex p-3 gap-3">
-                      <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0 relative bg-surface-container-high">
-                        <img
-                          alt={pass.alt}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          src={pass.image}
-                        />
-                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold tracking-tight">
-                          {pass.discount}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-caption text-caption text-text-tertiary flex items-center gap-1.5">
-                              <Icon name={pass.zoneIcon} className={`text-[14px] ${pass.zoneIcon === 'storefront' ? 'text-primary' : ''}`} />
-                              <span>{pass.zone}</span>
-                            </span>
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-caption ${pass.badgeClass}`}
-                            >
-                              {pass.badge === 'Ready' && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                              <span>{pass.badge}</span>
-                            </span>
-                          </div>
-                          <h3 className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate mt-0.5">
-                            {pass.title}
-                          </h3>
-                          <p className="font-body-md text-body-md text-text-secondary line-clamp-1">{pass.desc}</p>
-                        </div>
-                        <div className="flex items-baseline justify-between mt-0.5 pt-0.5">
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                              {pass.price}
-                            </span>
-                            <span className="font-caption text-caption text-text-tertiary line-through">
-                              {pass.oldPrice}
-                            </span>
-                            <span className="font-caption text-caption text-badge-discount-text font-medium">
-                              {pass.save}
-                            </span>
-                          </div>
-                          <span
-                            className={`font-caption text-caption font-medium flex items-center gap-1 ${pass.expiryClass}`}
-                          >
-                            <Icon name={pass.expiryIcon} className="text-[14px]" />
-                            <span>{pass.expiry}</span>
+                    Explore deals
+                  </button>
+                </div>
+              ) : (
+                list.map((claim) => {
+                  const isSelected = selected?.ref === claim.ref;
+                  const isGift = claim.kind === 'gift';
+                  return (
+                    <article
+                      key={claim.ref}
+                      onClick={() => setSelectedRef(claim.ref)}
+                      className={`relative flex flex-col bg-surface-canvas rounded-xl overflow-hidden cursor-pointer transition-all group ${
+                        isSelected ? 'shadow-md hover:shadow-lg' : 'shadow-sm hover:shadow-md'
+                      }`}
+                    >
+                      {isSelected && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary-container z-10" />}
+                      <div className="flex p-3 gap-3">
+                        <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0 relative bg-surface-container-high">
+                          <img
+                            alt={claim.dealTitle}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            src={claim.dealImage}
+                          />
+                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold tracking-tight">
+                            {claim.code}
                           </span>
                         </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-caption text-caption text-text-tertiary flex items-center gap-1.5">
+                                <Icon name="confirmation_number" className="text-[14px] text-primary" />
+                                <span>{claim.ref}</span>
+                              </span>
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-caption ${
+                                  isGift
+                                    ? 'bg-surface-subtle text-text-secondary font-medium'
+                                    : 'bg-surface-tint-blue text-primary font-semibold'
+                                }`}
+                              >
+                                {!isGift && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                                <span>{isGift ? 'Gift Sent' : 'Ready'}</span>
+                              </span>
+                            </div>
+                            <h3 className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate mt-0.5">
+                              {claim.dealBusiness}
+                            </h3>
+                            <p className="font-body-md text-body-md text-text-secondary line-clamp-1">
+                              {claim.dealTitle}
+                            </p>
+                          </div>
+                          <div className="flex items-baseline justify-between mt-0.5 pt-0.5">
+                            <span className="font-label-md text-label-md font-mono font-bold tracking-wide text-text-primary">
+                              {claim.code}
+                            </span>
+                            <span className="font-caption text-caption font-medium flex items-center gap-1 text-text-secondary">
+                              <Icon
+                                name={isGift ? 'card_giftcard' : 'schedule'}
+                                className={`text-[14px] ${isGift ? 'text-primary' : 'text-text-tertiary'}`}
+                              />
+                              <span>
+                                {isGift ? `Sent ${formatDate(claim.createdAt)}` : `Claimed ${formatDate(claim.createdAt)}`}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="px-3 py-2 bg-surface-subtle flex items-center justify-between text-text-secondary font-caption text-caption">
-                      <span className="flex items-center gap-1.5">
-                        <Icon name="schedule" className="text-[15px] text-text-tertiary" />
-                        <span>{pass.claimed}</span>
-                      </span>
-                      {isSelected ? (
-                        <span className="text-primary font-medium flex items-center gap-0.5">
-                          <span>Viewing Pass</span>
-                          <Icon name="arrow_forward" className="text-[14px]" />
+                      <div className="px-3 py-2 bg-surface-subtle flex items-center justify-between text-text-secondary font-caption text-caption">
+                        <span className="flex items-center gap-1.5">
+                          <Icon name="person" className="text-[15px] text-text-tertiary" />
+                          <span>
+                            {isGift
+                              ? `Gifted to ${claim.recipient?.name ?? 'recipient'}`
+                              : claim.recipient
+                                ? `Redeeming: ${claim.recipient.name}`
+                                : `Pass holder: ${profile.fullName}`}
+                          </span>
                         </span>
-                      ) : (
-                        <span className="text-text-tertiary group-hover:text-primary transition-colors flex items-center gap-0.5 font-medium">
-                          <span>Select to inspect</span>
-                          <Icon name="chevron_right" className="text-[14px]" />
-                        </span>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
+                        {isSelected ? (
+                          <span className="text-primary font-medium flex items-center gap-0.5">
+                            <span>Viewing Pass</span>
+                            <Icon name="arrow_forward" className="text-[14px]" />
+                          </span>
+                        ) : (
+                          <span className="text-text-tertiary group-hover:text-primary transition-colors flex items-center gap-0.5 font-medium">
+                            <span>Select to inspect</span>
+                            <Icon name="chevron_right" className="text-[14px]" />
+                          </span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })
+              )}
 
               <div className="p-4 rounded-xl bg-surface-subtle flex items-start gap-3 shadow-xs">
                 <div className="w-9 h-9 rounded-lg bg-surface-tint-blue flex items-center justify-center shrink-0 text-primary">
@@ -298,12 +336,12 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                   <div className="flex items-start justify-between gap-6">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl bg-primary text-on-primary font-heading-md text-heading-md flex items-center justify-center font-bold shadow-md">
-                        UG
+                        {initialsOf(pass?.dealBusiness ?? 'Vemtap')}
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-bold">
-                            VEMTAP PASS ID
+                            VEMTAP PASS ID {pass ? `• ${pass.ref}` : ''}
                           </span>
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                             <Icon name="verified" className="text-[12px]" />
@@ -311,20 +349,26 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                           </span>
                         </div>
                         <h2 className="font-heading-md text-heading-md text-text-primary font-bold tracking-tight">
-                          Urban Grill &amp; Bistro
+                          {pass?.dealBusiness ?? 'No pass selected'}
                         </h2>
                         <p className="font-caption text-caption text-text-secondary flex items-center gap-1 mt-0.5">
                           <Icon name="location_on" className="text-[14px] text-primary" />
-                          <span>Plot 482, Guzape Junction, Apo District, Abuja • 0.8 km away</span>
+                          <span>Abuja merchant network • offline POS verified</span>
                         </p>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold shadow-xs">
-                        <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                        <span>Ready to Redeem</span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-label-sm text-label-sm font-semibold shadow-xs ${
+                          isGiftPass ? 'bg-surface-subtle text-text-secondary' : 'bg-badge-discount-bg text-badge-discount-text'
+                        }`}
+                      >
+                        {!isGiftPass && <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />}
+                        <span>{pass ? (isGiftPass ? 'Gift Sent' : 'Ready to Redeem') : 'Nothing selected'}</span>
                       </span>
-                      <p className="font-caption text-caption text-text-tertiary mt-1">Claimed Today 10:42 AM</p>
+                      <p className="font-caption text-caption text-text-tertiary mt-1">
+                        {pass ? `${isGiftPass ? 'Sent' : 'Claimed'} ${formatDate(pass.createdAt)}` : 'Select a pass'}
+                      </p>
                     </div>
                   </div>
 
@@ -332,13 +376,13 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                     <div>
                       <span className="font-caption text-caption text-text-tertiary">Entitlement Offer</span>
                       <p className="font-label-md text-label-md font-semibold text-text-primary">
-                        Prime 3-Course Lunch Combo &amp; Craft Beverage
+                        {pass?.dealTitle ?? 'Select a pass on the left to preview its voucher'}
                       </p>
                     </div>
                     <div className="text-right">
-                      <span className="font-caption text-caption text-text-tertiary">Claim Price</span>
-                      <p className="font-heading-sm text-heading-sm font-bold text-primary">
-                        ₦9,600 <span className="font-caption text-caption text-text-tertiary font-normal">(-20%)</span>
+                      <span className="font-caption text-caption text-text-tertiary">Voucher</span>
+                      <p className="font-heading-sm text-heading-sm font-bold text-primary font-mono tracking-wide">
+                        {pass?.code ?? '—'}
                       </p>
                     </div>
                   </div>
@@ -394,11 +438,11 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                         className="font-heading-sm text-heading-sm font-mono font-bold tracking-widest text-text-primary"
                         id="voucherCode"
                       >
-                        VT-48F2G1
+                        {pass?.code ?? '—'}
                       </span>
                       <button
                         aria-label="Copy Voucher Code"
-                        onClick={() => navigator.clipboard.writeText('VT-48F2G1')}
+                        onClick={() => pass && navigator.clipboard?.writeText(pass.code)}
                         className="p-1 rounded-md text-text-secondary hover:text-primary hover:bg-surface-canvas transition-colors"
                         id="copyCodeBtn"
                         title="Copy Voucher Code"
@@ -415,22 +459,24 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                   <div className="w-full mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="p-3 rounded-xl bg-surface-subtle">
                       <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                        Pass Holder
+                        {isGiftPass ? 'Gift Recipient' : 'Pass Holder'}
                       </span>
                       <p className="font-label-md text-label-md font-semibold text-text-primary mt-0.5">
-                        Zainab Ahmed
+                        {passHolderName}
                       </p>
-                      <p className="font-caption text-caption text-text-secondary">+234 803 555 0192</p>
+                      <p className="font-caption text-caption text-text-secondary">{passHolderContact}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-surface-subtle">
                       <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                        Validity Window
+                        {isGiftPass ? 'Dispatched' : 'Claimed On'}
                       </span>
                       <p className="font-label-md text-label-md font-semibold text-text-primary mt-0.5">
-                        Mon–Fri, 12:00 PM – 4:00 PM
+                        {pass ? formatDate(pass.createdAt) : '—'}
                       </p>
-                      <p className="font-caption text-caption text-error font-medium">
-                        Expires: Saturday, Oct 19, 2024
+                      <p className="font-caption text-caption text-text-secondary">
+                        {isGiftPass
+                          ? 'Recipient redeems the pass, not the sender.'
+                          : 'Valid at the merchant until redeemed.'}
                       </p>
                     </div>
                   </div>
@@ -457,8 +503,9 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                   <div className="w-full mt-3 p-3 rounded-xl bg-surface-tint-blue/80 flex items-start gap-2 text-text-primary">
                     <Icon name="info" className="text-primary text-[20px] shrink-0 mt-0.5" />
                     <p className="font-caption text-caption leading-relaxed">
-                      <strong>Settlement Notice:</strong> Pay <strong>₦9,600</strong> directly to Urban Grill &amp;
-                      Bistro cashier at redemption via card or cash. Zero upfront checkout fees charged by VEMTAP.
+                      <strong>Settlement Notice:</strong> Pay the discounted bill directly to the{' '}
+                      <strong>{pass?.dealBusiness ?? 'merchant'}</strong> cashier at redemption via card or cash. Zero
+                      upfront checkout fees charged by VEMTAP.
                     </p>
                   </div>
                 </div>
@@ -466,6 +513,24 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 <div className="p-4 bg-surface-subtle flex flex-col gap-1">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                     <button
+                      onClick={() => {
+                        if (!pass) return;
+                        const body = [
+                          'VEMTAP PASS',
+                          `Reference: ${pass.ref}`,
+                          `Voucher: ${pass.code}`,
+                          `Business: ${pass.dealBusiness}`,
+                          `Offer: ${pass.dealTitle}`,
+                          `Holder: ${passHolderName}`,
+                          `Claimed: ${formatDate(pass.createdAt)}`,
+                        ].join('\n');
+                        const url = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `${pass.ref}.txt`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      }}
                       className="h-12 px-3 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-sm transition-transform active:scale-95"
                       type="button"
                     >
@@ -473,6 +538,11 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                       <span>Download Pass</span>
                     </button>
                     <button
+                      onClick={() => {
+                        if (!pass) return;
+                        const text = `${pass.dealBusiness} — ${pass.dealTitle} (${pass.code}) claimed on VEMTAP`;
+                        window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+                      }}
                       className="h-12 px-3 rounded-xl bg-surface-canvas hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 shadow-sm transition-all"
                       type="button"
                     >
@@ -480,15 +550,24 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                       <span>Share WhatsApp</span>
                     </button>
                     <button
+                      onClick={() => {
+                        if (!pass) return;
+                        navigator.clipboard?.writeText(pass.code);
+                      }}
                       className="h-12 px-3 rounded-xl bg-surface-canvas hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 shadow-sm transition-all"
                       type="button"
                     >
-                      <Icon name="call" className="text-[20px] text-primary" />
-                      <span>Call Venue</span>
+                      <Icon name="content_copy" className="text-[20px] text-primary" />
+                      <span>Copy Voucher</span>
                     </button>
                   </div>
                   <div className="flex items-center justify-between pt-2 px-1">
                     <button
+                      onClick={() => {
+                        if (!pass) return;
+                        removeClaim(pass.ref);
+                        setSelectedRef(null);
+                      }}
                       className="font-label-sm text-label-sm text-text-tertiary hover:text-error transition-colors flex items-center gap-1"
                       type="button"
                     >

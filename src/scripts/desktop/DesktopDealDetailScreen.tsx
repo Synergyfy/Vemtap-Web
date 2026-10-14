@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useAuth } from '../../context/AuthContext';
+import { useClaims, type ClaimKind, type ClaimRecord } from '../../context/ClaimsContext';
+import { useProfile } from '../../context/ProfileContext';
 import { CommentsDrawer } from '../../components/desktop/dialogs/CommentsDrawer';
 import { HowToClaimModal } from '../../components/desktop/dialogs/HowToClaimModal';
 import { ClaimConfirmationModal } from '../../components/desktop/dialogs/ClaimConfirmationModal';
@@ -12,10 +14,17 @@ import { RecipientVerificationModal } from '../../components/desktop/dialogs/Rec
 import { RecipientSummaryModal } from '../../components/desktop/dialogs/RecipientSummaryModal';
 import { GiftRecipientDetailsModal } from '../../components/desktop/dialogs/GiftRecipientDetailsModal';
 import { ConfirmGiftSendModal } from '../../components/desktop/dialogs/ConfirmGiftSendModal';
+import type { GiftRecipientSummary } from '../GiftSentScreen';
 
 interface DesktopDealDetailScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
+  /**
+   * BUG-006/008/009 — when provided, a finished claim/gift hands the record to
+   * the app shell so it can open the real outcome screen (claim success /
+   * gift sent) instead of a transient toast.
+   */
+  onClaimComplete?: (claim: ClaimRecord) => void;
 }
 
 type Dialog =
@@ -135,10 +144,13 @@ const TABS: Array<{ key: Tab; icon: string; label: string }> = [
   { key: 'comments', icon: 'chat_bubble_outline', label: 'Community Q&A (32)' },
 ];
 
-export function DesktopDealDetailScreen({ onNav, onBack }: DesktopDealDetailScreenProps) {
+export function DesktopDealDetailScreen({ onNav, onBack, onClaimComplete }: DesktopDealDetailScreenProps) {
   const { authed, claimed, signIn, markClaimed } = useAuth();
+  const claims = useClaims();
+  const profile = useProfile();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [pendingStep, setPendingStep] = useState<PendingStep>('identity');
+  const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [chip, setChip] = useState('All');
   const [selectedImage, setSelectedImage] = useState(0);
@@ -170,9 +182,25 @@ export function DesktopDealDetailScreen({ onNav, onBack }: DesktopDealDetailScre
   };
 
   const completeClaim = () => {
+    const kind: ClaimKind =
+      dialog === 'giftConfirm' ? 'gift' : dialog === 'summary' ? 'someone-else' : 'self';
+    const record = claims.recordClaim({
+      kind,
+      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+      recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
+    });
     markClaimed();
     setDialog(null);
-    showToast('Deal Claimed! Present Voucher #4892 at Urban Grill Bistro.');
+    setClaimRecipient(null);
+    if (onClaimComplete) {
+      onClaimComplete(record);
+      return;
+    }
+    showToast(
+      kind === 'gift'
+        ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
+        : `Deal claimed! Present ${record.ref} at Urban Grill & Bistro.`,
+    );
   };
 
   const copyDealLink = () => {
@@ -1044,24 +1072,37 @@ export function DesktopDealDetailScreen({ onNav, onBack }: DesktopDealDetailScre
       />
       <ClaimIdentityModal
         open={dialog === 'identity'}
+        identity={{ name: profile.fullName }}
         onClose={() => setDialog(null)}
         onClaimSelf={completeClaim}
         onGift={() => setDialog('gift')}
-        onSomeoneElse={() => setDialog('someoneElse')}
+        onSomeoneElse={() => {
+          setClaimRecipient(null);
+          setDialog('someoneElse');
+        }}
       />
       <SomeoneElseModal
         open={dialog === 'someoneElse'}
         onClose={() => setDialog(null)}
-        onContinue={() => setDialog('verify')}
+        onContinue={(values) => {
+          setClaimRecipient({
+            name: `${values.firstName} ${values.lastName}`.trim(),
+            email: values.email,
+            phone: values.phone || undefined,
+          });
+          setDialog('verify');
+        }}
       />
       <RecipientVerificationModal
         open={dialog === 'verify'}
+        recipient={claimRecipient}
         onClose={() => setDialog(null)}
         onVerify={() => setDialog('summary')}
         onBack={() => setDialog('someoneElse')}
       />
       <RecipientSummaryModal
         open={dialog === 'summary'}
+        recipient={claimRecipient}
         onClose={() => setDialog(null)}
         onConfirm={completeClaim}
         onEdit={() => setDialog('someoneElse')}
@@ -1069,10 +1110,18 @@ export function DesktopDealDetailScreen({ onNav, onBack }: DesktopDealDetailScre
       <GiftRecipientDetailsModal
         open={dialog === 'gift'}
         onClose={() => setDialog(null)}
-        onContinue={() => setDialog('giftConfirm')}
+        onContinue={(values) => {
+          setClaimRecipient({
+            name: `${values.firstName} ${values.lastName}`.trim(),
+            email: values.email,
+            phone: values.phone || undefined,
+          });
+          setDialog('giftConfirm');
+        }}
       />
       <ConfirmGiftSendModal
         open={dialog === 'giftConfirm'}
+        recipient={claimRecipient}
         onClose={() => setDialog(null)}
         onEdit={() => setDialog('gift')}
         onSend={completeClaim}

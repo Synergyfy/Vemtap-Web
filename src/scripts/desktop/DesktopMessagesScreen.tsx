@@ -4,6 +4,8 @@ import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChro
 
 interface DesktopMessagesScreenProps {
   onNav: (key: DesktopNavKey) => void;
+  /** BUG-026: open straight into this conversation (e.g. 'glow' for the spa receptionist). */
+  initialThread?: string;
 }
 
 interface ThreadStrip {
@@ -363,9 +365,31 @@ function threadInitials(name: string): string {
     .toUpperCase();
 }
 
-export function DesktopMessagesScreen({ onNav }: DesktopMessagesScreenProps) {
-  const [activeThread, setActiveThread] = useState('urban');
-  const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>(INITIAL_MESSAGES);
+export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesScreenProps) {
+  const [activeThread, setActiveThread] = useState(
+    () => (initialThread && THREADS.some((thread) => thread.id === initialThread) ? initialThread : 'urban'),
+  );
+  const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>(() => {
+    // BUG-026: if the receptionist conversation has no history yet, create it
+    // with an opening message so the thread is never empty.
+    if (initialThread && INITIAL_MESSAGES[initialThread]?.length) return INITIAL_MESSAGES;
+    if (initialThread && INITIAL_MESSAGES[initialThread] === undefined && THREADS.some((t) => t.id === initialThread)) {
+      const thread = THREADS.find((t) => t.id === initialThread);
+      return {
+        ...INITIAL_MESSAGES,
+        [initialThread]: [
+          {
+            id: 1,
+            sender: 'merchant',
+            author: thread?.name ?? 'Reception',
+            time: 'Now',
+            body: "Hello! This is the front desk. How can we help you today?",
+          },
+        ],
+      };
+    }
+    return INITIAL_MESSAGES;
+  });
   const [draft, setDraft] = useState('');
   const [tab, setTab] = useState<'all' | 'unread' | 'deals' | 'bookings'>('all');
   const [query, setQuery] = useState('');

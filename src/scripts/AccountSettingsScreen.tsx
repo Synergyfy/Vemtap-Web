@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 
 interface AccountSettingsScreenProps {
   onBack: () => void;
@@ -51,7 +52,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
     personalized: true,
   });
   const [confirmSignOut, setConfirmSignOut] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -340,6 +341,26 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               </div>
               {chevron}
             </button>
+
+            <div className="h-[1px] bg-surface-container w-full" />
+
+            {/* BUG-018/019: Delete Account lives under Privacy & Data, never beside Sign Out. */}
+            <button
+              type="button"
+              onClick={() => setShowDeleteAccount(true)}
+              className={`${rowButton} hover:bg-surface-subtle`}
+            >
+              <div className="flex items-center gap-space-sm min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-error-container flex items-center justify-center shrink-0">
+                  <Icon name="delete_forever" className="text-error text-[22px]" />
+                </div>
+                <div className="min-w-0">
+                  <span className={`${rowTitle} block text-error`}>Delete Account &amp; Purge Vouchers</span>
+                  <p className={rowHint}>Permanently remove your profile &amp; redemption ledger</p>
+                </div>
+              </div>
+              {chevron}
+            </button>
           </div>
         </section>
 
@@ -353,22 +374,9 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               <Icon name="logout" className="text-[20px] text-error" />
               <span className="font-semibold">Sign Out of All Devices</span>
             </button>
-
-            <div className="h-[1px] bg-surface-container w-full" />
-
-            <div className="flex flex-col items-center text-center px-space-xs">
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="font-button-secondary text-button-secondary text-error font-semibold inline-flex items-center gap-space-2xs active:opacity-75 transition-opacity"
-              >
-                <Icon name="delete_forever" className="text-[18px]" />
-                <span>Delete VEMTAP Account</span>
-              </button>
-              <p className="font-caption text-caption text-text-tertiary mt-1 max-w-[280px]">
-                Permanently delete your profile, saved vouchers, and redemption ledger.
-              </p>
-            </div>
+            <p className="font-caption text-caption text-text-tertiary text-center">
+              You can sign back in anytime with your password.
+            </p>
           </div>
         </section>
       </main>
@@ -423,54 +431,14 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
         </div>
       )}
 
-      {confirmDelete && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end justify-center"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setConfirmDelete(false);
-          }}
-        >
-          <div className="w-full max-w-lg bg-surface rounded-t-2xl p-space-lg shadow-2xl flex flex-col space-y-space-md pb-safe">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-error text-on-error flex items-center justify-center">
-                  <Icon name="delete_forever" className="text-[18px]" />
-                </div>
-                <h3 className="font-heading-sm text-heading-sm text-on-surface">Delete account permanently?</h3>
-              </div>
-              <button
-                aria-label="Close"
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant"
-              >
-                <Icon name="close" className="text-[18px]" />
-              </button>
-            </div>
-            <p className="font-body-md text-body-md text-text-secondary">
-              This permanently removes your profile, saved vouchers, wallet balance and full VEMTAP history. This
-              cannot be undone.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmDelete(false);
-                onSignOut();
-              }}
-              className="w-full h-12 rounded-xl bg-error text-on-error font-button text-button font-semibold active:scale-[0.98] transition-transform"
-            >
-              Yes, delete my account
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(false)}
-              className="w-full h-11 rounded-xl bg-surface-container-low text-text-secondary font-button-secondary text-button-secondary active:bg-surface-container transition-colors"
-            >
-              Keep my account
-            </button>
-          </div>
-        </div>
-      )}
+      <DeleteAccountSheet
+        open={showDeleteAccount}
+        onClose={() => setShowDeleteAccount(false)}
+        onCompleted={() => {
+          setShowDeleteAccount(false);
+          onSignOut();
+        }}
+      />
 
       {toast && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-space-md py-2.5 rounded-full shadow-lg font-label-md text-label-md flex items-center gap-2 transition-all duration-300">

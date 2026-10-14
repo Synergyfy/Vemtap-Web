@@ -4,7 +4,7 @@ import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChro
 
 interface DesktopOrdersScreenProps {
   onNav: (key: DesktopNavKey) => void;
-  onOpenOrder: () => void;
+  onOpenOrder: (ref: string) => void;
   onOpenBooking: () => void;
 }
 
@@ -458,7 +458,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                           <td className="py-4 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={onOpenOrder}
+                                onClick={() => onOpenOrder(row.orderId.split(' ')[0].replace(/^#/, '').trim())}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold transition-colors"
                                 type="button"
                               >

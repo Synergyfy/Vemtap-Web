@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
+import { useLocation } from '../../context/LocationContext';
 
 interface DesktopDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -267,6 +268,7 @@ const CONTEXT_CATEGORIES = ['All Deals (6)', 'Food & Dining', 'Fashion & Wear', 
 export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onClaim }: DesktopDealsScreenProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [locationOpen, setLocationOpen] = useState(false);
+  const { district, city, radius, setLocation } = useLocation();
   const [category, setCategory] = useState(CONTEXT_CATEGORIES[0]);
   const [heroLiked, setHeroLiked] = useState(false);
   const [heroClaimed, setHeroClaimed] = useState(false);
@@ -339,8 +341,10 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                     onClick={() => setLocationOpen(true)}
                   >
                     <Icon name="location_on" className="text-primary text-[18px]" />
-                    <span className="font-semibold text-text-primary">Apo, Abuja</span>
-                    <span className="text-text-tertiary">Within 5km</span>
+                    <span className="font-semibold text-text-primary">
+                      {district}, {city}
+                    </span>
+                    <span className="text-text-tertiary">Within {radius}km</span>
                     <Icon name="keyboard_arrow_down" className="text-text-secondary text-[16px]" />
                   </button>
                 </div>
@@ -550,7 +554,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
 
           {claimToast}
         </DesktopPage>
-        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
       </>
     );
   }
@@ -571,7 +575,9 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                 onClick={() => setLocationOpen(true)}
               >
                 <Icon name="location_on" className="text-primary text-[18px]" />
-                <span className="font-label-md text-label-md text-primary font-semibold">Apo, Abuja • Within 5km</span>
+                <span className="font-label-md text-label-md text-primary font-semibold">
+                  {district}, {city} • Within {radius}km
+                </span>
                 <Icon name="keyboard_arrow_down" className="text-primary text-[16px]" />
               </button>
             </div>
@@ -738,7 +744,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md">
               <div>
                 <h3 className="font-heading-md text-heading-md text-text-primary font-bold">
-                  Deals in Apo, Abuja{' '}
+                  Deals in {district}, {city}{' '}
                   <span className="text-text-tertiary font-normal text-heading-sm">(6)</span>
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary">
@@ -873,7 +879,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
           </div>
         </div>
       </DesktopPage>
-      <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} />
+      <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
     </>
   );
 }

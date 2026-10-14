@@ -6,6 +6,8 @@ export interface DropdownOption {
   label: string;
   description?: string;
   icon?: string;
+  /** Renders the option faded and unselectable (e.g. unavailable time slots). */
+  disabled?: boolean;
 }
 
 interface FormDropdownProps {
@@ -67,11 +69,17 @@ export function FormDropdown({ value, options, onChange, ariaLabel, placeholder 
             return (
               <button
                 aria-selected={active}
-                className="w-full px-3 py-2 flex items-center gap-2.5 text-left hover:bg-surface-subtle active:bg-surface-container transition-colors"
+                className={`w-full px-3 py-2 flex items-center gap-2.5 text-left transition-colors ${
+                  option.disabled
+                    ? 'opacity-45 cursor-not-allowed'
+                    : 'hover:bg-surface-subtle active:bg-surface-container'
+                }`}
+                disabled={option.disabled}
                 key={option.value}
                 role="option"
                 type="button"
                 onClick={() => {
+                  if (option.disabled) return;
                   onChange(option.value);
                   setOpen(false);
                 }}
@@ -86,12 +94,18 @@ export function FormDropdown({ value, options, onChange, ariaLabel, placeholder 
                   </span>
                 )}
                 <span className="flex flex-col min-w-0 flex-1">
-                  <span className="font-label-md text-label-md text-on-surface truncate">{option.label}</span>
+                  <span className={`font-label-md text-label-md truncate ${option.disabled ? 'line-through text-text-tertiary' : 'text-on-surface'}`}>
+                    {option.label}
+                  </span>
                   {option.description && (
                     <span className="font-caption text-caption text-text-secondary truncate">{option.description}</span>
                   )}
                 </span>
-                {active && <Icon name="check" className="text-primary text-[18px] shrink-0" />}
+                {option.disabled ? (
+                  <span className="font-caption text-caption text-text-tertiary shrink-0">Unavailable</span>
+                ) : (
+                  active && <Icon name="check" className="text-primary text-[18px] shrink-0" />
+                )}
               </button>
             );
           })}

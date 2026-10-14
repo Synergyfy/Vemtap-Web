@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
+import { useClaims, type ClaimRecord } from '../context/ClaimsContext';
 
 export type MyDealsTarget = 'orders' | 'gift-sent' | 'help';
 
@@ -27,13 +28,24 @@ const ROOFTOP_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAeAtQWLIyjDZGAe_fGVP6-PK-Lk91gGmK43js0O1SG0JI8juksx-Y5XG-gKRg-1EgZYzOc3jX33vXfe-mpI7w313488dgKy5JIV8SMnK7-0Ei5EH5KRDURZq289Tt4LG6hhlrwFy8dhbVG9Ber29ljbzVK0Ov5hUoyRSnPB_WMxFJ-yqeKTY_VwxLq02F9hmq2X8QqN3nBgucmRXuu4h8ytG-Jrb1Ncfl-FAvp74kGc9Pmoc6FG8yhBA';
 
 const FILTERS = [
-  { key: 'active', label: 'Active', count: 3 },
-  { key: 'used', label: 'Used', count: 8 },
-  { key: 'expired', label: 'Expired', count: 2 },
-  { key: 'gifted', label: 'Gifted', count: 1 },
+  { key: 'active', label: 'Active' },
+  { key: 'used', label: 'Used' },
+  { key: 'expired', label: 'Expired' },
+  { key: 'gifted', label: 'Gifted' },
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number]['key'];
+
+const formatDate = (timestamp: number) =>
+  new Date(timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'VT';
 
 interface SimpleDeal {
   id: string;
@@ -180,8 +192,126 @@ function SimpleDealCard({ deal }: { deal: SimpleDeal }) {
   );
 }
 
+function ClaimCard({
+  claim,
+  copied,
+  onCopy,
+  onShowPass,
+  onShowQr,
+  onReceipt,
+}: {
+  claim: ClaimRecord;
+  copied: string | null;
+  onCopy: (code: string) => void;
+  onShowPass?: () => void;
+  onShowQr: () => void;
+  onReceipt: () => void;
+}) {
+  const isGift = claim.kind === 'gift';
+  const recipientName = claim.recipient?.name;
+  return (
+    <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden transition-all hover:shadow-md">
+      <div className="flex gap-space-sm items-start">
+        <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 bg-surface-container">
+          <img
+            className="w-full h-full object-cover"
+            alt={claim.dealTitle}
+            src={claim.dealImage ?? URBAN_IMG}
+          />
+          <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold tracking-tight">
+            {claim.code}
+          </div>
+        </div>
+        <div className="flex flex-col flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-[11px] font-semibold ${
+                isGift
+                  ? 'bg-surface-tint-blue text-primary'
+                  : 'bg-badge-discount-bg text-badge-discount-text'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isGift ? 'bg-primary' : 'bg-badge-discount-text animate-pulse'
+                }`}
+              />
+              {isGift ? 'GIFT SENT' : 'READY TO REDEEM'}
+            </span>
+            <span className="font-caption text-caption text-text-tertiary shrink-0">{formatDate(claim.createdAt)}</span>
+          </div>
+          <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{claim.dealBusiness}</h2>
+          <p className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-2">{claim.dealTitle}</p>
+          {recipientName ? (
+            <div className="flex items-center gap-1 text-text-secondary font-caption text-caption mt-1">
+              <Icon name="person" className="text-[14px] text-primary" />
+              <span className="truncate">
+                {isGift ? `Gifted to ${recipientName}` : `Redeeming: ${recipientName}`}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <VoucherStrip code={claim.ref} onCopy={onCopy} copied={copied === claim.ref} />
+
+      <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption px-1">
+        <Icon name="info" className="text-[15px] text-primary" />
+        <span>
+          {isGift
+            ? 'The recipient redeems this pass — your account is the sender of record.'
+            : 'Show QR code to your server prior to ordering.'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-space-xs pt-1">
+        {isGift ? (
+          <>
+            <button
+              type="button"
+              onClick={onShowQr}
+              className="h-11 px-space-sm rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all hover:bg-primary"
+            >
+              <Icon name="qr_code_2" className="text-[18px]" />
+              <span>View Gift</span>
+            </button>
+            <button
+              type="button"
+              onClick={onReceipt}
+              className="h-11 px-space-sm rounded-xl bg-surface-container text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors active:scale-[0.98]"
+            >
+              <Icon name="receipt" className="text-[18px]" />
+              <span>Receipt</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onShowQr}
+              className="h-11 px-space-sm rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all hover:bg-primary"
+            >
+              <Icon name="qr_code_2" className="text-[18px]" />
+              <span>Use Deal</span>
+            </button>
+            <button
+              type="button"
+              onClick={onShowPass}
+              className="h-11 px-space-sm rounded-xl bg-surface-container text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors active:scale-[0.98]"
+            >
+              <Icon name="receipt" className="text-[18px]" />
+              <span>View Pass</span>
+            </button>
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenProps) {
   const [filter, setFilter] = useState<FilterKey>('active');
+  const [query, setQuery] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [qr, setQr] = useState<{ business: string; code: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -205,14 +335,33 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
     window.setTimeout(() => setCopied((current) => (current === code ? null : current)), 2000);
   };
 
-  const giftedSection = (
+  // Real claim records (localStorage-backed; backend gap: `GET /claims?customer=me`).
+  const { claims } = useClaims();
+  const needle = query.trim().toLowerCase();
+  const matchesSearch = (claim: ClaimRecord) =>
+    !needle ||
+    [claim.dealBusiness, claim.dealTitle, claim.ref, claim.recipient?.name ?? '', claim.recipient?.email ?? '']
+      .join(' ')
+      .toLowerCase()
+      .includes(needle);
+  const activeClaims = claims.filter((claim) => claim.kind !== 'gift' && matchesSearch(claim));
+  const giftedClaims = claims.filter((claim) => claim.kind === 'gift' && matchesSearch(claim));
+  const counts: Record<FilterKey, number> = {
+    active: activeClaims.length,
+    used: USED_DEALS.length,
+    expired: EXPIRED_DEALS.length,
+    gifted: giftedClaims.length,
+  };
+  const latestGift = giftedClaims[0];
+
+  const giftedSection = latestGift ? (
     <section className="px-margin mt-space-xl">
       <div className="flex items-center justify-between mb-space-xs">
         <div className="flex items-center gap-1.5">
           <Icon name="card_giftcard" className="text-[20px] text-primary" />
           <h3 className="font-heading-sm text-heading-sm text-text-primary">Gifted to Others</h3>
           <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-text-secondary font-label-sm text-[12px]">
-            1
+            {giftedClaims.length}
           </span>
         </div>
         <button
@@ -227,22 +376,30 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-space-xs">
             <div className="w-9 h-9 rounded-full bg-secondary-fixed flex items-center justify-center text-on-secondary-fixed font-bold font-label-md">
-              SA
+              {initialsOf(latestGift.recipient?.name ?? 'Gift')}
             </div>
             <div className="flex flex-col">
-              <span className="font-label-md text-label-md font-semibold text-text-primary">Samuel Adeleke</span>
-              <span className="font-caption text-caption text-text-secondary">samuel.adeleke@example.com</span>
+              <span className="font-label-md text-label-md font-semibold text-text-primary">
+                {latestGift.recipient?.name ?? 'Gift recipient'}
+              </span>
+              <span className="font-caption text-caption text-text-secondary">
+                {latestGift.recipient?.email ?? 'No contact on file'}
+              </span>
             </div>
           </div>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
             <Icon name="done_all" className="text-[12px]" />
-            Claimed
+            Sent
           </span>
         </div>
         <div className="bg-surface-subtle p-space-xs rounded-lg mt-1 flex items-center justify-between">
           <div className="flex flex-col">
-            <span className="font-label-sm text-label-sm text-text-primary font-medium">Urban Grill 20% Off Combo</span>
-            <span className="font-caption text-caption text-text-tertiary">Sent on Oct 14, 2024</span>
+            <span className="font-label-sm text-label-sm text-text-primary font-medium">
+              {latestGift.dealTitle}
+            </span>
+            <span className="font-caption text-caption text-text-tertiary">
+              Sent on {formatDate(latestGift.createdAt)} • {latestGift.ref}
+            </span>
           </div>
           <button
             type="button"
@@ -255,7 +412,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
         </div>
       </div>
     </section>
-  );
+  ) : null;
 
   return (
     <AppScreen>
@@ -307,8 +464,8 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
             </div>
             <div className="h-7 w-[1px] bg-outline-variant/30" />
             <div className="flex flex-col items-end">
-              <span className="font-caption text-caption text-text-secondary">Claimed Deals</span>
-              <span className="font-label-md text-label-md text-primary font-semibold">14 Total</span>
+                <span className="font-caption text-caption text-text-secondary">Claimed Deals</span>
+                <span className="font-label-md text-label-md text-primary font-semibold">{claims.length} Total</span>
             </div>
           </div>
         </div>
@@ -321,6 +478,8 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
             />
             <input
               ref={searchRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
               className="w-full h-12 pl-11 pr-space-md bg-surface-container-lowest text-text-primary placeholder:text-text-tertiary font-body-md text-body-md rounded-xl shadow-sm focus:outline-none focus:bg-surface-canvas transition-all"
               placeholder="Search your claimed deals, businesses..."
               type="text"
@@ -351,7 +510,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
                       selected ? 'bg-on-primary-container/20 text-on-primary-container font-bold' : 'bg-surface-variant text-text-secondary font-semibold'
                     }`}
                   >
-                    {item.count}
+                    {counts[item.key]}
                   </span>
                 </button>
               );
@@ -361,82 +520,27 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
 
         {filter === 'active' && (
           <div className="px-margin flex flex-col gap-space-md">
-            <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden transition-all hover:shadow-md">
-              <div className="flex gap-space-sm items-start">
-                <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 bg-surface-container">
-                  <img
-                    className="w-full h-full object-cover"
-                    alt="Gourmet double beef burger with cheddar and fries"
-                    src={URBAN_IMG}
-                  />
-                  <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold tracking-tight">
-                    20% OFF
-                  </div>
-                </div>
-                <div className="flex flex-col flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-                      READY TO REDEEM
-                    </span>
-                    <button
-                      aria-label="More options"
-                      type="button"
-                      onClick={() => showToast('Deal options: share, directions, report issue')}
-                      className="text-text-tertiary hover:text-text-primary p-0.5"
-                    >
-                      <Icon name="more_vert" className="text-[18px]" />
-                    </button>
-                  </div>
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">Urban Grill &amp; Bistro</h2>
-                  <div className="flex items-center gap-1 text-text-secondary font-caption text-caption mb-1">
-                    <Icon name="location_on" className="text-[14px] text-primary" />
-                    <span className="truncate">Apo Boulevard Branch • 0.8 km</span>
-                  </div>
-                  <p className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-1">
-                    Prime Lunch Gourmet Combo
-                  </p>
-                </div>
+            {activeClaims.length === 0 ? (
+              <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col items-center gap-space-xs text-center">
+                <Icon name="confirmation_number" className="text-[28px] text-primary" />
+                <h2 className="font-heading-sm text-heading-sm text-text-primary">No active claims yet</h2>
+                <p className="font-caption text-caption text-text-secondary leading-relaxed">
+                  Claim a deal and your voucher pass will appear here, ready to redeem in store.
+                </p>
               </div>
-
-              <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center justify-between">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦9,600</span>
-                  <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>
-                  <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">Save ₦2,400</span>
-                </div>
-                <div className="flex items-center gap-1 text-tertiary-container font-label-sm text-label-sm font-medium">
-                  <Icon name="timer" className="text-[14px]" />
-                  <span>2 days left</span>
-                </div>
-              </div>
-
-              <VoucherStrip code="VT-48F261" onCopy={copyCode} copied={copied === 'VT-48F261'} />
-
-              <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption px-1">
-                <Icon name="info" className="text-[15px] text-primary" />
-                <span>Show QR code to your server prior to ordering.</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-space-xs pt-1">
-                <button
-                  type="button"
-                  onClick={() => setQr({ business: 'Urban Grill & Bistro', code: 'VT-48F261' })}
-                  className="h-11 px-space-sm rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all hover:bg-primary"
-                >
-                  <Icon name="qr_code_2" className="text-[18px]" />
-                  <span>Use Deal</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onShowPass}
-                  className="h-11 px-space-sm rounded-xl bg-surface-container text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors active:scale-[0.98]"
-                >
-                  <Icon name="receipt" className="text-[18px]" />
-                  <span>View Pass</span>
-                </button>
-              </div>
-            </article>
+            ) : (
+              activeClaims.map((claim) => (
+                <ClaimCard
+                  key={claim.ref}
+                  claim={claim}
+                  copied={copied}
+                  onCopy={copyCode}
+                  onShowPass={onShowPass}
+                  onShowQr={() => setQr({ business: claim.dealBusiness, code: claim.ref })}
+                  onReceipt={() => onNavigate('orders')}
+                />
+              ))
+            )}
 
             <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden transition-all hover:shadow-md">
               <div className="flex gap-space-sm items-start">
@@ -576,7 +680,30 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
           </div>
         )}
 
-        {filter === 'gifted' && giftedSection}
+        {filter === 'gifted' && (
+          <div className="px-margin flex flex-col gap-space-md">
+            {giftedClaims.length === 0 ? (
+              <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col items-center gap-space-xs text-center">
+                <Icon name="card_giftcard" className="text-[28px] text-primary" />
+                <h2 className="font-heading-sm text-heading-sm text-text-primary">No gifts sent yet</h2>
+                <p className="font-caption text-caption text-text-secondary leading-relaxed">
+                  Gift a deal from any voucher screen and it will show up here with its dispatch receipt.
+                </p>
+              </div>
+            ) : (
+              giftedClaims.map((claim) => (
+                <ClaimCard
+                  key={claim.ref}
+                  claim={claim}
+                  copied={copied}
+                  onCopy={copyCode}
+                  onShowQr={() => setQr({ business: claim.dealBusiness, code: claim.ref })}
+                  onReceipt={() => onNavigate('gift-sent')}
+                />
+              ))
+            )}
+          </div>
+        )}
         {filter === 'active' && giftedSection}
 
         <div className="px-margin mt-space-lg mb-space-md">

@@ -5,7 +5,6 @@ import { useBooking } from '../context/BookingContext';
 import {
   SPA_ADDONS,
   SPA_MERCHANT,
-  SPA_THERAPISTS,
   formatSpaDuration,
   serviceSteps,
   type SpaCatalogueService,
@@ -149,82 +148,64 @@ export function ServiceDetailScreen({ service, onBack, onBook }: ServiceDetailSc
               </div>
             </div>
 
+            {/* BUG-023: Add-ons are not part of the current release — Coming Soon. */}
             <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
               <div className="flex items-center justify-between">
                 <h3 className="font-heading-sm text-heading-sm text-on-surface">Enhance Your Session</h3>
-                <span className="font-caption text-caption text-text-tertiary">Optional</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-surface-container text-text-tertiary">
+                  Coming Soon
+                </span>
               </div>
               <p className="font-caption text-caption text-on-surface-variant -mt-1">
-                Tailor your appointment with customized aesthetic boosters.
+                Add-ons such as LED therapy and scalp massage are coming soon. Your base session can be booked now.
               </p>
               <div className="flex flex-col gap-2 pt-1">
-                {SPA_ADDONS.map((addon) => {
-                  const checked = booking.addons.some((item) => item.id === addon.id);
-                  return (
-                    <label
-                      key={addon.id}
-                      className="flex items-start justify-between p-3 rounded-xl bg-surface-container-low cursor-pointer transition-all duration-150 active:scale-[0.99] select-none"
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          className="addon-toggle mt-1 w-5 h-5 rounded accent-primary cursor-pointer"
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => booking.toggleAddon(addon.id)}
-                        />
-                        <div className="flex flex-col">
-                          <span className="font-button-secondary text-button-secondary text-on-surface">{addon.name}</span>
-                          <span className="font-caption text-caption text-on-surface-variant">{addon.desc}</span>
-                        </div>
-                      </div>
-                      <span className="font-label-md text-label-md text-primary font-semibold whitespace-nowrap pl-2">
-                        +{naira(addon.price)}
+                {SPA_ADDONS.map((addon) => (
+                  <div
+                    key={addon.id}
+                    className="flex items-start justify-between p-3 rounded-xl bg-surface-container-low opacity-60 select-none"
+                    aria-disabled="true"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="mt-1 w-5 h-5 rounded border border-outline-variant bg-surface-subtle flex items-center justify-center shrink-0">
+                        <Icon name="lock" className="text-[12px] text-text-tertiary" />
                       </span>
-                    </label>
-                  );
-                })}
+                      <div className="flex flex-col">
+                        <span className="font-button-secondary text-button-secondary text-on-surface-variant">
+                          {addon.name}
+                        </span>
+                        <span className="font-caption text-caption text-text-tertiary">{addon.desc}</span>
+                      </div>
+                    </div>
+                    <span className="font-label-md text-label-md text-text-tertiary font-semibold whitespace-nowrap pl-2">
+                      +{naira(addon.price)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 
+            {/* BUG-024: Specialist selection is Coming Soon — booking works without it. */}
             <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
               <div className="flex items-center justify-between">
                 <h3 className="font-heading-sm text-heading-sm text-on-surface">Therapist Selection</h3>
-                <span className="font-caption text-caption text-text-secondary">Instant match</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-surface-container text-text-tertiary">
+                  Coming Soon
+                </span>
               </div>
-              <div className="flex gap-space-sm overflow-x-auto pb-1 pt-1 -mx-2 px-2 no-scrollbar">
-                {SPA_THERAPISTS.map((therapist) => {
-                  const selected = booking.therapist.id === therapist.id;
-                  return (
-                    <button
-                      key={therapist.id}
-                      type="button"
-                      onClick={() => booking.setTherapist(therapist.id)}
-                      className={`therapist-btn flex flex-col items-center p-3 rounded-xl text-center min-w-[130px] shrink-0 transition-transform active:scale-95 text-left ${
-                        selected ? 'bg-surface-tint-blue' : 'bg-surface-subtle'
-                      }`}
-                    >
-                      {therapist.image ? (
-                        <div className="w-12 h-12 rounded-full overflow-hidden mb-2 bg-surface-container-high">
-                          <img className="w-full h-full object-cover" alt={therapist.name} src={therapist.image} />
-                        </div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center mb-2 shadow-sm">
-                          <Icon name="bolt" className="text-[24px]" />
-                        </div>
-                      )}
-                      <span className="font-button-secondary text-button-secondary text-on-surface font-semibold truncate w-full">
-                        {therapist.name}
-                      </span>
-                      <span
-                        className={`font-caption text-caption truncate w-full ${
-                          selected ? 'text-primary' : 'text-text-secondary'
-                        }`}
-                      >
-                        {therapist.hint ?? therapist.role}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-surface-container-low">
+                <div className="w-11 h-11 rounded-full bg-surface-container-high flex items-center justify-center text-text-tertiary shrink-0">
+                  <Icon name="hourglass_empty" className="text-[22px]" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-button-secondary text-button-secondary text-on-surface-variant">
+                    Choose your specialist
+                  </span>
+                  <span className="font-caption text-caption text-text-tertiary">
+                    Therapist selection is coming soon. You&apos;ll be matched with the next available specialist at
+                    check-in — it won&apos;t delay your booking.
+                  </span>
+                </div>
               </div>
             </div>
 

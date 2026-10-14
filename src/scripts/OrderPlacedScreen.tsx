@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { OrderQrArt } from '../components/ui/OrderQrArt';
+import { useOrders } from '../context/OrdersContext';
+import type { SubmittedOrder } from '../context/OrdersContext';
 import { naira } from './catalogueData';
 import {
   MERCHANT_ADDRESS,
@@ -8,13 +11,14 @@ import {
   MERCHANT_PHONE_DISPLAY,
   MERCHANT_PHONE_TEL,
   MAP_IMAGE,
+  PAYMENT_STATUS_LABELS,
   VOUCHER_CODE,
+  orderStatusLabel,
   type FulfillmentMode,
-  type OrderSummary,
 } from './orderData';
 
 interface OrderPlacedScreenProps {
-  order: OrderSummary;
+  order: SubmittedOrder;
   onClose: () => void;
   onHome: () => void;
   onTrack: () => void;
@@ -23,9 +27,12 @@ interface OrderPlacedScreenProps {
 export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlacedScreenProps) {
   const [mode, setMode] = useState<FulfillmentMode>(order.fulfillment);
   const [accordionOpen, setAccordionOpen] = useState(false);
+  const orders = useOrders();
 
-  const itemCount = order.lines.reduce((sum, line) => sum + line.qty, 0);
-  const total = order.total;
+  // Re-read from the store so payment/status updates from the cashier show here.
+  const live = orders.byRef(order.ref) ?? order;
+  const itemCount = live.lines.reduce((sum, line) => sum + line.qty, 0);
+  const total = live.total;
 
   const tabClass = (active: boolean) =>
     `flex-1 py-space-xs rounded-lg font-button-secondary text-button-secondary text-center transition-all ${
@@ -62,16 +69,67 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
                 Order Received by {MERCHANT_NAME}!
               </h2>
               <p className="font-body-md text-body-md text-text-secondary">
-                Order <span className="font-semibold text-on-surface">#{order.ref}</span> • Placed just now
+                Order <span className="font-semibold text-on-surface">#{live.ref}</span> • Placed just now
               </p>
             </div>
             <div className="inline-flex items-center gap-space-xs px-space-md py-space-2xs rounded-full bg-surface-tint-blue shadow-sm">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary-container animate-pulse" />
               <span className="font-label-md text-label-md text-primary font-semibold">
-                Merchant Preparing Your Order
+                {orderStatusLabel(live.status)}
               </span>
               <span className="font-caption text-caption text-secondary">(~20–25 mins)</span>
             </div>
+          </section>
+
+          {/* BUG-015 Step 4: order confirmation pass — reopenable from Orders. */}
+          <section className="p-space-md rounded-xl bg-surface-canvas shadow-sm flex flex-col items-center gap-space-sm">
+            <div className="flex items-center gap-space-xs self-start">
+              <Icon name="qr_code_2" className="text-primary text-[20px]" />
+              <h3 className="font-heading-sm text-heading-sm text-on-surface">Collection Pass</h3>
+            </div>
+            <OrderQrArt value={live.ref} size={168} className="rounded-lg border border-subtle" />
+            <div className="flex flex-col items-center gap-space-2xs">
+              <span className="font-mono text-heading-sm text-heading-sm font-bold text-on-surface tracking-widest">
+                {live.ref}
+              </span>
+              <span className="font-caption text-caption text-text-secondary">
+                Show this pass or quote the order number
+              </span>
+            </div>
+            <div className="w-full grid grid-cols-2 gap-space-xs text-left">
+              <div className="p-space-xs rounded-lg bg-surface-subtle">
+                <p className="font-caption text-caption text-text-tertiary uppercase tracking-wider">Business</p>
+                <p className="font-label-md text-label-md font-semibold text-on-surface truncate">
+                  {live.merchantName}
+                </p>
+              </div>
+              <div className="p-space-xs rounded-lg bg-surface-subtle">
+                <p className="font-caption text-caption text-text-tertiary uppercase tracking-wider">Payment</p>
+                <p
+                  className={`font-label-md text-label-md font-semibold truncate ${
+                    live.paymentStatus === 'verified' || live.paymentStatus === 'not-required'
+                      ? 'text-badge-discount-text'
+                      : 'text-error'
+                  }`}
+                >
+                  {PAYMENT_STATUS_LABELS[live.paymentStatus]}
+                </p>
+              </div>
+            </div>
+            {live.paymentStatus === 'pending' && (
+              <p className="font-caption text-caption text-text-secondary text-center">
+                Your order stays Payment Pending until {live.merchantName} verifies the payment — it has not been
+                marked paid yet.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={onTrack}
+              className="w-full h-10 rounded-lg bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-semibold flex items-center justify-center gap-1"
+            >
+              <Icon name="forum" className="text-[18px]" />
+              Message {live.merchantName}
+            </button>
           </section>
 
           <section className="space-y-space-sm">
