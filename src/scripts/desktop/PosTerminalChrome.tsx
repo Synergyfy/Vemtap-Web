@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Logo } from '../../components/ui/Logo';
 import {
   PortalBody,
   PortalRail,
@@ -69,19 +70,14 @@ export function PosTerminalChrome({ children, activeNav, onNav, onSignOut }: Pos
     <div className={`bg-surface font-body-md text-body-md text-on-surface min-h-screen flex flex-col antialiased ${RAIL_OFFSET}`}>
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-lg">
-            <div className="flex items-center gap-space-xs shrink-0">
-              <div className="w-9 h-9 rounded-lg bg-primary-container flex items-center justify-center text-on-primary font-heading-sm font-bold shadow-[0_2px_8px_-2px_rgba(6,108,244,0.3)]">
-                V
-              </div>
-              <div className="flex flex-col">
-                <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight leading-none">VEMTAP</span>
-                <span className="font-caption text-caption text-text-tertiary tracking-wider uppercase font-semibold leading-none mt-1">
-                  POS Terminal
-                </span>
-              </div>
+          <div className="flex items-center shrink-0">
+            <div className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0">
+              <Logo variant="full" className="h-10 md:h-11 w-auto" />
+              <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant shrink-0 leading-none">
+                POS
+              </span>
             </div>
-            <div className="h-6 w-px bg-surface-container-highest hidden lg:block" />
+            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
             <button
               type="button"
               className="hidden lg:flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle text-text-secondary hover:bg-surface-container transition-colors"

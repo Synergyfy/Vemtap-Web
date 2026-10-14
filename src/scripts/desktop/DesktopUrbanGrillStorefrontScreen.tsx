@@ -3,11 +3,14 @@ import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
 import { naira, nairaToNumber } from '../catalogueData';
+import { useStoreOrdering } from '../../context/StoreOrderingContext';
 
 interface DesktopUrbanGrillStorefrontScreenProps {
   onNav: (key: DesktopNavKey) => void;
   activeNav?: DesktopNavKey;
   onClaim?: (onClaimed?: () => void) => void;
+  /** Review the tray and submit the order (goes to checkout). */
+  onCheckout: () => void;
 }
 
 const COVER_IMAGE =
@@ -199,12 +202,21 @@ const STOREFRONT_DEALS: StorefrontDeal[] = [
   },
 ];
 
-export function DesktopUrbanGrillStorefrontScreen({ onNav, activeNav = 'businesses', onClaim }: DesktopUrbanGrillStorefrontScreenProps) {
+export function DesktopUrbanGrillStorefrontScreen({ onNav, activeNav = 'businesses', onClaim, onCheckout: _onCheckout }: DesktopUrbanGrillStorefrontScreenProps) {
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('all');
   const [query, setQuery] = useState('');
   const [saved, setSaved] = useState(false);
   const [claimedDeals, setClaimedDeals] = useState<Record<number, boolean>>({});
   const cart = useCart();
+  const { submitCustomerStoreOrder } = useStoreOrdering();
+
+  // Guest checkout state
+  const [guestCheckoutOpen, setGuestCheckoutOpen] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestNotes, setGuestNotes] = useState('');
+  const [confirmedOrderRef, setConfirmedOrderRef] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const trayId = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -215,6 +227,48 @@ export function DesktopUrbanGrillStorefrontScreen({ onNav, activeNav = 'business
       price: nairaToNumber(product.price),
       image: product.image,
     });
+  };
+
+  const handleSubmitOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guestName.trim() || !guestPhone.trim()) return;
+    setIsSubmitting(true);
+
+    const items = cart.lines.map((line, idx) => ({
+      id: `pub-item-${idx + 1}`,
+      productId: line.id,
+      name: line.name,
+      qty: line.qty,
+      unitPrice: line.price,
+      totalPrice: line.price * line.qty,
+      image: line.image ?? '',
+      available: true,
+    }));
+
+    const order = submitCustomerStoreOrder({
+      status: 'new',
+      customerName: guestName.trim(),
+      customerPhone: guestPhone.trim(),
+      time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+      date: 'Today',
+      branchId: 'wuse-2',
+      branchName: 'Wuse II Flagship',
+      origin: 'Public Store Page',
+      placementDetails: 'Online (Public Storefront)',
+      items,
+      estimatedTotal: cart.total,
+      confirmedTotal: cart.total,
+      isTotalConfirmed: false,
+      customerNotes: guestNotes.trim() || undefined,
+      pickupInstructions: 'Proceed to the VEMTAP Express Pickup Counter inside Urban Grill & Bistro. Present your Order Reference code to our cashier.',
+      estimatedPrepMins: 20,
+      assignedStaff: undefined,
+    });
+
+    setIsSubmitting(false);
+    setGuestCheckoutOpen(false);
+    setConfirmedOrderRef(order.orderRef);
+    cart.clear();
   };
 
   const visibleProducts = PRODUCTS.filter(
@@ -704,10 +758,11 @@ export function DesktopUrbanGrillStorefrontScreen({ onNav, activeNav = 'business
                 <button
                   type="button"
                   disabled={cart.lines.length === 0}
+                  onClick={() => setGuestCheckoutOpen(true)}
                   className="w-full py-3.5 rounded-xl bg-primary-container text-on-primary-container font-button-primary text-button-primary disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-95 shadow-md transition-all flex items-center justify-center gap-2"
                 >
                   <Icon name="send" className="text-[19px]" />
-                  <span>Confirm Request with Store</span>
+                  <span>Submit Order to Store</span>
                 </button>
               </div>
 
@@ -784,6 +839,136 @@ export function DesktopUrbanGrillStorefrontScreen({ onNav, activeNav = 'business
           </div>
         </section>
       </div>
+
+      {/* Guest Checkout Modal */}
+      {guestCheckoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setGuestCheckoutOpen(false)} />
+          <form
+            onSubmit={handleSubmitOrder}
+            className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 space-y-space-md"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="receipt_long" className="text-[20px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">Confirm Your Order</h3>
+                  <p className="text-caption text-text-secondary">You'll collect &amp; pay in-store. No online payment.</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setGuestCheckoutOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-subtle">
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            {/* Order summary */}
+            <div className="rounded-xl bg-surface-subtle border border-border-subtle p-3 space-y-1.5">
+              {cart.lines.map(line => (
+                <div key={line.id} className="flex items-center justify-between text-body-sm">
+                  <span className="text-text-primary">{line.name} × {line.qty}</span>
+                  <span className="font-semibold text-text-primary">{naira(line.price * line.qty)}</span>
+                </div>
+              ))}
+              <div className="border-t border-border-subtle mt-2 pt-2 flex justify-between font-bold text-body-md">
+                <span>Total (Est.)</span>
+                <span className="text-primary">{naira(cart.total)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-caption font-semibold text-text-primary">Your Name *</label>
+              <input
+                required
+                value={guestName}
+                onChange={e => setGuestName(e.target.value)}
+                placeholder="e.g. Amina Bello"
+                className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-caption font-semibold text-text-primary">Phone Number *</label>
+              <input
+                required
+                type="tel"
+                value={guestPhone}
+                onChange={e => setGuestPhone(e.target.value)}
+                placeholder="+234 800 000 0000"
+                className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-caption font-semibold text-text-primary">Special Instructions (Optional)</label>
+              <textarea
+                rows={2}
+                value={guestNotes}
+                onChange={e => setGuestNotes(e.target.value)}
+                placeholder="e.g. Medium-rare, no pickles..."
+                className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md resize-none"
+              />
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2">
+              <Icon name="info" className="text-[15px] text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-caption text-amber-700">You will pay and collect your order at the store counter. Please show your order reference to our cashier.</p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setGuestCheckoutOpen(false)} className="flex-1 py-2.5 rounded-xl border border-border text-text-secondary hover:bg-surface-subtle text-label-md font-semibold">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-label-md font-semibold shadow-sm disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? <><Icon name="sync" className="text-[16px] animate-spin" /> Submitting...</> : <><Icon name="check_circle" className="text-[16px]" /> Submit Order</>}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Order Confirmed Overlay */}
+      {confirmedOrderRef && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md" />
+          <div className="relative w-full max-w-sm bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 flex flex-col items-center text-center gap-space-md">
+            <div className="w-20 h-20 rounded-full bg-badge-discount-bg flex items-center justify-center">
+              <Icon name="check_circle" className="text-[48px] text-badge-discount-text" />
+            </div>
+            <div>
+              <h2 className="text-heading-xl font-heading-xl font-bold text-text-primary">Order Submitted!</h2>
+              <p className="text-body-sm text-text-secondary mt-1">Your order has been sent to the Urban Grill &amp; Bistro team.</p>
+            </div>
+            <div className="w-full p-4 rounded-xl bg-surface-tint-blue/20 border border-primary/30">
+              <p className="text-caption text-text-tertiary font-medium">Your Order Reference</p>
+              <p className="text-heading-xl font-heading-xl font-bold text-primary tracking-widest mt-1">{confirmedOrderRef}</p>
+              <p className="text-caption text-text-secondary mt-2">Show this to the cashier at the pickup counter to collect your order &amp; pay.</p>
+            </div>
+            <div className="p-3 rounded-xl bg-surface-subtle border border-border-subtle w-full text-left space-y-1">
+              <div className="flex items-center gap-2 text-caption text-text-secondary">
+                <Icon name="schedule" className="text-[14px]" />
+                <span>Estimated preparation: <strong>~20 minutes</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-caption text-text-secondary">
+                <Icon name="location_on" className="text-[14px]" />
+                <span>Pickup at <strong>Wuse II Flagship</strong> Counter A</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfirmedOrderRef(null)}
+              className="w-full py-3 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-label-md font-semibold shadow-sm transition-all"
+            >
+              Done — Back to Menu
+            </button>
+          </div>
+        </div>
+      )}
     </DesktopPage>
   );
 }

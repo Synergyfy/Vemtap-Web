@@ -22,7 +22,8 @@ export type DashboardTarget =
   | 'saved'
   | 'subscription'
   | 'dashboard'
-  | 'featured-deals';
+  | 'featured-deals'
+  | 'business-onboarding';
 
 interface DashboardScreenProps {
   onTab: (tab: MobileTabKey) => void;
@@ -661,6 +662,23 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
             <span>Explore More Deals in Apo</span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
+        </section>
+
+        <section className="px-margin pt-space-xs">
+          <div className="p-space-md rounded-2xl bg-surface-subtle flex flex-col items-center text-center">
+            <div className="flex items-center gap-space-2xs text-text-secondary">
+              <Icon name="storefront" className="text-[18px]" />
+              <span className="font-label-md text-label-md">Own a business in Nigeria?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('business-onboarding')}
+              className="mt-space-2xs text-primary-container font-label-md text-label-md font-semibold inline-flex items-center gap-1 hover:underline"
+            >
+              <span>Set up your business on VEMTAP</span>
+              <Icon name="arrow_forward" className="text-[16px]" />
+            </button>
+          </div>
         </section>
 
         <div className="px-margin flex flex-col items-center justify-center gap-1 text-center mt-2">

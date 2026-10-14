@@ -17,6 +17,7 @@ interface BusinessMoreScreenProps {
   onOpenSupport: () => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
+  onOpenStoreOrdering?: (sub?: 'dashboard' | 'qr' | 'settings') => void;
 }
 
 interface RowData {
@@ -58,6 +59,7 @@ export function BusinessMoreScreen({
   onOpenSupport,
   onSwitchConsumer,
   onSignOut,
+  onOpenStoreOrdering,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
   const [toast, setToast] = useState<string | null>(null);
@@ -77,6 +79,37 @@ export function BusinessMoreScreen({
   };
 
   const sections: SectionData[] = [
+    {
+      key: 'store-ordering',
+      label: 'Store Ordering & QR Touchpoints',
+      badge: 'Live',
+      badgeClass: GREEN_BADGE,
+      rows: [
+        {
+          key: 'ordering-dash',
+          icon: 'qr_code_scanner',
+          title: 'Store Ordering Dashboard',
+          sub: 'Live customer orders from QR codes & storefront',
+          badge: 'Live',
+          badgeClass: GREEN_BADGE,
+          onClick: () => (onOpenStoreOrdering ? onOpenStoreOrdering('dashboard') : showToast('Store Ordering opened')),
+        },
+        {
+          key: 'ordering-qr',
+          icon: 'qr_code_2',
+          title: 'QR Codes & Placement',
+          sub: 'Store, Section, Product & Table placement codes',
+          onClick: () => (onOpenStoreOrdering ? onOpenStoreOrdering('qr') : showToast('QR Codes opened')),
+        },
+        {
+          key: 'ordering-settings',
+          icon: 'tune',
+          title: 'Ordering Settings',
+          sub: 'Pickup lead times, branch policies & rules',
+          onClick: () => (onOpenStoreOrdering ? onOpenStoreOrdering('settings') : showToast('Settings opened')),
+        },
+      ],
+    },
     {
       key: 'pos',
       label: 'Point of Sale (POS)',

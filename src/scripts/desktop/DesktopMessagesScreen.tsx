@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 
@@ -18,6 +18,26 @@ interface ThreadStrip {
   nav: DesktopNavKey;
 }
 
+interface MerchantDossierData {
+  category: string;
+  email: string;
+  engagement: {
+    visits: string;
+    orders: string;
+    deals: string;
+    points: string;
+  };
+  telemetry: {
+    avgReply: string;
+    hours: string;
+    dealRedemption: string;
+    tier: string;
+    progress: number;
+  };
+  popularItems: string[];
+  notes: Array<{ icon: string; label: string; value: string }>;
+}
+
 interface Thread {
   id: string;
   name: string;
@@ -30,11 +50,11 @@ interface Thread {
   avatar: string;
   alt: string;
   unread: boolean;
-  categories: ('deals' | 'bookings')[];
   target?: DesktopNavKey;
   location: string;
   replies: string;
   status: string;
+  statusTone: string;
   callLabel: string;
   phone: string;
   whatsapp: string;
@@ -42,10 +62,11 @@ interface Thread {
   booking?: string;
   notice?: string;
   strip?: ThreadStrip;
+  dossier: MerchantDossierData;
 }
 
 interface ChatMessage {
-  id: number;
+  id: string | number;
   sender: 'merchant' | 'you';
   author: string;
   time: string;
@@ -70,13 +91,13 @@ const THREADS: Thread[] = [
       'https://lh3.googleusercontent.com/aida-public/AB6AXuAI--zdhCQDqNIaUAFQUyyScD32B6PaFE8PYNPlwAAEUS3hvyURD_3XYhNE2ZssLu5cp1F51uX9_OJd2-F9zXtPPzyZDGx3PLSijXXJR7o0RYbFx2EPQ0JLA4pWSRlyejuc-I0MP3ps0FVbccbgwEQcsn5vt1_UUrHiJLzrXe_y0tOjDFe9tI_nByQxsEhv4gjxkXD-FKJyK57YQinUWWstMkdrx27HK_zhRFkspQSI',
     alt: 'Woodfire dining grill interior with warm incandescent lighting and artisanal tables at Urban Grill and Bistro Apo Abuja',
     unread: true,
-    categories: ['deals', 'bookings'],
     target: 'storefront',
     location: 'Plot 14 Apo Boulevard (0.8 km)',
-    replies: 'Replies in ~5 mins',
+    replies: '~5 mins',
     status: 'Kitchen Active • Open until 10:30 PM',
+    statusTone: 'bg-badge-discount-bg text-badge-discount-text font-semibold',
     callLabel: 'Call Bistro',
-    phone: '+2348039204491',
+    phone: '+234 803 920 4491',
     whatsapp: '2348039204491',
     voucher: 'VT-48F2G1',
     booking: 'Table #07 • Today 1:00 PM',
@@ -89,6 +110,29 @@ const THREADS: Thread[] = [
       items: '1x Woodfire Aged Ribeye Steak, 1x Truffle Parmesan Fries, 1x House Craft Peach Iced Tea',
       cta: 'View Order Details',
       nav: 'orders',
+    },
+    dossier: {
+      category: 'Fine Dining & Woodfire Bistro',
+      email: 'reservations@urbangrillapo.com',
+      engagement: {
+        visits: '14',
+        orders: '11',
+        deals: '4',
+        points: '2,450',
+      },
+      telemetry: {
+        avgReply: '1.4 min',
+        hours: '11:00 AM – 10:30 PM',
+        dealRedemption: '100% active',
+        tier: 'Gold Patron',
+        progress: 88,
+      },
+      popularItems: ['Truffle Fries', 'Woodfire Ribeye', 'Peach Iced Tea', 'Charred Salmon'],
+      notes: [
+        { icon: 'table_restaurant', label: 'Preferred Seating', value: 'Patio Table #07' },
+        { icon: 'restaurant_menu', label: 'Dietary', value: 'Steak jus on the side' },
+        { icon: 'local_parking', label: 'Valet', value: 'Complimentary on Apo Blvd' },
+      ],
     },
   },
   {
@@ -104,13 +148,13 @@ const THREADS: Thread[] = [
       'https://lh3.googleusercontent.com/aida-public/AB6AXuCvPDiI1HY_kmgTwi-eVu0GLT8lvuFgOzG95QeQsUfatbuVmwj7kwKYeDUbbtr4EETbCZ_ejNMg6uBgyFxG_cn1uFJdwfCGTLAbCrZmd_GUlKdL8a97NwwfSIniiMVcdGRdWhM-IaPabMr2rOnyZ2RBo-cuPE43VbYg3vbAj21b0Y3a8_2y8n0mHkISpOptF2Uwtd6MA-LOZ_IaShQ2R67xbK2Cpn-xuuNmgk7LHQwT',
     alt: 'Modern organic wellness spa interior with neutral stone textures bamboo accents and calming amber lighting in Apo',
     unread: true,
-    categories: ['bookings'],
     target: 'spa-storefront',
     location: '12 Aminu Kano Crescent, Maitama (1.4 km)',
-    replies: 'Replies in ~15 mins',
+    replies: '~15 mins',
     status: 'Spa Desk Active • Open until 8:00 PM',
+    statusTone: 'bg-secondary-container text-on-secondary-container font-semibold',
     callLabel: 'Call Spa',
-    phone: '+2348035550192',
+    phone: '+234 803 555 0192',
     whatsapp: '2348035550192',
     booking: 'GS-4829 • Tomorrow 1:15 PM',
     notice: 'Booking confirmed today at 9:15 AM (Weekend Glow Facial & Sauna Detox)',
@@ -122,6 +166,28 @@ const THREADS: Thread[] = [
       items: '1x Weekend Glow Facial & Sauna Detox Session • Complimentary valet parking',
       cta: 'View Booking Details',
       nav: 'orders',
+    },
+    dossier: {
+      category: 'Luxury Wellness & Aesthetics',
+      email: 'concierge@glowserenity.ng',
+      engagement: {
+        visits: '6',
+        orders: '4',
+        deals: '2',
+        points: '1,200',
+      },
+      telemetry: {
+        avgReply: '2.5 min',
+        hours: '9:00 AM – 8:00 PM',
+        dealRedemption: 'Verified',
+        tier: 'Silver Patron',
+        progress: 65,
+      },
+      popularItems: ['Detox Sauna', 'Aromatherapy Facial', 'HydraGlow Peel'],
+      notes: [
+        { icon: 'person', label: 'Primary Therapist', value: 'Amara K.' },
+        { icon: 'schedule', label: 'Check-in', value: 'Arrive 10 mins early' },
+      ],
     },
   },
   {
@@ -136,14 +202,33 @@ const THREADS: Thread[] = [
     avatar: '',
     alt: 'Artisan bakery counter with fresh sourdough loaves and pastries in Abuja',
     unread: false,
-    categories: ['bookings'],
     location: '5 Adetokunbo Ademola Crescent, Wuse II (1.9 km)',
-    replies: 'Replies in ~20 mins',
+    replies: '~20 mins',
     status: 'Bakery Open • Open until 7:30 PM',
+    statusTone: 'bg-surface-container text-on-surface-variant font-medium',
     callLabel: 'Call Bakery',
-    phone: '+2348065550166',
+    phone: '+234 806 555 0166',
     whatsapp: '2348065550166',
     notice: 'Pickup order #DK-3312 confirmed today (Sourdough Loaf, Sausage Rolls & Cinnamon Buns)',
+    dossier: {
+      category: 'Artisanal Bakery & Patisserie',
+      email: 'hello@dailyknead.ng',
+      engagement: {
+        visits: '9',
+        orders: '8',
+        deals: '3',
+        points: '890',
+      },
+      telemetry: {
+        avgReply: '4.2 min',
+        hours: '7:30 AM – 7:30 PM',
+        dealRedemption: 'Verified',
+        tier: 'Member',
+        progress: 42,
+      },
+      popularItems: ['Sourdough Loaf', 'Butter Croissants', 'Cinnamon Rolls'],
+      notes: [{ icon: 'inventory', label: 'Packaging', value: 'Eco Kraft paper boxes' }],
+    },
   },
   {
     id: 'cafe',
@@ -158,12 +243,12 @@ const THREADS: Thread[] = [
       'https://lh3.googleusercontent.com/aida-public/AB6AXuCLSUdPB0S9q1mjfhwPgtg4379_cbmhTQFg9g9abp3Y6hG2OBaihf6eVIs9WhFWXmj7sBanzoKcIFtE35a10aZRZvTx_tIoYqKR8d6Q6dSwhC8hxyOlZ6lwrKmYFLaBP2xXaAOYf7DeQK0IqKpVu86oJpq1DUY9P3n6T5IypYxfPcPVqPnGoZHq64bl3oshzZ1EoLK8o0SGh3WHjBkhAX7vy434_GLxzZPGzF0D-HzL',
     alt: 'Minimalist specialty coffee roastery bar with pour over equipment and warm timber shelves in Abuja Nigeria',
     unread: false,
-    categories: ['deals'],
     location: '5 Adetokunbo Ademola Crescent, Apo (0.5 km)',
-    replies: 'Replies in ~20 mins',
+    replies: '~20 mins',
     status: 'Counter Open • Open until 9:00 PM',
+    statusTone: 'bg-badge-discount-bg text-badge-discount-text font-semibold',
     callLabel: 'Call Cafe',
-    phone: '+2348065550147',
+    phone: '+234 806 555 0147',
     whatsapp: '2348065550147',
     voucher: 'VT-8821',
     notice: 'Voucher VT-8821 claimed today at 8:40 AM (BOGO Cold Brew & Warm Almond Pastry)',
@@ -175,6 +260,25 @@ const THREADS: Thread[] = [
       items: '1x Buy One Get One Cold Brew & Warm Almond Pastry Box',
       cta: 'View Voucher',
       nav: 'my-deals',
+    },
+    dossier: {
+      category: 'Specialty Coffee Roasters',
+      email: 'apo@cafeneo.ng',
+      engagement: {
+        visits: '18',
+        orders: '16',
+        deals: '5',
+        points: '3,120',
+      },
+      telemetry: {
+        avgReply: '2.1 min',
+        hours: '7:00 AM – 9:00 PM',
+        dealRedemption: 'Active',
+        tier: 'Platinum Patron',
+        progress: 94,
+      },
+      popularItems: ['Cold Brew', 'Almond Croissant', 'Spanish Latte'],
+      notes: [{ icon: 'coffee', label: 'Roast Preference', value: 'Medium roast Ethiopian beans' }],
     },
   },
   {
@@ -190,13 +294,32 @@ const THREADS: Thread[] = [
       'https://lh3.googleusercontent.com/aida-public/AB6AXuBe4nIvAQc3cWN_ywPl8fOO7cJuF8r-Xq1ONAi6-sbFDoBeCt4ilOj5FH4wmOoJflcYU3jq42etvP7BKCvIukWqjlc1By9jrNvX11RYDkE8WI-6dQAX2Bn0DZUOBKA3oZwlqR6aKvdGiAJT7-RusyOD4S-vliZBCJvzqT9-DQA9LxeMyVd58kC9gAftk8RdPZHLRjO4eLA4piDL-FbyclUQEqZNLWYzycTt5DCvSGC5',
     alt: 'Contemporary streetwear boutique showing luxury sneakers illuminated on floating acrylic shelves in Abuja',
     unread: false,
-    categories: ['deals'],
     location: '14 Adetokunbo Ademola Crescent, Garki (1.2 km)',
-    replies: 'Replies in ~30 mins',
+    replies: '~30 mins',
     status: 'Showroom Open • Open until 9:00 PM',
+    statusTone: 'bg-surface-container text-on-surface-variant font-medium',
     callLabel: 'Call Store',
-    phone: '+2348075550193',
+    phone: '+234 807 555 0193',
     whatsapp: '2348075550193',
+    dossier: {
+      category: 'Designer Footwear & Streetwear',
+      email: 'sales@soledistrict.ng',
+      engagement: {
+        visits: '4',
+        orders: '2',
+        deals: '1',
+        points: '750',
+      },
+      telemetry: {
+        avgReply: '6.0 min',
+        hours: '10:00 AM – 9:00 PM',
+        dealRedemption: 'Active',
+        tier: 'Member',
+        progress: 35,
+      },
+      popularItems: ['Runner Low Sneaker', 'Cargo Pants', 'Street Hoodie'],
+      notes: [{ icon: 'checkroom', label: 'Size Record', value: 'EU 43 / US 9.5' }],
+    },
   },
 ];
 
@@ -341,10 +464,11 @@ const INITIAL_MESSAGES: Record<string, ChatMessage[]> = {
   ],
 };
 
-const QUICK_ATTACH = [
-  { icon: 'confirmation_number', label: '+ Attach Deal Voucher', kind: 'voucher' as const },
-  { icon: 'event', label: '+ Reference Booking', kind: 'booking' as const },
-  { icon: 'near_me', label: '+ Send Location Pin', kind: 'location' as const },
+const SMART_REPLIES = [
+  'Yes, please!',
+  'On my way now',
+  'Can I change my time?',
+  'Table for 2 confirmed',
 ];
 
 function nowTime(): string {
@@ -366,12 +490,18 @@ function threadInitials(name: string): string {
 }
 
 export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesScreenProps) {
-  const [activeThread, setActiveThread] = useState(
+  const [selectedId, setSelectedId] = useState(
     () => (initialThread && THREADS.some((thread) => thread.id === initialThread) ? initialThread : 'urban'),
   );
+  // Consumer only needs 'all' and 'unread' per requirements
+  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [search, setSearch] = useState('');
+  const [draft, setDraft] = useState('');
+  const [typing, setTyping] = useState(true);
+  const [readIds, setReadIds] = useState<string[]>([]);
+  const streamRef = useRef<HTMLDivElement>(null);
+
   const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>(() => {
-    // BUG-026: if the receptionist conversation has no history yet, create it
-    // with an opening message so the thread is never empty.
     if (initialThread && INITIAL_MESSAGES[initialThread]?.length) return INITIAL_MESSAGES;
     if (initialThread && INITIAL_MESSAGES[initialThread] === undefined && THREADS.some((t) => t.id === initialThread)) {
       const thread = THREADS.find((t) => t.id === initialThread);
@@ -379,536 +509,688 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
         ...INITIAL_MESSAGES,
         [initialThread]: [
           {
-            id: 1,
+            id: 'm1',
             sender: 'merchant',
             author: thread?.name ?? 'Reception',
             time: 'Now',
-            body: "Hello! This is the front desk. How can we help you today?",
+            body: 'Hello! This is the front desk. How can we help you today?',
           },
         ],
       };
     }
     return INITIAL_MESSAGES;
   });
-  const [draft, setDraft] = useState('');
-  const [tab, setTab] = useState<'all' | 'unread' | 'deals' | 'bookings'>('all');
-  const [query, setQuery] = useState('');
-  const [readIds, setReadIds] = useState<string[]>([]);
 
-  const active = THREADS.find((thread) => thread.id === activeThread) ?? THREADS[0];
-  const target = active.target;
-  const strip = active.strip;
-  const messages = messageStore[activeThread] ?? [];
+  const selected = THREADS.find((thread) => thread.id === selectedId) ?? THREADS[0];
+  const messages = messageStore[selectedId] ?? [];
 
-  const isUnread = (thread: Thread) => thread.unread && !readIds.includes(thread.id);
+  const isUnread = (t: Thread) => t.unread && !readIds.includes(t.id);
   const unreadCount = THREADS.filter(isUnread).length;
-  const bookingsCount = THREADS.filter((thread) => thread.categories.includes('bookings')).length;
-  const dealsCount = THREADS.filter((thread) => thread.categories.includes('deals')).length;
 
-  const visibleThreads = THREADS.filter((thread) => {
-    if (tab === 'unread' && !isUnread(thread)) return false;
-    if (tab === 'bookings' && !thread.categories.includes('bookings')) return false;
-    if (tab === 'deals' && !thread.categories.includes('deals')) return false;
-    if (query.trim()) {
-      const haystack = `${thread.name} ${thread.tag} ${thread.preview}`.toLowerCase();
-      if (!haystack.includes(query.trim().toLowerCase())) return false;
+  const filteredThreads = THREADS.filter((t) => {
+    if (filter === 'unread' && !isUnread(t)) return false;
+    if (search && !t.name.toLowerCase().includes(search.toLowerCase()) && !t.preview.toLowerCase().includes(search.toLowerCase())) {
+      return false;
     }
     return true;
   });
 
-  const openThread = (thread: Thread) => {
-    setActiveThread(thread.id);
-    if (thread.unread) {
-      setReadIds((current) => (current.includes(thread.id) ? current : [...current, thread.id]));
+  const handleSelectThread = (id: string) => {
+    setSelectedId(id);
+    setTyping(id === 'urban' || id === 'glow');
+    if (!readIds.includes(id)) {
+      setReadIds((prev) => [...prev, id]);
     }
     setDraft('');
   };
 
-  const startNewMessage = () => {
-    setQuery('');
-    setTab('all');
-    window.setTimeout(() => document.getElementById('thread-search')?.focus(), 0);
-  };
-
-  const appendMessage = (body: string) => {
-    setMessageStore((current) => ({
-      ...current,
-      [activeThread]: [
-        ...(current[activeThread] ?? []),
-        { id: Date.now(), sender: 'you', author: 'You', time: nowTime(), body, delivered: true },
-      ],
+  const sendMessage = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const msg: ChatMessage = {
+      id: `m${Date.now()}`,
+      sender: 'you',
+      author: 'You',
+      time: nowTime(),
+      body: trimmed,
+      delivered: true,
+    };
+    setMessageStore((prev) => ({
+      ...prev,
+      [selectedId]: [...(prev[selectedId] ?? []), msg],
     }));
+    setDraft('');
+    setTyping(false);
+    window.setTimeout(() => streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }), 50);
   };
 
-  const sendMessage = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const text = draft.trim();
-    if (!text) return;
-    appendMessage(text);
-    setDraft('');
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    sendMessage(draft);
   };
 
   const quickAttach = (kind: 'voucher' | 'booking' | 'location') => {
     if (kind === 'voucher') {
-      appendMessage(
-        active.voucher
-          ? `Voucher ${active.voucher} attached for this conversation — please redeem it on my order.`
-          : 'I have attached my latest deal voucher to this conversation for redemption.',
+      sendMessage(
+        selected.voucher
+          ? `Attached Deal Pass ${selected.voucher} for this order.`
+          : 'Attached active deal voucher for redemption.',
       );
       return;
     }
     if (kind === 'booking') {
-      appendMessage(
-        active.booking
-          ? `Booking reference ${active.booking} shared with you.`
-          : 'I would like to reference my upcoming booking with you.',
+      sendMessage(
+        selected.booking
+          ? `Booking reference ${selected.booking} shared with you.`
+          : 'I would like to reference my upcoming reservation.',
       );
       return;
     }
-    appendMessage('Location pin shared: Apo, Abuja (Within 5 km).');
+    sendMessage('Location pin shared: Apo, Abuja (Within 2 km).');
   };
 
-  const tabClass = (key: 'all' | 'unread' | 'deals' | 'bookings') =>
-    key === tab
-      ? 'px-3 py-1 rounded-full bg-primary text-on-primary font-label-sm text-label-sm font-semibold shrink-0 shadow-sm'
-      : 'px-3 py-1 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm font-medium shrink-0 transition-colors';
-
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="messages">
-      <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
-        <div className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-            <div className="flex items-center gap-2 text-on-surface-variant font-label-sm text-label-sm">
-              <button className="hover:text-primary cursor-pointer transition-colors" onClick={() => onNav('discover')} type="button">
-                VEMTAP Hub
-              </button>
-              <Icon name="chevron_right" className="text-[14px] text-outline" />
-              <button className="hover:text-primary cursor-pointer transition-colors" type="button">
-                Direct Messages
-              </button>
-              <Icon name="chevron_right" className="text-[14px] text-outline" />
-              <span className="text-on-surface font-semibold">
-                {active.name}
-                {strip ? ' (Active Ticket)' : ''}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 bg-badge-discount-bg text-badge-discount-text px-3 py-1 rounded-full font-caption text-caption font-semibold">
-              <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-              <span>Apo Merchant Gateway: Connected via Low Latency POS Socket</span>
-            </div>
+    <DesktopPage withHeader withFooter onNav={onNav} activeNav="messages" withCustomerRail>
+      <div className="w-full bg-background">
+        {/* Top Header Bar — matches DesktopBusinessMessagesOrderContextScreen */}
+        <div className="w-full py-space-md border-b border-border bg-surface flex flex-wrap items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-sm">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Inbox &amp; Direct Messaging</h1>
+            <span className="flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
+              Merchant Sync Active
+            </span>
           </div>
+          <div className="flex flex-wrap items-center gap-space-md font-label-sm text-label-sm text-on-surface-variant">
+            <span>Avg response: ~5 min</span>
+            <button
+              type="button"
+              aria-label="Message filters"
+              className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle transition-colors"
+            >
+              <Icon name="tune" className="text-[18px]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onNav('discover')}
+              className="h-9 px-space-sm rounded-xl bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 flex items-center gap-space-2xs shadow-sm transition-colors"
+            >
+              <Icon name="edit" className="text-[16px]" />
+              New Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => document.getElementById('inbox-search-input')?.focus()}
+              className="h-9 px-space-sm rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center gap-space-2xs transition-colors"
+            >
+              <Icon name="search" className="text-[16px]" />
+              Search
+            </button>
+          </div>
+        </div>
 
-          <div className="w-full h-[calc(100vh-175px)] min-h-[660px] bg-surface-container-lowest rounded-2xl shadow-xl flex overflow-hidden">
-            <aside className="w-[380px] shrink-0 bg-surface-container-low flex flex-col justify-between">
-              <div className="flex flex-col overflow-hidden h-full">
-                <div className="p-4 pb-3 flex flex-col gap-3 bg-surface-container-low">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-heading-md text-heading-md text-on-surface font-bold tracking-tight">
-                        Messages
-                      </span>
-                      {unreadCount > 0 ? (
-                        <span className="px-2 py-0.5 rounded-full bg-primary-container text-on-primary font-caption text-caption font-semibold">
-                          {unreadCount} new
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant transition-colors"
-                        title="New message"
-                        onClick={startNewMessage}
-                        type="button"
-                      >
-                        <Icon name="edit_square" className="text-[18px]" />
-                      </button>
-                      <button
-                        className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant transition-colors"
-                        title="Message Settings"
-                        type="button"
-                      >
-                        <Icon name="tune" className="text-[18px]" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="relative flex items-center w-full">
-                    <Icon name="search" className="absolute left-3 text-outline text-[18px]" />
-                    <input
-                      className="w-full pl-9 pr-4 py-2 bg-surface-container-lowest rounded-xl text-on-surface placeholder:text-outline font-body-md text-body-md focus:outline-none shadow-sm"
-                      id="thread-search"
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search conversations, dishes, orders..."
-                      type="text"
-                      value={query}
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 overflow-x-auto pt-1">
-                    <button className={tabClass('all')} type="button" onClick={() => setTab('all')}>
-                      All ({THREADS.length})
-                    </button>
-                    <button className={tabClass('unread')} type="button" onClick={() => setTab('unread')}>
-                      Unread ({unreadCount})
-                    </button>
-                    <button className={tabClass('deals')} type="button" onClick={() => setTab('deals')}>
-                      Deals &amp; Inquiries ({dealsCount})
-                    </button>
-                    <button className={tabClass('bookings')} type="button" onClick={() => setTab('bookings')}>
-                      Bookings &amp; Orders ({bookingsCount})
-                    </button>
-                  </div>
+        {/* 3-Column Workspace — matches Business Desktop Messaging 3-column Layout */}
+        <div className="w-full py-space-md">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-md" style={{ height: 'calc(100vh - 140px)', minHeight: '680px' }}>
+            
+            {/* Column 1 (lg:col-span-3): Conversations List */}
+            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+              <div className="p-space-sm border-b border-border space-y-space-xs">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-heading-sm text-heading-sm text-on-surface">Conversations</h2>
+                  <span className="px-space-2xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                    {THREADS.length} Live
+                  </span>
                 </div>
-
-                <div className="flex-1 overflow-y-auto px-1.5 py-1 space-y-1">
-                  {visibleThreads.length === 0 ? (
-                    <p className="p-4 text-center font-body-md text-body-md text-on-surface-variant">
-                      No conversations match your filters.
-                    </p>
-                  ) : (
-                    visibleThreads.map((thread) => {
-                      const isActive = activeThread === thread.id;
-                      const unread = isUnread(thread);
-                      return (
-                        <div
-                          key={thread.id}
-                          onClick={() => openThread(thread)}
-                          className={`relative p-3 rounded-xl cursor-pointer transition-all ${
-                            isActive
-                              ? 'bg-surface-container-lowest shadow-md'
-                              : 'hover:bg-surface-container-lowest/80'
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="relative shrink-0">
-                              <div
-                                aria-hidden="true"
-                                className="w-12 h-12 rounded-xl bg-cover bg-center shadow-inner overflow-hidden flex items-center justify-center"
-                                style={{ backgroundImage: thread.avatar ? `url('${thread.avatar}')` : undefined }}
-                                title={thread.alt}
-                              >
-                                {!thread.avatar && (
-                                  <span className="bg-secondary-fixed text-on-secondary-fixed font-label-md text-label-md font-bold w-full h-full flex items-center justify-center">
-                                    {threadInitials(thread.name)}
-                                  </span>
-                                )}
-                              </div>
-                              {unread ? (
-                                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-badge-discount-text ring-2 ring-surface-container-lowest flex items-center justify-center text-on-primary">
-                                  <Icon name="check" className="text-[10px]" />
-                                </span>
-                              ) : (
-                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-badge-discount-text ring-2 ring-surface-container-low" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <span className="font-label-md text-label-md text-on-surface font-semibold truncate">
-                                    {thread.name}
-                                  </span>
-                                  {thread.verified && (
-                                    <Icon name="verified" className="text-primary text-[15px] shrink-0" />
-                                  )}
-                                </div>
-                                <span
-                                  className={`font-caption text-caption shrink-0 ${isActive ? 'text-primary font-semibold' : 'text-outline'}`}
-                                >
-                                  {thread.time}
-                                </span>
-                              </div>
-                              <div
-                                className={`inline-flex items-center gap-1 my-1 px-2 py-[2px] rounded font-caption text-caption tracking-tight ${thread.tagClass}`}
-                              >
-                                <Icon name={thread.tagIcon} className="text-[12px]" />
-                                <span className="truncate">{thread.tag}</span>
-                              </div>
-                              <p
-                                className={`font-body-md text-body-md truncate leading-snug ${isActive ? 'text-text-secondary' : 'text-on-surface-variant'}`}
-                              >
-                                {thread.preview}
-                              </p>
-                            </div>
-                          </div>
-                          {isActive && <div className="absolute left-0 top-3 bottom-3 w-1 bg-primary rounded-r-full" />}
-                        </div>
-                      );
-                    })
-                  )}
+                <div className="relative">
+                  <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-tertiary" />
+                  <input
+                    id="inbox-search-input"
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search inbox…"
+                    className="w-full h-11 pl-10 pr-space-sm rounded-xl border border-border bg-surface-subtle font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none focus:border-primary"
+                  />
                 </div>
-              </div>
-
-              <div className="p-3 bg-surface-container/60 rounded-b-none flex items-start gap-2">
-                <Icon name="verified_user" className="text-primary text-[16px] shrink-0 mt-0.5" />
-                <p className="font-caption text-caption text-on-surface-variant leading-tight">
-                  VEMTAP In-App Chat is encrypted and protected under NDPR standards. Direct merchant communication.
-                </p>
-              </div>
-            </aside>
-
-            <section className="flex-1 flex flex-col bg-surface-container-lowest min-w-0 overflow-hidden">
-              <div className="px-6 py-3 bg-surface-container-lowest shadow-sm flex items-center justify-between gap-4 z-10 shrink-0">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="relative shrink-0">
-                    <div
-                      aria-hidden="true"
-                      className="w-12 h-12 rounded-xl bg-cover bg-center shadow overflow-hidden flex items-center justify-center"
-                      style={{ backgroundImage: active.avatar ? `url('${active.avatar}')` : undefined }}
-                      title={active.alt}
-                    >
-                      {!active.avatar && (
-                        <span className="bg-secondary-fixed text-on-secondary-fixed font-label-md text-label-md font-bold w-full h-full flex items-center justify-center">
-                          {threadInitials(active.name)}
-                        </span>
-                      )}
-                    </div>
-                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-badge-discount-text ring-2 ring-surface-container-lowest" />
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      {target ? (
-                        <button
-                          className="font-heading-sm text-heading-sm text-on-surface font-bold truncate hover:text-primary transition-colors"
-                          onClick={() => onNav(target)}
-                          type="button"
-                        >
-                          {active.name}
-                        </button>
-                      ) : (
-                        <h2 className="font-heading-sm text-heading-sm text-on-surface font-bold truncate">
-                          {active.name}
-                        </h2>
-                      )}
-                      {active.verified && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                          <Icon name="verified" className="text-[13px]" />
-                          <span>Verified</span>
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-on-surface-variant font-caption text-caption">
-                      <span className="flex items-center gap-1">
-                        <Icon name="location_on" className="text-[14px] text-primary" />
-                        <span>{active.location}</span>
-                      </span>
-                      <span className="hidden md:inline">•</span>
-                      <span className="flex items-center gap-1 text-badge-discount-text font-medium">
-                        <Icon name="bolt" className="text-[14px]" />
-                        <span>{active.replies}</span>
-                      </span>
-                      <span className="hidden md:inline">•</span>
-                      <span className="text-on-surface-variant font-medium">{active.status}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href={`tel:${active.phone}`}
-                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold transition-colors"
-                  >
-                    <Icon name="call" className="text-[17px] text-primary" />
-                    <span>{active.callLabel}</span>
-                  </a>
-                  <a
-                    href={`https://wa.me/${active.whatsapp}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#128C7E] font-label-sm text-label-sm font-semibold transition-colors"
-                  >
-                    <Icon name="chat" className="text-[17px]" />
-                    <span>WhatsApp</span>
-                  </a>
-                  {target ? (
-                    <button
-                      onClick={() => onNav(target)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-on-primary font-label-sm text-label-sm font-semibold shadow-sm hover:bg-primary-container transition-colors"
-                      type="button"
-                    >
-                      <Icon name="storefront" className="text-[17px]" />
-                      <span className="hidden sm:inline">Storefront &amp; Menu</span>
-                    </button>
-                  ) : null}
+                {/* Consumer only has All and Unread per specification */}
+                <div className="flex flex-wrap gap-space-2xs">
                   <button
-                    className="w-9 h-9 rounded-xl bg-surface-container hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant transition-colors"
-                    title="More options"
                     type="button"
+                    onClick={() => setFilter('all')}
+                    className={`px-space-xs py-space-2xs rounded-full font-label-sm text-label-sm border transition-colors ${
+                      filter === 'all'
+                        ? 'bg-surface-tint-blue border-primary text-primary font-semibold'
+                        : 'bg-surface border-border text-on-surface-variant hover:bg-surface-subtle'
+                    }`}
                   >
-                    <Icon name="more_vert" className="text-[20px]" />
+                    All ({THREADS.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilter('unread')}
+                    className={`px-space-xs py-space-2xs rounded-full font-label-sm text-label-sm border transition-colors ${
+                      filter === 'unread'
+                        ? 'bg-surface-tint-blue border-primary text-primary font-semibold'
+                        : 'bg-surface border-border text-on-surface-variant hover:bg-surface-subtle'
+                    }`}
+                  >
+                    Unread ({unreadCount})
                   </button>
                 </div>
               </div>
 
-              {strip ? (
-                <div className="bg-surface-tint-blue/80 px-6 py-2 shadow-inner flex flex-wrap items-center justify-between gap-4 shrink-0">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-primary-container text-on-primary flex items-center justify-center shrink-0 shadow-sm">
-                      <Icon name={strip.icon} className="text-[20px]" />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-label-sm text-label-sm text-on-surface font-bold">{strip.title}</span>
-                        <span className="px-1.5 py-0.5 rounded bg-surface-canvas text-primary font-caption text-caption font-bold shadow-xs">
-                          {strip.chip}
+              {/* Thread Items */}
+              <div className="flex-1 overflow-y-auto divide-y divide-border">
+                {filteredThreads.map((t) => {
+                  const active = t.id === selectedId;
+                  const unread = isUnread(t);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => handleSelectThread(t.id)}
+                      className={`w-full text-left p-space-sm flex gap-space-sm transition-colors ${
+                        active ? 'bg-surface-tint-blue' : 'hover:bg-surface-subtle'
+                      }`}
+                    >
+                      <span className="relative shrink-0">
+                        {t.avatar ? (
+                          <img src={t.avatar} alt={t.alt} className="w-10 h-10 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm font-bold flex items-center justify-center">
+                            {threadInitials(t.name)}
+                          </div>
+                        )}
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-badge-discount-text border-2 border-surface" />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center justify-between gap-space-xs">
+                          <span className="font-label-md text-label-md text-on-surface font-medium truncate flex items-center gap-1">
+                            {t.name}
+                            {t.verified && <Icon name="verified" className="text-primary text-[14px] shrink-0" />}
+                          </span>
+                          <span className={`font-caption text-caption shrink-0 ${unread ? 'text-primary font-semibold' : 'text-text-tertiary'}`}>
+                            {t.time}
+                          </span>
                         </span>
-                        <span className="font-label-sm text-label-sm text-on-surface font-bold">{strip.price}</span>
+                        <span className="block font-body-sm text-body-sm text-on-surface-variant truncate">{t.preview}</span>
+                        <span className="flex flex-wrap items-center gap-1 mt-1">
+                          <span className={`px-space-2xs py-space-2xs rounded font-caption text-caption ${t.statusTone}`}>
+                            {t.status.split('•')[0]?.trim() || 'Active'}
+                          </span>
+                          <span className="px-space-2xs py-space-2xs rounded bg-surface-subtle font-caption text-caption text-on-surface-variant truncate">
+                            {t.tag}
+                          </span>
+                        </span>
+                      </span>
+                      {unread && (
+                        <span className="w-5 h-5 bg-error text-on-error rounded-full font-caption text-caption flex items-center justify-center font-semibold shrink-0 self-center">
+                          1
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                {filteredThreads.length === 0 && (
+                  <div className="p-space-md font-body-md text-body-md text-on-surface-variant text-center">
+                    No conversations match.
+                  </div>
+                )}
+              </div>
+
+              {/* Socket Status Bottom */}
+              <div className="p-space-xs border-t border-border flex items-center justify-between font-caption text-caption text-text-tertiary">
+                <span className="flex items-center gap-space-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
+                  Socket connected (Cluster APO-01)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="flex items-center gap-space-2xs text-primary hover:underline"
+                >
+                  <Icon name="refresh" className="text-[14px]" />
+                  Refresh
+                </button>
+              </div>
+            </aside>
+
+            {/* Column 2 (lg:col-span-6): Active Conversation & Composer */}
+            <section className="lg:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="p-space-md border-b border-border flex items-center justify-between gap-space-sm">
+                <div className="flex items-center gap-space-sm min-w-0">
+                  <span className="relative shrink-0">
+                    {selected.avatar ? (
+                      <img src={selected.avatar} alt={selected.alt} className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm font-bold flex items-center justify-center">
+                        {threadInitials(selected.name)}
                       </div>
-                      <p className="font-caption text-caption text-text-secondary truncate max-w-xl">{strip.items}</p>
+                    )}
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-badge-discount-text border-2 border-surface" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-heading-sm text-heading-sm text-on-surface truncate flex items-center gap-1.5">
+                      <span>{selected.name}</span>
+                      {selected.verified && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                          <Icon name="verified" className="text-[12px]" />
+                          Verified
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-space-2xs font-caption text-caption text-on-surface-variant">
+                      <span className="px-space-2xs rounded bg-badge-discount-bg text-badge-discount-text font-semibold">
+                        Online now
+                      </span>
+                      <span>{selected.status}</span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => onNav(strip.nav)}
-                    className="inline-flex items-center gap-1 text-primary hover:text-primary-container font-label-sm text-label-sm font-bold shrink-0 transition-colors"
-                    type="button"
+                </div>
+
+                <div className="flex items-center gap-space-xs">
+                  <a
+                    href={`tel:${selected.phone}`}
+                    aria-label="Call"
+                    className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle transition-colors"
                   >
-                    <span>{strip.cta}</span>
-                    <Icon name="open_in_new" className="text-[16px]" />
+                    <Icon name="call" className="text-[18px]" />
+                  </a>
+                  {selected.target && (
+                    <button
+                      type="button"
+                      aria-label="Storefront"
+                      onClick={() => onNav(selected.target!)}
+                      className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle transition-colors"
+                      title="Storefront Profile"
+                    >
+                      <Icon name="storefront" className="text-[18px]" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="More options"
+                    className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle transition-colors"
+                  >
+                    <Icon name="more_vert" className="text-[18px]" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Context / Attached deal or order strip */}
+              {selected.strip ? (
+                <div className="px-space-md py-space-xs border-b border-border bg-surface-tint-blue/40 flex items-center justify-between gap-space-sm">
+                  <div className="flex items-center gap-space-xs min-w-0">
+                    <Icon name={selected.strip.icon} className="text-[16px] text-primary shrink-0" />
+                    <span className="font-label-sm text-label-sm text-on-surface truncate">
+                      <span className="text-primary font-semibold uppercase">{selected.strip.title}</span>
+                      <span className="text-on-surface-variant"> · </span>
+                      {selected.strip.chip}
+                      <span className="text-on-surface-variant"> · </span>
+                      <span className="font-semibold">{selected.strip.price}</span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onNav(selected.strip!.nav)}
+                    className="font-label-sm text-label-sm text-primary hover:underline shrink-0"
+                  >
+                    {selected.strip.cta}
+                  </button>
+                </div>
+              ) : selected.voucher ? (
+                <div className="px-space-md py-space-xs border-b border-border bg-surface-tint-blue/40 flex items-center justify-between gap-space-sm">
+                  <div className="flex items-center gap-space-xs min-w-0">
+                    <Icon name="local_offer" className="text-[16px] text-primary shrink-0" />
+                    <span className="font-label-sm text-label-sm text-on-surface truncate">
+                      <span className="text-primary font-semibold">DEAL PASS ATTACHED</span>
+                      <span className="text-on-surface-variant"> · </span>
+                      #{selected.voucher}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onNav('my-deals')}
+                    className="font-label-sm text-label-sm text-primary hover:underline shrink-0"
+                  >
+                    View Voucher
                   </button>
                 </div>
               ) : null}
 
-              <div
-                className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-surface-container-lowest flex flex-col justify-end"
-                id="chat-stream"
-              >
-                <div className="flex justify-center my-1">
-                  <span className="bg-surface-container text-on-surface-variant font-caption text-caption px-3 py-1 rounded-full shadow-sm">
-                    Today
+              {/* Message Stream */}
+              <div ref={streamRef} className="flex-1 overflow-y-auto p-space-md space-y-space-sm bg-surface-subtle/30">
+                <div className="flex justify-center">
+                  <span className="px-space-xs py-space-2xs rounded-full bg-surface border border-border font-caption text-caption text-text-tertiary">
+                    Today · Oct 11, 2026
                   </span>
                 </div>
-                {active.notice ? (
-                  <div className="flex justify-center my-1">
-                    <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shadow-xs">
-                      <Icon name="local_activity" className="text-[15px]" />
-                      <span>{active.notice}</span>
-                    </div>
-                  </div>
-                ) : null}
-                {messages.map((message) =>
-                  message.sender === 'merchant' ? (
-                    <div className="flex items-end gap-2 max-w-2xl" key={message.id}>
-                      <div
-                        aria-hidden="true"
-                        className="w-7 h-7 rounded-full bg-primary bg-cover bg-center shrink-0 mb-1"
-                        style={{
-                          backgroundImage: message.avatar ? `url('${message.avatar}')` : undefined,
-                        }}
-                        title={message.avatarAlt}
-                      />
-                      <div className="flex flex-col items-start gap-1">
-                        <div className="flex items-center gap-2 pl-1">
-                          <span className="font-caption text-caption font-semibold text-on-surface">
-                            {message.author}
-                          </span>
-                          {message.badge && (
-                            <span className="px-1.5 py-0.5 rounded bg-tertiary-fixed text-on-tertiary-fixed font-caption text-caption font-bold">
-                              {message.badge}
-                            </span>
-                          )}
-                          <span className="font-caption text-caption text-outline">{message.time}</span>
+
+                {messages.map((m) => {
+                  const isYou = m.sender === 'you';
+                  return isYou ? (
+                    <div key={m.id} className="flex gap-space-xs justify-end">
+                      <div className="max-w-[75%]">
+                        <div className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary">
+                          <p className="font-body-md text-body-md whitespace-pre-wrap">{m.body}</p>
                         </div>
-                        <div className="p-4 bg-surface-container-low text-on-surface rounded-2xl rounded-bl-xs font-body-md text-body-md shadow-xs leading-relaxed">
-                          {message.body}
+                        <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center justify-end gap-1">
+                          {m.time}
+                          {m.delivered && (
+                            <>
+                              <Icon name="done_all" className="text-[14px] text-primary" filled />
+                              <span>Delivered</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-end justify-end gap-2 max-w-2xl ml-auto" key={message.id}>
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center gap-2 pr-1">
-                          <span className="font-caption text-caption text-outline">{message.time}</span>
-                          <span className="font-caption text-caption font-semibold text-primary">{message.author}</span>
+                    <div key={m.id} className="flex gap-space-xs justify-start">
+                      {selected.avatar ? (
+                        <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[11px] font-bold flex items-center justify-center self-end">
+                          {threadInitials(selected.name)}
                         </div>
-                        <div className="p-4 bg-primary text-on-primary rounded-2xl rounded-br-xs font-body-md text-body-md shadow-md leading-relaxed">
-                          {message.body}
+                      )}
+                      <div className="max-w-[75%]">
+                        <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border text-on-surface">
+                          {m.badge && (
+                            <div className="flex items-center gap-1 mb-1">
+                              <span className="font-caption text-caption font-semibold text-text-secondary">{m.author}</span>
+                              <span className="px-1.5 py-0.2 rounded bg-surface-subtle font-caption text-[10px] font-bold">
+                                {m.badge}
+                              </span>
+                            </div>
+                          )}
+                          <p className="font-body-md text-body-md whitespace-pre-wrap">{m.body}</p>
                         </div>
-                        {message.delivered && (
-                          <div className="flex items-center gap-1 pr-1 font-caption text-caption text-outline">
-                            <span>Delivered</span>
-                            <Icon
-                              name="done_all"
-                              filled
-                              className="text-[14px] text-primary"
-                              style={{ fontVariationSettings: "'FILL' 1" }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary text-[11px] font-bold shrink-0 mb-5">
-                        ZA
+                        <div className="font-caption text-caption text-text-tertiary mt-1">{m.time}</div>
                       </div>
                     </div>
-                  ),
+                  );
+                })}
+
+                {typing && (
+                  <div className="flex gap-space-xs justify-start">
+                    {selected.avatar ? (
+                      <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-secondary-fixed text-on-secondary-fixed text-[11px] font-bold flex items-center justify-center self-end">
+                        {threadInitials(selected.name)}
+                      </div>
+                    )}
+                    <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="font-body-sm text-body-sm text-on-surface-variant ml-1">
+                        {selected.name} staff is active
+                      </span>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              <div className="px-6 py-1 bg-surface-container-lowest flex items-center gap-2 overflow-x-auto shrink-0">
-                <span className="font-caption text-caption text-outline font-semibold uppercase tracking-wider shrink-0 mr-1">
-                  Quick Attach
-                </span>
-                {QUICK_ATTACH.map((item) => (
-                  <button
-                    key={item.label}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-surface-container hover:bg-surface-tint-blue text-primary font-caption text-caption font-bold transition-all shrink-0"
-                    type="button"
-                    onClick={() => quickAttach(item.kind)}
-                  >
-                    <Icon name={item.icon} className="text-[15px]" />
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </div>
+              {/* Composer Deck */}
+              <div className="p-space-sm border-t border-border space-y-space-xs">
+                {/* Smart Replies */}
+                <div className="flex flex-wrap gap-space-2xs">
+                  {SMART_REPLIES.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setDraft(r)}
+                      className="flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-tint-blue hover:text-primary transition-colors"
+                    >
+                      <Icon name="bolt" className="text-[12px] text-primary" filled />
+                      {r}
+                    </button>
+                  ))}
+                </div>
 
-              <div className="p-4 bg-surface-container-lowest shadow-lg shrink-0">
-                <form
-                  className="flex items-center gap-3 bg-surface-container-low rounded-2xl p-1 pl-4 focus-within:ring-2 focus-within:ring-primary/30 transition-all shadow-inner"
-                  id="message-form"
-                  onSubmit={sendMessage}
-                >
-                  <button
-                    className="text-outline hover:text-on-surface transition-colors p-1"
-                    title="Add Emoji"
-                    type="button"
-                  >
-                    <Icon name="mood" className="text-[22px]" />
-                  </button>
-                  <button
-                    className="text-outline hover:text-on-surface transition-colors p-1"
-                    title="Attach file or photo"
-                    type="button"
-                  >
-                    <Icon name="attach_file" className="text-[22px]" />
-                  </button>
-                  <input
-                    className="flex-1 bg-transparent py-2 text-on-surface placeholder:text-outline font-body-md text-body-md focus:outline-none"
-                    id="message-input"
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder={`Type a message to ${active.name}...`}
-                    type="text"
+                {/* Input area */}
+                <form onSubmit={handleSubmit} className="flex items-end gap-space-xs">
+                  <div className="flex items-center gap-space-2xs">
+                    <button
+                      type="button"
+                      aria-label="Attach Voucher"
+                      onClick={() => quickAttach('voucher')}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors"
+                      title="Attach Voucher"
+                    >
+                      <Icon name="redeem" className="text-[18px]" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Reference Booking"
+                      onClick={() => quickAttach('booking')}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors"
+                      title="Reference Booking"
+                    >
+                      <Icon name="receipt_long" className="text-[18px]" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Share Location"
+                      onClick={() => quickAttach('location')}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors"
+                      title="Share Location"
+                    >
+                      <Icon name="near_me" className="text-[18px]" />
+                    </button>
+                  </div>
+                  <textarea
+                    rows={1}
                     value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage(draft);
+                      }
+                    }}
+                    placeholder={`Message ${selected.name}…`}
+                    className="flex-1 px-space-sm py-space-xs rounded-xl border border-border bg-surface font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none focus:border-primary resize-none"
                   />
                   <button
-                    className="w-11 h-11 rounded-xl bg-primary-container text-on-primary hover:opacity-90 active:scale-95 flex items-center justify-center shadow-md transition-all shrink-0"
-                    id="send-btn"
-                    title="Send message"
                     type="submit"
+                    disabled={!draft.trim()}
+                    className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:opacity-90 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-space-2xs transition-all"
                   >
-                    <Icon name="send" className="text-[20px]" />
+                    <Icon name="send" className="text-[18px]" />
+                    Send
                   </button>
                 </form>
-                <div className="flex items-center justify-between mt-1 px-1">
-                  <div className="flex items-center gap-1 text-outline font-caption text-caption">
-                    <Icon name="point_of_sale" className="text-[14px] text-badge-discount-text" />
-                    <span>Merchant will receive instant push alert on their VEMTAP POS terminal.</span>
-                  </div>
-                  <span className="font-caption text-caption text-outline">
-                    Press{' '}
-                    <kbd className="px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-mono text-[11px]">
-                      Enter ↵
-                    </kbd>{' '}
-                    to send
-                  </span>
+                <div className="font-caption text-caption text-text-tertiary text-right">
+                  Enter to send • Shift+Enter for new line
                 </div>
               </div>
             </section>
+
+            {/* Column 3 (lg:col-span-3): Merchant Dossier / Business Profile Column — mirrors Customer Dossier */}
+            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+              <div className="p-space-sm border-b border-border">
+                <h2 className="font-heading-sm text-heading-sm text-on-surface">Merchant Dossier</h2>
+              </div>
+
+              <div className="flex-1 overflow-y-auto divide-y divide-border">
+                {/* Profile card */}
+                <div className="p-space-sm">
+                  <div className="flex items-center gap-space-sm">
+                    {selected.avatar ? (
+                      <img src={selected.avatar} alt={selected.alt} className="w-12 h-12 rounded-full object-cover shadow-sm" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-md text-label-md font-bold flex items-center justify-center">
+                        {threadInitials(selected.name)}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-heading-sm text-heading-sm text-on-surface truncate flex items-center gap-1">
+                        <span>{selected.name}</span>
+                        {selected.verified && (
+                          <Icon name="verified" className="text-primary text-[15px] shrink-0" />
+                        )}
+                      </div>
+                      <div className="font-label-sm text-label-sm text-on-surface-variant truncate">
+                        {selected.dossier.category}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contact items */}
+                  <div className="mt-space-sm space-y-space-2xs font-body-sm text-body-sm text-on-surface-variant">
+                    <div className="flex items-center gap-space-xs truncate">
+                      <Icon name="call" className="text-[14px] text-primary shrink-0" />
+                      <a href={`tel:${selected.phone}`} className="hover:underline">
+                        {selected.phone}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-space-xs truncate">
+                      <Icon name="mail" className="text-[14px] text-primary shrink-0" />
+                      <span>{selected.dossier.email}</span>
+                    </div>
+                    <div className="flex items-center gap-space-xs truncate">
+                      <Icon name="location_on" className="text-[14px] text-primary shrink-0" />
+                      <span>{selected.location}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Your Engagement with Merchant */}
+                <div className="p-space-sm">
+                  <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">
+                    Your Engagement
+                  </div>
+                  <div className="grid grid-cols-2 gap-space-xs">
+                    {[
+                      { label: 'Visits', value: selected.dossier.engagement.visits },
+                      { label: 'Orders', value: selected.dossier.engagement.orders },
+                      { label: 'Deals Used', value: selected.dossier.engagement.deals },
+                      { label: 'Tap Points', value: selected.dossier.engagement.points },
+                    ].map((s) => (
+                      <div key={s.label} className="p-space-xs rounded-xl bg-surface-subtle border border-border">
+                        <div className="font-caption text-caption text-on-surface-variant">{s.label}</div>
+                        <div className="font-heading-sm text-heading-sm text-on-surface">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Relationship Telemetry */}
+                <div className="p-space-sm">
+                  <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">
+                    Merchant Telemetry
+                  </div>
+                  <div className="space-y-space-2xs font-body-sm text-body-sm">
+                    {[
+                      { label: 'Avg response time', value: selected.dossier.telemetry.avgReply },
+                      { label: 'Operating hours', value: selected.dossier.telemetry.hours },
+                      { label: 'Deal redemption', value: selected.dossier.telemetry.dealRedemption },
+                      { label: 'Patron tier', value: selected.dossier.telemetry.tier },
+                    ].map((r) => (
+                      <div key={r.label} className="flex items-center justify-between">
+                        <span className="text-on-surface-variant">{r.label}</span>
+                        <span className="text-on-surface font-medium">{r.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-space-sm">
+                    <div className="flex items-center justify-between font-label-sm text-label-sm mb-space-2xs">
+                      <span className="text-on-surface-variant">Tier Progress</span>
+                      <span className="text-primary font-semibold">{selected.dossier.telemetry.progress}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-surface-subtle overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${selected.dossier.telemetry.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Popular / Signature Items */}
+                <div className="p-space-sm">
+                  <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">
+                    Popular Items
+                  </div>
+                  <div className="flex flex-wrap gap-space-2xs">
+                    {selected.dossier.popularItems.map((item) => (
+                      <span
+                        key={item}
+                        className="px-space-xs py-space-2xs rounded-full bg-surface-subtle border border-border font-caption text-caption text-on-surface-variant"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-space-sm flex items-center gap-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text w-fit">
+                    <Icon name="verified" className="text-[14px]" filled />
+                    <span className="font-caption text-caption font-semibold">VEMTAP Tap-Pass verified</span>
+                  </div>
+                </div>
+
+                {/* Storefront button */}
+                <div className="p-space-sm">
+                  <button
+                    type="button"
+                    onClick={() => onNav(selected.target ?? 'discover')}
+                    className="w-full h-11 rounded-xl border border-primary text-primary font-label-sm text-label-sm hover:bg-surface-tint-blue flex items-center justify-center gap-space-2xs transition-colors"
+                  >
+                    <Icon name="storefront" className="text-[16px]" />
+                    View Storefront &amp; Menu
+                  </button>
+                </div>
+
+                {/* Notes and Policies */}
+                <div className="p-space-sm">
+                  <div className="flex items-center justify-between mb-space-xs">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant">Merchant Information</span>
+                  </div>
+                  <ul className="space-y-space-2xs">
+                    {selected.dossier.notes.map((n) => (
+                      <li key={n.label} className="flex items-start gap-space-xs font-body-sm text-body-sm">
+                        <Icon name={n.icon} className="text-[14px] text-text-tertiary mt-0.5 shrink-0" />
+                        <span>
+                          <span className="text-on-surface-variant">{n.label}: </span>
+                          <span className="text-on-surface font-medium">{n.value}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Bottom Quick Actions */}
+              <div className="p-space-xs border-t border-border flex items-center gap-space-xs">
+                <a
+                  href={`tel:${selected.phone}`}
+                  className="flex-1 h-10 rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center justify-center gap-space-2xs transition-colors"
+                >
+                  <Icon name="call" className="text-[16px]" />
+                  Call
+                </a>
+                <button
+                  type="button"
+                  onClick={() => onNav('my-deals')}
+                  className="flex-1 h-10 rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center justify-center gap-space-2xs transition-colors"
+                >
+                  <Icon name="local_offer" className="text-[16px]" />
+                  Deals
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNav(selected.target ?? 'discover')}
+                  className="flex-1 h-10 rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center justify-center gap-space-2xs transition-colors"
+                >
+                  <Icon name="storefront" className="text-[16px]" />
+                  Menu
+                </button>
+              </div>
+            </aside>
           </div>
         </div>
       </div>

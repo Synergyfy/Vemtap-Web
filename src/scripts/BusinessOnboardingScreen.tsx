@@ -132,11 +132,14 @@ const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
 export function BusinessOnboardingScreen({
   onBack,
   onComplete,
+  initialStep = 'intro',
 }: {
   onBack: () => void;
   onComplete: () => void;
+  /** `'basic'` skips the marketing intro and lands directly on profile details (existing-account flow). */
+  initialStep?: 'intro' | 'basic';
 }) {
-  const [stepIndex, setStepIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(() => (initialStep === 'basic' ? 1 : 0));
   const [draft, setDraft] = useState<BusinessProfileDraft>(INITIAL_DRAFT);
   const [extraBranches, setExtraBranches] = useState<BusinessBranch[]>([]);
   const [productDraft, setProductDraft] = useState<ProductDraft>(INITIAL_PRODUCT_DRAFT);
@@ -174,7 +177,7 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessProfileBasicScreen
           draft={draft}
-          onBack={() => setStepIndex(0)}
+          onBack={initialStep === 'basic' ? onBack : () => setStepIndex(0)}
           onChange={updateDraft}
           onNext={() => setStepIndex(2)}
           onSaveDraft={onBack}

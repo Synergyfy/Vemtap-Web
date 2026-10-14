@@ -1,41 +1,19 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
-import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { Logo } from '../../components/ui/Logo';
+import { BusinessSidebarRail } from './BusinessSidebarRail';
 import {
   PortalBody,
-  PortalRail,
   PORTAL_CONTENT,
   RAIL_OFFSET,
   ShellAccountMenu,
-  type RailGroup,
   type ShellAccountKey,
 } from './PortalShell';
 
-const NAV_ITEMS: Array<{ key: BusinessPortalNavKey; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'orders', label: 'Orders & Bookings' },
-  { key: 'messages', label: 'Messages' },
-  { key: 'catalog', label: 'Catalog' },
-  { key: 'deals', label: 'Deals' },
-  { key: 'analytics', label: 'Analytics' },
-  { key: 'pos', label: 'POS' },
-  { key: 'settings', label: 'Settings' },
-];
-
-const navItem = (key: BusinessPortalNavKey) => NAV_ITEMS.find((item) => item.key === key)!;
-
-const NAV_GROUPS: ReadonlyArray<RailGroup<BusinessPortalNavKey>> = [
-  { label: '', items: [navItem('overview')] },
-  { label: 'Selling', items: [navItem('orders'), navItem('messages')] },
-  { label: 'Storefront', items: [navItem('catalog'), navItem('deals')] },
-  { label: 'Insights', items: [navItem('analytics'), navItem('pos')] },
-  { label: 'Account', items: [navItem('settings')] },
-];
-
 interface EnterpriseShellProps {
   children: ReactNode;
-  activeNav?: BusinessPortalNavKey;
-  onNav?: (key: BusinessPortalNavKey) => void;
+  activeNav?: string;
+  onNav?: (key: string) => void;
   onSignOut?: () => void;
 }
 
@@ -49,18 +27,14 @@ export function EnterpriseShell({ children, activeNav, onNav, onSignOut }: Enter
     <div className={`w-full min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased ${RAIL_OFFSET}`}>
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-lg shrink-0">
-            <div className="flex items-center gap-space-xs">
-              <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
-                <span className="text-on-primary font-heading-sm text-heading-sm">V</span>
-              </div>
-              <div className="flex items-center gap-space-2xs">
-                <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight">VEMTAP</span>
-                <span className="px-space-2xs py-0.5 rounded bg-surface-container text-on-surface-variant font-caption text-caption tracking-wider uppercase font-semibold">
-                  Merchant
-                </span>
-              </div>
+          <div className="flex items-center shrink-0">
+            <div className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0">
+              <Logo variant="full" className="h-10 md:h-11 w-auto" />
+              <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
+                BUSINESS
+              </span>
             </div>
+            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
             <div className="hidden xl:flex items-center gap-space-2xs px-space-sm py-1.5 rounded-lg bg-surface-subtle text-text-secondary">
               <Icon name="store" className="text-primary text-[18px]" />
               <span className="font-label-sm text-label-sm text-text-primary font-medium">Wuse II Branch, Abuja, FCT</span>
@@ -85,7 +59,7 @@ export function EnterpriseShell({ children, activeNav, onNav, onSignOut }: Enter
         </div>
       </header>
 
-      <PortalRail groups={NAV_GROUPS} active={activeNav} onSelect={onNav} />
+      <BusinessSidebarRail active={activeNav} onSelect={onNav} headerHeight="16" />
 
       <main className="w-full pt-16 bg-surface">
         <PortalBody>{children}</PortalBody>

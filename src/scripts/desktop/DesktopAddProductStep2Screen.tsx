@@ -1,5 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 
 interface DesktopAddProductStep2ScreenProps {
@@ -8,6 +10,7 @@ interface DesktopAddProductStep2ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const parseNaira = (value: string) => {
@@ -25,7 +28,9 @@ export function DesktopAddProductStep2Screen({
   onDraftChange,
   onBack,
   onNext,
+  onNav,
 }: DesktopAddProductStep2ScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const base = parseNaira(draft.basePrice);
   const cost = parseNaira(draft.costPrice);
   const compare = parseNaira(draft.comparePrice);
@@ -65,7 +70,7 @@ export function DesktopAddProductStep2Screen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="w-full max-w-7xl mx-auto px-margin py-space-xl">
         <div className="mb-space-xl flex flex-col md:flex-row md:items-end justify-between gap-space-md">
           <div>
@@ -570,6 +575,6 @@ export function DesktopAddProductStep2Screen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

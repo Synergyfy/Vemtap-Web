@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 
 interface DesktopProductReviewScreenProps {
@@ -14,6 +16,7 @@ interface DesktopProductReviewScreenProps {
   onEditSteps: () => void;
   onPublish: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const REVIEW_IMAGES: Array<{ src: string; alt: string }> = [
@@ -46,7 +49,9 @@ export function DesktopProductReviewScreen({
   onEditSteps,
   onPublish,
   onSaveDraft,
+  onNav,
 }: DesktopProductReviewScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [publishState, setPublishState] = useState<'idle' | 'publishing' | 'success'>('idle');
   const [simIndex, setSimIndex] = useState(0);
   const timers = useRef<number[]>([]);
@@ -77,7 +82,7 @@ export function DesktopProductReviewScreen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <section className="w-full bg-surface-canvas shadow-sm">
         <div className="max-w-7xl mx-auto px-margin py-space-md">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-sm mb-space-sm">
@@ -715,6 +720,6 @@ export function DesktopProductReviewScreen({
           </div>
         </div>
       </section>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

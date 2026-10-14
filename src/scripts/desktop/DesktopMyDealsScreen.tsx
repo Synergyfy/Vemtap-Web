@@ -65,7 +65,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
     : pass?.recipient?.email || profile.maskedPhone;
 
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="my-deals">
+    <DesktopPage withHeader withFooter onNav={onNav} activeNav="my-deals" withCustomerRail>
       <div className="w-full bg-surface-canvas">
         <section className="max-w-7xl mx-auto w-full px-6 lg:px-12 py-8">
           <div className="flex flex-col gap-1 mb-6">

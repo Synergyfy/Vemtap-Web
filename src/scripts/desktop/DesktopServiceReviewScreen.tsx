@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 
 interface DesktopServiceReviewScreenProps {
@@ -12,6 +14,7 @@ interface DesktopServiceReviewScreenProps {
   onEditDescription: () => void;
   onPublish: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const REVIEW_IMAGE =
@@ -107,7 +110,9 @@ export function DesktopServiceReviewScreen({
   onEditDescription,
   onPublish,
   onSaveDraft,
+  onNav,
 }: DesktopServiceReviewScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [publishState, setPublishState] = useState<'idle' | 'publishing' | 'success'>('idle');
   const timers = useRef<number[]>([]);
 
@@ -131,7 +136,7 @@ export function DesktopServiceReviewScreen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="max-w-7xl mx-auto w-full px-margin py-space-xl flex flex-col gap-8">
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -671,6 +676,6 @@ export function DesktopServiceReviewScreen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

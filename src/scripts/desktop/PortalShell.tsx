@@ -61,6 +61,8 @@ interface PortalRailProps<T extends string> {
   onSelect?: (key: T) => void;
   /** `top-16` by default; `top-20` for headers that are 80px tall. */
   headerHeight?: '16' | '20';
+  /** Optional per-key icon overrides for consumers whose nav keys differ from the default rail map. */
+  icons?: Readonly<Record<string, string>>;
 }
 
 export function PortalRail<T extends string>({
@@ -68,6 +70,7 @@ export function PortalRail<T extends string>({
   active,
   onSelect,
   headerHeight = '16',
+  icons,
 }: PortalRailProps<T>) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -82,7 +85,7 @@ export function PortalRail<T extends string>({
 
   const renderItem = (item: RailItem<T>) => {
     const isActive = item.key === active;
-    const icon = RAIL_ICONS[item.key] ?? 'circle';
+    const icon = icons?.[item.key] ?? RAIL_ICONS[item.key] ?? 'circle';
     return (
       <button
         key={item.key}

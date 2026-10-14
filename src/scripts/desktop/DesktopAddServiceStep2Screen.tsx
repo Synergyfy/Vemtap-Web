@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 
 interface DesktopAddServiceStep2ScreenProps {
@@ -9,6 +11,7 @@ interface DesktopAddServiceStep2ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const DURATION_PILLS: Array<{ mins: number; hint: string }> = [
@@ -41,7 +44,9 @@ export function DesktopAddServiceStep2Screen({
   onDraftChange,
   onBack,
   onNext,
+  onNav,
 }: DesktopAddServiceStep2ScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [calendarSync, setCalendarSync] = useState(true);
   const [whatsappPing, setWhatsappPing] = useState(true);
 
@@ -75,7 +80,7 @@ export function DesktopAddServiceStep2Screen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="w-full max-w-7xl mx-auto px-margin py-space-xl">
         <div className="flex flex-col gap-4 mb-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -652,6 +657,6 @@ export function DesktopAddServiceStep2Screen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

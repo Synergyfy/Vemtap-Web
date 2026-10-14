@@ -9,6 +9,7 @@ import {
   type PosCatalogItem,
   type PosTerminalLine,
 } from './posTerminalData';
+import { useStoreOrdering } from '../../context/StoreOrderingContext';
 
 interface DesktopPosRegisterScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -66,7 +67,45 @@ export function DesktopPosRegisterScreen({
   const [category, setCategory] = useState(0);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [holdPulse, setHoldPulse] = useState(false);
+  const [handoffToast, setHandoffToast] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const {
+    orders,
+    activePosHandoffOrderId,
+    setActivePosHandoffOrderId,
+    completeOrderFromPos,
+  } = useStoreOrdering();
+
+  const handedOffOrder = useMemo(() => {
+    if (!activePosHandoffOrderId) return null;
+    return orders.find((o) => o.id === activePosHandoffOrderId) || null;
+  }, [activePosHandoffOrderId, orders]);
+
+  const [completedHandoff, setCompletedHandoff] = useState<{
+    orderRef: string;
+    tender: string;
+    txnId: string;
+    total: number;
+    items: string;
+    customer: string;
+  } | null>(null);
+
+  const handleCompleteHandoffPayment = (tender: string) => {
+    if (!handedOffOrder) return;
+    const txnId = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+    completeOrderFromPos(handedOffOrder.id, tender, txnId);
+    setCompletedHandoff({
+      orderRef: handedOffOrder.orderRef,
+      tender,
+      txnId,
+      total: handedOffOrder.confirmedTotal,
+      items: handedOffOrder.items.map((i) => `${i.name} ×${i.qty}`).join(', '),
+      customer: handedOffOrder.customerName,
+    });
+    setHandoffToast(`Order #${handedOffOrder.orderRef} payment recorded in POS (${tender}).`);
+    window.setTimeout(() => setHandoffToast(null), 3500);
+  };
 
   const totals = useMemo(() => computeTotals(cart), [cart]);
   const itemCount = cart.reduce((sum, line) => sum + line.qty, 0);
@@ -150,6 +189,72 @@ export function DesktopPosRegisterScreen({
           </div>
         </div>
       </section>
+
+      {/* Handed-off Store Order Banner */}
+      {handedOffOrder && (
+        <section className="w-full bg-surface-tint-blue/90 border-b border-primary/20 px-space-md py-3 shadow-xs animate-in slide-in-from-top-2 duration-150">
+          <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+            <div className="flex items-center gap-space-md">
+              <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center font-bold shrink-0">
+                <Icon name="point_of_sale" className="text-[22px]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-primary text-[14px]">
+                    STORE ORDER #{handedOffOrder.orderRef}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-primary text-on-primary">
+                    Active POS Handoff
+                  </span>
+                  <span className="text-caption text-text-secondary">• {handedOffOrder.origin}</span>
+                </div>
+                <p className="text-body-sm text-text-primary mt-0.5">
+                  Customer: <strong>{handedOffOrder.customerName}</strong> ({handedOffOrder.customerPhone}) •{' '}
+                  {handedOffOrder.items.map((i) => `${i.name} ×${i.qty}`).join(', ')} • Total Due:{' '}
+                  <strong className="text-primary font-bold">₦{handedOffOrder.confirmedTotal.toLocaleString()}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              <button
+                type="button"
+                onClick={() => handleCompleteHandoffPayment('POS Card Terminal')}
+                className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-label-md shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Icon name="credit_card" className="text-[17px]" />
+                <span>Pay by Card (₦{handedOffOrder.confirmedTotal.toLocaleString()})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCompleteHandoffPayment('Cash Till')}
+                className="px-3.5 py-2 rounded-xl bg-badge-discount-text hover:opacity-90 text-on-primary font-semibold text-label-md shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Icon name="point_of_sale" className="text-[17px]" />
+                <span>Cash Tender</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCompleteHandoffPayment('Bank Transfer')}
+                className="px-3.5 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary font-semibold text-label-md shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Icon name="account_balance" className="text-[17px]" />
+                <span>Transfer</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActivePosHandoffOrderId(null)}
+                className="px-3 py-2 rounded-xl border border-border bg-surface-canvas hover:bg-surface-subtle text-text-secondary text-caption font-semibold transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* POS Dual-Pane Workspace Grid */}
       <div className="w-full py-space-md">
@@ -526,6 +631,84 @@ export function DesktopPosRegisterScreen({
           </aside>
         </div>
       </div>
+
+      {handoffToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
+          <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
+          <span>{handoffToast}</span>
+        </div>
+      )}
+
+      {/* POS Order Completed Receipt Dialog */}
+      {completedHandoff && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setCompletedHandoff(null)}
+          />
+          <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 text-center space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="w-16 h-16 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center mx-auto">
+              <Icon name="point_of_sale" className="text-[36px]" />
+            </div>
+
+            <div>
+              <span className="px-2.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-bold text-[11px] uppercase tracking-wider">
+                VEMTAP POS Checkout Complete
+              </span>
+              <h3 className="font-heading-md text-heading-md font-bold text-text-primary mt-1">
+                Order #{completedHandoff.orderRef}
+              </h3>
+              <p className="text-body-sm text-text-secondary">
+                {completedHandoff.customer} • {completedHandoff.items}
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-surface-subtle border border-border-subtle text-left space-y-2 text-body-sm">
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Tender Method:</span>
+                <strong className="text-text-primary">{completedHandoff.tender}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Total Settled:</span>
+                <strong className="text-primary font-mono text-[16px]">
+                  ₦{completedHandoff.total.toLocaleString()}
+                </strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-secondary">POS Txn ID:</span>
+                <span className="font-mono text-caption text-text-primary font-bold">
+                  {completedHandoff.txnId}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Audit Trail:</span>
+                <span className="text-caption text-text-tertiary">Central Order Updated Automatically</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-1 py-2.5 rounded-xl border border-border hover:bg-surface-subtle font-semibold text-label-md text-text-primary flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Icon name="print" className="text-[17px]" />
+                <span>Print POS Slip</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCompletedHandoff(null);
+                  onNav('orders');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-label-md shadow-sm transition-all"
+              >
+                Return to Orders →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PosTerminalChrome>
   );
 }

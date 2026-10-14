@@ -1,53 +1,21 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Logo } from '../../components/ui/Logo';
 import {
   PortalBody,
-  PortalRail,
   PORTAL_CONTENT,
   RAIL_OFFSET,
   ShellAccountMenu,
-  type RailGroup,
   type ShellAccountKey,
 } from './PortalShell';
+import { BusinessSidebarRail } from './BusinessSidebarRail';
 
-export type BusinessPortalNavKey =
-  | 'overview'
-  | 'orders'
-  | 'messages'
-  | 'catalog'
-  | 'deals'
-  | 'locations'
-  | 'customers'
-  | 'analytics'
-  | 'pos'
-  | 'settings';
-
-const NAV_ITEMS: Array<{ key: BusinessPortalNavKey; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'orders', label: 'Orders & Bookings' },
-  { key: 'messages', label: 'Messages' },
-  { key: 'catalog', label: 'Catalog' },
-  { key: 'deals', label: 'Deals' },
-  { key: 'locations', label: 'Locations' },
-  { key: 'customers', label: 'Customers' },
-  { key: 'analytics', label: 'Analytics' },
-  { key: 'settings', label: 'Settings' },
-];
-
-const navItem = (key: BusinessPortalNavKey) => NAV_ITEMS.find((item) => item.key === key)!;
-
-const NAV_GROUPS: ReadonlyArray<RailGroup<BusinessPortalNavKey>> = [
-  { label: '', items: [navItem('overview')] },
-  { label: 'Selling', items: [navItem('orders'), navItem('messages')] },
-  { label: 'Storefront', items: [navItem('catalog'), navItem('deals'), navItem('locations')] },
-  { label: 'Growth', items: [navItem('customers'), navItem('analytics')] },
-  { label: 'Account', items: [navItem('settings')] },
-];
+export type BusinessPortalNavKey = string;
 
 interface BusinessPortalChromeProps {
   children: ReactNode;
-  activeNav?: BusinessPortalNavKey;
-  onNav?: (key: BusinessPortalNavKey) => void;
+  activeNav?: string;
+  onNav?: (key: string) => void;
   onBrand?: () => void;
   notificationCount?: number;
   onSignOut?: () => void;
@@ -63,22 +31,23 @@ export function BusinessPortalChrome({
 }: BusinessPortalChromeProps) {
   const handleAccount = (key: ShellAccountKey) => {
     if (key === 'sign-out') onSignOut?.();
-    else onNav?.(key);
+    else onNav?.(key as string);
   };
 
   return (
     <div className={`w-full min-h-screen bg-surface-subtle font-body-md text-body-md text-on-surface antialiased flex flex-col ${RAIL_OFFSET}`}>
       <header className="fixed top-0 left-0 right-0 w-full z-50 bg-surface-canvas/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-md flex-shrink-0">
-            <button type="button" onClick={onBrand} className="flex items-center gap-space-xs">
-              <span className="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center text-on-primary font-heading-sm text-heading-sm font-bold tracking-tight shadow-[0_4px_12px_rgba(6,108,244,0.25)]">
-                V
-              </span>
-              <span className="font-heading-sm text-heading-sm text-text-primary font-bold tracking-tight">VEMTAP</span>
-              <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-label-sm text-caption tracking-wider font-semibold">BUSINESS</span>
-            </button>
-            <div className="h-5 w-[1px] bg-border-subtle mx-space-2xs hidden xl:block" />
+          <div className="flex items-center shrink-0">
+            <div className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0">
+              <button type="button" onClick={onBrand} className="flex items-center gap-space-xs">
+                <Logo variant="full" className="h-10 md:h-11 w-auto" />
+                <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
+                  BUSINESS
+                </span>
+              </button>
+            </div>
+            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
             <button
               type="button"
               className="hidden xl:flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-container transition-colors text-text-secondary hover:text-on-surface"
@@ -120,7 +89,7 @@ export function BusinessPortalChrome({
         </div>
       </header>
 
-      <PortalRail groups={NAV_GROUPS} active={activeNav} onSelect={onNav} />
+      <BusinessSidebarRail active={activeNav} onSelect={onNav} headerHeight="16" />
 
       <main className="w-full pt-16 flex-1 bg-surface-subtle">
         <PortalBody>{children}</PortalBody>
