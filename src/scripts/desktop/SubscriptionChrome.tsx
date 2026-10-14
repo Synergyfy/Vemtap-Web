@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Logo } from '../../components/ui/Logo';
 
 export type SubscriptionNavKey =
   | 'overview'
@@ -51,11 +52,9 @@ export function SubscriptionChrome({
         <div className="h-20 max-w-7xl mx-auto px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-lg min-w-0">
             <button type="button" onClick={onBrand} className="flex items-center gap-space-xs shrink-0">
-              <span className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-                <Icon name="bolt" filled className="text-on-primary text-[22px]" />
-              </span>
-              <span className="px-space-xs py-space-2xs rounded-full bg-surface-container-high text-primary font-caption text-caption uppercase font-semibold tracking-wider">
-                VEMTAP Business
+              <Logo variant="full" className="h-10 md:h-11 w-auto" />
+              <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
+                BUSINESS
               </span>
             </button>
             <nav className="hidden xl:flex items-center gap-space-2xs min-w-0">

@@ -162,7 +162,7 @@ export function DesktopBusinessProfileStorefrontScreen({
   };
 
   return (
-    <MerchantWorkspaceChrome activeNav="settings" onNav={onNav}>
+    <MerchantWorkspaceChrome activeNav="business-profile" onNav={onNav}>
       <div className="w-full py-space-xl flex flex-col gap-space-xl">
         {/* Top Action Breadcrumb & Studio Header Deck */}
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-lg pb-space-xs">

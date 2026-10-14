@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 
 interface DesktopAddProductStep3ScreenProps {
@@ -9,6 +11,7 @@ interface DesktopAddProductStep3ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const SNIPPET_IMAGE =
@@ -77,7 +80,9 @@ export function DesktopAddProductStep3Screen({
   onDraftChange,
   onBack,
   onNext,
+  onNav,
 }: DesktopAddProductStep3ScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [pickup, setPickup] = useState(true);
   const [delivery, setDelivery] = useState(true);
 
@@ -90,7 +95,7 @@ export function DesktopAddProductStep3Screen({
   };
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="max-w-7xl mx-auto px-margin py-space-xl w-full">
         <div className="mb-space-xl flex flex-col md:flex-row md:items-end justify-between gap-space-md">
           <div>
@@ -597,6 +602,6 @@ export function DesktopAddProductStep3Screen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

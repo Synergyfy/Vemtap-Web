@@ -87,7 +87,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
 
   return (
     <>
-      <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings" withCustomerRail>
       <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-8">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">

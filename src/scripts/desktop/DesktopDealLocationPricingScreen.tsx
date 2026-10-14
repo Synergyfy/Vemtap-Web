@@ -204,7 +204,7 @@ export function DesktopDealLocationPricingScreen({
     setIncluded((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
-    <MerchantPortalChrome activeNav="deals" onNav={onNav}>
+    <MerchantPortalChrome activeNav="business-deals" onNav={onNav}>
       {/* Deal Context & Breadcrumb Bar */}
       <section className="w-full bg-surface-canvas shadow-[0_1px_3px_rgba(0,0,0,0.03)] py-space-md">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md">

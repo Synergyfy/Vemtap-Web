@@ -3,6 +3,7 @@ export interface ProductDraft {
   producer: string;
   sku: string;
   unbranded: boolean;
+  categoryId?: string;
   primaryCategory: string;
   subCategory: string;
   classification: string;
@@ -26,6 +27,7 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   producer: 'Urban Grill Kitchen',
   sku: 'UGK-RIBEYE-400',
   unbranded: true,
+  categoryId: 'grills',
   primaryCategory: 'Food & Dining',
   subCategory: 'Grill, Steaks & BBQ',
   classification: 'Fresh Cooked / Made to order',

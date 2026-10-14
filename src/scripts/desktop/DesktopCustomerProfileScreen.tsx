@@ -214,7 +214,7 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
   };
 
   return (
-    <EnterpriseShell activeNav="orders" onNav={onNav}>
+    <EnterpriseShell activeNav="business-customers" onNav={onNav}>
       <div className="w-full py-space-md">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md mb-space-lg">
           <div className="flex flex-col gap-space-2xs min-w-0">

@@ -2,6 +2,26 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { DesktopAddProductStep1Screen } from './DesktopAddProductStep1Screen';
+import { DesktopAddProductStep2Screen } from './DesktopAddProductStep2Screen';
+import { DesktopAddProductStep3Screen } from './DesktopAddProductStep3Screen';
+import { DesktopProductReviewScreen } from './DesktopProductReviewScreen';
+import { DesktopProductPublishedScreen } from './DesktopProductPublishedScreen';
+import { DesktopProductPricingConfigScreen } from './DesktopProductPricingConfigScreen';
+import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
+import { DesktopAddServiceStep1Screen } from './DesktopAddServiceStep1Screen';
+import { DesktopAddServiceStep2Screen } from './DesktopAddServiceStep2Screen';
+import { DesktopAddServiceStep3Screen } from './DesktopAddServiceStep3Screen';
+import { DesktopServiceReviewScreen } from './DesktopServiceReviewScreen';
+import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
+import { INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
+import {
+  getCentralCategories,
+  addCentralCategory,
+  updateCentralCategory,
+  archiveCentralCategory,
+  type CentralCategory,
+} from '../catalogueData';
 
 interface DesktopBusinessCatalogHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -178,6 +198,125 @@ const ROWS: CatalogRow[] = [
   },
 ];
 
+const SERVICES_ROWS: CatalogRow[] = [
+  {
+    id: 's1',
+    name: 'Moroccan Hammam & Body Glow Polish',
+    image:
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuB4wRhk7Z2awcljAxG1LjsDB3N2bAN7rQlDkEXDILlYF6i09D_DE0_JDmPFddvIXLKfZ-TtuSypTz0Kl3jUy7knUpU3HB4NuSb137foMDpgotXoiK7w3GVbU1FRlvDkCRSfNt7lLHtinSDkQaVQwt40lHDAj3DUxzf9tBWYtOf7qlTY-_mE9_3gDNIH9wVJF72-OJb0k0sqg-vLThSLsh7dq90yBqvw9fzIB1gXV-Fo2ZXSueR6oLefog',
+    alt: 'Luxury aesthetic spa suite with aromatic bath, warm candlelight and natural stone therapy.',
+    verified: true,
+    sku: 'VG-SRV-01',
+    sub: '75 min session',
+    category: 'Spa & Wellness',
+    categoryIcon: 'spa',
+    price: '₦28,000',
+    was: '₦35,000',
+    dealBadge: '20% Off Perk',
+    branchDot: 'ok',
+    branchLabel: 'All 3 Branches',
+    branchNote: 'Private Suites Available',
+    stock: { tone: 'ok', label: 'Slots Open Today', units: '6 slots available', bar: 75, barTone: 'ok' },
+    sync: true,
+    filters: ['all', 'published', 'deals'],
+  },
+  {
+    id: 's2',
+    name: 'Aromatherapy Deep Muscle Release',
+    image:
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuD2k-0GygPR7thrr6kQT5yTqoGDw0NcxF2dP0AlXRwce_9v75rvKjTFCOII2nYkQknciVnh52IMyXZtpFEzCOC6Sc0ZFQf8bwDaVJM2likf3N9H6Yf4CtRNeAYa6jwXLogctOB85hy8oxyDnz-IvnlOo7GjU_Ij8kfKJBzE9Lqhpjxks9aQ7vHEEYWcFEkDqE1E9UzAJhRl3UfANQ6pD0rmV-2EbDY3S2bIgoQ14Il52tS12xywmcy8cw',
+    alt: 'Therapeutic warm botanical oil massage session with organic aromatherapy essence.',
+    sku: 'VG-SRV-02',
+    sub: '60 min session',
+    category: 'Massage & Therapy',
+    categoryIcon: 'self_improvement',
+    price: '₦22,500',
+    priceNote: 'Therapist Choice',
+    branchDot: 'ok',
+    branchLabel: 'Wuse & Maitama Only',
+    branchNote: '2 branches active',
+    stock: { tone: 'ok', label: 'Available', units: '9 slots open', bar: 60, barTone: 'ok' },
+    sync: true,
+    filters: ['all', 'published'],
+  },
+  {
+    id: 's3',
+    name: 'Signature HydraFacial & Collagen Boost',
+    image:
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuB6BaZG7YzMbQArQWnt4edHnV9aCqK3a7xIIh-c8OV4tFJBToZ7tcF2Nlpag653DPDvv1YwAEFvyZWLEWjhh3JKXPU_39La5FCCObsJ2bXVvYHYwRfdfbXPyrgvSgRX4XxMhc27qVEA_iTG43lTtzd34YcQozjDBHcuV7C7GWsm1WeMhPRtYcC2-I3NREV_8QfVRodpcjS7DvAGEn1vrjQohXldZ8Ghr28n4UXThhCL24s-z5spmv5Wbg',
+    alt: 'Dermatological medical-grade facial rejuvenation treatment with ultrasonic infusion.',
+    sku: 'VG-SRV-03',
+    sub: '45 min session',
+    category: 'Skin & Aesthetics',
+    categoryIcon: 'face',
+    price: '₦35,000',
+    priceNote: 'Includes LED Light Therapy',
+    branchDot: 'ok',
+    branchLabel: 'All 3 Branches',
+    branchNote: 'Certified Aesthetician',
+    stock: { tone: 'ok', label: 'Available', units: '4 slots left', bar: 40, barTone: 'ok' },
+    sync: true,
+    filters: ['all', 'published', 'low'],
+  },
+  {
+    id: 's4',
+    name: 'Executive Precision Haircut & Beard Sculpt',
+    image:
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuBO6jJ9p4hR6rNGDGRINEHScNzfF8QX9958juImpMv7docBzJhIFFTSv0EqqohPlk21qedzh0yj6VoV4ENinMd8PtWdjbgLvTNyW6DzMNzVWBBdNwnHXR5xFauu5gHS1bVOzDmta7grAM4POxOXeEhzPSB90eU3jwqP8X35nF3AyPhKakI43tDrWub1fzx-gNhATtVwdkcjO3Hjz7arXt2eY8pvnSwKjc_HdpZEuUQH_y3nRojTdPeUQg',
+    alt: 'Gentleman luxury grooming salon session with hot towel and beard oil balm.',
+    sku: 'VG-SRV-04',
+    sub: '40 min session',
+    category: 'Grooming & Barber',
+    categoryIcon: 'content_cut',
+    price: '₦8,500',
+    priceChip: 'Hot Towel Incl.',
+    branchDot: 'ok',
+    branchLabel: 'All Branches',
+    branchNote: 'Walk-ins & Bookings',
+    stock: { tone: 'ok', label: 'Walk-in & Bookings', units: 'Barbers on Duty', bar: 85, barTone: 'ok' },
+    sync: true,
+    filters: ['all', 'published'],
+  },
+  {
+    id: 's5',
+    name: 'Russian Manicure & Gel Polish Duo',
+    image:
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuC6trtXFp0MMJwWku9jLYDwdIp28fGzHTmDO0RUE47jOl9iydBvF7jC1uRok91vQ_a6YHaxw4BDUNnwjZjepIJqde7592zFopV-N30aLGLAkzyvljtnJ1fLl5Pxy_BHumGgYbahvqugs4Q1hW9TTACnFpjlk5pxuNHrRFbxC07olPXnXlN-PrXlK9_FwVnZsQcJzb-TwkpEm5q383Eftusf4vv5jvGGhsBKrpbEAYulvhhXJvoaQRairA',
+    alt: 'Impeccable clean e-file manicure with glossy long-lasting nude gel coat.',
+    sku: 'VG-SRV-05',
+    sub: '60 min session',
+    category: 'Nails & Beauty',
+    categoryIcon: 'brush',
+    price: '₦15,000',
+    branchDot: 'ok',
+    branchLabel: 'All Branches',
+    branchNote: 'Choice of 120+ Gel Colors',
+    stock: { tone: 'ok', label: 'Slots Open', units: 'Nail Artists Available', bar: 90, barTone: 'ok' },
+    sync: true,
+    filters: ['all', 'published'],
+  },
+  {
+    id: 's6',
+    name: 'Swedish Relaxation Full Body Massage',
+    image:
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuDcpJ2c7dvjW1lzsXtOkizM9pbVdGGWEiMmh1UyBM6Qyd_a7HJHN9pYrI0s4OC7t1D52fmKiwCl0_EW9Qugz_jyIIIXo0L3JfccsRlSlOmwgv2C6MkI2vnSFj1ji-q5FQ6Yqs8YUeIiIe1jQ5hpZL4naxtfledRh2j3Nq1C5E6wUF9iHI6e5wVcRvSUF_gX7hELTdOD8VEpNtx8S93rNUj1Z-0YH06xP2fKgi9-dccpqRQVrf3449_Eig',
+    alt: 'Gentle long stroke swedish therapeutic body session with heated calming stones.',
+    draft: true,
+    hidden: true,
+    sku: 'VG-SRV-06',
+    sub: '60 min session',
+    category: 'Massage & Therapy',
+    categoryIcon: 'spa',
+    price: '₦18,000',
+    branchDot: 'tertiary',
+    branchLabel: 'Maitama Flagship Only',
+    branchNote: 'Draft launch scheduled',
+    stock: { tone: 'off', label: 'Unpublished Draft', note: 'Configuring room schedules' },
+    sync: false,
+    filters: ['all'],
+  },
+];
+
 const STATS = [
   {
     label: 'Total Active SKUs',
@@ -237,22 +376,377 @@ const BRANCH_DOT: Record<CatalogRow['branchDot'], string> = {
 export function DesktopBusinessCatalogHubScreen({
   onNav,
   onOpenBranchPricing,
-  onOpenServices,
+  onOpenServices: _onOpenServices,
 }: DesktopBusinessCatalogHubScreenProps) {
+  const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
+  const [productRows, setProductRows] = useState<CatalogRow[]>(ROWS);
+  const [serviceRows, setServiceRows] = useState<CatalogRow[]>(SERVICES_ROWS);
+  const [centralCategories, setCentralCategories] = useState<CentralCategory[]>(() => getCentralCategories());
+  const [categoryTypeFilter, setCategoryTypeFilter] = useState<'all' | 'product' | 'service'>('all');
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+  const [categoryModal, setCategoryModal] = useState<{
+    mode: 'add' | 'edit';
+    category?: CentralCategory;
+  } | null>(null);
+  const [catFormName, setCatFormName] = useState('');
+  const [catFormType, setCatFormType] = useState<'product' | 'service'>('product');
+  const [catFormDesc, setCatFormDesc] = useState('');
+  const [catFormIcon, setCatFormIcon] = useState('restaurant');
+
+  const handleOpenAddCategory = () => {
+    setCatFormName('');
+    setCatFormType('product');
+    setCatFormDesc('');
+    setCatFormIcon('restaurant');
+    setCategoryModal({ mode: 'add' });
+  };
+
+  const handleOpenEditCategory = (cat: CentralCategory) => {
+    setCatFormName(cat.name);
+    setCatFormType(cat.type);
+    setCatFormDesc(cat.description);
+    setCatFormIcon(cat.icon);
+    setCategoryModal({ mode: 'edit', category: cat });
+  };
+
+  const handleSaveCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!catFormName.trim()) return;
+    if (categoryModal?.mode === 'add') {
+      const slug = catFormName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      addCentralCategory({
+        id: slug,
+        name: catFormName.trim(),
+        slug,
+        type: catFormType,
+        description: catFormDesc.trim() || `${catFormName.trim()} selections`,
+        icon: catFormIcon,
+        productCount: 0,
+        activeBranches: ['all'],
+        qrDestinationUrl: `/storefront?category=${slug}`,
+      });
+      setCentralCategories(getCentralCategories());
+      setToastMessage(`Category "${catFormName.trim()}" created successfully.`);
+    } else if (categoryModal?.mode === 'edit' && categoryModal.category) {
+      updateCentralCategory(categoryModal.category.id, {
+        name: catFormName.trim(),
+        type: catFormType,
+        description: catFormDesc.trim(),
+        icon: catFormIcon,
+      });
+      setCentralCategories(getCentralCategories());
+      setToastMessage(`Category "${catFormName.trim()}" updated successfully.`);
+    }
+    setCategoryModal(null);
+  };
+
+  const handleArchiveCategory = (id: string, name: string) => {
+    archiveCentralCategory(id);
+    setCentralCategories(getCentralCategories());
+    setToastMessage(`Category "${name}" archived.`);
+  };
+
+  const filteredCategories = centralCategories
+    .filter((c) => {
+      if (categoryTypeFilter === 'all') return true;
+      return c.type === categoryTypeFilter;
+    })
+    .filter((c) => {
+      if (!categorySearchQuery.trim()) return true;
+      const q = categorySearchQuery.toLowerCase();
+      return c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q);
+    });
+
+  const [subFlow, setSubFlow] = useState<
+    | 'none'
+    | 'addProduct1'
+    | 'addProduct2'
+    | 'addProduct3'
+    | 'productReview'
+    | 'productPricingConfig'
+    | 'productPublished'
+    | 'service1'
+    | 'service2'
+    | 'service3'
+    | 'serviceReview'
+    | 'servicePublished'
+  >('none');
+  const [productDraft, setProductDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ ...INITIAL_SERVICE_DRAFT });
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState<CatalogChip>('all');
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [selected, setSelected] = useState<string[]>([]);
-  const [sync, setSync] = useState<Record<string, boolean>>(
-    Object.fromEntries(ROWS.map((row) => [row.id, row.sync])),
+  const [sync, setSync] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries([...ROWS, ...SERVICES_ROWS].map((row) => [row.id, row.sync])),
   );
+
+  const handlePublishProduct = () => {
+    const newRow: CatalogRow = {
+      id: `p_${Date.now()}`,
+      name: productDraft.title || 'New Product Item',
+      image: ROWS[0].image,
+      alt: productDraft.title || 'Product Item',
+      sku: productDraft.sku || `VG-PROD-${Math.floor(10 + Math.random() * 90)}`,
+      sub: productDraft.classification || 'Retail Product',
+      category: productDraft.primaryCategory || 'General',
+      categoryIcon: 'storefront',
+      price: productDraft.basePrice ? `₦${Number(productDraft.basePrice).toLocaleString('en-US')}` : '₦5,000',
+      was: productDraft.comparePrice ? `₦${Number(productDraft.comparePrice).toLocaleString('en-US')}` : undefined,
+      dealBadge: productDraft.comparePrice ? 'Special Deal' : undefined,
+      branchDot: 'ok',
+      branchLabel: 'All 3 Branches',
+      branchNote: 'Active in POS & Storefront',
+      stock: {
+        tone: 'ok',
+        label: 'In Stock',
+        units: '50 units ready',
+        bar: 80,
+        barTone: 'ok',
+      },
+      sync: true,
+      filters: ['all', 'published', 'dinein'],
+    };
+    setProductRows((prev) => [newRow, ...prev]);
+    setSync((prev) => ({ ...prev, [newRow.id]: true }));
+    setSubFlow('productPublished');
+  };
+
+  const handlePublishService = () => {
+    const newServiceRow: CatalogRow = {
+      id: `s_${Date.now()}`,
+      name: serviceDraft.title || 'New Service Session',
+      image: SERVICES_ROWS[0].image,
+      alt: serviceDraft.title || 'Service Item',
+      sku: serviceDraft.skuCode || `VG-SRV-${Math.floor(10 + Math.random() * 90)}`,
+      sub: `${serviceDraft.durationMins || 60} min session`,
+      category: serviceDraft.primaryCategory || 'Spa & Wellness',
+      categoryIcon: 'spa',
+      price: serviceDraft.basePrice ? `₦${Number(serviceDraft.basePrice).toLocaleString('en-US')}` : '₦18,000',
+      was: serviceDraft.comparePrice ? `₦${Number(serviceDraft.comparePrice).toLocaleString('en-US')}` : undefined,
+      dealBadge: serviceDraft.comparePrice ? 'Introductory Offer' : undefined,
+      branchDot: 'ok',
+      branchLabel: 'All 3 Branches',
+      branchNote: 'Bookings Enabled',
+      stock: {
+        tone: 'ok',
+        label: 'Slots Open Today',
+        units: 'Available for Booking',
+        bar: 85,
+        barTone: 'ok',
+      },
+      sync: true,
+      filters: ['all', 'published'],
+    };
+    setServiceRows((prev) => [newServiceRow, ...prev]);
+    setSync((prev) => ({ ...prev, [newServiceRow.id]: true }));
+    setSubFlow('servicePublished');
+  };
+
+  const handleExportCSV = () => {
+    const currentList = activeTab === 'products' ? productRows : serviceRows;
+    const headers = ['ID', 'SKU', 'Name', 'Category', 'Price', 'Was Price', 'Branches', 'Stock Status', 'Units', 'Terminal Sync'];
+    const csvRows = [
+      headers.join(','),
+      ...currentList.map((row) =>
+        [
+          JSON.stringify(row.id),
+          JSON.stringify(row.sku),
+          JSON.stringify(row.name),
+          JSON.stringify(row.category),
+          JSON.stringify(row.price),
+          JSON.stringify(row.was || ''),
+          JSON.stringify(row.branchLabel),
+          JSON.stringify(row.stock.label),
+          JSON.stringify(row.stock.units || row.stock.note || ''),
+          JSON.stringify(sync[row.id] ? 'Yes' : 'No'),
+        ].join(','),
+      ),
+    ];
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `vemtap_${activeTab}_catalog.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setToastMessage(`Exported ${currentList.length} ${activeTab} items to CSV`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Replicated Onboarding flows inside Hub Catalog
+  if (subFlow === 'addProduct1') {
+    return (
+      <DesktopAddProductStep1Screen
+        draft={productDraft}
+        onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
+        onBack={() => setSubFlow('none')}
+        onNext={() => setSubFlow('addProduct2')}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'addProduct2') {
+    return (
+      <DesktopAddProductStep2Screen
+        draft={productDraft}
+        onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
+        onBack={() => setSubFlow('addProduct1')}
+        onNext={() => setSubFlow('addProduct3')}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'addProduct3') {
+    return (
+      <DesktopAddProductStep3Screen
+        draft={productDraft}
+        onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
+        onBack={() => setSubFlow('addProduct2')}
+        onNext={() => setSubFlow('productReview')}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'productReview') {
+    return (
+      <DesktopProductReviewScreen
+        draft={productDraft}
+        onBack={() => setSubFlow('addProduct3')}
+        onEditBasics={() => setSubFlow('addProduct1')}
+        onEditPricing={() => setSubFlow('productPricingConfig')}
+        onEditBranches={() => setSubFlow('productPricingConfig')}
+        onEditFulfillment={() => setSubFlow('addProduct3')}
+        onEditDescription={() => setSubFlow('addProduct1')}
+        onEditSteps={() => setSubFlow('addProduct3')}
+        onPublish={handlePublishProduct}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'productPricingConfig') {
+    return (
+      <DesktopProductPricingConfigScreen
+        draft={productDraft}
+        onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
+        onSaved={() => setSubFlow('productReview')}
+        onCancel={() => setSubFlow('productReview')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'productPublished') {
+    return (
+      <DesktopProductPublishedScreen
+        draft={productDraft}
+        onMakeDeal={() => onNav('deals')}
+        onViewCatalog={() => {
+          setActiveTab('products');
+          setSubFlow('none');
+        }}
+        onAddAnother={() => {
+          setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+          setSubFlow('addProduct1');
+        }}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'service1') {
+    return (
+      <DesktopAddServiceStep1Screen
+        draft={serviceDraft}
+        onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
+        onBack={() => setSubFlow('none')}
+        onNext={() => setSubFlow('service2')}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'service2') {
+    return (
+      <DesktopAddServiceStep2Screen
+        draft={serviceDraft}
+        onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
+        onBack={() => setSubFlow('service1')}
+        onNext={() => setSubFlow('service3')}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'service3') {
+    return (
+      <DesktopAddServiceStep3Screen
+        draft={serviceDraft}
+        onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
+        onBack={() => setSubFlow('service2')}
+        onNext={() => setSubFlow('serviceReview')}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'serviceReview') {
+    return (
+      <DesktopServiceReviewScreen
+        draft={serviceDraft}
+        onBack={() => setSubFlow('service3')}
+        onEditBasics={() => setSubFlow('service1')}
+        onEditPricing={() => setSubFlow('service2')}
+        onEditBranches={() => setSubFlow('service3')}
+        onEditDescription={() => setSubFlow('service1')}
+        onPublish={handlePublishService}
+        onSaveDraft={() => setSubFlow('none')}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'servicePublished') {
+    return (
+      <DesktopServicePublishedScreen
+        draft={serviceDraft}
+        onMakeDeal={() => onNav('deals')}
+        onViewCatalog={() => {
+          setActiveTab('services');
+          setSubFlow('none');
+        }}
+        onAddAnother={() => {
+          setServiceDraft({ ...INITIAL_SERVICE_DRAFT });
+          setSubFlow('service1');
+        }}
+        onNav={onNav}
+      />
+    );
+  }
+
+  const currentDataset = activeTab === 'products' ? productRows : serviceRows;
 
   const toggleRow = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
 
-  const toggleAll = () => setSelected(selected.length === ROWS.length ? [] : ROWS.map((row) => row.id));
+  const toggleAll = () => setSelected(selected.length === currentDataset.length ? [] : currentDataset.map((row) => row.id));
 
-  const visibleRows = ROWS.filter((row) => {
+  const visibleRows = currentDataset.filter((row) => {
     const matchesChip = chip === 'all' ? true : row.filters.includes(chip);
     const needle = query.trim().toLowerCase();
     const matchesQuery =
@@ -264,7 +758,7 @@ export function DesktopBusinessCatalogHubScreen({
   });
 
   return (
-    <MerchantShell activeNav="catalog" onNav={onNav}>
+    <MerchantShell activeNav="business-catalog" onNav={onNav}>
       <div className="flex flex-col gap-space-lg">
         {/* Breadcrumbs & Meta Top Strip */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
@@ -309,8 +803,8 @@ export function DesktopBusinessCatalogHubScreen({
               branches.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-space-sm">
-            <div className="relative">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-space-sm">
+            <div className="relative shrink-0">
               <label className="sr-only" htmlFor="locationSelector">
                 Scope Branch
               </label>
@@ -332,20 +826,40 @@ export function DesktopBusinessCatalogHubScreen({
                 <Icon name="expand_more" className="text-text-secondary text-[18px]" />
               </div>
             </div>
-            <button
-              type="button"
-              className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm"
-            >
-              <Icon name="room_service" className="text-primary text-[20px]" />
-              <span>+ Add Service</span>
-            </button>
-            <button
-              type="button"
-              className="flex items-center gap-space-2xs px-space-lg py-space-sm rounded-xl bg-primary-container text-on-primary-container hover:bg-primary transition-all font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98]"
-            >
-              <Icon name="add_circle" className="text-[20px]" />
-              <span>+ Add Product</span>
-            </button>
+
+            {/* Side-by-side Add Buttons on the same line */}
+            <div className="flex items-center gap-space-sm shrink-0 whitespace-nowrap">
+              <button
+                type="button"
+                onClick={handleOpenAddCategory}
+                className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"
+              >
+                <Icon name="create_new_folder" className="text-primary text-[20px]" />
+                <span>+ Add Category</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setServiceDraft({ ...INITIAL_SERVICE_DRAFT });
+                  setSubFlow('service1');
+                }}
+                className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"
+              >
+                <Icon name="room_service" className="text-primary text-[20px]" />
+                <span>+ Add Service</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+                  setSubFlow('addProduct1');
+                }}
+                className="flex items-center gap-space-2xs px-space-lg py-space-sm rounded-xl bg-primary-container text-on-primary-container hover:bg-primary transition-all font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98]"
+              >
+                <Icon name="add_circle" className="text-[20px]" />
+                <span>+ Add Product</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -371,48 +885,71 @@ export function DesktopBusinessCatalogHubScreen({
           ))}
         </div>
 
-        {/* Navigation Tabs & View Options */}
+        {/* Navigation Tabs & View Options - Only Products & Services */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md bg-surface-container-lowest p-space-xs rounded-xl shadow-sm">
           <div className="flex items-center gap-space-2xs overflow-x-auto">
             <button
               type="button"
-              className="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-primary-container text-on-primary-container font-label-md text-label-md font-semibold transition-all shadow-sm whitespace-nowrap"
+              onClick={() => setActiveTab('products')}
+              className={`flex items-center gap-space-xs px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all shadow-sm whitespace-nowrap ${
+                activeTab === 'products'
+                  ? 'bg-primary-container text-on-primary-container'
+                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+              }`}
             >
               <Icon name="restaurant_menu" className="text-[18px]" />
               <span>Products</span>
-              <span className="px-space-xs py-space-2xs rounded-full bg-surface-canvas/20 text-on-primary font-caption text-caption font-bold">
-                28 active
+              <span
+                className={`px-space-xs py-space-2xs rounded-full font-caption text-caption font-bold ${
+                  activeTab === 'products'
+                    ? 'bg-surface-canvas/20 text-on-primary'
+                    : 'bg-surface-container text-text-secondary'
+                }`}
+              >
+                {productRows.length} active
               </span>
             </button>
             <button
               type="button"
-              onClick={onOpenServices}
-              className="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-label-md text-label-md transition-all whitespace-nowrap"
+              onClick={() => setActiveTab('services')}
+              className={`flex items-center gap-space-xs px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'services'
+                  ? 'bg-primary-container text-on-primary-container'
+                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+              }`}
             >
               <Icon name="spa" className="text-[18px]" />
               <span>Services</span>
-              <span className="px-space-xs py-space-2xs rounded-full bg-surface-container text-text-secondary font-caption text-caption font-bold">
-                14
+              <span
+                className={`px-space-xs py-space-2xs rounded-full font-caption text-caption font-bold ${
+                  activeTab === 'services'
+                    ? 'bg-surface-canvas/20 text-on-primary'
+                    : 'bg-surface-container text-text-secondary'
+                }`}
+              >
+                {serviceRows.length} active
               </span>
             </button>
             <button
               type="button"
-              onClick={onOpenServices}
-              className="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-label-md text-label-md transition-all whitespace-nowrap"
+              onClick={() => setActiveTab('categories')}
+              className={`flex items-center gap-space-xs px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'categories'
+                  ? 'bg-primary-container text-on-primary-container'
+                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+              }`}
             >
               <Icon name="category" className="text-[18px]" />
               <span>Categories</span>
-              <span className="px-space-xs py-space-2xs rounded-full bg-surface-container text-text-secondary font-caption text-caption font-bold">
-                6
+              <span
+                className={`px-space-xs py-space-2xs rounded-full font-caption text-caption font-bold ${
+                  activeTab === 'categories'
+                    ? 'bg-surface-canvas/20 text-on-primary'
+                    : 'bg-surface-container text-text-secondary'
+                }`}
+              >
+                {centralCategories.length} categories
               </span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenBranchPricing}
-              className="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-label-md text-label-md transition-all whitespace-nowrap"
-            >
-              <Icon name="price_change" className="text-[18px]" />
-              <span>Pricing Matrix</span>
             </button>
           </div>
           <div className="flex items-center gap-space-xs px-space-xs">
@@ -440,7 +977,8 @@ export function DesktopBusinessCatalogHubScreen({
             </div>
             <button
               type="button"
-              className="flex items-center gap-space-2xs px-space-sm py-space-xs rounded-lg text-text-secondary hover:bg-surface-container hover:text-on-surface font-label-sm text-label-sm transition-colors"
+              onClick={handleExportCSV}
+              className="flex items-center gap-space-2xs px-space-sm py-space-xs rounded-lg text-text-secondary hover:bg-surface-container hover:text-on-surface font-label-sm text-label-sm transition-colors active:scale-95"
             >
               <Icon name="file_download" className="text-[18px]" />
               <span>Export CSV</span>
@@ -448,8 +986,173 @@ export function DesktopBusinessCatalogHubScreen({
           </div>
         </div>
 
-        {/* Filter & Search Console */}
-        <div className="flex flex-col gap-space-sm bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
+        {activeTab === 'categories' ? (
+          <div className="flex flex-col gap-space-md">
+            {/* Category Search & Action Console */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
+              <div className="relative flex-1 max-w-md">
+                <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary text-[20px]" />
+                <input
+                  type="text"
+                  value={categorySearchQuery}
+                  onChange={(e) => setCategorySearchQuery(e.target.value)}
+                  placeholder="Filter categories by name, slug, or keywords..."
+                  className="w-full h-[44px] bg-surface-container-low rounded-xl pl-12 pr-4 text-on-surface font-body-md text-body-md placeholder-text-tertiary outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_2px_#066cf4] transition-all"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center bg-surface-container-low p-1 rounded-xl">
+                  {(['all', 'product', 'service'] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setCategoryTypeFilter(t)}
+                      className={`px-3 py-1.5 rounded-lg text-caption font-semibold transition-all capitalize ${
+                        categoryTypeFilter === t
+                          ? 'bg-surface-canvas text-primary shadow-xs'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {t === 'all'
+                        ? `All (${centralCategories.length})`
+                        : t === 'product'
+                        ? `Products (${centralCategories.filter((c) => c.type === 'product').length})`
+                        : `Services (${centralCategories.filter((c) => c.type === 'service').length})`}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleOpenAddCategory}
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-body-sm shadow-sm flex items-center gap-1.5 transition-colors"
+                >
+                  <Icon name="add" className="text-[18px]" />
+                  <span>Create Category</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Central Categories Table */}
+            <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden border border-border-subtle">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border-subtle bg-surface-subtle/50 text-[11px] font-bold text-text-tertiary uppercase tracking-wider">
+                      <th className="py-3.5 px-4">Category &amp; Identification</th>
+                      <th className="py-3.5 px-4">Classification</th>
+                      <th className="py-3.5 px-4">Description</th>
+                      <th className="py-3.5 px-4">Linked Items</th>
+                      <th className="py-3.5 px-4">QR Destination</th>
+                      <th className="py-3.5 px-4">Scan &amp; Orders</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle text-body-sm">
+                    {filteredCategories.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-text-tertiary">
+                          No categories found matching your query.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredCategories.map((cat) => (
+                        <tr key={cat.id} className="hover:bg-surface-subtle/40 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                                <Icon name={cat.icon || 'restaurant'} className="text-[20px]" />
+                              </div>
+                              <div>
+                                <span className="font-bold text-text-primary block">{cat.name}</span>
+                                <span className="text-[11px] font-mono text-text-tertiary">{cat.slug}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-caption font-semibold ${
+                                cat.type === 'product'
+                                  ? 'bg-surface-tint-blue text-primary'
+                                  : 'bg-badge-discount-bg text-badge-discount-text'
+                              }`}
+                            >
+                              {cat.type === 'product' ? 'Product Category' : 'Service Category'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <p className="text-text-secondary line-clamp-2 max-w-xs text-caption">
+                              {cat.description || 'No description provided.'}
+                            </p>
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span className="font-semibold text-text-primary">
+                              {cat.productCount} {cat.type === 'product' ? 'products' : 'services'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <code className="text-[11px] font-mono bg-surface-subtle px-2 py-1 rounded text-text-secondary truncate max-w-[160px]">
+                                {cat.qrDestinationUrl}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (typeof window !== 'undefined') {
+                                    navigator.clipboard?.writeText(window.location.origin + cat.qrDestinationUrl);
+                                  }
+                                  setToastMessage(`QR Destination URL for ${cat.name} copied.`);
+                                }}
+                                title="Copy URL"
+                                className="p-1 rounded hover:bg-surface-subtle text-text-tertiary hover:text-text-primary"
+                              >
+                                <Icon name="content_copy" className="text-[15px]" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <div className="flex flex-col text-[12px]">
+                              <span className="font-medium text-text-primary">
+                                {cat.stats?.scans || 0} scans • {cat.stats?.ordersCount || 0} orders
+                              </span>
+                              <span className="text-[11px] text-badge-discount-text font-semibold">
+                                ₦{(cat.stats?.totalRevenue || 0).toLocaleString()} GMV
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditCategory(cat)}
+                                title="Edit Category"
+                                className="p-1.5 rounded-lg border border-border hover:bg-surface-subtle text-text-secondary hover:text-primary transition-colors"
+                              >
+                                <Icon name="edit" className="text-[16px]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleArchiveCategory(cat.id, cat.name)}
+                                title="Archive Category"
+                                className="p-1.5 rounded-lg border border-border hover:bg-error-container/20 text-text-secondary hover:text-error transition-colors"
+                              >
+                                <Icon name="archive" className="text-[16px]" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Filter & Search Console */}
+            <div className="flex flex-col gap-space-sm bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
           <div className="relative w-full">
             <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary text-[20px]" />
             <input
@@ -507,120 +1210,370 @@ export function DesktopBusinessCatalogHubScreen({
           </div>
         </div>
 
-        {/* Data Table Container */}
+        {/* Data Table / Grid Container */}
         <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-surface-container-low text-text-secondary font-label-sm text-label-sm">
-                  <th className="py-space-sm px-space-md w-12 text-center" scope="col">
-                    <input
-                      aria-label="Select all products"
-                      checked={selected.length === ROWS.length}
-                      className="rounded text-primary cursor-pointer"
-                      onChange={toggleAll}
-                      type="checkbox"
-                    />
-                  </th>
-                  <th className="py-space-sm px-space-md font-semibold text-on-surface-variant min-w-[280px]" scope="col">
-                    Product & SKU
-                  </th>
-                  <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
-                    Category
-                  </th>
-                  <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
-                    Base Price & Deals
-                  </th>
-                  <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
-                    Branch Scope
-                  </th>
-                  <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
-                    Inventory Status
-                  </th>
-                  <th className="py-space-sm px-space-md font-semibold text-on-surface-variant text-center" scope="col">
-                    Terminal Sync
-                  </th>
-                  <th className="py-space-sm px-space-md font-semibold text-on-surface-variant text-right" scope="col">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-container-low text-on-surface font-body-md text-body-md">
-                {visibleRows.map((row) => {
-                  const syncOn = sync[row.id];
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`hover:bg-surface-subtle transition-colors group ${row.dimmed ? 'opacity-80' : ''}`}
-                    >
-                      <td className="py-space-md px-space-md text-center">
-                        <input
-                          aria-label={`Select ${row.name}`}
-                          checked={selected.includes(row.id)}
-                          className="rounded text-primary cursor-pointer"
-                          onChange={() => toggleRow(row.id)}
-                          type="checkbox"
-                        />
-                      </td>
-                      <td className="py-space-md px-space-md">
-                        <div className="flex items-center gap-space-md">
-                          <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                            <img
-                              alt={row.alt}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              src={row.image}
-                            />
-                            {row.kitchenLabel && (
-                              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-0.5 text-center">
-                                <span className="font-caption text-[9px] text-white font-bold uppercase tracking-wider">
-                                  Kitchen
+          {visibleRows.length === 0 ? (
+            <div className="p-space-xl text-center flex flex-col items-center justify-center py-16">
+              <div className="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center text-text-secondary mb-space-sm">
+                <Icon name="search_off" className="text-[32px]" />
+              </div>
+              <h3 className="font-heading-sm font-bold text-on-surface">No {activeTab} match your criteria</h3>
+              <p className="font-body-md text-text-secondary mt-1 max-w-sm">
+                Try clearing your search query or switching active filter chips to see more {activeTab}.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setChip('all');
+                  setQuery('');
+                }}
+                className="mt-space-md inline-flex items-center gap-space-2xs text-primary font-semibold text-label-md hover:underline"
+              >
+                <Icon name="refresh" className="text-[18px]" />
+                <span>Reset all filters</span>
+              </button>
+            </div>
+          ) : view === 'list' ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-surface-container-low text-text-secondary font-label-sm text-label-sm">
+                    <th className="py-space-sm px-space-md w-12 text-center" scope="col">
+                      <input
+                        aria-label={`Select all ${activeTab}`}
+                        checked={selected.length === currentDataset.length && currentDataset.length > 0}
+                        className="rounded text-primary cursor-pointer"
+                        onChange={toggleAll}
+                        type="checkbox"
+                      />
+                    </th>
+                    <th className="py-space-sm px-space-md font-semibold text-on-surface-variant min-w-[280px]" scope="col">
+                      {activeTab === 'products' ? 'Product & SKU' : 'Service & SKU'}
+                    </th>
+                    <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
+                      Category
+                    </th>
+                    <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
+                      Base Price & Deals
+                    </th>
+                    <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
+                      Branch Scope
+                    </th>
+                    <th className="py-space-sm px-space-md font-semibold text-on-surface-variant" scope="col">
+                      {activeTab === 'products' ? 'Inventory Status' : 'Duration & Availability'}
+                    </th>
+                    <th className="py-space-sm px-space-md font-semibold text-on-surface-variant text-center" scope="col">
+                      Terminal Sync
+                    </th>
+                    <th className="py-space-sm px-space-md font-semibold text-on-surface-variant text-right" scope="col">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-container-low text-on-surface font-body-md text-body-md">
+                  {visibleRows.map((row) => {
+                    const syncOn = sync[row.id];
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`hover:bg-surface-subtle transition-colors group ${row.dimmed ? 'opacity-80' : ''}`}
+                      >
+                        <td className="py-space-md px-space-md text-center">
+                          <input
+                            aria-label={`Select ${row.name}`}
+                            checked={selected.includes(row.id)}
+                            className="rounded text-primary cursor-pointer"
+                            onChange={() => toggleRow(row.id)}
+                            type="checkbox"
+                          />
+                        </td>
+                        <td className="py-space-md px-space-md">
+                          <div className="flex items-center gap-space-md">
+                            <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-container">
+                              <img
+                                alt={row.alt}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                src={row.image}
+                              />
+                              {row.kitchenLabel && (
+                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-0.5 text-center">
+                                  <span className="font-caption text-[9px] text-white font-bold uppercase tracking-wider">
+                                    Kitchen
+                                  </span>
+                                </div>
+                              )}
+                              {row.hidden && (
+                                <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                                  <Icon name="visibility_off" className="text-white text-[18px]" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-space-2xs">
+                                <a
+                                  className="font-label-md text-label-md font-bold text-on-surface hover:text-primary transition-colors truncate"
+                                  href="#"
+                                >
+                                  {row.name}
+                                </a>
+                                {row.verified && (
+                                  <span title="Best Seller">
+                                    <Icon name="verified" className="text-badge-discount-text text-[16px]" />
+                                  </span>
+                                )}
+                                {row.draft && (
+                                  <span className="px-space-2xs py-0.5 rounded bg-surface-container text-text-secondary font-caption text-[11px] font-semibold uppercase">
+                                    Draft
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-space-xs mt-space-2xs font-caption text-caption text-text-secondary">
+                                <span className="font-mono bg-surface-container px-space-2xs rounded">{row.sku}</span>
+                                <span>•</span>
+                                <span>{row.sub}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-space-md px-space-md">
+                          <span className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-md bg-surface-container text-on-surface-variant font-label-sm text-label-sm">
+                            <Icon name={row.categoryIcon} className="text-[14px]" />
+                            <span>{row.category}</span>
+                          </span>
+                        </td>
+                        <td className="py-space-md px-space-md">
+                          <div>
+                            <div className="flex items-center gap-space-xs">
+                              <span
+                                className={`font-label-md text-label-md font-bold ${
+                                  row.dealBadge ? 'text-primary' : 'text-on-surface'
+                                }`}
+                              >
+                                {row.price}
+                              </span>
+                              {row.was && (
+                                <span className="font-caption text-caption text-text-tertiary line-through">{row.was}</span>
+                              )}
+                              {row.priceChip && (
+                                <span className="px-space-2xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
+                                  {row.priceChip}
                                 </span>
+                              )}
+                            </div>
+                            {row.dealBadge && (
+                              <div className="inline-flex items-center gap-space-2xs mt-space-2xs px-space-xs py-space-2xs rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                                <Icon name="loyalty" className="text-[12px]" />
+                                <span>{row.dealBadge}</span>
                               </div>
                             )}
-                            {row.hidden && (
-                              <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                                <Icon name="visibility_off" className="text-white text-[18px]" />
-                              </div>
+                            {row.priceNote && (
+                              <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
+                                {row.priceNote}
+                              </span>
+                            )}
+                            {row.priceSubNote && (
+                              <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
+                                {row.priceSubNote}
+                              </span>
                             )}
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-space-2xs">
-                              <a
-                                className="font-label-md text-label-md font-bold text-on-surface hover:text-primary transition-colors truncate"
-                                href="#"
+                        </td>
+                        <td className="py-space-md px-space-md">
+                          <div>
+                            <div
+                              className={`flex items-center gap-space-2xs font-label-sm text-label-sm font-semibold ${
+                                row.branchDot === 'tertiary' ? 'text-text-secondary' : 'text-on-surface'
+                              }`}
+                            >
+                              <span className={`w-2 h-2 rounded-full ${BRANCH_DOT[row.branchDot]}`} />
+                              <span>{row.branchLabel}</span>
+                            </div>
+                            <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
+                              {row.branchNote}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-space-md px-space-md">
+                          <div>
+                            <div className="flex items-center gap-space-xs">
+                              <span
+                                className={`inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full font-caption text-caption font-semibold ${
+                                  row.stock.tone === 'ok'
+                                    ? 'bg-badge-discount-bg text-badge-discount-text'
+                                    : row.stock.tone === 'error'
+                                      ? 'bg-error-container text-on-error-container'
+                                      : 'bg-surface-container text-text-secondary'
+                                }`}
                               >
-                                {row.name}
-                              </a>
-                              {row.verified && (
-                                <span title="Best Seller">
-                                  <Icon name="verified" className="text-badge-discount-text text-[16px]" />
-                                </span>
-                              )}
-                              {row.draft && (
-                                <span className="px-space-2xs py-0.5 rounded bg-surface-container text-text-secondary font-caption text-[11px] font-semibold uppercase">
-                                  Draft
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    row.stock.tone === 'ok'
+                                      ? 'bg-badge-discount-text'
+                                      : row.stock.tone === 'error'
+                                        ? 'bg-error'
+                                        : 'bg-text-tertiary'
+                                  }`}
+                                />
+                                {row.stock.label}
+                              </span>
+                              {row.stock.units && (
+                                <span
+                                  className={`font-label-sm text-label-sm font-bold ${
+                                    row.stock.unitsTone === 'error' ? 'text-error' : 'text-on-surface'
+                                  }`}
+                                >
+                                  {row.stock.units}
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-space-xs mt-space-2xs font-caption text-caption text-text-secondary">
-                              <span className="font-mono bg-surface-container px-space-2xs rounded">{row.sku}</span>
-                              <span>•</span>
-                              <span>{row.sub}</span>
-                            </div>
+                            {row.stock.bar !== undefined && (
+                              <div className="w-28 bg-surface-container rounded-full h-1.5 mt-space-xs overflow-hidden">
+                                <div
+                                  className={`h-1.5 rounded-full ${row.stock.barTone === 'error' ? 'bg-error' : 'bg-badge-discount-text'}`}
+                                  style={{ width: `${row.stock.bar}%` }}
+                                />
+                              </div>
+                            )}
+                            {row.stock.note && (
+                              <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
+                                {row.stock.note}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-space-md px-space-md text-center">
+                          <button
+                            aria-checked={syncOn}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer p-0.5 transition-colors focus:outline-none rounded-full ${
+                              syncOn ? 'bg-primary-container' : 'bg-surface-container-highest'
+                            }`}
+                            onClick={() => setSync((prev) => ({ ...prev, [row.id]: !prev[row.id] }))}
+                            role="switch"
+                            type="button"
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface-canvas shadow ring-0 transition duration-200 ${
+                                syncOn ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </td>
+                        <td className="py-space-md px-space-md text-right">
+                          <div className="flex items-center justify-end gap-space-2xs">
+                            <button
+                              type="button"
+                              title="Edit Item"
+                              className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
+                            >
+                              <Icon name="edit" className="text-[20px]" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Branch Pricing Matrix"
+                              onClick={onOpenBranchPricing}
+                              className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
+                            >
+                              <Icon name="tune" className="text-[20px]" />
+                            </button>
+                            <button
+                              type="button"
+                              title="More Options"
+                              className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors"
+                            >
+                              <Icon name="more_vert" className="text-[20px]" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* Grid View */
+            <div className="p-space-lg grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-space-lg">
+              {visibleRows.map((row) => {
+                const syncOn = sync[row.id];
+                return (
+                  <div
+                    key={row.id}
+                    className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm border border-outline-variant/30 hover:border-primary/50 hover:shadow-md transition-all flex flex-col justify-between group relative"
+                  >
+                    <div>
+                      {/* Media Card Thumbnail */}
+                      <div className="relative w-full h-44 rounded-lg overflow-hidden bg-surface-container mb-space-sm">
+                        <img
+                          alt={row.alt}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          src={row.image}
+                        />
+                        {/* Overlay Controls */}
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10">
+                          <input
+                            aria-label={`Select ${row.name}`}
+                            checked={selected.includes(row.id)}
+                            className="rounded text-primary cursor-pointer w-4 h-4 bg-surface-canvas/90 shadow-sm"
+                            onChange={() => toggleRow(row.id)}
+                            type="checkbox"
+                          />
+                          {row.verified && (
+                            <span className="bg-surface-canvas/95 px-2 py-0.5 rounded text-[11px] font-bold text-badge-discount-text flex items-center gap-1 shadow-sm backdrop-blur-xs">
+                              <Icon name="verified" className="text-[13px]" />
+                              Best Seller
+                            </span>
+                          )}
+                          {row.draft && (
+                            <span className="px-2 py-0.5 rounded bg-surface-container/95 text-text-secondary font-caption text-[11px] font-semibold uppercase shadow-sm">
+                              Draft
+                            </span>
+                          )}
+                        </div>
+                        <div className="absolute top-2 right-2 z-10">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-surface-canvas/95 text-on-surface font-label-sm text-label-sm font-semibold shadow-sm backdrop-blur-xs">
+                            <Icon name={row.categoryIcon} className="text-[14px] text-primary" />
+                            <span>{row.category}</span>
+                          </span>
+                        </div>
+                        {row.kitchenLabel && (
+                          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 text-center">
+                            <span className="font-caption text-[10px] text-white font-bold uppercase tracking-wider">
+                              Kitchen Expedited
+                            </span>
+                          </div>
+                        )}
+                        {row.hidden && (
+                          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                            <span className="px-2 py-1 rounded bg-black/60 text-white font-caption text-[11px] font-semibold flex items-center gap-1">
+                              <Icon name="visibility_off" className="text-[14px]" />
+                              Hidden
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Title & Metadata */}
+                      <div className="flex items-start justify-between gap-space-sm">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-label-lg text-label-lg font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                            {row.name}
+                          </h3>
+                          <div className="flex items-center gap-space-xs mt-1 font-caption text-caption text-text-secondary">
+                            <span className="font-mono bg-surface-container px-1.5 py-0.5 rounded text-[11px] font-semibold">
+                              {row.sku}
+                            </span>
+                            <span>•</span>
+                            <span className="truncate">{row.sub}</span>
                           </div>
                         </div>
-                      </td>
-                      <td className="py-space-md px-space-md">
-                        <span className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-md bg-surface-container text-on-surface-variant font-label-sm text-label-sm">
-                          <Icon name={row.categoryIcon} className="text-[14px]" />
-                          <span>{row.category}</span>
-                        </span>
-                      </td>
-                      <td className="py-space-md px-space-md">
+                      </div>
+
+                      {/* Pricing Row */}
+                      <div className="mt-space-sm pt-space-xs border-t border-surface-container-low flex items-center justify-between">
                         <div>
                           <div className="flex items-center gap-space-xs">
                             <span
-                              className={`font-label-md text-label-md font-bold ${
+                              className={`font-heading-sm text-heading-sm font-bold ${
                                 row.dealBadge ? 'text-primary' : 'text-on-surface'
                               }`}
                             >
@@ -630,96 +1583,83 @@ export function DesktopBusinessCatalogHubScreen({
                               <span className="font-caption text-caption text-text-tertiary line-through">{row.was}</span>
                             )}
                             {row.priceChip && (
-                              <span className="px-space-2xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
+                              <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
                                 {row.priceChip}
                               </span>
                             )}
                           </div>
                           {row.dealBadge && (
-                            <div className="inline-flex items-center gap-space-2xs mt-space-2xs px-space-xs py-space-2xs rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                            <div className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
                               <Icon name="loyalty" className="text-[12px]" />
                               <span>{row.dealBadge}</span>
                             </div>
                           )}
-                          {row.priceNote && (
-                            <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
-                              {row.priceNote}
-                            </span>
-                          )}
-                          {row.priceSubNote && (
-                            <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
-                              {row.priceSubNote}
-                            </span>
-                          )}
                         </div>
-                      </td>
-                      <td className="py-space-md px-space-md">
-                        <div>
+
+                        {/* Branch badge */}
+                        <div className="text-right">
                           <div
-                            className={`flex items-center gap-space-2xs font-label-sm text-label-sm font-semibold ${
+                            className={`flex items-center justify-end gap-1.5 font-label-sm text-label-sm font-semibold ${
                               row.branchDot === 'tertiary' ? 'text-text-secondary' : 'text-on-surface'
                             }`}
                           >
                             <span className={`w-2 h-2 rounded-full ${BRANCH_DOT[row.branchDot]}`} />
-                            <span>{row.branchLabel}</span>
+                            <span className="text-[12px]">{row.branchLabel}</span>
                           </div>
-                          <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
+                          <span className="font-caption text-[11px] text-text-secondary block mt-0.5">
                             {row.branchNote}
                           </span>
                         </div>
-                      </td>
-                      <td className="py-space-md px-space-md">
-                        <div>
-                          <div className="flex items-center gap-space-xs">
+                      </div>
+
+                      {/* Stock / Duration Section */}
+                      <div className="mt-space-sm bg-surface-container-low p-space-xs rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-space-xs">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-caption text-[11px] font-semibold ${
+                              row.stock.tone === 'ok'
+                                ? 'bg-badge-discount-bg text-badge-discount-text'
+                                : row.stock.tone === 'error'
+                                  ? 'bg-error-container text-on-error-container'
+                                  : 'bg-surface-container text-text-secondary'
+                            }`}
+                          >
                             <span
-                              className={`inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full font-caption text-caption font-semibold ${
+                              className={`w-1.5 h-1.5 rounded-full ${
                                 row.stock.tone === 'ok'
-                                  ? 'bg-badge-discount-bg text-badge-discount-text'
+                                  ? 'bg-badge-discount-text'
                                   : row.stock.tone === 'error'
-                                    ? 'bg-error-container text-on-error-container'
-                                    : 'bg-surface-container text-text-secondary'
+                                    ? 'bg-error'
+                                    : 'bg-text-tertiary'
+                              }`}
+                            />
+                            {row.stock.label}
+                          </span>
+                          {row.stock.units && (
+                            <span
+                              className={`font-label-sm text-label-sm font-bold ${
+                                row.stock.unitsTone === 'error' ? 'text-error' : 'text-on-surface'
                               }`}
                             >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  row.stock.tone === 'ok'
-                                    ? 'bg-badge-discount-text'
-                                    : row.stock.tone === 'error'
-                                      ? 'bg-error'
-                                      : 'bg-text-tertiary'
-                                }`}
-                              />
-                              {row.stock.label}
-                            </span>
-                            {row.stock.units && (
-                              <span
-                                className={`font-label-sm text-label-sm font-bold ${
-                                  row.stock.unitsTone === 'error' ? 'text-error' : 'text-on-surface'
-                                }`}
-                              >
-                                {row.stock.units}
-                              </span>
-                            )}
-                          </div>
-                          {row.stock.bar !== undefined && (
-                            <div className="w-28 bg-surface-container rounded-full h-1.5 mt-space-xs overflow-hidden">
-                              <div
-                                className={`h-1.5 rounded-full ${row.stock.barTone === 'error' ? 'bg-error' : 'bg-badge-discount-text'}`}
-                                style={{ width: `${row.stock.bar}%` }}
-                              />
-                            </div>
-                          )}
-                          {row.stock.note && (
-                            <span className="font-caption text-caption text-text-secondary block mt-space-2xs">
-                              {row.stock.note}
+                              {row.stock.units}
                             </span>
                           )}
                         </div>
-                      </td>
-                      <td className="py-space-md px-space-md text-center">
+                        {row.stock.note && (
+                          <span className="font-caption text-[11px] text-text-secondary">
+                            {row.stock.note}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card Actions Bottom Strip */}
+                    <div className="mt-space-md pt-space-xs border-t border-surface-container-low flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-caption text-[11px] text-text-secondary font-medium">POS Sync</span>
                         <button
                           aria-checked={syncOn}
-                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer p-0.5 transition-colors focus:outline-none rounded-full ${
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer p-0.5 transition-colors focus:outline-none rounded-full ${
                             syncOn ? 'bg-primary-container' : 'bg-surface-container-highest'
                           }`}
                           onClick={() => setSync((prev) => ({ ...prev, [row.id]: !prev[row.id] }))}
@@ -727,51 +1667,50 @@ export function DesktopBusinessCatalogHubScreen({
                           type="button"
                         >
                           <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface-canvas shadow ring-0 transition duration-200 ${
-                              syncOn ? 'translate-x-5' : 'translate-x-0'
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-surface-canvas shadow ring-0 transition duration-200 ${
+                              syncOn ? 'translate-x-4' : 'translate-x-0'
                             }`}
                           />
                         </button>
-                      </td>
-                      <td className="py-space-md px-space-md text-right">
-                        <div className="flex items-center justify-end gap-space-2xs">
-                          <button
-                            type="button"
-                            title="Edit Item"
-                            className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
-                          >
-                            <Icon name="edit" className="text-[20px]" />
-                          </button>
-                          <button
-                            type="button"
-                            title="Branch Pricing Matrix"
-                            onClick={onOpenBranchPricing}
-                            className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
-                          >
-                            <Icon name="tune" className="text-[20px]" />
-                          </button>
-                          <button
-                            type="button"
-                            title="More Options"
-                            className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors"
-                          >
-                            <Icon name="more_vert" className="text-[20px]" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          title="Edit Item"
+                          className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
+                        >
+                          <Icon name="edit" className="text-[18px]" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Branch Pricing Matrix"
+                          onClick={onOpenBranchPricing}
+                          className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
+                        >
+                          <Icon name="tune" className="text-[18px]" />
+                        </button>
+                        <button
+                          type="button"
+                          title="More Options"
+                          className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors"
+                        >
+                          <Icon name="more_vert" className="text-[18px]" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Pagination and Batch Controls Footer Strip */}
           <div className="p-space-md bg-surface-container-low flex flex-col md:flex-row items-center justify-between gap-space-md">
             <div className="flex items-center gap-space-md text-text-secondary font-caption text-caption">
               <span>
                 Showing <strong className="text-on-surface">1–{visibleRows.length}</strong> of{' '}
-                <strong className="text-on-surface">28</strong> products
+                <strong className="text-on-surface">{currentDataset.length}</strong> {activeTab}
               </span>
               <div className="h-4 w-px bg-outline-variant" />
               <div className="flex items-center gap-space-xs">
@@ -816,6 +1755,8 @@ export function DesktopBusinessCatalogHubScreen({
             </div>
           </div>
         </div>
+        </>
+        )}
 
         {/* Bottom Intelligent Rules & Automation Callout Strip */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
@@ -863,6 +1804,153 @@ export function DesktopBusinessCatalogHubScreen({
             </div>
           </div>
         </div>
+
+        {/* Category Add/Edit Modal */}
+        {categoryModal && (
+          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+              onClick={() => setCategoryModal(null)}
+            />
+            <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center">
+                    <Icon name={categoryModal.mode === 'add' ? 'create_new_folder' : 'edit'} className="text-[20px]" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                      {categoryModal.mode === 'add' ? 'Create Central Category' : 'Edit Category'}
+                    </h3>
+                    <p className="text-[12px] text-text-secondary">
+                      Central single source of truth for POS, Storefront &amp; QR
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCategoryModal(null)}
+                  className="p-1.5 rounded-lg text-text-tertiary hover:bg-surface-subtle"
+                >
+                  <Icon name="close" className="text-[18px]" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveCategory} className="mt-space-md space-y-space-md">
+                <div className="space-y-1">
+                  <label className="text-caption font-semibold text-text-primary">Category Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={catFormName}
+                    onChange={(e) => setCatFormName(e.target.value)}
+                    placeholder="e.g. Woodfire Steaks &amp; Grills"
+                    className="w-full px-3 py-2.5 rounded-xl bg-surface-subtle border border-border text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-caption font-semibold text-text-primary">Classification</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCatFormType('product')}
+                      className={`py-2 px-3 rounded-xl border text-caption font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                        catFormType === 'product'
+                          ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20'
+                          : 'border-border bg-surface-subtle text-text-secondary'
+                      }`}
+                    >
+                      <Icon name="inventory_2" className="text-[16px]" />
+                      <span>Product Category</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCatFormType('service')}
+                      className={`py-2 px-3 rounded-xl border text-caption font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                        catFormType === 'service'
+                          ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20'
+                          : 'border-border bg-surface-subtle text-text-secondary'
+                      }`}
+                    >
+                      <Icon name="spa" className="text-[16px]" />
+                      <span>Service Category</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-caption font-semibold text-text-primary">Description</label>
+                  <textarea
+                    rows={2}
+                    value={catFormDesc}
+                    onChange={(e) => setCatFormDesc(e.target.value)}
+                    placeholder="Public description shown to customers on Storefront menu"
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-sm text-text-primary focus:outline-hidden focus:border-primary"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-caption font-semibold text-text-primary">Material Icon</label>
+                  <div className="grid grid-cols-6 gap-2">
+                    {[
+                      'outdoor_grill',
+                      'lunch_dining',
+                      'local_pizza',
+                      'tapas',
+                      'local_bar',
+                      'cake',
+                      'table_restaurant',
+                      'room_service',
+                      'spa',
+                      'content_cut',
+                      'brush',
+                      'set_meal',
+                    ].map((iconName) => (
+                      <button
+                        key={iconName}
+                        type="button"
+                        onClick={() => setCatFormIcon(iconName)}
+                        className={`p-2 rounded-xl border flex items-center justify-center transition-all ${
+                          catFormIcon === iconName
+                            ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20'
+                            : 'border-border bg-surface-subtle text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        <Icon name={iconName} className="text-[20px]" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryModal(null)}
+                    className="px-4 py-2 rounded-xl border border-border text-text-secondary hover:bg-surface-subtle text-label-md"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-label-md shadow-sm"
+                  >
+                    {categoryModal.mode === 'add' ? 'Create Category' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Toast Notification Alert */}
+        {toastMessage && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-space-sm bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-xl border border-outline-variant animate-in fade-in slide-in-from-bottom-3 duration-200">
+            <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
+            <span className="font-label-md text-label-md font-semibold">{toastMessage}</span>
+          </div>
+        )}
       </div>
     </MerchantShell>
   );

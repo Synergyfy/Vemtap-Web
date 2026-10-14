@@ -96,7 +96,7 @@ export function DesktopBusinessLocationsHubScreen({
   onOpenBranch,
 }: DesktopBusinessLocationsHubScreenProps) {
   return (
-    <MerchantShell activeNav="catalog" onNav={onNav}>
+    <MerchantShell activeNav="business-locations" onNav={onNav}>
       <div className="flex flex-col gap-space-2xs mb-space-lg">
         <div className="flex items-center gap-space-2xs text-text-secondary font-label-sm text-label-sm">
           <button

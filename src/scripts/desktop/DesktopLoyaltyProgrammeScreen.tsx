@@ -75,7 +75,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
   };
 
   return (
-    <EnterpriseShell activeNav="deals" onNav={onNav}>
+    <EnterpriseShell activeNav="business-loyalty" onNav={onNav}>
       <section className="w-full bg-surface-canvas shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-space-xl pb-space-lg">
         <div className="flex flex-col gap-space-md">
           <div className="flex flex-wrap items-center justify-between gap-space-sm">

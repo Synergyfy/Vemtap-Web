@@ -125,6 +125,7 @@ import { MerchantDealsScreen } from './scripts/MerchantDealsScreen';
 import { ProductsCatalogueScreen } from './scripts/ProductsCatalogueScreen';
 import { MenuProductsScreen } from './scripts/MenuProductsScreen';
 import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
+import { BusinessAccountChoiceScreen } from './scripts/BusinessAccountChoiceScreen';
 import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
 import { BusinessVerificationScreen } from './scripts/BusinessVerificationScreen';
 import { VerificationStatusCenterScreen } from './scripts/VerificationStatusCenterScreen';
@@ -240,6 +241,7 @@ import { DesktopMyDealsScreen } from './scripts/desktop/DesktopMyDealsScreen';
 import { DesktopMessagesScreen } from './scripts/desktop/DesktopMessagesScreen';
 import { DesktopCartScreen } from './scripts/desktop/DesktopCartScreen';
 import { DesktopAccountSettingsScreen } from './scripts/desktop/DesktopAccountSettingsScreen';
+import { DesktopBusinessAccountChoiceScreen } from './scripts/desktop/DesktopBusinessAccountChoiceScreen';
 import { DesktopBusinessOnboardingScreen } from './scripts/desktop/DesktopBusinessOnboardingScreen';
 import { DesktopBusinessVerificationScreen } from './scripts/desktop/DesktopBusinessVerificationScreen';
 import { DesktopVerificationStatusCenterScreen } from './scripts/desktop/DesktopVerificationStatusCenterScreen';
@@ -304,7 +306,12 @@ import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGen
 import { DesktopPosPermissionsScreen } from './scripts/desktop/DesktopPosPermissionsScreen';
 import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
 import { SEED_POS_TERMINAL_LINES, type PosTerminalLine } from './scripts/desktop/posTerminalData';
-import type { BusinessPortalNavKey } from './scripts/desktop/BusinessPortalChrome';
+import { StoreOrderingProvider } from './context/StoreOrderingContext';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { DesktopStoreOrderingDashboard } from './scripts/desktop/DesktopStoreOrderingDashboard';
+import { DesktopStoreOrderingQrScreen } from './scripts/desktop/DesktopStoreOrderingQrScreen';
+import { DesktopStoreOrderingSettingsScreen } from './scripts/desktop/DesktopStoreOrderingSettingsScreen';
+import { StoreOrderingScreen } from './scripts/StoreOrderingScreen';
 
 type Route =
   | 'welcome'
@@ -346,6 +353,7 @@ type Route =
   | 'subscription-ending'
   | 'subscription-expired'
   | 'business-orders'
+  | 'business-bookings'
   | 'business-pos-orders'
   | 'business-messages'
   | 'business-overview'
@@ -410,6 +418,9 @@ type Route =
   | 'public-pos-cart'
   | 'public-pos-tracking'
   | 'business-more'
+  | 'store-ordering-dashboard'
+  | 'store-ordering-qr'
+  | 'store-ordering-settings'
   | 'boost'
   | 'boost-hub'
   | 'boost-metrics'
@@ -503,6 +514,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'subscription-ending': '/subscription/trial-ending',
   'subscription-expired': '/subscription/expired',
   'business-orders': '/business/orders',
+  'business-bookings': '/business/orders/bookings',
   'business-pos-orders': '/business/orders/pos',
   'business-messages': '/business/messages',
   'business-overview': '/business/overview',
@@ -567,6 +579,9 @@ const ROUTE_PATH: Record<Route, string> = {
   'public-pos-cart': '/public/pos/cart',
   'public-pos-tracking': '/public/pos/tracking',
   'business-more': '/business/more',
+  'store-ordering-dashboard': '/business/store-ordering',
+  'store-ordering-qr': '/business/store-ordering/qr',
+  'store-ordering-settings': '/business/store-ordering/settings',
   boost: '/boost',
   'boost-hub': '/boost-hub',
   'boost-metrics': '/boost-metrics',
@@ -796,6 +811,8 @@ function AppInner() {
   const [serviceFrom, setServiceFrom] = useState<Route>('spa-services');
   const [bookingFrom, setBookingFrom] = useState<Route>('spa-profile');
   const [orderSummary, setOrderSummary] = useState<SubmittedOrder | null>(null);
+  const [businessSetupSkipIntro, setBusinessSetupSkipIntro] = useState(false);
+  const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
   const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
   const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
@@ -813,6 +830,7 @@ function AppInner() {
   const [posCustomer, setPosCustomer] = useState<string | null>(null);
   const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
+  const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
   const posTab = (key: PosTabKey) => {
     switch (key) {
@@ -842,11 +860,14 @@ function AppInner() {
 
   const posTerminalNav = (key: PosTerminalNavKey) => {
     switch (key) {
+      case 'home':
+        setRoute('pos-home');
+        break;
       case 'register':
         setRoute('pos-register');
         break;
       case 'orders':
-        setRoute('business-pos-orders');
+        setRoute('pos-order-lookup');
         break;
       case 'products':
         setRoute('pos-stock');
@@ -1109,6 +1130,9 @@ function AppInner() {
   };
 
   const accountNav = (target: AccountTarget) => {
+    if (target === 'business-onboarding') {
+      setBusinessOnboardingFrom('account');
+    }
     setRoute(target);
   };
 
@@ -1130,6 +1154,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
+        setBusinessOnboardingFrom(route);
         setRoute('business-onboarding');
         break;
       case 'sign-in':
@@ -1181,6 +1206,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
+        setBusinessOnboardingFrom(route);
         setRoute('business-onboarding');
         break;
     }
@@ -1204,6 +1230,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
+        setBusinessOnboardingFrom(route);
         setRoute('business-onboarding');
         break;
       case 'sign-in':
@@ -1253,6 +1280,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
+        setBusinessOnboardingFrom(route);
         setRoute('business-onboarding');
         break;
     }
@@ -1338,37 +1366,122 @@ function AppInner() {
     }
   };
 
-  const businessPortalNav = (key: BusinessPortalNavKey) => {
+  const businessPortalNav = (key: string) => {
     switch (key) {
+      // Legacy BusinessPortalNavKey aliases
       case 'overview':
         setRoute('business-overview');
         break;
       case 'orders':
+      case 'orders-all':
+        setRoute('business-orders');
+        break;
+      case 'bookings':
+      case 'orders-bookings':
+        setRoute('business-bookings');
+        break;
+      case 'orders-history':
         setRoute('business-orders');
         break;
       case 'messages':
+      case 'messages-all':
+      case 'messages-inquiries':
         setRoute('business-messages');
         break;
       case 'catalog':
+      case 'business-catalog':
         setRoute('hub-catalog');
         break;
       case 'deals':
+      case 'business-deals':
         setRoute('hub-deals');
         break;
       case 'locations':
+      case 'business-locations':
         setRoute('hub-locations');
         break;
       case 'customers':
+      case 'business-customers':
         setRoute('hub-customers');
         break;
+      case 'business-profile':
+        setRoute('hub-profile');
+        break;
+      case 'business-loyalty':
+        setRoute('hub-loyalty');
+        break;
+      case 'business-staff':
+        setRoute('hub-staff');
+        break;
       case 'analytics':
+      case 'more-analytics':
         setRoute('analytics-overview');
         break;
       case 'pos':
+        setPosActiveNav('pos-transactions');
+        setRoute('business-pos-orders');
+        break;
+      case 'pos-home':
+        setPosActiveNav('pos-home');
+        setRoute('business-pos-orders');
+        break;
+      case 'pos-sale':
+        // Intentionally launches the full POS terminal register (leaves business sidebar)
+        setRoute('pos-register');
+        break;
+      case 'pos-transactions':
+        setPosActiveNav('pos-transactions');
+        setRoute('business-pos-orders');
+        break;
+      case 'pos-sync':
+        setPosActiveNav('pos-sync');
         setRoute('business-pos-orders');
         break;
       case 'settings':
+      case 'more-settings':
         setRoute('hub-profile');
+        break;
+      // Store Ordering
+      case 'store-ordering':
+      case 'store-ordering-dashboard':
+        setRoute('store-ordering-dashboard');
+        break;
+      case 'store-ordering-qr':
+        setRoute('store-ordering-qr');
+        break;
+      case 'store-ordering-settings':
+        setRoute('store-ordering-settings');
+        break;
+      // More section
+      case 'more':
+        setRoute('business-more');
+        break;
+      case 'more-marketing':
+        setRoute('boost-hub');
+        break;
+      case 'more-subscription':
+        setRoute('subscription');
+        break;
+      case 'more-addons':
+        setRoute('business-add-ons');
+        break;
+      case 'more-notifications':
+        setRoute('business-overview');
+        break;
+      case 'more-verification':
+        setRoute('business-verification');
+        break;
+      case 'more-qr-nfc':
+        setRoute('store-ordering-qr');
+        break;
+      case 'more-payments':
+        setRoute('hub-profile');
+        break;
+      case 'more-support':
+        setRoute('support');
+        break;
+      case 'more-integrations':
+        setRoute('business-hub');
         break;
     }
   };
@@ -2158,7 +2271,7 @@ function AppInner() {
       );
 
     case 'storefront':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
+      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
       return (
         <MerchantDealsScreen
           onBack={() => setRoute(bizFrom)}
@@ -2219,7 +2332,7 @@ function AppInner() {
       );
 
     case 'business-profile':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} activeNav="discover" onClaim={openClaimPopup} />;
+      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} activeNav="discover" onClaim={openClaimPopup} onCheckout={startCheckout} />;
       return (
         <BusinessProfileScreen
           venue="urban"
@@ -2401,7 +2514,12 @@ function AppInner() {
       return (
         <DashboardScreen
           onTab={(tab) => setRoute(tab)}
-          onNavigate={(target) => setRoute(target)}
+          onNavigate={(target) => {
+            if (target === 'business-onboarding') {
+              setBusinessOnboardingFrom('dashboard');
+            }
+            setRoute(target);
+          }}
           onShowQR={() => {
             setClaimedFrom('dashboard');
             setRoute('claimed-deal');
@@ -2507,7 +2625,7 @@ function AppInner() {
       );
 
     case 'cart':
-      if (isDesktop) return <DesktopCartScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopCartScreen onNav={feedNav} onCheckout={startCheckout} />;
       return (
         <ConsumerCartScreen
           onBack={() => setRoute('dashboard')}
@@ -2798,20 +2916,78 @@ function AppInner() {
         />
       );
 
-    case 'business-onboarding':
-      if (isDesktop)
-        return (
-          <DesktopBusinessOnboardingScreen
-            onBack={() => setRoute('start-vemtap')}
-            onComplete={() => setRoute('business-verification')}
+    case 'business-onboarding': {
+      // A signed-in consumer starting business setup first chooses whether to
+      // reuse the existing (intact) consumer account or register a fresh,
+      // separate business identity. Reusing skips the marketing intro and
+      // lands directly on "Tell us about your business".
+      const showAccountChoice = authed && !businessSetupSkipIntro;
+      const leaveOnboarding = () => {
+        setBusinessSetupSkipIntro(false);
+        const destination = authed
+          ? (businessOnboardingFrom && businessOnboardingFrom !== 'business-onboarding'
+              ? businessOnboardingFrom
+              : (isDesktop ? 'dashboard' : 'account'))
+          : 'start-vemtap';
+        setRoute(destination);
+      };
+      const finishOnboarding = () => {
+        setBusinessSetupSkipIntro(false);
+        setRoute('business-verification');
+      };
+      const useNewAccount = () => {
+        // BUG-028: normal registration flow with a fresh Google / email
+        // identity — never silently linked to the existing consumer account.
+        setBusinessSetupSkipIntro(false);
+        setRoute('sign-in');
+      };
+
+      if (showAccountChoice) {
+        return isDesktop ? (
+          <DesktopBusinessAccountChoiceScreen
+            onBack={leaveOnboarding}
+            onContinueWithAccount={() => setBusinessSetupSkipIntro(true)}
+            onUseNewAccount={useNewAccount}
+          />
+        ) : (
+          <BusinessAccountChoiceScreen
+            onBack={leaveOnboarding}
+            onContinueWithAccount={() => setBusinessSetupSkipIntro(true)}
+            onUseNewAccount={useNewAccount}
           />
         );
+      }
+
       return (
-        <BusinessOnboardingScreen
-          onBack={() => setRoute('start-vemtap')}
-          onComplete={() => setRoute('business-verification')}
-        />
+        <>
+          {isDesktop ? (
+            <DesktopBusinessOnboardingScreen
+              initialStep={businessSetupSkipIntro ? 'basic' : 'intro'}
+              onBack={() => {
+                if (businessSetupSkipIntro) {
+                  setBusinessSetupSkipIntro(false);
+                } else {
+                  leaveOnboarding();
+                }
+              }}
+              onComplete={finishOnboarding}
+            />
+          ) : (
+            <BusinessOnboardingScreen
+              initialStep={businessSetupSkipIntro ? 'basic' : 'intro'}
+              onBack={() => {
+                if (businessSetupSkipIntro) {
+                  setBusinessSetupSkipIntro(false);
+                } else {
+                  leaveOnboarding();
+                }
+              }}
+              onComplete={finishOnboarding}
+            />
+          )}
+        </>
       );
+    }
 
     case 'business-verification':
       if (isDesktop)
@@ -3506,7 +3682,7 @@ function AppInner() {
       );
 
     case 'pos-display-receipt':
-      if (isDesktop) return <DesktopPosDisplayReceiptScreen onDone={() => setRoute('business-pos-orders')} />;
+      if (isDesktop) return <DesktopPosDisplayReceiptScreen onDone={() => setRoute('pos-order-lookup')} />;
       return (
         <div className="biz-flow">
           <BusinessPosDisplayReceiptScreen onBack={goBackToPrevious} onDone={() => setRoute('business-pos-orders')} />
@@ -3590,7 +3766,7 @@ function AppInner() {
             onCharge={() => setRoute('pos-payment')}
             onSplit={() => setRoute('pos-split-bill')}
             onOpenCustomer={() => setRoute('pos-customer')}
-            onOpenOrders={() => setRoute('business-pos-orders')}
+            onOpenOrders={() => setRoute('pos-order-lookup')}
           />
         );
       return (
@@ -3681,7 +3857,7 @@ function AppInner() {
               setPosCustomer(null);
               setRoute('pos-register');
             }}
-            onOpenOrders={() => setRoute('business-pos-orders')}
+            onOpenOrders={() => setRoute('pos-order-lookup')}
           />
         );
       return (
@@ -4047,6 +4223,15 @@ function AppInner() {
             onOpenVerification={() => setRoute('business-verification')}
             onOpenSupport={() => setRoute('support')}
             onSwitchConsumer={() => setRoute('home')}
+            onOpenStoreOrdering={(sub) =>
+              setRoute(
+                sub === 'qr'
+                  ? 'store-ordering-qr'
+                  : sub === 'settings'
+                  ? 'store-ordering-settings'
+                  : 'store-ordering-dashboard',
+              )
+            }
             onSignOut={() => {
               signOut();
               setRoute('welcome');
@@ -4064,6 +4249,15 @@ function AppInner() {
           onOpenVerification={() => setRoute('business-verification')}
           onOpenSupport={() => setRoute('support')}
           onSwitchConsumer={() => setRoute('home')}
+          onOpenStoreOrdering={(sub) =>
+            setRoute(
+              sub === 'qr'
+                ? 'store-ordering-qr'
+                : sub === 'settings'
+                ? 'store-ordering-settings'
+                : 'store-ordering-dashboard',
+            )
+          }
           onSignOut={() => {
             signOut();
             setRoute('welcome');
@@ -4081,8 +4275,18 @@ function AppInner() {
         />
       );
 
+    case 'business-bookings':
+      if (isDesktop) return <DesktopBusinessOrdersScreen onNav={businessPortalNav} initialView="bookings" />;
+      return (
+        <BusinessOrdersScreen
+          initialStep="bookings"
+          onTab={businessTab}
+          onOpenBooking={() => setRoute('booking-detail')}
+        />
+      );
+
     case 'business-pos-orders':
-      if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} />;
+      if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} activeNav={posActiveNav} />;
       return (
         <BusinessOrdersScreen
           initialStep="pos"
@@ -4096,12 +4300,50 @@ function AppInner() {
       if (isDesktop) return <DesktopBusinessMessagesWorkspaceScreen onNav={businessPortalNav} />;
       return <BusinessMessagesScreen initialStep="home" onTab={businessTab} />;
 
+    case 'store-ordering-dashboard':
+      if (isDesktop) return <DesktopStoreOrderingDashboard onNav={businessPortalNav} />;
+      return (
+        <StoreOrderingScreen
+          onTab={businessTab}
+          initialSubTab="dashboard"
+          onNavigateRoute={(r) => setRoute(r as Route)}
+        />
+      );
+
+    case 'store-ordering-qr':
+      if (isDesktop) return <DesktopStoreOrderingQrScreen onNav={businessPortalNav} />;
+      return (
+        <StoreOrderingScreen
+          onTab={businessTab}
+          initialSubTab="qr"
+          onNavigateRoute={(r) => setRoute(r as Route)}
+        />
+      );
+
+    case 'store-ordering-settings':
+      if (isDesktop) return <DesktopStoreOrderingSettingsScreen onNav={businessPortalNav} />;
+      return (
+        <StoreOrderingScreen
+          onTab={businessTab}
+          initialSubTab="settings"
+          onNavigateRoute={(r) => setRoute(r as Route)}
+        />
+      );
+      return (
+        <StoreOrderingScreen
+          onTab={businessTab}
+          initialSubTab="settings"
+          onNavigateRoute={(r) => setRoute(r as Route)}
+        />
+      );
+
       default:
         return null;
     }
   };
 
   return (
+    <StoreOrderingProvider>
     <>
       {renderRoute()}
 
@@ -4205,6 +4447,8 @@ function AppInner() {
           onEdit={() => setClaimDialog('other')}
         />
       )}
+      <PwaInstallPrompt />
     </>
+    </StoreOrderingProvider>
   );
 }

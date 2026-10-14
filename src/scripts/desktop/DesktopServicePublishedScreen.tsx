@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
+import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 
 interface DesktopServicePublishedScreenProps {
@@ -8,6 +10,7 @@ interface DesktopServicePublishedScreenProps {
   onMakeDeal: () => void;
   onViewCatalog: () => void;
   onAddAnother: () => void;
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const PUBLISHED_IMAGE =
@@ -65,7 +68,9 @@ export function DesktopServicePublishedScreen({
   onMakeDeal,
   onViewCatalog,
   onAddAnother,
+  onNav,
 }: DesktopServicePublishedScreenProps) {
+  const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [mode, setMode] = useState<'live' | 'draft'>('live');
   const [dealState, setDealState] = useState<'idle' | 'importing' | 'success'>('idle');
   const [copied, setCopied] = useState(false);
@@ -119,7 +124,7 @@ export function DesktopServicePublishedScreen({
         : 'text-badge-discount-text font-semibold';
 
   return (
-    <BusinessSetupChrome activeNav="catalog">
+    <Shell activeNav="catalog" onNav={onNav}>
       <div className="max-w-7xl mx-auto w-full px-margin py-space-xl flex flex-col gap-8">
         <div className="w-full bg-surface-container-low rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center gap-3">
@@ -456,6 +461,6 @@ export function DesktopServicePublishedScreen({
           </div>
         </div>
       </div>
-    </BusinessSetupChrome>
+    </Shell>
   );
 }

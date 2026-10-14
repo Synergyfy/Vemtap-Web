@@ -179,7 +179,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
   const [branchScope, setBranchScope] = useState<'all' | 'wuse'>('all');
 
   return (
-    <EnterpriseShell activeNav="catalog" onNav={onNav}>
+    <EnterpriseShell activeNav="business-loyalty" onNav={onNav}>
       <div className="w-full py-space-xl flex flex-col gap-space-xl">
         <div className="flex flex-col gap-space-md">
           <nav className="flex items-center gap-space-2xs text-text-tertiary font-label-sm text-label-sm">

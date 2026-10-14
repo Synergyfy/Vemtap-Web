@@ -413,7 +413,7 @@ export function DesktopBoostHubScreen({
   ];
 
   return (
-    <BusinessPortalChrome activeNav="overview" onNav={onNav}>
+    <BusinessPortalChrome activeNav="more-marketing" onNav={onNav}>
       <div className="w-full py-space-xl flex flex-col gap-space-lg">
         {/* Back link + Boost module tabs (desktop replacement for the mobile tab bar) */}
         <div className="flex flex-wrap items-center justify-between gap-space-sm">

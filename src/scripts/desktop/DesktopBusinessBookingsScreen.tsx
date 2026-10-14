@@ -132,7 +132,7 @@ export function DesktopBusinessBookingsScreen({ onNav, onOpenOrders }: DesktopBu
   });
 
   return (
-    <BusinessPortalChrome activeNav="orders" onNav={onNav}>
+    <BusinessPortalChrome activeNav="orders-bookings" onNav={onNav}>
       <div className="w-full bg-background">
         <div className="w-full py-space-xl space-y-space-lg">
           <div className="flex flex-wrap items-center justify-between gap-space-md">

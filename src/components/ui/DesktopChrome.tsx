@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { DesktopLocationRadiusModal } from '../DesktopLocationRadiusModal';
+import { PortalRail, RAIL_OFFSET, type RailGroup } from '../../scripts/desktop/PortalShell';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 
@@ -34,6 +35,8 @@ interface DesktopNavHeaderProps {
   active?: DesktopNavKey;
   onNav: (key: DesktopNavKey) => void;
   onOpenLocation?: () => void;
+  /** Shifts the header content right to clear the fixed left rail on signed-in customer screens. */
+  railOffset?: boolean;
 }
 
 const NAV_ITEMS: Array<{ key: DesktopNavKey; label: string }> = [
@@ -57,7 +60,34 @@ const ACCOUNT_MENU_ITEMS: Array<{ key: DesktopNavKey; label: string; icon: strin
   { key: 'account-settings', label: 'Account Settings', icon: 'settings' },
 ];
 
-export function DesktopNavHeader({ active, onNav, onOpenLocation }: DesktopNavHeaderProps) {
+const CUSTOMER_NAV_ITEMS: Array<{ key: DesktopNavKey; label: string }> = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'my-deals', label: 'My Deals & Vouchers' },
+  { key: 'orders', label: 'Orders & Bookings' },
+  { key: 'messages', label: 'Messages' },
+  { key: 'cart', label: 'Saved Items & Stores' },
+  { key: 'account-settings', label: 'Account & Security' },
+];
+
+const customerNavItem = (key: DesktopNavKey) => CUSTOMER_NAV_ITEMS.find((item) => item.key === key)!;
+
+/** Persistent left rail for signed-in desktop customer screens (mirrors the business portal rail). */
+const CUSTOMER_NAV_GROUPS: ReadonlyArray<RailGroup<DesktopNavKey>> = [
+  { label: '', items: [customerNavItem('dashboard')] },
+  { label: 'Shopping', items: [customerNavItem('my-deals'), customerNavItem('orders'), customerNavItem('messages')] },
+  { label: 'Account', items: [customerNavItem('cart'), customerNavItem('account-settings')] },
+];
+
+const CUSTOMER_RAIL_ICONS: Readonly<Record<string, string>> = {
+  dashboard: 'space_dashboard',
+  'my-deals': 'redeem',
+  orders: 'receipt_long',
+  messages: 'forum',
+  cart: 'bookmark',
+  'account-settings': 'settings',
+};
+
+export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = false }: DesktopNavHeaderProps) {
   const { authed, signOut } = useAuth();
   const { district, city, radius, setLocation } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -96,31 +126,41 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation }: DesktopNavHe
   return (
     <>
     <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-      <div className="h-20 max-w-7xl mx-auto px-margin flex items-center justify-between gap-gutter">
-        <div className="flex items-center gap-space-2xl shrink-0">
-          <button
-            type="button"
-            className="flex items-center"
-            aria-label="VemTap home"
-            onClick={() => onNav('home')}
-          >
-            <Logo variant="full" className="h-8 w-auto" />
-          </button>
-
-          {authed ? (
+      <div className={`h-20 ${railOffset ? 'w-full' : 'max-w-7xl mx-auto'} px-margin flex items-center justify-between gap-gutter`}>
+        <div className="flex items-center shrink-0">
+          <div className={`${railOffset ? 'w-auto xl:w-60' : ''} flex items-center gap-space-xs shrink-0`}>
             <button
               type="button"
-              className="hidden xl:flex items-center gap-space-xs bg-surface-container-low px-space-sm py-space-2xs rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
-              onClick={openLocation}
+              className="flex items-center gap-space-xs"
+              aria-label="VemTap home"
+              onClick={() => onNav('home')}
             >
-              <Icon name="location_on" className="text-[18px] text-primary-container" />
-              <span className="font-label-sm text-label-sm text-on-surface">
-                {district}, {city} • Within {radius}km
-              </span>
-              <Icon name="keyboard_arrow_down" className="text-[16px] text-outline" />
+              <Logo variant="full" className="h-11 md:h-12 w-auto" />
+              {(authed || railOffset) && (
+                <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
+                  CUSTOMER
+                </span>
+              )}
             </button>
+          </div>
+
+          {authed ? (
+            <>
+              {railOffset && <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />}
+              <button
+                type="button"
+                className="hidden xl:flex items-center gap-space-xs bg-surface-container-low px-space-sm py-space-2xs rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
+                onClick={openLocation}
+              >
+                <Icon name="location_on" className="text-[18px] text-primary-container" />
+                <span className="font-label-sm text-label-sm text-on-surface">
+                  {district}, {city} • Within {radius}km
+                </span>
+                <Icon name="keyboard_arrow_down" className="text-[16px] text-outline" />
+              </button>
+            </>
           ) : (
-            <nav className="hidden lg:flex items-center gap-space-lg">
+            <nav className="hidden lg:flex items-center gap-space-lg ml-space-2xl">
               {NAV_ITEMS.map((item) => (
                 <button
                   key={item.key}
@@ -351,6 +391,8 @@ interface DesktopPageProps {
   activeNav?: DesktopNavKey;
   withFooter?: boolean;
   onOpenLocation?: () => void;
+  /** Renders the persistent signed-in customer left rail (Dashboard → Account) and offsets content to clear it. */
+  withCustomerRail?: boolean;
 }
 
 export function DesktopPage({
@@ -360,10 +402,31 @@ export function DesktopPage({
   activeNav,
   withFooter = false,
   onOpenLocation,
+  withCustomerRail = false,
 }: DesktopPageProps) {
   return (
-    <div className="w-full min-h-screen bg-surface-canvas font-body-md text-text-primary flex flex-col antialiased">
-      {withHeader && onNav && <DesktopNavHeader active={activeNav} onNav={onNav} onOpenLocation={onOpenLocation} />}
+    <div
+      className={`w-full min-h-screen bg-surface-canvas font-body-md text-text-primary flex flex-col antialiased ${
+        withCustomerRail ? RAIL_OFFSET : ''
+      }`}
+    >
+      {withHeader && onNav && (
+        <DesktopNavHeader
+          active={activeNav}
+          onNav={onNav}
+          onOpenLocation={onOpenLocation}
+          railOffset={withCustomerRail}
+        />
+      )}
+      {withCustomerRail && onNav && (
+        <PortalRail
+          groups={CUSTOMER_NAV_GROUPS}
+          active={activeNav}
+          onSelect={onNav}
+          headerHeight="20"
+          icons={CUSTOMER_RAIL_ICONS}
+        />
+      )}
       <main className={`w-full flex-1 bg-surface-canvas ${withHeader ? 'pt-20' : ''}`}>{children}</main>
       {withFooter && onNav && <DesktopFooter onNav={onNav} />}
     </div>
