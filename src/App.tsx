@@ -3,6 +3,7 @@ import { useIsDesktop } from './hooks/useIsDesktop';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { hasApiConfig } from './lib/api';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
@@ -1610,12 +1611,18 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopSignInScreen
-            onSignIn={() => {
-              signIn();
-              setRoute('discovering');
+            onSignIn={async ({ identifier, password }) => {
+              try {
+                await signIn({ identifier, password });
+                setRoute('discovering');
+              } catch {
+                setRoute('sign-in');
+              }
             }}
-            onGoogleSignIn={() => {
-              signIn();
+            onGoogleSignIn={async () => {
+              if (!hasApiConfig()) {
+                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+              }
               setRoute('discovering');
             }}
             onCreateAccount={() => {
@@ -1623,12 +1630,16 @@ function AppInner() {
               setRoute('auth-code');
             }}
             onBusinessRegister={() => setRoute('business-onboarding')}
-            onCustomerSignIn={() => {
-              signIn();
+            onCustomerSignIn={async () => {
+              if (!hasApiConfig()) {
+                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+              }
               setRoute('dashboard');
             }}
-            onBusinessSignIn={() => {
-              signIn();
+            onBusinessSignIn={async () => {
+              if (!hasApiConfig()) {
+                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+              }
               setRoute('business-overview');
             }}
           />
@@ -1636,12 +1647,18 @@ function AppInner() {
       return (
         <SignInScreen
           onBack={() => setRoute('welcome')}
-          onSignIn={() => {
-            signIn();
-            setRoute('discovering');
+          onSignIn={async ({ identifier, password }) => {
+            try {
+              await signIn({ identifier, password });
+              setRoute('discovering');
+            } catch {
+              setRoute('sign-in');
+            }
           }}
-          onGoogleSignIn={() => {
-            signIn();
+          onGoogleSignIn={async () => {
+            if (!hasApiConfig()) {
+              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+            }
             setRoute('discovering');
           }}
           onCreateAccount={() => {
@@ -1649,12 +1666,16 @@ function AppInner() {
             setRoute('auth-code');
           }}
           onBusinessRegister={() => setRoute('business-onboarding')}
-          onCustomerSignIn={() => {
-            signIn();
+          onCustomerSignIn={async () => {
+            if (!hasApiConfig()) {
+              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+            }
             setRoute('dashboard');
           }}
-          onBusinessSignIn={() => {
-            signIn();
+          onBusinessSignIn={async () => {
+            if (!hasApiConfig()) {
+              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+            }
             setRoute('business-overview');
           }}
         />

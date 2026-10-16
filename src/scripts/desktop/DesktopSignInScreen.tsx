@@ -3,7 +3,7 @@ import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 
 interface DesktopSignInScreenProps {
-  onSignIn: () => void;
+  onSignIn: (credentials: { identifier: string; password: string }) => void;
   onGoogleSignIn: () => void;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
@@ -84,7 +84,12 @@ export function DesktopSignInScreen({
       return;
     }
     setStatus('submitting');
-    window.setTimeout(onSignIn, 900);
+    window.setTimeout(() => {
+      onSignIn({
+        identifier: identifier.value.trim(),
+        password: credential.value,
+      });
+    }, 900);
   };
 
   const handleGoogle = () => {

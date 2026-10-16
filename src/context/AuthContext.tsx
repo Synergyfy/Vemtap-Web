@@ -2,10 +2,17 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 import { clearAuthTokens, getAccessToken, hasApiConfig } from '../lib/api';
 import { authService } from '../services';
 
+interface AuthCredentials {
+  identifier?: string;
+  email?: string;
+  password?: string;
+  source?: string;
+}
+
 interface AuthContextValue {
   authed: boolean;
   claimed: boolean;
-  signIn: () => Promise<void>;
+  signIn: (credentials?: AuthCredentials) => Promise<void>;
   signOut: () => Promise<void>;
   markClaimed: () => void;
   resetClaim: () => void;
@@ -50,18 +57,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       authed,
       claimed,
-      signIn: async () => {
+      signIn: async (credentials?: AuthCredentials) => {
+        const identifier = (credentials?.identifier ?? credentials?.email ?? 'customer@vemtap.com').trim();
+        const password = credentials?.password;
+
         if (hasApiConfig()) {
+          if (!identifier || !password || !password.trim()) {
+            throw new Error('Identifier and password are required for API login.');
+          }
+
           try {
             await authService.login({
-              email: 'customer@vemtap.com',
-              source: 'web',
+              identifier,
+              password: password.trim(),
             });
             writeFlag(AUTHED_KEY, true);
             setAuthed(true);
             return;
-          } catch {
-            // The app can still operate in local-only mode when the backend is not running.
+          } catch (error) {
+            console.error('Login failed:', error);
+            writeFlag(AUTHED_KEY, false);
+            setAuthed(false);
+            throw error;
           }
         }
 
@@ -73,9 +90,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (hasApiConfig()) {
           try {
             await authService.logout();
-          } catch {
-            // Ignore logout errors and preserve the local UX in demo mode.
+          } catch (error) {
+            console.error('Logout failed:', error);
+            throw error;
+          } finally {
+            clearAuthTokens();
+            writeFlag(AUTHED_KEY, false);
+            writeFlag(CLAIMED_KEY, false);
+            setAuthed(false);
+            setClaimed(false);
           }
+          return;
         }
 
         clearAuthTokens();

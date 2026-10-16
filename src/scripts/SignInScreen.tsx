@@ -5,7 +5,7 @@ import { ScreenHeader } from '../components/ui/ScreenHeader';
 
 interface SignInScreenProps {
   onBack: () => void;
-  onSignIn: () => void;
+  onSignIn: (credentials: { identifier: string; password: string }) => void;
   onGoogleSignIn: () => void;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
@@ -82,7 +82,12 @@ export function SignInScreen({
       return;
     }
     setStatus('submitting');
-    window.setTimeout(onSignIn, 900);
+    window.setTimeout(() => {
+      onSignIn({
+        identifier: identifier.value.trim(),
+        password: credential.value,
+      });
+    }, 900);
   };
 
   const handleGoogle = () => {

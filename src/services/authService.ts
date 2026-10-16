@@ -1,4 +1,4 @@
-import { api } from './api/client';
+import { ApiError, api } from './api/client';
 import { clearAuthTokens, getRefreshToken, setAuthTokens } from './api/client';
 
 export interface AuthUser {
@@ -17,7 +17,7 @@ export interface AuthTokensResponse {
 }
 
 export const authService = {
-  login: async (payload: { email: string; password?: string; source?: string }) => {
+  login: async (payload: { identifier: string; password?: string }) => {
     const response = await api.post<AuthTokensResponse>('/auth/login', payload);
 
     const accessToken = response.accessToken ?? response.token;
@@ -52,6 +52,12 @@ export const authService = {
 
     try {
       await api.post('/auth/logout', refreshToken ? { refreshToken } : {});
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+        console.warn('Logout endpoint is not implemented on the backend. Clearing local session only.');
+        return;
+      }
+      throw error;
     } finally {
       clearAuthTokens();
     }

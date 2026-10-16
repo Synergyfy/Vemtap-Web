@@ -16,7 +16,20 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+const normalizeApiBaseUrl = (value: string) => {
+  const base = value.trim().replace(/\/+$/, '');
+  if (!base) return '';
+
+  if (/\/api\/v\d+$/i.test(base)) return base;
+  if (/\/api$/i.test(base)) return `${base}/v1`;
+  if (/\/v\d+$/i.test(base)) return `${base.replace(/\/v\d+$/i, '')}/api/v1`;
+
+  return `${base.replace(/\/$/, '')}/api/v1`;
+};
+
+const API_BASE_URL = normalizeApiBaseUrl(
+  (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.EXPO_PUBLIC_API_BASE_URL ?? '') as string,
+);
 const ACCESS_TOKEN_KEY = 'vemtap_access_token';
 const REFRESH_TOKEN_KEY = 'vemtap_refresh_token';
 
