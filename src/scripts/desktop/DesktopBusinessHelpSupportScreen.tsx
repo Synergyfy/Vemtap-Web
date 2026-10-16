@@ -166,9 +166,31 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
   const [message, setMessage] = useState('');
   const [toast, setToast] = useState<string | null>(null);
 
+  // Live Chat Drawer State
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'support'; text: string; time: string }>>([
+    {
+      sender: 'support',
+      text: 'Hello! Welcome to Vemtap Merchant Support Desk (Abuja Hub). How can we assist you with your business account or terminals today?',
+      time: 'Just now',
+    },
+  ]);
+  const [chatInput, setChatInput] = useState('');
+
+  // Submitted tickets state
+  const [submittedTickets, setSubmittedTickets] = useState<Array<{ id: string; topic: string; message: string; date: string; status: string }>>([
+    {
+      id: 'VT-741920',
+      topic: 'Payouts & settlement',
+      message: 'Settlement confirmation for Oct 15 POS batch takings.',
+      date: 'Yesterday, 4:15 PM',
+      status: 'Resolved',
+    },
+  ]);
+
   const showToast = (messageText: string) => {
     setToast(messageText);
-    window.setTimeout(() => setToast((current) => (current === messageText ? null : current)), 2600);
+    window.setTimeout(() => setToast((current) => (current === messageText ? null : current)), 3000);
   };
 
   const needle = query.trim().toLowerCase();
@@ -179,19 +201,68 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
   const toggleFaq = (id: string) =>
     setExpanded((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]));
 
+  const handleChannelClick = (channelId: string) => {
+    switch (channelId) {
+      case 'chat':
+        setShowChatModal(true);
+        break;
+      case 'whatsapp':
+        window.open('https://wa.me/2347000836827?text=Hello%20Vemtap%20Merchant%20Support%2C%20I%20need%20assistance%20with%20my%20business%20account.', '_blank');
+        showToast('Opening WhatsApp Business (+234 700 VEMTAP)...');
+        break;
+      case 'email':
+        window.location.href = 'mailto:merchants@vemtap.com?subject=Merchant%20Support%20Request%20-%20Urban%20Grill&body=Hello%20Vemtap%20Team%2C%0A%0AI%20need%20assistance%20with%3A%0A';
+        showToast('Opening email client for merchants@vemtap.com...');
+        break;
+      case 'phone':
+        window.location.href = 'tel:0800836827';
+        showToast('Dialing Vemtap Toll-Free Support (0800-VEMTAP)...');
+        break;
+      default:
+        showToast('Connecting you to support...');
+    }
+  };
+
+  const handleSendChatMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    const userMsg = chatInput.trim();
+    setChatMessages((prev) => [...prev, { sender: 'user', text: userMsg, time: 'Just now' }]);
+    setChatInput('');
+
+    setTimeout(() => {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          sender: 'support',
+          text: `Thank you for your message. An agent has received your query regarding "${userMsg.slice(0, 35)}${userMsg.length > 35 ? '...' : ''}" and will follow up immediately.`,
+          time: 'Just now',
+        },
+      ]);
+    }, 1000);
+  };
+
   const submitTicket = () => {
     if (message.trim().length < 10) {
       showToast('Add a little more detail (at least 10 characters)');
       return;
     }
     const id = `VT-${Math.floor(100000 + Math.random() * 899999)}`;
+    const newTicket = {
+      id,
+      topic,
+      message: message.trim(),
+      date: 'Just now',
+      status: 'Open · Under Review',
+    };
+    setSubmittedTickets((prev) => [newTicket, ...prev]);
     setMessage('');
-    showToast(`Ticket ${id} submitted — we reply by email`);
+    showToast(`Ticket ${id} created successfully! Our team will respond via email.`);
   };
 
   return (
     <BusinessPortalChrome activeNav="more-support" onNav={onNav}>
-      <div className="w-full py-space-xl space-y-space-lg">
+      <div className="w-full py-space-xl space-y-space-lg relative">
         <section className="flex flex-col gap-space-2xs max-w-3xl">
           <span className="font-caption text-caption text-primary font-bold uppercase tracking-wider">
             More · Account
@@ -233,7 +304,7 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
           {CHANNELS.map((channel) => (
             <div
               key={channel.id}
-              className="rounded-2xl bg-surface-canvas shadow-sm p-space-lg flex flex-col gap-space-sm"
+              className="rounded-2xl bg-surface-canvas shadow-sm p-space-lg flex flex-col gap-space-sm hover:shadow-md transition-shadow"
             >
               <span className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${channel.iconClass}`}>
                 <Icon name={channel.icon} className="text-[22px]" />
@@ -245,8 +316,8 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
               </div>
               <button
                 type="button"
-                onClick={() => showToast(`${channel.action} — connecting you to the merchant desk…`)}
-                className="mt-auto h-10 px-space-sm rounded-xl bg-surface-container text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-space-2xs hover:bg-surface-container-high transition-colors"
+                onClick={() => handleChannelClick(channel.id)}
+                className="mt-auto h-10 px-space-sm rounded-xl bg-surface-container text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-space-2xs hover:bg-primary hover:text-on-primary transition-all active:scale-[0.98]"
               >
                 <span>{channel.action}</span>
                 <Icon name="arrow_forward" className="text-[16px]" />
@@ -367,6 +438,32 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
               <p className="font-caption text-caption text-text-tertiary leading-relaxed">
                 Urgent till-down? Use Live merchant chat for the fastest response.
               </p>
+
+              {/* Recent Active Tickets */}
+              {submittedTickets.length > 0 && (
+                <div className="mt-space-md pt-space-md border-t border-border-subtle flex flex-col gap-space-xs">
+                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">
+                    Your Support Tickets ({submittedTickets.length})
+                  </span>
+                  <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
+                    {submittedTickets.map((t) => (
+                      <div
+                        key={t.id}
+                        className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle flex flex-col gap-1 text-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-primary">{t.id}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-semibold text-[10px]">
+                            {t.status}
+                          </span>
+                        </div>
+                        <span className="text-text-primary font-medium line-clamp-1">{t.topic}</span>
+                        <span className="text-text-tertiary text-[11px]">{t.date}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="rounded-2xl bg-surface-tint-blue p-space-md flex items-start gap-space-sm">
@@ -391,6 +488,102 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
             </section>
           </aside>
         </div>
+
+        {/* Live Merchant Support Chat Modal */}
+        {showChatModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-surface-canvas border border-border-subtle rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col h-[560px]">
+              {/* Header */}
+              <div className="p-4 bg-surface-container border-b border-border-subtle flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-full bg-primary-container text-white flex items-center justify-center font-bold text-sm">
+                      VT
+                    </div>
+                    <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-surface-canvas" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-text-primary flex items-center gap-1.5">
+                      Vemtap Merchant Desk
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600">
+                        Live Agent
+                      </span>
+                    </h3>
+                    <p className="text-xs text-text-secondary">Chidinma · Typical reply &lt; 2 mins</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowChatModal(false)}
+                  className="w-8 h-8 rounded-lg hover:bg-surface-canvas flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <Icon name="close" className="text-[20px]" />
+                </button>
+              </div>
+
+              {/* Chat Messages */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-surface-canvas">
+                {chatMessages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl p-3 text-xs leading-relaxed ${
+                        msg.sender === 'user'
+                          ? 'bg-primary-container text-white rounded-br-none shadow-md'
+                          : 'bg-surface-container border border-border-subtle text-text-primary rounded-bl-none'
+                      }`}
+                    >
+                      <p>{msg.text}</p>
+                      <span
+                        className={`block text-[10px] mt-1 text-right ${
+                          msg.sender === 'user' ? 'text-white/70' : 'text-text-tertiary'
+                        }`}
+                      >
+                        {msg.time}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick Prompts */}
+              <div className="px-3 py-2 bg-surface-subtle border-t border-border-subtle flex gap-1.5 overflow-x-auto no-scrollbar">
+                {['Payout inquiry', 'POS till issue', 'Update KYC', 'Storefront QR'].map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => {
+                      setChatInput(prompt);
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-surface-canvas border border-border-subtle text-[11px] text-text-secondary hover:text-primary whitespace-nowrap transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+
+              {/* Input Form */}
+              <form onSubmit={handleSendChatMessage} className="p-3 bg-surface-container border-t border-border-subtle flex items-center gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Type your message to merchant support..."
+                  className="flex-1 px-3 py-2 rounded-xl bg-surface-canvas border border-border-subtle text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-primary"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim()}
+                  className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center disabled:opacity-40 hover:opacity-95 transition-opacity"
+                >
+                  <Icon name="send" className="text-[18px]" />
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
 
       {toast && (

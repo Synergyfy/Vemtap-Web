@@ -129,7 +129,7 @@ export function SubscriptionTrialActiveScreen({
             type="button"
             onClick={onExploreDashboard}
           >
-            <span>Explore My Business Dashboard</span>
+            <span>Continue to Cluster</span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
           <button

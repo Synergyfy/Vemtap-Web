@@ -176,7 +176,6 @@ const STATUS_TABS: Array<{ key: StatusTab; label: string; count: string }> = [
 
 export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopLoyaltyRewardsScreenProps) {
   const [statusTab, setStatusTab] = useState<StatusTab>('active');
-  const [branchScope, setBranchScope] = useState<'all' | 'wuse'>('all');
 
   return (
     <EnterpriseShell activeNav="business-loyalty" onNav={onNav}>
@@ -220,17 +219,6 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
               </p>
             </div>
             <div className="flex items-center gap-space-xs flex-wrap shrink-0">
-              <div className="relative">
-                <button
-                  type="button"
-                  className="h-11 px-space-sm rounded-xl bg-surface-canvas shadow-sm flex items-center gap-space-xs text-text-primary font-label-md text-label-md hover:bg-surface-subtle transition-colors"
-                  onClick={() => setBranchScope((scope) => (scope === 'all' ? 'wuse' : 'all'))}
-                >
-                  <Icon name="location_on" className="text-primary text-[20px]" />
-                  <span>{branchScope === 'all' ? 'All Active Branches (2)' : 'Wuse II Branch Only'}</span>
-                  <Icon name="expand_more" className="text-text-tertiary text-[18px]" />
-                </button>
-              </div>
               <button
                 type="button"
                 onClick={onOpenProgramme}

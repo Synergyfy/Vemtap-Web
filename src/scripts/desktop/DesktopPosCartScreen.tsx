@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
-import { computeTotals, formatNaira, VAT_RATE, type PosTerminalLine } from './posTerminalData';
+import { computeTotals, formatNaira, type PosTerminalLine } from './posTerminalData';
+import { usePosSettings } from '../../context/PosSettingsContext';
 
 interface DesktopPosCartScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -27,7 +28,7 @@ const ACTION_TOASTS: Record<string, string> = {
   course: 'Course timing set to “Serve after mains”',
 };
 
-const VAT_PERCENT = (VAT_RATE * 100).toFixed(1);
+// The tax percentage comes from POS Settings (usePosSettings → taxRate).
 
 export function DesktopPosCartScreen({
   onNav,
@@ -57,7 +58,8 @@ export function DesktopPosCartScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  const totals = useMemo(() => computeTotals(cart), [cart]);
+  const { taxMode, taxRate, taxLabel } = usePosSettings();
+  const totals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
   const count = totals.itemCount;
   const empty = cart.length === 0;
 
@@ -216,25 +218,28 @@ export function DesktopPosCartScreen({
               </div>
             )}
 
-            {/* Metric 3: VAT */}
-            <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <div className="flex flex-col">
-                  <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary">
-                    VAT ({VAT_PERCENT}%)
-                  </span>
-                  <span className="font-heading-sm text-heading-sm text-on-surface mt-space-2xs">
-                    State Consumption
-                  </span>
+            {/* Metric 3: Tax */}
+            {taxMode !== 'none' && (
+              <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col">
+                    <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary">
+                      {taxLabel} ({taxRate}%)
+                      {taxMode === 'inclusive' ? ' · included' : ''}
+                    </span>
+                    <span className="font-heading-sm text-heading-sm text-on-surface mt-space-2xs">
+                      {taxMode === 'inclusive' ? 'Included in prices' : 'Applied at checkout'}
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-text-secondary">
+                    <Icon name="receipt_long" className="text-[20px]" />
+                  </div>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-text-secondary">
-                  <Icon name="receipt_long" className="text-[20px]" />
-                </div>
+                <span className="mt-space-md font-display-hero text-display-hero text-on-surface leading-none">
+                  {formatNaira(totals.vat)}
+                </span>
               </div>
-              <span className="mt-space-md font-display-hero text-display-hero text-on-surface leading-none">
-                {formatNaira(totals.vat)}
-              </span>
-            </div>
+            )}
 
             {/* Metric 4: Total due */}
             <div className="p-space-lg rounded-xl bg-surface-tint-blue shadow-sm flex flex-col justify-between">
