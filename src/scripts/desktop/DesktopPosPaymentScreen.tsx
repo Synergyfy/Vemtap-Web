@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { computeTotals, formatNaira, type PosTerminalLine } from './posTerminalData';
-import { POS_TENDER_METHODS, type PosCustomerRecord } from './posRegisterExtras';
+import { POS_TENDER_METHODS, pointsForAmount, unlockedRewards, type PosCustomerRecord } from './posRegisterExtras';
 import { PosCalculatorKeypad } from './PosCalculatorKeypad';
 import { PosCustomerModal } from './PosCustomerModal';
 import { PosLoyaltyPanel } from './PosLoyaltyPanel';
+import { PosAddPointsModal, PosRewardsModal } from '../PosPointsModals';
+import { usePosSettings } from '../../context/PosSettingsContext';
 
 interface DesktopPosPaymentScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -14,7 +16,8 @@ interface DesktopPosPaymentScreenProps {
   customer: PosCustomerRecord | null;
   onCustomerChange: (customer: PosCustomerRecord | null) => void;
   onBack: () => void;
-  onComplete: () => void;
+  /** Completes the sale with the loyalty points awarded during it (drives the receipt). */
+  onComplete: (loyaltyPoints: number) => void;
 }
 
 type TenderId = 'cash' | 'card' | 'transfer' | 'split';
@@ -59,7 +62,8 @@ export function DesktopPosPaymentScreen({
   onBack,
   onComplete,
 }: DesktopPosPaymentScreenProps) {
-  const totals = useMemo(() => computeTotals(cart), [cart]);
+  const { taxMode, taxRate, taxLabel, loyaltyEnabled, allowWalkIn } = usePosSettings();
+  const totals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
   const due = totals.total;
 
   const [tenderMode, setTenderMode] = useState<TenderId>('cash');
@@ -71,6 +75,10 @@ export function DesktopPosPaymentScreen({
   const [popDrawer, setPopDrawer] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [pointsModalOpen, setPointsModalOpen] = useState(false);
+  const [rewardsModalOpen, setRewardsModalOpen] = useState(false);
+  /** Points handed out on THIS screen only — keeps "previous" vs "new" honest when the customer changes. */
+  const [awardLedger, setAwardLedger] = useState<{ id: string | null; total: number }>({ id: null, total: 0 });
 
   const change = cashReceived - due;
   const splitPaid = slices.reduce((sum, slice) => sum + slice.amount, 0);
@@ -101,20 +109,40 @@ export function DesktopPosPaymentScreen({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onBack]);
 
+  const itemCount = cart.reduce((sum, line) => sum + line.qty, 0);
+
+  // Loyalty maths shown before completing payment:
+  //  - orderPoints: points attached to this order (accruing from the products' spend)
+  //  - previousPoints: balance before anything awarded on this screen
+  //  - projectedTotal: previous + new, once the order's points land on completion
+  const orderPoints = useMemo(() => (loyaltyEnabled ? pointsForAmount(due) : 0), [due, loyaltyEnabled]);
+  const awardedHere = awardLedger.id === customer?.id ? awardLedger.total : 0;
+  const previousPoints = customer ? customer.points - awardedHere : 0;
+  const projectedTotal = customer ? customer.points + orderPoints : 0;
+  const eligibleCount = customer ? unlockedRewards(customer.points).length : 0;
+
+  const recordAward = (points: number) =>
+    setAwardLedger((prev) =>
+      prev.id === (customer?.id ?? null)
+        ? { id: customer?.id ?? null, total: prev.total + points }
+        : { id: customer?.id ?? null, total: points },
+    );
+
   /** Single-tender cash / card / transfer completes the sale. */
   const canComplete =
-    tenderMode === 'cash'
-      ? cashReceived >= due
-      : tenderMode === 'split'
-        ? splitRemaining <= 0
-        : true;
+    (tenderMode === 'cash' ? cashReceived >= due : tenderMode === 'split' ? splitRemaining <= 0 : true) &&
+    // Walk-in sales can be switched off in POS Settings — a customer must then be attached.
+    (allowWalkIn || customer !== null);
 
   const completeSale = () => {
     if (completing || !canComplete) return;
     setCompleting(true);
     window.setTimeout(() => {
       setCompleting(false);
-      onComplete();
+      // Land the order's own points on the customer, then hand the receipt its total.
+      const landing = customer && orderPoints > 0 ? orderPoints : 0;
+      if (customer && landing > 0) onCustomerChange({ ...customer, points: customer.points + landing });
+      onComplete(awardedHere + landing);
     }, 900);
   };
 
@@ -135,8 +163,6 @@ export function DesktopPosPaymentScreen({
     cashReceived >= 10000
       ? `${Math.floor(cashReceived / 10000)} × ₦10,000 Notes`
       : `${Math.floor(cashReceived / 1000)} × ₦1,000 Notes`;
-
-  const itemCount = cart.reduce((sum, line) => sum + line.qty, 0);
 
   return (
     <PosTerminalChrome activeNav="register" onNav={onNav}>
@@ -168,6 +194,18 @@ export function DesktopPosPaymentScreen({
                     <span className="font-caption text-caption text-primary font-medium tracking-tight">
                       {customer.points.toLocaleString()} pts
                     </span>
+                    <button
+                      type="button"
+                      title="Remove customer"
+                      aria-label="Remove customer from this sale"
+                      onClick={() => {
+                        onCustomerChange(null);
+                        flash('Customer removed — this is now a walk-in sale.');
+                      }}
+                      className="w-5 h-5 rounded-full bg-surface-canvas text-text-tertiary hover:text-error flex items-center justify-center transition-colors"
+                    >
+                      <Icon name="close" className="text-[13px]" />
+                    </button>
                   </>
                 )}
                 <button
@@ -602,7 +640,9 @@ export function DesktopPosPaymentScreen({
                   <span className="font-semibold">-{formatNaira(totals.discount)}</span>
                 </div>
                 <div className="flex items-center justify-between font-label-md text-label-md text-text-secondary">
-                  <span>VAT (7.5%)</span>
+                  <span>
+                    {taxLabel} ({taxRate}%){taxMode === 'inclusive' && ' · included'}
+                  </span>
                   <span className="font-semibold text-text-primary">{formatNaira(totals.vat)}</span>
                 </div>
                 <div className="pt-2 mt-1 border-t border-surface-container-highest flex items-baseline justify-between">
@@ -617,6 +657,45 @@ export function DesktopPosPaymentScreen({
 
               {/* Actions CTA Block */}
               <div className="pt-space-xs flex flex-col gap-2">
+                {/* Points & rewards — visible before completing payment when a customer is attached */}
+                {customer && loyaltyEnabled && (
+                  <div className="rounded-xl border border-border-subtle bg-badge-discount-bg p-space-sm flex flex-col gap-space-2xs">
+                    <div className="flex items-center justify-between gap-space-xs">
+                      <span className="flex items-center gap-1 font-label-sm text-label-sm font-semibold text-text-primary">
+                        <Icon name="stars" className="text-[15px] text-badge-discount-text" />
+                        Points from this order
+                      </span>
+                      <span className="font-label-md text-label-md font-bold text-badge-discount-text">
+                        +{orderPoints.toLocaleString()} pts
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
+                      <span>Previous {previousPoints.toLocaleString()} pts</span>
+                      <span>
+                        Total{' '}
+                        <span className="font-semibold text-text-primary">{projectedTotal.toLocaleString()} pts</span>
+                      </span>
+                    </div>
+                    <div className="flex gap-space-xs pt-space-2xs">
+                      <button
+                        type="button"
+                        onClick={() => setPointsModalOpen(true)}
+                        className="flex-1 h-9 rounded-lg bg-surface-canvas hover:bg-surface-container-high border border-border-subtle text-text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Icon name="add_circle" className="text-[15px] text-primary" />
+                        <span>Add points</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRewardsModalOpen(true)}
+                        className="flex-1 h-9 rounded-lg bg-surface-canvas hover:bg-surface-container-high border border-border-subtle text-text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Icon name="workspace_premium" className="text-[15px] text-badge-discount-text" />
+                        <span>Rewards{eligibleCount > 0 ? ` (${eligibleCount})` : ''}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={completeSale}
@@ -653,24 +732,27 @@ export function DesktopPosPaymentScreen({
             </div>
 
             {/* Loyalty — points balance, next reward, and manual award at the till */}
-            {customer && (
+            {customer && loyaltyEnabled && (
               <PosLoyaltyPanel
                 customer={customer}
                 ticketTotal={due}
                 onAward={(points) => {
+                  recordAward(points);
                   onCustomerChange({ ...customer, points: customer.points + points });
                   flash(`${points.toLocaleString()} points awarded to ${customer.name}.`);
                 }}
               />
             )}
 
-            {/* Walk-in nudge — never blocks payment */}
+            {/* Walk-in status — blocks payment when walk-in sales are off in POS Settings */}
             {!customer && (
-              <div className="rounded-xl p-space-sm bg-surface-canvas shadow-sm flex items-center justify-between gap-space-sm">
+              <div className="rounded-xl p-space-sm shadow-sm flex items-center justify-between gap-space-sm bg-surface-canvas">
                 <div className="flex items-center gap-space-xs">
                   <Icon name="person_off" className="text-text-secondary text-[18px]" />
                   <span className="font-caption text-caption text-text-secondary">
-                    Walk-in sale — attach a customer to earn loyalty points.
+                    {allowWalkIn
+                      ? 'Walk-in sale — attach a customer to earn loyalty points.'
+                      : 'Walk-in sales are off in POS Settings — attach a customer to take payment.'}
                   </span>
                 </div>
                 <button
@@ -695,6 +777,31 @@ export function DesktopPosPaymentScreen({
             setCustomerModalOpen(false);
             flash(`${record.name} attached to this sale.`);
           }}
+        />
+      )}
+
+      {/* Manual points + eligible rewards — both reachable before completing payment */}
+      {pointsModalOpen && customer && (
+        <PosAddPointsModal
+          customerName={customer.name}
+          currentPoints={customer.points}
+          suggested={orderPoints}
+          onClose={() => setPointsModalOpen(false)}
+          onAward={(points) => {
+            recordAward(points);
+            onCustomerChange({ ...customer, points: customer.points + points });
+            setPointsModalOpen(false);
+            flash(`${points.toLocaleString()} points added to ${customer.name}.`);
+          }}
+        />
+      )}
+
+      {rewardsModalOpen && customer && (
+        <PosRewardsModal
+          customerName={customer.name}
+          points={customer.points}
+          projectedTotal={projectedTotal}
+          onClose={() => setRewardsModalOpen(false)}
         />
       )}
 

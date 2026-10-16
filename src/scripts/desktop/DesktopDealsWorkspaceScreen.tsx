@@ -228,23 +228,6 @@ export function DesktopDealsWorkspaceScreen({
         {/* Top Controls Command Deck */}
         <section className="bg-surface-canvas rounded-2xl p-space-md shadow-[0_4px_20px_-4px_rgba(13,37,76,0.06)] flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-space-md">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-space-sm flex-1">
-            <div className="relative min-w-[240px]">
-              <label className="sr-only" htmlFor="branch-selector">Select Branch</label>
-              <div className="relative flex items-center">
-                <Icon name="store" className="absolute left-3 text-[20px] text-primary pointer-events-none" />
-                <select
-                  className="w-full h-[48px] pl-10 pr-9 bg-surface-subtle hover:bg-surface-container-low rounded-xl font-label-md text-label-md text-text-primary appearance-none cursor-pointer focus:outline-none focus:bg-surface-canvas transition-colors"
-                  id="branch-selector"
-                  defaultValue="all"
-                >
-                  <option value="all">All Locations (3 Branches)</option>
-                  <option value="wuse">Wuse II Branch (Abuja)</option>
-                  <option value="maitama">Maitama Flagship (Abuja)</option>
-                  <option value="vi">Victoria Island (Lagos)</option>
-                </select>
-                <Icon name="expand_more" className="absolute right-3 text-[20px] text-text-tertiary pointer-events-none" />
-              </div>
-            </div>
 
             <div className="relative flex-1 min-w-[280px]">
               <label className="sr-only" htmlFor="deal-search">Search Deals</label>

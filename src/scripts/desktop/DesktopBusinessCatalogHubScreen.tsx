@@ -599,6 +599,112 @@ export function DesktopBusinessCatalogHubScreen({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Item Action & Edit State
+  const [actionMenuRowId, setActionMenuRowId] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<CatalogRow | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editSku, setEditSku] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editStockTone, setEditStockTone] = useState<'ok' | 'error' | 'off'>('ok');
+  const [editStockUnits, setEditStockUnits] = useState('');
+  const [editKitchen, setEditKitchen] = useState(false);
+
+  const handleOpenEditItem = (row: CatalogRow) => {
+    setEditingItem(row);
+    setEditName(row.name);
+    setEditSku(row.sku);
+    setEditCategory(row.category);
+    setEditPrice(row.price);
+    setEditStockTone(row.stock.tone);
+    setEditStockUnits(row.stock.units?.replace(/[^0-9]/g, '') || '20');
+    setEditKitchen(Boolean(row.kitchenLabel));
+    setActionMenuRowId(null);
+  };
+
+  const handleSaveEditItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem || !editName.trim()) return;
+
+    const updater = (prev: CatalogRow[]) =>
+      prev.map((item) => {
+        if (item.id !== editingItem.id) return item;
+        return {
+          ...item,
+          name: editName.trim(),
+          sku: editSku.trim(),
+          category: editCategory.trim(),
+          price: editPrice.startsWith('₦') ? editPrice.trim() : `₦${editPrice.trim()}`,
+          kitchenLabel: editKitchen,
+          stock: {
+            ...item.stock,
+            tone: editStockTone,
+            label: editStockTone === 'ok' ? 'In Stock' : editStockTone === 'error' ? 'Critical Low' : 'Out of Stock',
+            units: editStockUnits ? `${editStockUnits} units` : item.stock.units,
+          },
+        };
+      });
+
+    if (activeTab === 'products') {
+      setProductRows(updater);
+    } else {
+      setServiceRows(updater);
+    }
+
+    setToastMessage(`Item "${editName.trim()}" updated successfully.`);
+    setTimeout(() => setToastMessage(null), 3000);
+    setEditingItem(null);
+  };
+
+  const handleDuplicateItem = (row: CatalogRow) => {
+    const newId = `${row.id}-copy-${Date.now()}`;
+    const newSku = `${row.sku}-CP`;
+    const duplicated: CatalogRow = {
+      ...row,
+      id: newId,
+      sku: newSku,
+      name: `${row.name} (Copy)`,
+    };
+
+    if (activeTab === 'products') {
+      setProductRows((prev) => [duplicated, ...prev]);
+    } else {
+      setServiceRows((prev) => [duplicated, ...prev]);
+    }
+
+    setActionMenuRowId(null);
+    setToastMessage(`Duplicated "${row.name}" as "${duplicated.name}".`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleToggleHideItem = (row: CatalogRow) => {
+    const nextHidden = !row.hidden;
+    const updater = (prev: CatalogRow[]) =>
+      prev.map((item) => (item.id === row.id ? { ...item, hidden: nextHidden } : item));
+
+    if (activeTab === 'products') {
+      setProductRows(updater);
+    } else {
+      setServiceRows(updater);
+    }
+
+    setActionMenuRowId(null);
+    setToastMessage(`"${row.name}" is now ${nextHidden ? 'hidden from storefront' : 'visible in storefront'}.`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleDeleteItem = (row: CatalogRow) => {
+    if (activeTab === 'products') {
+      setProductRows((prev) => prev.filter((item) => item.id !== row.id));
+    } else {
+      setServiceRows((prev) => prev.filter((item) => item.id !== row.id));
+    }
+
+    setActionMenuRowId(null);
+    setToastMessage(`"${row.name}" removed from catalog.`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   // Replicated Onboarding flows inside Hub Catalog
   if (subFlow === 'addProduct1') {
     return (
@@ -827,29 +933,6 @@ export function DesktopBusinessCatalogHubScreen({
             </p>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-space-sm">
-            <div className="relative shrink-0">
-              <label className="sr-only" htmlFor="locationSelector">
-                Scope Branch
-              </label>
-              <div className="flex items-center gap-space-xs bg-surface-container-lowest px-space-md py-space-xs rounded-xl shadow-sm text-on-surface cursor-pointer hover:bg-surface-subtle transition-colors">
-                <Icon name="domain" className="text-primary text-[20px]" />
-                <div className="text-left">
-                  <span className="block font-caption text-caption text-text-secondary leading-none">Branch Scope</span>
-                  <select
-                    className="bg-transparent font-label-md text-label-md font-semibold text-on-surface outline-none cursor-pointer pr-space-xs"
-                    defaultValue="all"
-                    id="locationSelector"
-                  >
-                    <option value="all">All Locations (Abuja & Lagos)</option>
-                    <option value="wuse">Wuse II Branch (Abuja)</option>
-                    <option value="maitama">Maitama Flagship (Abuja)</option>
-                    <option value="vi">Victoria Island (Lagos)</option>
-                  </select>
-                </div>
-                <Icon name="expand_more" className="text-text-secondary text-[18px]" />
-              </div>
-            </div>
-
             {/* Side-by-side Add Buttons on the same line */}
             <div className="flex items-center gap-space-sm shrink-0 whitespace-nowrap">
               <button
@@ -1482,10 +1565,11 @@ export function DesktopBusinessCatalogHubScreen({
                           </button>
                         </td>
                         <td className="py-space-md px-space-md text-right">
-                          <div className="flex items-center justify-end gap-space-2xs">
+                          <div className="flex items-center justify-end gap-space-2xs relative">
                             <button
                               type="button"
                               title="Edit Item"
+                              onClick={() => handleOpenEditItem(row)}
                               className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                             >
                               <Icon name="edit" className="text-[20px]" />
@@ -1498,13 +1582,56 @@ export function DesktopBusinessCatalogHubScreen({
                             >
                               <Icon name="tune" className="text-[20px]" />
                             </button>
-                            <button
-                              type="button"
-                              title="More Options"
-                              className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors"
-                            >
-                              <Icon name="more_vert" className="text-[20px]" />
-                            </button>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                title="More Options"
+                                onClick={() => setActionMenuRowId((cur) => (cur === row.id ? null : row.id))}
+                                className={`p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors ${
+                                  actionMenuRowId === row.id ? 'bg-surface-container text-primary' : ''
+                                }`}
+                              >
+                                <Icon name="more_vert" className="text-[20px]" />
+                              </button>
+
+                              {actionMenuRowId === row.id && (
+                                <div className="absolute right-0 top-full mt-1 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 z-40 text-left animate-fade-in">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name="edit" className="text-[16px] text-primary" />
+                                    <span>Edit Details</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDuplicateItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name="content_copy" className="text-[16px] text-secondary" />
+                                    <span>Duplicate Item</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleHideItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name={row.hidden ? 'visibility' : 'visibility_off'} className="text-[16px] text-text-secondary" />
+                                    <span>{row.hidden ? 'Show on Storefront' : 'Hide from Storefront'}</span>
+                                  </button>
+                                  <div className="my-1 border-t border-border-subtle" />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name="delete" className="text-[16px]" />
+                                    <span>Delete Item</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -1697,10 +1824,11 @@ export function DesktopBusinessCatalogHubScreen({
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 relative">
                         <button
                           type="button"
                           title="Edit Item"
+                          onClick={() => handleOpenEditItem(row)}
                           className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                         >
                           <Icon name="edit" className="text-[18px]" />
@@ -1713,13 +1841,56 @@ export function DesktopBusinessCatalogHubScreen({
                         >
                           <Icon name="tune" className="text-[18px]" />
                         </button>
-                        <button
-                          type="button"
-                          title="More Options"
-                          className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors"
-                        >
-                          <Icon name="more_vert" className="text-[18px]" />
-                        </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            title="More Options"
+                            onClick={() => setActionMenuRowId((cur) => (cur === row.id ? null : row.id))}
+                            className={`p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors ${
+                              actionMenuRowId === row.id ? 'bg-surface-container text-primary' : ''
+                            }`}
+                          >
+                            <Icon name="more_vert" className="text-[18px]" />
+                          </button>
+
+                          {actionMenuRowId === row.id && (
+                            <div className="absolute right-0 bottom-full mb-1 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 z-40 text-left animate-fade-in">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name="edit" className="text-[16px] text-primary" />
+                                <span>Edit Details</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name="content_copy" className="text-[16px] text-secondary" />
+                                <span>Duplicate Item</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleHideItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name={row.hidden ? 'visibility' : 'visibility_off'} className="text-[16px] text-text-secondary" />
+                                <span>{row.hidden ? 'Show on Storefront' : 'Hide from Storefront'}</span>
+                              </button>
+                              <div className="my-1 border-t border-border-subtle" />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name="delete" className="text-[16px]" />
+                                <span>Delete Item</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1960,6 +2131,148 @@ export function DesktopBusinessCatalogHubScreen({
                     className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-label-md shadow-sm"
                   >
                     {categoryModal.mode === 'add' ? 'Create Category' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Item Modal */}
+        {editingItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-surface-canvas border border-border-subtle rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-border-subtle flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={editingItem.image}
+                    alt={editingItem.name}
+                    className="w-12 h-12 rounded-xl object-cover border border-border-subtle"
+                  />
+                  <div>
+                    <h3 className="font-heading-sm text-heading-sm text-text-primary">Edit Catalog Item</h3>
+                    <p className="font-caption text-caption text-text-secondary">
+                      Update product pricing, stock availability, and branch settings
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <Icon name="close" className="text-[20px]" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditItem} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                    Item Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Price <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editPrice}
+                      onChange={(e) => setEditPrice(e.target.value)}
+                      placeholder="₦12,500"
+                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      SKU Code
+                    </label>
+                    <input
+                      type="text"
+                      value={editSku}
+                      onChange={(e) => setEditSku(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Category
+                    </label>
+                    <input
+                      type="text"
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Stock Status
+                    </label>
+                    <select
+                      value={editStockTone}
+                      onChange={(e) => setEditStockTone(e.target.value as any)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                    >
+                      <option value="ok">In Stock</option>
+                      <option value="error">Critical Low</option>
+                      <option value="off">Out of Stock</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Units Available
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editStockUnits}
+                      onChange={(e) => setEditStockUnits(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="pt-5 flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={editKitchen}
+                        onChange={(e) => setEditKitchen(e.target.checked)}
+                        className="w-4 h-4 rounded text-primary border-border-subtle focus:ring-primary"
+                      />
+                      <span className="text-xs font-semibold text-text-primary">Kitchen Expedited</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-border-subtle flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingItem(null)}
+                    className="px-4 py-2.5 rounded-xl border border-border-subtle text-text-secondary hover:bg-surface-container text-sm font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white text-sm font-semibold shadow-md transition-all"
+                  >
+                    Save Changes
                   </button>
                 </div>
               </form>

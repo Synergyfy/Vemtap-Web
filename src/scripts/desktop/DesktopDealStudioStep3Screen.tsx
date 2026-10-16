@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
 import { DEAL_DURATIONS, dealDurationLabel } from './desktopDealStudio';
@@ -12,6 +13,7 @@ interface DesktopDealStudioStep3ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: string) => void;
 }
 
 const MAP_IMAGES: Array<{ src: string; alt: string }> = [
@@ -145,6 +147,7 @@ export function DesktopDealStudioStep3Screen({
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopDealStudioStep3ScreenProps) {
   const [stepsOpen, setStepsOpen] = useState(true);
   const [termsOpen, setTermsOpen] = useState(true);
@@ -218,8 +221,8 @@ export function DesktopDealStudioStep3Screen({
     }
   };
 
-  return (
-    <BusinessSetupChrome activeNav="deals">
+  const inner = (
+    <>
       <div className="w-full bg-surface-canvas shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] py-space-md px-space-xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-sm text-text-secondary font-label-sm text-label-sm">
@@ -929,6 +932,19 @@ export function DesktopDealStudioStep3Screen({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (onNav) {
+    return (
+      <MerchantShell activeNav="business-deals" onNav={onNav}>
+        {inner}
+      </MerchantShell>
+    );
+  }
+  return (
+    <BusinessSetupChrome activeNav="deals">
+      {inner}
     </BusinessSetupChrome>
   );
 }

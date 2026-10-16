@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { CheckoutHubShell } from './CheckoutHubShell';
 import { computeTotals, formatNaira, type PosTerminalLine } from './posTerminalData';
+import { usePosSettings } from '../../context/PosSettingsContext';
 
 interface DesktopSplitBillScreenProps {
   cart: PosTerminalLine[];
@@ -31,7 +32,8 @@ const DINER_NAMES = ['You', 'Guest 2', 'Guest 3', 'Guest 4', 'Guest 5', 'Guest 6
  * lets the cashier mark each share settled before taking it to payment.
  */
 export function DesktopSplitBillScreen({ cart, onBack, onPay }: DesktopSplitBillScreenProps) {
-  const totals = useMemo(() => computeTotals(cart), [cart]);
+  const { taxMode, taxRate, taxLabel } = usePosSettings();
+  const totals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
   const [mode, setMode] = useState<'even' | 'items'>('even');
   const [dinerCount, setDinerCount] = useState(2);
   const [tipId, setTipId] = useState('none');
@@ -117,7 +119,8 @@ export function DesktopSplitBillScreen({ cart, onBack, onPay }: DesktopSplitBill
             <div className="flex items-baseline gap-space-md flex-wrap">
               <h1 className="font-display-hero text-display-hero text-on-surface tracking-tight">Split The Bill</h1>
               <span className="font-caption text-caption text-text-tertiary">
-                {cart.length} line items • {formatNaira(totals.total)} incl. 7.5% VAT
+                {cart.length} line items • {formatNaira(totals.total)}
+                {taxMode !== 'none' ? ` · incl. ${taxRate}% ${taxLabel}` : ''}
               </span>
             </div>
           </div>

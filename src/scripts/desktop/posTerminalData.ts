@@ -1,3 +1,5 @@
+import type { TaxMode } from '../posCartData';
+
 export interface PosTerminalLine {
   id: string;
   name: string;
@@ -49,12 +51,18 @@ export interface PosTerminalTotals {
   itemCount: number;
 }
 
-export function computeTotals(lines: PosTerminalLine[]): PosTerminalTotals {
+export function computeTotals(
+  lines: PosTerminalLine[],
+  mode: TaxMode = 'checkout',
+  rate: number = VAT_RATE,
+): PosTerminalTotals {
   const gross = lines.reduce((sum, line) => sum + line.unit * line.qty, 0);
   const discount = lines.reduce((sum, line) => sum + (line.promo ?? 0) * line.qty, 0);
   const net = gross - discount;
-  const vat = Math.round(net * VAT_RATE);
-  const total = net + vat;
+  // 'none' → no tax at all; 'checkout' → charged on top of the net;
+  // 'inclusive' → already inside the listed prices (embedded portion reported).
+  const vat = mode === 'none' ? 0 : mode === 'inclusive' ? net - Math.round(net / (1 + rate)) : Math.round(net * rate);
+  const total = mode === 'inclusive' ? net : net + vat;
   const itemCount = lines.reduce((sum, line) => sum + line.qty, 0);
   return { gross, discount, net, vat, total, itemCount };
 }

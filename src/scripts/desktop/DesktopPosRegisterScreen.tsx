@@ -13,6 +13,7 @@ import { useStoreOrdering } from '../../context/StoreOrderingContext';
 import { PosModifiersModal } from './PosModifiersModal';
 import { PosCustomerModal } from './PosCustomerModal';
 import { PosLoyaltyPanel } from './PosLoyaltyPanel';
+import { usePosSettings } from '../../context/PosSettingsContext';
 import { describeModifiers, modifierSurcharge, type PosCustomerRecord } from './posRegisterExtras';
 
 interface DesktopPosRegisterScreenProps {
@@ -117,7 +118,8 @@ export function DesktopPosRegisterScreen({
     customer: string;
   } | null>(null);
 
-  const totals = useMemo(() => computeTotals(cart), [cart]);
+  const { taxMode, taxRate, taxLabel, loyaltyEnabled } = usePosSettings();
+  const totals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
   const itemCount = cart.reduce((sum, line) => sum + line.qty, 0);
 
   const addItem = (item: PosCatalogItem) => {
@@ -601,14 +603,32 @@ export function DesktopPosRegisterScreen({
                     </span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  title={customer ? 'Change Customer' : 'Attach Customer'}
-                  onClick={() => setCustomerModalOpen(true)}
-                  className="p-1 text-text-tertiary hover:text-primary transition-colors shrink-0"
-                >
-                  <Icon name={customer ? 'cached' : 'person_add'} className="text-[18px]" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  {customer && (
+                    <button
+                      type="button"
+                      title="Remove Customer"
+                      aria-label="Remove customer from ticket"
+                      onClick={() => {
+                        const name = customer.name;
+                        onCustomerChange(null);
+                        setHandoffToast(`${name} removed from this ticket.`);
+                        window.setTimeout(() => setHandoffToast(null), 2500);
+                      }}
+                      className="w-7 h-7 rounded-full bg-surface-container-high text-text-secondary hover:text-error hover:bg-error-container flex items-center justify-center transition-colors"
+                    >
+                      <Icon name="person_remove" className="text-[17px]" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    title={customer ? 'Change Customer' : 'Attach Customer'}
+                    onClick={() => setCustomerModalOpen(true)}
+                    className="p-1 text-text-tertiary hover:text-primary transition-colors"
+                  >
+                    <Icon name={customer ? 'cached' : 'person_add'} className="text-[18px]" />
+                  </button>
+                </div>
               </div>
 
               {/* Itemized Order Lines */}
@@ -714,10 +734,14 @@ export function DesktopPosRegisterScreen({
                   </span>
                   <span className="font-medium">-{formatNaira(totals.discount)}</span>
                 </div>
-                <div className="flex items-center justify-between font-label-md text-label-md text-text-secondary">
-                  <span>VAT / State Consumption (7.5%)</span>
-                  <span className="text-text-primary font-medium">{formatNaira(totals.vat)}</span>
-                </div>
+                {taxMode !== 'none' && (
+                  <div className="flex items-center justify-between font-label-md text-label-md text-text-secondary">
+                    <span>
+                      {taxLabel} ({taxRate}%){taxMode === 'inclusive' && ' · included'}
+                    </span>
+                    <span className="text-text-primary font-medium">{formatNaira(totals.vat)}</span>
+                  </div>
+                )}
                 <div className="h-px bg-surface-container my-1" />
                 <div className="flex items-baseline justify-between">
                   <div>
@@ -790,7 +814,7 @@ export function DesktopPosRegisterScreen({
             </div>
 
             {/* Loyalty panel — points balance, next reward, and manual award */}
-            {customer && totals.total > 0 && (
+            {customer && totals.total > 0 && loyaltyEnabled && (
               <PosLoyaltyPanel
                 customer={customer}
                 ticketTotal={totals.total}

@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { Logo } from '../components/ui/Logo';
 import { naira } from './catalogueData';
-import { cartCount, cartTotals, type PosCartLine } from './posCartData';
+import { cartCount, cartTotals, formatReceiptText, type PosCartLine } from './posCartData';
+import { usePosSettings } from '../context/PosSettingsContext';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 
 interface BusinessPosSaleCompleteScreenProps {
   cart: PosCartLine[];
   customer: string | null;
+  /** Loyalty points awarded during the sale — only shown when customer details were added. */
+  awardedPoints: number;
   onBack: () => void;
   onNewSale: () => void;
 }
@@ -18,7 +23,13 @@ const RECEIPT_ACTIONS = [
   { key: 'wallet', icon: 'account_balance_wallet', label: 'Wallet' },
 ];
 
-export function BusinessPosSaleCompleteScreen({ cart, customer, onBack, onNewSale }: BusinessPosSaleCompleteScreenProps) {
+export function BusinessPosSaleCompleteScreen({
+  cart,
+  customer,
+  awardedPoints,
+  onBack,
+  onNewSale,
+}: BusinessPosSaleCompleteScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -35,8 +46,28 @@ export function BusinessPosSaleCompleteScreen({ cart, customer, onBack, onNewSal
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    // Auto-print receipt — controlled from POS Settings.
+    if (autoPrintReceipt) showToast('Receipt printed on counter printer');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const count = cartCount(cart);
-  const { subtotal, discount, vat, total } = cartTotals(cart);
+  const {
+    taxMode,
+    taxRate,
+    taxLabel,
+    loyaltyEnabled,
+    autoPrintReceipt,
+    businessName,
+    businessAddress,
+    businessPhone,
+    receiptHeader,
+    receiptFooter,
+    showBusinessLogo,
+  } = usePosSettings();
+  const { branch } = useBusinessBranch();
+  const { subtotal, discount, vat, total } = cartTotals(cart, taxMode, taxRate / 100);
   const receiptLines = cart.length > 0 ? cart : [];
   const paidTotal = cart.length > 0 ? total : 27251;
 
@@ -93,7 +124,13 @@ export function BusinessPosSaleCompleteScreen({ cart, customer, onBack, onNewSal
           <div className="flex items-center gap-space-2xs mt-1">
             <span className="h-6 px-space-xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center gap-1">
               <Icon name="loyalty" className="text-[13px]" />
-              <span>{customer ? `${customer} earned 272 pts` : '+272 points queued'}</span>
+              <span>
+                {!loyaltyEnabled
+                  ? 'Loyalty earning off'
+                  : customer
+                    ? `${customer} earned ${awardedPoints.toLocaleString()} pts`
+                    : 'Walk-in · no loyalty attached'}
+              </span>
             </span>
             <span className="h-6 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center">
               Synced
@@ -104,9 +141,16 @@ export function BusinessPosSaleCompleteScreen({ cart, customer, onBack, onNewSal
         {/* Receipt slip */}
         <div className="px-margin pt-space-sm">
           <div className="bg-surface-canvas rounded-t-2xl shadow-md px-space-sm pt-space-sm pb-space-xs flex flex-col gap-space-2xs relative">
-            <div className="flex items-center justify-between">
-              <span className="font-label-sm text-label-sm text-on-surface font-semibold">Urban Grill &amp; Bistro</span>
-              <span className="font-caption text-caption text-text-secondary">Wuse II · Till 01</span>
+            {receiptHeader && (
+              <span className="font-caption text-caption text-text-secondary text-center pt-0.5">
+                {formatReceiptText(receiptHeader, businessName)}
+              </span>
+            )}
+            <div className="flex flex-col items-center gap-0.5 text-center">
+              {showBusinessLogo && <Logo variant="mark" alt={businessName} className="h-6 w-auto" />}
+              <span className="font-label-sm text-label-sm text-on-surface font-semibold">{businessName}</span>
+              <span className="font-caption text-caption text-text-secondary">{branch.name}</span>
+              <span className="font-caption text-caption text-text-secondary">{businessAddress}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-caption text-caption text-text-secondary">Cashier: Emeka O.</span>
@@ -147,16 +191,33 @@ export function BusinessPosSaleCompleteScreen({ cart, customer, onBack, onNewSal
                 <span className="font-caption text-caption text-badge-discount-text">-{naira(discount)}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="font-caption text-caption text-text-secondary">VAT (7.5%)</span>
-              <span className="font-caption text-caption text-text-secondary">
-                {naira(receiptLines.length > 0 ? vat : 2073)}
-              </span>
-            </div>
+            {taxMode !== 'none' && (
+              <div className="flex justify-between">
+                <span className="font-caption text-caption text-text-secondary">
+                  {taxLabel} ({taxRate}%){taxMode === 'inclusive' && ' · included'}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">
+                  {naira(receiptLines.length > 0 ? vat : 2073)}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between items-end pt-0.5">
               <span className="font-label-sm text-label-sm text-on-surface font-semibold">Total paid</span>
               <span className="font-label-md text-label-md text-primary font-bold">{naira(paidTotal)}</span>
             </div>
+
+            {(receiptFooter || businessPhone) && (
+              <div className="flex flex-col items-center gap-0.5 pt-space-xs text-center">
+                {receiptFooter && (
+                  <span className="font-caption text-caption text-text-secondary">
+                    {formatReceiptText(receiptFooter, businessName)}
+                  </span>
+                )}
+                {businessPhone && (
+                  <span className="font-caption text-caption text-text-tertiary">{businessPhone}</span>
+                )}
+              </div>
+            )}
 
             {/* Scalloped edge */}
             <div

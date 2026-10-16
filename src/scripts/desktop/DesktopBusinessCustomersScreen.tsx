@@ -3,10 +3,15 @@ import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
 import { useContacts, type BusinessContact } from '../../context/ContactsContext';
+import { DesktopModal, ModalCloseButton } from '../../components/desktop/DesktopModal';
+import { AddCustomerMethodsDialog } from '../../components/customers/AddCustomerMethodsDialog';
+import { SendInviteDialog } from '../../components/customers/SendInviteDialog';
 
 interface DesktopBusinessCustomersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onViewProfile?: (name: string) => void;
+  /** Opens the public invite page so staff can preview the Send Invite link. */
+  onPreviewInvite?: (url: string) => void;
 }
 
 interface SegmentPill {
@@ -322,18 +327,80 @@ function contactToPatron(contact: BusinessContact): PatronRow {
   };
 }
 
-export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: DesktopBusinessCustomersScreenProps) {
+export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreviewInvite }: DesktopBusinessCustomersScreenProps) {
   const { search: searchContacts } = useContacts();
   const [activeTab, setActiveTab] = useState<FilterTab['key']>('all');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const [customPatrons, setCustomPatrons] = useState<PatronRow[]>([]);
+  const [addView, setAddView] = useState<'methods' | 'manual' | null>(null);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [consentGranted, setConsentGranted] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+
+  // New Customer Form State
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newSegment, setNewSegment] = useState<'Standard Customer' | 'VIP Spender' | 'Deal Enthusiast'>('Standard Customer');
+  const [newPoints, setNewPoints] = useState('100');
+
+  const handleAddCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || !newPhone.trim()) return;
+    // Consent is also enforced by the disabled submit button; guard here too.
+    if (!consentGranted) return;
+
+    const newPatron: PatronRow = {
+      name: newName.trim(),
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
+      avatarAlt: newName.trim(),
+      verified: true,
+      segment: {
+        label: newSegment === 'VIP Spender' ? 'Frequent • VIP Spender' : newSegment === 'Deal Enthusiast' ? 'Frequent • Deal Enthusiast' : 'New Customer • Verified',
+        className: newSegment === 'VIP Spender' ? 'bg-tertiary-fixed text-on-tertiary-fixed' : newSegment === 'Deal Enthusiast' ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-primary-container/20 text-primary',
+        icon: newSegment === 'VIP Spender' ? 'military_tech' : newSegment === 'Deal Enthusiast' ? 'loyalty' : 'person',
+      },
+      phone: newPhone.trim(),
+      email: newEmail.trim() || `${newName.trim().toLowerCase().replace(/\s+/g, '.')}@example.com`,
+      memberId: `#VEM-${Math.floor(100000 + Math.random() * 900000)}`,
+      metrics: [
+        { icon: 'storefront', label: '1 Visit', title: 'Visits', className: 'text-primary' },
+        { icon: 'receipt_long', label: '1 Order', title: 'Completed Orders', className: 'text-secondary' },
+      ],
+      deal: { label: '0 Deals', className: 'bg-surface-container text-text-secondary' },
+      points: `${newPoints || '100'} Pts`,
+      ltv: '₦15,000',
+      ltvNote: 'Direct CRM Entry',
+      ltvTrend: { text: 'New patron', className: 'text-primary' },
+      lastDot: true,
+      lastWhen: 'Just now',
+      lastRef: 'Direct Onboarding',
+      lastTag: { text: 'Walk-in / Added', className: 'bg-surface-container text-text-secondary' },
+      tabs: ['new', 'returning'],
+    };
+
+    setCustomPatrons((prev) => [newPatron, ...prev]);
+    setAddView(null);
+    setConsentGranted(false);
+    setToastMessage(`Customer ${newName.trim()} successfully added to directory!`);
+    setTimeout(() => setToastMessage(null), 4000);
+
+    // Reset form
+    setNewName('');
+    setNewPhone('');
+    setNewEmail('');
+    setNewPoints('100');
+  };
 
   // BUG-017: purchase-derived contacts first, deduped by name against seeds.
   const purchaseRows = searchContacts(query).map(contactToPatron);
   const visibleRows = [
+    ...customPatrons,
     ...purchaseRows,
     ...PATRONS.filter((patron) => {
+      if (customPatrons.some((row) => row.name.toLowerCase() === patron.name.toLowerCase())) return false;
       if (purchaseRows.some((row) => row.name.toLowerCase() === patron.name.toLowerCase())) return false;
       const matchesTab = activeTab === 'all' || patron.tabs.includes(activeTab);
       const q = query.trim().toLowerCase();
@@ -352,7 +419,15 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: Desktop
 
   return (
     <EnterpriseShell activeNav="business-customers" onNav={onNav}>
-      <div className="w-full py-space-xl flex flex-col gap-space-xl">
+      <div className="w-full py-space-xl flex flex-col gap-space-xl relative">
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div className="fixed top-20 right-8 z-50 p-4 rounded-xl bg-emerald-600 text-white font-semibold text-sm shadow-2xl flex items-center gap-3 animate-fade-in">
+            <Icon name="check_circle" className="text-[20px]" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+
         <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-lg">
           <div className="flex flex-col gap-space-xs max-w-3xl">
             <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm">
@@ -373,16 +448,6 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: Desktop
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-sm shrink-0">
-            <div className="relative group">
-              <button
-                type="button"
-                className="flex items-center gap-space-xs px-space-md py-2.5 rounded-xl bg-surface-canvas shadow-sm hover:bg-surface-container transition-all text-text-primary font-label-md text-label-md"
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-pulse" />
-                <span>Wuse Branch (482 Customers) • Live Synced</span>
-                <Icon name="expand_more" className="text-outline text-[18px]" />
-              </button>
-            </div>
             <button
               type="button"
               className="flex items-center gap-space-xs px-space-md py-2.5 rounded-xl bg-surface-canvas shadow-sm text-text-primary font-label-md text-label-md hover:bg-surface-container transition-all active:scale-[0.98]"
@@ -392,10 +457,11 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: Desktop
             </button>
             <button
               type="button"
+              onClick={() => setAddView('methods')}
               className="flex items-center gap-space-xs px-space-lg py-2.5 rounded-xl bg-primary-container text-on-primary-container font-label-md text-label-md shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] hover:opacity-95 transition-all active:scale-[0.98]"
             >
               <Icon name="person_add" className="text-[20px]" />
-              <span>+ Add Patron Record</span>
+              <span>+ Add Customer</span>
             </button>
           </div>
         </div>
@@ -784,6 +850,151 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: Desktop
             <Icon name="arrow_forward" className="text-[16px]" />
           </button>
         </div>
+
+        {/* Add Customer — method chooser (Manual / Invite / Bulk coming soon) */}
+        <AddCustomerMethodsDialog
+          open={addView === 'methods'}
+          onClose={() => setAddView(null)}
+          onAddManually={() => setAddView('manual')}
+          onSendInvite={() => {
+            setAddView(null);
+            setInviteModalOpen(true);
+          }}
+        />
+
+        {/* Send Invite Link */}
+        <SendInviteDialog
+          open={inviteModalOpen}
+          onClose={() => setInviteModalOpen(false)}
+          onPreviewInvite={onPreviewInvite}
+        />
+
+        {/* Add Manually */}
+        <DesktopModal open={addView === 'manual'} onClose={() => setAddView(null)} maxWidth="max-w-lg">
+              <div className="p-6 border-b border-border-subtle flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary-container/20 text-primary flex items-center justify-center">
+                    <Icon name="person_add" className="text-[22px]" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading-sm text-heading-sm text-text-primary">Add New Customer</h3>
+                    <p className="font-caption text-caption text-text-secondary">
+                      Create a verified patron record with omnichannel sync
+                    </p>
+                  </div>
+                </div>
+                <ModalCloseButton onClose={() => setAddView(null)} />
+              </div>
+
+              <form onSubmit={handleAddCustomer} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="e.g. Adebayo Ogunlesi"
+                    className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Phone Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      placeholder="+234 803 000 0000"
+                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="customer@example.com"
+                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Customer Segment
+                    </label>
+                    <select
+                      value={newSegment}
+                      onChange={(e) => setNewSegment(e.target.value as any)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                    >
+                      <option value="Standard Customer">Standard Customer</option>
+                      <option value="VIP Spender">VIP Spender</option>
+                      <option value="Deal Enthusiast">Deal Enthusiast</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                      Initial Loyalty Points
+                    </label>
+                    <input
+                      type="number"
+                      value={newPoints}
+                      onChange={(e) => setNewPoints(e.target.value)}
+                      placeholder="100"
+                      min="0"
+                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+
+                {/* Consent — required before saving (unchecked by default) */}
+                <div className="pt-3 border-t border-border-subtle">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      required
+                      checked={consentGranted}
+                      onChange={(event) => setConsentGranted(event.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-primary focus:ring-0 cursor-pointer"
+                      aria-describedby="add-customer-consent"
+                    />
+                    <span id="add-customer-consent" className="text-xs leading-relaxed text-text-secondary">
+                      I confirm that I have permission to provide and store this customer&apos;s contact details in
+                      VEMTAP for legitimate business purposes.
+                    </span>
+                  </label>
+                </div>
+
+                <div className="pt-4 border-t border-border-subtle flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAddView(null)}
+                    className="px-4 py-2.5 rounded-xl border border-border-subtle text-text-secondary hover:bg-surface-container text-sm font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!consentGranted || !newName.trim() || !newPhone.trim()}
+                    className="px-6 py-2.5 rounded-xl bg-primary-container text-on-primary-container text-sm font-semibold shadow-md hover:opacity-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:opacity-40"
+                  >
+                    Save Customer
+                  </button>
+                </div>
+              </form>
+        </DesktopModal>
       </div>
     </EnterpriseShell>
   );

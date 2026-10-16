@@ -1,520 +1,439 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
-import { PosOwnerHeader } from '../components/PosControls';
+import { PosOwnerHeader, PosToggle } from '../components/PosControls';
+import { usePosSettings } from '../context/PosSettingsContext';
 
 interface BusinessPosSettingsScreenProps {
   onBack: () => void;
-  onOpenReceipt: () => void;
-  onOpenHardware: () => void;
-  onOpenTaxes: () => void;
-  onOpenPermissions: () => void;
-  onOpenKitchen: () => void;
 }
 
-interface SettingRowProps {
-  icon: string;
-  iconClass?: string;
-  iconWrapClass?: string;
-  title: string;
-  desc: string;
-  chips: ReactNode;
-  onClick: () => void;
+const SETTINGS_TABS = [
+  { key: 'business', label: 'Business', icon: 'storefront' },
+  { key: 'receipt', label: 'Receipt', icon: 'receipt_long' },
+  { key: 'tax', label: 'Tax & Pricing', icon: 'percent' },
+  { key: 'alerts', label: 'Alerts', icon: 'notifications' },
+  { key: 'loyalty', label: 'Loyalty', icon: 'stars' },
+] as const;
+
+type SettingsTabKey = (typeof SETTINGS_TABS)[number]['key'];
+
+/** Everything the settings page can edit — staged until Save Changes is pressed. */
+interface SettingsDraft {
+  businessName: string;
+  businessAddress: string;
+  businessPhone: string;
+  receiptHeader: string;
+  receiptFooter: string;
+  autoPrintReceipt: boolean;
+  showBusinessLogo: boolean;
+  taxEnabled: boolean;
+  taxRate: number;
+  taxLabel: string;
+  pricesIncludeTax: boolean;
+  lowStockAlerts: boolean;
+  dailySalesSummary: boolean;
+  newOrderAlert: boolean;
+  staffActivityAlerts: boolean;
+  loyaltyEnabled: boolean;
+  redemptionThreshold: number;
 }
 
-function SettingRow({
+/** One line with a short description and an on/off switch. */
+function SettingToggleRow({
   icon,
-  iconClass = 'text-primary',
-  iconWrapClass = 'bg-surface-tint-blue',
   title,
   desc,
-  chips,
-  onClick,
-}: SettingRowProps) {
+  checked,
+  onChange,
+  disabled,
+}: {
+  icon: string;
+  title: string;
+  desc: string;
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full text-left p-space-md flex items-center justify-between hover:bg-surface-container-low/40 active:bg-surface-container-high/60 transition-all gap-space-xs"
+    <div
+      className={`flex items-start justify-between gap-space-md p-space-md transition-opacity ${
+        disabled ? 'opacity-45 pointer-events-none' : ''
+      }`}
+      aria-disabled={disabled}
     >
-      <div className="flex items-start gap-space-sm min-w-0 pr-2">
-        <div className={`w-10 h-10 rounded-xl ${iconWrapClass} flex items-center justify-center shrink-0 ${iconClass} mt-0.5`}>
+      <div className="flex items-start gap-space-sm min-w-0">
+        <span
+          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+            checked ? 'bg-surface-tint-blue text-primary' : 'bg-surface-container-high text-text-secondary'
+          }`}
+        >
           <Icon name={icon} className="text-[19px]" />
-        </div>
+        </span>
         <div className="flex flex-col min-w-0">
-          <span className="font-body-lg text-body-lg font-semibold text-on-surface truncate">{title}</span>
-          <p className="font-caption text-caption text-text-secondary mt-0.5 line-clamp-2">{desc}</p>
-          <div className="flex items-center gap-space-2xs mt-1.5 flex-wrap">{chips}</div>
+          <span className="font-label-md text-label-md text-on-surface font-semibold">{title}</span>
+          <span className="font-caption text-caption text-text-secondary mt-0.5 leading-snug">{desc}</span>
         </div>
       </div>
-      <Icon name="chevron_right" className="text-text-tertiary text-[19px] shrink-0" />
-    </button>
+      <PosToggle checked={checked} onChange={onChange} ariaLabel={title} />
+    </div>
   );
 }
 
-function Chip({ children, className = '' }: { children: ReactNode; className?: string }) {
+/** One line with a short description and an editable text/number field. */
+function SettingFieldRow({
+  title,
+  desc,
+  value,
+  onChange,
+  placeholder,
+  suffix,
+  numeric,
+  disabled,
+}: {
+  title: string;
+  desc: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  suffix?: string;
+  numeric?: boolean;
+  disabled?: boolean;
+}) {
   return (
-    <span
-      className={`font-caption text-caption px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${className}`}
+    <div
+      className={`flex flex-col gap-space-2xs p-space-md transition-opacity ${
+        disabled ? 'opacity-45 pointer-events-none' : ''
+      }`}
+      aria-disabled={disabled}
     >
+      <span className="font-label-md text-label-md text-on-surface font-semibold">{title}</span>
+      <span className="font-caption text-caption text-text-secondary leading-snug">{desc}</span>
+      <div className="flex items-center bg-surface-container-low rounded-lg h-11 px-space-sm gap-space-xs mt-space-xs">
+        <input
+          type="text"
+          value={value}
+          disabled={disabled}
+          inputMode={numeric ? 'decimal' : 'text'}
+          placeholder={placeholder}
+          onChange={(event) => onChange(numeric ? event.target.value.replace(/[^0-9.]/g, '') : event.target.value)}
+          className="flex-1 min-w-0 bg-transparent font-label-md text-label-md text-on-surface placeholder:text-text-tertiary focus:outline-none disabled:cursor-not-allowed"
+        />
+        {suffix && <span className="font-label-sm text-label-sm text-text-secondary shrink-0">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Card({ children }: { children: ReactNode }) {
+  return (
+    <section className="rounded-2xl bg-surface-canvas shadow-sm divide-y divide-border-subtle overflow-hidden">
       {children}
-    </span>
+    </section>
   );
 }
 
-function GroupHeader({
-  icon,
-  iconWrap,
-  iconClass,
-  title,
-  meta,
-}: {
-  icon: string;
-  iconWrap: string;
-  iconClass: string;
-  title: string;
-  meta: ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between px-space-2xs gap-space-xs">
-      <div className="flex items-center gap-space-xs min-w-0">
-        <div className={`w-7 h-7 rounded-lg ${iconWrap} flex items-center justify-center shrink-0`}>
-          <Icon name={icon} className={`${iconClass} text-[17px]`} />
-        </div>
-        <h3 className="font-heading-sm text-heading-sm text-on-surface font-semibold tracking-tight truncate">
-          {title}
-        </h3>
-      </div>
-      {meta}
-    </div>
-  );
-}
 
-function Divider() {
-  return <div className="h-[1px] bg-surface-container-low mx-space-md" />;
-}
+/**
+ * POS Settings — tabbed list of till controls. Edits are staged as a draft;
+ * Save Changes applies them across the whole till.
+ */
+export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenProps) {
+  const s = usePosSettings();
+  const [tab, setTab] = useState<SettingsTabKey>('business');
+  const [dirty, setDirty] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [draft, setDraft] = useState<SettingsDraft>({
+    businessName: s.businessName,
+    businessAddress: s.businessAddress,
+    businessPhone: s.businessPhone,
+    receiptHeader: s.receiptHeader,
+    receiptFooter: s.receiptFooter,
+    autoPrintReceipt: s.autoPrintReceipt,
+    showBusinessLogo: s.showBusinessLogo,
+    taxEnabled: s.taxEnabled,
+    taxRate: s.taxRate,
+    taxLabel: s.taxLabel,
+    pricesIncludeTax: s.pricesIncludeTax,
+    lowStockAlerts: s.lowStockAlerts,
+    dailySalesSummary: s.dailySalesSummary,
+    newOrderAlert: s.newOrderAlert,
+    staffActivityAlerts: s.staffActivityAlerts,
+    loyaltyEnabled: s.loyaltyEnabled,
+    redemptionThreshold: s.redemptionThreshold,
+  });
+  const [rateText, setRateText] = useState(String(s.taxRate));
+  const [thresholdText, setThresholdText] = useState(String(s.redemptionThreshold));
 
-function TelemetryNode({
-  icon,
-  iconClass,
-  title,
-  sub,
-  subClass,
-}: {
-  icon: string;
-  iconClass: string;
-  title: string;
-  sub: string;
-  subClass: string;
-}) {
-  return (
-    <div className="bg-surface-subtle p-space-xs rounded-lg flex flex-col justify-between">
-      <div className="flex items-center justify-between">
-        <Icon name={icon} className={`${iconClass} text-[17px]`} />
-        <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-      </div>
-      <div className="mt-2">
-        <p className="font-caption text-caption font-semibold text-on-surface truncate">{title}</p>
-        <p className={`font-caption text-caption font-medium truncate ${subClass}`}>{sub}</p>
-      </div>
-    </div>
-  );
-}
+  useEffect(() => {
+    if (!saved) return;
+    const id = window.setTimeout(() => setSaved(false), 2400);
+    return () => window.clearTimeout(id);
+  }, [saved]);
 
-export function BusinessPosSettingsScreen({
-  onBack,
-  onOpenReceipt,
-  onOpenHardware,
-  onOpenTaxes,
-  onOpenPermissions,
-  onOpenKitchen,
-}: BusinessPosSettingsScreenProps) {
-  const [toast, setToast] = useState<string | null>(null);
-  const [syncTag, setSyncTag] = useState('Synced 1 min ago');
-  const [testing, setTesting] = useState<string | null>(null);
-  const toastTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    },
-    [],
-  );
-
-  const showToast = (message: string) => {
-    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    setToast(message);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  const update = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
   };
 
-  const runTest = (key: string, busy: string, done: string) => {
-    if (testing) return;
-    setTesting(key);
-    window.setTimeout(() => {
-      setTesting(null);
-      showToast(done);
-    }, 850);
-    void busy;
+  const handleRate = (text: string) => {
+    const clean = text.replace(/[^0-9.]/g, '');
+    setRateText(clean);
+    const parsed = parseFloat(clean);
+    if (!isNaN(parsed)) update('taxRate', parsed);
+  };
+
+  const handleThreshold = (text: string) => {
+    const clean = text.replace(/[^0-9]/g, '');
+    setThresholdText(clean);
+    const parsed = parseInt(clean, 10);
+    if (!isNaN(parsed)) update('redemptionThreshold', parsed);
+  };
+
+  // Enable Tax ↔ Prices Include Tax mutually exclusive toggle
+  const toggleTaxEnabled = () => {
+    const next = !draft.taxEnabled;
+    setDraft((prev) => ({
+      ...prev,
+      taxEnabled: next,
+      pricesIncludeTax: next ? false : prev.pricesIncludeTax,
+    }));
+    setDirty(true);
+  };
+
+  const togglePricesIncludeTax = () => {
+    const next = !draft.pricesIncludeTax;
+    setDraft((prev) => ({
+      ...prev,
+      pricesIncludeTax: next,
+      taxEnabled: next ? false : prev.taxEnabled,
+    }));
+    setDirty(true);
+  };
+
+  const save = () => {
+    s.setBusinessName(draft.businessName);
+    s.setBusinessAddress(draft.businessAddress);
+    s.setBusinessPhone(draft.businessPhone);
+    s.setReceiptHeader(draft.receiptHeader);
+    s.setReceiptFooter(draft.receiptFooter);
+    s.setAutoPrintReceipt(draft.autoPrintReceipt);
+    s.setShowBusinessLogo(draft.showBusinessLogo);
+    s.setTaxEnabled(draft.taxEnabled);
+    s.setTaxRate(draft.taxRate);
+    s.setTaxLabel(draft.taxLabel);
+    s.setPricesIncludeTax(draft.pricesIncludeTax);
+    s.setLowStockAlerts(draft.lowStockAlerts);
+    s.setDailySalesSummary(draft.dailySalesSummary);
+    s.setNewOrderAlert(draft.newOrderAlert);
+    s.setStaffActivityAlerts(draft.staffActivityAlerts);
+    s.setLoyaltyEnabled(draft.loyaltyEnabled);
+    s.setRedemptionThreshold(draft.redemptionThreshold);
+    setDirty(false);
+    setSaved(true);
   };
 
   return (
     <AppScreen>
-      <PosOwnerHeader title="POS General Settings" onBack={onBack} />
+      <PosOwnerHeader title="POS Settings" onBack={onBack} />
 
-      <div className="flex flex-col pb-10">
-        {/* Terminal profile & security context */}
-        <section className="px-margin pt-space-xs pb-space-sm">
-          <div className="relative overflow-hidden rounded-xl bg-surface-container-lowest p-space-md shadow-sm">
-            <div className="absolute -right-10 -top-10 w-36 h-36 bg-gradient-to-br from-primary-fixed/40 via-surface-container-high/20 to-transparent rounded-full blur-2xl pointer-events-none" />
-            <div className="flex items-start justify-between gap-space-xs relative">
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-center gap-space-2xs text-primary font-label-sm text-label-sm">
-                  <Icon name="storefront" className="text-[15px]" />
-                  <span className="font-medium truncate">Urban Grill &amp; Bistro</span>
-                </div>
-                <h2 className="font-heading-md text-heading-md text-on-surface mt-0.5 tracking-tight truncate">
-                  Till #01 • Wuse Flagship
-                </h2>
-                <p className="font-caption text-caption text-text-secondary">
-                  Wuse Zone II, Abuja • Counter Terminal 01
-                </p>
-              </div>
-              <div className="flex-shrink-0 flex items-center gap-1.5 px-space-xs py-1 rounded-full bg-badge-discount-bg text-badge-discount-text">
-                <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                <span className="font-caption text-caption font-semibold">Live POS</span>
-              </div>
-            </div>
-            {/* Manager security clearance banner */}
-            <div className="mt-space-sm pt-space-xs flex items-center justify-between gap-space-xs bg-surface-container-low px-space-sm py-2 rounded-lg">
-              <div className="flex items-center gap-space-2xs min-w-0">
-                <div className="w-6 h-6 rounded-full bg-badge-discount-bg flex items-center justify-center shrink-0">
-                  <Icon name="lock_open" className="text-badge-discount-text text-[14px]" />
-                </div>
-                <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                  Owner / Manager Mode Active
-                </span>
-              </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <span className="font-caption text-caption text-text-secondary bg-surface-container-lowest px-2 py-0.5 rounded-full font-mono font-medium">
-                  PIN #402
-                </span>
-                <button
-                  type="button"
-                  aria-label="Lock PIN"
-                  title="Lock PIN"
-                  onClick={() => showToast('Session locked to cashier mode')}
-                  className="w-6 h-6 rounded-full bg-surface-container flex items-center justify-center text-text-secondary hover:text-primary transition-colors active:scale-95"
-                >
-                  <Icon name="lock" className="text-[13px]" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Fast health diagnostics strip */}
-        <section className="px-margin mb-space-md">
-          <div className="rounded-xl bg-surface-container-lowest p-space-sm shadow-sm flex flex-col gap-space-xs">
-            <div className="flex items-center justify-between pb-space-2xs gap-space-xs">
-              <span className="font-caption text-caption font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1 min-w-0">
-                <Icon name="sensors" className="text-primary text-[13px] shrink-0" />
-                <span className="truncate">System Telemetry &amp; Link</span>
-              </span>
+      {/* Tab bar */}
+      <div className="sticky top-16 z-30 bg-surface/90 backdrop-blur-xl border-b border-border-subtle">
+        <div className="flex gap-space-xs overflow-x-auto no-scrollbar px-margin py-space-xs">
+          {SETTINGS_TABS.map((entry) => {
+            const active = entry.key === tab;
+            return (
               <button
+                key={entry.key}
                 type="button"
-                onClick={() => {
-                  setSyncTag('Synced just now');
-                  showToast('POS Network & SQLite sync complete');
-                }}
-                className="flex items-center gap-1 font-caption text-caption text-primary font-medium active:scale-95 transition-transform shrink-0"
+                onClick={() => setTab(entry.key)}
+                className={`flex shrink-0 items-center gap-1.5 px-space-sm h-9 rounded-full font-label-sm text-label-sm font-semibold whitespace-nowrap transition-colors ${
+                  active ? 'bg-primary text-on-primary shadow-sm' : 'bg-surface-container-low text-text-secondary'
+                }`}
               >
-                <Icon name="refresh" className="text-[13px]" />
-                <span>Sync Now</span>
+                <Icon name={entry.icon} className="text-[16px]" />
+                <span>{entry.label}</span>
               </button>
-            </div>
-            <div className="grid grid-cols-3 gap-space-xs">
-              <TelemetryNode
-                icon="print"
-                iconClass="text-primary"
-                title="Epson TM #2"
-                sub="BT Ready • 80mm"
-                subClass="text-badge-discount-text"
-              />
-              <TelemetryNode
-                icon="storage"
-                iconClass="text-secondary"
-                title="Offline SQLite"
-                sub="0 / 500 Buffer"
-                subClass="text-text-secondary"
-              />
-              <TelemetryNode
-                icon="wifi_tethering"
-                iconClass="text-primary"
-                title="Public POS"
-                sub="Online (28ms)"
-                subClass="text-badge-discount-text"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Settings categories */}
-        <div className="px-margin flex flex-col gap-space-lg">
-          {/* Group 1: Hardware */}
-          <section className="flex flex-col gap-space-xs">
-            <GroupHeader
-              icon="devices_other"
-              iconWrap="bg-surface-tint-blue"
-              iconClass="text-primary"
-              title="Hardware & Peripherals"
-              meta={
-                <Chip className="bg-badge-discount-bg text-badge-discount-text">3 Devices Paired</Chip>
-              }
-            />
-            <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
-              <SettingRow
-                icon="receipt_long"
-                title="Receipt & Order Customization"
-                desc="Store logo, footer notes, auto-print triggers, kitchen chits, paper width (80mm vs 58mm)."
-                chips={
-                  <>
-                    <Chip className="bg-surface-container text-on-secondary-container">80mm Wide</Chip>
-                    <Chip className="bg-surface-tint-blue text-primary">Logo Enabled</Chip>
-                  </>
-                }
-                onClick={onOpenReceipt}
-              />
-              <Divider />
-              <SettingRow
-                icon="print"
-                iconClass="text-secondary"
-                iconWrapClass="bg-surface-container"
-                title="Printers & Kitchen Displays"
-                desc="Epson TM-T88VI (ESC/POS), Sunmi V2 Pro mobile handheld, KDS IP display routing stream."
-                chips={
-                  <Chip className="bg-badge-discount-bg text-badge-discount-text">
-                    KDS Online (192.168.1.140)
-                  </Chip>
-                }
-                onClick={onOpenHardware}
-              />
-              <Divider />
-              <SettingRow
-                icon="qr_code_scanner"
-                title="Barcode & QR Scanner"
-                desc="Rear camera auto-focus, continuous sound chimes, Honeywell Voyager 1200g USB tether."
-                chips={
-                  <>
-                    <Chip className="bg-surface-container text-on-secondary-container">Beep on scan</Chip>
-                    <Chip className="text-text-secondary">Honeywell Active</Chip>
-                  </>
-                }
-                onClick={onOpenHardware}
-              />
-            </div>
-          </section>
-
-          {/* Group 2: Payments */}
-          <section className="flex flex-col gap-space-xs">
-            <GroupHeader
-              icon="payments"
-              iconWrap="bg-badge-discount-bg"
-              iconClass="text-badge-discount-text"
-              title="Payments & Financials"
-              meta={
-                <div className="flex items-center gap-1 font-caption text-caption text-text-secondary bg-surface-container-low px-2 py-0.5 rounded-full">
-                  <Icon name="security" className="text-primary text-[12px]" />
-                  <span>PIN Protected</span>
-                </div>
-              }
-            />
-            <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
-              <SettingRow
-                icon="account_balance_wallet"
-                iconWrapClass="bg-badge-discount-bg"
-                iconClass="text-badge-discount-text"
-                title="Payment Methods & Tender Rails"
-                desc="Cash drawer auto-kick, Moniepoint & OPay card sync, dynamic bank transfer webhooks, split bills."
-                chips={
-                  <>
-                    <Chip className="bg-surface-subtle text-text-primary">Moniepoint POS</Chip>
-                    <Chip className="bg-surface-subtle text-text-primary">Instant Transfer</Chip>
-                  </>
-                }
-                onClick={onOpenHardware}
-              />
-              <Divider />
-              <SettingRow
-                icon="percent"
-                title="Taxes & Surcharges"
-                desc="Statutory VAT (7.5%), Table Service Charge (5.0%), Dine-in vs Takeaway exemption overrides."
-                chips={
-                  <>
-                    <Chip className="bg-surface-container text-on-secondary-container">VAT 7.5%</Chip>
-                    <Chip className="bg-surface-container text-on-secondary-container">Service 5%</Chip>
-                  </>
-                }
-                onClick={onOpenTaxes}
-              />
-            </div>
-          </section>
-
-          {/* Group 3: Operations */}
-          <section className="flex flex-col gap-space-xs">
-            <GroupHeader
-              icon="table_restaurant"
-              iconWrap="bg-surface-container-high"
-              iconClass="text-on-surface-variant"
-              title="Operations & Storefront"
-              meta={<span className="font-caption text-caption text-text-secondary font-medium">Realtime</span>}
-            />
-            <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
-              <SettingRow
-                icon="touch_app"
-                title="Public POS & Self-Ordering"
-                desc="Table QR auto-assignment, instant kitchen chit alert, guest dine-in order restrictions."
-                chips={<Chip className="bg-badge-discount-bg text-badge-discount-text">24 Tables Live</Chip>}
-                onClick={() => showToast('Public self-ordering matrix opened')}
-              />
-              <Divider />
-              <SettingRow
-                icon="sync"
-                iconClass="text-secondary"
-                iconWrapClass="bg-surface-container"
-                title="Offline Storage & Cloud Sync"
-                desc="Local SQLite 500-order capacity buffer, sync interval (30s), collision auto-resolution."
-                chips={
-                  <>
-                    <Chip className="bg-surface-subtle text-text-primary">30s Auto-Sync</Chip>
-                    <span className="font-caption text-caption text-badge-discount-text font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                      Up to date
-                    </span>
-                  </>
-                }
-                onClick={() => showToast('Local SQLite & cloud sync settings opened')}
-              />
-              <Divider />
-              <SettingRow
-                icon="soup_kitchen"
-                title="Order Workflow & Kitchen Stream"
-                desc="Auto-accept orders toggle, prep time defaults (15-20 min), kitchen bell sound chimes."
-                chips={
-                  <>
-                    <Chip className="bg-surface-container text-on-secondary-container">Default: 18 min</Chip>
-                    <Chip className="bg-badge-discount-bg text-badge-discount-text">Auto-Accept On</Chip>
-                  </>
-                }
-                onClick={onOpenKitchen}
-              />
-            </div>
-          </section>
-
-          {/* Group 4: Security */}
-          <section className="flex flex-col gap-space-xs">
-            <GroupHeader
-              icon="verified_user"
-              iconWrap="bg-surface-tint-blue"
-              iconClass="text-primary"
-              title="Security & Permissions"
-              meta={<Chip className="bg-surface-tint-blue text-primary font-semibold">Owner Restricted</Chip>}
-            />
-            <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
-              <SettingRow
-                icon="badge"
-                title="Staff POS Permissions & Supervisor PINs"
-                desc="Void/refund manager authorizations, open drawer without sale, discount caps (max 15%), till handoff sign-in."
-                chips={
-                  <>
-                    <Chip className="bg-surface-container text-on-secondary-container">
-                      Supervisor PIN Enforced
-                    </Chip>
-                    <Chip className="bg-surface-subtle text-text-secondary">4 Cashiers Active</Chip>
-                  </>
-                }
-                onClick={onOpenPermissions}
-              />
-            </div>
-          </section>
-
-          {/* Immediate till controls */}
-          <section className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-md">
-            <div className="flex items-center justify-between gap-space-xs">
-              <h4 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Immediate Till Controls</h4>
-              <span className="font-caption text-caption text-text-secondary shrink-0">Direct Hardware Actions</span>
-            </div>
-            <div className="flex flex-col gap-space-sm">
-              <div className="flex items-center justify-between p-space-xs bg-surface-subtle rounded-lg gap-space-xs">
-                <div className="flex items-center gap-space-xs min-w-0">
-                  <Icon name="receipt" className="text-primary text-[19px] shrink-0" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-label-md text-label-md font-semibold text-on-surface">
-                      Thermal Receipt Feed Test
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary truncate">
-                      Prints a diagnostic slip to Epson TM-T88VI
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => runTest('feed', 'Printing…', 'Test chit printed to Epson TM #2')}
-                  className="px-space-sm py-2 rounded-lg bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-medium hover:bg-secondary-container transition-all active:scale-95 shrink-0"
-                >
-                  {testing === 'feed' ? 'Printing…' : 'Feed Test'}
-                </button>
-              </div>
-              <div className="flex items-center justify-between p-space-xs bg-surface-subtle rounded-lg gap-space-xs">
-                <div className="flex items-center gap-space-xs min-w-0">
-                  <Icon name="point_of_sale" className="text-secondary text-[19px] shrink-0" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-label-md text-label-md font-semibold text-on-surface">
-                      Emergency Drawer Pop
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary truncate">
-                      Sends 24V pulse to RJ11 Cash Drawer
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => runTest('drawer', 'Triggered!', 'Cash drawer trigger pulse sent (PIN #402 logged)')}
-                  className="px-space-sm py-2 rounded-lg bg-surface-container text-on-surface font-button-secondary text-button-secondary font-medium hover:bg-surface-container-high transition-all active:scale-95 shrink-0"
-                >
-                  {testing === 'drawer' ? 'Triggered!' : 'Open Till'}
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {/* Device diagnostic footer */}
-          <footer className="pt-space-xs flex flex-col items-center justify-center text-center gap-space-2xs pb-space-sm">
-            <div className="flex items-center gap-1.5 text-text-secondary">
-              <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-              <span className="font-caption text-caption font-semibold tracking-wider text-text-primary">
-                VEMTAP POS Engine v2.4.0
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-text-secondary font-caption text-caption">
-              <span className="font-mono">Node ID: POS-NG-ABJ-001</span>
-              <span>•</span>
-              <span>Hardware Build: REV-3</span>
-              <span>•</span>
-              <span>{syncTag}</span>
-            </div>
-            <div className="font-caption text-text-tertiary mt-0.5">
-              Urban Grill &amp; Bistro (RC-149204) • Licensed to VEMTAP Cloud Retail Mesh
-            </div>
-          </footer>
+            );
+          })}
         </div>
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-[124px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-50 pointer-events-none">
-          <div className="mx-auto w-fit max-w-full bg-inverse-surface text-inverse-on-surface px-4 py-2 rounded-full shadow-xl flex items-center gap-space-xs">
-            <Icon name="check_circle" className="text-badge-discount-text text-[17px] shrink-0" />
-            <span className="font-label-sm text-label-sm font-medium truncate">{toast}</span>
+      <div className="flex flex-col gap-space-lg px-margin py-space-md pb-44">
+        {tab === 'business' && (
+          <Card>
+            <SettingFieldRow
+              title="Business Name"
+              desc="Appears on receipts and reports"
+              value={draft.businessName}
+              onChange={(value) => update('businessName', value)}
+              placeholder="Your business name"
+            />
+            <SettingFieldRow
+              title="Business Address"
+              desc="Shown on printed receipts"
+              value={draft.businessAddress}
+              onChange={(value) => update('businessAddress', value)}
+              placeholder="Street, area, city"
+            />
+            <SettingFieldRow
+              title="Phone Number"
+              desc="Contact printed on receipts"
+              value={draft.businessPhone}
+              onChange={(value) => update('businessPhone', value)}
+              placeholder="+234 …"
+            />
+          </Card>
+        )}
+
+
+        {tab === 'receipt' && (
+          <Card>
+            <SettingFieldRow
+              title="Receipt Header"
+              desc="Custom text at the top of every receipt — use [business name] for the business name"
+              value={draft.receiptHeader}
+              onChange={(value) => update('receiptHeader', value)}
+              placeholder="Thank you for shopping with [business name]"
+            />
+            <SettingFieldRow
+              title="Receipt Footer"
+              desc="Shown at the bottom of every receipt"
+              value={draft.receiptFooter}
+              onChange={(value) => update('receiptFooter', value)}
+              placeholder="e.g. No returns after 7 days. Receipt required."
+            />
+            <SettingToggleRow
+              icon="print"
+              title="Auto-Print Receipt"
+              desc="Automatically print after each sale"
+              checked={draft.autoPrintReceipt}
+              onChange={() => update('autoPrintReceipt', !draft.autoPrintReceipt)}
+            />
+            <SettingToggleRow
+              icon="image"
+              title="Show Business Logo"
+              desc="Display your logo on digital receipts"
+              checked={draft.showBusinessLogo}
+              onChange={() => update('showBusinessLogo', !draft.showBusinessLogo)}
+            />
+          </Card>
+        )}
+
+        {tab === 'tax' && (
+          <Card>
+            <SettingToggleRow
+              icon="percent"
+              title="Enable Tax"
+              desc="Apply tax to all transactions"
+              checked={draft.taxEnabled}
+              onChange={toggleTaxEnabled}
+            />
+            {draft.taxEnabled && (
+              <>
+                <SettingFieldRow
+                  title="Tax Rate (%)"
+                  desc="Default tax percentage applied to products"
+                  value={rateText}
+                  onChange={handleRate}
+                  suffix="%"
+                  numeric
+                />
+                <SettingFieldRow
+                  title="Tax Label"
+                  desc="How tax is labeled on receipts"
+                  value={draft.taxLabel}
+                  onChange={(value) => update('taxLabel', value)}
+                  placeholder="VAT"
+                />
+              </>
+            )}
+            <SettingToggleRow
+              icon="receipt_long"
+              title="Prices Include Tax"
+              desc="Whether listed prices already include tax"
+              checked={draft.pricesIncludeTax}
+              onChange={togglePricesIncludeTax}
+            />
+          </Card>
+        )}
+
+
+        {tab === 'alerts' && (
+          <Card>
+            <SettingToggleRow
+              icon="inventory_2"
+              title="Low Stock Alerts"
+              desc="Get notified when products drop below minimum"
+              checked={draft.lowStockAlerts}
+              onChange={() => update('lowStockAlerts', !draft.lowStockAlerts)}
+            />
+            <SettingToggleRow
+              icon="insights"
+              title="Daily Sales Summary"
+              desc="Receive end-of-day revenue report"
+              checked={draft.dailySalesSummary}
+              onChange={() => update('dailySalesSummary', !draft.dailySalesSummary)}
+            />
+            <SettingToggleRow
+              icon="add_shopping_cart"
+              title="New Order Alert"
+              desc="Notify when a new order is placed"
+              checked={draft.newOrderAlert}
+              onChange={() => update('newOrderAlert', !draft.newOrderAlert)}
+            />
+            <SettingToggleRow
+              icon="gpp_maybe"
+              title="Staff Activity Alerts"
+              desc="Notify on refunds, voids, and drawer openings"
+              checked={draft.staffActivityAlerts}
+              onChange={() => update('staffActivityAlerts', !draft.staffActivityAlerts)}
+            />
+          </Card>
+        )}
+
+        {tab === 'loyalty' && (
+          <Card>
+            <SettingToggleRow
+              icon="stars"
+              title="Enable Loyalty Program"
+              desc="Allow cashiers to award points to customers at checkout"
+              checked={draft.loyaltyEnabled}
+              onChange={() => update('loyaltyEnabled', !draft.loyaltyEnabled)}
+            />
+            <SettingFieldRow
+              title="Redemption Threshold"
+              desc="Minimum points required before a customer can redeem rewards"
+              value={thresholdText}
+              onChange={handleThreshold}
+              suffix="pts"
+              numeric
+            />
+          </Card>
+        )}
+      </div>
+
+      {/* Save bar */}
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl border-t border-border-subtle px-margin pt-space-xs pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty}
+          className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all disabled:opacity-40 disabled:active:scale-100"
+        >
+          <Icon name="save" className="text-[18px]" />
+          <span>Save Changes</span>
+        </button>
+        {dirty && (
+          <p className="text-center font-caption text-caption text-text-secondary pt-1">You have unsaved changes</p>
+        )}
+      </div>
+
+      {saved && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-50 pointer-events-none">
+          <div className="mx-auto w-fit bg-inverse-surface text-inverse-on-surface px-4 py-2 rounded-full shadow-xl flex items-center gap-space-xs">
+            <Icon name="check_circle" filled className="text-badge-discount-text text-[16px]" />
+            <span className="font-label-sm text-label-sm">POS settings saved</span>
           </div>
         </div>
       )}

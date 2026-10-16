@@ -83,6 +83,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
       { key: 'orders-bookings', label: 'Bookings', icon: 'calendar_month' },
       { key: 'pos-transactions', label: 'Transactions', icon: 'receipt' },
       { key: 'pos-sync', label: 'Offline & Sync', icon: 'sync' },
+      { key: 'pos-settings', label: 'POS Settings', icon: 'settings' },
     ],
   },
   {
@@ -100,6 +101,13 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
       { key: 'store-ordering-qr', label: 'QR Codes & Placement', icon: 'qr_code_2' },
       { key: 'store-ordering-settings', label: 'Store Front Settings', icon: 'tune' },
     ],
+  },
+  {
+    key: 'cluster-system',
+    label: 'Cluster System',
+    icon: 'hub',
+    defaultKey: 'cluster-system',
+    link: true,
   },
   {
     key: 'more',
@@ -184,6 +192,9 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
     'store-ordering-dashboard': { sectionKey: 'pos', itemKey: 'store-ordering-dashboard' },
     'store-ordering-qr': { sectionKey: 'pos', itemKey: 'store-ordering-qr' },
     'store-ordering-settings': { sectionKey: 'pos', itemKey: 'store-ordering-settings' },
+    'cluster-system': { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
+    cluster: { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
+    'cluster-onboarding': { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
     more: { sectionKey: 'more', itemKey: 'more-marketing' },
     'more-marketing': { sectionKey: 'more', itemKey: 'more-marketing' },
     analytics: { sectionKey: 'more', itemKey: 'more-analytics' },

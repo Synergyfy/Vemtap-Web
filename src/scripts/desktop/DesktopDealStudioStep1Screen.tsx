@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft, DealStrategy } from './desktopDealStudio';
 import { DEAL_TYPE_OPTIONS, DEFAULT_BUNDLE_CATALOG, resolveDealPricing, validateDealConfiguration } from '../deals/dealStudioShared';
@@ -15,6 +16,7 @@ interface DesktopDealStudioStep1ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: string) => void;
 }
 
 const ITEM_IMAGE: Array<{ src: string; alt: string }> = [
@@ -52,6 +54,7 @@ export function DesktopDealStudioStep1Screen({
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopDealStudioStep1ScreenProps) {
   const [page, setPage] = useState<'choose' | 'configure'>(studio.strategy ? 'configure' : 'choose');
 
@@ -82,8 +85,8 @@ export function DesktopDealStudioStep1Screen({
     window.scrollTo(0, 0);
   };
 
-  return (
-    <BusinessSetupChrome activeNav="deals">
+  const inner = (
+    <>
       <section className="w-full bg-surface-canvas shadow-sm">
         <div className="max-w-7xl mx-auto px-space-xl py-space-md">
           <div className="flex flex-wrap items-center justify-between gap-space-sm mb-space-md">
@@ -500,6 +503,19 @@ export function DesktopDealStudioStep1Screen({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (onNav) {
+    return (
+      <MerchantShell activeNav="business-deals" onNav={onNav}>
+        {inner}
+      </MerchantShell>
+    );
+  }
+  return (
+    <BusinessSetupChrome activeNav="deals">
+      {inner}
     </BusinessSetupChrome>
   );
 }
