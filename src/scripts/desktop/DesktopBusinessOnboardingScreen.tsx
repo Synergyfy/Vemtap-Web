@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useProfile } from '../../context/ProfileContext';
 import { DesktopBusinessIntroScreen } from './DesktopBusinessIntroScreen';
 import { DesktopBusinessProfileBasicScreen } from './DesktopBusinessProfileBasicScreen';
 import { DesktopBusinessProfileBrandingScreen } from './DesktopBusinessProfileBrandingScreen';
@@ -29,10 +30,21 @@ import { DesktopDealStudioStep4Screen } from './DesktopDealStudioStep4Screen';
 import { DesktopDealAutoImportScreen } from './DesktopDealAutoImportScreen';
 import { DesktopBusinessQrScreen } from './DesktopBusinessQrScreen';
 import { SEED_DESCRIPTION } from './businessOnboardingData';
+import {
+  BusinessSetupNavContext,
+  getBusinessSetupSnapshot,
+  getSectionStates,
+  saveBusinessSetupSnapshot,
+  setBusinessSetupVerificationState,
+  type BusinessSetupNavValue,
+  type BusinessSetupSectionId,
+  type VerificationSectionState,
+} from '../businessSetup';
+import { classifyServiceFromBusiness } from '../serviceClassification';
 
 export interface BusinessProfileDraft {
   name: string;
-  category: string;
+  categories: string[];
   tags: string[];
   description: string;
   phone: string;
@@ -72,19 +84,34 @@ type BusinessOnboardingStep =
   | 'dealAutoImport'
   | 'businessQr';
 
-const INITIAL_DRAFT: BusinessProfileDraft = {
+const PROFILE_STEPS: readonly BusinessOnboardingStep[] = [
+  'intro',
+  'basic',
+  'branding',
+  'contact',
+  'location',
+  'branches',
+  'addBranch',
+];
+
+/**
+ * Official business email starts from the signed-in account profile so the
+ * merchant recognises it immediately; it stays editable where account and
+ * verification rules allow. WhatsApp is seeded as a phone number, never a link.
+ */
+const createInitialDraft = (accountEmail: string): BusinessProfileDraft => ({
   name: 'Urban Grill & Bistro',
-  category: 'Restaurant & Dining',
+  categories: ['Restaurant & Dining'],
   tags: ['Grill & Steakhouse', 'Bistro & Cafe'],
   description: SEED_DESCRIPTION,
   phone: '+234 803 555 9821',
-  email: 'hello@urbangrill.ng',
+  email: accountEmail || 'hello@urbangrill.ng',
   website: 'https://www.urbangrill.ng',
   instagram: '@urbangrill_lagos',
-  whatsapp: 'wa.me/2348035559821',
+  whatsapp: '0803 555 9821',
   x: '@urbangrillng',
   prefs: { inApp: true, whatsapp: true },
-};
+});
 
 const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
   title: service.title,
@@ -118,23 +145,68 @@ const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
 export function DesktopBusinessOnboardingScreen({
   onBack,
   onComplete,
+  onOpenVerification,
   initialStep = 'intro',
 }: {
   onBack: () => void;
   onComplete: () => void;
+  /** Opens the (separate) verification section. Setup progress is preserved. */
+  onOpenVerification?: () => void;
   /** `'basic'` skips the marketing intro and lands directly on profile details (existing-account flow). */
   initialStep?: 'intro' | 'basic';
 }) {
-  const [step, setStep] = useState<BusinessOnboardingStep>(initialStep);
-  const [draft, setDraft] = useState<BusinessProfileDraft>(INITIAL_DRAFT);
-  const [productDraft, setProductDraft] = useState<ProductDraft>(INITIAL_PRODUCT_DRAFT);
-  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(INITIAL_SERVICE_DRAFT);
-  const [dealDraft, setDealDraft] = useState<ProductDraft>(INITIAL_PRODUCT_DRAFT);
-  const [dealStudio, setDealStudio] = useState<DealStudioDraft>(INITIAL_DEAL_STUDIO_DRAFT);
+  const profile = useProfile();
+  // Restore saved progress (if any) so returning from verification or another
+  // route resumes at the correct step instead of restarting setup.
+  const stored = getBusinessSetupSnapshot();
+  const [step, setStep] = useState<BusinessOnboardingStep>(() => {
+    if (stored && (stored.step as BusinessOnboardingStep)) return stored.step as BusinessOnboardingStep;
+    return initialStep;
+  });
+  const [draft, setDraft] = useState<BusinessProfileDraft>(
+    () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
+  );
+  const [productDraft, setProductDraft] = useState<ProductDraft>(
+    () => (stored?.data.productDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+  );
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
+    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? INITIAL_SERVICE_DRAFT,
+  );
+  const [dealDraft, setDealDraft] = useState<ProductDraft>(
+    () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+  );
+  const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
+    () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? INITIAL_DEAL_STUDIO_DRAFT,
+  );
+  const [verificationState, setVerificationState] = useState<VerificationSectionState>(
+    () => stored?.verificationState ?? 'not-started',
+  );
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [step]);
+
+  useEffect(() => {
+    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio });
+  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio]);
+
+  useEffect(() => {
+    setBusinessSetupVerificationState(verificationState);
+  }, [verificationState]);
+
+  // A service always inherits its classification from the business profile —
+  // keep the service draft aligned whenever the business categories/tags change
+  // so the service editor never needs to re-ask for this information.
+  useEffect(() => {
+    const classification = classifyServiceFromBusiness(draft.categories, draft.tags);
+    if (!classification) return;
+    setServiceDraft((prev) =>
+      prev.primaryCategory === classification.primaryCategory &&
+      prev.subCategory === classification.subCategory
+        ? prev
+        : { ...prev, primaryCategory: classification.primaryCategory, subCategory: classification.subCategory },
+    );
+  }, [draft.categories, draft.tags]);
 
   const updateDraft = (patch: Partial<BusinessProfileDraft>) => {
     setDraft((prev) => ({ ...prev, ...patch }));
@@ -152,7 +224,8 @@ export function DesktopBusinessOnboardingScreen({
     setDealStudio((prev) => ({ ...prev, ...patch }));
   };
 
-  switch (step) {
+  const renderStep = () => {
+    switch (step) {
     case 'intro':
       return <DesktopBusinessIntroScreen onStart={() => setStep('basic')} onExit={onBack} />;
     case 'basic':
@@ -297,6 +370,8 @@ export function DesktopBusinessOnboardingScreen({
           onBack={() => setStep('catalog')}
           onNext={() => setStep('service2')}
           onSaveDraft={onBack}
+          businessCategories={draft.categories}
+          businessSubcategories={draft.tags}
         />
       );
     case 'service2':
@@ -403,5 +478,33 @@ export function DesktopBusinessOnboardingScreen({
       );
     case 'businessQr':
       return <DesktopBusinessQrScreen onContinue={onComplete} />;
-  }
+    default:
+      return null;
+    }
+  };
+
+  const activeSection: BusinessSetupSectionId = PROFILE_STEPS.includes(step) ? 'profile' : 'offerings';
+  const progressSnapshot = {
+    activeSection,
+    profileCompleted: activeSection !== 'profile',
+    offeringsCompleted: step === 'businessQr' || verificationState !== 'not-started',
+    verificationState,
+  };
+
+  const handleSelectSection = (id: BusinessSetupSectionId) => {
+    if (getSectionStates(progressSnapshot)[id] === 'locked') return;
+    if (id === 'profile') {
+      setStep('basic');
+    } else if (id === 'offerings') {
+      setStep('catalog');
+    } else if (onOpenVerification) {
+      setVerificationState('in-progress');
+      onOpenVerification();
+    }
+  };
+
+  const navValue: BusinessSetupNavValue | null =
+    step === 'intro' ? null : { ...progressSnapshot, onSelectSection: handleSelectSection };
+
+  return <BusinessSetupNavContext.Provider value={navValue}>{renderStep()}</BusinessSetupNavContext.Provider>;
 }

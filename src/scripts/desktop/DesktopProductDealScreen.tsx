@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { ProductDraft } from './desktopProductDraft';
 
@@ -42,13 +43,14 @@ export function DesktopProductDealScreen({
   );
 
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
+  const activeVariants = getActiveVariants(draft);
   const variantPriceSource =
-    draft.variants.find((variant) => variant.name === 'Regular')?.price ?? draft.variants[0]?.price ?? draft.basePrice;
+    activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice;
   const parsedVariantPrice = toNumber(variantPriceSource);
   const basePrice =
     parsedVariantPrice > 0 ? parsedVariantPrice : toNumber(draft.basePrice);
   const dealPrice = Math.round(basePrice * (1 - discount / 100));
-  const variantPrices = draft.variants.map((variant) => toNumber(variant.price)).filter((price) => price > 0);
+  const variantPrices = activeVariants.map((variant) => toNumber(variant.price)).filter((price) => price > 0);
   const priceMin = variantPrices.length > 0 ? Math.min(...variantPrices) : basePrice;
   const priceMax = variantPrices.length > 0 ? Math.max(...variantPrices) : basePrice;
   const formatAmount = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');

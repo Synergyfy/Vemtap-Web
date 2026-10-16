@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { isVariantProduct, getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessProductReviewScreenProps {
@@ -95,7 +96,9 @@ export function BusinessProductReviewScreen({
   const basePrice = parseAmount(draft.basePrice);
   const comparePrice = parseAmount(draft.comparePrice);
   const savings = comparePrice - basePrice;
-  const totalStock = draft.variants.reduce((sum, variant) => sum + parseAmount(variant.inventory), 0);
+  const activeVariants = getActiveVariants(draft);
+  const variantMode = isVariantProduct(draft);
+  const totalStock = activeVariants.reduce((sum, variant) => sum + parseAmount(variant.inventory), 0);
   const heroImage = REVIEW_IMAGES[0];
 
   return (
@@ -220,7 +223,7 @@ export function BusinessProductReviewScreen({
                 <div className="flex flex-col">
                   <h3 className="font-heading-sm text-heading-sm text-text-primary">Pricing &amp; Variants</h3>
                   <span className="font-caption text-caption text-text-secondary">
-                    {draft.variants.length} sizes configured
+                    {variantMode ? `${activeVariants.length} sizes configured` : 'Standard single-size item'}
                   </span>
                 </div>
               </div>
@@ -252,34 +255,49 @@ export function BusinessProductReviewScreen({
             </div>
             <div className="flex flex-col gap-space-xs">
               <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider font-semibold">
-                Active Portions
+                {variantMode ? 'Active Portions' : 'Sold As'}
               </span>
-              {draft.variants.map((variant) => (
-                <div
-                  key={variant.id}
-                  className="flex items-center justify-between p-space-sm bg-surface-container-low rounded-lg"
-                >
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-label-md text-label-md font-semibold text-text-primary">
-                      {variant.name} ({variant.cut})
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">
-                      {variant.inventory} units in stock
-                    </span>
+              {variantMode ? (
+                activeVariants.map((variant) => (
+                  <div
+                    key={variant.id}
+                    className="flex items-center justify-between p-space-sm bg-surface-container-low rounded-lg"
+                  >
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md font-semibold text-text-primary">
+                        {variant.name} ({variant.cut})
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary">
+                        {variant.inventory} units in stock
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-label-md text-label-md font-bold text-text-primary">
+                        ₦{variant.price}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-label-md text-label-md font-bold text-text-primary">
-                      ₦{variant.price}
-                    </span>
-                  </div>
+                ))
+              ) : (
+                <div className="flex items-center gap-2.5 p-space-sm bg-surface-container-low rounded-lg">
+                  <Icon name="inventory_2" className="text-[20px] text-text-tertiary" />
+                  <span className="font-caption text-caption text-text-secondary">
+                    Standard product — customers pick no size or option.
+                  </span>
                 </div>
-              ))}
+              )}
             </div>
             <div className="flex items-center justify-between pt-space-xs text-text-secondary">
               <div className="flex items-center gap-1.5">
                 <Icon name="inventory_2" className="text-[16px] text-primary" />
                 <span className="font-caption text-caption font-medium">
-                  Total Stock: <strong className="text-text-primary">{totalStock} units</strong>
+                  {variantMode ? (
+                    <>
+                      Total Stock: <strong className="text-text-primary">{totalStock} units</strong>
+                    </>
+                  ) : (
+                    'Stock tracked per standard unit'
+                  )}
                 </span>
               </div>
               <span className="font-caption text-caption bg-surface-container px-2 py-0.5 rounded text-on-surface-variant font-mono">

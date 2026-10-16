@@ -404,8 +404,10 @@ export function DesktopVerificationReviewScreen({
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="sticky bottom-4 z-40 bg-surface-canvas/95 backdrop-blur-md rounded-xl p-space-md shadow-xl flex flex-col sm:flex-row items-center justify-between gap-space-md">
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-xs text-text-secondary">
             <Icon name="live_help" className="text-[20px] text-primary" />
             <span className="font-body-md text-body-md text-text-secondary">Questions regarding verification?</span>
@@ -415,14 +417,14 @@ export function DesktopVerificationReviewScreen({
           </div>
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
             <button
-              className="px-space-lg py-space-xs rounded-xl text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary font-medium transition-colors"
+              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors"
               type="button"
               onClick={onBack}
             >
               Check Status Later
             </button>
             <button
-              className="w-full sm:w-auto px-space-xl py-3 rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-md hover:brightness-105 active:scale-95 transition-all flex items-center justify-center gap-space-xs"
+              className="w-full sm:w-auto px-space-xl py-space-sm rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs"
               type="button"
               onClick={reviewComplete ? onReviewComplete : fastForward}
             >

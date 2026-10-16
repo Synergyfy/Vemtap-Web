@@ -9,7 +9,12 @@ interface DesktopPosSyncScreenProps {
 type SyncPhase = 'idle' | 'pushing' | 'done';
 type ConflictPhase = 'open' | 'resolving' | 'resolved';
 
-export function DesktopPosSyncScreen({ onNav }: DesktopPosSyncScreenProps) {
+/**
+ * Chrome-less "Cloud Sync & Ledger Reconciliation" dashboard.
+ * Rendered inside the POS terminal shell (DesktopPosSyncScreen) and inside the
+ * business portal chrome (DesktopBusinessPosOrdersScreen → Offline & Sync).
+ */
+export function PosSyncContent() {
   const [syncPhase, setSyncPhase] = useState<SyncPhase>('idle');
   const [progress, setProgress] = useState(80);
   const [conflict, setConflict] = useState<ConflictPhase>('open');
@@ -67,7 +72,7 @@ export function DesktopPosSyncScreen({ onNav }: DesktopPosSyncScreenProps) {
   };
 
   return (
-    <PosTerminalChrome activeNav="hardware-and-sync" onNav={onNav}>
+    <>
       {/* Status Banner (Connection Restored) */}
       <div className="py-space-xs bg-badge-discount-bg text-badge-discount-text">
         <div className="w-full flex items-center justify-between">
@@ -583,6 +588,14 @@ export function DesktopPosSyncScreen({ onNav }: DesktopPosSyncScreenProps) {
           </div>
         </div>
       </div>
+    </>
+  );
+}
+
+export function DesktopPosSyncScreen({ onNav }: DesktopPosSyncScreenProps) {
+  return (
+    <PosTerminalChrome activeNav="hardware-and-sync" onNav={onNav}>
+      <PosSyncContent />
     </PosTerminalChrome>
   );
 }

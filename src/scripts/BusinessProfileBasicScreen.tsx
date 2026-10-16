@@ -1,8 +1,17 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { MultiSelectDropdown } from '../components/ui/MultiSelectDropdown';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
-import { MOCKUP_SEED_CHAR_COUNT, SEED_DESCRIPTION } from './businessOnboardingSeed';
+import {
+  BUSINESS_CATEGORIES,
+  MAX_CATEGORY_SELECTIONS,
+  MAX_SUBCATEGORY_SELECTIONS,
+  MIN_CATEGORY_SELECTIONS,
+  MIN_SUBCATEGORY_SELECTIONS,
+  MOCKUP_SEED_CHAR_COUNT,
+  SEED_DESCRIPTION,
+} from './businessOnboardingSeed';
 
 interface BusinessProfileBasicScreenProps {
   draft: BusinessProfileDraft;
@@ -12,20 +21,18 @@ interface BusinessProfileBasicScreenProps {
   onSaveDraft: () => void;
 }
 
-interface CategoryOption {
-  value: string;
-  label: string;
-}
+const CATEGORY_OPTIONS = BUSINESS_CATEGORIES.map((category) => ({
+  value: category.value,
+  label: category.label,
+}));
 
-const CATEGORY_OPTIONS: CategoryOption[] = [
-  { value: 'restaurant', label: 'Restaurant & Dining' },
-  { value: 'spa', label: 'Spa & Wellness' },
-  { value: 'fashion', label: 'Fashion & Apparel' },
-  { value: 'groceries', label: 'Groceries & Market' },
-  { value: 'services', label: 'Local Services & Repair' },
-];
-
-const SUBCATEGORY_CHIPS = ['Grill & Steakhouse', 'Bistro & Cafe', 'Fast Casual', 'Fine Dining', 'Bakery'];
+/** Subcategories available for a given set of parent categories (order preserved, deduped). */
+const availableSubcategories = (categoryValues: string[]): string[] => {
+  const subcategories = BUSINESS_CATEGORIES.filter((category) => categoryValues.includes(category.value)).flatMap(
+    (category) => category.subcategories,
+  );
+  return subcategories.filter((subcategory, index) => subcategories.indexOf(subcategory) === index);
+};
 
 export function BusinessProfileBasicScreen({
   draft,
@@ -34,28 +41,43 @@ export function BusinessProfileBasicScreen({
   onNext,
   onSaveDraft,
 }: BusinessProfileBasicScreenProps) {
-  const [shakeTag, setShakeTag] = useState<string | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
 
   const descriptionCount =
     draft.description === SEED_DESCRIPTION ? MOCKUP_SEED_CHAR_COUNT : draft.description.length;
 
-  const categoryValue = CATEGORY_OPTIONS.some((option) => option.value === draft.category)
-    ? draft.category
-    : CATEGORY_OPTIONS[0].value;
-
   const previewTitle = draft.name.trim() || 'Your Store Name';
   const previewSubtitle = draft.tags.length > 0 ? draft.tags.join(' • ') : 'Select specialty';
 
-  const toggleTag = (tag: string) => {
-    const isSelected = draft.tags.includes(tag);
-    if (!isSelected && draft.tags.length >= 2) {
-      setShakeTag(tag);
-      window.setTimeout(() => setShakeTag(null), 150);
+  const subcategories = availableSubcategories(draft.categories);
+  const subcategoryOptions = subcategories.map((subcategory) => ({ value: subcategory, label: subcategory }));
+
+  const handleCategoryChange = (categories: string[]) => {
+    const validSubcategories = availableSubcategories(categories);
+    onChange({
+      categories,
+      // Drop subcategories that no longer belong to any selected parent category.
+      tags: draft.tags.filter((tag) => validSubcategories.includes(tag)),
+    });
+  };
+
+  const hasName = draft.name.trim().length > 0;
+  const hasEnoughCategories = draft.categories.length >= MIN_CATEGORY_SELECTIONS;
+  const hasEnoughSubcategories = draft.tags.length >= MIN_SUBCATEGORY_SELECTIONS;
+  const canContinue = hasName && hasEnoughCategories && hasEnoughSubcategories;
+  const missingFields = [
+    !hasName ? 'a business name' : null,
+    !hasEnoughCategories ? `at least ${MIN_CATEGORY_SELECTIONS} categories` : null,
+    !hasEnoughSubcategories ? `at least ${MIN_SUBCATEGORY_SELECTIONS} specialties` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const handleContinue = () => {
+    if (!canContinue) {
+      setShowErrors(true);
       return;
     }
-    onChange({
-      tags: isSelected ? draft.tags.filter((entry) => entry !== tag) : [...draft.tags, tag],
-    });
+    setShowErrors(false);
+    onNext();
   };
 
   return (
@@ -83,7 +105,7 @@ export function BusinessProfileBasicScreen({
 
       <div className="flex flex-col w-full">
         <div className="px-margin pt-space-md pb-space-2xl space-y-space-lg">
-          <div className="space-y-space-xs">
+          <div className="space-y-space-2xs">
             <div className="flex items-center justify-between">
               <span className="font-label-sm text-label-sm text-primary-container font-semibold tracking-wide uppercase">
                 Step 1 of 3: Basic Info
@@ -119,7 +141,11 @@ export function BusinessProfileBasicScreen({
               <label className="block font-label-md text-label-md text-text-primary" htmlFor="business-name">
                 Business Name <span className="text-error">*</span>
               </label>
-              <div className="relative flex items-center bg-surface-container-lowest rounded-xl shadow-sm">
+              <div
+                className={`relative flex items-center bg-surface-container-lowest rounded-xl shadow-sm transition-all ${
+                  showErrors && !hasName ? 'ring-2 ring-error' : ''
+                }`}
+              >
                 <div className="absolute left-4 flex items-center pointer-events-none text-text-tertiary">
                   <Icon name="storefront" className="text-[20px]" />
                 </div>
@@ -132,63 +158,80 @@ export function BusinessProfileBasicScreen({
                   onChange={(event) => onChange({ name: event.target.value })}
                 />
               </div>
+              {showErrors && !hasName && (
+                <p className="font-caption text-caption text-error px-1">Business name is required.</p>
+              )}
             </div>
 
             <div className="space-y-space-2xs">
-              <label className="block font-label-md text-label-md text-text-primary" htmlFor="primary-category">
-                Primary Category (Required)
-              </label>
-              <div className="relative bg-surface-container-lowest rounded-xl shadow-sm">
-                <select
-                  className="w-full h-[52px] pl-4 pr-11 bg-transparent font-body-md text-body-md text-text-primary rounded-xl appearance-none focus:outline-none focus:bg-surface-subtle transition-all cursor-pointer"
-                  id="primary-category"
-                  value={categoryValue}
-                  onChange={(event) => onChange({ category: event.target.value })}
-                >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none flex items-center text-text-secondary">
-                  <Icon name="expand_more" className="text-[20px]" />
-                </div>
-              </div>
-              <p className="font-caption text-caption text-text-tertiary px-1">
-                Helps assign your store to the right category carousel on nearby feeds.
-              </p>
-            </div>
-
-            <div className="space-y-space-xs">
               <div className="flex items-center justify-between">
                 <label className="block font-label-md text-label-md text-text-primary">
-                  Subcategory Specialty <span className="font-normal text-text-secondary">(Select up to 2)</span>
+                  Business Categories <span className="text-error">*</span>
                 </label>
-                <span className="font-caption text-caption text-primary-container font-semibold">
-                  {draft.tags.length} / 2 selected
+                <span className="font-caption text-caption text-text-secondary font-medium">
+                  Select at least {MIN_CATEGORY_SELECTIONS}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-space-xs pt-0.5">
-                {SUBCATEGORY_CHIPS.map((chip) => {
-                  const isActive = draft.tags.includes(chip);
-                  return (
-                    <button
-                      className={`chip-item h-9 px-3 rounded-full flex items-center gap-1.5 transition-all font-label-md text-label-md shadow-sm ${
-                        isActive
-                          ? 'bg-surface-tint-blue text-primary-container'
-                          : 'bg-surface-container text-text-secondary hover:text-text-primary'
-                      } ${shakeTag === chip ? 'scale-95' : ''}`}
-                      key={chip}
-                      type="button"
-                      onClick={() => toggleTag(chip)}
-                    >
-                      <Icon className={`text-[16px] check-icon ${isActive ? '' : 'hidden'}`} name="check" />
-                      <span>{chip}</span>
-                    </button>
-                  );
-                })}
+              <div
+                className={`rounded-xl transition-all ${
+                  showErrors && !hasEnoughCategories ? 'ring-2 ring-error' : ''
+                }`}
+              >
+                <MultiSelectDropdown
+                  ariaLabel="Select business categories"
+                  maxSelected={MAX_CATEGORY_SELECTIONS}
+                  placeholder="Choose business categories"
+                  values={draft.categories}
+                  options={CATEGORY_OPTIONS}
+                  onChange={handleCategoryChange}
+                />
               </div>
+              {showErrors && !hasEnoughCategories ? (
+                <p className="font-caption text-caption text-error px-1">
+                  Select at least {MIN_CATEGORY_SELECTIONS} business categories to continue.
+                </p>
+              ) : (
+                <p className="font-caption text-caption text-text-tertiary px-1">
+                  Helps assign your store to the right category carousel on nearby feeds.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-space-2xs">
+              <div className="flex items-center justify-between">
+                <label className="block font-label-md text-label-md text-text-primary">
+                  Subcategory Specialties <span className="text-error">*</span>
+                </label>
+                <span className="font-caption text-caption text-primary-container font-semibold">
+                  {draft.tags.length} / {MAX_SUBCATEGORY_SELECTIONS} selected
+                </span>
+              </div>
+              <div
+                className={`rounded-xl transition-all ${
+                  showErrors && !hasEnoughSubcategories ? 'ring-2 ring-error' : ''
+                }`}
+              >
+                <MultiSelectDropdown
+                  ariaLabel="Select subcategory specialties"
+                  disabled={draft.categories.length === 0}
+                  maxSelected={MAX_SUBCATEGORY_SELECTIONS}
+                  placeholder={
+                    draft.categories.length === 0 ? 'Select categories first' : 'Choose subcategories'
+                  }
+                  values={draft.tags}
+                  options={subcategoryOptions}
+                  onChange={(tags) => onChange({ tags })}
+                />
+              </div>
+              {showErrors && !hasEnoughSubcategories ? (
+                <p className="font-caption text-caption text-error px-1">
+                  Select at least {MIN_SUBCATEGORY_SELECTIONS} subcategory from your chosen categories.
+                </p>
+              ) : (
+                <p className="font-caption text-caption text-text-tertiary px-1">
+                  Subcategories update automatically based on your selected categories.
+                </p>
+              )}
             </div>
 
             <div className="space-y-space-2xs">
@@ -240,10 +283,18 @@ export function BusinessProfileBasicScreen({
           </div>
 
           <div className="pt-space-md pb-space-lg space-y-space-md">
+            {showErrors && !canContinue && (
+              <div role="alert" className="rounded-xl border border-error/40 bg-error-container/60 p-space-sm flex items-start gap-space-sm">
+                <Icon name="error" className="text-on-error text-[18px] shrink-0 mt-0.5" filled />
+                <span className="font-body-sm text-body-sm text-on-error">
+                  Still needed before you can continue: {missingFields.join(', ')}.
+                </span>
+              </div>
+            )}
             <button
               className="w-full h-[52px] bg-primary-container hover:bg-primary active:scale-[0.98] text-on-primary font-button-primary text-button-primary rounded-xl shadow-lg flex items-center justify-center gap-space-xs transition-all"
               type="button"
-              onClick={onNext}
+              onClick={handleContinue}
             >
               <span>Continue to Branding</span>
               <Icon name="arrow_forward" className="text-[20px]" />

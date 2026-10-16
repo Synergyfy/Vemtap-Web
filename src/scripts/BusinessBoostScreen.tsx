@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useIsDesktop } from '../hooks/useIsDesktop';
 import { SubscriptionHeader } from './SubscriptionHeader';
+import { SubscriptionChrome } from './desktop/SubscriptionChrome';
 import { PUBLIC_IMAGES } from './publicPosData';
 
 interface BusinessBoostScreenProps {
@@ -183,12 +185,6 @@ const DAY_NODES = [
 
 const WIZARD_STEPS = ['Objective', 'Content', 'Audience', 'Schedule', 'Budget', 'Review'];
 
-const BUDGET_TIERS = [
-  { amount: 15000, label: 'Starter', desc: 'Light local reach' },
-  { amount: 35000, label: 'Growth', desc: 'Steady neighborhood orders', popular: true },
-  { amount: 70000, label: 'Surge', desc: 'Maximum local exposure' },
-];
-
 const DURATION_PRESETS = [3, 7, 14, 30];
 
 const USSD_BANKS = [
@@ -242,6 +238,7 @@ const DAY_NAMES: Record<string, string> = {
 };
 
 export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedItem }: BusinessBoostScreenProps) {
+  const isDesktop = useIsDesktop();
   const [phase, setPhase] = useState<BoostPhase>(preselectedItem ? 'content' : 'objective');
   const [objective, setObjective] = useState('customers');
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -658,35 +655,53 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
                   Pick one objective — we tune delivery and reporting around it.
                 </p>
               </div>
-              <div className="flex flex-col gap-space-xs">
+              {/* Mobile: vertical list — Desktop: responsive grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-xs">
                 {OBJECTIVES.map((entry) => {
                   const active = objective === entry.key;
                   return (
                     <button
-                      className={`p-3 rounded-xl flex items-center gap-3 text-left transition-all active:scale-[0.99] ${
-                        active
-                          ? 'bg-surface-tint-blue border border-primary/25 shadow-sm'
-                          : `bg-surface-canvas ${CARD_SHADOW}`
-                      }`}
+                      className={`rounded-xl text-left transition-all active:scale-[0.99]
+                        /* mobile: horizontal row */ flex items-center gap-3 p-3
+                        /* desktop: vertical card */ md:flex-col md:items-start md:gap-space-sm md:p-space-sm
+                        ${
+                          active
+                            ? 'bg-surface-tint-blue border border-primary/25 shadow-sm'
+                            : `bg-surface-canvas ${CARD_SHADOW}`
+                        }`}
                       key={entry.key}
                       type="button"
                       onClick={() => setObjective(entry.key)}
                     >
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          active ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-on-surface-variant'
-                        }`}
-                      >
-                        <Icon name={entry.icon} className="text-[20px]" />
+                      {/* Icon + check row on desktop */}
+                      <div className="md:w-full md:flex md:items-center md:justify-between md:flex-row shrink-0">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                            active ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-on-surface-variant'
+                          }`}
+                        >
+                          <Icon name={entry.icon} className="text-[20px]" />
+                        </div>
+                        <div
+                          className={`hidden md:flex w-6 h-6 rounded-full items-center justify-center shrink-0 ${
+                            active ? 'bg-primary-container' : 'bg-surface-container-high'
+                          }`}
+                        >
+                          {active && <Icon name="check" className="text-on-primary text-[16px]" />}
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
+                      {/* Title + desc */}
+                      <div className="flex-1 min-w-0 md:flex-none md:w-full">
                         <span className="font-label-md text-label-md font-semibold text-text-primary block truncate">
                           {entry.title}
                         </span>
-                        <span className="font-caption text-caption text-text-secondary">{entry.desc}</span>
+                        <span className="font-caption text-caption text-text-secondary md:mt-0.5 md:leading-snug block">
+                          {entry.desc}
+                        </span>
                       </div>
+                      {/* Mobile-only trailing check */}
                       <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                        className={`md:hidden w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                           active ? 'bg-primary-container' : 'bg-surface-container-high'
                         }`}
                       >
@@ -719,54 +734,54 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
                   Select one or more deals, products, services or your storefront profile.
                 </p>
               </div>
-              <div className="flex flex-col gap-space-sm">
+              {/* Content grid — 1 col mobile, 2 col md, 3 col lg */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-sm">
                 {contentPool.map((entry) => {
                   const active = selectedKeys.includes(entry.key);
                   return (
                     <button
-                      className={`relative w-full rounded-xl overflow-hidden text-left transition-all active:scale-[0.99] ${
-                        active ? 'ring-2 ring-primary shadow-sm' : CARD_SHADOW
+                      className={`group relative rounded-xl overflow-hidden text-left transition-all cursor-pointer hover:shadow-md active:scale-[0.98] ${
+                        active
+                          ? 'ring-2 ring-primary shadow-md'
+                          : `${CARD_SHADOW} hover:ring-1 hover:ring-primary/40`
                       }`}
                       key={entry.key}
                       type="button"
                       onClick={() => toggleContent(entry.key)}
                     >
-                      <div className="relative h-32 w-full bg-cover bg-center" style={{ backgroundImage: `url('${entry.image}')` }}>
+                      {/* Thumbnail */}
+                      <div className="relative h-36 w-full bg-cover bg-center" style={{ backgroundImage: `url('${entry.image}')` }}>
                         <div className="absolute inset-0 bg-gradient-to-t from-on-background/70 via-on-background/10 to-transparent" />
-                        <span
-                          className={`absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full font-caption text-caption font-bold ${entry.thumbBadgeClass}`}
-                        >
+                        <span className={`absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full font-caption text-caption font-bold ${entry.thumbBadgeClass}`}>
                           {entry.thumbBadge}
                         </span>
-                        {active && (
-                          <span className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-primary flex items-center justify-center shadow-sm">
-                            <Icon name="check" className="text-on-primary text-[16px]" />
-                          </span>
-                        )}
+                        {/* Select affordance */}
+                        <span
+                          className={`absolute top-2.5 right-2.5 w-7 h-7 rounded-full flex items-center justify-center shadow-sm transition-all ${
+                            active
+                              ? 'bg-primary scale-100'
+                              : 'bg-surface-canvas/80 group-hover:bg-surface-canvas scale-90 group-hover:scale-100'
+                          }`}
+                        >
+                          {active
+                            ? <Icon name="check" className="text-on-primary text-[16px]" />
+                            : <Icon name="add" className="text-text-secondary text-[16px]" />}
+                        </span>
                         <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
                           <div className="min-w-0">
-                            <span className={`font-heading-sm text-heading-sm font-bold drop-shadow-sm ${entry.cardLabelClass}`}>
-                              {entry.cardLabel}
-                            </span>
+                            <span className={`font-heading-sm text-heading-sm font-bold drop-shadow-sm ${entry.cardLabelClass}`}>{entry.cardLabel}</span>
                             <p className="font-caption text-caption text-on-primary/90 truncate">{entry.cardDesc}</p>
                           </div>
-                          <span className="bg-surface-canvas/90 backdrop-blur-sm px-2 py-0.5 rounded-full font-caption text-caption font-semibold text-text-primary shrink-0">
-                            {entry.typeLabel}
-                          </span>
+                          <span className="bg-surface-canvas/90 backdrop-blur-sm px-2 py-0.5 rounded-full font-caption text-caption font-semibold text-text-primary shrink-0">{entry.typeLabel}</span>
                         </div>
                       </div>
-                      <div className="bg-surface-canvas p-3 flex items-center justify-between gap-2">
+                      {/* Info footer */}
+                      <div className="bg-surface-canvas px-3 pt-2.5 pb-1.5 flex items-start justify-between gap-2">
                         <div className="flex flex-col min-w-0">
-                          <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                            {entry.name}
-                          </span>
+                          <span className="font-label-md text-label-md font-semibold text-text-primary truncate">{entry.name}</span>
                           <span className="font-caption text-caption text-text-secondary truncate">{entry.meta}</span>
                         </div>
-                        <span
-                          className={`px-2 py-0.5 rounded-full font-caption text-caption font-semibold shrink-0 ${entry.statusClass}`}
-                        >
-                          {entry.statusLabel}
-                        </span>
+                        <span className={`px-2 py-0.5 rounded-full font-caption text-caption font-semibold shrink-0 ${entry.statusClass}`}>{entry.statusLabel}</span>
                       </div>
                       <div className="bg-surface-subtle px-3 py-1.5 flex items-center gap-3">
                         <span className="flex items-center gap-1 font-caption text-caption text-text-secondary">
@@ -784,7 +799,7 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
               </div>
               <p className="font-caption text-caption text-text-tertiary px-1">
                 {selectedKeys.length === 0
-                  ? 'Select at least one item to continue.'
+                  ? 'Tap a card above to select what you want to boost.'
                   : `${selectedKeys.length} item${selectedKeys.length > 1 ? 's' : ''} selected.`}
               </p>
             </div>
@@ -848,49 +863,59 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
                   <span className="font-caption text-caption text-text-secondary uppercase tracking-wider font-semibold px-1">
                     Choose cohorts ({cohorts.length} selected)
                   </span>
-                  {COHORTS.map((cohort) => {
-                    const active = cohorts.includes(cohort.key);
-                    return (
-                      <button
-                        className={`p-3 rounded-xl flex items-center gap-3 text-left transition-all active:scale-[0.99] ${
-                          active
-                            ? 'bg-surface-tint-blue border border-primary/25 shadow-sm'
-                            : `bg-surface-canvas ${CARD_SHADOW}`
-                        }`}
-                        key={cohort.key}
-                        type="button"
-                        onClick={() => toggleCohort(cohort.key)}
-                      >
-                        <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                            active ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-on-surface-variant'
-                          }`}
+                  {/* Cohort grid — 1 col mobile, 2 col md, 3 col lg */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-xs">
+                    {COHORTS.map((cohort) => {
+                      const active = cohorts.includes(cohort.key);
+                      return (
+                        <button
+                          className={`group cursor-pointer rounded-xl text-left transition-all active:scale-[0.98]
+                            flex items-center gap-3 p-3
+                            md:flex-col md:items-start md:gap-space-sm md:p-space-sm
+                            ${
+                              active
+                                ? 'bg-surface-tint-blue border border-primary/25 shadow-sm'
+                                : `bg-surface-canvas ${CARD_SHADOW} hover:ring-1 hover:ring-primary/30`
+                            }`}
+                          key={cohort.key}
+                          type="button"
+                          onClick={() => toggleCohort(cohort.key)}
                         >
-                          <Icon name={cohort.icon} className="text-[20px]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                              {cohort.title}
-                            </span>
-                            {cohort.badge && (
-                              <span className="px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shrink-0">
-                                {cohort.badge}
-                              </span>
-                            )}
+                          {/* Desktop: icon row with check */}
+                          <div className="md:w-full md:flex md:items-center md:justify-between md:flex-row shrink-0">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              active ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-on-surface-variant'
+                            }`}>
+                              <Icon name={cohort.icon} className="text-[20px]" />
+                            </div>
+                            <div className={`hidden md:flex w-6 h-6 rounded-full items-center justify-center shrink-0 ${
+                              active ? 'bg-primary-container' : 'bg-surface-container-high group-hover:bg-surface-container'
+                            }`}>
+                              {active
+                                ? <Icon name="check" className="text-on-primary text-[16px]" />
+                                : <Icon name="add" className="text-text-tertiary text-[14px]" />}
+                            </div>
                           </div>
-                          <span className="font-caption text-caption text-text-secondary">{cohort.desc}</span>
-                        </div>
-                        <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                          {/* Title + badge + desc */}
+                          <div className="flex-1 min-w-0 md:flex-none md:w-full">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-label-md text-label-md font-semibold text-text-primary">{cohort.title}</span>
+                              {cohort.badge && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shrink-0">{cohort.badge}</span>
+                              )}
+                            </div>
+                            <span className="font-caption text-caption text-text-secondary md:mt-0.5 md:leading-snug block">{cohort.desc}</span>
+                          </div>
+                          {/* Mobile-only check */}
+                          <div className={`md:hidden w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                             active ? 'bg-primary-container' : 'bg-surface-container-high'
-                          }`}
-                        >
-                          {active && <Icon name="check" className="text-on-primary text-[16px]" />}
-                        </div>
-                      </button>
-                    );
-                  })}
+                          }`}>
+                            {active && <Icon name="check" className="text-on-primary text-[16px]" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (
                 <div className="bg-surface-canvas rounded-xl p-3 flex items-start gap-2.5">
@@ -1159,31 +1184,48 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
 
                 {dayparting && (
                   <>
-                    <div className="flex flex-col gap-space-xs">
+                    {/* Rush window grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-space-xs">
                       {RUSH_WINDOWS.map((window) => {
                         const active = rushWindows.includes(window.key);
                         return (
                           <button
-                            className={`flex items-center gap-2.5 p-2.5 rounded-lg text-left transition-all ${
-                              active ? 'bg-surface-tint-blue border border-primary/20' : 'bg-surface-subtle'
-                            }`}
+                            className={`group cursor-pointer rounded-xl text-left transition-all active:scale-[0.98]
+                              flex items-center gap-2.5 p-3
+                              md:flex-col md:items-start md:gap-2 md:p-space-sm
+                              ${
+                                active
+                                  ? 'bg-surface-tint-blue border border-primary/20 shadow-sm'
+                                  : `bg-surface-subtle hover:ring-1 hover:ring-primary/30`
+                              }`}
                             key={window.key}
                             type="button"
                             onClick={() => toggleRushWindow(window.key)}
                           >
-                            <div
-                              className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
-                                active ? 'bg-primary-container' : 'bg-surface-canvas border border-outline-variant'
-                              }`}
-                            >
-                              {active && <Icon name="check" className="text-on-primary text-[14px]" />}
+                            {/* Desktop: icon row + check */}
+                            <div className="md:w-full md:flex md:items-center md:justify-between shrink-0">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                active ? 'bg-primary-container text-on-primary' : 'bg-surface-canvas text-text-secondary shadow-sm'
+                              }`}>
+                                <Icon name={window.icon} className="text-[20px]" />
+                              </div>
+                              <div className={`hidden md:flex w-6 h-6 rounded-full items-center justify-center shrink-0 ${
+                                active ? 'bg-primary-container' : 'bg-surface-canvas border border-outline-variant group-hover:border-primary/40'
+                              }`}>
+                                {active
+                                  ? <Icon name="check" className="text-on-primary text-[14px]" />
+                                  : <Icon name="add" className="text-text-tertiary text-[12px]" />}
+                              </div>
                             </div>
-                            <Icon name={window.icon} className={`text-[18px] shrink-0 ${active ? 'text-primary' : 'text-text-tertiary'}`} />
-                            <div className="flex-1 min-w-0">
-                              <span className="font-label-sm text-label-sm font-semibold text-text-primary block truncate">
-                                {window.label}
-                              </span>
-                              <span className="font-caption text-caption text-text-secondary">{window.time}</span>
+                            {/* Mobile check + text */}
+                            <div className={`md:hidden w-5 h-5 rounded flex items-center justify-center shrink-0 ${
+                              active ? 'bg-primary-container' : 'bg-surface-canvas border border-outline-variant'
+                            }`}>
+                              {active && <Icon name="check" className="text-on-primary text-[12px]" />}
+                            </div>
+                            <div className="flex-1 min-w-0 md:flex-none md:w-full">
+                              <span className="font-label-sm text-label-sm font-semibold text-text-primary block">{window.label}</span>
+                              <span className="font-caption text-caption text-text-secondary md:mt-0.5 block">{window.time}</span>
                             </div>
                           </button>
                         );
@@ -1288,53 +1330,6 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
                 </p>
               </div>
 
-              {/* Tiers */}
-              <div className="flex flex-col gap-space-xs">
-                {BUDGET_TIERS.map((tier) => {
-                  const active = budget === tier.amount;
-                  return (
-                    <button
-                      className={`relative p-3 rounded-xl flex items-center gap-3 text-left transition-all active:scale-[0.99] ${
-                        active
-                          ? 'bg-surface-tint-blue border border-primary/25 shadow-sm'
-                          : `bg-surface-canvas ${CARD_SHADOW}`
-                      }`}
-                      key={tier.amount}
-                      type="button"
-                      onClick={() => applyBudgetAmount(tier.amount)}
-                    >
-                      {tier.popular && (
-                        <span className="absolute -top-2 right-3 px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-caption font-bold shadow-sm">
-                          Most Popular
-                        </span>
-                      )}
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          active ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-on-surface-variant'
-                        }`}
-                      >
-                        <Icon name="payments" className="text-[20px]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                            ₦{fmt(tier.amount)}
-                          </span>
-                          <span className="font-caption text-caption font-semibold text-primary">{tier.label}</span>
-                        </div>
-                        <span className="font-caption text-caption text-text-secondary">{tier.desc}</span>
-                      </div>
-                      <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
-                          active ? 'bg-primary-container' : 'bg-surface-container-high'
-                        }`}
-                      >
-                        {active && <Icon name="check" className="text-on-primary text-[16px]" />}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
 
               {/* Budget type + stepper */}
               <div className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-2.5">
@@ -1580,205 +1575,163 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
               </div>
             </section>
 
-            {/* Summary accordion cards */}
+            {/* Summary grid — 2 col on desktop */}
             <section className="px-margin flex flex-col gap-space-sm pb-space-xl">
-              <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm">
-                {reviewCardHeader(
-                  'ads_click',
-                  'Objective',
-                  OBJECTIVES.find((entry) => entry.key === objective)?.title ?? '',
-                  () => setPhase('objective'),
-                )}
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-space-sm">
 
-              <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-sm">
-                {reviewCardHeader(
-                  'layers',
-                  'Featured Content',
-                  `${selectedKeys.length} Active Asset${selectedKeys.length > 1 ? 's' : ''} Attached`,
-                  () => setPhase('content'),
-                )}
-                {item && (
-                  <div className="rounded-xl bg-surface-subtle p-space-xs flex gap-space-sm items-center">
-                    <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
-                      <img alt={item.name} className="w-full h-full object-cover" src={item.image} />
-                      <span
-                        className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full font-caption text-caption font-bold tracking-tight ${item.thumbBadgeClass}`}
-                      >
-                        {item.cardLabel}
-                      </span>
+                {/* Objective */}
+                <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm">
+                  {reviewCardHeader(
+                    'ads_click',
+                    'Objective',
+                    OBJECTIVES.find((entry) => entry.key === objective)?.title ?? '',
+                    () => setPhase('objective'),
+                  )}
+                  <div className="mt-3 pl-10">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
+                      <Icon name={OBJECTIVES.find((e) => e.key === objective)?.icon ?? 'campaign'} className="text-[15px]" />
+                      {OBJECTIVES.find((e) => e.key === objective)?.title}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Featured Content */}
+                <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-sm">
+                  {reviewCardHeader(
+                    'layers',
+                    'Featured Content',
+                    `${selectedKeys.length} Active Asset${selectedKeys.length > 1 ? 's' : ''} Attached`,
+                    () => setPhase('content'),
+                  )}
+                  {item && (
+                    <div className="rounded-xl bg-surface-subtle p-space-xs flex gap-space-sm items-center">
+                      <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0">
+                        <img alt={item.name} className="w-full h-full object-cover" src={item.image} />
+                        <span className={`absolute top-1 left-1 px-1 py-0.5 rounded-full font-caption text-[10px] font-bold tracking-tight ${item.thumbBadgeClass}`}>{item.cardLabel}</span>
+                      </div>
+                      <div className="flex flex-col justify-center flex-1 min-w-0">
+                        <span className="flex items-center gap-1 font-caption text-caption text-text-secondary">
+                          <Icon name="storefront" className="text-[13px] text-primary" />{primaryBranch.name}
+                        </span>
+                        <p className="font-label-md text-label-md text-text-primary font-semibold truncate">{item.name}</p>
+                        <span className="font-caption text-caption text-text-tertiary truncate">{item.meta}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col justify-center flex-1 min-w-0 pr-space-2xs">
-                      <div className="flex items-center gap-1 mb-0.5">
-                        <Icon name="storefront" className="text-[14px] text-primary" />
-                        <span className="font-caption text-caption text-text-secondary truncate">
-                          {primaryBranch.name} — Storefront
+                  )}
+                </div>
+
+                {/* Audience */}
+                <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs">
+                  {reviewCardHeader(
+                    'groups',
+                    'Audience & Targeting',
+                    audienceMode === 'broadcast'
+                      ? 'Everyone Nearby'
+                      : `${cohorts.length} Segments • ${fmt(addressable)} shoppers`,
+                    () => setPhase('audience'),
+                  )}
+                  <div className="pl-10 flex flex-col gap-1.5 pt-1">
+                    <div className="flex items-center gap-space-xs text-text-secondary font-body-md text-body-md">
+                      <Icon name="radar" className="text-[16px] text-secondary" />
+                      <span className="text-on-surface font-medium">Radius:</span>
+                      <span>{radius.toFixed(1)} km — {primaryBranch.name}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {selectedCohortChips.map((label) => (
+                        <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption" key={label}>{label}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Venues */}
+                <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs">
+                  {reviewCardHeader(
+                    'location_on',
+                    'Campaign Venues',
+                    `${branches.length} Selected Outlet${branches.length > 1 ? 's' : ''}`,
+                    () => setPhase('audience'),
+                  )}
+                  <div className="pl-10 flex flex-col gap-2 pt-1">
+                    {branches.map((option, index) => (
+                      <div className="flex items-center justify-between bg-surface-subtle p-space-xs rounded-lg" key={option.key}>
+                        <div className="flex items-center gap-space-xs min-w-0">
+                          <Icon name="store" className={`text-[18px] ${index === 0 ? 'text-primary' : 'text-secondary'}`} />
+                          <span className="font-label-md text-label-md text-on-surface truncate font-medium">{option.name}</span>
+                        </div>
+                        <span className={`font-caption text-caption font-semibold shrink-0 ${index === 0 ? 'text-badge-discount-text' : 'text-text-secondary'}`}>
+                          {index === 0 ? 'Primary' : 'Branch'}
                         </span>
                       </div>
-                      <p className="font-label-md text-label-md text-text-primary font-semibold truncate leading-snug">
-                        {item.name}
-                      </p>
-                      <span className="font-caption text-caption text-text-tertiary truncate mt-0.5">{item.meta}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs">
-                {reviewCardHeader(
-                  'groups',
-                  'Audience & Targeting',
-                  audienceMode === 'broadcast'
-                    ? 'Everyone Nearby'
-                    : `${cohorts.length} Segments • ${fmt(addressable)} Known Diners`,
-                  () => setPhase('audience'),
-                )}
-                <div className="pl-10 flex flex-col gap-1.5 pt-1">
-                  <div className="flex items-center gap-space-xs text-text-secondary font-body-md text-body-md">
-                    <Icon name="radar" className="text-[18px] text-secondary" />
-                    <span className="text-on-surface font-medium">Radius:</span>
-                    <span>{radius.toFixed(1)} km around {primaryBranch.name}</span>
-                  </div>
-                  <div className="flex items-center gap-space-xs text-text-secondary font-body-md text-body-md">
-                    <Icon name="explore" className="text-[18px] text-secondary" />
-                    <span className="text-on-surface font-medium">Clusters:</span>
-                    <span>{districts.length ? districts.join(' & ') : 'All nearby districts'}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedCohortChips.map((label) => (
-                      <span
-                        className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption"
-                        key={label}
-                      >
-                        {label}
-                      </span>
                     ))}
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs">
-                {reviewCardHeader(
-                  'location_on',
-                  'Campaign Venues',
-                  `${branches.length} Selected Outlet${branches.length > 1 ? 's' : ''}`,
-                  () => setPhase('audience'),
-                )}
-                <div className="pl-10 flex flex-col gap-2 pt-1">
-                  {branches.map((option, index) => (
-                    <div
-                      className="flex items-center justify-between bg-surface-subtle p-space-xs rounded-lg"
-                      key={option.key}
-                    >
-                      <div className="flex items-center gap-space-xs min-w-0">
-                        <Icon name="store" className={`text-[18px] ${index === 0 ? 'text-primary' : 'text-secondary'}`} />
-                        <span className="font-label-md text-label-md text-on-surface truncate font-medium">
-                          {option.name}
+                {/* Schedule */}
+                <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs">
+                  {reviewCardHeader(
+                    'calendar_today',
+                    'Schedule & Timing',
+                    `${fmtDate(startDate)} – ${fmtDate(endDate)} (${duration} Days)`,
+                    () => setPhase('schedule'),
+                  )}
+                  <div className="pl-10 flex flex-col gap-2 pt-1 font-body-md text-body-md text-text-secondary">
+                    <div className="flex items-start gap-space-xs">
+                      <Icon name="schedule" className="text-[18px] text-secondary shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-on-surface font-medium">Dayparting: </span>
+                        <span className="font-caption text-caption text-text-secondary">
+                          {dayparting && activeRushLabels ? activeRushLabels : 'All day delivery'}
                         </span>
                       </div>
-                      <span
-                        className={`font-caption text-caption font-semibold shrink-0 ${
-                          index === 0 ? 'text-badge-discount-text' : 'text-text-secondary'
-                        }`}
-                      >
-                        {index === 0 ? 'Primary' : 'Branch'}
-                      </span>
                     </div>
-                  ))}
-                  <div className="w-full h-24 rounded-lg overflow-hidden shadow-inner mt-1 relative flex items-end p-space-xs bg-surface-container-low">
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage:
-                          'linear-gradient(to right, rgba(20,27,43,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(20,27,43,0.06) 1px, transparent 1px)',
-                        backgroundSize: '22px 22px',
-                      }}
-                    />
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                      <div className="w-8 h-8 rounded-full bg-primary/15 border border-primary/40 flex items-center justify-center">
-                        <Icon name="pin_drop" className="text-primary text-[18px]" />
-                      </div>
-                    </div>
-                    <div className="relative bg-surface-canvas/90 backdrop-blur-sm px-space-xs py-1 rounded-md shadow-sm flex items-center gap-1">
-                      <Icon name="pin_drop" className="text-[14px] text-primary" />
-                      <span className="font-caption text-caption text-on-surface font-semibold">
-                        Abuja Metro Coverage Active
-                      </span>
+                    <div className="flex items-center gap-space-xs">
+                      <Icon name="speed" className="text-[18px] text-secondary shrink-0" />
+                      <span className="text-on-surface font-medium">Active days: </span>
+                      <span className="font-caption text-caption text-text-secondary">{dayLabels || 'All week'}</span>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs">
-                {reviewCardHeader(
-                  'calendar_today',
-                  'Schedule & Timing',
-                  `${fmtDate(startDate)} – ${fmtDate(endDate)} (${duration} Days)`,
-                  () => setPhase('schedule'),
-                )}
-                <div className="pl-10 flex flex-col gap-2 pt-1 font-body-md text-body-md text-text-secondary">
-                  <div className="flex items-start gap-space-xs">
-                    <Icon name="schedule" className="text-[18px] text-secondary shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-on-surface font-medium">Dayparting:</span>
-                      <p className="font-caption text-caption text-text-secondary">
-                        {dayparting && activeRushLabels ? activeRushLabels : 'All day delivery'}
-                      </p>
+                {/* Budget */}
+                <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-sm">
+                  {reviewCardHeader(
+                    'payments',
+                    'Budget & Funding',
+                    `₦${fmt(budget)} Total Allocation`,
+                    () => setPhase('budget'),
+                  )}
+                  <div className="pl-10 flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-body-md font-body-md">
+                      <span className="text-text-secondary">Pacing Rate</span>
+                      <span className="font-semibold text-text-primary">₦{fmt(perDaySpend)} / day</span>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-space-xs">
-                    <Icon name="speed" className="text-[18px] text-secondary shrink-0" />
-                    <div>
-                      <span className="text-on-surface font-medium">Weighting:</span>
-                      <span className="font-caption text-caption text-text-secondary">
-                        {dayLabels || 'All week'} peak dynamic boost
+                    <div className="flex items-center justify-between text-body-md font-body-md">
+                      <span className="text-text-secondary">VEMTAP Commission</span>
+                      <span className="font-semibold text-badge-discount-text flex items-center gap-0.5">
+                        <Icon name="check_circle" className="text-[16px]" />₦0 (0% Fee)
                       </span>
                     </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-sm">
-                {reviewCardHeader(
-                  'payments',
-                  'Budget & Funding',
-                  `₦${fmt(budget)} Total Allocation`,
-                  () => setPhase('budget'),
-                )}
-                <div className="pl-10 flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-body-md font-body-md">
-                    <span className="text-text-secondary">Pacing Rate</span>
-                    <span className="font-semibold text-text-primary">₦{fmt(perDaySpend)} / active day</span>
-                  </div>
-                  <div className="flex items-center justify-between text-body-md font-body-md">
-                    <span className="text-text-secondary">VEMTAP Commission</span>
-                    <span className="font-semibold text-badge-discount-text flex items-center gap-0.5">
-                      <Icon name="check_circle" className="text-[16px]" />
-                      ₦0 (0% Fee)
-                    </span>
-                  </div>
-                  <div className="bg-surface-subtle p-space-xs rounded-lg flex flex-col gap-1 mt-1">
-                    <span className="font-caption text-caption text-text-secondary font-medium">
-                      Split Payment Authorization:
-                    </span>
-                    <div className="flex items-center justify-between font-label-sm text-label-sm">
-                      <span className="flex items-center gap-1 text-on-surface">
-                        <Icon name="account_balance_wallet" className="text-[16px] text-primary" />
-                        VEMTAP Wallet
-                      </span>
-                      <span className="font-semibold text-text-primary">₦{fmt(walletPart)}</span>
-                    </div>
-                    {cardPart > 0 && (
+                    <div className="bg-surface-subtle p-space-xs rounded-lg flex flex-col gap-1">
+                      <span className="font-caption text-caption text-text-secondary font-medium">Payment split:</span>
                       <div className="flex items-center justify-between font-label-sm text-label-sm">
                         <span className="flex items-center gap-1 text-on-surface">
-                          <Icon name="credit_card" className="text-[16px] text-secondary" />
-                          Linked Card (Mastercard •• 4912)
+                          <Icon name="account_balance_wallet" className="text-[16px] text-primary" />VEMTAP Wallet
                         </span>
-                        <span className="font-semibold text-text-primary">₦{fmt(cardPart)}</span>
+                        <span className="font-semibold text-text-primary">₦{fmt(walletPart)}</span>
                       </div>
-                    )}
+                      {cardPart > 0 && (
+                        <div className="flex items-center justify-between font-label-sm text-label-sm">
+                          <span className="flex items-center gap-1 text-on-surface">
+                            <Icon name="credit_card" className="text-[16px] text-secondary" />Mastercard •• 4912
+                          </span>
+                          <span className="font-semibold text-text-primary">₦{fmt(cardPart)}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
+
               </div>
 
               <div className="p-space-sm bg-surface-tint-blue rounded-xl flex items-start gap-space-sm">
@@ -2289,6 +2242,42 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
         );
     }
   };
+
+  const screenTitle = phase === 'success' ? 'Campaign Status' : 'Create Campaign';
+
+  if (isDesktop) {
+    return (
+      <SubscriptionChrome onBrand={onBack} activeNav="deals" breadcrumb={screenTitle}>
+        <div className="max-w-6xl mx-auto px-margin py-space-xl w-full flex flex-col">
+          <div className="w-full flex flex-col">
+            <div className="flex items-center gap-space-sm px-margin pt-space-xs pb-space-sm">
+              <button
+                aria-label="Back"
+                className="w-10 h-10 rounded-full bg-surface-canvas border border-border-subtle/60 shadow-sm flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-colors shrink-0"
+                type="button"
+                onClick={handleBack}
+              >
+                <Icon name="arrow_back" className="text-[20px]" />
+              </button>
+              <div className="flex flex-col min-w-0">
+                <span className="font-caption text-caption text-text-secondary">Campaign Boost</span>
+                <h1 className="font-heading-md text-heading-md text-text-primary truncate">{screenTitle}</h1>
+              </div>
+            </div>
+            {renderPhase()}
+          </div>
+        </div>
+        {toast && (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none w-max max-w-lg px-margin">
+            <div className="bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-full font-label-sm text-label-sm shadow-xl flex items-center gap-2">
+              <Icon name="check_circle" className="text-badge-discount-text text-[18px]" />
+              <span>{toast}</span>
+            </div>
+          </div>
+        )}
+      </SubscriptionChrome>
+    );
+  }
 
   return (
     <AppScreen surface="bg-surface-canvas">

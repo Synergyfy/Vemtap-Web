@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { PosSyncContent } from './DesktopPosSyncScreen';
 
 interface DesktopBusinessPosOrdersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -43,16 +44,22 @@ export function DesktopBusinessPosOrdersScreen({
     }, 1500);
   };
 
+  // "Offline & Sync" sidebar item → dedicated sync dashboard, rendered inside
+  // the same business portal chrome. "Transactions" keeps the POS ledger below.
+  if (activeNav === 'pos-sync') {
+    return (
+      <BusinessPortalChrome activeNav="pos-sync" onNav={onNav}>
+        <PosSyncContent />
+      </BusinessPortalChrome>
+    );
+  }
+
   return (
     <BusinessPortalChrome activeNav={activeNav} onNav={onNav}>
       <div className="w-full bg-background">
         <div className="w-full py-space-xl space-y-space-lg">
           <div className="flex flex-wrap items-center gap-space-sm">
-            <button type="button" className="flex items-center gap-space-xs px-space-sm py-space-xs rounded-xl border border-border bg-surface text-on-surface font-label-sm text-label-sm hover:bg-surface-subtle">
-              <Icon name="store" className="text-[16px] text-primary" />
-              Wuse II Branch / Till 01
-              <Icon name="expand_more" className="text-[14px]" />
-            </button>
+            {/* Branch/location lives in the header only — no duplicate control here. */}
             <div className="flex items-center bg-surface-subtle rounded-xl p-space-2xs">
               {FILTERS.map((f) => (
                 <button

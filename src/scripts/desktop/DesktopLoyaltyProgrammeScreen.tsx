@@ -105,9 +105,10 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-md">
-            <div className="flex flex-col gap-space-2xs max-w-2xl">
-              <div className="flex items-center gap-space-xs">
+          {/* Header — stacks until `xl` so it fits iPad Pro 13 */}
+          <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-md">
+            <div className="flex flex-col gap-space-2xs max-w-2xl min-w-0">
+              <div className="flex flex-wrap items-center gap-space-2xs sm:gap-space-xs">
                 <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
                   Loyalty Programme Configuration
                 </h1>

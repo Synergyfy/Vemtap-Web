@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { BusinessTabKey } from '../components/BusinessTabBar';
+import type { MessagesChannelKey } from '../components/campaigns/MessagesSubNav';
 import { BusinessMessagesHomeScreen } from './BusinessMessagesHomeScreen';
 import { BusinessMessagesSearchScreen } from './BusinessMessagesSearchScreen';
 import { BusinessNewMessageScreen } from './BusinessNewMessageScreen';
@@ -22,9 +23,11 @@ export type BusinessMessagesStep =
 export function BusinessMessagesScreen({
   initialStep = 'home',
   onTab,
+  onSelectChannel,
 }: {
   initialStep?: BusinessMessagesStep;
   onTab: (tab: BusinessTabKey) => void;
+  onSelectChannel?: (key: MessagesChannelKey) => void;
 }) {
   const [step, setStep] = useState<BusinessMessagesStep>(initialStep);
 
@@ -51,6 +54,7 @@ export function BusinessMessagesScreen({
         return (
           <BusinessMessagesHomeScreen
             onTab={handleTab}
+            onSelectChannel={onSelectChannel}
             onOpenSearch={() => setStep('search')}
             onNewMessage={() => setStep('select')}
             onOpenConversation={(thread) =>

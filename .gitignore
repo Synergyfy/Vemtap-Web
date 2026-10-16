@@ -1,4 +1,4 @@
 # Vite cache
-node_modules/.vite/
+node_modules/
 *.log
 tsc-*.txt

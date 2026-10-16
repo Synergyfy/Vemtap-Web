@@ -1,19 +1,16 @@
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import { DEFAULT_CLAIMED_DEAL } from '../../../context/ClaimsContext';
 
 interface ClaimedTermsModalProps {
   open: boolean;
   onClose: () => void;
+  /** Terms frozen onto the claim; falls back to the sample deal's terms. */
+  terms?: string[];
 }
 
-const TERMS = [
-  'Valid strictly for Dine-in and Takeaway at Apo, Abuja location.',
-  'Offer cannot be merged with ongoing happy hour specials.',
-  'Voucher code expires automatically on 20 Sep 2025 at 11:59 PM.',
-  'One voucher claim per table / group order.',
-];
-
-export function ClaimedTermsModal({ open, onClose }: ClaimedTermsModalProps) {
+export function ClaimedTermsModal({ open, onClose, terms }: ClaimedTermsModalProps) {
+  const displayTerms = terms && terms.length > 0 ? terms : DEFAULT_CLAIMED_DEAL.terms;
   return (
     <DesktopModal open={open} onClose={onClose} maxWidth="max-w-lg">
       <div className="flex items-center justify-between gap-space-md p-space-lg border-b border-border-subtle">
@@ -28,8 +25,11 @@ export function ClaimedTermsModal({ open, onClose }: ClaimedTermsModalProps) {
       </div>
 
       <div className="p-space-lg">
+        <p className="font-caption text-caption text-text-tertiary mb-space-sm">
+          These are the terms that were in force when this deal was claimed.
+        </p>
         <ul className="font-body-md text-body-md text-text-secondary space-y-space-xs list-disc pl-5">
-          {TERMS.map((term) => (
+          {displayTerms.map((term) => (
             <li key={term}>{term}</li>
           ))}
         </ul>

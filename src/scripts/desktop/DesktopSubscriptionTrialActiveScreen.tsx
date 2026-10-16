@@ -5,6 +5,7 @@ interface DesktopSubscriptionTrialActiveScreenProps {
   onBack: () => void;
   onExploreDashboard: () => void;
   onSubscribe: () => void;
+  onCreateCampaign?: () => void;
 }
 
 const TRIAL_INCLUDES = [
@@ -41,6 +42,7 @@ export function DesktopSubscriptionTrialActiveScreen({
   onBack,
   onExploreDashboard,
   onSubscribe,
+  onCreateCampaign,
 }: DesktopSubscriptionTrialActiveScreenProps) {
   return (
     <SubscriptionChrome
@@ -134,19 +136,31 @@ export function DesktopSubscriptionTrialActiveScreen({
               </div>
             </section>
 
-            <section className="rounded-2xl bg-surface-canvas p-space-md shadow-sm flex items-start gap-space-sm border-l-4 border-primary-container">
-              <div className="w-9 h-9 rounded-full bg-surface-tint-blue flex items-center justify-center shrink-0">
-                <Icon name="rocket_launch" className="text-primary text-[20px]" />
+            <section className="rounded-2xl bg-surface-canvas p-space-md shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-space-md border-l-4 border-primary-container">
+              <div className="flex items-start gap-space-sm min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-full bg-surface-tint-blue flex items-center justify-center shrink-0">
+                  <Icon name="rocket_launch" className="text-primary text-[22px]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-label-md text-label-md font-semibold text-text-primary">
+                    Get seen 3.4x more with Growth
+                  </p>
+                  <p className="font-caption text-caption text-text-secondary mt-space-2xs leading-snug">
+                    Your trial keeps the lights on — Growth puts you at the top of neighborhood discovery with priority
+                    pin placement, the verified badge and hyperlocal deal broadcast.
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-label-md text-label-md font-semibold text-text-primary">
-                  Get seen 3.4x more with Growth
-                </p>
-                <p className="font-caption text-caption text-text-secondary mt-space-2xs leading-snug">
-                  Your trial keeps the lights on — Growth puts you at the top of neighborhood discovery with priority
-                  pin placement, the verified badge and hyperlocal deal broadcast.
-                </p>
-              </div>
+              {onCreateCampaign && (
+                <button
+                  type="button"
+                  onClick={onCreateCampaign}
+                  className="shrink-0 h-10 px-space-md bg-primary-container hover:bg-primary-hover active:scale-[0.98] transition-all rounded-xl flex items-center justify-center gap-space-xs text-on-primary font-label-md text-label-md font-semibold shadow-[0_4px_14px_-3px_rgba(6,108,244,0.35)]"
+                >
+                  <Icon name="campaign" className="text-[18px]" />
+                  <span>Create Campaign</span>
+                </button>
+              )}
             </section>
 
             <section className="flex flex-col sm:flex-row gap-space-sm">

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import {
+  OperatingHoursEditor,
+  WEEKDAYS,
+  type CustomDayHours,
+  type StandardHours,
+} from '../../components/ui/OperatingHoursEditor';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 
 interface DesktopBusinessAddBranchScreenProps {
@@ -37,6 +43,12 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
   const [role, setRole] = useState('Branch Manager');
   const [dashboardAccess, setDashboardAccess] = useState(true);
   const [customizeDays, setCustomizeDays] = useState(false);
+  const [standardHours, setStandardHours] = useState<StandardHours>({
+    days: [...WEEKDAYS],
+    open: '8:00 AM',
+    close: '10:00 PM',
+  });
+  const [customDayHours, setCustomDayHours] = useState<CustomDayHours[]>([]);
   const [status, setStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   const timers = useRef<number[]>([]);
 
@@ -409,51 +421,16 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                   Standard Hours Sync
                 </span>
               </div>
-              <div className="p-space-md bg-surface-subtle rounded-xl flex items-center justify-between gap-space-md">
-                <div className="flex items-center gap-space-md">
-                  <div className="w-10 h-10 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center font-bold shrink-0">
-                    <Icon name="timelapse" className="text-[20px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      Mon – Sun Standard Hours
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">
-                      8:00 AM – 10:00 PM Daily (West Africa Time)
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="px-space-md py-space-xs rounded-lg bg-surface-canvas text-on-surface font-label-md text-label-md font-semibold hover:bg-surface-container-low transition-colors shadow-sm"
-                >
-                  Edit
-                </button>
-              </div>
-              <div className="flex items-center justify-between pt-space-xs px-space-xs">
-                <div className="flex flex-col">
-                  <span className="font-label-md text-label-md text-on-surface font-medium">
-                    Customize specific day hours
-                  </span>
-                  <span className="font-caption text-caption text-text-tertiary">
-                    Set irregular schedules for Friday nights, public holidays, or weekend brunches.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  aria-pressed={customizeDays}
-                  onClick={() => setCustomizeDays((value) => !value)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
-                    customizeDays ? 'bg-primary-container' : 'bg-surface-dim'
-                  }`}
-                >
-                  <span
-                    className={`${
-                      customizeDays ? 'translate-x-5' : 'translate-x-0'
-                    } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface-canvas shadow transition duration-200 ease-in-out`}
-                  />
-                </button>
-              </div>
+              <OperatingHoursEditor
+                customDays={customDayHours}
+                customizeEnabled={customizeDays}
+                customizeHint="Set irregular schedules for Friday nights, public holidays, or weekend brunches."
+                standard={standardHours}
+                timezoneNote="West Africa Time"
+                onCustomDaysChange={setCustomDayHours}
+                onCustomizeEnabledChange={setCustomizeDays}
+                onStandardChange={setStandardHours}
+              />
             </div>
           </div>
 
@@ -565,47 +542,56 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
               </div>
             </div>
 
-            <div className="bg-surface-canvas p-space-lg rounded-xl shadow-md flex flex-col gap-space-sm">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={status === 'saving'}
-                className={`w-full h-[54px] rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-lg transition-all active:scale-[0.98] disabled:cursor-not-allowed ${
-                  status === 'success' ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-primary-container text-on-primary hover:bg-primary'
-                }`}
-              >
-                {status === 'idle' && (
-                  <>
-                    <span>Save &amp; Add Branch Location</span>
-                    <Icon name="arrow_forward" className="text-[20px]" />
-                  </>
-                )}
-                {status === 'saving' && (
-                  <>
-                    <Icon name="progress_activity" className="text-[20px] animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                )}
-                {status === 'success' && (
-                  <>
-                    <Icon name="check_circle" className="text-[20px]" />
-                    <span>Branch Successfully Activated!</span>
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={onBack}
-                className="w-full h-11 rounded-xl bg-transparent text-text-secondary hover:text-text-primary hover:bg-surface-subtle font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs transition-colors"
-              >
-                <Icon name="arrow_back" className="text-[18px]" />
-                <span>Cancel &amp; Return to Locations</span>
-              </button>
-              <div className="flex items-center justify-center gap-space-xs pt-space-xs text-text-tertiary font-caption text-caption">
-                <Icon name="shield" className="text-[14px]" />
-                <span>Branch configurations are encrypted and logged per NDPR guidelines</span>
-              </div>
+            <div className="flex items-center justify-center gap-space-xs pt-space-xs text-text-tertiary font-caption text-caption">
+              <Icon name="shield" className="text-[14px]" />
+              <span>Branch configurations are encrypted and logged per NDPR guidelines</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Cancel &amp; Return to Locations</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={status === 'saving'}
+              className={`inline-flex items-center justify-center gap-space-xs px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg transition-all active:scale-[0.98] disabled:cursor-not-allowed ${
+                status === 'success'
+                  ? 'bg-badge-discount-bg text-badge-discount-text'
+                  : 'bg-primary hover:bg-surface-tint text-on-primary shadow-primary/20'
+              }`}
+            >
+              {status === 'idle' && (
+                <>
+                  <span>Save &amp; Add Branch Location</span>
+                  <Icon name="arrow_forward" className="text-[20px]" />
+                </>
+              )}
+              {status === 'saving' && (
+                <>
+                  <Icon name="progress_activity" className="text-[20px] animate-spin" />
+                  <span>Saving...</span>
+                </>
+              )}
+              {status === 'success' && (
+                <>
+                  <Icon name="check_circle" className="text-[20px]" />
+                  <span>Branch Successfully Activated!</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

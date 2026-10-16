@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { MessagesAttachmentButton } from './MessagesAttachmentButton';
+import { MessagesChatActions } from './MessagesChatActions';
 import { MessagesShareAttachmentModal } from './MessagesShareAttachmentModal';
 import { MessagesSelectRecipientModal } from './MessagesSelectRecipientModal';
 import type { MessagesWorkspaceView } from './DesktopBusinessMessagesOrderContextScreen';
@@ -8,6 +10,8 @@ import type { MessagesWorkspaceView } from './DesktopBusinessMessagesOrderContex
 interface DesktopBusinessMessagesDealScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onView: (view: MessagesWorkspaceView) => void;
+  /** Opens the customer's full CRM profile (Customers page) from the chat header menu. */
+  onViewCustomerProfile?: (name: string) => void;
 }
 
 type DealFilter = 'deal' | 'unread' | 'dinein';
@@ -93,13 +97,12 @@ const DEAL_HISTORY = [
 
 const TABLES = ['T-01', 'T-04', 'T-07', 'BOOTH-B2'];
 
-export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusinessMessagesDealScreenProps) {
+export function DesktopBusinessMessagesDealScreen({ onNav, onView, onViewCustomerProfile }: DesktopBusinessMessagesDealScreenProps) {
   const [selectedId, setSelectedId] = useState('c1');
   const [filter, setFilter] = useState<DealFilter>('deal');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [assignedTable, setAssignedTable] = useState<string | null>(null);
-  const [showAttachment, setShowAttachment] = useState(false);
   const [showRecipient, setShowRecipient] = useState(false);
   const [extraMessages, setExtraMessages] = useState<Array<{ id: string; text: string; time: string }>>([]);
   const streamRef = useRef<HTMLDivElement>(null);
@@ -148,7 +151,7 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusi
 
         <div className="w-full py-space-md">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-md" style={{ height: 'calc(100vh - 13.5rem)', minHeight: '640px' }}>
-            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <aside className="lg:col-span-4 xl:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border space-y-space-xs">
                 <div className="relative">
                   <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-tertiary" />
@@ -208,7 +211,7 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusi
               <div className="p-space-xs border-t border-border font-caption text-caption text-text-tertiary">Urban Grill • Front Desk Agent #04 · v3.8</div>
             </aside>
 
-            <section className="lg:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <section className="lg:col-span-8 xl:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-md border-b border-border flex items-center justify-between gap-space-sm">
                 <div className="flex items-center gap-space-sm min-w-0">
                   {selected.avatar ? (
@@ -222,12 +225,11 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusi
                   </div>
                 </div>
                 <div className="flex items-center gap-space-xs">
-                  <button type="button" aria-label="Call" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-                    <Icon name="call" className="text-[18px]" />
-                  </button>
-                  <button type="button" aria-label="More" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-                    <Icon name="more_vert" className="text-[18px]" />
-                  </button>
+                  <MessagesChatActions
+                    customerName={selected.name}
+                    onViewProfile={() => onViewCustomerProfile?.(selected.name)}
+                    onSearch={() => onView('search')}
+                  />
                 </div>
               </div>
 
@@ -342,18 +344,9 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusi
                   ))}
                 </div>
                 <div className="flex items-end gap-space-xs">
-                  <div className="flex items-center gap-space-2xs">
-                    {[
-                      { icon: 'image', label: 'Image' },
-                      { icon: 'attach_file', label: 'Attach' },
-                      { icon: 'bolt', label: 'Smart Reply', filled: true },
-                      { icon: 'local_offer', label: 'Deal', filled: true },
-                    ].map((a) => (
-                      <button key={a.icon} type="button" aria-label={a.label} onClick={() => setShowAttachment(true)} className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface">
-                        <Icon name={a.icon} className="text-[18px]" filled={a.filled} />
-                      </button>
-                    ))}
-                  </div>
+                  <MessagesAttachmentButton
+                    renderModal={(close) => <MessagesShareAttachmentModal onClose={close} />}
+                  />
                   <textarea
                     rows={2}
                     value={draft}
@@ -376,7 +369,9 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusi
               </div>
             </section>
 
-            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            {/* Side panel: only fits beside the thread from `xl` up (iPad-size viewports
+                get the conversation list + thread at two columns). */}
+            <aside className="hidden xl:flex lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Campaign Metrics</h2>
               </div>
@@ -429,7 +424,7 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusi
                       </li>
                     ))}
                   </ul>
-                  <button type="button" className="mt-space-sm w-full h-11 rounded-xl border border-primary text-primary font-label-sm text-label-sm hover:bg-surface-tint-blue flex items-center justify-center gap-space-2xs">
+                  <button type="button" onClick={() => onViewCustomerProfile?.(selected.name)} className="mt-space-sm w-full h-11 rounded-xl border border-primary text-primary font-label-sm text-label-sm hover:bg-surface-tint-blue flex items-center justify-center gap-space-2xs">
                     <Icon name="person" className="text-[16px]" />
                     View Full Guest CRM Profile
                   </button>
@@ -480,7 +475,6 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView }: DesktopBusi
         </div>
       </div>
 
-      {showAttachment && <MessagesShareAttachmentModal onClose={() => setShowAttachment(false)} />}
       {showRecipient && (
         <MessagesSelectRecipientModal
           onClose={() => setShowRecipient(false)}

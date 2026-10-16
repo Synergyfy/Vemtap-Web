@@ -2,6 +2,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { MessagesSubNav, type MessagesChannelKey } from '../components/campaigns/MessagesSubNav';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 
 interface BusinessMessagesHomeScreenProps {
@@ -9,6 +10,8 @@ interface BusinessMessagesHomeScreenProps {
   onOpenSearch: () => void;
   onNewMessage: () => void;
   onOpenConversation: (thread: 'deal' | 'order' | 'general' | 'booking') => void;
+  /** Sub-navigation between In-App Chat and the campaign channels. */
+  onSelectChannel?: (key: MessagesChannelKey) => void;
 }
 
 type InboxChipKey = 'all' | 'unread' | 'orders' | 'deals' | 'bookings';
@@ -168,6 +171,7 @@ export function BusinessMessagesHomeScreen({
   onOpenSearch,
   onNewMessage,
   onOpenConversation,
+  onSelectChannel,
 }: BusinessMessagesHomeScreenProps) {
   const [chip, setChip] = useState<InboxChipKey>('all');
   const { branch } = useBusinessBranch();
@@ -211,6 +215,7 @@ export function BusinessMessagesHomeScreen({
             </div>
           </div>
         </div>
+        {onSelectChannel && <MessagesSubNav active="chat" onSelect={onSelectChannel} />}
       </header>
 
       <div className="flex flex-col w-full flex-1 pb-24">

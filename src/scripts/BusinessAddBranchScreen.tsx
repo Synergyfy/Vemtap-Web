@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import {
+  OperatingHoursEditor,
+  WEEKDAYS,
+  type CustomDayHours,
+  type StandardHours,
+} from '../components/ui/OperatingHoursEditor';
 
 interface BusinessAddBranchScreenProps {
   onBack: () => void;
@@ -22,6 +28,12 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
   const [role, setRole] = useState('Branch Manager');
   const [grantAccess, setGrantAccess] = useState(true);
   const [customHours, setCustomHours] = useState(false);
+  const [standardHours, setStandardHours] = useState<StandardHours>({
+    days: [...WEEKDAYS],
+    open: '8:00 AM',
+    close: '10:00 PM',
+  });
+  const [customDayHours, setCustomDayHours] = useState<CustomDayHours[]>([]);
   const [status, setStatus] = useState<SaveStatus>('idle');
 
   const handleSave = () => {
@@ -358,35 +370,15 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
               </div>
               <Icon name="schedule" className="text-text-tertiary text-[20px]" />
             </div>
-            <div className="p-space-sm bg-surface-subtle rounded-xl flex items-center justify-between">
-              <div className="flex items-center gap-space-sm">
-                <div className="w-10 h-10 rounded-full bg-primary-container/10 flex items-center justify-center text-primary-container shrink-0">
-                  <Icon name="calendar_today" className="text-[20px]" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-label-md text-label-md text-text-primary">Mon - Sun Standard</span>
-                  <span className="font-caption text-caption text-text-secondary">8:00 AM – 10:00 PM (Daily)</span>
-                </div>
-              </div>
-              <button
-                className="font-button-secondary text-button-secondary text-primary-container active:opacity-75"
-                type="button"
-              >
-                Edit
-              </button>
-            </div>
-            <div className="flex items-center justify-between pt-space-2xs">
-              <span className="font-label-sm text-label-sm text-text-secondary">Customize specific day hours</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  checked={customHours}
-                  className="sr-only peer"
-                  type="checkbox"
-                  onChange={() => setCustomHours((current) => !current)}
-                />
-                <div className="w-11 h-6 bg-surface-container rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-primary after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container" />
-              </label>
-            </div>
+            <OperatingHoursEditor
+              customDays={customDayHours}
+              customizeEnabled={customHours}
+              dense
+              standard={standardHours}
+              onCustomDaysChange={setCustomDayHours}
+              onCustomizeEnabledChange={setCustomHours}
+              onStandardChange={setStandardHours}
+            />
           </div>
 
           <div className="flex flex-col gap-space-sm pt-space-sm">

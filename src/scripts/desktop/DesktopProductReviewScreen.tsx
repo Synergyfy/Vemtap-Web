@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { isVariantProduct, getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -64,15 +65,17 @@ export function DesktopProductReviewScreen({
   );
 
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
-  const totalStock = draft.variants.reduce((sum, variant) => sum + toNumber(variant.inventory), 0);
+  const activeVariants = getActiveVariants(draft);
+  const variantMode = isVariantProduct(draft);
+  const totalStock = activeVariants.reduce((sum, variant) => sum + toNumber(variant.inventory), 0);
   const regularVariantPrice = toNumber(
-    draft.variants.find((variant) => variant.name === 'Regular')?.price ??
-      draft.variants[0]?.price ??
+    activeVariants.find((variant) => variant.name === 'Regular')?.price ??
+      activeVariants[0]?.price ??
       draft.basePrice,
   );
   const comparePrice = toNumber(draft.basePrice);
   const savingAmount = comparePrice - regularVariantPrice;
-  const simVariant = draft.variants[simIndex] ?? draft.variants[0];
+  const simVariant = activeVariants[simIndex] ?? activeVariants[0];
 
   const handlePublish = () => {
     if (publishState !== 'idle') return;
@@ -223,7 +226,7 @@ export function DesktopProductReviewScreen({
                     Total Combined Stock
                   </span>
                   <span className="font-label-md text-label-md text-primary font-semibold mt-0.5">
-                    {totalStock} Units
+                    {variantMode ? `${totalStock} Units` : 'Single item'}
                   </span>
                 </div>
                 <div className="flex flex-col items-center">
@@ -249,7 +252,7 @@ export function DesktopProductReviewScreen({
                 </div>
                 <div className="flex items-center gap-space-sm">
                   <span className="font-caption text-caption text-text-secondary">
-                    {draft.variants.length} active variants configured
+                    {variantMode ? `${activeVariants.length} active variants configured` : 'Standard single-size item'}
                   </span>
                   <button type="button" onClick={onEditPricing} className={EDIT_BUTTON_CLASS}>
                     Edit
@@ -259,18 +262,22 @@ export function DesktopProductReviewScreen({
               <div className="bg-surface-subtle p-space-md rounded-xl flex flex-wrap items-baseline justify-between gap-space-sm">
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-secondary">
-                    Base Menu Price (Regular Cut)
+                    {variantMode ? 'Base Menu Price (Regular Cut)' : 'Standard Price'}
                   </span>
                   <div className="flex items-baseline gap-space-xs mt-1">
                     <span className="font-display-hero text-display-hero text-text-primary font-bold">
                       ₦{regularVariantPrice.toLocaleString('en-US')}
                     </span>
-                    <span className="font-body-md text-body-md text-text-tertiary line-through">
-                      ₦{comparePrice.toLocaleString('en-US')}
-                    </span>
-                    <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-2 py-0.5 rounded-full font-semibold">
-                      Save ₦{savingAmount.toLocaleString('en-US')}
-                    </span>
+                    {savingAmount > 0 && (
+                      <>
+                        <span className="font-body-md text-body-md text-text-tertiary line-through">
+                          ₦{comparePrice.toLocaleString('en-US')}
+                        </span>
+                        <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-2 py-0.5 rounded-full font-semibold">
+                          Save ₦{savingAmount.toLocaleString('en-US')}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">
@@ -280,10 +287,18 @@ export function DesktopProductReviewScreen({
               </div>
               <div className="flex flex-col gap-space-xs">
                 <span className="font-label-sm text-label-sm text-text-secondary font-medium">
-                  Portion Cut Variations
+                  {variantMode ? 'Portion Cut Variations' : 'Sold As'}
                 </span>
+                {!variantMode ? (
+                  <div className="flex items-center gap-2.5 p-space-sm rounded-xl bg-surface-container-low">
+                    <Icon name="inventory_2" className="text-[20px] text-text-tertiary" />
+                    <span className="font-caption text-caption text-text-secondary">
+                      Standard product — customers pick no size or option.
+                    </span>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-space-sm">
-                  {draft.variants.map((variant, index) => {
+                  {activeVariants.map((variant, index) => {
                     const variantPrice = toNumber(variant.price);
                     const delta = variantPrice - regularVariantPrice;
                     return (
@@ -322,6 +337,7 @@ export function DesktopProductReviewScreen({
                     );
                   })}
                 </div>
+                )}
               </div>
             </div>
 
@@ -576,7 +592,7 @@ export function DesktopProductReviewScreen({
                     <div className="mt-space-xs pt-space-xs flex items-center justify-between">
                       <div className="flex items-baseline gap-1.5">
                         <span className="font-heading-md text-heading-md text-text-primary font-bold">
-                          {simVariant ? `₦${toNumber(simVariant.price).toLocaleString('en-US')}` : ''}
+                          {`₦${toNumber(variantMode && simVariant ? simVariant.price : draft.basePrice).toLocaleString('en-US')}`}
                         </span>
                         <span className="font-caption text-caption text-text-tertiary line-through">
                           ₦{comparePrice.toLocaleString('en-US')}
@@ -592,25 +608,27 @@ export function DesktopProductReviewScreen({
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-between gap-space-2xs pt-1">
-                  <span className="font-caption text-caption text-text-secondary">Simulate Customer Choice:</span>
-                  <div className="flex gap-1">
-                    {draft.variants.map((variant, index) => (
-                      <button
-                        key={variant.id}
-                        type="button"
-                        onClick={() => setSimIndex(index)}
-                        className={`px-2 py-0.5 rounded text-[11px] font-medium ${
-                          index === simIndex
-                            ? 'bg-surface-tint-blue text-primary'
-                            : 'bg-surface-canvas text-text-secondary hover:text-text-primary'
-                        }`}
-                      >
-                        {variant.cut.split(' ')[0]}
-                      </button>
-                    ))}
+                {variantMode && (
+                  <div className="flex items-center justify-between gap-space-2xs pt-1">
+                    <span className="font-caption text-caption text-text-secondary">Simulate Customer Choice:</span>
+                    <div className="flex gap-1">
+                      {activeVariants.map((variant, index) => (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          onClick={() => setSimIndex(index)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                            index === simIndex
+                              ? 'bg-surface-tint-blue text-primary'
+                              : 'bg-surface-canvas text-text-secondary hover:text-text-primary'
+                          }`}
+                        >
+                          {variant.cut.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -720,6 +738,56 @@ export function DesktopProductReviewScreen({
           </div>
         </div>
       </section>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onEditSteps}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back to Edit Steps</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
+            >
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={publishState !== 'idle'}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-80"
+            >
+              {publishState === 'idle' && (
+                <>
+                  <span>Publish Product to Storefront</span>
+                  <Icon name="rocket_launch" className="text-[20px]" />
+                </>
+              )}
+              {publishState === 'publishing' && (
+                <>
+                  <Icon name="refresh" className="text-[20px] animate-spin" />
+                  <span>Synchronizing Catalogs...</span>
+                </>
+              )}
+              {publishState === 'success' && (
+                <>
+                  <Icon name="done_all" className="text-[20px]" />
+                  <span>Catalog Published!</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
     </Shell>
   );
 }

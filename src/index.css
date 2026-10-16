@@ -142,6 +142,29 @@
 }
 
 /* ============================================================
+   Fluid phone frame (tablet / small-laptop widths)
+   The mobile layout centres a fixed 430px "phone" column
+   (AppScreen, headers, tab bars, sheets and toasts all use
+   `max-w-[430px]`). On wider viewports below the desktop
+   breakpoint (1024px) that left large empty margins — e.g. a
+   Surface Pro in portrait (960px) showed a 430px strip in the
+   middle with ~265px of dead space on each side.
+   Scale the same frame with the viewport instead:
+   - phones (< ~462px): `max()` clamps to 430px so `w-full`
+     children still bleed edge-to-edge, exactly as before;
+   - tablets / wide windows (up to 1023.98px): the frame grows
+     to viewport-minus-32px, so the `sm:`/`md:` responsive grids
+     inside the screens finally get room and nothing is stranded
+     in the middle of the screen.
+   Desktop layouts (>= 1024px) are untouched.
+   ============================================================ */
+@media (max-width: 1023.98px) {
+  .max-w-\[430px\] {
+    max-width: max(430px, calc(100vw - 32px));
+  }
+}
+
+/* ============================================================
    Business onboarding flow - compact typography scale.
    Scoped via .biz-flow (mobile onboarding wrapper + desktop
    BusinessSetupChrome). Unlayered so each rule overrides the

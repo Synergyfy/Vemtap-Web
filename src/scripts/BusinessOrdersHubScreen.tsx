@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
+
 import { BusinessModeHeader } from './BusinessModeHeader';
 
 interface BusinessOrdersHubScreenProps {
@@ -181,9 +181,8 @@ export function BusinessOrdersHubScreen({
       <div className="flex flex-col w-full flex-1 pb-24">
         {/* Header Controls & Context */}
         <div className="bg-surface/95 backdrop-blur-md px-margin pt-space-xs pb-space-sm flex flex-col gap-space-sm shadow-[0_4px_12px_-4px_rgba(20,27,43,0.03)]">
-          {/* Branch Selector and Quick Actions */}
-          <div className="flex items-center justify-between">
-            <BusinessBranchSelect />
+          {/* Quick Actions */}
+          <div className="flex items-center justify-end">
             <div className="flex items-center gap-space-2xs">
               <button
                 aria-label="Search orders"

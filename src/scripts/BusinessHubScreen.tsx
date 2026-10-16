@@ -6,7 +6,7 @@ import { BusinessHubCatalogScreen } from './BusinessHubCatalogScreen';
 import { BusinessProductAssignmentScreen } from './BusinessProductAssignmentScreen';
 import { BusinessDealsScreen } from './BusinessDealsScreen';
 import { BusinessDealDetailScreen } from './BusinessDealDetailScreen';
-import { BusinessCreateDealScreen } from './BusinessCreateDealScreen';
+import { BusinessDealStudioFlow } from './BusinessDealStudioFlow';
 import { BusinessDealAssignmentScreen } from './BusinessDealAssignmentScreen';
 import { BusinessCustomersScreen } from './BusinessCustomersScreen';
 import { BusinessCustomerProfileScreen } from './BusinessCustomerProfileScreen';
@@ -105,7 +105,7 @@ export function BusinessHubScreen({
           />
         );
       case 'dealCreate':
-        return <BusinessCreateDealScreen onBack={() => setStep('deals')} onReview={() => setStep('dealDetail')} />;
+        return <BusinessDealStudioFlow onComplete={() => setStep('deals')} onExit={() => setStep('deals')} />;
       case 'dealAssignment':
         return <BusinessDealAssignmentScreen onBack={() => setStep('dealDetail')} />;
       case 'customers':

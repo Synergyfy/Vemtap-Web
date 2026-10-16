@@ -30,7 +30,7 @@ const TOUCHPOINTS = [
   { label: 'Profile Views', value: '14,280', icon: 'visibility' },
   { label: 'Deal Claims', value: '184', icon: 'confirmation_number' },
   { label: 'Completed Orders', value: '512', icon: 'receipt_long' },
-  { label: 'Direct Messages', value: '94', icon: 'chat_bubble' },
+  { label: 'In-App Chat', value: '94', icon: 'chat_bubble' },
   { label: 'Loyalty Points Used', value: '18,450', icon: 'stars' },
 ];
 

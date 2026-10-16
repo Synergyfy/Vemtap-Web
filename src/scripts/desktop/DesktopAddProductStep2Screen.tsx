@@ -1,4 +1,5 @@
 import { Icon } from '../../components/ui/Icon';
+import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -42,7 +43,8 @@ export function DesktopAddProductStep2Screen({
   const vatShare = base > 0 ? (vat / base) * 100 : 0;
   const netShare = base > 0 ? (net / base) * 100 : 0;
   const netMargin = netShare;
-  const totalUnits = draft.variants.reduce((sum, variant) => sum + (parseInt(variant.inventory, 10) || 0), 0);
+  const activeVariants = getActiveVariants(draft);
+  const totalUnits = activeVariants.reduce((sum, variant) => sum + (parseInt(variant.inventory, 10) || 0), 0);
 
   const updateVariant = (id: string, patch: Partial<ProductDraft['variants'][number]>) => {
     onDraftChange({
@@ -242,103 +244,133 @@ export function DesktopAddProductStep2Screen({
                   />
                   <div className="w-11 h-6 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-canvas after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary" />
                   <span className="ml-3 font-label-md text-label-md text-text-primary font-medium hidden sm:inline">
-                    Active
+                    {draft.variantsEnabled ? 'Active' : 'Off'}
                   </span>
                 </label>
               </div>
-              <div className="flex items-center justify-between bg-surface-subtle p-3.5 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <span className="font-caption text-caption text-text-secondary uppercase tracking-wider font-semibold">
-                    Active Option:
-                  </span>
-                  <span className="px-3 py-1 rounded-lg bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold flex items-center gap-1.5">
-                    <Icon name="restaurant" className="text-[16px]" />
-                    Portion Size / Cut
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="font-caption text-caption text-primary hover:underline font-semibold flex items-center gap-1"
-                >
-                  <Icon name="edit" className="text-[15px]" />
-                  Modify Dimension
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <div className="min-w-[560px] flex flex-col gap-2.5">
-                  <div className="grid grid-cols-12 gap-3 px-4 py-2 font-caption text-caption text-text-secondary uppercase tracking-wider font-semibold">
-                    <div className="col-span-4">Portion Name</div>
-                    <div className="col-span-3">Retail Price (₦)</div>
-                    <div className="col-span-3">Branch Inventory</div>
-                    <div className="col-span-2 text-right">Action</div>
-                  </div>
-                  {draft.variants.map((variant) => (
-                    <div
-                      key={variant.id}
-                      className="grid grid-cols-12 gap-3 items-center bg-surface-subtle hover:bg-surface-container-low transition-colors p-3 rounded-xl"
-                    >
-                      <div className="col-span-4 flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center text-text-secondary shadow-sm">
-                          <Icon name="scale" className="text-[18px]" />
-                        </div>
-                        <div>
-                          <span className="font-label-md text-label-md text-text-primary font-semibold block leading-tight">
-                            {variant.name}
-                          </span>
-                          <span className="font-caption text-caption text-text-secondary">{variant.cut}</span>
-                        </div>
-                      </div>
-                      <div className="col-span-3">
-                        <div className="relative flex items-center">
-                          <span className="absolute left-3 text-text-tertiary font-label-md text-label-md">₦</span>
-                          <input
-                            type="text"
-                            value={variant.price}
-                            onChange={(event) => updateVariant(variant.id, { price: event.target.value })}
-                            className="w-full h-10 pl-7 pr-2.5 rounded-lg bg-surface-canvas font-label-md text-label-md text-text-primary font-semibold focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-                          />
-                        </div>
-                      </div>
-                      <div className="col-span-3">
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="number"
-                            value={variant.inventory}
-                            onChange={(event) => updateVariant(variant.id, { inventory: event.target.value })}
-                            className="w-20 h-10 px-2.5 rounded-lg bg-surface-canvas font-label-md text-label-md text-text-primary font-semibold text-center focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-                          />
-                          <span className="font-caption text-caption text-text-secondary">units</span>
-                        </div>
-                      </div>
-                      <div className="col-span-2 flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-container-high transition-colors"
-                        >
-                          <Icon name="drag_indicator" className="text-[18px]" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeVariant(variant.id)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-error hover:bg-error-container/40 transition-colors"
-                        >
-                          <Icon name="delete" className="text-[18px]" />
-                        </button>
-                      </div>
+
+              {draft.variantsEnabled ? (
+                <>
+                  <div className="flex items-center justify-between bg-surface-subtle p-3.5 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="font-caption text-caption text-text-secondary uppercase tracking-wider font-semibold">
+                        Active Option:
+                      </span>
+                      <span className="px-3 py-1 rounded-lg bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold flex items-center gap-1.5">
+                        <Icon name="restaurant" className="text-[16px]" />
+                        Portion Size / Cut
+                      </span>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      className="font-caption text-caption text-primary hover:underline font-semibold flex items-center gap-1"
+                    >
+                      <Icon name="edit" className="text-[15px]" />
+                      Modify Dimension
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[560px] flex flex-col gap-2.5">
+                      <div className="grid grid-cols-12 gap-3 px-4 py-2 font-caption text-caption text-text-secondary uppercase tracking-wider font-semibold">
+                        <div className="col-span-4">Portion Name</div>
+                        <div className="col-span-3">Retail Price (₦)</div>
+                        <div className="col-span-3">Branch Inventory</div>
+                        <div className="col-span-2 text-right">Action</div>
+                      </div>
+                      {draft.variants.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-outline-variant bg-surface-subtle px-4 py-6 text-center">
+                          <span className="font-label-md text-label-md text-text-secondary">
+                            No variants yet — add your first option below.
+                          </span>
+                        </div>
+                      ) : (
+                        draft.variants.map((variant) => (
+                          <div
+                            key={variant.id}
+                            className="grid grid-cols-12 gap-3 items-center bg-surface-subtle hover:bg-surface-container-low transition-colors p-3 rounded-xl"
+                          >
+                            <div className="col-span-4 flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center text-text-secondary shadow-sm">
+                                <Icon name="scale" className="text-[18px]" />
+                              </div>
+                              <div>
+                                <span className="font-label-md text-label-md text-text-primary font-semibold block leading-tight">
+                                  {variant.name}
+                                </span>
+                                <span className="font-caption text-caption text-text-secondary">{variant.cut}</span>
+                              </div>
+                            </div>
+                            <div className="col-span-3">
+                              <div className="relative flex items-center">
+                                <span className="absolute left-3 text-text-tertiary font-label-md text-label-md">₦</span>
+                                <input
+                                  type="text"
+                                  value={variant.price}
+                                  onChange={(event) => updateVariant(variant.id, { price: event.target.value })}
+                                  className="w-full h-10 pl-7 pr-2.5 rounded-lg bg-surface-canvas font-label-md text-label-md text-text-primary font-semibold focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                                />
+                              </div>
+                            </div>
+                            <div className="col-span-3">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  value={variant.inventory}
+                                  onChange={(event) => updateVariant(variant.id, { inventory: event.target.value })}
+                                  className="w-20 h-10 px-2.5 rounded-lg bg-surface-canvas font-label-md text-label-md text-text-primary font-semibold text-center focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
+                                />
+                                <span className="font-caption text-caption text-text-secondary">units</span>
+                              </div>
+                            </div>
+                            <div className="col-span-2 flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-container-high transition-colors"
+                              >
+                                <Icon name="drag_indicator" className="text-[18px]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeVariant(variant.id)}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-error hover:bg-error-container/40 transition-colors"
+                              >
+                                <Icon name="delete" className="text-[18px]" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={addVariant}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-primary font-button-secondary text-button-secondary font-semibold transition-colors"
+                    >
+                      <Icon name="add_circle" className="text-[20px]" />
+                      + Add Another Option / Variant
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-start gap-3 bg-surface-subtle p-4 rounded-xl">
+                  <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                    <Icon name="inventory_2" className="text-[20px]" />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-label-md text-label-md text-text-primary font-semibold">
+                      Sold as a single standard item
+                    </span>
+                    <span className="font-caption text-caption text-text-secondary">
+                      Customers will see one price and one stock count. Variants are switched off.
+                      {draft.variants.length > 0
+                        ? ` Your ${draft.variants.length} saved option${draft.variants.length === 1 ? '' : 's'} will be kept and restored if you switch this back on.`
+                        : ''}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={addVariant}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-primary font-button-secondary text-button-secondary font-semibold transition-colors"
-                >
-                  <Icon name="add_circle" className="text-[20px]" />
-                  + Add Another Option / Variant
-                </button>
-              </div>
+              )}
             </section>
 
             <section className="bg-surface-canvas rounded-xl shadow-md p-space-lg flex flex-col gap-space-md">
@@ -359,7 +391,7 @@ export function DesktopAddProductStep2Screen({
                 </div>
                 <div className="px-3.5 py-1.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold flex items-center gap-1.5 shadow-sm">
                   <span className="w-2 h-2 rounded-full bg-primary" />
-                  {totalUnits} units available
+                  {draft.variantsEnabled ? `${totalUnits} units available` : 'Single standard item'}
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md pt-space-xs">
@@ -551,27 +583,31 @@ export function DesktopAddProductStep2Screen({
               </div>
             </div>
 
-            <div className="bg-surface-canvas rounded-xl shadow-md p-space-md flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={onNext}
-                className="w-full h-[52px] rounded-xl bg-primary hover:bg-on-primary-fixed-variant active:scale-[0.99] text-on-primary font-button-primary text-button-primary shadow-md flex items-center justify-center gap-2 transition-all"
-              >
-                <span>Continue to Branch Availability</span>
-                <Icon name="arrow_forward" className="text-[20px]" />
-              </button>
-              <button
-                type="button"
-                onClick={onBack}
-                className="w-full h-[46px] rounded-xl bg-surface-container hover:bg-surface-container-high text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 transition-colors"
-              >
-                <Icon name="arrow_back" className="text-[18px]" />
-                <span>Back to Step 1: Basic Info</span>
-              </button>
-              <div className="text-center mt-1">
-                <span className="font-caption text-caption text-text-tertiary">All edits auto-saved to cloud draft</span>
-              </div>
-            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back to Step 1: Basic Info</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onNext}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+            >
+              <span>Continue to Branch Availability</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </button>
           </div>
         </div>
       </div>
