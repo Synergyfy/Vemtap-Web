@@ -1,6 +1,15 @@
 import { api, request, type ApiRequestOptions } from '../services/api/client';
 
-export { ApiError, api, getApiBaseUrl, hasApiConfig } from '../services/api/client';
+export {
+  ApiError,
+  api,
+  clearAuthTokens,
+  getAccessToken,
+  getApiBaseUrl,
+  getRefreshToken,
+  hasApiConfig,
+  setAuthTokens,
+} from '../services/api/client';
 export { request } from '../services/api/client';
 export type { ApiRequestOptions } from '../services/api/client';
 

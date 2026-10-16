@@ -17,6 +17,36 @@ export class ApiError extends Error {
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+const ACCESS_TOKEN_KEY = 'vemtap_access_token';
+const REFRESH_TOKEN_KEY = 'vemtap_refresh_token';
+
+const readStorage = (key: string) => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStorage = (key: string, value: string | null) => {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  } catch {
+    // ignore storage errors in restricted contexts
+  }
+};
+
+export const getAccessToken = () => readStorage(ACCESS_TOKEN_KEY);
+export const getRefreshToken = () => readStorage(REFRESH_TOKEN_KEY);
+export const setAuthTokens = (accessToken: string, refreshToken?: string) => {
+  writeStorage(ACCESS_TOKEN_KEY, accessToken);
+  writeStorage(REFRESH_TOKEN_KEY, refreshToken ?? null);
+};
+export const clearAuthTokens = () => {
+  writeStorage(ACCESS_TOKEN_KEY, null);
+  writeStorage(REFRESH_TOKEN_KEY, null);
+};
 
 const buildUrl = (path: string, params?: Record<string, string | number | boolean | undefined>) => {
   const normalizedPath = path.startsWith('http') ? path : `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
@@ -38,8 +68,14 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
     throw new Error('API is not configured. Set VITE_API_BASE_URL in your environment.');
   }
 
+  const requestOptions = options as ApiRequestOptions & { __retry?: boolean };
   const headers = new Headers(options.headers ?? {});
   const requestMethod = (options.method ?? 'GET').toUpperCase();
+  const accessToken = getAccessToken();
+
+  if (accessToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
 
   if (options.body !== undefined && !headers.has('Content-Type') && requestMethod !== 'GET' && requestMethod !== 'HEAD') {
     headers.set('Content-Type', 'application/json');
@@ -66,6 +102,36 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
   }
 
   if (!response.ok) {
+    const refreshToken = getRefreshToken();
+    const isAuthAttempt = path === '/auth/login' || path === '/auth/refresh' || path === '/auth/logout';
+
+    if (response.status === 401 && !requestOptions.__retry && !isAuthAttempt && refreshToken) {
+      try {
+        const refreshResponse = await fetch(buildUrl('/auth/refresh', {}), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        const refreshPayload = refreshResponse.headers.get('content-type')?.includes('application/json')
+          ? await refreshResponse.json()
+          : await refreshResponse.text();
+
+        if (refreshResponse.ok) {
+          const nextAccessToken = typeof refreshPayload === 'object' && refreshPayload && 'accessToken' in refreshPayload ? String((refreshPayload as { accessToken?: string }).accessToken) : null;
+          const nextRefreshToken = typeof refreshPayload === 'object' && refreshPayload && 'refreshToken' in refreshPayload ? String((refreshPayload as { refreshToken?: string }).refreshToken) : refreshToken;
+          if (nextAccessToken) {
+            setAuthTokens(nextAccessToken, nextRefreshToken);
+            return request<TResponse>(path, { ...options, __retry: true } as ApiRequestOptions & { __retry?: boolean });
+          }
+        }
+      } catch {
+        // ignore refresh failures and let the normal error handling below fire
+      }
+    }
+
     const messageText =
       (payload && typeof payload === 'object' && 'message' in payload && typeof (payload as { message?: unknown }).message === 'string' && (payload as { message: string }).message)
         || (payload && typeof payload === 'object' && 'error' in payload && typeof (payload as { error?: unknown }).error === 'string' && (payload as { error: string }).error)

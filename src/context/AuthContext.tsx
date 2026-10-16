@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { apiPost, hasApiConfig } from '../lib/api';
+import { clearAuthTokens, getAccessToken, hasApiConfig } from '../lib/api';
+import { authService } from '../services';
 
 interface AuthContextValue {
   authed: boolean;
@@ -42,7 +43,7 @@ const writeFlag = (key: string, value: boolean) => {
 const AuthContext = createContext<AuthContextValue>(DEFAULT_VALUE);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [authed, setAuthed] = useState(() => readFlag(AUTHED_KEY));
+  const [authed, setAuthed] = useState(() => readFlag(AUTHED_KEY) || Boolean(getAccessToken()));
   const [claimed, setClaimed] = useState(() => readFlag(CLAIMED_KEY));
 
   const value = useMemo<AuthContextValue>(
@@ -52,27 +53,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn: async () => {
         if (hasApiConfig()) {
           try {
-            await apiPost('/auth/login', {
+            await authService.login({
               email: 'customer@vemtap.com',
               source: 'web',
             });
+            writeFlag(AUTHED_KEY, true);
+            setAuthed(true);
+            return;
           } catch {
             // The app can still operate in local-only mode when the backend is not running.
           }
         }
 
         writeFlag(AUTHED_KEY, true);
+        clearAuthTokens();
         setAuthed(true);
       },
       signOut: async () => {
         if (hasApiConfig()) {
           try {
-            await apiPost('/auth/logout', {});
+            await authService.logout();
           } catch {
             // Ignore logout errors and preserve the local UX in demo mode.
           }
         }
 
+        clearAuthTokens();
         writeFlag(AUTHED_KEY, false);
         writeFlag(CLAIMED_KEY, false);
         setAuthed(false);
