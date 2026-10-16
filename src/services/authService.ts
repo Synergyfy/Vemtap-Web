@@ -6,22 +6,35 @@ export interface AuthUser {
   email?: string;
   role?: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
 }
 
 export interface AuthTokensResponse {
   accessToken?: string;
+  access_token?: string;
   refreshToken?: string;
+  refresh_token?: string;
   token?: string;
   refresh?: string;
   user?: AuthUser;
 }
 
+const readTokenValue = (payload: AuthTokensResponse, keys: string[]) => {
+  for (const key of keys) {
+    const value = (payload as Record<string, unknown>)[key];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return undefined;
+};
+
 export const authService = {
   login: async (payload: { identifier: string; password?: string }) => {
     const response = await api.post<AuthTokensResponse>('/auth/login', payload);
 
-    const accessToken = response.accessToken ?? response.token;
-    const refreshToken = response.refreshToken ?? response.refresh;
+    const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
+    const refreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']);
 
     if (accessToken) {
       setAuthTokens(accessToken, refreshToken);
@@ -37,8 +50,8 @@ export const authService = {
     }
 
     const response = await api.post<AuthTokensResponse>('/auth/refresh', { refreshToken });
-    const accessToken = response.accessToken ?? response.token;
-    const nextRefreshToken = response.refreshToken ?? response.refresh;
+    const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
+    const nextRefreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']) ?? refreshToken;
 
     if (accessToken) {
       setAuthTokens(accessToken, nextRefreshToken ?? refreshToken);

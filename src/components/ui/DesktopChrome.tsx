@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
+import { useProfile } from '../../context/ProfileContext';
 import { DesktopLocationRadiusModal } from '../DesktopLocationRadiusModal';
 import { PortalRail, RAIL_OFFSET, type RailGroup } from '../../scripts/desktop/PortalShell';
 import { Icon } from './Icon';
@@ -89,6 +90,7 @@ const CUSTOMER_RAIL_ICONS: Readonly<Record<string, string>> = {
 
 export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = false }: DesktopNavHeaderProps) {
   const { authed, signOut } = useAuth();
+  const { fullName, email, initials } = useProfile();
   const { district, city, radius, setLocation } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -223,11 +225,11 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
                   onClick={() => setMenuOpen((open) => !open)}
                   className="flex items-center gap-space-xs pl-space-xs rounded-xl hover:bg-surface-subtle transition-colors"
                 >
-                  <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-                    <Icon name="person" className="text-on-primary text-[18px]" />
+                  <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 text-on-primary text-[12px] font-bold">
+                    {initials || 'U'}
                   </span>
                   <span className="hidden lg:flex flex-col text-left leading-tight">
-                    <span className="font-label-md text-label-md text-text-primary">Zainab Ahmed</span>
+                    <span className="font-label-md text-label-md text-text-primary">{fullName || 'User'}</span>
                     <span className="font-caption text-caption text-text-tertiary">Consumer</span>
                   </span>
                   <Icon name="keyboard_arrow_down" className="text-[18px] text-text-tertiary hidden lg:inline-block" />
@@ -237,8 +239,8 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
                   <>
                       <div className="absolute right-0 top-full mt-space-xs z-50 w-56 py-space-xs bg-surface-canvas rounded-xl shadow-[0_12px_32px_-8px_rgba(13,37,76,0.18)] border border-border-subtle flex flex-col">
                       <div className="px-space-sm py-space-2xs">
-                        <span className="font-label-md text-label-md text-text-primary font-semibold block">Zainab Ahmed</span>
-                        <span className="font-caption text-caption text-text-tertiary">zainab.ahmed@example.com</span>
+                        <span className="font-label-md text-label-md text-text-primary font-semibold block">{fullName || 'User'}</span>
+                        <span className="font-caption text-caption text-text-tertiary">{email || 'No email'}</span>
                       </div>
                       <div className="h-px bg-border-subtle my-space-2xs" />
                       {ACCOUNT_MENU_ITEMS.map((item) => (

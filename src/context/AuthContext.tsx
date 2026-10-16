@@ -29,6 +29,7 @@ const DEFAULT_VALUE: AuthContextValue = {
 
 const AUTHED_KEY = 'vemtap_authed';
 const CLAIMED_KEY = 'vemtap_claimed';
+const PROFILE_KEY = 'vemtap_profile';
 
 const readFlag = (key: string) => {
   try {
@@ -44,6 +45,36 @@ const writeFlag = (key: string, value: boolean) => {
     else window.localStorage.removeItem(key);
   } catch {
     // storage unavailable (private mode) — session stays in memory only
+  }
+};
+
+const persistProfileFromUser = (user?: { firstName?: string; lastName?: string; email?: string; phone?: string; name?: string }) => {
+  if (!user) return;
+
+  const fullName = (user.name ?? '').trim();
+  const nameParts = fullName ? fullName.split(/\s+/).filter(Boolean) : [];
+  const firstName = user.firstName?.trim() || nameParts[0] || 'User';
+  const lastName = user.lastName?.trim() || nameParts.slice(1).join(' ');
+
+  const nextProfile = {
+    firstName: firstName || 'User',
+    lastName: lastName || '',
+    email: user.email?.trim() || '',
+    phone: user.phone?.trim() || '',
+  };
+
+  try {
+    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(nextProfile));
+  } catch {
+    // storage unavailable; session stays in memory only
+  }
+};
+
+const clearStoredProfile = () => {
+  try {
+    window.localStorage.removeItem(PROFILE_KEY);
+  } catch {
+    // storage unavailable; session stays in memory only
   }
 };
 
@@ -67,15 +98,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           try {
-            await authService.login({
+            const response = await authService.login({
               identifier,
               password: password.trim(),
             });
+            persistProfileFromUser(response?.user);
             writeFlag(AUTHED_KEY, true);
             setAuthed(true);
             return;
           } catch (error) {
             console.error('Login failed:', error);
+            clearStoredProfile();
             writeFlag(AUTHED_KEY, false);
             setAuthed(false);
             throw error;
@@ -94,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Logout failed:', error);
             throw error;
           } finally {
+            clearStoredProfile();
             clearAuthTokens();
             writeFlag(AUTHED_KEY, false);
             writeFlag(CLAIMED_KEY, false);
@@ -104,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         clearAuthTokens();
+        clearStoredProfile();
         writeFlag(AUTHED_KEY, false);
         writeFlag(CLAIMED_KEY, false);
         setAuthed(false);

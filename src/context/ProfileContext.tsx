@@ -33,25 +33,39 @@ export function isValidEmail(value: string): boolean {
 const PROFILE_KEY = 'vemtap_profile';
 
 const DEFAULT_PROFILE: ProfileData = {
-  firstName: 'Zainab',
-  lastName: 'Ahmed',
-  email: 'zainab.ahmed@example.com',
-  phone: '+234 803 555 0192',
+  firstName: 'User',
+  lastName: '',
+  email: '',
+  phone: '',
 };
 
 const readProfile = (): ProfileData => {
   try {
     const raw = window.localStorage.getItem(PROFILE_KEY);
     if (!raw) return DEFAULT_PROFILE;
+
     const parsed = JSON.parse(raw) as Partial<ProfileData>;
+    const firstName = parsed.firstName?.trim();
+    const lastName = parsed.lastName?.trim();
+    const email = parsed.email?.trim();
+    const phone = parsed.phone?.trim();
+
+    const isDemoProfile =
+      firstName === 'Zainab' ||
+      (firstName === 'User' && email === 'zainab.ahmed@example.com') ||
+      email === 'zainab.ahmed@example.com';
+
+    if (isDemoProfile) {
+      return DEFAULT_PROFILE;
+    }
+
     return {
-      firstName: parsed.firstName ?? DEFAULT_PROFILE.firstName,
-      lastName: parsed.lastName ?? DEFAULT_PROFILE.lastName,
-      email: parsed.email ?? DEFAULT_PROFILE.email,
-      phone: parsed.phone ?? DEFAULT_PROFILE.phone,
+      firstName: firstName || DEFAULT_PROFILE.firstName,
+      lastName: lastName || DEFAULT_PROFILE.lastName,
+      email: email || DEFAULT_PROFILE.email,
+      phone: phone || DEFAULT_PROFILE.phone,
     };
   } catch {
-    // storage unavailable (private mode) or corrupt JSON -> defaults
     return DEFAULT_PROFILE;
   }
 };

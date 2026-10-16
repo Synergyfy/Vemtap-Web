@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
 import { useLocation } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
+import { api, hasApiConfig } from '../lib/api';
 import { URBAN_PRODUCTS } from './catalogueData';
 
 const AVATAR =
@@ -41,87 +42,6 @@ const CATEGORIES: { label: string; icon: string }[] = [
   { label: 'Services', icon: 'content_cut' },
 ];
 
-const TRENDING = [
-  {
-    id: 'spa',
-    image: IMAGES.spa,
-    imageAlt:
-      'A tranquil wellness spa sanctuary with warm ambient lighting, stacked smooth basalt massage stones, aromatic essential oils and fresh bamboo shoots, serene soothing luxury aesthetic.',
-    badge: '25% OFF',
-    business: 'Glow & Serenity Spa',
-    title: 'Weekend Glow Facial & Sauna',
-    price: '₦18,500',
-    was: '₦25,000',
-    distance: '1.4 km away',
-    likes: '184',
-    comments: '19',
-  },
-  {
-    id: 'coffee',
-    image: IMAGES.coffee,
-    imageAlt:
-      'Two beautiful ceramic cups of artisanal espresso latte art with heart designs placed side-by-side on a rustic timber coffee table, roasted beans scattered nearby, warm coffee shop ambience.',
-    badge: '50% OFF',
-    business: 'Cafe Neo Artisan',
-    title: 'Buy 1 Get 1 Free Roast Coffee',
-    price: '₦3,200',
-    was: '₦6,400',
-    distance: '600m away',
-    likes: '320',
-    comments: '44',
-  },
-  {
-    id: 'earbuds',
-    image: IMAGES.earbuds,
-    imageAlt:
-      'Sleek matte black premium wireless earbuds resting on their opened charging case with glowing LED battery indicator, modern minimal tech photography on deep navy background.',
-    badge: '37% OFF',
-    business: 'Gadget Hub Abuja',
-    title: 'Wireless Noise-Canceling Buds',
-    price: '₦22,000',
-    was: '₦35,000',
-    distance: '2.1 km away',
-    likes: '95',
-    comments: '12',
-  },
-];
-
-const BUSINESSES = [
-  {
-    id: 'bakery',
-    image: IMAGES.bakery,
-    imageAlt:
-      'Warm golden freshly baked sourdough bread loaves and buttery croissants displayed in a modern rustic bakery window, close-up texture shot.',
-    name: 'Artisan Bakery & Cafe',
-    meta: 'Bakery & Cafe • 0.5 km away',
-    rating: '4.9',
-    reviews: '(128)',
-    deals: '4 Active Deals',
-  },
-  {
-    id: 'gym',
-    image: IMAGES.gym,
-    imageAlt:
-      'High-end fitness gym interior with row of sleek treadmills, free weights, and warm architectural track lighting, clean lifestyle wellness photography.',
-    name: 'Pulse Fitness & Wellness',
-    meta: 'Health & Gym • 1.1 km away',
-    rating: '4.8',
-    reviews: '(94)',
-    deals: '2 Active Deals',
-  },
-  {
-    id: 'tailoring',
-    image: IMAGES.tailoring,
-    imageAlt:
-      'Bespoke fashion atelier cutting table with vibrant African silk fabrics, vintage tailor shears, and tailor measuring tape, elegant fashion craftsmanship detail.',
-    name: 'Velvet Stitch Couture',
-    meta: 'Tailoring & Fashion • 1.8 km away',
-    rating: '5.0',
-    reviews: '(62)',
-    deals: 'Special Offers',
-  },
-];
-
 interface FeaturedSlide {
   image: string;
   imageAlt: string;
@@ -136,49 +56,80 @@ interface FeaturedSlide {
   comments: number;
 }
 
-const FEATURED_SLIDES: FeaturedSlide[] = [
-  {
-    image: IMAGES.dining,
-    imageAlt:
-      'Luxury dining experience with gourmet grilled steak, fine wine glasses, elegant table setting in an upscale restaurant',
-    badge: '50% OFF',
-    ends: 'Ends Tonight',
-    merchant: 'The Sky Lounge & Grill • Maitama',
-    title: "50% Off Chef's 5-Course Tasting Menu",
-    price: '₦24,500',
-    was: '₦49,000',
-    distance: '2.4 km away • Maitama Heights',
-    likes: 620,
-    comments: 76,
-  },
-  {
-    image: URBAN_PRODUCTS[0].image,
-    imageAlt: URBAN_PRODUCTS[0].imageAlt,
-    badge: '20% OFF',
-    ends: 'Ends in 4h',
-    merchant: 'Urban Grill & Bistro • Apo',
-    title: '20% Off Prime 3-Course Lunch Combo',
-    price: '₦9,600',
-    was: '₦12,000',
-    distance: '0.8 km away • Apo District',
-    likes: 480,
-    comments: 64,
-  },
-  {
-    image: IMAGES.spa,
-    imageAlt:
-      'A tranquil wellness spa sanctuary with warm ambient lighting, stacked smooth basalt massage stones, aromatic essential oils and fresh bamboo shoots, serene soothing luxury aesthetic.',
-    badge: '25% OFF',
-    ends: 'Ends in 2 days',
-    merchant: 'Glow & Serenity Spa • Maitama',
-    title: '25% Off Weekend Glow Facial & Sauna',
-    price: '₦18,500',
-    was: '₦25,000',
-    distance: '1.4 km away • Maitama',
-    likes: 345,
-    comments: 41,
-  },
-];
+interface HomeBusinessCard {
+  id: string;
+  image: string;
+  imageAlt: string;
+  name: string;
+  meta: string;
+  rating: string;
+  reviews: string;
+  deals: string;
+}
+
+const toNaira = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return `₦${value.toLocaleString('en-NG')}`;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return '₦0';
+};
+
+const safeNumber = (value: unknown, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeHomeOffer = (item: Record<string, unknown>, index: number): FeaturedSlide => {
+  const merchantName =
+    (typeof item.business === 'string' && item.business.trim()) ||
+    (typeof item.businessName === 'string' && item.businessName.trim()) ||
+    (typeof item.merchant === 'string' && item.merchant.trim()) ||
+    (typeof item.merchantName === 'string' && item.merchantName.trim()) ||
+    'Nearby business';
+
+  const originalPrice = toNaira(item.originalPrice ?? item.wasPrice ?? item.compareAtPrice ?? item.price ?? 0);
+  const offerPrice = toNaira(item.discountedPrice ?? item.price ?? item.currentPrice ?? 0);
+  const image =
+    (typeof item.image === 'string' && item.image.trim()) ||
+    (typeof item.imageUrl === 'string' && item.imageUrl.trim()) ||
+    (typeof item.coverImage === 'string' && item.coverImage.trim()) ||
+    (typeof item.thumbnail === 'string' && item.thumbnail.trim()) ||
+    IMAGES.dining;
+
+  return {
+    image,
+    imageAlt: (typeof item.imageAlt === 'string' && item.imageAlt.trim()) || `${String(item.title ?? 'Offer')} promo image`,
+    badge: (typeof item.badge === 'string' && item.badge.trim()) || (typeof item.discountLabel === 'string' && item.discountLabel.trim()) || 'HOT DEAL',
+    ends: typeof item.ends === 'string' && item.ends.trim() ? item.ends.trim() : `Deal ${index + 1}`,
+    merchant: merchantName,
+    title: (typeof item.title === 'string' && item.title.trim()) || (typeof item.name === 'string' && item.name.trim()) || 'Limited-time offer',
+    price: offerPrice,
+    was: originalPrice,
+    distance: typeof item.distance === 'string' && item.distance.trim() ? item.distance.trim() : 'Nearby',
+    likes: safeNumber(item.likes ?? item.likesCount ?? item.favorites ?? 0),
+    comments: safeNumber(item.comments ?? item.commentsCount ?? item.reviewCount ?? 0),
+  };
+};
+
+const normalizeHomeBusinesses = (source: unknown[]): HomeBusinessCard[] => {
+  if (!Array.isArray(source)) return [];
+
+  return source.map((item, index) => {
+    const record = (item ?? {}) as Record<string, unknown>;
+    return {
+      id: String(record.id ?? `business-${index}`),
+      image:
+        (typeof record.image === 'string' && record.image.trim()) ||
+        (typeof record.imageUrl === 'string' && record.imageUrl.trim()) ||
+        IMAGES.bakery,
+      imageAlt: (typeof record.imageAlt === 'string' && record.imageAlt.trim()) || 'Business showcase image',
+      name: (typeof record.name === 'string' && record.name.trim()) || (typeof record.businessName === 'string' && record.businessName.trim()) || 'Local business',
+      meta: (typeof record.meta === 'string' && record.meta.trim()) || (typeof record.location === 'string' && record.location.trim()) || 'Nearby business',
+      rating: typeof record.rating === 'number' ? String(record.rating) : (typeof record.rating === 'string' ? record.rating : '4.8'),
+      reviews: typeof record.reviews === 'string' && record.reviews.trim() ? record.reviews : '(120)',
+      deals: typeof record.deals === 'string' && record.deals.trim() ? record.deals : 'Live offers',
+    };
+  });
+};
 
 export interface HomeScreenProps {
   onTab: (tab: MobileTabKey) => void;
@@ -317,7 +268,9 @@ function SearchBar({ onOpenFilters }: { onOpenFilters: () => void }) {
   );
 }
 
-function TrendingSection({ onSeeAll, onOpenDeal }: { onSeeAll: () => void; onOpenDeal: () => void }) {
+function TrendingSection({ onSeeAll, onOpenDeal, items }: { onSeeAll: () => void; onOpenDeal: () => void; items: FeaturedSlide[] }) {
+  if (!items.length) return null;
+
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -334,9 +287,9 @@ function TrendingSection({ onSeeAll, onOpenDeal }: { onSeeAll: () => void; onOpe
         </button>
       </div>
       <div className="relative -mx-margin px-margin overflow-x-auto no-scrollbar flex gap-3.5 pb-2">
-        {TRENDING.map((item) => (
+        {items.map((item) => (
           <article
-            key={item.id}
+            key={`${item.title}-${item.merchant}`}
             {...dealCardProps(onOpenDeal)}
             className="w-[260px] shrink-0 flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.98] cursor-pointer"
           >
@@ -347,7 +300,7 @@ function TrendingSection({ onSeeAll, onOpenDeal }: { onSeeAll: () => void; onOpe
               </span>
             </div>
             <div className="p-3.5 flex flex-col space-y-2">
-              <span className="font-caption text-caption text-text-secondary truncate">{item.business}</span>
+              <span className="font-caption text-caption text-text-secondary truncate">{item.merchant}</span>
               <h3 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-1">
                 {item.title}
               </h3>
@@ -374,7 +327,9 @@ function TrendingSection({ onSeeAll, onOpenDeal }: { onSeeAll: () => void; onOpe
   );
 }
 
-function BusinessesSection({ onSeeAll }: { onSeeAll: () => void }) {
+function BusinessesSection({ onSeeAll, items }: { onSeeAll: () => void; items: HomeBusinessCard[] }) {
+  if (!items.length) return null;
+
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -388,7 +343,7 @@ function BusinessesSection({ onSeeAll }: { onSeeAll: () => void }) {
         </button>
       </div>
       <div className="flex flex-col space-y-3">
-        {BUSINESSES.map((business) => (
+        {items.map((business) => (
           <div
             key={business.id}
             className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow"
@@ -421,7 +376,9 @@ function BusinessesSection({ onSeeAll }: { onSeeAll: () => void }) {
   );
 }
 
-function PopularSection({ onSeeAll, onOpenDeal }: { onSeeAll: () => void; onOpenDeal: () => void }) {
+function PopularSection({ onSeeAll, onOpenDeal, items }: { onSeeAll: () => void; onOpenDeal: () => void; items: FeaturedSlide[] }) {
+  if (!items.length) return null;
+
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -435,53 +392,34 @@ function PopularSection({ onSeeAll, onOpenDeal }: { onSeeAll: () => void; onOpen
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3.5">
-        <article
-          {...dealCardProps(onOpenDeal)}
-          className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden transition-transform active:scale-[0.98] cursor-pointer"
-        >
-          <div className="relative w-full aspect-square bg-surface-container overflow-hidden">
-            <img
-              className="w-full h-full object-cover"
-              alt="Clear glass bottle containing dark artisanal cold brew coffee with minimalist label, frosted water condensation droplets on glass surface, styled product photography."
-              src={IMAGES.coldBrew}
-            />
-            <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
-              15% voucher
-            </span>
-          </div>
-          <div className="p-3 flex flex-col space-y-1">
-            <span className="font-caption text-caption text-text-secondary truncate">Cafe Neo</span>
-            <h3 className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-1">
-              Cold Brew (1L)
-            </h3>
-            <span className="font-label-md text-label-md text-text-primary font-bold">₦4,500</span>
-          </div>
-        </article>
-        <article
-          {...dealCardProps(onOpenDeal)}
-          className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden transition-transform active:scale-[0.98] cursor-pointer"
-        >
-          <div className="relative w-full aspect-square bg-surface-container overflow-hidden">
-            <img
-              className="w-full h-full object-cover"
-              alt="Caramel tan genuine Italian leather tote bag styled against a soft neutral stone background with subtle minimalist studio lighting, luxury fashion accessory."
-              src={IMAGES.tote}
-            />
-            <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-surface-canvas/90 text-primary font-caption text-[11px] font-bold">
-              Hot Deal
-            </span>
-          </div>
-          <div className="p-3 flex flex-col space-y-1">
-            <span className="font-caption text-caption text-text-secondary truncate">Sole District</span>
-            <h3 className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-1">
-              Leather Tote Bag
-            </h3>
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-label-md text-label-md text-text-primary font-bold">₦34,000</span>
-              <span className="font-caption text-caption text-text-tertiary line-through">₦45,000</span>
+        {items.slice(0, 2).map((item) => (
+          <article
+            key={`${item.title}-${item.merchant}-popular`}
+            {...dealCardProps(onOpenDeal)}
+            className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden transition-transform active:scale-[0.98] cursor-pointer"
+          >
+            <div className="relative w-full aspect-square bg-surface-container overflow-hidden">
+              <img
+                className="w-full h-full object-cover"
+                alt={item.imageAlt}
+                src={item.image}
+              />
+              <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
+                {item.badge}
+              </span>
             </div>
-          </div>
-        </article>
+            <div className="p-3 flex flex-col space-y-1">
+              <span className="font-caption text-caption text-text-secondary truncate">{item.merchant}</span>
+              <h3 className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-1">
+                {item.title}
+              </h3>
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-label-md text-label-md text-text-primary font-bold">{item.price}</span>
+                <span className="font-caption text-caption text-text-tertiary line-through">{item.was}</span>
+              </div>
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -529,17 +467,88 @@ export function HomeScreen({
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, radius, setLocation } = useLocation();
   const [likes, setLikes] = useState<Record<string, boolean>>({});
+  const [featuredDeals, setFeaturedDeals] = useState<FeaturedSlide[]>([]);
+  const [trendingDeals, setTrendingDeals] = useState<FeaturedSlide[]>([]);
+  const [businesses, setBusinesses] = useState<HomeBusinessCard[]>([]);
+  const [loadingHome, setLoadingHome] = useState(true);
   const [featured, setFeatured] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
   const featuredTouchX = useRef<number | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
+    const loadHomeData = async () => {
+      if (!hasApiConfig()) {
+        if (mounted) {
+          setFeaturedDeals([]);
+          setTrendingDeals([]);
+          setBusinesses([]);
+          setLoadingHome(false);
+        }
+        return;
+      }
+
+      try {
+        const offersResponse = await api.get<Record<string, unknown>>('/catalogue/offers/public', {
+          params: { page: 1, limit: 8 },
+        });
+
+        const offerEntries = (() => {
+          const payload = offersResponse as Record<string, unknown>;
+          const list = Array.isArray(payload.data)
+            ? payload.data
+            : Array.isArray(payload.items)
+              ? payload.items
+              : Array.isArray(payload.offers)
+                ? payload.offers
+                : [];
+          return list as Record<string, unknown>[];
+        })();
+
+        const mappedOffers = offerEntries.map((offer, index) => normalizeHomeOffer(offer, index));
+        const sortedOffers = [...mappedOffers].sort((a, b) => b.likes - a.likes);
+
+        const businessEntries = (() => {
+          const payload = offersResponse as Record<string, unknown>;
+          const source = Array.isArray(payload.businesses)
+            ? payload.businesses
+            : Array.isArray(payload.merchants)
+              ? payload.merchants
+              : [];
+          return normalizeHomeBusinesses(source as unknown[]);
+        })();
+
+        if (!mounted) return;
+        setFeaturedDeals(sortedOffers.slice(0, 3));
+        setTrendingDeals(sortedOffers.slice(0, 6));
+        setBusinesses(businessEntries.length ? businessEntries : normalizeHomeBusinesses([]));
+      } catch (error) {
+        console.warn('Home feed unavailable:', error);
+        if (mounted) {
+          setFeaturedDeals([]);
+          setTrendingDeals([]);
+          setBusinesses([]);
+        }
+      } finally {
+        if (mounted) setLoadingHome(false);
+      }
+    };
+
+    loadHomeData();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const featuredCount = Math.max(featuredDeals.length, 1);
     const timer = window.setInterval(() => {
-      setFeatured((current) => (current + 1) % FEATURED_SLIDES.length);
+      setFeatured((current) => (current + 1) % featuredCount);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [featured]);
+  }, [featuredDeals.length]);
 
   useEffect(() => {
     const timers = toastTimers.current;
@@ -599,124 +608,132 @@ export function HomeScreen({
             })}
           </div>
 
-          <section className="flex flex-col space-y-3.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <h2 className="font-heading-sm text-heading-sm text-text-primary">Featured Deals</h2>
-                <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-caption text-[11px] font-semibold">
-                  Promoted
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={onOpenFeatured}
-                className="font-label-md text-label-md text-primary font-semibold hover:underline"
-              >
-                See All
-              </button>
+          {!loadingHome && !featuredDeals.length && (
+            <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-container-lowest p-5 text-center text-text-secondary">
+              No live deals are available yet. Check back after the catalogue sync completes.
             </div>
-            <div
-              className="overflow-hidden rounded-2xl shadow-md border-active ring-1 ring-primary/10 transition-transform active:scale-[0.99]"
-              onTouchStart={(event) => {
-                featuredTouchX.current = event.touches[0].clientX;
-              }}
-              onTouchEnd={(event) => {
-                const start = featuredTouchX.current;
-                featuredTouchX.current = null;
-                if (start == null) return;
-                const delta = event.changedTouches[0].clientX - start;
-                if (Math.abs(delta) < 40) return;
-                const direction = delta > 0 ? -1 : 1;
-                setFeatured((current) => (current + direction + FEATURED_SLIDES.length) % FEATURED_SLIDES.length);
-              }}
-            >
+          )}
+
+          {featuredDeals.length > 0 && (
+            <section className="flex flex-col space-y-3.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Featured Deals</h2>
+                  <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-caption text-[11px] font-semibold">
+                    Promoted
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenFeatured}
+                  className="font-label-md text-label-md text-primary font-semibold hover:underline"
+                >
+                  See All
+                </button>
+              </div>
               <div
-                className="flex transition-transform duration-500 ease-out"
-                style={{ transform: `translateX(-${featured * 100}%)` }}
+                className="overflow-hidden rounded-2xl shadow-md border-active ring-1 ring-primary/10 transition-transform active:scale-[0.99]"
+                onTouchStart={(event) => {
+                  featuredTouchX.current = event.touches[0].clientX;
+                }}
+                onTouchEnd={(event) => {
+                  const start = featuredTouchX.current;
+                  featuredTouchX.current = null;
+                  if (start == null) return;
+                  const delta = event.changedTouches[0].clientX - start;
+                  if (Math.abs(delta) < 40) return;
+                  const direction = delta > 0 ? -1 : 1;
+                  setFeatured((current) => (current + direction + featuredDeals.length) % featuredDeals.length);
+                }}
               >
-                {FEATURED_SLIDES.map((slide, index) => (
-                  <article
-                    key={slide.title}
-                    {...dealCardProps(onOpenDeal)}
-                    className="min-w-full flex flex-col bg-surface-container-lowest cursor-pointer"
-                  >
-                    <div className="relative w-full aspect-[16/9] overflow-hidden bg-surface-container">
-                      <img
-                        className="w-full h-full object-cover"
-                        alt={slide.imageAlt}
-                        src={slide.image}
-                      />
-                      <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold shadow-sm backdrop-blur-sm">
-                        {slide.badge}
+                <div
+                  className="flex transition-transform duration-500 ease-out"
+                  style={{ transform: `translateX(-${featured * 100}%)` }}
+                >
+                  {featuredDeals.map((slide, index) => (
+                    <article
+                      key={`${slide.title}-${slide.merchant}`}
+                      {...dealCardProps(onOpenDeal)}
+                      className="min-w-full flex flex-col bg-surface-container-lowest cursor-pointer"
+                    >
+                      <div className="relative w-full aspect-[16/9] overflow-hidden bg-surface-container">
+                        <img
+                          className="w-full h-full object-cover"
+                          alt={slide.imageAlt}
+                          src={slide.image}
+                        />
+                        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold shadow-sm backdrop-blur-sm">
+                          {slide.badge}
+                        </div>
+                        <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-surface-canvas/90 text-tertiary font-label-sm text-label-sm font-medium shadow-sm backdrop-blur-sm flex items-center gap-1">
+                          <Icon name="schedule" className="text-[15px]" />
+                          <span>{slide.ends}</span>
+                        </div>
                       </div>
-                      <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-surface-canvas/90 text-tertiary font-label-sm text-label-sm font-medium shadow-sm backdrop-blur-sm flex items-center gap-1">
-                        <Icon name="schedule" className="text-[15px]" />
-                        <span>{slide.ends}</span>
-                      </div>
-                    </div>
-                    <div className="p-4 flex flex-col space-y-2.5">
-                      <div className="flex items-center justify-between text-text-secondary">
-                        <span className="font-label-sm text-label-sm font-medium">{slide.merchant}</span>
-                        <span className="flex items-center gap-0.5 font-caption text-caption text-primary font-semibold">
-                          <Icon name="verified" className="text-[14px]" /> Partner
-                        </span>
-                      </div>
-                      <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug">{slide.title}</h3>
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{slide.price}</span>
-                        <span className="font-body-md text-body-md text-text-tertiary line-through">{slide.was}</span>
-                      </div>
-                      <div className="flex items-center gap-1 font-caption text-caption text-text-secondary pt-0.5">
-                        <Icon name="near_me" className="text-[16px] text-text-tertiary" />
-                        <span>{slide.distance}</span>
-                      </div>
-                      <div
-                        className="flex items-center justify-between pt-3 text-text-secondary"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <div className="flex items-center gap-4">
-                          <LikeButton
-                            count={slide.likes + (likes[`featured-${index}`] ? 1 : 0)}
-                            liked={Boolean(likes[`featured-${index}`])}
-                            onToggle={() => toggleLike(`featured-${index}`)}
-                          />
+                      <div className="p-4 flex flex-col space-y-2.5">
+                        <div className="flex items-center justify-between text-text-secondary">
+                          <span className="font-label-sm text-label-sm font-medium">{slide.merchant}</span>
+                          <span className="flex items-center gap-0.5 font-caption text-caption text-primary font-semibold">
+                            <Icon name="verified" className="text-[14px]" /> Partner
+                          </span>
+                        </div>
+                        <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug">{slide.title}</h3>
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{slide.price}</span>
+                          <span className="font-body-md text-body-md text-text-tertiary line-through">{slide.was}</span>
+                        </div>
+                        <div className="flex items-center gap-1 font-caption text-caption text-text-secondary pt-0.5">
+                          <Icon name="near_me" className="text-[16px] text-text-tertiary" />
+                          <span>{slide.distance}</span>
+                        </div>
+                        <div
+                          className="flex items-center justify-between pt-3 text-text-secondary"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <div className="flex items-center gap-4">
+                            <LikeButton
+                              count={slide.likes + (likes[`featured-${index}`] ? 1 : 0)}
+                              liked={Boolean(likes[`featured-${index}`])}
+                              onToggle={() => toggleLike(`featured-${index}`)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => showToast('Comments open on the deal page')}
+                              className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                            >
+                              <Icon name="chat_bubble_outline" className="text-[18px]" />
+                              <span className="font-label-sm text-label-sm">{slide.comments}</span>
+                            </button>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => showToast('Comments open on the deal page')}
-                            className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                            onClick={() => showToast('Deal link copied to clipboard')}
+                            className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors"
                           >
-                            <Icon name="chat_bubble_outline" className="text-[18px]" />
-                            <span className="font-label-sm text-label-sm">{slide.comments}</span>
+                            <Icon name="ios_share" className="text-[18px]" />
+                            <span className="font-label-sm text-label-sm">Share</span>
                           </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => showToast('Deal link copied to clipboard')}
-                          className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors"
-                        >
-                          <Icon name="ios_share" className="text-[18px]" />
-                          <span className="font-label-sm text-label-sm">Share</span>
-                        </button>
                       </div>
-                    </div>
-                  </article>
+                    </article>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-center gap-1.5">
+                {featuredDeals.map((slide, index) => (
+                  <button
+                    key={`${slide.title}-${index}-dot`}
+                    type="button"
+                    aria-label={`Show featured deal ${index + 1}`}
+                    onClick={() => setFeatured(index)}
+                    className={`h-2 rounded-full transition-all ${
+                      index === featured ? 'w-6 bg-primary' : 'w-2 bg-primary/30'
+                    }`}
+                  />
                 ))}
               </div>
-            </div>
-            <div className="flex items-center justify-center gap-1.5">
-              {FEATURED_SLIDES.map((slide, index) => (
-                <button
-                  key={slide.title}
-                  type="button"
-                  aria-label={`Show featured deal ${index + 1}`}
-                  onClick={() => setFeatured(index)}
-                  className={`h-2 rounded-full transition-all ${
-                    index === featured ? 'w-6 bg-primary' : 'w-2 bg-primary/30'
-                  }`}
-                />
-              ))}
-            </div>
-          </section>
+            </section>
+          )}
 
           <section className="flex flex-col space-y-3.5">
             <div className="flex items-center justify-between">
@@ -753,231 +770,144 @@ export function HomeScreen({
             </div>
 
             {view === 'list' ? (
-              <>
-                <article
-                  {...dealCardProps(onOpenDeal)}
-                  className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.99] cursor-pointer"
-                >
-                  <div className="relative w-full aspect-[16/9] overflow-hidden bg-surface-container">
-                    <img
-                      className="w-full h-full object-cover"
-                      alt="A gourmet artisanal double cheeseburger with melted cheddar cheese dripping, crispy thick potato wedges, served on a modern dark slate plate in a cozy trendy bistro restaurant, sharp appetizing food photography with vibrant warm colors."
-                      src={IMAGES.burger}
-                    />
-                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold shadow-sm backdrop-blur-sm">
-                      20% OFF
-                    </div>
-                    <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-surface-canvas/90 text-tertiary font-label-sm text-label-sm font-medium shadow-sm backdrop-blur-sm flex items-center gap-1">
-                      <Icon name="schedule" className="text-[15px]" />
-                      <span>Expires in 4h</span>
-                    </div>
-                  </div>
-                  <div className="p-4 flex flex-col space-y-2.5">
-                    <div className="flex items-center justify-between text-text-secondary">
-                      <span className="font-label-sm text-label-sm font-medium">
-                        Urban Grill &amp; Bistro • Apo District
-                      </span>
-                      <span className="flex items-center gap-0.5 font-caption text-caption text-primary">
-                        <Icon name="verified" className="text-[14px]" /> Verified
-                      </span>
-                    </div>
-                    <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug">
-                      20% Off Prime Lunch Combo
-                    </h3>
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦9,600</span>
-                      <span className="font-body-md text-body-md text-text-tertiary line-through">₦12,000</span>
-                    </div>
-                    <div className="flex items-center gap-1 font-caption text-caption text-text-secondary pt-0.5">
-                      <Icon name="near_me" className="text-[16px] text-text-tertiary" />
-                      <span>0.8 km away • Apo Boulevard</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-3 text-text-secondary" onClick={(event) => event.stopPropagation()}>
-                      <div className="flex items-center gap-4">
-                        <LikeButton
-                          count={248 + (likes.urban ? 1 : 0)}
-                          liked={Boolean(likes.urban)}
-                          onToggle={() => toggleLike('urban')}
+              trendingDeals.length ? (
+                <>
+                  {trendingDeals.slice(0, 2).map((item, index) => (
+                    <article
+                      key={`${item.title}-${item.merchant}-list-${index}`}
+                      {...dealCardProps(onOpenDeal)}
+                      className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.99] cursor-pointer"
+                    >
+                      <div className="relative w-full aspect-[16/9] overflow-hidden bg-surface-container">
+                        <img
+                          className="w-full h-full object-cover"
+                          alt={item.imageAlt}
+                          src={item.image}
                         />
-                        <button
-                          type="button"
-                          onClick={() => showToast('Comments open on the deal page')}
-                          className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
-                        >
-                          <Icon name="chat_bubble_outline" className="text-[18px]" />
-                          <span className="font-label-sm text-label-sm">32</span>
-                        </button>
+                        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold shadow-sm backdrop-blur-sm">
+                          {item.badge}
+                        </div>
+                        <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-surface-canvas/90 text-tertiary font-label-sm text-label-sm font-medium shadow-sm backdrop-blur-sm flex items-center gap-1">
+                          <Icon name="schedule" className="text-[15px]" />
+                          <span>{item.ends}</span>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => showToast('Deal link copied to clipboard')}
-                        className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors"
-                      >
-                        <Icon name="ios_share" className="text-[18px]" />
-                        <span className="font-label-sm text-label-sm">Share</span>
-                      </button>
-                    </div>
-                  </div>
-                </article>
-
-                <article
-                  {...dealCardProps(onOpenDeal)}
-                  className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.99] cursor-pointer"
-                >
-                  <div className="relative w-full aspect-[16/9] overflow-hidden bg-surface-container">
-                    <img
-                      className="w-full h-full object-cover"
-                      alt="High-end streetwear limited edition sneaker pair displayed on a polished concrete surface with modern urban lighting and soft shadows, crisp fashion product photography."
-                      src={IMAGES.sneakers}
-                    />
-                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold shadow-sm backdrop-blur-sm">
-                      30% OFF
-                    </div>
-                    <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-primary text-on-primary font-label-sm text-label-sm font-semibold shadow-sm backdrop-blur-sm">
-                      Exclusive
-                    </div>
-                  </div>
-                  <div className="p-4 flex flex-col space-y-2.5">
-                    <div className="flex items-center justify-between text-text-secondary">
-                      <span className="font-label-sm text-label-sm font-medium">
-                        Sole District Boutique • Garki Area
-                      </span>
-                      <span className="flex items-center gap-0.5 font-caption text-caption text-primary">
-                        <Icon name="local_fire_department" className="text-[14px]" /> Hot
-                      </span>
-                    </div>
-                    <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug">
-                      Weekend Sneaker Drop &amp; Apparel
-                    </h3>
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦28,000</span>
-                      <span className="font-body-md text-body-md text-text-tertiary line-through">₦40,000</span>
-                    </div>
-                    <div className="flex items-center gap-1 font-caption text-caption text-text-secondary pt-0.5">
-                      <Icon name="near_me" className="text-[16px] text-text-tertiary" />
-                      <span>1.2 km away • Area 11 Commercial Arcade</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-3 text-text-secondary" onClick={(event) => event.stopPropagation()}>
-                      <div className="flex items-center gap-4">
-                        <LikeButton
-                          count={412 + (likes.sole ? 1 : 0)}
-                          liked={Boolean(likes.sole)}
-                          onToggle={() => toggleLike('sole')}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => showToast('Comments open on the deal page')}
-                          className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
-                        >
-                          <Icon name="chat_bubble_outline" className="text-[18px]" />
-                          <span className="font-label-sm text-label-sm">58</span>
-                        </button>
+                      <div className="p-4 flex flex-col space-y-2.5">
+                        <div className="flex items-center justify-between text-text-secondary">
+                          <span className="font-label-sm text-label-sm font-medium">{item.merchant}</span>
+                          <span className="flex items-center gap-0.5 font-caption text-caption text-primary">
+                            <Icon name="verified" className="text-[14px]" /> Verified
+                          </span>
+                        </div>
+                        <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug">
+                          {item.title}
+                        </h3>
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{item.price}</span>
+                          <span className="font-body-md text-body-md text-text-tertiary line-through">{item.was}</span>
+                        </div>
+                        <div className="flex items-center gap-1 font-caption text-caption text-text-secondary pt-0.5">
+                          <Icon name="near_me" className="text-[16px] text-text-tertiary" />
+                          <span>{item.distance}</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-3 text-text-secondary" onClick={(event) => event.stopPropagation()}>
+                          <div className="flex items-center gap-4">
+                            <LikeButton
+                              count={item.likes + (likes[`list-${index}`] ? 1 : 0)}
+                              liked={Boolean(likes[`list-${index}`])}
+                              onToggle={() => toggleLike(`list-${index}`)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => showToast('Comments open on the deal page')}
+                              className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                            >
+                              <Icon name="chat_bubble_outline" className="text-[18px]" />
+                              <span className="font-label-sm text-label-sm">{item.comments}</span>
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => showToast('Deal link copied to clipboard')}
+                            className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors"
+                          >
+                            <Icon name="ios_share" className="text-[18px]" />
+                            <span className="font-label-sm text-label-sm">Share</span>
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => showToast('Deal link copied to clipboard')}
-                        className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors"
-                      >
-                        <Icon name="ios_share" className="text-[18px]" />
-                        <span className="font-label-sm text-label-sm">Share</span>
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              </>
+                    </article>
+                  ))}
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-container-lowest p-4 text-center text-text-secondary">
+                  Live deals are not available yet for this location.
+                </div>
+              )
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                <article
-                  {...dealCardProps(onOpenDeal)}
-                  className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md overflow-hidden transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  <div className="relative w-full aspect-square overflow-hidden bg-surface-container">
-                    <img
-                      className="w-full h-full object-cover"
-                      alt="Gourmet burger and wedges"
-                      src={IMAGES.burger}
-                    />
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-[11px] font-bold shadow-sm backdrop-blur-sm">
-                      20% OFF
-                    </span>
-                    <button
-                      aria-label="Save Prime Lunch Combo"
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleLike('gridUrban');
-                      }}
-                      className={`absolute top-2 right-2 w-7 h-7 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors shadow-sm ${
-                        likes.gridUrban ? 'bg-error-container text-error' : 'bg-surface-canvas/90 text-text-secondary hover:text-error'
-                      }`}
-                    >
-                      <Icon name="favorite" className="text-[16px]" filled={Boolean(likes.gridUrban)} />
-                    </button>
-                  </div>
-                  <div className="p-3 flex flex-col justify-between flex-1 space-y-1.5">
-                    <div>
-                      <div className="flex items-center gap-1 text-text-secondary text-[11px] font-caption">
-                        <span className="truncate">Urban Grill</span>
-                        <Icon name="verified" className="text-[12px] text-primary shrink-0" />
-                      </div>
-                      <h3 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-1">
-                        Prime Lunch Combo
-                      </h3>
+                {trendingDeals.slice(0, 2).map((item, index) => (
+                  <article
+                    key={`${item.title}-${item.merchant}-grid-${index}`}
+                    {...dealCardProps(onOpenDeal)}
+                    className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md overflow-hidden transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    <div className="relative w-full aspect-square overflow-hidden bg-surface-container">
+                      <img
+                        className="w-full h-full object-cover"
+                        alt={item.imageAlt}
+                        src={item.image}
+                      />
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-[11px] font-bold shadow-sm backdrop-blur-sm">
+                        {item.badge}
+                      </span>
+                      <button
+                        aria-label={`Save ${item.title}`}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleLike(`grid-${index}`);
+                        }}
+                        className={`absolute top-2 right-2 w-7 h-7 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors shadow-sm ${
+                          likes[`grid-${index}`] ? 'bg-error-container text-error' : 'bg-surface-canvas/90 text-text-secondary hover:text-error'
+                        }`}
+                      >
+                        <Icon name="favorite" className="text-[16px]" filled={Boolean(likes[`grid-${index}`])} />
+                      </button>
                     </div>
-                    <div className="pt-0.5">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-label-md text-label-md text-text-primary font-bold">₦9,600</span>
-                        <span className="font-caption text-caption text-text-tertiary line-through text-[11px]">
-                          ₦12,000
-                        </span>
+                    <div className="p-3 flex flex-col justify-between flex-1 space-y-1.5">
+                      <div>
+                        <div className="flex items-center gap-1 text-text-secondary text-[11px] font-caption">
+                          <span className="truncate">{item.merchant}</span>
+                          <Icon name="verified" className="text-[12px] text-primary shrink-0" />
+                        </div>
+                        <h3 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-1">
+                          {item.title}
+                        </h3>
                       </div>
-                      <div className="flex items-center justify-between text-text-secondary font-caption text-[11px] pt-1">
-                        <span className="flex items-center gap-0.5">
-                          <Icon name="near_me" className="text-[13px] text-text-tertiary" />0.8 km
-                        </span>
-                        <span className="flex items-center gap-0.5">
-                          <Icon name="thumb_up" className="text-[13px]" />
-                          {248 + (likes.gridUrban ? 1 : 0)}
-                        </span>
+                      <div className="pt-0.5">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="font-label-md text-label-md text-text-primary font-bold">{item.price}</span>
+                          <span className="font-caption text-caption text-text-tertiary line-through text-[11px]">
+                            {item.was}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-text-secondary font-caption text-[11px] pt-1">
+                          <span className="flex items-center gap-0.5">
+                            <Icon name="near_me" className="text-[13px] text-text-tertiary" />{item.distance}
+                          </span>
+                          <span className="flex items-center gap-0.5">
+                            <Icon name="thumb_up" className="text-[13px]" />
+                            {item.likes + (likes[`grid-${index}`] ? 1 : 0)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </article>
+                  </article>
+                ))}
+              </div>
+            )}
 
-                <article
-                  {...dealCardProps(onOpenDeal)}
-                  className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md overflow-hidden transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  <div className="relative w-full aspect-square overflow-hidden bg-surface-container">
-                    <img
-                      className="w-full h-full object-cover"
-                      alt="Streetwear sneaker limited drop"
-                      src={IMAGES.sneakers}
-                    />
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-[11px] font-bold shadow-sm backdrop-blur-sm">
-                      30% OFF
-                    </span>
-                    <button
-                      aria-label="Save Sneaker Drop and Tees"
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleLike('gridSole');
-                      }}
-                      className={`absolute top-2 right-2 w-7 h-7 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors shadow-sm ${
-                        likes.gridSole ? 'bg-error-container text-error' : 'bg-surface-canvas/90 text-text-secondary hover:text-error'
-                      }`}
-                    >
-                      <Icon name="favorite" className="text-[16px]" filled={Boolean(likes.gridSole)} />
-                    </button>
-                  </div>
-                  <div className="p-3 flex flex-col justify-between flex-1 space-y-1.5">
-                    <div>
-                      <div className="flex items-center gap-1 text-text-secondary text-[11px] font-caption">
-                        <span className="truncate">Sole District</span>
-                        <Icon name="local_fire_department" className="text-[12px] text-primary shrink-0" />
-                      </div>
-                      <h3 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-1">
                         Sneaker Drop &amp; Tees
                       </h3>
                     </div>
