@@ -137,11 +137,6 @@ export function DesktopBusinessBookingsScreen({ onNav, onOpenOrders }: DesktopBu
         <div className="w-full py-space-xl space-y-space-lg">
           <div className="flex flex-wrap items-center justify-between gap-space-md">
             <div className="flex flex-wrap items-center gap-space-sm">
-              <button type="button" className="flex items-center gap-space-xs px-space-sm py-space-xs rounded-xl border border-border bg-surface text-on-surface font-label-sm text-label-sm hover:bg-surface-subtle">
-                <Icon name="store" className="text-[16px] text-primary" />
-                Wuse II Branch
-                <Icon name="expand_more" className="text-[14px]" />
-              </button>
               <div className="flex items-center bg-surface-subtle rounded-xl p-space-2xs">
                 <button type="button" onClick={onOpenOrders} className="px-space-sm py-space-2xs rounded-lg font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface">
                   Orders

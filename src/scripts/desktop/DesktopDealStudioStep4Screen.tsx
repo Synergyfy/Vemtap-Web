@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
 import { dealDurationLabel } from './desktopDealStudio';
@@ -31,6 +32,7 @@ interface DesktopDealStudioStep4ScreenProps {
   onPublish: () => void;
   onAnalytics: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: string) => void;
 }
 
 const SHOWCASE_IMAGES: Array<{ src: string; alt: string }> = [
@@ -80,6 +82,7 @@ export function DesktopDealStudioStep4Screen({
   onPublish,
   onAnalytics,
   onSaveDraft,
+  onNav,
 }: DesktopDealStudioStep4ScreenProps) {
   const [showModal, setShowModal] = useState(false);
   const [publication, setPublication] = useState<DealPublicationResult | null>(null);
@@ -142,8 +145,8 @@ export function DesktopDealStudioStep4Screen({
   const claimLimit = claimLimitLabel(studio);
   const giftingPrivileges = !studio.gifting ? 'Not Allowed' : studio.otpVerify ? 'Allowed with OTP' : 'Allowed';
 
-  return (
-    <BusinessSetupChrome activeNav="deals">
+  const inner = (
+    <>
       <div className="w-full max-w-7xl mx-auto px-space-xl py-space-xl flex flex-col gap-space-2xl">
         <div className="flex flex-col gap-space-md">
           <div className="flex flex-wrap items-center justify-between gap-space-md">
@@ -725,6 +728,19 @@ export function DesktopDealStudioStep4Screen({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (onNav) {
+    return (
+      <MerchantShell activeNav="business-deals" onNav={onNav}>
+        {inner}
+      </MerchantShell>
+    );
+  }
+  return (
+    <BusinessSetupChrome activeNav="deals">
+      {inner}
     </BusinessSetupChrome>
   );
 }

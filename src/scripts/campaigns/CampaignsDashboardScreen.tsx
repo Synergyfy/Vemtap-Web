@@ -135,8 +135,8 @@ export function CampaignsDashboardScreen({
       desktopHeader={header}
     >
       <div className="flex flex-col gap-space-lg px-space-md md:px-0 py-space-md md:py-0">
-        {/* Mobile intro + create */}
-        <div className="flex flex-col gap-space-sm md:hidden">
+        {/* Mobile intro + create — shown until the desktop shell takes over at lg (1024px), so tablets (768–1023px) keep the button too */}
+        <div className="flex flex-col gap-space-sm lg:hidden">
           <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{meta.description}</p>
           <button
             type="button"

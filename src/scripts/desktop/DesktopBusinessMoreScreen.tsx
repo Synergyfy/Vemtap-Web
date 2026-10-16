@@ -13,6 +13,7 @@ interface DesktopBusinessMoreScreenProps {
   onOpenNotifications: () => void;
   onOpenSupport: () => void;
   onOpenSettings: () => void;
+  onOpenCluster?: () => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
   onOpenStoreOrdering?: (sub?: 'dashboard' | 'qr' | 'settings') => void;
@@ -58,6 +59,7 @@ export function DesktopBusinessMoreScreen({
   onOpenNotifications,
   onOpenSupport,
   onOpenSettings,
+  onOpenCluster,
   onSwitchConsumer,
   onSignOut,
   onOpenStoreOrdering,
@@ -79,6 +81,24 @@ export function DesktopBusinessMoreScreen({
   };
 
   const sections: SectionData[] = [
+    {
+      key: 'cluster',
+      label: 'Cluster System',
+      badge: 'Amaka Mall',
+      badgeClass: GREEN_BADGE,
+      rows: [
+        {
+          key: 'cluster-system',
+          icon: 'hub',
+          iconClass: 'bg-surface-tint-blue text-primary',
+          title: 'Cluster System Dashboard',
+          sub: 'Mall network, shared QR pass, merchant directory & deal rotator',
+          badge: 'Live',
+          badgeClass: GREEN_BADGE,
+          onClick: () => (onOpenCluster ? onOpenCluster() : onNav('cluster-system')),
+        },
+      ],
+    },
     {
       key: 'store-ordering',
       label: 'Store Front & QR Touchpoints',

@@ -184,23 +184,6 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-space-sm shrink-0">
-              <div className="relative">
-                <button
-                  type="button"
-                  className="h-[52px] px-space-md rounded-xl bg-surface-canvas shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] hover:bg-surface-subtle transition-all flex items-center gap-space-sm text-left"
-                >
-                  <span className="flex items-center justify-center w-2 h-2 rounded-full bg-badge-discount-text ring-4 ring-badge-discount-bg" />
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                      Assigned Scope
-                    </span>
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      All Locations (3) • 4 Online
-                    </span>
-                  </div>
-                  <Icon name="unfold_more" className="text-outline text-[18px] ml-space-xs" />
-                </button>
-              </div>
               <button
                 type="button"
                 className="h-[52px] px-space-md rounded-xl bg-surface-canvas shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] hover:bg-surface-subtle text-text-primary font-button-secondary text-button-secondary flex items-center gap-space-xs transition-colors"

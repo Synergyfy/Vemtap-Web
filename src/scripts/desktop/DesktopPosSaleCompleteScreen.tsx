@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Logo } from '../../components/ui/Logo';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { computeTotals, formatNaira, type PosTerminalLine } from './posTerminalData';
+import { formatReceiptText } from '../posCartData';
+import { usePosSettings } from '../../context/PosSettingsContext';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 
 interface DesktopPosSaleCompleteScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
   cart: PosTerminalLine[];
   customer: string | null;
+  /** Loyalty points awarded during the sale — only shown when customer details were added. */
+  awardedPoints: number;
   onNewSale: () => void;
   onOpenOrders: () => void;
 }
@@ -64,17 +70,31 @@ export function DesktopPosSaleCompleteScreen({
   onNav,
   cart,
   customer,
+  awardedPoints,
   onNewSale,
   onOpenOrders,
 }: DesktopPosSaleCompleteScreenProps) {
-  const totals = useMemo(() => computeTotals(cart), [cart]);
+  const {
+    taxMode,
+    taxRate,
+    taxLabel,
+    loyaltyEnabled,
+    autoPrintReceipt,
+    businessName,
+    businessAddress,
+    businessPhone,
+    receiptHeader,
+    receiptFooter,
+    showBusinessLogo,
+  } = usePosSettings();
+  const { branch } = useBusinessBranch();
+  const totals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
   const { muted, setMuted, play } = useChime();
   const [phone, setPhone] = useState('+234 803 219 8831');
   const [email, setEmail] = useState('michael.james@email.com');
   const [flash, setFlash] = useState<string | null>(null);
 
   const receiptNo = 'RC-10842';
-  const pointsEarned = Math.round(totals.total * 0.05);
 
   const flashMessage = (message: string) => {
     setFlash(message);
@@ -95,6 +115,12 @@ export function DesktopPosSaleCompleteScreen({
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onNewSale]);
+
+  useEffect(() => {
+    // Auto-print receipt — controlled from POS Settings.
+    if (autoPrintReceipt) flashMessage('Receipt printed on Epson TM-T20 [USB/001]');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <PosTerminalChrome activeNav="register" onNav={onNav}>
@@ -168,12 +194,16 @@ export function DesktopPosSaleCompleteScreen({
                 <TicketTeeth />
                 <div className="bg-surface-canvas shadow-md px-space-md py-space-md font-mono text-[12px] leading-relaxed text-text-primary">
                   {/* Receipt head */}
+                  {receiptHeader && (
+                    <div className="text-center text-[11px] italic text-text-secondary">
+                      {formatReceiptText(receiptHeader, businessName)}
+                    </div>
+                  )}
                   <div className="text-center flex flex-col gap-0.5">
-                    <span className="font-heading-sm text-heading-sm font-bold tracking-widest">VEMTAP</span>
-                    <span className="text-[11px] text-text-secondary">
-                      Urban Grill &amp; Bistro • Wuse II Flagship #01
-                    </span>
-                    <span className="text-[11px] text-text-secondary">Plot 42, Aminu Kano Cres, Wuse II, Abuja</span>
+                    {showBusinessLogo && <Logo variant="mark" alt={businessName} className="h-7 w-auto mx-auto" />}
+                    <span className="font-heading-sm text-heading-sm font-bold tracking-widest">{businessName}</span>
+                    <span className="text-[11px] text-text-secondary">{branch.name}</span>
+                    <span className="text-[11px] text-text-secondary">{businessAddress}</span>
                     <span className="text-[11px] text-text-secondary">TIN 09876512-0001 • POS-NG-ABJ-004</span>
                   </div>
 
@@ -238,7 +268,9 @@ export function DesktopPosSaleCompleteScreen({
                     <span>-{formatNaira(totals.discount)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>VAT (7.5% FIRS)</span>
+                    <span>
+                    {taxLabel} ({taxRate}% FIRS{taxMode === 'inclusive' ? ' · included' : ''})
+                  </span>
                     <span>{formatNaira(totals.vat)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-[14px] mt-1">
@@ -265,7 +297,16 @@ export function DesktopPosSaleCompleteScreen({
 
                   <div className="flex flex-col items-center gap-2 text-center">
                     <span className="text-[11px] text-text-secondary">
-                      Loyalty points earned: <strong className="text-text-primary">{pointsEarned} pts</strong>
+                      {!loyaltyEnabled ? (
+                        'Loyalty earning is off in POS Settings'
+                      ) : customer ? (
+                        <>
+                          Loyalty points earned by <strong className="text-text-primary">{customer}</strong>:{' '}
+                          <strong className="text-text-primary">{awardedPoints.toLocaleString()} pts</strong>
+                        </>
+                      ) : (
+                        'Walk-in sale — no loyalty points attached'
+                      )}
                     </span>
                     {/* Stylised barcode */}
                     <div className="flex items-end gap-[2px] h-10 my-1">
@@ -282,9 +323,12 @@ export function DesktopPosSaleCompleteScreen({
                     <span className="text-[10px] tracking-widest text-text-secondary">
                       RC10842·TK108·POSNGABJ004
                     </span>
-                    <span className="text-[11px] text-text-secondary mt-1">
-                      Thank you for dining with us. Karibu tena!
-                    </span>
+                    {receiptFooter && (
+                      <span className="text-[11px] text-text-secondary mt-1">
+                        {formatReceiptText(receiptFooter, businessName)}
+                      </span>
+                    )}
+                    {businessPhone && <span className="text-[10px] text-text-secondary">{businessPhone}</span>}
                     <span className="text-[10px] text-text-tertiary">
                       Fiscalised • FIRS / NDPR Compliant • v2.4
                     </span>

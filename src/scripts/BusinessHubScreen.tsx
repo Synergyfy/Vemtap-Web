@@ -36,6 +36,7 @@ export function BusinessHubScreen({
   initialCustomer,
   onBackCustomerProfile,
   onOpenAnalytics,
+  onPreviewInvite,
 }: {
   initialStep?: BusinessHubStep;
   onTab: (tab: BusinessTabKey) => void;
@@ -47,6 +48,7 @@ export function BusinessHubScreen({
   initialCustomer?: string;
   onBackCustomerProfile?: () => void;
   onOpenAnalytics?: () => void;
+  onPreviewInvite?: (url: string) => void;
 }) {
   const [step, setStep] = useState<BusinessHubStep>(initialStep);
   const [assignmentItem, setAssignmentItem] = useState('Woodfire Aged Ribeye Steak');
@@ -122,6 +124,7 @@ export function BusinessHubScreen({
               setStep('customerProfile');
             }}
             onOpenAnalytics={onOpenAnalytics}
+            onPreviewInvite={onPreviewInvite}
           />
         );
       case 'customerProfile':

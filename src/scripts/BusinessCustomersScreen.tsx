@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { useContacts } from '../context/ContactsContext';
+import { SheetShell } from '../components/sheets/SheetShell';
+import { AddCustomerMethodsDialog } from '../components/customers/AddCustomerMethodsDialog';
+import { SendInviteDialog } from '../components/customers/SendInviteDialog';
 
 interface BusinessCustomersScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onMessage: (name: string) => void;
   onViewProfile?: (name: string) => void;
   onOpenAnalytics?: () => void;
+  /** Opens the public invite page so staff can preview the Send Invite link. */
+  onPreviewInvite?: (url: string) => void;
 }
 
 type CrmFilterKey = 'all' | 'frequent' | 'returning' | 'new' | 'inactive';
@@ -143,7 +148,13 @@ const lastActivity = (customer: CustomerRow) =>
 const CONTACT_AVATAR =
   'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Ccircle cx="20" cy="15" r="7" fill="%236750a4"/%3E%3Cpath d="M8 36c0-7 5.4-11 12-11s12 4 12 11" fill="%236750a4"/%3E%3C/svg%3E';
 
-export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpenAnalytics }: BusinessCustomersScreenProps) {
+export function BusinessCustomersScreen({
+  onTab,
+  onMessage,
+  onViewProfile,
+  onOpenAnalytics,
+  onPreviewInvite,
+}: BusinessCustomersScreenProps) {
   const isDesktop = useIsDesktop();
   const { search: searchContacts } = useContacts();
   const [filter, setFilter] = useState<CrmFilterKey>('frequent');
@@ -151,6 +162,20 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
   const [drawerCustomer, setDrawerCustomer] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+
+  // Add Customer flow: methods → manual sheet / invite dialog.
+  const [addView, setAddView] = useState<'methods' | 'manual' | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [addedRows, setAddedRows] = useState<CustomerRow[]>([]);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newSegment, setNewSegment] = useState<'Standard Customer' | 'VIP Spender' | 'Deal Enthusiast'>(
+    'Standard Customer',
+  );
+  const [newPoints, setNewPoints] = useState('100');
+  const [consentGranted, setConsentGranted] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(
     () => () => {
@@ -163,6 +188,67 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToast(message);
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
+
+  const closeManualSheet = () => {
+    setAddView(null);
+    setAddError(null);
+    setConsentGranted(false);
+  };
+
+  const handleManualAdd = (event: FormEvent) => {
+    event.preventDefault();
+    if (!newName.trim()) {
+      setAddError('Enter the customer\'s full name.');
+      return;
+    }
+    if (newPhone.replace(/\D/g, '').length < 7) {
+      setAddError('Enter a valid phone number.');
+      return;
+    }
+    if (newEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) {
+      setAddError('Enter a valid email address, or leave it empty.');
+      return;
+    }
+    if (!consentGranted) {
+      setAddError('Confirm the consent checkbox to save this customer.');
+      return;
+    }
+
+    const row: CustomerRow = {
+      key: `manual-${Date.now()}`,
+      name: newName.trim(),
+      img: CONTACT_AVATAR,
+      alt: `${newName.trim()} profile`,
+      verified: true,
+      tierIcon: newSegment === 'VIP Spender' ? 'diamond' : newSegment === 'Deal Enthusiast' ? 'loyalty' : 'person_add',
+      tierLabel: `Added by Business • ${newSegment}`,
+      tierClass:
+        newSegment === 'VIP Spender'
+          ? 'bg-surface-tint-blue text-primary'
+          : newSegment === 'Deal Enthusiast'
+            ? 'bg-badge-discount-bg text-badge-discount-text'
+            : 'bg-primary-container/20 text-primary',
+      contact: newPhone.trim(),
+      activityLine: {
+        leading: 'New customer',
+        segments: [{ text: `${newPoints || '100'} pts granted`, class: 'text-primary font-medium' }],
+      },
+      historyIcon: 'person_add',
+      historyParts: [
+        { text: 'Added: ', strong: 'Just now (manual entry)', strongClass: 'text-primary font-medium' },
+      ],
+      category: 'new',
+    };
+
+    setAddedRows((prev) => [row, ...prev.filter((entry) => entry.name.toLowerCase() !== row.name.toLowerCase())]);
+    showToast(`Customer ${row.name} added to your directory`);
+    setNewName('');
+    setNewPhone('');
+    setNewEmail('');
+    setNewSegment('Standard Customer');
+    setNewPoints('100');
+    closeManualSheet();
   };
 
   const visibleCustomers = (() => {
@@ -202,6 +288,7 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
 
     const seededRows = CUSTOMERS.filter((customer) => {
       if (purchaseRows.some((row) => row.name.toLowerCase() === customer.name.toLowerCase())) return false;
+      if (addedRows.some((row) => row.name.toLowerCase() === customer.name.toLowerCase())) return false;
       const matchesFilter = filter === 'all' || customer.category === filter;
       const matchesQuery =
         search.trim() === '' || customer.name.toLowerCase().includes(search.trim().toLowerCase());
@@ -211,7 +298,13 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
     const filterPurchaseRows =
       filter === 'all' || filter === 'frequent' ? purchaseRows : [];
 
-    return [...filterPurchaseRows, ...seededRows];
+    const addedVisible = addedRows.filter((row) => {
+      const matchesFilter = filter === 'all' || row.category === filter;
+      const matchesQuery = search.trim() === '' || row.name.toLowerCase().includes(search.trim().toLowerCase());
+      return matchesFilter && matchesQuery;
+    });
+
+    return [...addedVisible, ...filterPurchaseRows, ...seededRows];
   })();
 
   const openCustomer = (customer: CustomerRow) => {
@@ -236,10 +329,21 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
           <div className="flex flex-col gap-space-2xs">
             <div className="flex items-center justify-between">
               <h2 className="font-heading-sm text-heading-sm text-text-primary tracking-tight">Customers</h2>
-              <span className="inline-flex items-center gap-space-2xs px-space-xs py-1 rounded-full bg-surface-container-high text-primary font-caption text-caption">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                Live Sync
-              </span>
+              <div className="flex items-center gap-space-2xs">
+                <button
+                  type="button"
+                  onClick={() => setAddView('methods')}
+                  aria-label="Add Customer"
+                  className="inline-flex items-center gap-1 h-8 px-3 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm font-semibold active:scale-95 transition-transform"
+                >
+                  <Icon name="person_add" className="text-[15px]" />
+                  <span>Add</span>
+                </button>
+                <span className="inline-flex items-center gap-space-2xs px-space-xs py-1 rounded-full bg-surface-container-high text-primary font-caption text-caption">
+                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  Live Sync
+                </span>
+              </div>
             </div>
             <p className="font-caption text-caption text-text-secondary">
               Customer relationships, visit history, and direct engagement
@@ -591,6 +695,160 @@ export function BusinessCustomersScreen({ onTab, onMessage, onViewProfile, onOpe
           </div>
         </div>
       )}
+
+      {/* Add Customer — method chooser (Manual / Invite / Bulk coming soon) */}
+      <AddCustomerMethodsDialog
+        open={addView === 'methods'}
+        onClose={() => setAddView(null)}
+        onAddManually={() => setAddView('manual')}
+        onSendInvite={() => {
+          setAddView(null);
+          setInviteOpen(true);
+        }}
+      />
+
+      {/* Send Invite Link */}
+      <SendInviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} onPreviewInvite={onPreviewInvite} />
+
+      {/* Add Manually — mobile sheet */}
+      <SheetShell open={addView === 'manual'} onClose={closeManualSheet}>
+        <div className="w-full flex justify-center pt-3 pb-1">
+          <div className="w-12 h-1.5 rounded-full bg-surface-dim" />
+        </div>
+        <form
+          onSubmit={handleManualAdd}
+          className="px-margin pb-space-lg flex flex-col gap-space-sm max-h-[80vh] overflow-y-auto"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-space-sm">
+              <span className="w-9 h-9 rounded-xl bg-primary-container/20 text-primary flex items-center justify-center">
+                <Icon name="person_add" className="text-[19px]" />
+              </span>
+              <div className="flex flex-col">
+                <h3 className="font-heading-sm text-heading-sm text-on-surface">Add New Customer</h3>
+                <span className="font-caption text-caption text-text-secondary">Manual entry</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={closeManualSheet}
+              className="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center text-text-secondary"
+            >
+              <Icon name="close" className="text-[18px]" />
+            </button>
+          </div>
+
+          <label className="flex flex-col gap-space-2xs">
+            <span className="font-label-sm text-label-sm text-on-surface font-semibold">
+              Full Name <span className="text-error">*</span>
+            </span>
+            <input
+              type="text"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              placeholder="e.g. Adebayo Ogunlesi"
+              className="w-full h-11 px-4 rounded-xl bg-surface-container-low text-on-surface font-body-md text-body-md placeholder:text-text-tertiary outline-none focus:bg-surface-canvas shadow-sm transition-all"
+            />
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
+            <label className="flex flex-col gap-space-2xs">
+              <span className="font-label-sm text-label-sm text-on-surface font-semibold">
+                Phone Number <span className="text-error">*</span>
+              </span>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={newPhone}
+                onChange={(event) => setNewPhone(event.target.value)}
+                placeholder="+234 803 000 0000"
+                className="w-full h-11 px-4 rounded-xl bg-surface-container-low text-on-surface font-body-md text-body-md placeholder:text-text-tertiary outline-none focus:bg-surface-canvas shadow-sm transition-all"
+              />
+            </label>
+            <label className="flex flex-col gap-space-2xs">
+              <span className="font-label-sm text-label-sm text-on-surface font-semibold">Email Address</span>
+              <input
+                type="email"
+                inputMode="email"
+                value={newEmail}
+                onChange={(event) => setNewEmail(event.target.value)}
+                placeholder="customer@example.com"
+                className="w-full h-11 px-4 rounded-xl bg-surface-container-low text-on-surface font-body-md text-body-md placeholder:text-text-tertiary outline-none focus:bg-surface-canvas shadow-sm transition-all"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
+            <label className="flex flex-col gap-space-2xs">
+              <span className="font-label-sm text-label-sm text-on-surface font-semibold">Customer Segment</span>
+              <select
+                value={newSegment}
+                onChange={(event) => setNewSegment(event.target.value as typeof newSegment)}
+                className="w-full h-11 px-3 rounded-xl bg-surface-container-low text-on-surface font-body-md text-body-md outline-none focus:bg-surface-canvas shadow-sm transition-all"
+              >
+                <option value="Standard Customer">Standard Customer</option>
+                <option value="VIP Spender">VIP Spender</option>
+                <option value="Deal Enthusiast">Deal Enthusiast</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-space-2xs">
+              <span className="font-label-sm text-label-sm text-on-surface font-semibold">Initial Loyalty Points</span>
+              <input
+                type="number"
+                min="0"
+                value={newPoints}
+                onChange={(event) => setNewPoints(event.target.value)}
+                placeholder="100"
+                className="w-full h-11 px-4 rounded-xl bg-surface-container-low text-on-surface font-body-md text-body-md placeholder:text-text-tertiary outline-none focus:bg-surface-canvas shadow-sm transition-all"
+              />
+            </label>
+          </div>
+
+          {/* Consent — required before saving (unchecked by default) */}
+          <label className="flex items-start gap-space-xs cursor-pointer pt-space-xs border-t border-border-subtle">
+            <input
+              type="checkbox"
+              checked={consentGranted}
+              onChange={(event) => setConsentGranted(event.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded text-primary focus:ring-0 cursor-pointer"
+              aria-describedby="mobile-add-customer-consent"
+            />
+            <span
+              id="mobile-add-customer-consent"
+              className="font-caption text-caption text-text-secondary leading-relaxed"
+            >
+              I confirm that I have permission to provide and store this customer&apos;s contact details in VEMTAP for
+              legitimate business purposes.
+            </span>
+          </label>
+
+          {addError && (
+            <p role="alert" className="flex items-center gap-space-2xs font-label-sm text-label-sm text-error">
+              <Icon name="error" className="text-[15px]" />
+              {addError}
+            </p>
+          )}
+
+          <div className="flex gap-space-xs pt-space-2xs">
+            <button
+              type="button"
+              onClick={closeManualSheet}
+              className="flex-1 h-11 rounded-xl bg-surface-container-high text-on-surface font-button-secondary text-button-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!consentGranted || !newName.trim() || !newPhone.trim()}
+              className="flex-[2] h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-2xs active:scale-[0.98] transition-all disabled:opacity-40 disabled:active:scale-100"
+            >
+              <Icon name="save" className="text-[17px]" />
+              <span>Save Customer</span>
+            </button>
+          </div>
+        </form>
+      </SheetShell>
 
       {/* Toast */}
       {toast && (

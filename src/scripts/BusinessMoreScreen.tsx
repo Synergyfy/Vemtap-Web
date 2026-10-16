@@ -16,6 +16,7 @@ interface BusinessMoreScreenProps {
   onOpenNotifications: () => void;
   onOpenSupport: () => void;
   onOpenSettings: () => void;
+  onOpenCluster?: () => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
 }
@@ -58,6 +59,7 @@ export function BusinessMoreScreen({
   onOpenNotifications,
   onOpenSupport,
   onOpenSettings,
+  onOpenCluster,
   onSwitchConsumer,
   onSignOut,
 }: BusinessMoreScreenProps) {
@@ -81,6 +83,22 @@ export function BusinessMoreScreen({
   // Order mirrors the desktop More side-menu list — keep both in sync.
   // POS and Store Front now live in the POS menu (Overview quick action).
   const sections: SectionData[] = [
+    {
+      key: 'cluster',
+      label: 'Cluster System',
+      rows: [
+        {
+          key: 'cluster-system',
+          icon: 'hub',
+          iconClass: 'bg-surface-tint-blue text-primary',
+          title: 'Cluster System',
+          sub: 'Mall network, shared QR & deal rotator pool',
+          badge: 'Amaka Mall',
+          badgeClass: GREEN_BADGE,
+          onClick: onOpenCluster || (() => {}),
+        },
+      ],
+    },
     {
       key: 'marketing',
       label: 'Marketing & Growth',

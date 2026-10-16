@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useIsDesktop } from './hooks/useIsDesktop';
+import { PosSettingsProvider } from './context/PosSettingsContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -21,6 +22,7 @@ import { AccountDeletionProvider } from './context/AccountDeletionContext';
 import type { SubmittedOrder } from './context/OrdersContext';
 import { useCart } from './context/CartContext';
 import { URBAN_BUSINESS, SPA_BUSINESS, resolveBusinessPath, productPath, servicePath } from './scripts/businessData';
+import { CustomerInviteJoinScreen } from './scripts/CustomerInviteJoinScreen';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
 import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
 import { ServiceDetailScreen } from './scripts/ServiceDetailScreen';
@@ -186,11 +188,7 @@ import { BusinessPosTransactionDetailScreen } from './scripts/BusinessPosTransac
 import { BusinessPosSyncScreen } from './scripts/BusinessPosSyncScreen';
 import { BusinessPosOfflineBufferScreen } from './scripts/BusinessPosOfflineBufferScreen';
 import { BusinessPosKitchenStreamScreen } from './scripts/BusinessPosKitchenStreamScreen';
-import { BusinessPosHardwareScreen } from './scripts/BusinessPosHardwareScreen';
 import { BusinessPosSettingsScreen } from './scripts/BusinessPosSettingsScreen';
-import { BusinessPosReceiptScreen } from './scripts/BusinessPosReceiptScreen';
-import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
-import { BusinessPosPermissionsScreen } from './scripts/BusinessPosPermissionsScreen';
 import { PublicPosMenuScreen } from './scripts/PublicPosMenuScreen';
 import { PublicPosCartReviewScreen } from './scripts/PublicPosCartReviewScreen';
 import { PublicPosOrderTrackingScreen } from './scripts/PublicPosOrderTrackingScreen';
@@ -314,14 +312,10 @@ import { DesktopPosCustomerLookupScreen } from './scripts/desktop/DesktopPosCust
 import { DesktopPosOrderLookupScreen } from './scripts/desktop/DesktopPosOrderLookupScreen';
 import { DesktopPosCustomerDossierScreen } from './scripts/desktop/DesktopPosCustomerDossierScreen';
 import { DesktopPosTransactionDetailScreen } from './scripts/desktop/DesktopPosTransactionDetailScreen';
-import { DesktopPosHardwareScreen } from './scripts/desktop/DesktopPosHardwareScreen';
-import { DesktopPosReceiptScreen } from './scripts/desktop/DesktopPosReceiptScreen';
-import { DesktopPosTaxesScreen } from './scripts/desktop/DesktopPosTaxesScreen';
 import { DesktopPublicPosCartScreen } from './scripts/desktop/DesktopPublicPosCartScreen';
 import { DesktopPublicPosTrackingScreen } from './scripts/desktop/DesktopPublicPosTrackingScreen';
 import { DesktopPublicPosMenuScreen } from './scripts/desktop/DesktopPublicPosMenuScreen';
 import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGeneralSettingsScreen';
-import { DesktopPosPermissionsScreen } from './scripts/desktop/DesktopPosPermissionsScreen';
 import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
 import { SEED_POS_TERMINAL_LINES, type PosTerminalLine } from './scripts/desktop/posTerminalData';
 import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
@@ -331,9 +325,15 @@ import { DesktopStoreOrderingDashboard } from './scripts/desktop/DesktopStoreOrd
 import { DesktopStoreOrderingQrScreen } from './scripts/desktop/DesktopStoreOrderingQrScreen';
 import { DesktopStoreOrderingSettingsScreen } from './scripts/desktop/DesktopStoreOrderingSettingsScreen';
 import { StoreOrderingScreen } from './scripts/StoreOrderingScreen';
+import { ClusterOnboardingScreen } from './scripts/ClusterOnboardingScreen';
+import { DesktopClusterOnboardingScreen } from './scripts/desktop/DesktopClusterOnboardingScreen';
+import { ClusterSystemScreen } from './scripts/ClusterSystemScreen';
+import { DesktopClusterSystemScreen } from './scripts/desktop/DesktopClusterSystemScreen';
 
 type Route =
   | 'welcome'
+  | 'cluster-onboarding'
+  | 'cluster-system'
   | 'discover-deals'
   | 'start-vemtap'
   | 'auth-code'
@@ -387,6 +387,7 @@ type Route =
   | 'hub-services'
   | 'hub-deals'
   | 'hub-customers'
+  | 'customer-invite-join'
   | 'hub-profile'
   | 'deal-location-pricing'
   | 'deal-create-locations'
@@ -434,10 +435,6 @@ type Route =
   | 'pos-buffer'
   | 'pos-kitchen'
   | 'pos-settings'
-  | 'pos-hardware'
-  | 'pos-receipt'
-  | 'pos-taxes'
-  | 'pos-permissions'
   | 'public-pos-menu'
   | 'public-pos-cart'
   | 'public-pos-tracking'
@@ -556,6 +553,9 @@ const ROUTE_PATH: Record<Route, string> = {
   'hub-services': '/business/hub/catalog/services',
   'hub-deals': '/business/hub/deals',
   'hub-customers': '/business/hub/customers',
+  // Dynamic public path (/join/{slug}?invite=…) — placeholder entry; the
+  // URL-sync effect never overwrites it (see renderRoute effect).
+  'customer-invite-join': '/join',
   'hub-profile': '/business/hub/profile',
   'deal-location-pricing': '/business/deals/location-pricing',
   'deal-create-locations': '/business/deals/create/locations',
@@ -603,14 +603,12 @@ const ROUTE_PATH: Record<Route, string> = {
   'pos-buffer': '/pos/buffer',
   'pos-kitchen': '/pos/kitchen',
   'pos-settings': '/pos/settings',
-  'pos-hardware': '/pos/settings/hardware',
-  'pos-receipt': '/pos/settings/receipt',
-  'pos-taxes': '/pos/settings/taxes',
-  'pos-permissions': '/pos/settings/permissions',
   'public-pos-menu': '/public/pos/menu',
   'public-pos-cart': '/public/pos/cart',
   'public-pos-tracking': '/public/pos/tracking',
   'business-more': '/business/more',
+  'cluster-onboarding': '/business/cluster/onboarding',
+  'cluster-system': '/business/cluster',
   'store-ordering-dashboard': '/business/store-ordering',
   'store-ordering-qr': '/business/store-ordering/qr',
   'store-ordering-settings': '/business/store-ordering/settings',
@@ -776,6 +774,8 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
 }
 
 function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
+  // Public customer invite page — reachable signed-out via /join/{business-slug}.
+  if (path.startsWith('/join/')) return 'customer-invite-join';
   const direct = PATH_ROUTE.get(path);
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
@@ -804,8 +804,10 @@ export default function App() {
                 <CartProvider>
                   <BookingProvider>
                     <AccountDeletionProvider>
-                      <AppInner />
-                      <BranchSwitchOverlay />
+                      <PosSettingsProvider>
+                        <AppInner />
+                        <BranchSwitchOverlay />
+                      </PosSettingsProvider>
                     </AccountDeletionProvider>
                   </BookingProvider>
                 </CartProvider>
@@ -866,6 +868,10 @@ function AppInner() {
   const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>(SEED_POS_TERMINAL_LINES);
   const [posCustomer, setPosCustomer] = useState<string | null>(null);
   const [posCustomerRecord, setPosCustomerRecord] = useState<PosCustomerRecord | null>(null);
+  /** Loyalty points earned by the sale currently shown on the receipt screen. */
+  const [posSalePoints, setPosSalePoints] = useState(0);
+  /** Points manually awarded to the mobile-flow customer during the sale. */
+  const [posCustomerBonus, setPosCustomerBonus] = useState(0);
   const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
@@ -976,7 +982,9 @@ function AppInner() {
 
   useEffect(() => {
     const expected =
-      route === 'product-detail'
+      route === 'customer-invite-join'
+        ? null // dynamic /join/{slug}?invite=… path — never overwritten
+        : route === 'product-detail'
         ? detailProduct
           ? productPath(URBAN_BUSINESS.slug, detailProduct.id)
           : null
@@ -1511,6 +1519,14 @@ function AppInner() {
         break;
       case 'store-ordering-settings':
         setRoute('store-ordering-settings');
+        break;
+      // Cluster section
+      case 'cluster-system':
+      case 'cluster':
+        setRoute('cluster-system');
+        break;
+      case 'cluster-onboarding':
+        setRoute('cluster-onboarding');
         break;
       // More section
       case 'more':
@@ -3134,7 +3150,7 @@ function AppInner() {
         return (
           <DesktopSubscriptionScreen
             initialStep="overview"
-            onExit={() => setRoute('business-overview')}
+            onExit={() => setRoute('cluster-onboarding')}
             onViewBusiness={() => setRoute('storefront')}
             onBoost={() => setRoute('boost')}
           />
@@ -3142,7 +3158,7 @@ function AppInner() {
       return (
         <SubscriptionScreen
           initialStep="overview"
-          onExit={() => setRoute('business-overview')}
+          onExit={() => setRoute('cluster-onboarding')}
           onViewBusiness={() => setRoute('storefront')}
           onBoost={() => setRoute('boost')}
         />
@@ -3560,7 +3576,11 @@ function AppInner() {
     case 'deal-studio':
       if (isDesktop)
         return (
-          <DesktopDealStudioFlow onComplete={() => setRoute('hub-deals')} onExit={() => setRoute('hub-deals')} />
+          <DesktopDealStudioFlow
+            onComplete={() => setRoute('hub-deals')}
+            onExit={() => setRoute('hub-deals')}
+            onNav={businessPortalNav}
+          />
         );
       return (
         <BusinessDealStudioFlow onComplete={() => setRoute('hub-deals')} onExit={() => setRoute('hub-deals')} />
@@ -3574,6 +3594,10 @@ function AppInner() {
             onViewProfile={(name) => {
               setHubCustomerName(name);
               setRoute('hub-customer-profile');
+            }}
+            onPreviewInvite={(url) => {
+              window.history.pushState(null, '', url);
+              setRoute('customer-invite-join');
             }}
           />
         );
@@ -3590,8 +3614,19 @@ function AppInner() {
             setRoute('hub-customer-profile');
           }}
           onOpenAnalytics={() => setRoute('analytics-customers')}
+          onPreviewInvite={(url) => {
+            window.history.pushState(null, '', url);
+            setRoute('customer-invite-join');
+          }}
         />
       );
+
+    case 'customer-invite-join': {
+      // Public invite page: /join/{business-slug}?invite=TOKEN — no auth guard.
+      const inviteSlug = decodeURIComponent(window.location.pathname.split('/')[2] ?? '');
+      const inviteToken = new URLSearchParams(window.location.search).get('invite');
+      return <CustomerInviteJoinScreen businessSlug={inviteSlug} inviteToken={inviteToken} />;
+    }
 
     case 'hub-profile':
       if (isDesktop)
@@ -4017,9 +4052,14 @@ function AppInner() {
             cart={posCart}
             onCartChange={setPosCart}
             customer={posCustomer}
+            customerBonus={posCustomerBonus}
             onBack={() => setRoute('pos-register')}
             onCharge={() => setRoute('pos-payment')}
             onOpenCustomer={() => setRoute('pos-customer')}
+            onRemoveCustomer={() => {
+              setPosCustomer(null);
+              setPosCustomerBonus(0);
+            }}
           />
         </div>
       );
@@ -4054,6 +4094,7 @@ function AppInner() {
             onBack={goBackToPrevious}
             onAttach={(name) => {
               setPosCustomer(name);
+              setPosCustomerBonus(0);
               setRoute('pos-cart');
             }}
             onRegisterNew={() => setRoute('hub-customers')}
@@ -4068,6 +4109,7 @@ function AppInner() {
             onNav={posTerminalNav}
             cart={posTermCart}
             customer={posCustomer}
+            awardedPoints={posSalePoints}
             onNewSale={() => {
               setPosTermCart(SEED_POS_TERMINAL_LINES);
               setPosCustomer(null);
@@ -4081,10 +4123,12 @@ function AppInner() {
           <BusinessPosSaleCompleteScreen
             cart={posCart}
             customer={posCustomer}
+            awardedPoints={posSalePoints}
             onBack={() => setRoute('pos-home')}
             onNewSale={() => {
               setPosCart([]);
               setPosCustomer(null);
+              setPosCustomerBonus(0);
               setRoute('pos-register');
             }}
           />
@@ -4103,7 +4147,10 @@ function AppInner() {
               setPosCustomer(record ? record.name : null);
             }}
             onBack={() => setRoute('pos-register')}
-            onComplete={() => setRoute('pos-sale-complete')}
+            onComplete={(points) => {
+              setPosSalePoints(points);
+              setRoute('pos-sale-complete');
+            }}
           />
         );
       return (
@@ -4111,11 +4158,17 @@ function AppInner() {
           <BusinessPosPaymentScreen
             cart={posCart}
             customer={posCustomer}
+            customerBonus={posCustomerBonus}
+            onAwardPoints={(points) => setPosCustomerBonus((prev) => prev + points)}
             onBack={() => setRoute('pos-cart')}
-            onReceipt={() => setRoute('pos-sale-complete')}
+            onReceipt={(points) => {
+              setPosSalePoints(points);
+              setRoute('pos-sale-complete');
+            }}
             onNewSale={() => {
               setPosCart([]);
               setPosCustomer(null);
+              setPosCustomerBonus(0);
               setRoute('pos-register');
             }}
           />
@@ -4373,60 +4426,10 @@ function AppInner() {
       );
 
     case 'pos-settings':
-      if (isDesktop)
-        return (
-          <DesktopPosGeneralSettingsScreen
-            onNav={posTerminalNav}
-            onOpenHardware={() => setRoute('pos-hardware')}
-            onOpenReceipt={() => setRoute('pos-receipt')}
-            onOpenTaxes={() => setRoute('pos-taxes')}
-          />
-        );
+      if (isDesktop) return <DesktopPosGeneralSettingsScreen onNav={posTerminalNav} />;
       return (
         <div className="biz-flow">
-          <BusinessPosSettingsScreen
-            onBack={goBackToPrevious}
-            onOpenReceipt={() => setRoute('pos-receipt')}
-            onOpenHardware={() => setRoute('pos-hardware')}
-            onOpenTaxes={() => setRoute('pos-taxes')}
-            onOpenPermissions={() => setRoute('pos-permissions')}
-            onOpenKitchen={() => setRoute('pos-kitchen')}
-          />
-        </div>
-      );
-
-    case 'pos-hardware':
-      if (isDesktop)
-        return <DesktopPosHardwareScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosHardwareScreen onBack={() => setRoute('pos-settings')} />
-        </div>
-      );
-
-    case 'pos-receipt':
-      if (isDesktop)
-        return <DesktopPosReceiptScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosReceiptScreen onBack={() => setRoute('pos-settings')} />
-        </div>
-      );
-
-    case 'pos-taxes':
-      if (isDesktop)
-        return <DesktopPosTaxesScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosTaxesScreen onBack={() => setRoute('pos-settings')} />
-        </div>
-      );
-
-    case 'pos-permissions':
-      if (isDesktop) return <DesktopPosPermissionsScreen onNav={posTerminalNav} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosPermissionsScreen onBack={() => setRoute('pos-settings')} />
+          <BusinessPosSettingsScreen onBack={goBackToPrevious} />
         </div>
       );
 
@@ -4444,6 +4447,7 @@ function AppInner() {
             onOpenNotifications={() => setRoute('business-notifications')}
             onOpenSupport={() => setRoute('business-support')}
             onOpenSettings={() => setRoute('business-settings')}
+            onOpenCluster={() => setRoute('cluster-system')}
             onSwitchConsumer={() => setRoute('home')}
             onOpenStoreOrdering={(sub) =>
               setRoute(
@@ -4471,6 +4475,7 @@ function AppInner() {
           onOpenNotifications={() => setRoute('business-notifications')}
           onOpenSupport={() => setRoute('business-support')}
           onOpenSettings={() => setRoute('business-settings')}
+          onOpenCluster={() => setRoute('cluster-system')}
           onSwitchConsumer={() => setRoute('home')}
           onSignOut={() => {
             signOut();
@@ -4568,15 +4573,50 @@ function AppInner() {
           onNavigateRoute={(r) => setRoute(r as Route)}
         />
       );
+    case 'cluster-onboarding':
+      if (isDesktop)
+        return (
+          <DesktopClusterOnboardingScreen
+            onComplete={() => setRoute('cluster-system')}
+            onSkip={() => setRoute('business-overview')}
+            onCreateDeal={() => setRoute('deal-studio')}
+            onCreateProduct={() => setRoute('hub-catalog')}
+            onCreateLocation={() => setRoute('deal-create-locations')}
+          />
+        );
       return (
-        <StoreOrderingScreen
-          onTab={businessTab}
-          initialSubTab="settings"
-          onNavigateRoute={(r) => setRoute(r as Route)}
+        <ClusterOnboardingScreen
+          onComplete={() => setRoute('cluster-system')}
+          onSkip={() => setRoute('business-overview')}
+          onCreateDeal={() => setRoute('deal-studio')}
+          onCreateProduct={() => setRoute('hub-catalog')}
+          onCreateLocation={() => setRoute('deal-create-locations')}
         />
       );
 
-      default:
+    case 'cluster-system':
+      if (isDesktop)
+        return (
+          <DesktopClusterSystemScreen
+            onNav={businessPortalNav}
+            onOpenOnboarding={() => setRoute('cluster-onboarding')}
+            onCreateDeal={() => setRoute('deal-studio')}
+            onCreateProduct={() => setRoute('hub-catalog')}
+            onCreateLocation={() => setRoute('deal-create-locations')}
+          />
+        );
+      return (
+        <ClusterSystemScreen
+          onBack={() => setRoute('business-overview')}
+          onTab={businessTab}
+          onOpenOnboarding={() => setRoute('cluster-onboarding')}
+          onCreateDeal={() => setRoute('deal-studio')}
+          onCreateProduct={() => setRoute('hub-catalog')}
+          onCreateLocation={() => setRoute('deal-create-locations')}
+        />
+      );
+
+    default:
         return null;
     }
   };

@@ -1,5 +1,6 @@
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
 
@@ -10,6 +11,7 @@ interface DesktopDealStudioStep2ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: string) => void;
 }
 
 const PREVIEW_IMAGES: Array<{ src: string; alt: string }> = [
@@ -52,6 +54,7 @@ export function DesktopDealStudioStep2Screen({
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopDealStudioStep2ScreenProps) {
   const adjustVouchers = (delta: number) => {
     const next = Math.min(1000, Math.max(5, studio.vouchers + delta));
@@ -66,8 +69,8 @@ export function DesktopDealStudioStep2Screen({
     onStudioChange({ maxClaims: Math.min(30, Math.max(1, studio.maxClaims + delta)) });
   };
 
-  return (
-    <BusinessSetupChrome activeNav="deals">
+  const inner = (
+    <>
       <div className="w-full bg-surface-container-lowest px-space-xl py-space-lg shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-space-md">
           <div className="flex flex-col gap-space-2xs">
@@ -769,6 +772,19 @@ export function DesktopDealStudioStep2Screen({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (onNav) {
+    return (
+      <MerchantShell activeNav="business-deals" onNav={onNav}>
+        {inner}
+      </MerchantShell>
+    );
+  }
+  return (
+    <BusinessSetupChrome activeNav="deals">
+      {inner}
     </BusinessSetupChrome>
   );
 }

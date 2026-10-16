@@ -13,6 +13,7 @@ interface DesktopDealStudioFlowProps {
   initialStudio?: DealStudioDraft;
   onExit: () => void;
   onComplete: () => void;
+  onNav?: (key: string) => void;
 }
 
 /**
@@ -28,6 +29,7 @@ export function DesktopDealStudioFlow({
   initialStudio,
   onExit,
   onComplete,
+  onNav,
 }: DesktopDealStudioFlowProps) {
   const [draft] = useState<ProductDraft>(initialDraft ?? INITIAL_PRODUCT_DRAFT);
   const [studio, setStudio] = useState<DealStudioDraft>(initialStudio ?? INITIAL_DEAL_STUDIO_DRAFT);
@@ -45,6 +47,7 @@ export function DesktopDealStudioFlow({
         onBack={onExit}
         onNext={() => setStep(2)}
         onSaveDraft={onExit}
+        onNav={onNav}
       />
     );
 
@@ -57,6 +60,7 @@ export function DesktopDealStudioFlow({
         onBack={() => setStep(1)}
         onNext={() => setStep(3)}
         onSaveDraft={onExit}
+        onNav={onNav}
       />
     );
 
@@ -69,6 +73,7 @@ export function DesktopDealStudioFlow({
         onBack={() => setStep(2)}
         onNext={() => setStep(4)}
         onSaveDraft={onExit}
+        onNav={onNav}
       />
     );
 
@@ -83,6 +88,7 @@ export function DesktopDealStudioFlow({
       onPublish={onComplete}
       onAnalytics={onComplete}
       onSaveDraft={onExit}
+      onNav={onNav}
     />
   );
 }
