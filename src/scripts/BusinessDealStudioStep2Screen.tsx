@@ -122,10 +122,15 @@ export function BusinessDealStudioStep2Screen({
             </div>
             <div className="bg-surface-subtle p-space-sm rounded-lg flex flex-col gap-space-xs mt-1">
               <div className="flex items-center justify-between">
-                <span className="font-label-md text-label-md text-text-primary">Total Available Vouchers</span>
+                <div className="flex flex-col pr-space-sm">
+                  <span className="font-label-md text-label-md text-text-primary">Quantity Limit</span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    Total promotional stock — how many claims exist before the deal pauses
+                  </span>
+                </div>
                 <div className="flex items-center bg-surface-container-lowest rounded-lg p-1 shadow-sm">
                   <button
-                    aria-label="Decrease vouchers"
+                    aria-label="Decrease quantity limit"
                     className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
                     type="button"
                     onClick={() => onStudioChange({ vouchers: clampVouchers(studio.vouchers - 5) })}
@@ -136,7 +141,7 @@ export function BusinessDealStudioStep2Screen({
                     {studio.vouchers}
                   </span>
                   <button
-                    aria-label="Increase vouchers"
+                    aria-label="Increase quantity limit"
                     className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
                     type="button"
                     onClick={() => onStudioChange({ vouchers: clampVouchers(studio.vouchers + 5) })}
@@ -145,10 +150,39 @@ export function BusinessDealStudioStep2Screen({
                   </button>
                 </div>
               </div>
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col pr-space-sm">
+                  <span className="font-label-md text-label-md text-text-primary">Max units per order</span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    How many units one customer may redeem in a single order
+                  </span>
+                </div>
+                <div className="flex items-center bg-surface-container-lowest rounded-lg p-1 shadow-sm">
+                  <button
+                    aria-label="Decrease max units per order"
+                    className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
+                    type="button"
+                    onClick={() => onStudioChange({ maxUnitsPerOrder: Math.max(1, studio.maxUnitsPerOrder - 1) })}
+                  >
+                    <Icon name="remove" className="text-[20px]" />
+                  </button>
+                  <span className="font-button-primary text-button-primary text-text-primary px-3 min-w-[48px] text-center">
+                    {studio.maxUnitsPerOrder}
+                  </span>
+                  <button
+                    aria-label="Increase max units per order"
+                    className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
+                    type="button"
+                    onClick={() => onStudioChange({ maxUnitsPerOrder: Math.min(50, studio.maxUnitsPerOrder + 1) })}
+                  >
+                    <Icon name="add" className="text-[20px]" />
+                  </button>
+                </div>
+              </div>
               <div className="flex items-start gap-1.5 mt-1 text-badge-discount-text">
                 <Icon name="bolt" className="text-[16px] mt-0.5" />
                 <p className="font-caption text-caption">
-                  Vouchers will automatically show ‘Almost Gone’ badge at 80% claimed.
+                  The deal automatically shows the ‘Almost Gone’ badge at 80% of the quantity limit claimed.
                 </p>
               </div>
             </div>
@@ -226,30 +260,49 @@ export function BusinessDealStudioStep2Screen({
                     </span>
                   </div>
                 </div>
-                <div className="pl-6 mt-space-xs flex items-center justify-between">
-                  <span className="font-caption text-caption text-text-secondary">Max claims per patron</span>
-                  <div className="flex items-center bg-surface-container-lowest rounded-lg p-1 shadow-sm">
-                    <button
-                      aria-label="Decrease claims"
-                      className="w-7 h-7 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
-                      type="button"
-                      onClick={() => onStudioChange({ maxClaims: Math.max(1, studio.maxClaims - 1) })}
-                    >
-                      <Icon name="remove" className="text-[16px]" />
-                    </button>
-                    <span className="font-caption text-caption font-semibold text-text-primary px-2">
-                      {studio.maxClaims} / month
-                    </span>
-                    <button
-                      aria-label="Increase claims"
-                      className="w-7 h-7 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
-                      type="button"
-                      onClick={() => onStudioChange({ maxClaims: Math.min(30, studio.maxClaims + 1) })}
-                    >
-                      <Icon name="add" className="text-[16px]" />
-                    </button>
+                {!studio.claimOnce && (
+                  <div className="pl-6 mt-space-xs flex flex-col gap-space-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-caption text-caption text-text-secondary">Max claims per patron</span>
+                      <div
+                        className={`flex items-center bg-surface-container-lowest rounded-lg p-1 shadow-sm ${
+                          studio.unlimitedClaims ? 'opacity-40 pointer-events-none' : ''
+                        }`}
+                      >
+                        <button
+                          aria-label="Decrease claims"
+                          className="w-7 h-7 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
+                          type="button"
+                          onClick={() => onStudioChange({ maxClaims: Math.max(1, studio.maxClaims - 1) })}
+                        >
+                          <Icon name="remove" className="text-[16px]" />
+                        </button>
+                        <span className="font-caption text-caption font-semibold text-text-primary px-2">
+                          {studio.maxClaims} / month
+                        </span>
+                        <button
+                          aria-label="Increase claims"
+                          className="w-7 h-7 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
+                          type="button"
+                          onClick={() => onStudioChange({ maxClaims: Math.min(30, studio.maxClaims + 1) })}
+                        >
+                          <Icon name="add" className="text-[16px]" />
+                        </button>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-space-xs cursor-pointer">
+                      <input
+                        className="w-4 h-4 rounded text-primary-container focus:ring-0"
+                        type="checkbox"
+                        checked={studio.unlimitedClaims}
+                        onChange={(event) => onStudioChange({ unlimitedClaims: event.target.checked })}
+                      />
+                      <span className="font-caption text-caption text-text-primary">
+                        Allow unlimited claims (no per-customer cap)
+                      </span>
+                    </label>
                   </div>
-                </div>
+                )}
               </label>
             </div>
           </section>
@@ -413,7 +466,14 @@ export function BusinessDealStudioStep2Screen({
                     {studio.vouchers} Left
                   </span>
                   <span className="bg-surface-canvas text-primary font-caption text-caption font-medium px-2 py-0.5 rounded-full shadow-sm">
-                    {studio.claimOnce ? '1 Per Diner' : `${studio.maxClaims} Per Diner`}
+                    {studio.claimOnce
+                      ? '1 Per Diner'
+                      : studio.unlimitedClaims
+                        ? 'Unlimited Per Diner'
+                        : `${studio.maxClaims} Per Diner`}
+                  </span>
+                  <span className="bg-surface-canvas text-secondary font-caption text-caption font-medium px-2 py-0.5 rounded-full shadow-sm">
+                    Max {studio.maxUnitsPerOrder} per order
                   </span>
                 </div>
                 <span className="font-heading-sm text-heading-sm text-text-primary truncate mt-1">

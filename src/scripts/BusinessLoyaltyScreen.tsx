@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
 import { BusinessHubHeader } from './BusinessHubHeader';
 
 interface BusinessLoyaltyScreenProps {
@@ -93,7 +92,6 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
                 Points rules, branch scope, and member rewards
               </p>
             </div>
-            <BusinessBranchSelect align="right" />
           </div>
 
           {/* Segmented control */}

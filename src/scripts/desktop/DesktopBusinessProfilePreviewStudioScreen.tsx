@@ -89,9 +89,9 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   return (
     <MerchantPortalChrome activeNav="business-profile" onNav={onNav}>
       <div className="w-full py-space-lg flex flex-col gap-space-xl">
-        {/* Top Context & Action Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">
-          <div className="flex flex-col gap-1">
+        {/* Top Context & Action Bar — stacks until `xl` so the title isn't squeezed on iPad Pro 13 */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-space-md">
+          <div className="flex flex-col gap-1 min-w-0">
             <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption">
               <button type="button" onClick={() => onNav('overview')} className="hover:text-primary cursor-pointer transition-colors">Home</button>
               <Icon name="chevron_right" className="text-[14px]" />
@@ -99,7 +99,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
               <Icon name="chevron_right" className="text-[14px]" />
               <span className="text-text-primary font-medium">Business Profile &amp; Preview</span>
             </div>
-            <div className="flex items-center gap-space-sm mt-1">
+            <div className="flex flex-wrap items-center gap-space-2xs sm:gap-space-sm mt-1">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Business Profile &amp; Public Preview Studio</h1>
               <span className="px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold flex items-center gap-1">
                 <Icon name="verified" className="text-[14px]" filled />

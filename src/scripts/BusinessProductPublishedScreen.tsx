@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { isVariantProduct, getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessProductPublishedScreenProps {
@@ -31,8 +32,10 @@ export function BusinessProductPublishedScreen({
   const isLive = status === 'live';
 
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
-  const totalStock = draft.variants.reduce((sum, variant) => sum + parseAmount(variant.inventory), 0);
-  const variantPrices = draft.variants.map((variant) => parseAmount(variant.price)).filter((price) => price > 0);
+  const activeVariants = getActiveVariants(draft);
+  const variantMode = isVariantProduct(draft);
+  const totalStock = activeVariants.reduce((sum, variant) => sum + parseAmount(variant.inventory), 0);
+  const variantPrices = activeVariants.map((variant) => parseAmount(variant.price)).filter((price) => price > 0);
   const lowPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : parseAmount(draft.basePrice);
   const highPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : lowPrice;
   const thumbnail = PUBLISHED_IMAGES[0];
@@ -156,16 +159,22 @@ export function BusinessProductPublishedScreen({
                   {draft.title}
                 </h3>
                 <p className="font-button-primary text-button-primary text-primary mt-0.5">
-                  ₦{formatAmount(lowPrice)}{' '}
-                  <span className="text-text-secondary font-normal text-caption">to</span> ₦
-                  {formatAmount(highPrice)}
+                  {variantMode ? (
+                    <>
+                      ₦{formatAmount(lowPrice)}{' '}
+                      <span className="text-text-secondary font-normal text-caption">to</span> ₦
+                      {formatAmount(highPrice)}
+                    </>
+                  ) : (
+                    <>₦{formatAmount(lowPrice)}</>
+                  )}
                 </p>
               </div>
             </div>
             <div className="pt-space-2xs flex items-center justify-between bg-surface-subtle p-space-xs rounded-lg text-text-secondary font-label-sm text-label-sm">
               <div className="flex items-center gap-1.5">
                 <Icon name="inventory_2" className="text-secondary text-[16px]" />
-                <span>{totalStock} units in stock</span>
+                <span>{variantMode ? `${totalStock} units in stock` : 'Standard item stock'}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Icon name="storefront" className="text-secondary text-[16px]" />

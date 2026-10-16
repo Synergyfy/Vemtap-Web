@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
+import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 import { BusinessSidebarRail } from './BusinessSidebarRail';
+import { PosNavRail } from './PosNavRail';
+import { MessagesNavRail } from './MessagesNavRail';
+import { resolveSidebarActive } from './businessSidebarConfig';
 import {
   PortalBody,
   PORTAL_CONTENT,
+  POS_RAIL_OFFSET,
   RAIL_OFFSET,
   ShellAccountMenu,
   type ShellAccountKey,
@@ -23,12 +28,21 @@ export function MerchantShell({ children, activeNav = 'catalog', onNav, onSignOu
     else onNav?.(key);
   };
 
+  // Store Front pages live inside POS now: the main business rail collapses to an
+  // icon strip and the POS menu (with the Store Front group) opens beside it.
+  // Messages works the same way — the Messages menu (In-App Chat / SMS / Email)
+  // opens beside the collapsed main rail.
+  const { sectionKey, itemKey } = resolveSidebarActive(activeNav);
+  const posMode = sectionKey === 'pos';
+  const messagesMode = sectionKey === 'messages';
+  const nestedMode = posMode || messagesMode;
+
   return (
-    <div className={`w-full min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased ${RAIL_OFFSET}`}>
+    <div className={`w-full min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased ${nestedMode ? POS_RAIL_OFFSET : RAIL_OFFSET}`}>
       <header className="fixed top-0 left-0 right-0 w-full z-50 bg-surface-canvas/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center shrink-0">
-            <div className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0">
+            <div className="w-auto lg:w-60 flex items-center gap-space-xs shrink-0">
               <button type="button" onClick={() => onNav?.('overview')} className="flex items-center gap-space-xs">
                 <Logo variant="full" className="h-10 md:h-11 w-auto" />
                 <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
@@ -36,15 +50,18 @@ export function MerchantShell({ children, activeNav = 'catalog', onNav, onSignOu
                 </span>
               </button>
             </div>
-            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
-            <button
-              type="button"
-              className="hidden xl:flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-container transition-colors text-text-secondary hover:text-on-surface"
-            >
-              <Icon name="store" className="text-primary text-[18px]" />
-              <span className="font-label-md text-label-md max-w-[190px] truncate">Wuse II Branch, Abuja, FCT</span>
-              <Icon name="expand_more" className="text-[16px] text-text-tertiary" />
-            </button>
+            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden lg:block" />
+            {/* Branch control — the location shown in the header drives every page. */}
+            <div className="hidden lg:block">
+              <BusinessBranchSelect
+                align="left"
+                triggerClassName="inline-flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-container transition-colors text-text-secondary hover:text-on-surface max-w-[240px]"
+                nameClassName="font-label-md text-label-md text-on-surface"
+              />
+            </div>
+            <div className="lg:hidden">
+              <BusinessBranchSelect iconOnly align="left" />
+            </div>
           </div>
           <div className="flex items-center gap-space-sm flex-shrink-0">
             <div className="hidden sm:flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption">
@@ -64,7 +81,18 @@ export function MerchantShell({ children, activeNav = 'catalog', onNav, onSignOu
         </div>
       </header>
 
-      <BusinessSidebarRail active={activeNav} onSelect={onNav} headerHeight="16" />
+      {nestedMode ? (
+        <>
+          <BusinessSidebarRail collapsed active={activeNav} onSelect={onNav} headerHeight="16" />
+          {posMode ? (
+            <PosNavRail active={itemKey} onSelect={onNav} headerHeight="16" />
+          ) : (
+            <MessagesNavRail active={itemKey} onSelect={onNav} headerHeight="16" />
+          )}
+        </>
+      ) : (
+        <BusinessSidebarRail active={activeNav} onSelect={onNav} headerHeight="16" />
+      )}
 
       <main className="w-full pt-16 bg-surface min-h-[calc(100vh-80px)]">
         <div className="py-space-lg">

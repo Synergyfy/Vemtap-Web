@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
@@ -81,8 +82,9 @@ export function DesktopDealAutoImportScreen({
     [],
   );
 
+  const activeVariants = getActiveVariants(draft);
   const variantPriceSource =
-    draft.variants.find((variant) => variant.name === 'Regular')?.price ?? draft.variants[0]?.price ?? draft.basePrice;
+    activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice;
   const parsedVariantPrice = TO_NUMBER(variantPriceSource);
   const basePrice = parsedVariantPrice > 0 ? parsedVariantPrice : TO_NUMBER(draft.basePrice);
   const discount = studio.discountPct;
@@ -273,8 +275,11 @@ export function DesktopDealAutoImportScreen({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md mt-space-sm">
                 <div className="bg-surface-subtle p-space-md rounded-xl">
                   <label className="block font-label-md text-label-md text-on-surface font-semibold mb-space-2xs">
-                    Total Available Vouchers
+                    Quantity Limit
                   </label>
+                  <span className="block font-caption text-caption text-text-secondary mb-space-2xs">
+                    Total promotional stock available for this deal
+                  </span>
                   <div className="flex items-center gap-space-xs mt-space-2xs">
                     <button
                       type="button"
@@ -310,7 +315,11 @@ export function DesktopDealAutoImportScreen({
                       <div className="flex items-center justify-between text-label-sm font-label-sm text-on-surface">
                         <span className="text-text-secondary">Customer Claim Cap:</span>
                         <span className="font-semibold px-space-xs py-space-2xs rounded bg-surface-container-high text-on-surface">
-                          {studio.claimOnce ? '1 per diner' : `${studio.maxClaims} per diner`}
+                          {studio.claimOnce
+                            ? '1 per diner'
+                            : studio.unlimitedClaims
+                              ? 'unlimited per diner'
+                              : `${studio.maxClaims} per diner`}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-label-sm font-label-sm text-on-surface">
@@ -585,6 +594,52 @@ export function DesktopDealAutoImportScreen({
                 Free promotion under current VEMTAP Starter Merchant quota
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-sm w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Cancel &amp; Keep Regular Product Only</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={publishState !== 'idle'}
+              className={`px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg flex items-center justify-center gap-space-xs transition-all active:scale-[0.99] font-bold ${
+                publishState === 'live'
+                  ? 'bg-badge-discount-text text-on-primary'
+                  : 'bg-primary hover:bg-primary-container text-on-primary shadow-primary/25'
+              } ${publishState === 'publishing' ? 'opacity-90 cursor-not-allowed' : ''}`}
+            >
+              {publishState === 'idle' && (
+                <>
+                  <span>Publish Deal to Nearby Feeds 🔥</span>
+                  <Icon name="arrow_forward" className="text-[20px]" />
+                </>
+              )}
+              {publishState === 'publishing' && (
+                <>
+                  <Icon name="sync" className="text-[20px] animate-spin" />
+                  <span>Publishing to 1,420 foodies...</span>
+                </>
+              )}
+              {publishState === 'live' && (
+                <>
+                  <Icon name="check_circle" className="text-[20px]" />
+                  <span>Live On Feeds!</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

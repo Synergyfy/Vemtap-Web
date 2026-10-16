@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { MessagesAttachmentButton } from './MessagesAttachmentButton';
+import { MessagesChatActions } from './MessagesChatActions';
 import { MessagesShareAttachmentModal } from './MessagesShareAttachmentModal';
 import { MessagesSelectRecipientModal } from './MessagesSelectRecipientModal';
 import type { MessagesWorkspaceView } from './DesktopBusinessMessagesOrderContextScreen';
@@ -8,6 +10,8 @@ import type { MessagesWorkspaceView } from './DesktopBusinessMessagesOrderContex
 interface DesktopBusinessMessagesBookingScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onView: (view: MessagesWorkspaceView) => void;
+  /** Opens the customer's full CRM profile (Customers page) from the chat header menu. */
+  onViewCustomerProfile?: (name: string) => void;
 }
 
 type ThreadFilter = 'all' | 'bookings' | 'orders' | 'deals';
@@ -93,14 +97,13 @@ const QUICK_ACTIONS = [
   { icon: 'loyalty', label: 'Send Tap Points', view: null },
 ] as const;
 
-export function DesktopBusinessMessagesBookingScreen({ onNav, onView }: DesktopBusinessMessagesBookingScreenProps) {
+export function DesktopBusinessMessagesBookingScreen({ onNav, onView, onViewCustomerProfile }: DesktopBusinessMessagesBookingScreenProps) {
   const [selectedId, setSelectedId] = useState('t1');
   const [filter, setFilter] = useState<ThreadFilter>('all');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [extraMessages, setExtraMessages] = useState<Array<{ id: string; text: string; time: string }>>([]);
   const [chime, setChime] = useState(true);
-  const [showAttachment, setShowAttachment] = useState(false);
   const [showRecipient, setShowRecipient] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
 
@@ -163,7 +166,7 @@ export function DesktopBusinessMessagesBookingScreen({ onNav, onView }: DesktopB
 
         <div className="w-full py-space-md">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-md" style={{ height: 'calc(100vh - 140px)', minHeight: '720px' }}>
-            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <aside className="lg:col-span-4 xl:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border space-y-space-xs">
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-sm text-heading-sm text-on-surface">Guest Inquiries</h2>
@@ -235,7 +238,7 @@ export function DesktopBusinessMessagesBookingScreen({ onNav, onView }: DesktopB
               </div>
             </aside>
 
-            <section className="lg:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <section className="lg:col-span-8 xl:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="px-space-sm py-space-2xs border-b border-border bg-surface-subtle/50 flex items-center justify-between gap-space-xs">
                 <span className="font-label-sm text-label-sm text-on-surface-variant">Synced with POS &amp; Table Floor Master</span>
                 <button type="button" className="flex items-center gap-space-2xs font-label-sm text-label-sm text-primary hover:underline">
@@ -257,12 +260,11 @@ export function DesktopBusinessMessagesBookingScreen({ onNav, onView }: DesktopB
                   </div>
                 </div>
                 <div className="flex items-center gap-space-xs">
-                  <button type="button" aria-label="Call" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-                    <Icon name="call" className="text-[18px]" />
-                  </button>
-                  <button type="button" aria-label="More" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-                    <Icon name="more_vert" className="text-[18px]" />
-                  </button>
+                  <MessagesChatActions
+                    customerName={selected.name}
+                    onViewProfile={() => onViewCustomerProfile?.(selected.name)}
+                    onSearch={() => onView('search')}
+                  />
                 </div>
               </div>
 
@@ -395,18 +397,9 @@ export function DesktopBusinessMessagesBookingScreen({ onNav, onView }: DesktopB
                   ))}
                 </div>
                 <div className="flex items-end gap-space-xs">
-                  <div className="flex items-center gap-space-2xs">
-                    {[
-                      { icon: 'image', label: 'Image' },
-                      { icon: 'description', label: 'File' },
-                      { icon: 'event', label: 'Booking' },
-                      { icon: 'local_offer', label: 'Deal' },
-                    ].map((a) => (
-                      <button key={a.icon} type="button" aria-label={a.label} onClick={() => setShowAttachment(true)} className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface">
-                        <Icon name={a.icon} className="text-[18px]" />
-                      </button>
-                    ))}
-                  </div>
+                  <MessagesAttachmentButton
+                    renderModal={(close) => <MessagesShareAttachmentModal onClose={close} />}
+                  />
                   <textarea
                     rows={2}
                     value={draft}
@@ -429,7 +422,7 @@ export function DesktopBusinessMessagesBookingScreen({ onNav, onView }: DesktopB
               </div>
             </section>
 
-            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <aside className="hidden xl:flex lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border flex items-center justify-between">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Reservation Dossier</h2>
                 <span className="px-space-2xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">CONFIRMED</span>
@@ -515,7 +508,6 @@ export function DesktopBusinessMessagesBookingScreen({ onNav, onView }: DesktopB
         </div>
       </div>
 
-      {showAttachment && <MessagesShareAttachmentModal onClose={() => setShowAttachment(false)} />}
       {showRecipient && (
         <MessagesSelectRecipientModal
           onClose={() => setShowRecipient(false)}

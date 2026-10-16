@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
 import { BusinessModeHeader } from './BusinessModeHeader';
 
 interface BusinessBookingsHubScreenProps {
@@ -137,9 +136,8 @@ export function BusinessBookingsHubScreen({
     <AppScreen>
       <BusinessModeHeader title="Orders" />
       <div className="flex flex-col w-full flex-1 pb-24">
-        {/* Dynamic Location Switcher & Context Action Bar */}
+        {/* Context Action Bar */}
         <div className="px-margin pt-space-sm pb-space-xs flex items-center justify-between">
-          <BusinessBranchSelect leading="location" />
           <div className="flex items-center gap-space-xs">
             <button
               aria-label="Open Calendar Grid"

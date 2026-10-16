@@ -15,6 +15,7 @@ interface ProductsCatalogueScreenProps {
 const PRODUCTS = [
   {
     id: 1,
+    category: 'grills',
     name: 'Woodfire Aged Ribeye Steak (400g)',
     price: '₦14,000',
     was: '₦16,500',
@@ -31,6 +32,7 @@ const PRODUCTS = [
   },
   {
     id: 2,
+    category: 'burgers',
     name: 'Smoked Wagyu Double Burger',
     price: '₦6,500',
     was: '₦8,000',
@@ -47,6 +49,7 @@ const PRODUCTS = [
   },
   {
     id: 3,
+    category: 'grills',
     name: '14-Hour Hickory Smoked BBQ Brisket',
     price: '₦12,500',
     was: '',
@@ -63,6 +66,7 @@ const PRODUCTS = [
   },
   {
     id: 4,
+    category: 'grills',
     name: 'Flame-Grilled Suya Lamb Chops',
     price: '₦11,000',
     was: '',
@@ -79,6 +83,7 @@ const PRODUCTS = [
   },
   {
     id: 5,
+    category: 'mains',
     name: 'Smoked Native Party Jollof & Prawns',
     price: '₦7,500',
     was: '₦8,300',
@@ -95,6 +100,7 @@ const PRODUCTS = [
   },
   {
     id: 6,
+    category: 'sides',
     name: 'Truffle Parmesan Potato Wedges',
     price: '₦3,200',
     was: '',
@@ -111,6 +117,7 @@ const PRODUCTS = [
   },
   {
     id: 7,
+    category: 'drinks',
     name: 'Hibiscus Zobo & Mint Fizz (500ml)',
     price: '₦2,500',
     was: '',
@@ -127,6 +134,7 @@ const PRODUCTS = [
   },
   {
     id: 8,
+    category: 'drinks',
     name: 'Chapman Royale Signature Drink',
     price: '₦3,000',
     was: '',
@@ -143,17 +151,24 @@ const PRODUCTS = [
   },
 ];
 
-const CATEGORIES = [
-  'All Products',
-  'Steaks & Grills',
-  'Burgers',
-  'Sides & Extras',
-  'Drinks & Cocktails',
-  'Desserts',
+const CATEGORIES: { label: string; slug: string }[] = [
+  { label: 'All Products', slug: 'all' },
+  { label: 'Steaks & Grills', slug: 'grills' },
+  { label: 'Burgers', slug: 'burgers' },
+  { label: 'Local Mains', slug: 'mains' },
+  { label: 'Sides & Extras', slug: 'sides' },
+  { label: 'Drinks & Cocktails', slug: 'drinks' },
+  { label: 'Desserts', slug: 'desserts' },
 ];
 
+/** Category QR links land here with ?category=<slug> — open pre-filtered, tabs stay for navigation. */
+function initialCategorySlug(): string {
+  const param = new URLSearchParams(window.location.search).get('category');
+  return param && CATEGORIES.some((item) => item.slug === param) ? param : 'all';
+}
+
 export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onCheckout }: ProductsCatalogueScreenProps) {
-  const [selectedCategory, setSelectedCategory] = useState('All Products');
+  const [categorySlug, setCategorySlug] = useState<string>(initialCategorySlug);
   const [searchQuery, setSearchQuery] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -165,7 +180,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
   };
 
   const filteredProducts = PRODUCTS.filter((p) => {
-    if (selectedCategory !== 'All Products' && selectedCategory !== 'All Products') return false;
+    if (categorySlug !== 'all' && p.category !== categorySlug) return false;
     if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
@@ -303,16 +318,16 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
             {CATEGORIES.map((cat) => (
               <button
-                key={cat}
+                key={cat.slug}
                 type="button"
-                onClick={() => setSelectedCategory(cat)}
+                onClick={() => setCategorySlug(cat.slug)}
                 className={`shrink-0 h-8 px-3.5 rounded-full font-label-sm text-label-sm whitespace-nowrap transition-all ${
-                  selectedCategory === cat
+                  categorySlug === cat.slug
                     ? 'bg-surface-tint-blue text-primary font-semibold shadow-sm'
                     : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
                 }`}
               >
-                {cat}
+                {cat.label}
               </button>
             ))}
           </div>

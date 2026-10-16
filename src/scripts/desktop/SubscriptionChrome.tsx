@@ -12,18 +12,7 @@ export type SubscriptionNavKey =
   | 'payouts'
   | 'billing';
 
-const NAV_ITEMS: Array<{ key: SubscriptionNavKey; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'profile', label: 'Profile' },
-  { key: 'locations', label: 'Locations' },
-  { key: 'catalog', label: 'Catalog' },
-  { key: 'deals', label: 'Deals' },
-  { key: 'analytics', label: 'Analytics' },
-  { key: 'payouts', label: 'Payouts' },
-  { key: 'billing', label: 'Subscription & Billing' },
-];
-
-const FOOTER_LINKS = ['Security Standards', 'NDPR & Privacy', 'Merchant Agreement', 'Support Desk'];
+const FOOTER_LINKS = ['Privacy Policy', 'Merchant Terms', 'Compliance & NDPR', 'Merchant Desk'];
 
 interface SubscriptionChromeProps {
   children: ReactNode;
@@ -38,8 +27,8 @@ interface SubscriptionChromeProps {
 
 export function SubscriptionChrome({
   children,
-  activeNav = 'billing',
-  onNav,
+  activeNav: _activeNav = 'billing',
+  onNav: _onNav,
   onBrand,
   onHelp,
   breadcrumb,
@@ -50,33 +39,16 @@ export function SubscriptionChrome({
     <div className="w-full min-h-screen bg-background font-body-md text-body-md text-on-surface antialiased flex flex-col">
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-20 max-w-7xl mx-auto px-margin flex items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-lg min-w-0">
-            <button type="button" onClick={onBrand} className="flex items-center gap-space-xs shrink-0">
+          <div className="flex items-center gap-space-md min-w-0">
+            <button type="button" onClick={onBrand} className="flex items-center gap-space-xs shrink-0 hover:opacity-90 transition-opacity">
               <Logo variant="full" className="h-10 md:h-11 w-auto" />
               <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
                 BUSINESS
               </span>
             </button>
-            <nav className="hidden xl:flex items-center gap-space-2xs min-w-0">
-              {NAV_ITEMS.map((item) => {
-                const active = item.key === activeNav;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => onNav?.(item.key)}
-                    className={`px-space-sm py-space-xs rounded-lg font-label-md text-label-md whitespace-nowrap transition-colors ${
-                      active
-                        ? 'bg-primary-container text-on-primary-container font-semibold'
-                        : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-            </nav>
+            <div className="hidden md:flex items-center gap-space-xs pl-space-md text-on-surface-variant border-l border-border-subtle/80">
+              <span className="font-label-md text-label-md text-text-secondary">Subscription &amp; Growth</span>
+            </div>
           </div>
           <div className="flex items-center gap-space-md shrink-0">
             <div className="hidden md:flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-subtle text-text-secondary">

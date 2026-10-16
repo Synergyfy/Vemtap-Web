@@ -266,7 +266,7 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
               onClick={() => onNav('messages')}
             >
               <Icon name="chat_bubble" className="text-[18px]" />
-              <span>Send Direct Message</span>
+              <span>Start In-App Chat</span>
             </button>
             <button
               type="button"

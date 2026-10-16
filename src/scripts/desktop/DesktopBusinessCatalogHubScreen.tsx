@@ -15,6 +15,9 @@ import { DesktopAddServiceStep3Screen } from './DesktopAddServiceStep3Screen';
 import { DesktopServiceReviewScreen } from './DesktopServiceReviewScreen';
 import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
 import { INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
+import { getBusinessSetupSnapshot } from '../businessSetup';
+import { classifyServiceFromBusiness } from '../serviceClassification';
+import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 import {
   getCentralCategories,
   addCentralCategory,
@@ -423,7 +426,7 @@ export function DesktopBusinessCatalogHubScreen({
         icon: catFormIcon,
         productCount: 0,
         activeBranches: ['all'],
-        qrDestinationUrl: `/storefront?category=${slug}`,
+        qrDestinationUrl: `/business/urban-grill-bistro-104/products?category=${slug}`,
       });
       setCentralCategories(getCentralCategories());
       setToastMessage(`Category "${catFormName.trim()}" created successfully.`);
@@ -471,8 +474,26 @@ export function DesktopBusinessCatalogHubScreen({
     | 'serviceReview'
     | 'servicePublished'
   >('none');
+
+  const businessSnapshot = getBusinessSetupSnapshot();
+  const businessDraft = businessSnapshot?.data.draft as BusinessProfileDraft | undefined;
+  const businessCategories = businessDraft?.categories ?? [];
+  const businessSubcategories = businessDraft?.tags ?? [];
+
+  const getInitialServiceDraft = (): ServiceDraft => {
+    const classification = classifyServiceFromBusiness(businessCategories, businessSubcategories);
+    if (classification) {
+      return {
+        ...INITIAL_SERVICE_DRAFT,
+        primaryCategory: classification.primaryCategory,
+        subCategory: classification.subCategory,
+      };
+    }
+    return { ...INITIAL_SERVICE_DRAFT };
+  };
+
   const [productDraft, setProductDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
-  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ ...INITIAL_SERVICE_DRAFT });
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(getInitialServiceDraft);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
@@ -675,6 +696,8 @@ export function DesktopBusinessCatalogHubScreen({
         onNext={() => setSubFlow('service2')}
         onSaveDraft={() => setSubFlow('none')}
         onNav={onNav}
+        businessCategories={businessCategories}
+        businessSubcategories={businessSubcategories}
       />
     );
   }
@@ -731,7 +754,7 @@ export function DesktopBusinessCatalogHubScreen({
           setSubFlow('none');
         }}
         onAddAnother={() => {
-          setServiceDraft({ ...INITIAL_SERVICE_DRAFT });
+          setServiceDraft(getInitialServiceDraft());
           setSubFlow('service1');
         }}
         onNav={onNav}
@@ -788,15 +811,15 @@ export function DesktopBusinessCatalogHubScreen({
           </div>
         </div>
 
-        {/* Page Header & Multi-action Deck */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-lg">
-          <div className="max-w-3xl">
+        {/* Page Header & Multi-action Deck — stacks until `xl` so it fits iPad Pro 13 */}
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-lg">
+          <div className="max-w-3xl min-w-0">
             <div className="inline-flex items-center gap-space-xs px-space-xs py-space-2xs rounded bg-surface-tint-blue text-primary font-label-sm text-label-sm mb-space-xs">
               <Icon name="hub" className="text-[16px]" />
               <span>Enterprise SKU Multi-Tenancy</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Central Products & Services Catalogue
+              Central Products &amp; Services Catalogue
             </h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
               Centralized multi-location catalog. Manage dishes, retail merchandise, and services across Abuja and Lagos
@@ -840,7 +863,7 @@ export function DesktopBusinessCatalogHubScreen({
               <button
                 type="button"
                 onClick={() => {
-                  setServiceDraft({ ...INITIAL_SERVICE_DRAFT });
+                  setServiceDraft(getInitialServiceDraft());
                   setSubFlow('service1');
                 }}
                 className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 import { BusinessSidebarRail } from './BusinessSidebarRail';
 import { PortalBody, RAIL_OFFSET, ShellAccountMenu, type ShellAccountKey } from './PortalShell';
 
@@ -35,10 +36,16 @@ export function AnalyticsShell({ children, activeNav, onNav, onSignOut }: Analyt
               </div>
             </div>
             <div className="h-6 w-px bg-surface-container-high hidden sm:block" />
-            <div className="hidden md:flex items-center gap-space-xs px-space-sm py-1.5 rounded-full bg-surface-container-low text-on-surface hover:bg-surface-container transition-colors cursor-pointer">
-              <Icon name="store" className="text-primary text-[18px]" />
-              <span className="font-label-sm text-label-sm font-medium">Wuse II Branch, Abuja, FCT</span>
-              <Icon name="expand_more" className="text-outline text-[16px]" />
+            {/* Branch control — the location shown in the header drives every page. */}
+            <div className="hidden md:block">
+              <BusinessBranchSelect
+                align="left"
+                triggerClassName="inline-flex items-center gap-space-xs px-space-sm py-1.5 rounded-full bg-surface-container-low text-on-surface hover:bg-surface-container transition-colors max-w-[240px]"
+                nameClassName="font-label-sm text-label-sm font-medium text-on-surface"
+              />
+            </div>
+            <div className="md:hidden">
+              <BusinessBranchSelect iconOnly align="left" />
             </div>
           </div>
 

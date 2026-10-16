@@ -31,6 +31,12 @@ export interface ClaimRecord {
   code: string;
   /** `gift-sent` for gifts (not yet redeemed); `claimed` for redeemable passes. */
   status: 'claimed' | 'gift-sent';
+  /**
+   * Snapshot of the merchant terms that applied at the moment of claiming.
+   * Frozen on the record so later edits to the live offer cannot rewrite an
+   * agreement the customer already accepted.
+   */
+  terms?: string[];
   createdAt: number;
   /** Who receives / redeems the deal (undefined for a self claim). */
   recipient?: ClaimParty;
@@ -45,6 +51,8 @@ export interface ClaimInput {
   dealImage?: string;
   recipient?: ClaimParty;
   sender?: ClaimParty;
+  /** Terms in force when the claim is made; snapshotted onto the record. */
+  terms?: string[];
 }
 
 interface ClaimsContextValue {
@@ -63,6 +71,13 @@ export const DEFAULT_CLAIMED_DEAL = {
   dealBusiness: 'Urban Grill & Bistro',
   dealImage:
     'https://lh3.googleusercontent.com/aida-public/AB6AXuDHNsQYzlQAh9oju3O9Pp7b2OqE4Q1w9NTs0_fLXsac8VzxG06oD2NcwkkT8F3q8guxDTRfKEplRfmk3C-S9j62uAZ-X3SG4rkR3dDcngRx8sOpiwe5UeKWYk-lyy81904uUukw2Do3wMAOVj0Vg_7dv90NC6KTvhmoR0HFL6aPR56jOI4gZrX7w67mzbdQcgA44gm5lNRoAe6oGg6V1rNX8nBhjhfYCCBlRIssV7QqZImEOkPqpYnQDw',
+  /** Canonical customer-facing terms for the sample deal (shown pre-claim, frozen on claim). */
+  terms: [
+    'Valid strictly for Dine-in and Takeaway at Apo, Abuja location.',
+    'Offer cannot be merged with ongoing happy hour specials.',
+    'Voucher code expires automatically on 20 Sep 2025 at 11:59 PM.',
+    'One voucher claim per table / group order.',
+  ],
 };
 
 const readClaims = (): ClaimRecord[] => {
@@ -127,6 +142,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         dealTitle: input.dealTitle ?? DEFAULT_CLAIMED_DEAL.dealTitle,
         dealBusiness: input.dealBusiness ?? DEFAULT_CLAIMED_DEAL.dealBusiness,
         dealImage: input.dealImage ?? DEFAULT_CLAIMED_DEAL.dealImage,
+        terms: input.terms ?? DEFAULT_CLAIMED_DEAL.terms,
         code: newCode(claims),
         status: input.kind === 'gift' ? 'gift-sent' : 'claimed',
         createdAt: Date.now(),

@@ -6,6 +6,27 @@ import { Icon } from '../../components/ui/Icon';
 export const SIGN_OUT_EVENT = 'vemtap:sign-out';
 
 /**
+ * Fired by the collapsed business rail while the app is in POS mode. The POS
+ * terminal chrome does not receive the business nav callback directly (it is
+ * rendered many levels below `App`), so it announces the intent through this event
+ * and `App` routes back to the normal, expanded business portal.
+ */
+export const BUSINESS_NAV_EVENT = 'vemtap:business-nav';
+
+/** Width of the collapsed business rail used by POS mode. */
+export const POS_MAIN_RAIL_WIDTH = '72px';
+
+/** Width of the POS rail: icon-only below `lg`, labelled from `lg` (matching `RAIL_OFFSET`). */
+export const POS_RAIL_WIDTH_LG = '240px';
+export const POS_RAIL_WIDTH_XL = '240px';
+
+/**
+ * Content offset for POS mode: the collapsed business rail sits at `left-0`
+ * (`72px`) and the POS rail sits beside it at `left-[72px]` (`240px` from `lg`).
+ */
+export const POS_RAIL_OFFSET = 'lg:pl-[312px]';
+
+/**
  * Desktop layout rules for every merchant / business dashboard shell.
  *
  * Width      : content is centred at `PORTAL_CONTENT` (1440px) unless a screen
@@ -20,8 +41,8 @@ export const SIGN_OUT_EVENT = 'vemtap:sign-out';
  */
 export const PORTAL_CONTENT = 'mx-auto w-full max-w-[1440px] px-margin';
 
-/** Rail widths: icon-only from `lg` (1024px), labelled from `xl` (1280px). */
-export const RAIL_OFFSET = 'lg:pl-[72px] xl:pl-60';
+/** Rail widths: icon-only below `lg` (1024px), labelled from `lg` (tablet-desktop sizes such as iPad Pro 13). */
+export const RAIL_OFFSET = 'lg:pl-60';
 
 const RAIL_TOP: Record<'16' | '20', string> = { '16': 'top-16', '20': 'top-20' };
 
@@ -103,7 +124,7 @@ export function PortalRail<T extends string>({
           className={`text-[20px] shrink-0 ${isActive ? 'text-primary' : 'text-text-tertiary group-hover:text-on-surface'}`}
         />
         <span
-          className={`hidden xl:block truncate font-label-md text-label-md ${
+          className={`hidden lg:block truncate font-label-md text-label-md ${
             isActive ? 'font-semibold' : 'font-medium'
           }`}
         >
@@ -115,10 +136,10 @@ export function PortalRail<T extends string>({
 
   return (
     <aside
-      className={`hidden lg:flex fixed left-0 ${RAIL_TOP[headerHeight]} bottom-0 z-40 w-[72px] xl:w-60 flex-col border-r border-border-subtle bg-surface-canvas overflow-y-auto`}
+      className={`hidden lg:flex fixed left-0 ${RAIL_TOP[headerHeight]} bottom-0 z-40 w-[72px] lg:w-60 flex-col border-r border-border-subtle bg-surface-canvas overflow-y-auto`}
       aria-label="Dashboard sections"
     >
-      <nav className="flex flex-col p-2 xl:p-3">
+      <nav className="flex flex-col p-2 lg:p-3">
         {groups.map((group) => {
           const hasLabel = group.label.trim().length > 0;
           const isCollapsed = collapsed.has(group.label);
@@ -127,22 +148,19 @@ export function PortalRail<T extends string>({
           return (
             <div key={group.label || 'top'} className="mb-space-xs last:mb-0">
               {hasLabel && (
-                <>
-                  <span className="block lg:hidden xl:block h-px bg-border-subtle mx-1 mb-space-xs" />
-                  <button
-                    type="button"
-                    aria-expanded={expanded}
-                    onClick={() => toggle(group.label)}
-                    title={group.label}
-                    className="hidden xl:flex w-full items-center justify-between gap-1 px-3 py-1.5 rounded-lg font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-tertiary hover:text-on-surface transition-colors"
-                  >
-                    <span className="truncate">{group.label}</span>
-                    <Icon name={expanded ? 'expand_less' : 'expand_more'} className="text-[16px] shrink-0" />
-                  </button>
-                </>
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => toggle(group.label)}
+                  title={group.label}
+                  className="hidden lg:flex w-full items-center justify-between gap-1 px-3 py-1.5 rounded-lg font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-tertiary hover:text-on-surface transition-colors"
+                >
+                  <span className="truncate">{group.label}</span>
+                  <Icon name={expanded ? 'expand_less' : 'expand_more'} className="text-[16px] shrink-0" />
+                </button>
               )}
-              {/* Below `xl` the rail is icon-only, so sections always stay visible. */}
-              <div className={`flex flex-col gap-1 ${expanded ? 'flex' : 'flex xl:hidden'}`}>
+              {/* Below `lg` the rail is hidden entirely; from `lg` it always carries labels. */}
+              <div className={`flex flex-col gap-1 ${expanded ? 'flex' : 'flex lg:hidden'}`}>
                 {group.items.map(renderItem)}
               </div>
             </div>

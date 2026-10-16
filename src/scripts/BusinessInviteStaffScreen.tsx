@@ -193,7 +193,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   const stepValid = (index: number) => {
     switch (index) {
       case 0:
-        return name.trim().length > 1 && emailOk && pin.length === 4 && pin === confirmPin;
+        return name.trim().length > 1 && emailOk && pin.length === 6 && pin === confirmPin;
       case 1:
         return roleMode === 'preset' || customRole.trim().length > 1;
       case 2:
@@ -212,7 +212,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
       case 0:
         if (name.trim().length <= 1) return 'Enter the full name of your teammate.';
         if (!emailOk) return 'Enter a valid email address.';
-        if (pin.length < 4) return 'Set a 4-digit PIN — you are creating it on their behalf.';
+        if (pin.length < 6) return 'Set a 6-digit PIN — you are creating it on their behalf.';
         if (pin !== confirmPin) return 'PINs do not match.';
         return 'You set the PIN, they receive it on their registered email.';
       case 1:
@@ -348,11 +348,11 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
               autoComplete="new-password"
               className={fieldClass}
               inputMode="numeric"
-              maxLength={4}
-              placeholder="4-digit PIN"
+              maxLength={6}
+              placeholder="6-digit PIN"
               type={showPin ? 'text' : 'password'}
               value={pin}
-              onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+              onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -361,11 +361,11 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
               autoComplete="new-password"
               className={fieldClass}
               inputMode="numeric"
-              maxLength={4}
+              maxLength={6}
               placeholder="Repeat PIN"
               type={showPin ? 'text' : 'password'}
               value={confirmPin}
-              onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+              onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 6))}
             />
           </label>
         </div>

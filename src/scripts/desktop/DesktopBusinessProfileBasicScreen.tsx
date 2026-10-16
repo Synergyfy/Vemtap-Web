@@ -1,8 +1,17 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
-import { CATEGORY_OPTIONS, MOCKUP_SEED_CHAR_COUNT, SEED_DESCRIPTION, SUBCATEGORY_TAGS } from './businessOnboardingData';
+import {
+  BUSINESS_CATEGORIES,
+  MAX_CATEGORY_SELECTIONS,
+  MAX_SUBCATEGORY_SELECTIONS,
+  MIN_CATEGORY_SELECTIONS,
+  MIN_SUBCATEGORY_SELECTIONS,
+  MOCKUP_SEED_CHAR_COUNT,
+  SEED_DESCRIPTION,
+} from './businessOnboardingData';
 
 interface DesktopBusinessProfileBasicScreenProps {
   draft: BusinessProfileDraft;
@@ -15,6 +24,19 @@ interface DesktopBusinessProfileBasicScreenProps {
 const PREVIEW_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC5dzA4NBAOCv8WHjHeAUd0GDHJuw3Xu9Wt_eewOB-81uuYogGXyQ6MFM98NYjTQRSM3oOSevn6R6MYNHn9HIshGOXM9F_mGWj0f6XtvdcBO5r6p9C_g6xN2DjZ2TWv71WNNByGsVIY65oH1-uEw48N9OgZytM-xS3cIYNegsQxRCxC_OKVjSmPuyMAuDiR3WW7SbMbW77BRJv0naZYXPjPch665tF_fD7Xkq4VGBet';
 
+const CATEGORY_OPTIONS = BUSINESS_CATEGORIES.map((category) => ({
+  value: category.label,
+  label: category.label,
+}));
+
+/** Subcategories available for a given set of parent categories (order preserved, deduped). */
+const availableSubcategories = (categoryLabels: string[]): string[] => {
+  const subcategories = BUSINESS_CATEGORIES.filter((category) => categoryLabels.includes(category.label)).flatMap(
+    (category) => category.subcategories,
+  );
+  return subcategories.filter((subcategory, index) => subcategories.indexOf(subcategory) === index);
+};
+
 export function DesktopBusinessProfileBasicScreen({
   draft,
   onDraftChange,
@@ -22,19 +44,44 @@ export function DesktopBusinessProfileBasicScreen({
   onNext,
   onSaveDraft,
 }: DesktopBusinessProfileBasicScreenProps) {
+  const [showErrors, setShowErrors] = useState(false);
+
   const descriptionCount =
     draft.description === SEED_DESCRIPTION ? MOCKUP_SEED_CHAR_COUNT : draft.description.length;
 
-  const toggleTag = (tag: string) => {
-    const selected = draft.tags.includes(tag);
-    if (!selected && draft.tags.length >= 2) return;
+  const subcategories = availableSubcategories(draft.categories);
+  const subcategoryOptions = subcategories.map((subcategory) => ({ value: subcategory, label: subcategory }));
+
+  const handleCategoryChange = (categories: string[]) => {
+    const validSubcategories = availableSubcategories(categories);
     onDraftChange({
-      tags: selected ? draft.tags.filter((item) => item !== tag) : [...draft.tags, tag],
+      categories,
+      // Drop subcategories that no longer belong to any selected parent category.
+      tags: draft.tags.filter((tag) => validSubcategories.includes(tag)),
     });
   };
 
   const hasName = draft.name.trim().length > 0;
   const hasDescription = draft.description.trim().length > 0;
+  const hasEnoughCategories = draft.categories.length >= MIN_CATEGORY_SELECTIONS;
+  const hasEnoughSubcategories = draft.tags.length >= MIN_SUBCATEGORY_SELECTIONS;
+  const canContinue = hasName && hasEnoughCategories && hasEnoughSubcategories;
+  const missingFields = [
+    !hasName ? 'a business name' : null,
+    !hasEnoughCategories ? `at least ${MIN_CATEGORY_SELECTIONS} categories` : null,
+    !hasEnoughSubcategories ? `at least ${MIN_SUBCATEGORY_SELECTIONS} specialties` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const handleContinue = (event?: React.FormEvent) => {
+    if (event) event.preventDefault();
+    if (!canContinue) {
+      setShowErrors(true);
+      document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      return;
+    }
+    setShowErrors(false);
+    onNext();
+  };
 
   const checklistRow = (label: string, ok: boolean, okValue: string, failValue: string) => (
     <div className="flex items-center justify-between font-label-sm text-caption text-on-surface">
@@ -154,13 +201,7 @@ export function DesktopBusinessProfileBasicScreen({
                 This information helps local customers discover your store and services across your district.
               </p>
             </div>
-            <form
-              className="flex flex-col gap-space-lg"
-              onSubmit={(event) => {
-                event.preventDefault();
-                onNext();
-              }}
-            >
+            <form className="flex flex-col gap-space-lg" onSubmit={handleContinue}>
               <div className="flex flex-col gap-space-xs">
                 <div className="flex items-center justify-between">
                   <label className="font-label-md text-label-md text-on-surface font-semibold" htmlFor="business-name">
@@ -176,40 +217,45 @@ export function DesktopBusinessProfileBasicScreen({
                     value={draft.name}
                     onChange={(event) => onDraftChange({ name: event.target.value })}
                     placeholder="e.g. Urban Grill & Bistro"
-                    className="w-full h-[52px] pl-[46px] pr-space-md rounded-xl bg-surface-canvas shadow-sm text-on-surface font-body-md text-body-md outline-none focus:ring-2 focus:ring-primary-container transition-all"
+                    className={`w-full h-[52px] pl-[46px] pr-space-md rounded-xl bg-surface-canvas shadow-sm text-on-surface font-body-md text-body-md outline-none focus:ring-2 focus:ring-primary-container transition-all ${
+                      showErrors && !hasName ? 'ring-2 ring-error' : ''
+                    }`}
                   />
                 </div>
+                {showErrors && !hasName && (
+                  <p className="font-caption text-caption text-error px-1">Business name is required.</p>
+                )}
               </div>
 
               <div className="flex flex-col gap-space-xs">
                 <div className="flex items-center justify-between">
-                  <label
-                    className="font-label-md text-label-md text-on-surface font-semibold"
-                    htmlFor="primary-category"
-                  >
-                    Primary Category <span className="text-error">*</span>
+                  <label className="font-label-md text-label-md text-on-surface font-semibold">
+                    Business Categories <span className="text-error">*</span>
                   </label>
-                  <span className="font-caption text-caption text-text-secondary">Dictates primary indexing</span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    Select at least {MIN_CATEGORY_SELECTIONS}
+                  </span>
                 </div>
-                <div className="relative flex items-center">
-                  <Icon name="restaurant" className="absolute left-space-md text-text-tertiary text-[20px]" />
-                  <select
-                    id="primary-category"
-                    value={draft.category}
-                    onChange={(event) => onDraftChange({ category: event.target.value })}
-                    className="w-full h-[52px] pl-[46px] pr-10 rounded-xl bg-surface-canvas shadow-sm text-on-surface font-body-md text-body-md outline-none focus:ring-2 focus:ring-primary-container appearance-none transition-all cursor-pointer"
-                  >
-                    {CATEGORY_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                  <Icon
-                    name="expand_more"
-                    className="absolute right-space-md pointer-events-none text-text-secondary text-[20px]"
+                <div className={`rounded-xl ${showErrors && !hasEnoughCategories ? 'ring-2 ring-error' : ''}`}>
+                  <MultiSelectDropdown
+                    ariaLabel="Select business categories"
+                    maxSelected={MAX_CATEGORY_SELECTIONS}
+                    placeholder="Choose business categories"
+                    values={draft.categories}
+                    options={CATEGORY_OPTIONS}
+                    onChange={handleCategoryChange}
                   />
                 </div>
+                {showErrors && !hasEnoughCategories ? (
+                  <p className="font-caption text-caption text-error px-1">
+                    Select at least {MIN_CATEGORY_SELECTIONS} business categories to continue.
+                  </p>
+                ) : (
+                  <p className="font-caption text-caption text-text-secondary flex items-center gap-space-2xs">
+                    <Icon name="info" className="text-[16px] text-text-tertiary" />
+                    Multiple selections improve how your store is indexed across nearby feeds.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-space-xs">
@@ -218,36 +264,29 @@ export function DesktopBusinessProfileBasicScreen({
                     Subcategory Specialties <span className="text-error">*</span>
                   </label>
                   <span className="font-label-sm text-caption text-primary font-semibold" id="selected-tag-counter">
-                    {draft.tags.length} of 2 selected
+                    {draft.tags.length} of {MAX_SUBCATEGORY_SELECTIONS} selected
                   </span>
                 </div>
-                <p className="font-caption text-caption text-text-secondary">
-                  Select specialties so search filters pinpoint your culinary profile.
-                </p>
-                <div className="flex flex-wrap gap-space-xs pt-space-2xs" id="tag-group">
-                  {SUBCATEGORY_TAGS.map((tag) => {
-                    const selected = draft.tags.includes(tag);
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleTag(tag)}
-                        className={`h-[38px] px-space-md rounded-full flex items-center gap-space-xs font-label-md text-label-md shadow-sm hover:scale-[1.02] transition-transform ${
-                          selected
-                            ? 'text-primary bg-surface-tint-blue'
-                            : 'text-text-secondary bg-surface-canvas hover:text-on-surface'
-                        }`}
-                      >
-                        <Icon
-                          name={selected ? 'check' : 'add'}
-                          filled={selected}
-                          className={`text-[16px] ${selected ? '' : 'text-text-tertiary'}`}
-                        />
-                        <span>{tag}</span>
-                      </button>
-                    );
-                  })}
+                <div className={`rounded-xl ${showErrors && !hasEnoughSubcategories ? 'ring-2 ring-error' : ''}`}>
+                  <MultiSelectDropdown
+                    ariaLabel="Select subcategory specialties"
+                    disabled={draft.categories.length === 0}
+                    maxSelected={MAX_SUBCATEGORY_SELECTIONS}
+                    placeholder={draft.categories.length === 0 ? 'Select categories first' : 'Choose subcategories'}
+                    values={draft.tags}
+                    options={subcategoryOptions}
+                    onChange={(tags) => onDraftChange({ tags })}
+                  />
                 </div>
+                {showErrors && !hasEnoughSubcategories ? (
+                  <p className="font-caption text-caption text-error px-1">
+                    Select at least {MIN_SUBCATEGORY_SELECTIONS} subcategory from your chosen categories.
+                  </p>
+                ) : (
+                  <p className="font-caption text-caption text-text-secondary">
+                    Subcategory options update automatically based on your selected categories.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-space-xs">
@@ -274,34 +313,6 @@ export function DesktopBusinessProfileBasicScreen({
                   <Icon name="info" className="text-[16px] text-text-tertiary" />
                   Highlight your culinary focus, ambiance, and signature dishes for neighborhood shoppers.
                 </p>
-              </div>
-
-              <div className="pt-space-md flex flex-col sm:flex-row items-center justify-between gap-space-md">
-                <div className="flex items-center gap-space-lg order-2 sm:order-1">
-                  <button
-                    type="button"
-                    onClick={onPrevious}
-                    className="font-button-secondary text-button-secondary text-text-secondary hover:text-primary transition-colors flex items-center gap-space-2xs"
-                  >
-                    <Icon name="arrow_back" className="text-[18px]" />
-                    <span>Back</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onSaveDraft}
-                    className="font-button-secondary text-button-secondary text-text-secondary hover:text-primary transition-colors flex items-center gap-space-2xs"
-                  >
-                    <Icon name="save" className="text-[18px]" />
-                    <span>Save as Draft</span>
-                  </button>
-                </div>
-                <button
-                  type="submit"
-                  className="w-full sm:w-auto h-[52px] px-space-xl rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-md hover:bg-primary hover:shadow-lg active:scale-95 transition-all flex items-center justify-center gap-space-xs order-1 sm:order-2"
-                >
-                  <span>Continue to Branding</span>
-                  <Icon name="arrow_forward" className="text-[20px]" />
-                </button>
               </div>
             </form>
 
@@ -357,8 +368,8 @@ export function DesktopBusinessProfileBasicScreen({
                       </div>
                     </div>
                     <div className="flex flex-col">
-                      <span className="font-label-sm text-caption text-primary-fixed uppercase tracking-wider font-semibold">
-                        {draft.category}
+                      <span className="font-label-sm text-caption text-primary-fixed uppercase tracking-wider font-semibold truncate">
+                        {draft.categories.length > 0 ? draft.categories.join(' • ') : 'Your Category'}
                       </span>
                       <span className="font-heading-sm text-heading-sm font-bold text-on-primary drop-shadow-sm truncate">
                         {draft.name.trim().length > 0 ? draft.name.trim() : 'Your Business Name'}
@@ -439,12 +450,53 @@ export function DesktopBusinessProfileBasicScreen({
               {checklistRow('Official Business Identity', hasName, 'Valid', 'Required')}
               {checklistRow(
                 'District Taxonomy Assigned',
-                draft.tags.length > 0,
-                `${draft.tags.length} Tags`,
-                'None Selected',
+                hasEnoughCategories && hasEnoughSubcategories,
+                `${draft.categories.length} Categories • ${draft.tags.length} Tags`,
+                hasEnoughCategories ? 'Add Subcategories' : 'Add Categories',
               )}
               {checklistRow('Storefront Summary & Hooks', hasDescription, 'Optimal', 'Required')}
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onPrevious}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
+            >
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            {showErrors && !canContinue && (
+              <div role="alert" className="rounded-xl border border-error/40 bg-error-container/60 px-space-sm py-space-xs flex items-center gap-space-2xs">
+                <Icon name="error" className="text-on-error text-[16px]" filled />
+                <span className="font-body-sm text-body-sm text-on-error">
+                  Still needed: {missingFields.join(', ')}.
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => handleContinue()}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+            >
+              <span>Continue to Branding</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </button>
           </div>
         </div>
       </div>

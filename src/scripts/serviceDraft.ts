@@ -6,15 +6,27 @@ export interface ServiceDraft {
   deliveryFormat: 'in-salon' | 'mobile' | 'both';
   description: string;
   highlights: Array<{ text: string; active: boolean }>;
-  basePrice: string;
+  image: string; // cover image URL (saved & displayed consistently)
+  standardPrice: string; // standard per-session price (between base & compare)
+  basePrice: string;    // entry-level / base session price
   comparePrice: string;
   durationMins: number;
   bufferMins: number;
   tiersEnabled: boolean;
   tiers: Array<{ id: string; name: string; duration: string; price: string; note: string }>;
   skuCode: string;
-  branches: { maitama: boolean; wuseII: boolean; garki: boolean };
+  locations: string[]; // selected business locations/branch ids (maitama, wuseII, garki, main)
+  branches: { maitama: boolean; wuseII: boolean; garki: boolean }; // derived from locations for backward compat
   pricingMode: 'universal' | 'tiered';
+  genderSuitability: 'all' | 'women' | 'men';
+  ageMin: number;
+  ageMax?: number;
+  accessibility: string[]; // e.g. ['Wheelchair accessible', 'Step-free entrance']
+  clientRequirements: string[]; // e.g. ['Consent form', 'Health declaration']
+  policies: import('./serviceStudioShared').ServicePolicy[];
+  concurrentBookings: number;
+  leadNotice: string;
+  bookingHorizon: string;
 }
 
 export const INITIAL_SERVICE_DRAFT: ServiceDraft = {
@@ -31,8 +43,11 @@ export const INITIAL_SERVICE_DRAFT: ServiceDraft = {
     { text: 'Steam Extraction Included', active: false },
     { text: 'Aftercare Serum Sample', active: false },
   ],
-  basePrice: '16,000',
+  image:
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuA5kJCcN5hfN4CHAyjM9ztBajNRH9N3SkL38ksjE3AyoelX4MEYejaPFoGwctYS266qyorIoQKcWEmZNs7Q5kgsygotoz2TJKsdyOZYsKcGnxlqAEEA6v2xVfV-oWp54srCsfwKZnaL4Xke7K7ZfNfVhgRqlpp7nIUNRt-iHDnIJxgjld79QZmEiqRPpWOQJ6NN-L-WTDKk9tyaTUh62Bs2W5DGAuGcrqcwBfQezAWCYT5AF74uuP4PBg',
+  standardPrice: '18,000',
   comparePrice: '20,000',
+  basePrice: '16,000',
   durationMins: 60,
   bufferMins: 15,
   tiersEnabled: true,
@@ -60,6 +75,20 @@ export const INITIAL_SERVICE_DRAFT: ServiceDraft = {
     },
   ],
   skuCode: 'VT-SRV-4402',
+  locations: ['main', 'maitama', 'wuseII'],
   branches: { maitama: true, wuseII: true, garki: false },
   pricingMode: 'tiered',
+  genderSuitability: 'all',
+  ageMin: 16,
+  ageMax: 80,
+  accessibility: ['Wheelchair accessible'],
+  clientRequirements: ['Consent form'],
+  policies: [
+    { id: 'free-cancellation', title: 'Free Cancellation', body: 'Complimentary cancellation up to 2 hours before scheduled session start.', preset: true, removable: true },
+    { id: 'late-arrival', title: 'Late Arrival Grace Window', body: '15 minutes buffer window maintained before the appointment slot is released.', preset: true, removable: true },
+    { id: 'pay-at-reception', title: 'Pay at Reception', body: 'Customers pay directly at your salon after treatment.', preset: true, removable: false, locked: true },
+  ],
+  concurrentBookings: 2,
+  leadNotice: 'Same day (2 hrs)',
+  bookingHorizon: '30 days in advance',
 };

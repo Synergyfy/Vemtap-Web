@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { ServiceImageUploader } from '../../components/ServiceImageUploader';
+import { ServiceLocationSelectorModal } from '../../components/ServiceLocationSelectorModal';
+import { SERVICE_LOCATIONS, locationsToBranches } from '../serviceStudioShared';
+import { describeServiceSector, getBusinessClassificationOptions } from '../serviceClassification';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -12,52 +16,10 @@ interface DesktopAddServiceStep1ScreenProps {
   onNext: () => void;
   onSaveDraft: () => void;
   onNav?: (key: BusinessPortalNavKey) => void;
+  businessCategories?: string[];
+  businessSubcategories?: string[];
 }
 
-const COVER_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuB4wRhk7Z2awcljAxG1LjsDB3N2bAN7rQlDkEXDILlYF6i09D_DE0_JDmPFddvIXLKfZ-TtuSypTz0Kl3jUy7knUpU3HB4NuSb137foMDpgotXoiK7w3GVbU1FRlvDkCRSfNt7lLHtinSDkQaVQwt40lHDAj3DUxzf9tBWYtOf7qlTY-_mE9_3gDNIH9wVJF72-OJb0k0sqg-vLThSLsh7dq90yBqvw9fzIB1gXV-Fo2ZXSueR6oLefog';
-
-const COVER_ALT =
-  'A luxury aesthetic spa suite interior with soft warm architectural lighting, minimalist linen draped massage bed, bamboo partition, and high-end botanical skincare flacons on stone trays in high dynamic range.';
-
-const THUMBNAIL_IMAGES: Array<{ src: string; alt: string }> = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD2k-0GygPR7thrr6kQT5yTqoGDw0NcxF2dP0AlXRwce_9v75rvKjTFCOII2nYkQknciVnh52IMyXZtpFEzCOC6Sc0ZFQf8bwDaVJM2likf3N9H6Yf4CtRNeAYa6jwXLogctOB85hy8oxyDnz-IvnlOo7GjU_Ij8kfKJBzE9Lqhpjxks9aQ7vHEEYWcFEkDqE1E9UzAJhRl3UfANQ6pD0rmV-2EbDY3S2bIgoQ14Il52tS12xywmcy8cw',
-    alt: 'Macro clean shot of an organic facial treatment in progress with refreshing gel mask applied carefully on glowing hydrated female skin with soft salon bokeh.',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAQQg6upTKKOpZ6Tp5hbXhIT0nrg2PTYYJD8pZdNoNbADXPGVUlGtg5_IAiMhY_gBomAojJ0rOnD_uEzXlk49b1wzpAfQuzfVJcWJ-Xypy29WDHSt9ojs2P9Up2_n17ziHnvoKCcpI9NZlpXD8kgiKN2dMkkEmLwLwMc1Ex0CSBaT9U39DCU6k75vJDBBwgS3lA_M8ImtJdn_-Y6oRcmTZZu8lQAdXmi80dzIi1l8my5dOBdtCsdLaAoA',
-    alt: 'Artisanal glass dropper bottle dispensing golden organic botanical facial serum with morning light reflecting through herbal extract droplets on stone background.',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDRkxDuU2EkpayCjLM8RjpKom_HYD5XDFkDseQtqJX6TB7a2f_vb-4cFXnWwPVQbnzcFVfAEqqentFeQstEL4LkSYV1tdUi7K9zjAu9C6FLAZjthahprr2xunBUlpbTctoK9QIPAIYXU4JC20SQfsC_tMFInBsCsLJXBqApQh-01CZ-Sj6RrHATlNT1MPUT6JZmYlUYbjl9rf8qb9y14XrEtvEMPhgOrKYC0wFxA4dTVV23IK6D8U5HBw',
-    alt: 'Peaceful client resting during esthetics session with bamboo headwrap and white fluffy towel in modern boutique day spa atmosphere.',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBEs-HfAtSHgpNUAB8Bj14NAp8xqq3Et-0WjBr12CSBKBZjAj4iofnMfh4AalTQaa8cbMfsXu-QYJraNwqgRPQ4Lg0ljeo9GVBPoNJd-Fho9G9VKzOiPTbmzQMR3aA06az0K0bfzGK0xlhBcpWPQY00LVlKcfJazLxvAWANEEVSG9vJddiTQINLaOi8FkBLV1e0GVq6c-AQ0n_DGJPHkzpgPNUfvD11OZBD3Ur2PQvi-pTnkaXpBv18NQ',
-    alt: 'Close up of licensed aesthetician hands performing gentle lymphatic drainage facial massage on client cheeks with natural daylight.',
-  },
-];
-
-const PREVIEW_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCOp2GprrnMkZvR4PU0KdJRedLeEo_--yoJWjkqgxtBZFcRkJYv22ZkzOsSDY2ZJUL2_zBY_uHf2HCTRiaZoQj1LQXKEJ8hWFNtIBboAvkNudRMzMxiQyfMevw8mWtbfmr2PuAPcWOLruTUZOm7cIxpQGsP5KJ-HnKeCupkv03MSChAcHBJnkJ1YN5cMAVbUCK2LcOV1I90oT-e3O7k39oh3sWjmHSXM4nITxuK1IeQi7b3xH0Q-u04Jg';
-
-const PREVIEW_ALT =
-  'Client enjoying a restorative facial treatment in a tranquil luxury spa with modern aesthetics and soft flattering lighting.';
-
-const PRIMARY_CATEGORIES = [
-  'Health, Beauty & Wellness',
-  'Medical Aesthetics',
-  'Massage & Holistic Care',
-  'Hair Styling & Scalp Care',
-];
-
-const SUB_CATEGORIES = [
-  'Facials, Skincare & Esthetics',
-  'Chemical Peels & Resurfacing',
-  'Hydra-Dermabrasion',
-  'Anti-Aging LED Therapies',
-];
 
 const DELIVERY_OPTIONS: Array<{
   value: ServiceDraft['deliveryFormat'];
@@ -91,7 +53,7 @@ const BEST_PRACTICES = [
   'Treatment Step & Benefit Transparency',
 ];
 
-const GENDER_OPTIONS = ['All Welcome', 'Women Only', 'Men Only'];
+
 
 export function DesktopAddServiceStep1Screen({
   draft,
@@ -100,10 +62,19 @@ export function DesktopAddServiceStep1Screen({
   onNext,
   onSaveDraft,
   onNav,
+  businessCategories = [],
+  businessSubcategories = [],
 }: DesktopAddServiceStep1ScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
-  const [gender, setGender] = useState('All Welcome');
   const [consent, setConsent] = useState(true);
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+
+  // Available business categories if the business supports multiple classifications
+  const categoryOptions = getBusinessClassificationOptions(businessCategories, businessSubcategories);
+
+  // The service inherits its classification from the business profile, so the
+  // sector is derived from the draft rather than re-asked here.
+  const sectorLabel = describeServiceSector([draft.primaryCategory], [draft.subCategory]);
 
   const removeHighlight = (label: string) => {
     onDraftChange({ highlights: draft.highlights.filter((entry) => entry.label !== label) });
@@ -182,76 +153,11 @@ export function DesktopAddServiceStep1Screen({
                 </span>
               </div>
 
-              <div className="flex flex-col gap-4">
-                <div className="relative rounded-xl overflow-hidden bg-surface-container-high aspect-[16/9] max-h-80 shadow-inner group">
-                  <img
-                    alt={COVER_ALT}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-                    src={COVER_IMAGE}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-between p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="px-3 py-1 rounded-full bg-primary-container text-on-primary font-caption text-caption font-semibold flex items-center gap-1 shadow-sm">
-                        <Icon name="star" className="text-[14px]" />
-                        Primary Cover Photo
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="px-3 py-1.5 rounded-lg bg-surface-canvas/90 hover:bg-surface-canvas backdrop-blur-md text-text-primary font-caption text-caption font-semibold flex items-center gap-1 transition-all shadow-sm"
-                        >
-                          <Icon name="edit" className="text-[16px]" />
-                          Change Photo
-                        </button>
-                        <button
-                          type="button"
-                          className="p-1.5 rounded-lg bg-surface-canvas/90 hover:bg-error-container text-text-secondary hover:text-error backdrop-blur-md transition-all shadow-sm"
-                        >
-                          <Icon name="delete" className="text-[16px]" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="text-surface-canvas font-caption text-caption opacity-90 flex items-center gap-2">
-                      <Icon name="crop_original" className="text-[16px]" />
-                      2400 × 1350 px • JPEG • Appears first in VEMTAP marketplace search
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
-                  {THUMBNAIL_IMAGES.map((image, index) => (
-                    <div
-                      key={image.src}
-                      className="relative rounded-xl overflow-hidden aspect-square group shadow-sm bg-surface-subtle"
-                    >
-                      <img alt={image.alt} className="w-full h-full object-cover" src={image.src} />
-                      <span className="absolute top-2 left-2 w-5 h-5 rounded-full bg-black/60 text-surface-canvas font-caption text-caption flex items-center justify-center font-bold">
-                        {index + 2}
-                      </span>
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          className="p-1 rounded bg-surface-canvas text-text-primary hover:text-primary"
-                        >
-                          <Icon name="drag_indicator" className="text-[16px]" />
-                        </button>
-                        <button type="button" className="p-1 rounded bg-surface-canvas text-error hover:bg-error-container">
-                          <Icon name="close" className="text-[16px]" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className="flex flex-col items-center justify-center aspect-square rounded-xl bg-surface-subtle hover:bg-surface-tint-blue text-text-secondary hover:text-primary transition-colors cursor-pointer group shadow-sm"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-surface-canvas flex items-center justify-center shadow-xs group-hover:bg-primary-container group-hover:text-on-primary transition-colors">
-                      <Icon name="add" className="text-[20px]" />
-                    </div>
-                    <span className="font-label-sm text-label-sm mt-1.5 font-medium">Add Photo</span>
-                  </button>
-                </div>
-              </div>
+              <ServiceImageUploader
+                currentImage={draft.image}
+                onImageChange={(url) => onDraftChange({ image: url })}
+                aspectRatio="16/9"
+              />
 
               <div className="flex items-center gap-3 p-3.5 rounded-xl bg-surface-tint-blue text-on-surface-variant">
                 <Icon name="tips_and_updates" className="text-primary text-[20px] shrink-0" />
@@ -294,79 +200,144 @@ export function DesktopAddServiceStep1Screen({
                 <label className="font-label-md text-label-md text-text-primary font-semibold">
                   Assigned Business Location &amp; Branch
                 </label>
-                <div className="p-4 rounded-xl bg-surface-subtle flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
-                      <Icon name="storefront" className="text-[22px]" />
+                <div className="p-4 rounded-xl bg-surface-subtle flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
+                        <Icon name="storefront" className="text-[22px]" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-label-md text-label-md font-semibold text-text-primary">
+                          {draft.provider}
+                        </span>
+                        <span className="font-caption text-caption text-text-secondary">
+                          {draft.locations.length === 0
+                            ? 'No locations assigned yet'
+                            : `${draft.locations.length} location${draft.locations.length > 1 ? 's' : ''} assigned`}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="font-label-md text-label-md font-semibold text-text-primary">
-                        {draft.provider}
-                      </span>
-                      <span className="font-caption text-caption text-text-secondary">
-                        Main Branch • Downtown Flagship Suite 402
-                      </span>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLocationModalOpen(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-surface-canvas hover:bg-surface-container-high text-primary font-label-md text-label-md font-semibold shadow-xs transition-colors"
+                    >
+                      Change
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="px-3.5 py-1.5 rounded-lg bg-surface-canvas hover:bg-surface-container-high text-primary font-label-md text-label-md font-semibold shadow-xs transition-colors"
-                  >
-                    Change
-                  </button>
+                  {draft.locations.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {SERVICE_LOCATIONS.filter((loc) => draft.locations.includes(loc.id)).map((loc) => (
+                        <span
+                          key={loc.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold"
+                        >
+                          <Icon name="location_on" className="text-[12px]" />
+                          {loc.name.split('(')[0].trim()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
+              <ServiceLocationSelectorModal
+                isOpen={locationModalOpen}
+                selectedLocations={draft.locations}
+                onSave={(locs) =>
+                  onDraftChange({ locations: locs, branches: locationsToBranches(locs) })
+                }
+                onClose={() => setLocationModalOpen(false)}
+              />
             </div>
 
             <div className="bg-surface-canvas rounded-2xl p-6 lg:p-8 shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-6">
               <div className="flex items-center gap-2">
                 <Icon name="category" className="text-primary text-[22px]" />
                 <h2 className="font-heading-md text-heading-md text-text-primary">
-                  Category &amp; Treatment Taxonomy
+                  Service Category
                 </h2>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-label-md text-label-md text-text-primary font-semibold" htmlFor="primary-cat">
-                    Primary Category <span className="text-error">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="primary-cat"
-                      value={draft.primaryCategory}
-                      onChange={(event) => onDraftChange({ primaryCategory: event.target.value })}
-                      className="w-full h-[52px] pl-4 pr-10 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_3px_rgba(6,108,244,0.18)] cursor-pointer"
-                    >
-                      {PRIMARY_CATEGORIES.map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                    <Icon
-                      name="expand_more"
-                      className="text-[20px] text-text-tertiary absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                    />
-                  </div>
+              <div className="bg-surface-tint-blue rounded-xl p-5 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0">
+                  <Icon name="verified" className="text-[22px]" />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-label-md text-label-md text-text-primary font-semibold" htmlFor="sub-cat">
-                    Sub-Category <span className="text-error">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="sub-cat"
-                      value={draft.subCategory}
-                      onChange={(event) => onDraftChange({ subCategory: event.target.value })}
-                      className="w-full h-[52px] pl-4 pr-10 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_3px_rgba(6,108,244,0.18)] cursor-pointer"
-                    >
-                      {SUB_CATEGORIES.map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                    <Icon
-                      name="expand_more"
-                      className="text-[20px] text-text-tertiary absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                    />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-label-md text-label-md font-semibold text-text-primary">
+                      Service Category
+                    </h3>
+                    <span className="font-caption text-caption font-semibold text-primary bg-surface-canvas px-2 py-0.5 rounded-full">
+                      Inherited from business profile
+                    </span>
                   </div>
+                  <p className="font-body-md text-body-md text-text-secondary mt-1">
+                    Your business already declared its classification during setup — this service inherits it
+                    automatically, so there's nothing to re-enter here.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    <span className="font-label-md text-label-md font-semibold text-primary">
+                      {draft.primaryCategory}
+                    </span>
+                    <Icon name="chevron_right" className="text-[18px] text-text-tertiary" />
+                    <span className="font-label-md text-label-md font-medium text-text-primary">
+                      {draft.subCategory}
+                    </span>
+                  </div>
+                  <p className="font-caption text-caption text-text-tertiary mt-2">
+                    {sectorLabel} settings and suggested policies are applied automatically in the next steps.
+                  </p>
+
+                  {categoryOptions.length > 1 && (
+                    <div className="mt-4 pt-4 border-t border-primary/10 flex flex-col gap-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <Icon name="tune" className="text-primary text-[16px]" />
+                        <label className="font-label-sm text-label-sm font-semibold text-text-primary">
+                          Business supports multiple categories — choose which one applies to this service:
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {categoryOptions.map((opt) => {
+                          const isSelected =
+                            draft.primaryCategory.toLowerCase() === opt.category.toLowerCase();
+                          return (
+                            <button
+                              key={opt.category}
+                              type="button"
+                              onClick={() => {
+                                onDraftChange({
+                                  primaryCategory: opt.category,
+                                  subCategory: opt.subCategory,
+                                });
+                              }}
+                              className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all ${
+                                isSelected
+                                  ? 'bg-surface-canvas border-primary shadow-xs ring-1 ring-primary'
+                                  : 'bg-surface-canvas/60 border-outline/20 hover:bg-surface-canvas text-text-secondary'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <Icon
+                                  name={isSelected ? 'radio_button_checked' : 'radio_button_unchecked'}
+                                  className={`text-[18px] ${isSelected ? 'text-primary' : 'text-text-tertiary'}`}
+                                />
+                                <div className="truncate">
+                                  <span className={`block font-label-md text-label-md truncate ${isSelected ? 'font-semibold text-text-primary' : 'font-medium'}`}>
+                                    {opt.category}
+                                  </span>
+                                  <span className="block font-caption text-caption text-text-tertiary truncate">
+                                    {opt.subCategory}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="font-caption text-caption px-2 py-0.5 rounded bg-surface-container text-text-secondary shrink-0">
+                                {opt.preset.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -504,35 +475,54 @@ export function DesktopAddServiceStep1Screen({
                     Gender Suitability
                   </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {GENDER_OPTIONS.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setGender(option)}
-                        className={
-                          gender === option
-                            ? 'py-2.5 px-2 rounded-xl bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold text-center shadow-xs'
-                            : 'py-2.5 px-2 rounded-xl bg-surface-subtle text-text-secondary hover:bg-surface-container-high font-label-md text-label-md font-medium text-center transition-colors'
-                        }
-                      >
-                        {option}
-                      </button>
-                    ))}
+                    {(['all', 'women', 'men'] as const).map((value) => {
+                      const label = value === 'all' ? 'All Welcome' : value === 'women' ? 'Women Only' : 'Men Only';
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => onDraftChange({ genderSuitability: value })}
+                          className={
+                            draft.genderSuitability === value
+                              ? 'py-2.5 px-2 rounded-xl bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold text-center shadow-xs'
+                              : 'py-2.5 px-2 rounded-xl bg-surface-subtle text-text-secondary hover:bg-surface-container-high font-label-md text-label-md font-medium text-center transition-colors'
+                          }
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="font-label-md text-label-md text-text-primary font-semibold">
-                    Minimum Age Requirement
+                    Age Range
                   </label>
-                  <div className="h-[52px] px-4 rounded-xl bg-surface-subtle flex items-center justify-between">
-                    <span className="font-body-md text-body-md text-text-primary font-semibold">Ages 16+</span>
-                    <button
-                      type="button"
-                      className="text-primary hover:text-on-primary-fixed-variant transition-colors flex items-center gap-1 font-caption text-caption font-medium"
-                    >
-                      <Icon name="edit" className="text-[18px]" />
-                      Change
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-caption text-caption text-text-tertiary">Min</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={draft.ageMin}
+                        onChange={(e) => onDraftChange({ ageMin: Number(e.target.value) })}
+                        className="w-full h-[48px] pl-10 pr-3 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_3px_rgba(6,108,244,0.18)] transition-all text-right font-semibold"
+                      />
+                    </div>
+                    <span className="text-text-tertiary font-caption">—</span>
+                    <div className="flex-1 relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-caption text-caption text-text-tertiary">Max</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        placeholder="Any"
+                        value={draft.ageMax ?? ''}
+                        onChange={(e) => onDraftChange({ ageMax: e.target.value ? Number(e.target.value) : undefined })}
+                        className="w-full h-[48px] pl-10 pr-3 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_3px_rgba(6,108,244,0.18)] transition-all text-right font-semibold"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -573,7 +563,7 @@ export function DesktopAddServiceStep1Screen({
               </div>
               <div className="rounded-xl overflow-hidden shadow-md bg-surface-canvas group">
                 <div className="relative aspect-[16/10] bg-surface-container-high overflow-hidden">
-                  <img alt={PREVIEW_ALT} className="w-full h-full object-cover" src={PREVIEW_IMAGE} />
+                  <img alt="Service preview" className="w-full h-full object-cover" src={draft.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuB4wRhk7Z2awcljAxG1LjsDB3N2bAN7rQlDkEXDILlYF6i09D_DE0_JDmPFddvIXLKfZ-TtuSypTz0Kl3jUy7knUpU3HB4NuSb137foMDpgotXoiK7w3GVbU1FRlvDkCRSfNt7lLHtinSDkQaVQwt40lHDAj3DUxzf9tBWYtOf7qlTY-_mE9_3gDNIH9wVJF72-OJb0k0sqg-vLThSLsh7dq90yBqvw9fzIB1gXV-Fo2ZXSueR6oLefog'} />
                   <div className="absolute top-3 left-3">
                     <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-xs">
                       Instant Confirmation
@@ -636,23 +626,39 @@ export function DesktopAddServiceStep1Screen({
               </div>
             </div>
 
-            <div className="bg-surface-canvas rounded-2xl p-6 shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={onNext}
-                className="w-full h-[52px] rounded-2xl bg-primary-container hover:bg-primary active:scale-[0.99] text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] transition-all"
-              >
-                <span>Continue to Duration &amp; Pricing</span>
-                <Icon name="arrow_forward" className="text-[20px]" />
-              </button>
-              <button
-                type="button"
-                onClick={onSaveDraft}
-                className="w-full h-11 rounded-xl text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary flex items-center justify-center transition-colors"
-              >
-                Save as Draft &amp; Exit
-              </button>
-            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
+            >
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft &amp; Exit</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onNext}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+            >
+              <span>Continue to Duration &amp; Pricing</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </button>
           </div>
         </div>
       </div>

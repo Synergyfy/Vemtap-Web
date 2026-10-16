@@ -1,8 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
 import { dealDurationLabel } from './dealStudio';
+import {
+  DEAL_TYPE_OPTIONS,
+  DEFAULT_BUNDLE_CATALOG,
+  claimLimitLabel,
+  dealTypeTitle,
+  describeComboRules,
+  formatFlashValidity,
+  resolveDealPricing,
+  validateDealConfiguration,
+} from './deals/dealStudioShared';
+import { DEAL_PUBLICATION_COPY, publishDeal, type DealPublicationResult } from './deals/dealPublication';
+import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessDealStudioStep4ScreenProps {
@@ -58,23 +70,31 @@ export function BusinessDealStudioStep4Screen({
   onPublish,
   onSaveDraft,
 }: BusinessDealStudioStep4ScreenProps) {
-  const [publishState, setPublishState] = useState<'idle' | 'publishing' | 'success'>('idle');
-  const successTimer = useRef<number | null>(null);
-  const doneTimer = useRef<number | null>(null);
+  const [publication, setPublication] = useState<DealPublicationResult | null>(null);
+  const [showResult, setShowResult] = useState(false);
 
-  useEffect(
-    () => () => {
-      if (successTimer.current !== null) window.clearTimeout(successTimer.current);
-      if (doneTimer.current !== null) window.clearTimeout(doneTimer.current);
-    },
-    [],
-  );
-
-  const regularVariant = draft.variants.find((variant) => variant.name === 'Regular') ?? draft.variants[0];
+  const activeVariants = getActiveVariants(draft);
+  const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
   const baseAmount = parseAmount(regularVariant?.price ?? draft.basePrice);
   const pct = studio.discountPct;
-  const savings = Math.round((baseAmount * pct) / 100);
-  const dealAmount = baseAmount - savings;
+  const bundleCatalog = [{ id: 'current', name: draft.title, price: baseAmount }, ...DEFAULT_BUNDLE_CATALOG];
+  const pricing = resolveDealPricing(studio, baseAmount, bundleCatalog);
+  const savings = pricing.savings;
+  const dealAmount = pricing.dealPrice;
+  const savingsPct = pricing.savingsPct;
+  const strategyTitle = dealTypeTitle(studio.strategy);
+  const strategyIcon = DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
+  const comboRules = studio.strategy === 'combo' ? describeComboRules(studio.combo, baseAmount, bundleCatalog) : [];
+  const strategyDetail =
+    studio.strategy === 'fixed'
+      ? `Fixed Amount Off (₦${formatAmount(studio.fixed.amountOff)} off${
+          studio.fixed.minSpend > 0 ? ` • min spend ₦${formatAmount(studio.fixed.minSpend)}` : ''
+        })`
+      : studio.strategy === 'tiered'
+        ? `Tiered / Flash Happy Hour (${studio.flash.discountPct}% off in window)`
+        : studio.strategy === 'combo'
+          ? (comboRules[0] ?? 'Combo & Bundle Deal')
+          : `Percentage Discount (${pct}% Off)`;
   const activeBranches = BRANCH_DETAILS.filter((branch) => studio.branches[branch.key]);
   const activeDayKeys = DAY_ORDER.filter((key) => studio.days[key]);
   const weekdayCount = (['mon', 'tue', 'wed', 'thu', 'fri'] as Array<keyof DealStudioDraft['days']>).filter(
@@ -85,11 +105,24 @@ export function BusinessDealStudioStep4Screen({
       ? 'Mon – Fri'
       : activeDayKeys.map((key) => DAY_LABELS[key]).join(', ');
 
+  // Pre-publish validation: pricing rules + the operational fields the
+  // storefront and customers rely on.
+  const readinessErrors: string[] = [
+    ...validateDealConfiguration(studio, baseAmount, bundleCatalog),
+    ...(studio.vouchers <= 0 ? ['Set the total promotional quantity to at least 1.'] : []),
+    ...(studio.claimSteps.length === 0 ? ['Add at least one “how to claim” instruction.'] : []),
+    ...(studio.terms.length === 0 ? ['Add at least one term & condition.'] : []),
+    ...(activeBranches.length === 0 ? ['Select at least one participating branch.'] : []),
+    ...(activeDayKeys.length === 0 ? ['Select at least one redemption day.'] : []),
+  ];
+  const canPublish = readinessErrors.length === 0;
+
   const handlePublish = () => {
-    if (publishState !== 'idle') return;
-    setPublishState('publishing');
-    successTimer.current = window.setTimeout(() => setPublishState('success'), 1200);
-    doneTimer.current = window.setTimeout(() => onPublish(), 2700);
+    if (!canPublish || publication) return;
+    // Render the status the service actually returns — never assume "live".
+    const result = publishDeal({ dealTitle: draft.title, studio });
+    setPublication(result);
+    setShowResult(true);
   };
 
   return (
@@ -178,7 +211,7 @@ export function BusinessDealStudioStep4Screen({
             <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-surface-container">
               <img className="w-full h-full object-cover" alt={HERO_IMAGE.alt} src={HERO_IMAGE.src} />
               <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shadow-sm">
-                {pct}% OFF
+                {savingsPct}% OFF
               </div>
             </div>
             <div className="flex flex-col min-w-0 flex-1">
@@ -186,12 +219,12 @@ export function BusinessDealStudioStep4Screen({
                 <span className="px-2 py-0.5 rounded-full bg-surface-container font-caption text-caption text-text-secondary font-medium">
                   Auto-Synced
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue font-caption text-caption text-primary font-medium">
-                  Flash Deal
+                <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue font-caption text-caption text-primary font-medium truncate">
+                  {strategyTitle}
                 </span>
               </div>
               <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
-                {pct}% Off {draft.title}
+                {studio.strategy === 'percentage' ? `${pct}% Off ${draft.title}` : `${strategyTitle}: ${draft.title}`}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary line-clamp-1 mt-0.5">
                 Signature dry-aged prime beef cut with truffle glaze.
@@ -218,14 +251,22 @@ export function BusinessDealStudioStep4Screen({
                 ₦{formatAmount(dealAmount)}
               </span>
             </div>
-            <div className="mt-2 pt-2 flex items-center justify-between bg-surface-canvas rounded-lg px-space-sm py-2 shadow-sm">
-              <div className="flex items-center gap-2">
-                <Icon name="percent" className="text-primary text-[18px]" />
-                <span className="font-label-sm text-label-sm text-text-primary">
-                  Percentage Discount ({pct}% Off)
-                </span>
+            <div className="mt-2 pt-2 flex flex-col gap-1 bg-surface-canvas rounded-lg px-space-sm py-2 shadow-sm">
+              <div className="flex items-center justify-between gap-space-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Icon name={strategyIcon} className="text-primary text-[18px] shrink-0" />
+                  <span className="font-label-sm text-label-sm text-text-primary truncate">{strategyDetail}</span>
+                </div>
+                <Icon name="verified" className="text-text-tertiary text-[16px] shrink-0" />
               </div>
-              <Icon name="verified" className="text-text-tertiary text-[16px]" />
+              {studio.strategy === 'tiered' && (
+                <span className="font-caption text-caption text-text-secondary">
+                  Validity: {formatFlashValidity(studio.flash)} • {studio.flash.days}, {studio.flash.window}
+                </span>
+              )}
+              {studio.strategy === 'combo' && comboRules[1] && (
+                <span className="font-caption text-caption text-text-secondary">{comboRules[1]}</span>
+              )}
             </div>
           </div>
         </article>
@@ -247,18 +288,25 @@ export function BusinessDealStudioStep4Screen({
           </div>
           <div className="grid grid-cols-2 gap-space-xs mt-1">
             <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
-              <span className="font-caption text-caption text-text-secondary">Available Vouchers</span>
+              <span className="font-caption text-caption text-text-secondary">Quantity Limit</span>
               <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
-                {studio.vouchers} Vouchers
+                {studio.vouchers} Available
               </span>
-              <span className="font-caption text-caption text-text-tertiary mt-0.5">Inventory locked</span>
+              <span className="font-caption text-caption text-text-tertiary mt-0.5">Total promotional stock</span>
             </div>
             <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
               <span className="font-caption text-caption text-text-secondary">Claim Limit</span>
               <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
-                {studio.claimOnce ? '1 Per Customer' : `${studio.maxClaims} Per Customer`}
+                {claimLimitLabel(studio)}
               </span>
-              <span className="font-caption text-caption text-text-tertiary mt-0.5">Fair-share rule</span>
+              <span className="font-caption text-caption text-text-tertiary mt-0.5">Per customer</span>
+            </div>
+            <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
+              <span className="font-caption text-caption text-text-secondary">Max Per Order</span>
+              <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
+                {studio.maxUnitsPerOrder} Units
+              </span>
+              <span className="font-caption text-caption text-text-tertiary mt-0.5">Per single order</span>
             </div>
           </div>
           <div className="flex flex-col space-y-2.5 mt-2">
@@ -377,6 +425,70 @@ export function BusinessDealStudioStep4Screen({
           </div>
         </article>
 
+        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
+          <div className="flex items-center gap-2">
+            <Icon name="assignment_turned_in" className="text-secondary text-[20px]" />
+            <h3 className="font-heading-sm text-heading-sm text-text-primary">How to Claim &amp; Terms</h3>
+          </div>
+          <div className="flex flex-col gap-space-xs">
+            <span className="font-label-md text-label-md text-text-primary font-medium">Redemption steps (customer)</span>
+            {studio.claimSteps.length === 0 ? (
+              <span className="font-body-md text-body-md text-error">
+                No claim instructions yet — add them in the “How to Claim” step.
+              </span>
+            ) : (
+              <ol className="flex flex-col gap-space-xs">
+                {studio.claimSteps.map((step, index) => (
+                  <li key={`${index}-${step}`} className="flex items-start gap-space-xs">
+                    <span className="font-caption text-caption font-semibold text-primary px-2 py-0.5 rounded-full bg-surface-tint-blue shrink-0">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="font-body-md text-body-md text-text-secondary">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+          <div className="flex flex-col gap-space-xs pt-space-xs border-t border-border-subtle">
+            <span className="font-label-md text-label-md text-text-primary font-medium">Terms &amp; conditions</span>
+            {studio.terms.length === 0 ? (
+              <span className="font-body-md text-body-md text-error">
+                No terms yet — add them in the “Terms &amp; Conditions” step.
+              </span>
+            ) : (
+              <ul className="flex flex-col gap-space-xs">
+                {studio.terms.map((term, index) => (
+                  <li key={`${index}-${term}`} className="flex items-start gap-space-xs">
+                    <Icon name="check_circle" className="text-badge-discount-text text-[16px] shrink-0 mt-0.5" />
+                    <span className="font-body-md text-body-md text-text-secondary">{term}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <p className="font-caption text-caption text-text-tertiary">
+            These terms are shown to customers before they claim, and are locked into each existing claim so later
+            edits don’t rewrite an agreement already accepted.
+          </p>
+        </article>
+
+        {!canPublish && (
+          <article className="rounded-xl bg-error/5 border border-error/20 p-space-md flex flex-col gap-space-xs">
+            <span className="font-label-md text-label-md text-error font-semibold flex items-center gap-2">
+              <Icon name="error" className="text-[18px]" />
+              Complete these before publishing
+            </span>
+            <ul className="flex flex-col gap-1">
+              {readinessErrors.map((error) => (
+                <li key={error} className="font-caption text-caption text-error flex items-start gap-space-2xs">
+                  <span className="mt-1.5 w-1 h-1 rounded-full bg-error shrink-0" />
+                  <span>{error}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
+        )}
+
         <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-md">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -435,27 +547,26 @@ export function BusinessDealStudioStep4Screen({
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pt-space-xs pb-safe flex flex-col gap-space-xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
         <button
-          className={`w-full h-[54px] rounded-xl font-button-primary text-button-primary transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-90 ${
-            publishState === 'success'
+          className={`w-full h-[54px] rounded-xl font-button-primary text-button-primary transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+            publication
               ? 'bg-badge-discount-text text-on-primary'
-              : 'bg-primary-container text-on-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)]'
+              : canPublish
+                ? 'bg-primary-container text-on-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)]'
+                : 'bg-surface-container-high text-text-tertiary shadow-none'
           }`}
           type="button"
-          disabled={publishState !== 'idle'}
+          disabled={!canPublish || publication !== null}
           onClick={handlePublish}
         >
-          {publishState === 'idle' && <span>Publish Deal to Nearby Feeds 🔥 🚀</span>}
-          {publishState === 'publishing' && (
-            <>
-              <Icon name="progress_activity" className="text-[20px] animate-spin" />
-              <span>Broadcasting to Abuja Feeds...</span>
-            </>
-          )}
-          {publishState === 'success' && (
+          {publication ? (
             <>
               <Icon name="check_circle" className="text-[22px]" />
-              <span>Published Successfully! 🎉</span>
+              <span>{DEAL_PUBLICATION_COPY[publication.status].title}</span>
             </>
+          ) : canPublish ? (
+            <span>Publish Deal to Nearby Feeds 🔥 🚀</span>
+          ) : (
+            <span>Resolve {readinessErrors.length} issue{readinessErrors.length === 1 ? '' : 's'} to publish 🔒</span>
           )}
         </button>
         <div className="grid grid-cols-2 gap-space-xs">
@@ -480,6 +591,45 @@ export function BusinessDealStudioStep4Screen({
           You can pause, edit quotas, or end this deal at any time from your Business Hub.
         </p>
       </div>
+
+      {showResult && publication && (
+        <div
+          className="fixed inset-0 z-50 bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-space-md"
+          onClick={() => setShowResult(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-[380px] rounded-2xl bg-surface-container-lowest p-space-xl shadow-2xl flex flex-col items-center text-center gap-space-lg"
+          >
+            <div
+              className={`w-16 h-16 rounded-full flex items-center justify-center ${DEAL_PUBLICATION_COPY[publication.status].tone}`}
+            >
+              <Icon name={DEAL_PUBLICATION_COPY[publication.status].icon} className="text-[34px]" />
+            </div>
+            <div className="flex flex-col gap-space-2xs">
+              <h3 className="font-heading-md text-heading-md text-text-primary font-bold">
+                {DEAL_PUBLICATION_COPY[publication.status].title}
+              </h3>
+              <p className="font-body-md text-body-md text-text-secondary">{publication.message}</p>
+              <p className="font-caption text-caption text-text-tertiary mt-space-2xs">
+                Status: {publication.status} • Ref {publication.reference}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowResult(false);
+                onPublish();
+              }}
+              className="w-full h-12 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </AppScreen>
   );
 }

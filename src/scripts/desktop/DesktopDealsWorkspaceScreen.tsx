@@ -185,9 +185,9 @@ export function DesktopDealsWorkspaceScreen({
   return (
     <MerchantPortalChrome activeNav="business-deals" onNav={onNav} content="full">
       <div className="w-full px-margin py-space-xl flex flex-col gap-space-xl max-w-[1600px] mx-auto">
-        {/* Top Workspace Header & Breadcrumbs */}
-        <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-lg">
-          <div className="flex flex-col gap-space-2xs max-w-3xl">
+        {/* Top Workspace Header & Breadcrumbs — stacks until `xl` so it fits iPad Pro 13 */}
+        <section className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-lg">
+          <div className="flex flex-col gap-space-2xs max-w-3xl min-w-0">
             <nav aria-label="Breadcrumb" className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption mb-1">
               <button type="button" onClick={() => onNav('overview')} className="hover:text-primary transition-colors">Home</button>
               <Icon name="chevron_right" className="text-[14px]" />
@@ -195,7 +195,7 @@ export function DesktopDealsWorkspaceScreen({
               <Icon name="chevron_right" className="text-[14px]" />
               <span className="text-text-primary font-medium">Campaigns &amp; Deals</span>
             </nav>
-            <div className="flex items-center gap-space-sm">
+            <div className="flex flex-wrap items-center gap-space-2xs sm:gap-space-sm">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Campaigns &amp; Deals Management</h1>
               <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-medium">
                 Workspace Active
@@ -207,7 +207,7 @@ export function DesktopDealsWorkspaceScreen({
             </p>
           </div>
 
-          <div className="flex items-center gap-space-sm flex-wrap self-start lg:self-end">
+          <div className="flex items-center gap-space-sm flex-wrap self-start xl:self-end">
             <div className="flex items-center gap-2 px-space-sm py-2 rounded-xl bg-surface-container-low shadow-sm">
               <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-ping" />
               <span className="font-label-sm text-label-sm text-text-secondary">

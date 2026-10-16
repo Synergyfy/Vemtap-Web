@@ -4,6 +4,7 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
+import { validateAllServiceSteps, hasServiceValidationErrors } from '../serviceStudioShared';
 
 interface DesktopServiceReviewScreenProps {
   draft: ServiceDraft;
@@ -128,8 +129,17 @@ export function DesktopServiceReviewScreen({
   const saving = compare - base;
   const savingPercent = compare > 0 ? Math.round((saving / compare) * 100) : 0;
 
+  const validationErrors = validateAllServiceSteps(draft);
+  const hasErrors = hasServiceValidationErrors(validationErrors);
+  const errorCount =
+    validationErrors.identity.length +
+    validationErrors.locations.length +
+    validationErrors.description.length +
+    validationErrors.pricing.length +
+    validationErrors.policies.length;
+
   const handlePublish = () => {
-    if (publishState !== 'idle') return;
+    if (publishState !== 'idle' || hasErrors) return;
     setPublishState('publishing');
     timers.current.push(window.setTimeout(() => setPublishState('success'), 900));
     timers.current.push(window.setTimeout(() => onPublish(), 1900));
@@ -185,7 +195,7 @@ export function DesktopServiceReviewScreen({
           <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
             <div className="bg-surface-canvas rounded-2xl shadow-sm overflow-hidden flex flex-col">
               <div className="relative w-full h-72 sm:h-80 bg-surface-container">
-                <img alt={REVIEW_ALT} className="w-full h-full object-cover" src={REVIEW_IMAGE} />
+                <img alt={REVIEW_ALT} className="w-full h-full object-cover" src={draft.image || REVIEW_IMAGE} />
                 <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/90 via-inverse-surface/30 to-transparent" />
                 <div className="absolute top-4 left-4 flex flex-wrap gap-2 items-center">
                   <span className="px-3 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md text-on-surface font-label-sm text-label-sm font-semibold flex items-center gap-1.5 shadow-sm">
@@ -418,12 +428,15 @@ export function DesktopServiceReviewScreen({
                     </button>
                   </div>
                   <div className="flex flex-col gap-3">
-                    {POLICY_ROWS.map((row) => (
-                      <div key={row.title} className="flex items-start gap-3 p-2.5 rounded-xl bg-surface-subtle">
-                        <Icon name={row.icon} className={`${row.iconClass} text-[18px] mt-0.5`} />
+                    {(draft.policies && draft.policies.length > 0
+                      ? draft.policies
+                      : POLICY_ROWS.map((r, idx) => ({ id: `row-${idx}`, title: r.title, body: r.body }))
+                    ).map((policy) => (
+                      <div key={policy.id || policy.title} className="flex items-start gap-3 p-2.5 rounded-xl bg-surface-subtle">
+                        <Icon name="verified_user" className="text-primary text-[18px] mt-0.5" />
                         <div className="flex flex-col">
-                          <span className="font-label-sm text-label-sm font-semibold text-on-surface">{row.title}</span>
-                          <span className="font-caption text-caption text-text-secondary">{row.body}</span>
+                          <span className="font-label-sm text-label-sm font-semibold text-on-surface">{policy.title}</span>
+                          <span className="font-caption text-caption text-text-secondary">{policy.body}</span>
                         </div>
                       </div>
                     ))}
@@ -496,7 +509,7 @@ export function DesktopServiceReviewScreen({
                 </div>
                 <div className="bg-surface-canvas rounded-xl shadow-sm overflow-hidden flex flex-col">
                   <div className="relative h-32 w-full bg-surface-container">
-                    <img alt={SIMULATOR_ALT} className="w-full h-full object-cover" src={SIMULATOR_IMAGE} />
+                    <img alt={SIMULATOR_ALT} className="w-full h-full object-cover" src={draft.image || SIMULATOR_IMAGE} />
                     <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-xs">
                       -20% TODAY
                     </div>
@@ -507,7 +520,7 @@ export function DesktopServiceReviewScreen({
                   <div className="p-3.5 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <span className="font-caption text-caption font-bold text-primary uppercase tracking-wide">
-                        Glow &amp; Serenity Spa
+                        {draft.provider || 'Glow & Serenity Spa'}
                       </span>
                       <div className="flex items-center gap-0.5 text-tertiary">
                         <Icon name="star" className="text-[14px]" filled />
@@ -516,10 +529,10 @@ export function DesktopServiceReviewScreen({
                       </div>
                     </div>
                     <div className="font-label-md text-label-md font-bold text-on-surface line-clamp-1">
-                      Deep Hydration Radiance Facial
+                      {draft.title || 'Deep Hydration Radiance Facial'}
                     </div>
                     <div className="flex items-center gap-2 text-text-secondary font-caption text-caption">
-                      <Icon name="timer" className="text-[14px]" /> {draft.durationMins} mins <span>•</span>
+                      <Icon name="timer" className="text-[14px]" /> {draft.durationMins || 60} mins <span>•</span>
                       <span>Free cancellation</span>
                     </div>
                     <div className="mt-1 pt-2 bg-surface-subtle rounded-lg p-2 flex flex-col gap-1.5">
@@ -577,16 +590,74 @@ export function DesktopServiceReviewScreen({
             </div>
 
             <div className="flex flex-col gap-3 pt-2">
+              {hasErrors ? (
+                <div className="p-4 rounded-xl border border-error/30 bg-error/5 flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2 text-error font-label-sm text-label-sm font-bold">
+                    <Icon name="error" className="text-[18px]" />
+                    <span>{errorCount} Required {errorCount === 1 ? 'Item' : 'Items'} Missing Before Launch</span>
+                  </div>
+                  <ul className="text-caption font-caption text-text-secondary space-y-1 pl-5 list-disc">
+                    {validationErrors.identity.map((e) => (
+                      <li key={e}>
+                        {e} —{' '}
+                        <button type="button" onClick={onEditBasics} className="text-primary underline font-medium">
+                          Fix in Basics
+                        </button>
+                      </li>
+                    ))}
+                    {validationErrors.locations.map((e) => (
+                      <li key={e}>
+                        {e} —{' '}
+                        <button type="button" onClick={onEditBranches} className="text-primary underline font-medium">
+                          Select Locations
+                        </button>
+                      </li>
+                    ))}
+                    {validationErrors.description.map((e) => (
+                      <li key={e}>
+                        {e} —{' '}
+                        <button type="button" onClick={onEditDescription} className="text-primary underline font-medium">
+                          Fix in Description
+                        </button>
+                      </li>
+                    ))}
+                    {validationErrors.pricing.map((e) => (
+                      <li key={e}>
+                        {e} —{' '}
+                        <button type="button" onClick={onEditPricing} className="text-primary underline font-medium">
+                          Fix in Pricing
+                        </button>
+                      </li>
+                    ))}
+                    {validationErrors.policies.map((e) => (
+                      <li key={e}>
+                        {e} —{' '}
+                        <button type="button" onClick={onEditBranches} className="text-primary underline font-medium">
+                          Add Policy
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center gap-2 font-caption text-caption font-semibold">
+                  <Icon name="check_circle" className="text-[16px]" />
+                  <span>All validation checks passed • Ready for instant storefront deployment</span>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handlePublish}
-                disabled={publishState !== 'idle'}
+                disabled={publishState !== 'idle' || hasErrors}
                 className={`w-full py-4 px-6 rounded-2xl active:scale-[0.99] text-on-primary font-button-primary text-button-primary shadow-lg transition-all flex items-center justify-center gap-2 group ${
                   publishState === 'success'
                     ? 'bg-badge-discount-text cursor-default'
                     : publishState === 'publishing'
                       ? 'bg-primary opacity-75 cursor-not-allowed'
-                      : 'bg-primary hover:bg-primary-container cursor-pointer'
+                      : hasErrors
+                        ? 'bg-surface-container-highest text-text-tertiary cursor-not-allowed opacity-60'
+                        : 'bg-primary hover:bg-primary-container cursor-pointer'
                 }`}
               >
                 {publishState === 'idle' && (
@@ -673,6 +744,56 @@ export function DesktopServiceReviewScreen({
             <span className="font-caption text-caption text-inverse-on-surface/80">
               Active across Maitama &amp; Wuse II storefronts now.
             </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back to Edit Steps</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
+            >
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={publishState !== 'idle' || hasErrors}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-80"
+            >
+              {publishState === 'idle' && (
+                <>
+                  <span>Publish Service to Storefront</span>
+                  <Icon name="rocket_launch" className="text-[20px]" />
+                </>
+              )}
+              {publishState === 'publishing' && (
+                <>
+                  <Icon name="refresh" className="text-[20px] animate-spin" />
+                  <span>Broadcasting to Storefronts...</span>
+                </>
+              )}
+              {publishState === 'success' && (
+                <>
+                  <Icon name="check_circle" className="text-[20px]" />
+                  <span>Service is Now Live!</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

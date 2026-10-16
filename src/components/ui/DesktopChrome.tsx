@@ -128,7 +128,7 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
     <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className={`h-20 ${railOffset ? 'w-full' : 'max-w-7xl mx-auto'} px-margin flex items-center justify-between gap-gutter`}>
         <div className="flex items-center shrink-0">
-          <div className={`${railOffset ? 'w-auto xl:w-60' : ''} flex items-center gap-space-xs shrink-0`}>
+          <div className={`${railOffset ? 'w-auto lg:w-60' : ''} flex items-center gap-space-xs shrink-0`}>
             <button
               type="button"
               className="flex items-center gap-space-xs"
@@ -146,10 +146,10 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
 
           {authed ? (
             <>
-              {railOffset && <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />}
+              {railOffset && <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden lg:block" />}
               <button
                 type="button"
-                className="hidden xl:flex items-center gap-space-xs bg-surface-container-low px-space-sm py-space-2xs rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
+                className="hidden lg:flex items-center gap-space-xs bg-surface-container-low px-space-sm py-space-2xs rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
                 onClick={openLocation}
               >
                 <Icon name="location_on" className="text-[18px] text-primary-container" />

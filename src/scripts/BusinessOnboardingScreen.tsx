@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useProfile } from '../context/ProfileContext';
 import { BusinessAddBranchScreen } from './BusinessAddBranchScreen';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
 import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
@@ -26,16 +27,26 @@ import { BusinessProfileContactScreen } from './BusinessProfileContactScreen';
 import { BusinessServicePublishedScreen } from './BusinessServicePublishedScreen';
 import { BusinessServiceReviewScreen } from './BusinessServiceReviewScreen';
 import { SEED_DESCRIPTION } from './businessOnboardingSeed';
+import { BusinessSetupProgress } from '../components/BusinessSetupProgress';
+import {
+  getBusinessSetupSnapshot,
+  getSectionStates,
+  saveBusinessSetupSnapshot,
+  setBusinessSetupVerificationState,
+  type BusinessSetupSectionId,
+  type VerificationSectionState,
+} from './businessSetup';
 import { INITIAL_DEAL_STUDIO_DRAFT } from './dealStudio';
 import type { DealStudioDraft } from './dealStudio';
 import { INITIAL_PRODUCT_DRAFT } from './productDraft';
 import type { ProductDraft } from './productDraft';
 import { INITIAL_SERVICE_DRAFT } from './serviceDraft';
 import type { ServiceDraft } from './serviceDraft';
+import { classifyServiceFromBusiness } from './serviceClassification';
 
 export interface BusinessProfileDraft {
   name: string;
-  category: string;
+  categories: string[];
   tags: string[];
   description: string;
   phone: string;
@@ -47,19 +58,24 @@ export interface BusinessProfileDraft {
   prefs: { inApp: boolean; whatsapp: boolean };
 }
 
-const INITIAL_DRAFT: BusinessProfileDraft = {
+/**
+ * Official business email starts from the signed-in account profile so the
+ * merchant recognises it immediately; it stays editable where account and
+ * verification rules allow. WhatsApp is seeded as a phone number, never a link.
+ */
+const createInitialDraft = (accountEmail: string): BusinessProfileDraft => ({
   name: 'Urban Grill & Bistro',
-  category: 'Food & Drink',
+  categories: ['restaurant'],
   tags: ['Grill & Steakhouse', 'Bistro & Cafe'],
   description: SEED_DESCRIPTION,
   phone: '803 555 9821',
-  email: 'hello@urbangrill.ng',
+  email: accountEmail || 'hello@urbangrill.ng',
   website: 'https://www.urbangrill.ng',
   instagram: '@urbangrill_lagos',
-  whatsapp: 'wa.me/2348035559821',
+  whatsapp: '0803 555 9821',
   x: '@urbangrillng',
   prefs: { inApp: true, whatsapp: true },
-};
+});
 
 const STEPS = [
   'intro',
@@ -91,6 +107,16 @@ const STEPS = [
 
 type BusinessOnboardingStep = (typeof STEPS)[number];
 
+const PROFILE_STEPS: readonly BusinessOnboardingStep[] = [
+  'intro',
+  'basic',
+  'branding',
+  'contact',
+  'location',
+  'branches',
+  'addBranch',
+];
+
 const NEW_BRANCH_IMAGES = [
   {
     src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuANJsmk1CZ7kqu-LkWt0xVGy3vQvAAan2Uh7Ae-lqlm1Rb8RiLOXtVOsxfmEPOizvnkLCegPcvq3NuOtbzguW_cqVTZV7750yTTpjC89dxUFwN3hFP4roCjyXSypNYEmwIgel6-zKkx9izBn56_TuVnPMWYVUx2G_5Axi-hkLlDfm8UQlIel1tu2ulnv3nGiT3Vtm8zhh7UaXbbP83y0fenbLPpvzRNj0A7mbkLzZpE7qRna9LuP2INkg',
@@ -120,6 +146,7 @@ const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
     wuse: service.branches.wuseII,
     garki: service.branches.garki,
   },
+  variantsEnabled: service.tiersEnabled,
   variants: service.tiers.map((tier, index) => ({
     id: tier.id,
     name: index === 0 ? 'Regular' : tier.name,
@@ -132,24 +159,84 @@ const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
 export function BusinessOnboardingScreen({
   onBack,
   onComplete,
+  onOpenVerification,
   initialStep = 'intro',
 }: {
   onBack: () => void;
   onComplete: () => void;
+  /** Opens the (separate) verification section. Setup progress is preserved. */
+  onOpenVerification?: () => void;
   /** `'basic'` skips the marketing intro and lands directly on profile details (existing-account flow). */
   initialStep?: 'intro' | 'basic';
 }) {
-  const [stepIndex, setStepIndex] = useState(() => (initialStep === 'basic' ? 1 : 0));
-  const [draft, setDraft] = useState<BusinessProfileDraft>(INITIAL_DRAFT);
-  const [extraBranches, setExtraBranches] = useState<BusinessBranch[]>([]);
-  const [productDraft, setProductDraft] = useState<ProductDraft>(INITIAL_PRODUCT_DRAFT);
-  const [dealDraft, setDealDraft] = useState<ProductDraft>(INITIAL_PRODUCT_DRAFT);
-  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(INITIAL_SERVICE_DRAFT);
-  const [dealStudio, setDealStudio] = useState<DealStudioDraft>(INITIAL_DEAL_STUDIO_DRAFT);
+  const profile = useProfile();
+  // Restore saved progress from the module snapshot (if any) so returning from
+  // verification (or another route) resumes where the merchant left off.
+  const stored = getBusinessSetupSnapshot();
+  const [stepIndex, setStepIndex] = useState(() => {
+    if (stored) {
+      const index = (STEPS as readonly string[]).indexOf(stored.step);
+      if (index >= 0) return index;
+    }
+    return initialStep === 'basic' ? 1 : 0;
+  });
+  const [draft, setDraft] = useState<BusinessProfileDraft>(
+    () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
+  );
+  const [extraBranches, setExtraBranches] = useState<BusinessBranch[]>(
+    () => (stored?.data.extraBranches as BusinessBranch[] | undefined) ?? [],
+  );
+  const [productDraft, setProductDraft] = useState<ProductDraft>(
+    () => (stored?.data.productDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+  );
+  const [dealDraft, setDealDraft] = useState<ProductDraft>(
+    () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+  );
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
+    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? INITIAL_SERVICE_DRAFT,
+  );
+  const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
+    () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? INITIAL_DEAL_STUDIO_DRAFT,
+  );
+  const [verificationState, setVerificationState] = useState<VerificationSectionState>(
+    () => stored?.verificationState ?? 'not-started',
+  );
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [stepIndex]);
+
+  useEffect(() => {
+    saveBusinessSetupSnapshot(STEPS[stepIndex], {
+      draft,
+      extraBranches,
+      productDraft,
+      dealDraft,
+      serviceDraft,
+      dealStudio,
+    });
+  }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio]);
+
+  useEffect(() => {
+    setBusinessSetupVerificationState(verificationState);
+  }, [verificationState]);
+
+  // A service inherits its category/sub-category from the business profile, so
+  // keep the service draft aligned whenever the business classification changes.
+  useEffect(() => {
+    const classification = classifyServiceFromBusiness(draft.categories, draft.tags);
+    if (!classification) return;
+    setServiceDraft((current) =>
+      current.primaryCategory === classification.primaryCategory &&
+      current.subCategory === classification.subCategory
+        ? current
+        : {
+            ...current,
+            primaryCategory: classification.primaryCategory,
+            subCategory: classification.subCategory,
+          },
+    );
+  }, [draft.categories, draft.tags]);
 
   const updateDraft = (patch: Partial<BusinessProfileDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -168,6 +255,26 @@ export function BusinessOnboardingScreen({
   };
 
   const step: BusinessOnboardingStep = STEPS[stepIndex];
+
+  const activeSection: BusinessSetupSectionId = PROFILE_STEPS.includes(step) ? 'profile' : 'offerings';
+  const progressSnapshot = {
+    activeSection,
+    profileCompleted: activeSection !== 'profile',
+    offeringsCompleted: step === 'businessQr' || verificationState !== 'not-started',
+    verificationState,
+  };
+
+  const handleSelectSection = (id: BusinessSetupSectionId) => {
+    if (getSectionStates(progressSnapshot)[id] === 'locked') return;
+    if (id === 'profile') {
+      setStepIndex(1);
+    } else if (id === 'offerings') {
+      setStepIndex(7);
+    } else if (onOpenVerification) {
+      setVerificationState('in-progress');
+      onOpenVerification();
+    }
+  };
 
   const renderStep = () => {
     switch (step) {
@@ -316,6 +423,8 @@ export function BusinessOnboardingScreen({
           onDraftChange={updateServiceDraft}
           onNext={() => setStepIndex(15)}
           onSaveDraft={onBack}
+          businessCategories={draft.categories}
+          businessSubcategories={draft.tags}
         />
       );
     case 'service2':
@@ -425,5 +534,14 @@ export function BusinessOnboardingScreen({
     }
   };
 
-  return <div className="biz-flow">{renderStep()}</div>;
+  return (
+    <div className="biz-flow">
+      {step !== 'intro' && (
+        <div className="w-full max-w-[430px] mx-auto px-gutter pt-safe pt-2">
+          <BusinessSetupProgress {...progressSnapshot} variant="mobile" onSelectSection={handleSelectSection} />
+        </div>
+      )}
+      {renderStep()}
+    </div>
+  );
 }

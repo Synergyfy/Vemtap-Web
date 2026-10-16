@@ -8,16 +8,16 @@ import { URBAN_BUSINESS } from './businessData';
 
 interface BusinessMoreScreenProps {
   onTab: (tab: BusinessTabKey) => void;
-  onOpenPos: () => void;
   onOpenAnalytics: () => void;
   onOpenMarketing: () => void;
-  onOpenStorefront: () => void;
   onOpenSubscription: () => void;
+  onOpenAddOns: () => void;
   onOpenVerification: () => void;
+  onOpenNotifications: () => void;
   onOpenSupport: () => void;
+  onOpenSettings: () => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
-  onOpenStoreOrdering?: (sub?: 'dashboard' | 'qr' | 'settings') => void;
 }
 
 interface RowData {
@@ -50,16 +50,16 @@ const ERROR_BADGE = 'bg-error-container text-on-error-container';
 
 export function BusinessMoreScreen({
   onTab,
-  onOpenPos,
   onOpenAnalytics,
   onOpenMarketing,
-  onOpenStorefront,
   onOpenSubscription,
+  onOpenAddOns,
   onOpenVerification,
+  onOpenNotifications,
   onOpenSupport,
+  onOpenSettings,
   onSwitchConsumer,
   onSignOut,
-  onOpenStoreOrdering,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
   const [toast, setToast] = useState<string | null>(null);
@@ -78,67 +78,9 @@ export function BusinessMoreScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  // Order mirrors the desktop More side-menu list — keep both in sync.
+  // POS and Store Front now live in the POS menu (Overview quick action).
   const sections: SectionData[] = [
-    {
-      key: 'store-ordering',
-      label: 'Store Ordering & QR Touchpoints',
-      badge: 'Live',
-      badgeClass: GREEN_BADGE,
-      rows: [
-        {
-          key: 'ordering-dash',
-          icon: 'qr_code_scanner',
-          title: 'Store Ordering Dashboard',
-          sub: 'Live customer orders from QR codes & storefront',
-          badge: 'Live',
-          badgeClass: GREEN_BADGE,
-          onClick: () => (onOpenStoreOrdering ? onOpenStoreOrdering('dashboard') : showToast('Store Ordering opened')),
-        },
-        {
-          key: 'ordering-qr',
-          icon: 'qr_code_2',
-          title: 'QR Codes & Placement',
-          sub: 'Store, Section, Product & Table placement codes',
-          onClick: () => (onOpenStoreOrdering ? onOpenStoreOrdering('qr') : showToast('QR Codes opened')),
-        },
-        {
-          key: 'ordering-settings',
-          icon: 'tune',
-          title: 'Ordering Settings',
-          sub: 'Pickup lead times, branch policies & rules',
-          onClick: () => (onOpenStoreOrdering ? onOpenStoreOrdering('settings') : showToast('Settings opened')),
-        },
-      ],
-    },
-    {
-      key: 'pos',
-      label: 'Point of Sale (POS)',
-      badge: 'Active',
-      badgeClass: GREEN_BADGE,
-      rows: [
-        {
-          key: 'register',
-          icon: 'point_of_sale',
-          title: 'Point of Sale (POS)',
-          sub: 'Launch register, products till & transactions',
-          onClick: onOpenPos,
-        },
-      ],
-    },
-    {
-      key: 'analytics',
-      label: 'Analytics & Intelligence',
-      link: { label: 'Insights', onClick: onOpenAnalytics },
-      rows: [
-        {
-          key: 'insights',
-          icon: 'insights',
-          title: 'Analytics & Intelligence',
-          sub: 'Revenue, sales reports & customer metrics',
-          onClick: onOpenAnalytics,
-        },
-      ],
-    },
     {
       key: 'marketing',
       label: 'Marketing & Growth',
@@ -152,43 +94,47 @@ export function BusinessMoreScreen({
           tagClass: 'bg-error-container text-on-error-container',
           onClick: onOpenMarketing,
         },
+      ],
+    },
+    {
+      key: 'analytics',
+      label: 'Analytics',
+      rows: [
         {
-          key: 'network',
-          icon: 'hub',
-          title: 'Business Network',
-          sub: 'Refer local peers, unlock perks & cross-promote',
-          tag: 'NEW',
-          tagClass: 'bg-secondary-fixed text-primary',
-          onClick: () => showToast('Business Network opens next release'),
+          key: 'insights',
+          icon: 'insights',
+          title: 'Analytics & Intelligence',
+          sub: 'Revenue, sales reports & customer metrics',
+          onClick: onOpenAnalytics,
         },
       ],
     },
     {
-      key: 'discovery',
-      label: 'QR & Storefront Discovery',
+      key: 'billing',
+      label: 'Subscription & Billing',
       rows: [
         {
-          key: 'qr',
-          icon: 'qr_code_2',
-          title: 'QR & Storefront Discovery',
-          sub: 'Master QR, table codes & local visibility',
-          onClick: onOpenStorefront,
+          key: 'subscription',
+          icon: 'credit_card',
+          iconClass: 'bg-surface-container text-on-surface-variant',
+          title: 'Subscription & Billing',
+          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
+          onClick: onOpenSubscription,
+        },
+        {
+          key: 'addons',
+          icon: 'extension',
+          iconClass: 'bg-surface-container text-on-surface-variant',
+          title: 'Add-ons & Credits',
+          sub: 'SMS credits, boosts & paid extensions',
+          onClick: onOpenAddOns,
         },
       ],
     },
     {
-      key: 'feedback',
-      label: 'Customer Feedback & Alerts',
+      key: 'notifications',
+      label: 'Notifications',
       rows: [
-        {
-          key: 'reviews',
-          icon: 'hotel_class',
-          title: 'Reviews & Ratings',
-          sub: '4.9 ★ · 128 verified customer reviews',
-          badge: '3 new',
-          badgeClass: GREEN_BADGE,
-          onClick: () => showToast('Opening 3 new reviews'),
-        },
         {
           key: 'notifications',
           icon: 'notifications_active',
@@ -197,22 +143,14 @@ export function BusinessMoreScreen({
           sub: 'Till alerts, payout updates & staff clock-ins',
           badge: '4 unread',
           badgeClass: ERROR_BADGE,
-          onClick: () => showToast('Opening notification center'),
+          onClick: onOpenNotifications,
         },
       ],
     },
     {
-      key: 'account',
-      label: 'Account, Trust & Support',
+      key: 'verification',
+      label: 'Verification',
       rows: [
-        {
-          key: 'billing',
-          icon: 'credit_card',
-          iconClass: 'bg-surface-container text-on-surface-variant',
-          title: 'Subscription & Billing',
-          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
-          onClick: onOpenSubscription,
-        },
         {
           key: 'verification',
           icon: 'verified_user',
@@ -223,6 +161,12 @@ export function BusinessMoreScreen({
           badgeClass: GREEN_BADGE,
           onClick: onOpenVerification,
         },
+      ],
+    },
+    {
+      key: 'support',
+      label: 'Help & Support',
+      rows: [
         {
           key: 'support',
           icon: 'support_agent',
@@ -231,13 +175,19 @@ export function BusinessMoreScreen({
           sub: 'Live WhatsApp support & merchant guides',
           onClick: onOpenSupport,
         },
+      ],
+    },
+    {
+      key: 'settings',
+      label: 'Business Settings',
+      rows: [
         {
-          key: 'settings',
-          icon: 'tune',
+          key: 'business-settings',
+          icon: 'settings',
           iconClass: 'bg-surface-container text-on-surface-variant',
-          title: 'Store Settings',
-          sub: 'VAT/Taxes, thermal receipts & terminal permissions',
-          onClick: () => showToast('Store settings coming soon'),
+          title: 'Business Settings',
+          sub: 'NDPR data rights, transaction PIN & account security',
+          onClick: onOpenSettings,
         },
       ],
     },
@@ -317,10 +267,8 @@ export function BusinessMoreScreen({
           <div className="h-16 px-margin flex items-center justify-between gap-space-sm">
             <div className="flex items-center gap-space-sm min-w-0 flex-1">
               <h1 className="font-heading-sm text-heading-sm text-on-surface tracking-tight truncate">More</h1>
-              <BusinessBranchSelect
-                leading="dot"
-                nameClassName="font-label-sm text-label-sm font-semibold truncate max-w-[110px]"
-              />
+              {/* Branch control — the location at the top header drives this page. */}
+              <BusinessBranchSelect iconOnly align="right" />
             </div>
             <div className="flex items-center gap-space-xs shrink-0">
               <button

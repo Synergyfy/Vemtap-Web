@@ -3,40 +3,54 @@ import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 import {
   PortalBody,
-  PortalRail,
   PORTAL_CONTENT,
-  RAIL_OFFSET,
+  POS_RAIL_OFFSET,
+  BUSINESS_NAV_EVENT,
   ShellAccountMenu,
-  type RailGroup,
   type ShellAccountKey,
 } from './PortalShell';
+import { BusinessSidebarRail } from './BusinessSidebarRail';
+import { PosNavRail } from './PosNavRail';
+import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 
 export type PosTerminalNavKey =
   | 'home'
   | 'register'
   | 'orders'
+  | 'bookings'
   | 'products'
   | 'ledger'
   | 'hardware-and-sync'
   | 'settings';
 
-const NAV_ITEMS: Array<{ key: PosTerminalNavKey; label: string }> = [
-  { key: 'home', label: 'POS Home' },
-  { key: 'register', label: 'Register' },
-  { key: 'orders', label: 'Orders' },
-  { key: 'products', label: 'Products' },
-  { key: 'ledger', label: 'Ledger' },
-  { key: 'hardware-and-sync', label: 'Hardware & Sync' },
-  { key: 'settings', label: 'Settings' },
-];
+/**
+ * Maps a terminal nav key to the POS rail item that should read as active, and
+ * back again — so the POS menu beside the collapsed business rail always reflects
+ * the terminal page the user is on.
+ */
+const TERMINAL_TO_RAIL: Record<PosTerminalNavKey, string> = {
+  home: 'pos-home',
+  register: 'pos-sale',
+  orders: 'orders-all',
+  bookings: 'orders-bookings',
+  products: 'pos-stock',
+  ledger: 'pos-transactions',
+  'hardware-and-sync': 'pos-sync',
+  settings: 'pos-settings',
+};
 
-const navItem = (key: PosTerminalNavKey) => NAV_ITEMS.find((item) => item.key === key)!;
-
-const NAV_GROUPS: ReadonlyArray<RailGroup<PosTerminalNavKey>> = [
-  { label: 'Point of Sale', items: [navItem('home'), navItem('register'), navItem('orders')] },
-  { label: 'Inventory', items: [navItem('products'), navItem('ledger')] },
-  { label: 'Terminal', items: [navItem('hardware-and-sync'), navItem('settings')] },
-];
+const RAIL_TO_TERMINAL: Record<string, PosTerminalNavKey> = {
+  'pos-home': 'home',
+  'pos-sale': 'register',
+  'orders-all': 'orders',
+  // Bookings must land on the bookings page — not the order lookup page.
+  'orders-bookings': 'bookings',
+  'pos-transactions': 'ledger',
+  'pos-sync': 'hardware-and-sync',
+  'pos-stock': 'products',
+  'pos-ledger': 'ledger',
+  'pos-settings': 'settings',
+};
 
 function formatWat(date: Date): string {
   const utc = date.getTime() + date.getTimezoneOffset() * 60000;
@@ -64,6 +78,9 @@ interface PosTerminalChromeProps {
 
 export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboard, onSignOut }: PosTerminalChromeProps) {
   const sessionTime = useWatClock();
+  // The POS menu beside the collapsed business rail highlights the item that
+  // matches the current terminal page.
+  const railKey = TERMINAL_TO_RAIL[activeNav ?? 'register'];
 
   const exitToDashboard = () => {
     if (onExitToDashboard) {
@@ -81,7 +98,7 @@ export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboar
   };
 
   return (
-    <div className={`bg-surface font-body-md text-body-md text-on-surface min-h-screen flex flex-col antialiased ${RAIL_OFFSET}`}>
+    <div className={`bg-surface font-body-md text-body-md text-on-surface min-h-screen flex flex-col antialiased ${POS_RAIL_OFFSET}`}>
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center shrink-0">
@@ -97,14 +114,17 @@ export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboar
               </span>
             </button>
             <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
-            <button
-              type="button"
-              className="hidden lg:flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle text-text-secondary hover:bg-surface-container transition-colors"
-            >
-              <Icon name="storefront" className="text-[18px] text-primary" />
-              <span className="font-label-sm text-label-sm font-medium text-text-primary">Wuse II Branch Flagship</span>
-              <Icon name="expand_more" className="text-[16px] text-text-tertiary" />
-            </button>
+            {/* Branch control — the location shown in the header drives every page. */}
+            <div className="hidden lg:block">
+              <BusinessBranchSelect
+                align="left"
+                triggerClassName="inline-flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle text-text-secondary hover:bg-surface-container transition-colors max-w-[240px]"
+                nameClassName="font-label-sm text-label-sm font-medium text-text-primary"
+              />
+            </div>
+            <div className="lg:hidden">
+              <BusinessBranchSelect iconOnly align="left" />
+            </div>
           </div>
 
           <div className="flex items-center gap-space-sm shrink-0">
@@ -127,7 +147,28 @@ export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboar
         </div>
       </header>
 
-      <PortalRail groups={NAV_GROUPS} active={activeNav} onSelect={onNav} />
+      {/* POS mode: the main business rail stays visible (collapsed to icons) and the
+          POS menu opens beside it — instead of the side menu being swapped out. */}
+      <BusinessSidebarRail
+        collapsed
+        headerHeight="16"
+        active={railKey}
+        onSelect={(key) => window.dispatchEvent(new CustomEvent(BUSINESS_NAV_EVENT, { detail: key }))}
+      />
+      <PosNavRail
+        headerHeight="16"
+        active={railKey}
+        onSelect={(key) => {
+          const terminalKey = RAIL_TO_TERMINAL[key];
+          if (terminalKey) {
+            onNav(terminalKey);
+            return;
+          }
+          // Store Front pages belong to the business portal shell — hand the key
+          // back to the shared business router instead of the terminal switch.
+          window.dispatchEvent(new CustomEvent(BUSINESS_NAV_EVENT, { detail: key }));
+        }}
+      />
 
       <main className="w-full pt-16 flex-1 bg-surface">
         <PortalBody>{children}</PortalBody>

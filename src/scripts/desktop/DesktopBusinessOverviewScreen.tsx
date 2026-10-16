@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
-import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
@@ -10,6 +9,7 @@ interface DesktopBusinessOverviewScreenProps {
   onBoost?: () => void;
   onAddOns?: () => void;
   onOpenOrders?: () => void;
+  onOpenBookings?: () => void;
   onOpenMessages?: () => void;
 }
 
@@ -29,6 +29,7 @@ export function DesktopBusinessOverviewScreen({
   onBoost,
   onAddOns,
   onOpenOrders,
+  onOpenBookings,
   onOpenMessages,
 }: DesktopBusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
@@ -64,7 +65,7 @@ export function DesktopBusinessOverviewScreen({
       label: 'Bookings',
       value: stats.bookings,
       note: 'Next in 35 mins',
-      onClick: onOpenOrders,
+      onClick: onOpenBookings ?? onOpenOrders,
     },
     {
       icon: 'chat_bubble',
@@ -122,7 +123,6 @@ export function DesktopBusinessOverviewScreen({
                 </span>
               </div>
             </div>
-            <BusinessBranchSelect align="right" />
           </section>
 
           {/* Banner Carousel */}

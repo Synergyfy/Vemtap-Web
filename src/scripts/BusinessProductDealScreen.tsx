@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessProductDealScreenProps {
@@ -54,11 +55,12 @@ export function BusinessProductDealScreen({
     [],
   );
 
-  const regularVariant = draft.variants.find((variant) => variant.name === 'Regular') ?? draft.variants[0];
+  const activeVariants = getActiveVariants(draft);
+  const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
   const baseAmount = parseAmount(regularVariant?.price ?? draft.basePrice);
   const dealPrice = (pct: number) => `₦${formatAmount(Math.round(baseAmount * (1 - pct / 100)))}`;
 
-  const variantPrices = draft.variants.map((variant) => variant.price);
+  const variantPrices = activeVariants.map((variant) => variant.price);
   const lowPrice = variantPrices[0] ?? draft.basePrice;
   const highPrice = variantPrices[1] ?? lowPrice;
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;

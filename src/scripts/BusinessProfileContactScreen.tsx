@@ -1,6 +1,14 @@
 import { useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { SocialChannelPicker } from '../components/SocialChannelPicker';
+import { useProfile } from '../context/ProfileContext';
+import {
+  CHANNEL_PLATFORMS,
+  CHANNEL_PLATFORM_BY_ID,
+  normalizeChannel,
+  type ChannelPlatformId,
+} from '../utils/socialChannels';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
 
 interface BusinessProfileContactScreenProps {
@@ -11,7 +19,24 @@ interface BusinessProfileContactScreenProps {
   onSaveDraft: () => void;
 }
 
+interface ChannelDraft {
+  id: string;
+  platform: ChannelPlatformId;
+  value: string;
+  touched: boolean;
+}
+
 type Status = 'idle' | 'saving';
+
+const CORE_PLATFORMS: ChannelPlatformId[] = ['instagram', 'whatsapp', 'x'];
+
+const seedChannels = (draft: BusinessProfileDraft): ChannelDraft[] =>
+  (['instagram', 'whatsapp', 'x'] as const).map((platform) => ({
+    id: platform,
+    platform,
+    value: draft[platform] ?? '',
+    touched: false,
+  }));
 
 export function BusinessProfileContactScreen({
   draft,
@@ -20,10 +45,41 @@ export function BusinessProfileContactScreen({
   onNext,
   onSaveDraft,
 }: BusinessProfileContactScreenProps) {
+  const profile = useProfile();
   const [status, setStatus] = useState<Status>('idle');
-  const instagramRef = useRef<HTMLInputElement | null>(null);
-  const whatsappRef = useRef<HTMLInputElement | null>(null);
-  const xRef = useRef<HTMLInputElement | null>(null);
+  const [channels, setChannels] = useState<ChannelDraft[]>(() => seedChannels(draft));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [emailEditing, setEmailEditing] = useState(false);
+  const channelSeq = useRef(0);
+  const channelInputs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const usedPlatforms = channels.map((channel) => channel.platform);
+  const allPlatformsAdded = usedPlatforms.length >= CHANNEL_PLATFORMS.length;
+
+  const setChannelValue = (id: string, value: string) => {
+    const channel = channels.find((item) => item.id === id);
+    if (channel && CORE_PLATFORMS.includes(channel.platform)) {
+      onChange({ [channel.platform]: value });
+    }
+    setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, value, touched: true } : item)));
+  };
+
+  const markChannelTouched = (id: string) =>
+    setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, touched: true } : item)));
+
+  const addChannel = (platform: ChannelPlatformId) => {
+    setPickerOpen(false);
+    if (usedPlatforms.includes(platform)) return;
+    const id = `${platform}-${channelSeq.current++}`;
+    setChannels((prev) => [...prev, { id, platform, value: '', touched: false }]);
+  };
+
+  const removeChannel = (id: string) =>
+    setChannels((prev) => prev.filter((channel) => channel.id !== id));
+
+  const accountEmail = profile.email.trim().toLowerCase();
+  const isAccountEmail = accountEmail.length > 0 && draft.email.trim().toLowerCase() === accountEmail;
+  const emailLocked = isAccountEmail && !emailEditing;
 
   const handleComplete = () => {
     if (status !== 'idle') return;
@@ -129,24 +185,49 @@ export function BusinessProfileContactScreen({
               <label className="font-label-md text-label-md text-text-primary font-medium" htmlFor="official-email">
                 Official Business Email
               </label>
-              <span className="font-caption text-caption px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary-container font-semibold">
-                Required
-              </span>
+              {isAccountEmail ? (
+                <span className="font-caption text-caption px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-semibold flex items-center gap-1">
+                  <Icon name="verified_user" className="text-[14px]" />
+                  Linked to account
+                </span>
+              ) : (
+                <span className="font-caption text-caption px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary-container font-semibold">
+                  Needs verification
+                </span>
+              )}
             </div>
             <div className="relative flex items-center">
               <input
-                className="w-full h-[52px] pl-4 pr-11 bg-surface-subtle rounded-xl font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue transition-colors"
+                className={`w-full h-[52px] pl-4 pr-11 bg-surface-subtle rounded-xl font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue transition-colors ${
+                  emailLocked ? 'cursor-not-allowed' : ''
+                }`}
                 id="official-email"
                 placeholder="support@yourbusiness.ng"
                 type="email"
+                readOnly={emailLocked}
                 value={draft.email}
                 onChange={(event) => onChange({ email: event.target.value })}
               />
-              <Icon className="text-text-tertiary absolute right-3 pointer-events-none text-[20px]" name="mail" />
+              {emailLocked ? (
+                <button
+                  aria-label="Edit business email"
+                  className="absolute right-3 flex items-center justify-center text-primary-container hover:text-primary transition-colors"
+                  type="button"
+                  onClick={() => setEmailEditing(true)}
+                >
+                  <Icon className="text-[20px]" name="edit" />
+                </button>
+              ) : (
+                <Icon className="text-text-tertiary absolute right-3 pointer-events-none text-[20px]" name="mail" />
+              )}
             </div>
             <p className="font-caption text-caption text-text-secondary mt-2 flex items-start gap-1">
               <Icon className="text-text-tertiary text-[15px] shrink-0 mt-0.5" name="verified_user" />
-              <span>For settlement invoices and official platform notices.</span>
+              <span>
+                {isAccountEmail
+                  ? 'Pulled from your verified VEMTAP account. Editing needs a re-verification check.'
+                  : 'For settlement invoices — we will re-verify this address before launch.'}
+              </span>
             </p>
           </div>
 
@@ -170,115 +251,113 @@ export function BusinessProfileContactScreen({
           </div>
 
           <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-1">
               <div>
                 <h3 className="font-label-md text-label-md text-text-primary font-semibold">
                   Social &amp; Messaging Presences
                 </h3>
                 <p className="font-caption text-caption text-text-secondary">
-                  Showcases trust icons directly on your profile card
+                  Paste an @handle or link — we build the destination
                 </p>
               </div>
-              <button
-                aria-label="Add social presence"
-                className="w-8 h-8 rounded-full bg-surface-subtle flex items-center justify-center text-primary-container hover:bg-surface-tint-blue transition-colors"
-                type="button"
-                onClick={() => instagramRef.current?.focus()}
-              >
-                <Icon name="add" className="text-[18px]" />
-              </button>
+              <div className="relative">
+                <button
+                  aria-label="Add social presence"
+                  aria-haspopup="menu"
+                  aria-expanded={pickerOpen}
+                  className="w-8 h-8 rounded-full bg-surface-subtle flex items-center justify-center text-primary-container hover:bg-surface-tint-blue transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  type="button"
+                  disabled={allPlatformsAdded}
+                  onClick={() => setPickerOpen((open) => !open)}
+                >
+                  <Icon name="add" className="text-[18px]" />
+                </button>
+                {pickerOpen ? (
+                  <SocialChannelPicker
+                    used={usedPlatforms}
+                    onSelect={addChannel}
+                    onClose={() => setPickerOpen(false)}
+                  />
+                ) : null}
+              </div>
             </div>
-            <div className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-surface-subtle">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface shrink-0">
-                    <Icon name="photo_camera" className="text-[20px]" />
+            <div className="flex flex-col gap-2.5 mt-3">
+              {channels.map((channel) => {
+                const platform = CHANNEL_PLATFORM_BY_ID[channel.platform];
+                const result = normalizeChannel(channel.platform, channel.value);
+                const showError = channel.touched && channel.value.trim().length > 0 && !result.ok;
+                const isCore = CORE_PLATFORMS.includes(channel.platform);
+                return (
+                  <div key={channel.id} className="flex items-start justify-between gap-2 p-3 rounded-xl bg-surface-subtle">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${platform.iconClass}`}
+                      >
+                        <Icon name={platform.icon} className="text-[20px]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1 font-label-sm text-label-sm text-text-secondary">
+                          {platform.label}
+                          {result.ok ? <Icon className="text-badge-discount-text text-[14px]" name="check_circle" filled /> : null}
+                        </span>
+                        <input
+                          aria-label={`${platform.label} ${platform.kind === 'phone' ? 'phone number' : 'handle'}`}
+                          aria-invalid={showError}
+                          className="block w-full font-label-md text-label-md text-text-primary font-medium bg-transparent border-none outline-none focus:ring-0 p-0 placeholder:text-text-tertiary"
+                          ref={(node) => {
+                            channelInputs.current[channel.id] = node;
+                          }}
+                          placeholder={platform.placeholder}
+                          type="text"
+                          value={channel.value}
+                          onBlur={() => markChannelTouched(channel.id)}
+                          onChange={(event) => setChannelValue(channel.id, event.target.value)}
+                        />
+                        {showError ? (
+                          <span className="flex items-center gap-1 font-caption text-caption text-error mt-0.5">
+                            <Icon className="text-[13px]" name="error" />
+                            {result.error}
+                          </span>
+                        ) : result.ok ? (
+                          <a
+                            className="flex items-center gap-1 font-caption text-caption text-primary-container mt-0.5 min-w-0"
+                            href={result.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Icon className="text-[13px] shrink-0" name="link" />
+                            <span className="truncate">{result.display}</span>
+                          </a>
+                        ) : (
+                          <span className="block font-caption text-caption text-text-tertiary mt-0.5">
+                            {platform.hint}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!isCore ? (
+                        <button
+                          aria-label={`Remove ${platform.label}`}
+                          className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-error transition-colors"
+                          type="button"
+                          onClick={() => removeChannel(channel.id)}
+                        >
+                          <Icon name="delete" className="text-[16px]" />
+                        </button>
+                      ) : null}
+                      <button
+                        aria-label={`Edit ${platform.label}`}
+                        className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors"
+                        type="button"
+                        onClick={() => channelInputs.current[channel.id]?.focus()}
+                      >
+                        <Icon name="edit" className="text-[16px]" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="block font-label-sm text-label-sm text-text-secondary">Instagram</span>
-                    <input
-                      aria-label="Instagram handle"
-                      className="block w-full font-label-md text-label-md text-text-primary font-medium bg-transparent border-none outline-none focus:ring-0 p-0"
-                      ref={instagramRef}
-                      type="text"
-                      value={draft.instagram}
-                      onChange={(event) => onChange({ instagram: event.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Icon className="text-primary-container text-[18px]" name="verified" filled />
-                  <button
-                    aria-label="Edit Instagram handle"
-                    className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors"
-                    type="button"
-                    onClick={() => instagramRef.current?.focus()}
-                  >
-                    <Icon name="edit" className="text-[16px]" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-surface-subtle">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-9 h-9 rounded-lg bg-badge-discount-bg flex items-center justify-center text-badge-discount-text shrink-0">
-                    <Icon name="chat" className="text-[20px]" filled />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="block font-label-sm text-label-sm text-badge-discount-text font-medium">
-                      WhatsApp Direct
-                    </span>
-                    <input
-                      aria-label="WhatsApp Link"
-                      className="block w-full font-label-md text-label-md text-text-primary font-medium bg-transparent border-none outline-none focus:ring-0 p-0"
-                      ref={whatsappRef}
-                      type="text"
-                      value={draft.whatsapp}
-                      onChange={(event) => onChange({ whatsapp: event.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Icon className="text-badge-discount-text text-[18px]" name="check_circle" filled />
-                  <button
-                    aria-label="Edit WhatsApp Link"
-                    className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors"
-                    type="button"
-                    onClick={() => whatsappRef.current?.focus()}
-                  >
-                    <Icon name="edit" className="text-[16px]" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-surface-subtle">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface shrink-0">
-                    <Icon name="tag" className="text-[20px]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="block font-label-sm text-label-sm text-text-secondary">X (Twitter)</span>
-                    <input
-                      aria-label="X Handle"
-                      className="block w-full font-label-md text-label-md text-text-primary font-medium bg-transparent border-none outline-none focus:ring-0 p-0"
-                      ref={xRef}
-                      type="text"
-                      value={draft.x}
-                      onChange={(event) => onChange({ x: event.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    aria-label="Edit X Handle"
-                    className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors"
-                    type="button"
-                    onClick={() => xRef.current?.focus()}
-                  >
-                    <Icon name="edit" className="text-[16px]" />
-                  </button>
-                </div>
-              </div>
+                );
+              })}
             </div>
           </div>
 

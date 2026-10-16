@@ -35,6 +35,7 @@ export function DesktopBusinessOrdersScreen({
     initialView === 'bookings' ? 'bookings' : 'orders'
   );
   const [selectedOrder, setSelectedOrder] = useState<StoreOrder | null>(null);
+  const [originTab, setOriginTab] = useState<'all' | 'storefront' | 'deals' | 'pos'>('all');
   const [filterTab, setFilterTab] = useState<OrderFilterTab>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [branchFilter, setBranchFilter] = useState<string>('all');
@@ -91,6 +92,15 @@ export function DesktopBusinessOrdersScreen({
       if (filterTab === 'completed' && o.status !== 'completed') return false;
       if (filterTab === 'cancelled' && o.status !== 'cancelled' && o.status !== 'rejected') return false;
 
+      // Origin Tab Filter (Store Front, Deals, POS)
+      if (originTab === 'storefront') {
+        if (!['Storefront', 'Public Store Page', 'Store QR', 'Category QR', 'Product QR'].includes(o.origin)) return false;
+      } else if (originTab === 'deals') {
+        if (!['Deal', 'Cluster'].includes(o.origin)) return false;
+      } else if (originTab === 'pos') {
+        if (!['POS', 'POS Walk-in'].includes(o.origin)) return false;
+      }
+
       // Source / Channel filter
       if (sourceFilter !== 'all') {
         if (sourceFilter === 'Storefront' && o.origin !== 'Storefront' && o.origin !== 'Public Store Page') return false;
@@ -114,7 +124,19 @@ export function DesktopBusinessOrdersScreen({
       if (!sortNewest) return a.createdAt.localeCompare(b.createdAt);
       return b.createdAt.localeCompare(a.createdAt);
     });
-  }, [orders, filterTab, sourceFilter, branchFilter, searchQuery, sortNewest]);
+  }, [orders, filterTab, originTab, sourceFilter, branchFilter, searchQuery, sortNewest]);
+
+  // Origin counts for tabs
+  const originCounts = useMemo(() => {
+    return {
+      all: orders.length,
+      storefront: orders.filter((o) =>
+        ['Storefront', 'Public Store Page', 'Store QR', 'Category QR', 'Product QR'].includes(o.origin)
+      ).length,
+      deals: orders.filter((o) => ['Deal', 'Cluster'].includes(o.origin)).length,
+      pos: orders.filter((o) => ['POS', 'POS Walk-in'].includes(o.origin)).length,
+    };
+  }, [orders]);
 
   // Tab counts
   const tabCounts = useMemo(() => {
@@ -147,15 +169,15 @@ export function DesktopBusinessOrdersScreen({
     switch (origin) {
       case 'Storefront':
       case 'Public Store Page':
-        return { label: 'Storefront', icon: 'storefront', className: 'bg-primary/10 text-primary' };
+        return { label: 'Store Front', icon: 'storefront', className: 'bg-primary/10 text-primary' };
       case 'Store QR':
-        return { label: 'Store QR', icon: 'qr_code_2', className: 'bg-emerald-500/15 text-emerald-700' };
+        return { label: 'Store Front QR', icon: 'qr_code_2', className: 'bg-emerald-500/15 text-emerald-700' };
       case 'Category QR':
         return { label: 'Category QR', icon: 'category', className: 'bg-indigo-500/15 text-indigo-700' };
       case 'Product QR':
         return { label: 'Product QR', icon: 'inventory_2', className: 'bg-violet-500/15 text-violet-700' };
       case 'Deal':
-        return { label: 'Deal Voucher', icon: 'local_offer', className: 'bg-amber-500/15 text-amber-800' };
+        return { label: 'Deals', icon: 'local_offer', className: 'bg-amber-500/15 text-amber-800' };
       case 'Service':
         return { label: 'Service', icon: 'room_service', className: 'bg-cyan-500/15 text-cyan-800' };
       case 'Booking':
@@ -376,6 +398,39 @@ export function DesktopBusinessOrdersScreen({
                 <span>{sortNewest ? 'Newest' : 'Oldest'}</span>
               </button>
             </div>
+          </div>
+
+          {/* Order Origin Channel Tabs (Store Front, Deals, POS Walk-in) */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar border-b border-border/60 pb-2.5">
+            {[
+              { key: 'all' as const, label: 'All Channels', icon: 'apps', count: originCounts.all },
+              { key: 'storefront' as const, label: 'Store Front', icon: 'storefront', count: originCounts.storefront },
+              { key: 'deals' as const, label: 'Deals & Vouchers', icon: 'local_offer', count: originCounts.deals },
+              { key: 'pos' as const, label: 'POS Walk-in', icon: 'point_of_sale', count: originCounts.pos },
+            ].map((ot) => (
+              <button
+                key={ot.key}
+                type="button"
+                onClick={() => setOriginTab(ot.key)}
+                className={`px-3.5 py-2 rounded-xl font-label-md text-label-md transition-all flex items-center gap-2 shrink-0 ${
+                  originTab === ot.key
+                    ? 'bg-surface font-bold text-primary shadow-xs border border-border ring-1 ring-primary/20'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle border border-transparent'
+                }`}
+              >
+                <Icon name={ot.icon} className="text-[18px]" />
+                <span>{ot.label}</span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    originTab === ot.key
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-surface-subtle text-text-tertiary'
+                  }`}
+                >
+                  {ot.count}
+                </span>
+              </button>
+            ))}
           </div>
 
           {/* Unified Status Tabs Bar */}

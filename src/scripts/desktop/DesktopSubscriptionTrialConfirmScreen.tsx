@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { hasActiveTrial, startTrial } from '../../utils/trialState';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionTrialConfirmScreenProps {
@@ -87,8 +88,25 @@ export function DesktopSubscriptionTrialConfirmScreen({
     [],
   );
 
+  // Safety net: if a trial is already active (e.g. the user navigated back and
+  // re-entered this screen), never allow a second activation — go straight to
+  // the active-trial screen without touching the stored start date.
+  useEffect(() => {
+    if (hasActiveTrial()) {
+      onTrialStarted();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleStartTrial = () => {
     if (phase !== 'idle') return;
+    const { fresh } = startTrial();
+    if (!fresh) {
+      // Trial was already started previously — do not reset the period or
+      // create a duplicate subscription. Just proceed to the active screen.
+      onTrialStarted();
+      return;
+    }
     setPhase('activating');
     timers.current.push(window.setTimeout(() => setPhase('activated'), 800));
     timers.current.push(window.setTimeout(() => onTrialStarted(), 1900));

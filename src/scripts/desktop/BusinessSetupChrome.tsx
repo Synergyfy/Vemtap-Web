@@ -1,15 +1,10 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
+import { BusinessSetupProgress } from '../../components/BusinessSetupProgress';
+import { useBusinessSetupNav } from '../businessSetup';
 
 export type BusinessSetupNavKey = 'profile' | 'locations' | 'catalog' | 'payouts' | 'deals';
-
-const NAV_ITEMS: Array<{ key: BusinessSetupNavKey; label: string }> = [
-  { key: 'profile', label: 'Profile' },
-  { key: 'locations', label: 'Locations' },
-  { key: 'catalog', label: 'Catalog' },
-  { key: 'payouts', label: 'Payouts' },
-];
 
 const FOOTER_LINKS = ['Privacy Policy', 'Merchant Terms', 'Compliance & NDPR', 'Merchant Desk'];
 
@@ -19,7 +14,10 @@ interface BusinessSetupChromeProps {
   onBrand?: () => void;
 }
 
-export function BusinessSetupChrome({ children, activeNav = 'profile', onBrand }: BusinessSetupChromeProps) {
+export function BusinessSetupChrome({ children, activeNav: _activeNav = 'profile', onBrand }: BusinessSetupChromeProps) {
+  // When the setup container provides a navigation context we show the live,
+  // interactive three-section tracker instead of the decorative static nav.
+  const setupNav = useBusinessSetupNav();
   return (
     <div className="biz-flow w-full min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased flex flex-col">
       <header className="fixed top-0 w-full z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
@@ -37,25 +35,6 @@ export function BusinessSetupChrome({ children, activeNav = 'profile', onBrand }
             </div>
           </div>
           <div className="flex items-center gap-space-lg">
-            <nav className="hidden lg:flex items-center gap-space-xs">
-              {NAV_ITEMS.map((item) => {
-                const active = item.key === activeNav;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    aria-current={active ? 'page' : undefined}
-                    className={`px-space-sm py-space-xs transition-colors rounded-lg ${
-                      active
-                        ? 'bg-surface-tint-blue text-primary font-semibold'
-                        : 'font-label-md text-label-md text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-            </nav>
             <div className="flex items-center gap-space-md">
               <div className="hidden sm:flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-subtle text-text-secondary font-caption text-caption">
                 <Icon name="cloud_done" className="text-text-tertiary text-[16px]" />
@@ -77,6 +56,13 @@ export function BusinessSetupChrome({ children, activeNav = 'profile', onBrand }
       </header>
 
       <main className="w-full pt-16 bg-surface flex-1">
+        {setupNav && (
+          <div className="sticky top-16 z-40 bg-surface/95 backdrop-blur-md border-b border-border-subtle">
+            <div className="max-w-7xl mx-auto px-6 lg:px-12 py-space-sm">
+              <BusinessSetupProgress {...setupNav} variant="desktop" />
+            </div>
+          </div>
+        )}
         <div className="flex flex-col w-full">{children}</div>
       </main>
 

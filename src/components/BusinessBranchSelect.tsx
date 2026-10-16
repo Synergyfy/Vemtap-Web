@@ -7,6 +7,8 @@ interface BusinessBranchSelectProps {
   triggerClassName?: string;
   nameClassName?: string;
   align?: 'left' | 'right';
+  /** Icon-only trigger for compact headers — the branch name shows inside the dropdown. */
+  iconOnly?: boolean;
 }
 
 export function BusinessBranchSelect({
@@ -14,6 +16,7 @@ export function BusinessBranchSelect({
   triggerClassName,
   nameClassName,
   align = 'left',
+  iconOnly = false,
 }: BusinessBranchSelectProps) {
   const { branch, branches, switchTo } = useBusinessBranch();
   const [open, setOpen] = useState(false);
@@ -24,25 +27,33 @@ export function BusinessBranchSelect({
       <button
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label={`Location: ${branch.name}. Switch location`}
+        title={`Location: ${branch.name}`}
         className={
           triggerClassName ??
-          'inline-flex items-center gap-1 h-8 max-w-[170px] pl-2 pr-1.5 rounded-full bg-surface-container-low hover:bg-surface-container border border-border-subtle transition-colors active:scale-95 text-left'
+          (iconOnly
+            ? 'w-9 h-9 rounded-lg flex items-center justify-center bg-surface-subtle hover:bg-surface-container border border-border-subtle transition-colors active:scale-95'
+            : 'inline-flex items-center gap-1 h-8 max-w-[170px] pl-2 pr-1.5 rounded-full bg-surface-container-low hover:bg-surface-container border border-border-subtle transition-colors active:scale-95 text-left')
         }
         type="button"
         onClick={() => setOpen((current) => !current)}
       >
-        {leading === 'storefront' && <Icon name="storefront" className="text-primary text-[16px] shrink-0" />}
+        {leading === 'storefront' && <Icon name="storefront" className={`text-primary shrink-0 ${iconOnly ? 'text-[18px]' : 'text-[16px]'}`} />}
         {leading === 'location' && <Icon name="location_on" className="text-[16px] text-primary shrink-0" />}
         {leading === 'dot' && <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text shrink-0" />}
-        <span
-          className={`min-w-0 truncate ${nameClassName ?? 'font-label-sm text-label-sm font-semibold text-on-surface'}`}
-        >
-          {branch.name}
-        </span>
-        <Icon
-          name={leading === 'location' ? 'arrow_drop_down' : leading === 'dot' ? 'expand_more' : 'keyboard_arrow_down'}
-          className={`text-[16px] text-text-secondary shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
+        {!iconOnly && (
+          <span
+            className={`min-w-0 truncate ${nameClassName ?? 'font-label-sm text-label-sm font-semibold text-on-surface'}`}
+          >
+            {branch.name}
+          </span>
+        )}
+        {!iconOnly && (
+          <Icon
+            name={leading === 'location' ? 'arrow_drop_down' : leading === 'dot' ? 'expand_more' : 'keyboard_arrow_down'}
+            className={`text-[16px] text-text-secondary shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        )}
       </button>
       {open && (
         <div

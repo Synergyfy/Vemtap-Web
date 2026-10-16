@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
+import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 import { BusinessSidebarRail } from './BusinessSidebarRail';
 import {
   PortalBody,
@@ -28,17 +29,23 @@ export function EnterpriseShell({ children, activeNav, onNav, onSignOut }: Enter
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center shrink-0">
-            <div className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0">
+            <div className="w-auto lg:w-60 flex items-center gap-space-xs shrink-0">
               <Logo variant="full" className="h-10 md:h-11 w-auto" />
               <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
                 BUSINESS
               </span>
             </div>
-            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
-            <div className="hidden xl:flex items-center gap-space-2xs px-space-sm py-1.5 rounded-lg bg-surface-subtle text-text-secondary">
-              <Icon name="store" className="text-primary text-[18px]" />
-              <span className="font-label-sm text-label-sm text-text-primary font-medium">Wuse II Branch, Abuja, FCT</span>
-              <Icon name="expand_more" className="text-outline text-[16px]" />
+            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden lg:block" />
+            {/* Branch control — the location shown in the header drives every page. */}
+            <div className="hidden lg:block">
+              <BusinessBranchSelect
+                align="left"
+                triggerClassName="inline-flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle text-text-secondary hover:bg-surface-container transition-colors max-w-[240px]"
+                nameClassName="font-label-sm text-label-sm text-text-primary font-medium"
+              />
+            </div>
+            <div className="lg:hidden">
+              <BusinessBranchSelect iconOnly align="left" />
             </div>
           </div>
           <div className="flex items-center gap-space-md shrink-0">

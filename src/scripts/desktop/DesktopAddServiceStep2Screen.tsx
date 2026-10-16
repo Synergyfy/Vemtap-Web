@@ -148,10 +148,10 @@ export function DesktopAddServiceStep2Screen({
                   Live in Naira (NGN)
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="font-label-md text-label-md text-text-secondary" htmlFor="base-price-input">
-                    Standard Base Price *
+                    Base Price *
                   </label>
                   <div className="relative flex items-center">
                     <span className="absolute left-4 font-label-md text-label-md font-semibold text-text-tertiary">
@@ -168,9 +168,27 @@ export function DesktopAddServiceStep2Screen({
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
+                  <label className="font-label-md text-label-md text-text-secondary" htmlFor="standard-price-input">
+                    Standard Price
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-4 font-label-md text-label-md font-semibold text-text-tertiary">
+                      ₦
+                    </span>
+                    <input
+                      id="standard-price-input"
+                      type="text"
+                      value={draft.standardPrice}
+                      onChange={(event) => onDraftChange({ standardPrice: formatDigits(event.target.value) })}
+                      className="w-full pl-9 pr-14 py-3 bg-surface-subtle focus:bg-surface-canvas rounded-xl font-body-md text-body-md text-on-surface font-semibold focus:outline-none transition-all shadow-inner"
+                    />
+                    <span className="absolute right-4 font-caption text-caption text-text-tertiary font-medium">NGN</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <label className="font-label-md text-label-md text-text-secondary" htmlFor="compare-price-input">
-                      Compare-at Price (Original)
+                      Compare-at Price
                     </label>
                     <span className="font-caption text-caption text-badge-discount-text font-semibold flex items-center gap-1">
                       <Icon name="trending_down" className="text-[14px]" />
@@ -614,30 +632,6 @@ export function DesktopAddServiceStep2Screen({
               </div>
             </div>
 
-            <div className="bg-surface-canvas rounded-2xl p-6 shadow-sm flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={onNext}
-                className="w-full py-4 px-6 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
-              >
-                <span>Continue to Branch Availability</span>
-                <Icon name="arrow_forward" className="text-[20px]" />
-              </button>
-              <button
-                type="button"
-                onClick={onBack}
-                className="w-full py-3 px-4 rounded-xl hover:bg-surface-subtle text-text-secondary hover:text-on-surface font-button-secondary text-button-secondary transition-colors flex items-center justify-center gap-1.5"
-              >
-                <Icon name="arrow_back" className="text-[18px]" />
-                <span>Back to Step 1: Basics &amp; Media</span>
-              </button>
-              <div className="text-center mt-1">
-                <span className="font-caption text-caption text-text-tertiary">
-                  Changes stay cached in your merchant offline pocket
-                </span>
-              </div>
-            </div>
-
             <div className="p-4 rounded-2xl bg-surface-subtle flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-surface-canvas flex items-center justify-center text-text-secondary">
@@ -654,6 +648,31 @@ export function DesktopAddServiceStep2Screen({
               </div>
               <Icon name="chevron_right" className="text-text-tertiary text-[18px]" />
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back to Step 1: Basics &amp; Media</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onNext}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+            >
+              <span>Continue to Branch Availability</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </button>
           </div>
         </div>
       </div>

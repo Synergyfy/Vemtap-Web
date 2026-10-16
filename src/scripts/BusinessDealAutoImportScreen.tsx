@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
+import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessDealAutoImportScreenProps {
@@ -73,7 +74,8 @@ export function BusinessDealAutoImportScreen({
     [],
   );
 
-  const regularVariant = draft.variants.find((variant) => variant.name === 'Regular') ?? draft.variants[0];
+  const activeVariants = getActiveVariants(draft);
+  const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
   const baseAmount = parseAmount(regularVariant?.price ?? draft.basePrice);
   const pct = studio.discountPct;
   const savings = Math.round((baseAmount * pct) / 100);
@@ -277,9 +279,11 @@ export function BusinessDealAutoImportScreen({
             <div className="flex items-center justify-between bg-surface-subtle p-space-sm rounded-xl">
               <div className="flex flex-col">
                 <span className="font-label-md text-label-md text-text-primary font-semibold">
-                  Total Available Vouchers
+                  Quantity Limit
                 </span>
-                <span className="font-caption text-caption text-text-secondary">App alerts when 80% claimed</span>
+                <span className="font-caption text-caption text-text-secondary">
+                  Total promotional stock • App alerts when 80% claimed
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <button

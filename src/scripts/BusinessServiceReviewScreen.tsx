@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ServiceDraft } from './serviceDraft';
+import { validateAllServiceSteps, hasServiceValidationErrors } from './serviceStudioShared';
 
 interface BusinessServiceReviewScreenProps {
   draft: ServiceDraft;
@@ -54,6 +55,15 @@ export function BusinessServiceReviewScreen({
   const publishTimer = useRef<number | null>(null);
   const previewTimer = useRef<number | null>(null);
 
+  const validationErrors = validateAllServiceSteps(draft);
+  const hasErrors = hasServiceValidationErrors(validationErrors);
+  const errorCount =
+    validationErrors.identity.length +
+    validationErrors.locations.length +
+    validationErrors.description.length +
+    validationErrors.pricing.length +
+    validationErrors.policies.length;
+
   useEffect(
     () => () => {
       if (publishTimer.current !== null) {
@@ -67,7 +77,7 @@ export function BusinessServiceReviewScreen({
   );
 
   const handlePublish = () => {
-    if (publishStatus !== 'idle') return;
+    if (publishStatus !== 'idle' || hasErrors) return;
     setPublishStatus('publishing');
     publishTimer.current = window.setTimeout(() => {
       setPublishStatus('published');
@@ -150,7 +160,7 @@ export function BusinessServiceReviewScreen({
 
           <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
             <div className="relative w-full h-52 bg-surface-container">
-              <img className="w-full h-full object-cover" alt={REVIEW_IMAGE.alt} src={REVIEW_IMAGE.src} />
+              <img className="w-full h-full object-cover" alt={REVIEW_IMAGE.alt} src={draft.image || REVIEW_IMAGE.src} />
               <div className="absolute top-space-sm left-space-sm flex flex-wrap gap-space-2xs">
                 <div className="flex items-center space-x-1 bg-surface-canvas/90 backdrop-blur-md px-space-xs py-1 rounded-full shadow-sm">
                   <Icon className="text-[14px] text-text-primary" name="photo_library" />
@@ -321,35 +331,22 @@ export function BusinessServiceReviewScreen({
               </button>
             </div>
             <div className="space-y-space-sm">
-              <div className="flex items-start space-x-space-xs">
-                <Icon className="text-primary text-[18px] shrink-0 mt-0.5" name="price_check" />
-                <div>
-                  <p className="font-label-md text-label-md text-text-primary font-semibold">
-                    Pay at Salon Reception
-                  </p>
-                  <p className="font-caption text-caption text-text-secondary">
-                    ₦0 Upfront Fee on VEMTAP Instant Booking.
-                  </p>
+              {(draft.policies && draft.policies.length > 0
+                ? draft.policies
+                : [
+                    { id: 'p1', title: 'Pay at Salon Reception', body: '₦0 Upfront Fee on VEMTAP Instant Booking.' },
+                    { id: 'p2', title: 'Flexible Cancellation', body: 'Free cancellation & reschedule up to 2 hours before slot.' },
+                    { id: 'p3', title: 'Turnaround Buffer', body: '15 mins sanitization and room prep between clients.' },
+                  ]
+              ).map((p) => (
+                <div key={p.id} className="flex items-start space-x-space-xs">
+                  <Icon className="text-primary text-[18px] shrink-0 mt-0.5" name="verified_user" />
+                  <div>
+                    <p className="font-label-md text-label-md text-text-primary font-semibold">{p.title}</p>
+                    <p className="font-caption text-caption text-text-secondary">{p.body}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-start space-x-space-xs">
-                <Icon className="text-badge-discount-text text-[18px] shrink-0 mt-0.5" name="event_available" />
-                <div>
-                  <p className="font-label-md text-label-md text-text-primary font-semibold">Flexible Cancellation</p>
-                  <p className="font-caption text-caption text-text-secondary">
-                    Free cancellation &amp; reschedule up to 2 hours before slot.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-space-xs">
-                <Icon className="text-tertiary-container text-[18px] shrink-0 mt-0.5" name="sanitizer" />
-                <div>
-                  <p className="font-label-md text-label-md text-text-primary font-semibold">Turnaround Buffer</p>
-                  <p className="font-caption text-caption text-text-secondary">
-                    15 mins sanitization and room prep between clients.
-                  </p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -413,14 +410,38 @@ export function BusinessServiceReviewScreen({
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/90 backdrop-blur-md px-margin py-space-sm shadow-[0_-4px_20px_rgba(0,0,0,0.06)] pb-safe">
         <div className="flex flex-col gap-space-sm">
+          {hasErrors && (
+            <div className="p-2.5 rounded-xl border border-error/30 bg-error/5 flex flex-col gap-1">
+              <div className="flex items-center gap-1.5 text-error font-label-sm text-label-sm font-bold">
+                <Icon name="error" className="text-[16px]" />
+                <span>{errorCount} Required {errorCount === 1 ? 'Field' : 'Fields'} Missing</span>
+              </div>
+              <div className="text-[11px] text-text-secondary flex flex-wrap gap-x-2 gap-y-0.5">
+                {validationErrors.identity.map((e) => (
+                  <span key={e}>• {e} (<button type="button" onClick={onEditBasics} className="text-primary underline">Fix</button>)</span>
+                ))}
+                {validationErrors.locations.map((e) => (
+                  <span key={e}>• {e} (<button type="button" onClick={onEditBranches} className="text-primary underline">Fix</button>)</span>
+                ))}
+                {validationErrors.pricing.map((e) => (
+                  <span key={e}>• {e} (<button type="button" onClick={onEditPricing} className="text-primary underline">Fix</button>)</span>
+                ))}
+                {validationErrors.policies.map((e) => (
+                  <span key={e}>• {e} (<button type="button" onClick={onEditBranches} className="text-primary underline">Fix</button>)</span>
+                ))}
+              </div>
+            </div>
+          )}
           <button
             className={`w-full h-[52px] rounded-xl font-button-primary text-button-primary flex items-center justify-center space-x-space-xs transition-all active:scale-[0.98] ${
               publishStatus === 'published'
                 ? 'bg-badge-discount-text text-on-primary'
-                : 'bg-primary-container hover:bg-primary text-on-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)]'
+                : hasErrors
+                  ? 'bg-surface-container-highest text-text-tertiary cursor-not-allowed opacity-60'
+                  : 'bg-primary-container hover:bg-primary text-on-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)]'
             }`}
             type="button"
-            disabled={publishStatus !== 'idle'}
+            disabled={publishStatus !== 'idle' || hasErrors}
             onClick={handlePublish}
           >
             {publishStatus === 'idle' && (

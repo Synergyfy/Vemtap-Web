@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
+
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 
@@ -352,8 +352,7 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
             </button>
           </div>
 
-          <div className="mt-space-sm flex items-center justify-between gap-space-xs">
-            <BusinessBranchSelect leading="location" />
+          <div className="mt-space-sm flex items-center justify-end gap-space-xs">
             <span className="font-caption text-caption text-text-tertiary">{members.length} team members</span>
           </div>
         </section>

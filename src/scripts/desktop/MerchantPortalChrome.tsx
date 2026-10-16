@@ -36,7 +36,7 @@ export function MerchantPortalChrome({
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center shrink-0">
-            <div className="w-auto xl:w-60 flex items-center gap-space-xs shrink-0">
+            <div className="w-auto lg:w-60 flex items-center gap-space-xs shrink-0">
               <button
                 type="button"
                 onClick={() => onNav?.('overview')}
@@ -48,7 +48,7 @@ export function MerchantPortalChrome({
                 </span>
               </button>
             </div>
-            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden xl:block" />
+            <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden lg:block" />
             <button
               type="button"
               className="relative flex items-center gap-space-xs bg-surface-subtle hover:bg-surface-container-low px-space-sm py-1.5 rounded-xl cursor-pointer transition-colors"

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { isVariantProduct, getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -54,8 +55,10 @@ export function DesktopProductPublishedScreen({
   );
 
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
-  const totalStock = draft.variants.reduce((sum, variant) => sum + toNumber(variant.inventory), 0);
-  const variantPrices = draft.variants.map((variant) => toNumber(variant.price)).filter((price) => price > 0);
+  const activeVariants = getActiveVariants(draft);
+  const variantMode = isVariantProduct(draft);
+  const totalStock = activeVariants.reduce((sum, variant) => sum + toNumber(variant.inventory), 0);
+  const variantPrices = activeVariants.map((variant) => toNumber(variant.price)).filter((price) => price > 0);
   const priceMin = variantPrices.length > 0 ? Math.min(...variantPrices) : toNumber(draft.basePrice);
   const priceMax = variantPrices.length > 0 ? Math.max(...variantPrices) : toNumber(draft.basePrice);
 
@@ -156,9 +159,15 @@ export function DesktopProductPublishedScreen({
                     {draft.title}
                   </h2>
                   <span className="font-heading-sm text-heading-sm text-primary font-bold">
-                    ₦{priceMin.toLocaleString('en-US')}{' '}
-                    <span className="font-label-md text-label-md text-text-secondary font-normal">–</span> ₦
-                    {priceMax.toLocaleString('en-US')}
+                    {variantMode ? (
+                      <>
+                        ₦{priceMin.toLocaleString('en-US')}{' '}
+                        <span className="font-label-md text-label-md text-text-secondary font-normal">–</span> ₦
+                        {priceMax.toLocaleString('en-US')}
+                      </>
+                    ) : (
+                      <>₦{priceMin.toLocaleString('en-US')}</>
+                    )}
                   </span>
                 </div>
                 <p className="font-body-md text-body-md text-text-secondary mb-space-md">{draft.description}</p>
@@ -166,7 +175,7 @@ export function DesktopProductPublishedScreen({
                   <div className="p-space-sm rounded-xl bg-surface-container-low flex flex-col">
                     <span className="font-caption text-caption text-text-secondary">Aggregate Inventory</span>
                     <span className="font-heading-sm text-heading-sm text-on-surface font-bold mt-1">
-                      {totalStock} Units
+                      {variantMode ? `${totalStock} Units` : 'Single item'}
                     </span>
                     <span className="font-caption text-caption text-badge-discount-text font-medium mt-0.5">
                       Healthy coverage

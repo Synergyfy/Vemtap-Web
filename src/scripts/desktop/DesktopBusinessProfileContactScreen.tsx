@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { SocialChannelPicker } from '../../components/SocialChannelPicker';
+import { useProfile } from '../../context/ProfileContext';
+import {
+  CHANNEL_PLATFORMS,
+  CHANNEL_PLATFORM_BY_ID,
+  normalizeChannel,
+  type ChannelPlatformId,
+} from '../../utils/socialChannels';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 
@@ -11,13 +19,25 @@ interface DesktopBusinessProfileContactScreenProps {
   onSaveDraft: () => void;
 }
 
+interface ChannelDraft {
+  id: string;
+  platform: ChannelPlatformId;
+  value: string;
+  touched: boolean;
+}
+
+const CORE_PLATFORMS: ChannelPlatformId[] = ['instagram', 'whatsapp', 'x'];
+
+const seedChannels = (draft: BusinessProfileDraft): ChannelDraft[] =>
+  (['instagram', 'whatsapp', 'x'] as const).map((platform) => ({
+    id: platform,
+    platform,
+    value: draft[platform] ?? '',
+    touched: false,
+  }));
+
 const LAUNCH_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCNczFLc0faRiEg4jO8sXFdg1kenSyM1sPXHoySM_AZy0ALkQgOd5Rz9poPpMDFASLZ-lonWkAaADj9SsuBiiphhxFqofAmKSvGnwvS87VQPjE4FPWUubVLH3Ex-PmTHoXYS3DH-NvdMggquKPlwNLFV-pGyoxF8uwY4afUg_ifquogK2A90GDeEQEeyipYTwK7ucgRwD_uy_HLw8_aQjJN1e1QQtNO7AzVw8QIbMIu';
-
-interface ExtraChannel {
-  id: number;
-  handle: string;
-}
 
 export function DesktopBusinessProfileContactScreen({
   draft,
@@ -26,13 +46,14 @@ export function DesktopBusinessProfileContactScreen({
   onNext,
   onSaveDraft,
 }: DesktopBusinessProfileContactScreenProps) {
+  const profile = useProfile();
   const [status, setStatus] = useState<'idle' | 'saving'>('idle');
-  const [extraChannels, setExtraChannels] = useState<ExtraChannel[]>([]);
-  const [nextChannelId, setNextChannelId] = useState(1);
+  const [channels, setChannels] = useState<ChannelDraft[]>(() => seedChannels(draft));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [emailEditing, setEmailEditing] = useState(false);
+  const channelSeq = useRef(0);
   const timers = useRef<number[]>([]);
-  const instagramRef = useRef<HTMLInputElement | null>(null);
-  const whatsappRef = useRef<HTMLInputElement | null>(null);
-  const twitterRef = useRef<HTMLInputElement | null>(null);
+  const channelInputs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
@@ -47,14 +68,33 @@ export function DesktopBusinessProfileContactScreen({
     onDraftChange({ prefs: { ...draft.prefs, [key]: !draft.prefs[key] } });
   };
 
-  const addChannel = () => {
-    if (extraChannels.length >= 3) return;
-    setExtraChannels((prev) => [...prev, { id: nextChannelId, handle: '' }]);
-    setNextChannelId((id) => id + 1);
+  const usedPlatforms = channels.map((channel) => channel.platform);
+  const allPlatformsAdded = usedPlatforms.length >= CHANNEL_PLATFORMS.length;
+
+  const setChannelValue = (id: string, value: string) => {
+    const channel = channels.find((item) => item.id === id);
+    if (channel && CORE_PLATFORMS.includes(channel.platform)) {
+      onDraftChange({ [channel.platform]: value });
+    }
+    setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, value, touched: true } : item)));
   };
 
-  const removeChannel = (id: number) =>
-    setExtraChannels((prev) => prev.filter((channel) => channel.id !== id));
+  const markChannelTouched = (id: string) =>
+    setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, touched: true } : item)));
+
+  const addChannel = (platform: ChannelPlatformId) => {
+    setPickerOpen(false);
+    if (usedPlatforms.includes(platform)) return;
+    const id = `${platform}-${channelSeq.current++}`;
+    setChannels((prev) => [...prev, { id, platform, value: '', touched: false }]);
+  };
+
+  const removeChannel = (id: string) =>
+    setChannels((prev) => prev.filter((channel) => channel.id !== id));
+
+  const accountEmail = profile.email.trim().toLowerCase();
+  const isAccountEmail = accountEmail.length > 0 && draft.email.trim().toLowerCase() === accountEmail;
+  const emailLocked = isAccountEmail && !emailEditing;
 
   const handleComplete = () => {
     if (status !== 'idle') return;
@@ -153,8 +193,22 @@ export function DesktopBusinessProfileContactScreen({
                   </p>
                 </div>
                 <div className="flex flex-col gap-space-2xs">
-                  <label className="font-label-md text-label-md text-text-primary" htmlFor="email-input">
-                    Official Business Email <span className="text-error">*</span>
+                  <label
+                    className="font-label-md text-label-md text-text-primary flex items-center justify-between gap-space-sm"
+                    htmlFor="email-input"
+                  >
+                    <span>
+                      Official Business Email <span className="text-error">*</span>
+                    </span>
+                    {isAccountEmail ? (
+                      <span className="text-badge-discount-text text-caption font-label-sm flex items-center gap-1 font-semibold">
+                        <Icon name="verified_user" className="text-[14px]" /> Linked to your account
+                      </span>
+                    ) : (
+                      <span className="text-tertiary-container text-caption font-label-sm flex items-center gap-1 font-semibold">
+                        <Icon name="pending" className="text-[14px]" /> Needs verification
+                      </span>
+                    )}
                   </label>
                   <div className="flex items-center rounded-lg bg-surface-subtle focus-within:bg-surface-canvas px-space-md shadow-sm">
                     <Icon name="mail" className="text-text-tertiary text-[20px] mr-space-xs" />
@@ -162,15 +216,33 @@ export function DesktopBusinessProfileContactScreen({
                       id="email-input"
                       type="email"
                       placeholder="name@business.com"
+                      readOnly={emailLocked}
                       value={draft.email}
                       onChange={(event) => onDraftChange({ email: event.target.value })}
-                      className="w-full h-[52px] bg-transparent text-text-primary font-body-md text-body-md outline-none focus:ring-0 placeholder:text-text-tertiary"
+                      className={`w-full h-[52px] bg-transparent text-text-primary font-body-md text-body-md outline-none focus:ring-0 placeholder:text-text-tertiary ${
+                        emailLocked ? 'cursor-not-allowed' : ''
+                      }`}
                     />
-                    <Icon name="verified" className="text-badge-discount-text text-[20px]" />
+                    {emailLocked ? (
+                      <button
+                        type="button"
+                        aria-label="Edit business email"
+                        onClick={() => setEmailEditing(true)}
+                        className="p-space-2xs rounded-lg text-primary hover:bg-surface-tint-blue transition-colors"
+                      >
+                        <Icon name="edit" className="text-[18px]" />
+                      </button>
+                    ) : (
+                      <Icon name="verified" className="text-badge-discount-text text-[20px]" />
+                    )}
                   </div>
                   <p className="font-caption text-caption text-text-secondary mt-space-2xs flex items-center gap-space-2xs">
                     <Icon name="info" className="text-text-tertiary text-[14px]" />
-                    For settlement invoices and official platform notices.
+                    {isAccountEmail
+                      ? 'Pulled from your verified VEMTAP account. Editing needs a re-verification check.'
+                      : emailLocked
+                        ? 'For settlement invoices and official platform notices.'
+                        : 'For settlement invoices — we will re-verify this address before launch.'}
                   </p>
                 </div>
                 <div className="flex flex-col gap-space-2xs">
@@ -204,173 +276,119 @@ export function DesktopBusinessProfileContactScreen({
               </section>
 
               <section className="bg-surface-canvas rounded-xl p-space-xl shadow-sm flex flex-col gap-space-md">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-space-sm">
                   <div className="flex items-center gap-space-xs text-text-primary font-heading-sm text-heading-sm">
                     <Icon name="share" className="text-primary text-[24px]" />
                     <h2>Social &amp; Messaging Presences</h2>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addChannel}
-                    className="flex items-center gap-space-2xs px-space-sm py-space-xs rounded-lg bg-surface-tint-blue text-primary font-label-md text-label-md hover:bg-surface-container font-semibold transition-colors"
-                  >
-                    <Icon name="add" className="text-[16px]" />
-                    <span>Add Channel</span>
-                  </button>
-                </div>
-                <div className="flex flex-col gap-space-sm mt-space-xs">
-                  <div className="flex items-center justify-between p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors">
-                    <div className="flex items-center gap-space-md min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-on-primary flex-shrink-0">
-                        <Icon name="photo_camera" className="text-[20px]" />
-                      </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <div className="flex items-center gap-space-2xs">
-                          <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                            Instagram
-                          </span>
-                          <span title="Verified Handle">
-                            <Icon name="verified" className="text-badge-discount-text text-[16px]" />
-                          </span>
-                        </div>
-                        <input
-                          ref={instagramRef}
-                          aria-label="Instagram handle"
-                          value={draft.instagram}
-                          onChange={(event) => onDraftChange({ instagram: event.target.value })}
-                          className="font-body-md text-caption text-text-secondary bg-transparent outline-none focus:text-text-primary w-full"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-space-xs flex-shrink-0">
-                      <span className="hidden sm:inline-block px-space-xs py-space-2xs rounded-full bg-surface-container text-on-surface-variant font-caption text-caption">
-                        Public Profile
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Edit Instagram"
-                        onClick={() => instagramRef.current?.focus()}
-                        className="p-space-xs rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-container transition-colors"
-                      >
-                        <Icon name="edit" className="text-[18px]" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors">
-                    <div className="flex items-center gap-space-md min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-badge-discount-text flex items-center justify-center text-on-primary flex-shrink-0">
-                        <Icon name="chat" className="text-[20px]" />
-                      </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <div className="flex items-center gap-space-2xs">
-                          <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                            WhatsApp Direct
-                          </span>
-                          <span title="Connected">
-                            <Icon name="verified" className="text-badge-discount-text text-[16px]" />
-                          </span>
-                        </div>
-                        <input
-                          ref={whatsappRef}
-                          aria-label="WhatsApp handle"
-                          value={draft.whatsapp}
-                          onChange={(event) => onDraftChange({ whatsapp: event.target.value })}
-                          className="font-body-md text-caption text-text-secondary bg-transparent outline-none focus:text-text-primary w-full"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-space-xs flex-shrink-0">
-                      <span className="hidden sm:inline-block px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-medium">
-                        Instant Chat
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Edit WhatsApp"
-                        onClick={() => whatsappRef.current?.focus()}
-                        className="p-space-xs rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-container transition-colors"
-                      >
-                        <Icon name="edit" className="text-[18px]" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors">
-                    <div className="flex items-center gap-space-md min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-inverse-surface flex items-center justify-center text-on-primary flex-shrink-0 font-bold text-caption">
-                        𝕏
-                      </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                          X (formerly Twitter)
-                        </span>
-                        <input
-                          ref={twitterRef}
-                          aria-label="X handle"
-                          value={draft.x}
-                          onChange={(event) => onDraftChange({ x: event.target.value })}
-                          className="font-body-md text-caption text-text-secondary bg-transparent outline-none focus:text-text-primary w-full"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-space-xs flex-shrink-0">
-                      <span className="hidden sm:inline-block px-space-xs py-space-2xs rounded-full bg-surface-container text-on-surface-variant font-caption text-caption">
-                        Brand Updates
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Edit Twitter"
-                        onClick={() => twitterRef.current?.focus()}
-                        className="p-space-xs rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-container transition-colors"
-                      >
-                        <Icon name="edit" className="text-[18px]" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {extraChannels.map((channel) => (
-                    <div
-                      key={channel.id}
-                      className="flex items-center justify-between p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors"
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen((open) => !open)}
+                      disabled={allPlatformsAdded}
+                      aria-haspopup="menu"
+                      aria-expanded={pickerOpen}
+                      className="flex items-center gap-space-2xs px-space-sm py-space-xs rounded-lg bg-surface-tint-blue text-primary font-label-md text-label-md hover:bg-surface-container font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <div className="flex items-center gap-space-md min-w-0">
-                        <div className="w-10 h-10 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center flex-shrink-0">
-                          <Icon name="add" className="text-[20px]" />
+                      <Icon name="add" className="text-[16px]" />
+                      <span>Add Channel</span>
+                      <Icon name="expand_more" className="text-[16px]" />
+                    </button>
+                    {pickerOpen ? (
+                      <SocialChannelPicker
+                        used={usedPlatforms}
+                        onSelect={addChannel}
+                        onClose={() => setPickerOpen(false)}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+                <p className="font-body-md text-caption text-text-secondary -mt-space-2xs">
+                  Paste an @handle or full profile link — we turn it into a clean, clickable destination.
+                </p>
+                <div className="flex flex-col gap-space-sm mt-space-xs">
+                  {channels.map((channel) => {
+                    const platform = CHANNEL_PLATFORM_BY_ID[channel.platform];
+                    const result = normalizeChannel(channel.platform, channel.value);
+                    const showError = channel.touched && channel.value.trim().length > 0 && !result.ok;
+                    const isCore = CORE_PLATFORMS.includes(channel.platform);
+                    return (
+                      <div
+                        key={channel.id}
+                        className="flex items-start justify-between gap-space-md p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors"
+                      >
+                        <div className="flex items-start gap-space-md min-w-0 flex-1">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${platform.iconClass}`}
+                          >
+                            <Icon name={platform.icon} className="text-[20px]" />
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1 gap-space-2xs">
+                            <div className="flex items-center gap-space-2xs">
+                              <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
+                                {platform.label}
+                              </span>
+                              {result.ok ? (
+                                <span title="Looks good">
+                                  <Icon name="check_circle" className="text-badge-discount-text text-[16px]" />
+                                </span>
+                              ) : null}
+                            </div>
+                            <input
+                              ref={(node) => {
+                                channelInputs.current[channel.id] = node;
+                              }}
+                              aria-label={`${platform.label} ${platform.kind === 'phone' ? 'phone number' : 'handle'}`}
+                              aria-invalid={showError}
+                              placeholder={platform.placeholder}
+                              value={channel.value}
+                              onBlur={() => markChannelTouched(channel.id)}
+                              onChange={(event) => setChannelValue(channel.id, event.target.value)}
+                              className="font-body-md text-caption text-text-secondary bg-transparent outline-none focus:text-text-primary w-full placeholder:text-text-tertiary"
+                            />
+                            {showError ? (
+                              <span className="font-caption text-caption text-error flex items-center gap-space-2xs">
+                                <Icon name="error" className="text-[14px]" />
+                                {result.error}
+                              </span>
+                            ) : result.ok ? (
+                              <a
+                                href={result.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-caption text-caption text-primary hover:underline flex items-center gap-space-2xs min-w-0"
+                              >
+                                <Icon name="link" className="text-[14px] flex-shrink-0" />
+                                <span className="truncate">{result.display}</span>
+                              </a>
+                            ) : (
+                              <span className="font-caption text-caption text-text-tertiary">{platform.hint}</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                            New Channel
-                          </span>
-                          <input
-                            aria-label="New channel handle"
-                            placeholder="@yourhandle"
-                            value={channel.handle}
-                            onChange={(event) =>
-                              setExtraChannels((prev) =>
-                                prev.map((item) =>
-                                  item.id === channel.id ? { ...item, handle: event.target.value } : item,
-                                ),
-                              )
-                            }
-                            className="font-body-md text-caption text-text-secondary bg-transparent outline-none focus:text-text-primary w-full placeholder:text-text-tertiary"
-                          />
+                        <div className="flex items-center gap-space-xs flex-shrink-0 pt-0.5">
+                          {!isCore ? (
+                            <button
+                              type="button"
+                              aria-label={`Remove ${platform.label}`}
+                              onClick={() => removeChannel(channel.id)}
+                              className="p-space-xs rounded-lg text-text-secondary hover:text-error hover:bg-surface-container transition-colors"
+                            >
+                              <Icon name="delete" className="text-[18px]" />
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            aria-label={`Edit ${platform.label}`}
+                            onClick={() => channelInputs.current[channel.id]?.focus()}
+                            className="p-space-xs rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-container transition-colors"
+                          >
+                            <Icon name="edit" className="text-[18px]" />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-space-xs flex-shrink-0">
-                        <span className="hidden sm:inline-block px-space-xs py-space-2xs rounded-full bg-surface-container text-on-surface-variant font-caption text-caption">
-                          New
-                        </span>
-                        <button
-                          type="button"
-                          aria-label="Remove channel"
-                          onClick={() => removeChannel(channel.id)}
-                          className="p-space-xs rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-container transition-colors"
-                        >
-                          <Icon name="delete" className="text-[18px]" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
 
@@ -445,45 +463,6 @@ export function DesktopBusinessProfileContactScreen({
                   </div>
                 </div>
               </section>
-
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-space-md pt-space-sm">
-                <div className="flex flex-col sm:flex-row items-center gap-space-md w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={onBack}
-                    className="w-full sm:w-auto px-space-lg h-[52px] rounded-xl text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary bg-surface-canvas shadow-sm hover:shadow transition-all flex items-center justify-center gap-space-xs"
-                  >
-                    <Icon name="arrow_back" className="text-[18px]" />
-                    <span>Back</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onSaveDraft}
-                    className="w-full sm:w-auto px-space-lg h-[52px] rounded-xl text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary bg-surface-canvas shadow-sm hover:shadow transition-all flex items-center justify-center gap-space-xs"
-                  >
-                    <Icon name="bookmark_border" className="text-[18px]" />
-                    <span>Save as Draft</span>
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  disabled={status !== 'idle'}
-                  onClick={handleComplete}
-                  className="w-full sm:w-auto px-space-2xl h-[52px] rounded-2xl bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] hover:bg-primary-container active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {status === 'idle' ? (
-                    <>
-                      <span>Complete Profile Setup</span>
-                      <Icon name="arrow_forward" className="text-[20px]" />
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="progress_activity" className="text-[20px] animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
 
             <div className="lg:col-span-5 flex flex-col gap-space-xl">
@@ -618,6 +597,49 @@ export function DesktopBusinessProfileContactScreen({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
+            >
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              disabled={status !== 'idle'}
+              onClick={handleComplete}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {status === 'idle' ? (
+                <>
+                  <span>Complete Profile Setup</span>
+                  <Icon name="arrow_forward" className="text-[20px]" />
+                </>
+              ) : (
+                <>
+                  <Icon name="progress_activity" className="text-[20px] animate-spin" />
+                  <span>Saving...</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
