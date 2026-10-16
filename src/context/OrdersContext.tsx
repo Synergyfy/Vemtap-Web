@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { apiGet, apiPatch, apiPost, hasApiConfig } from '../lib/api';
 import {
   MERCHANT_IMAGE,
   MERCHANT_NAME,
@@ -195,6 +196,29 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    if (!hasApiConfig()) return;
+
+    let ignore = false;
+
+    const hydrate = async () => {
+      try {
+        const remoteOrders = await apiGet<SubmittedOrder[]>('/orders?merchant=me');
+        if (!ignore && Array.isArray(remoteOrders) && remoteOrders.length > 0) {
+          setOrders(remoteOrders);
+          writeOrders(remoteOrders);
+        }
+      } catch {
+        // Keep seeded local data while the backend is unavailable.
+      }
+    };
+
+    void hydrate();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
     writeOrders(orders);
   }, [orders]);
 
@@ -252,6 +276,22 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       };
 
       setOrders((current) => [order, ...current]);
+
+      if (hasApiConfig()) {
+        void apiPost<SubmittedOrder, SubmittedOrder>('/orders', order)
+          .then((remoteOrder) => {
+            if (!remoteOrder?.ref) return;
+            setOrders((current) => {
+              const next = current.some((existing) => existing.ref === remoteOrder.ref)
+                ? current
+                : [remoteOrder, ...current];
+              writeOrders(next);
+              return next;
+            });
+          })
+          .catch(() => undefined);
+      }
+
       return { ok: true, order };
     },
     [orders],
@@ -292,6 +332,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
       return found ? next : current;
     });
+
+    if (hasApiConfig()) {
+      void apiPatch(`/orders/${encodeURIComponent(ref)}/status`, { status }).catch(() => undefined);
+    }
+
     return found;
   }, []);
 
@@ -310,6 +355,12 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
       return found ? next : current;
     });
+
+    if (hasApiConfig()) {
+      const resolvedPaymentRef = paymentRef?.trim() || `TXN-${Math.floor(1000000 + Math.random() * 8999999)}`;
+      void apiPatch(`/orders/${encodeURIComponent(ref)}/payment`, { paymentRef: resolvedPaymentRef, status: 'paid' }).catch(() => undefined);
+    }
+
     return found;
   }, []);
 

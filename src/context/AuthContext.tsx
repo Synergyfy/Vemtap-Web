@@ -1,10 +1,11 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { apiPost, hasApiConfig } from '../lib/api';
 
 interface AuthContextValue {
   authed: boolean;
   claimed: boolean;
-  signIn: () => void;
-  signOut: () => void;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
   markClaimed: () => void;
   resetClaim: () => void;
 }
@@ -12,8 +13,8 @@ interface AuthContextValue {
 const DEFAULT_VALUE: AuthContextValue = {
   authed: false,
   claimed: false,
-  signIn: () => undefined,
-  signOut: () => undefined,
+  signIn: async () => undefined,
+  signOut: async () => undefined,
   markClaimed: () => undefined,
   resetClaim: () => undefined,
 };
@@ -48,11 +49,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       authed,
       claimed,
-      signIn: () => {
+      signIn: async () => {
+        if (hasApiConfig()) {
+          try {
+            await apiPost('/auth/login', {
+              email: 'customer@vemtap.com',
+              source: 'web',
+            });
+          } catch {
+            // The app can still operate in local-only mode when the backend is not running.
+          }
+        }
+
         writeFlag(AUTHED_KEY, true);
         setAuthed(true);
       },
-      signOut: () => {
+      signOut: async () => {
+        if (hasApiConfig()) {
+          try {
+            await apiPost('/auth/logout', {});
+          } catch {
+            // Ignore logout errors and preserve the local UX in demo mode.
+          }
+        }
+
         writeFlag(AUTHED_KEY, false);
         writeFlag(CLAIMED_KEY, false);
         setAuthed(false);

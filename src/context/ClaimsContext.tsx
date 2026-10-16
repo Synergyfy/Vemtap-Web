@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { apiGet, apiPost, hasApiConfig } from '../lib/api';
 
 /**
  * Claim, gift and redemption records for the signed-in customer.
@@ -119,6 +120,29 @@ const ClaimsContext = createContext<ClaimsContextValue | null>(null);
 export function ClaimsProvider({ children }: { children: ReactNode }) {
   const [claims, setClaims] = useState<ClaimRecord[]>(readClaims);
 
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+
+    let ignore = false;
+
+    const hydrate = async () => {
+      try {
+        const remoteClaims = await apiGet<ClaimRecord[]>('/claims?customer=me');
+        if (!ignore && Array.isArray(remoteClaims)) {
+          setClaims(remoteClaims);
+          writeClaims(remoteClaims);
+        }
+      } catch {
+        // Fail silently so the local fallback remains available while the API is unavailable.
+      }
+    };
+
+    void hydrate();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   const recordClaim = useCallback(
     (input: ClaimInput): ClaimRecord => {
       const record: ClaimRecord = {
@@ -139,6 +163,27 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         writeClaims(next);
         return next;
       });
+
+      if (hasApiConfig()) {
+        void apiPost<ClaimRecord, ClaimInput>('/claims', {
+          ...input,
+          dealTitle: record.dealTitle,
+          dealBusiness: record.dealBusiness,
+          dealImage: record.dealImage,
+        })
+          .then((remoteClaim) => {
+            if (!remoteClaim?.ref) return;
+            setClaims((current) => {
+              const next = current.some((claim) => claim.ref === remoteClaim.ref)
+                ? current
+                : [remoteClaim, ...current].slice(0, 40);
+              writeClaims(next);
+              return next;
+            });
+          })
+          .catch(() => undefined);
+      }
+
       return record;
     },
     [claims],
