@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
+import { hasApiConfig } from '../services/api/client';
+import { catalogueService } from '../services/catalogueService';
 
 interface DiscoverScreenProps {
   onTab: (tab: MobileTabKey) => void;
@@ -13,11 +15,12 @@ interface DiscoverScreenProps {
   onOpenLocation?: () => void;
 }
 
-import { BUSINESS_CARDS, DISCOVER_CATEGORIES } from './discoverData';
+import { BUSINESS_CARDS, DISCOVER_CATEGORIES, buildDiscoverCardsFromOffers, type BusinessCard } from './discoverData';
 
 export function DiscoverScreen({ onTab, onOpenUrban, onOpenSpa, onOpenFilters, onOpenNotifications, onBusinessSetup, onOpenLocation }: DiscoverScreenProps) {
   const [category, setCategory] = useState('All');
   const [mapView, setMapView] = useState(false);
+  const [businessCards, setBusinessCards] = useState<BusinessCard[]>(BUSINESS_CARDS);
   const [bookmarked, setBookmarked] = useState<boolean[]>([false, false, false, false]);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
@@ -25,6 +28,29 @@ export function DiscoverScreen({ onTab, onOpenUrban, onOpenSpa, onOpenFilters, o
   useEffect(() => {
     const timers = toastTimers.current;
     return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setBusinessCards(BUSINESS_CARDS);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        const cards = buildDiscoverCardsFromOffers(rows as Record<string, unknown>[]);
+        if (!ignore) setBusinessCards(cards.length > 0 ? cards : BUSINESS_CARDS);
+      } catch {
+        if (!ignore) setBusinessCards(BUSINESS_CARDS);
+      }
+    };
+
+    loadOffers();
+    return () => { ignore = true; };
   }, []);
 
   const showToast = (message: string) => {
@@ -39,7 +65,7 @@ export function DiscoverScreen({ onTab, onOpenUrban, onOpenSpa, onOpenFilters, o
   const openCard = (index: number) => {
     if (index === 0) onOpenUrban();
     else if (index === 1) onOpenSpa();
-    else showToast(BUSINESS_CARDS[index]?.name + ' profile is coming soon');
+    else showToast(businessCards[index]?.name + ' profile is coming soon');
   };
 
   return (
@@ -144,7 +170,7 @@ export function DiscoverScreen({ onTab, onOpenUrban, onOpenSpa, onOpenFilters, o
               <span className="font-caption text-caption text-text-tertiary">Real-time Perks</span>
             </div>
 
-            {BUSINESS_CARDS.map((card, index) => (
+            {businessCards.map((card, index) => (
               <article
                 key={card.name}
                 role="button"

@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
     offerStats: (id: string) => `/catalogue/offers/${id}/stats`,
     offerSummary: '/catalogue/offers/summary',
     adminOffers: '/catalogue/offers/admin',
+    publicOffers: '/catalogue/offers/public',
   },
   segments: {
     root: '/segments',

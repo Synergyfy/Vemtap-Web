@@ -13,6 +13,9 @@ export const catalogueService = {
   getItems: async (params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.items, { params }),
 
+  getPublicOffers: async (params?: Record<string, string | number | boolean | undefined>) =>
+    api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffers, { params }),
+
   createItem: async (payload: CreateCatalogueItemDto) =>
     api.post<Record<string, unknown>>(API_ENDPOINTS.catalogue.items, payload),
 

@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { Icon } from '../../components/ui/Icon';
-import { BUSINESS_CARDS, DISCOVER_CATEGORIES } from '../discoverData';
+import { hasApiConfig } from '../../services/api/client';
+import { catalogueService } from '../../services/catalogueService';
+import { BUSINESS_CARDS, DISCOVER_CATEGORIES, buildDiscoverCardsFromOffers, type BusinessCard } from '../discoverData';
 
 interface DesktopDiscoverScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -13,7 +15,31 @@ interface DesktopDiscoverScreenProps {
 export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, onBusinessSetup }: DesktopDiscoverScreenProps) {
   const [category, setCategory] = useState('All');
   const [mapView, setMapView] = useState(false);
+  const [businessCards, setBusinessCards] = useState<BusinessCard[]>(BUSINESS_CARDS);
   const [bookmarked, setBookmarked] = useState<boolean[]>(BUSINESS_CARDS.map(() => false));
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setBusinessCards(BUSINESS_CARDS);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        const cards = buildDiscoverCardsFromOffers(rows as Record<string, unknown>[]);
+        if (!ignore) setBusinessCards(cards.length > 0 ? cards : BUSINESS_CARDS);
+      } catch {
+        if (!ignore) setBusinessCards(BUSINESS_CARDS);
+      }
+    };
+
+    loadOffers();
+    return () => { ignore = true; };
+  }, []);
 
   const toggleBookmark = (index: number) =>
     setBookmarked((prev) => prev.map((value, i) => (i === index ? !value : value)));
@@ -99,7 +125,7 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-space-md">
-            {BUSINESS_CARDS.map((card, index) => (
+            {businessCards.map((card, index) => (
               <article
                 key={card.name}
                 role={index < 2 ? 'button' : undefined}

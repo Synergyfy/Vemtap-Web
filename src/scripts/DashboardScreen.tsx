@@ -5,6 +5,8 @@ import { LocationRadiusModal } from '../components/LocationRadiusModal';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useLocation } from '../context/LocationContext';
 import { useProfile } from '../context/ProfileContext';
+import { hasApiConfig } from '../services/api/client';
+import { catalogueService } from '../services/catalogueService';
 import {
   activeAnnouncements,
   type AnnouncementDestination,
@@ -31,23 +33,6 @@ interface DashboardScreenProps {
   onShowQR: () => void;
 }
 
-const AVATAR =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAGcj-Xo05mODE-zuEXBzOj1Bd66jabbptVILeXsmmD5oVopE1Fwkp8fDpBSgxyHTRQSZPWfLiiJb_lKil8T4d89y6I2_fWbPs72szZV1FTvQLJEjYwu0uYhUxCik0UYSqWD6bqxc_-Z8qqi3chAZ2cTdGtmKSQMWxmJeUxHfzLaAuVOiBKzMvDVkZC2pdcK8gXOwEvnPt3xsdT6IiYiEoiJGk_PxXzCqBSL4Z3ezIbxK0iHWEeoMBWQg';
-
-const CAFE_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCgCwLd5w58QXLgV11MHD52EEti1eL21CVWe5XjaydFi7gB0n_HlN0ZRXV3yob4ZVn5VXviRWWZGYsv1AaFBYmLz5MGyZoBIQR2PaZJDI_Hy-6Q8Q2qX_UNm3TBcOS5Clrs17aHV0AbIlu45JooU-HWsPtb3bHzQbC2hp0eLB-F0K_mX7KOrm8At7tLg-OaWWH65X7PtLDGbNibqkIdLveIrO70jZrzaDghvLUUoFza5ZW1bMN8Ce0DQw';
-
-const BURGER_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCKUS0WwZYhFtl0KRQ8cL8Hr770L0Ls4JAHNUXCVRDplZ9ou9wSYBgO_j_kIOloOjjEEcnB1-3pwPxRYDmFguixph8sTmC3ix2crAreunKt8kxZmmJ2-MTt99BHKZGGUOTaQPFtYaNOrjKiOOvDDFh9FiBELRLLUsp7Is1PkB94raBEKxQrtZLHBHYhA2sd18QY2vVcn5opY7jym0RXQtI_pUdHhMvtm_R32Bo0CjoRtfAlGA7qfZPp5w';
-
-const SPA_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAUht6A5A8VJ2HVlciOxmOfSNjrxImixN6H4ySSvfeIstmp4yModG1rl0m4ECsbrxVAV8pTA38yVQ8e2us9V0WqpxW9ApXdSL7mq3OZRdaY6o0S4LIcXDDtbHQMWJEL2Sy5nylvEMstB6f0RmvU5bDO1WyOQeSqrvRpAV3nvIpFumqvEsCGt1kwrVPQ5vpREyevCJrPxEitPQF-pjFYRAGrKYxjwVhamRnG5lIlaXpHwoUcODTXMFjgJQ';
-
-const BAKERY_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBQA9EUANK-qSWLc0YDbdaY7FBQTZMqGaJgfFAg6jdO2ZYEMjGP3nW-9BS4AE72LDZu_HKJ1fK300URqAnhtBqtb3rbJpKTy5gRvie_6Agz1LUsNvBrHp5XSpKFsM6k9UpmFRhScPALBdM44BCq7FpqkVzk_xeJg_VopE1LSJN6_oZOUXdkApMCUNwKd3N0EzBzGE5AbSkQt5ccJkn7Pxpz3FgY48x137irv2I-7lq7RLAetVnPqZCIXw';
-
-const ROOFTOP_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAeAtQWLIyjDZGAe_fGVP6-PK-Lk91gGmK43js0O1SG0JI8juksx-Y5XG-gKRg-1EgZYzOc3jX33vXfe-mpI7w313488dgKy5JIV8SMnK7-0Ei5EH5KRDURZq289Tt4LG6hhlrwFy8dhbVG9Ber29ljbzVK0Ov5hUoyRSnPB_WMxFJ-yqeKTY_VwxLq02F9hmq2X8QqN3nBgucmRXuu4h8ytG-Jrb1Ncfl-FAvp74kGc9Pmoc6FG8yhBA';
 
 interface HeroSlide {
   image: string;
@@ -64,6 +49,17 @@ const TONE_LABEL: Record<AnnouncementTone, string> = {
   upgrade: 'Upgrade',
   alert: 'Alert',
 };
+
+const CAFE_IMG =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCgCwLd5w58QXLgV11MHD52EEti1eL21CVWe5XjaydFi7gB0n_HlN0ZRXV3yob4ZVn5VXviRWWZGYsv1AaFBYmLz5MGyZoBIQR2PaZJDI_Hy-6Q8Q2qX_UNm3TBcOS5Clrs17aHV0AbIlu45JooU-HWsPtb3bHzQbC2hp0eLB-F0K_mX7KOrm8At7tLg-OaWWH65X7PtLDGbNibqkIdLveIrO70jZrzaDghvLUUoFza5ZW1bMN8Ce0DQw';
+
+const SPA_IMG =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuAUht6A5A8VJ2HVlciOxmOfSNjrxImixN6H4ySSvfeIstmp4yModG1rl0m4ECsbrxVAV8pTA38yVQ8e2us9V0WqpxW9ApXdSL7mq3OZRdaY6o0S4LIcXDDtbHQMWJEL2Sy5nylvEMstB6f0RmvU5bDO1WyOQeSqrvRpAV3nvIpFumqvEsCGt1kwrVPQ5vpREyevCJrPxEitPQF-pjFYRAGrKYxjwVhamRnG5lIlaXpHwoUcODTXMFjgJQ';
+
+const ROOFTOP_IMG =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuAeAtQWLIyjDZGAe_fGVP6-PK-Lk91gGmK43js0O1SG0JI8juksx-Y5XG-gKRg-1EgZYzOc3jX33vXfe-mpI7w313488dgKy5JIV8SMnK7-0Ei5EH5KRDURZq289Tt4LG6hhlrwFy8dhbVG9Ber29ljbzVK0Ov5hUoyRSnPB_WMxFJ-yqeKTY_VwxLq02F9hmq2X8QqN3nBgucmRXuu4h8ytG-Jrb1Ncfl-FAvp74kGc9Pmoc6FG8yhBA';
+
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
 
 const HERO_SLIDES: HeroSlide[] = [
   {
@@ -99,34 +95,78 @@ interface RecommendedDeal {
   was: string;
 }
 
-const RECOMMENDED: RecommendedDeal[] = [
-  {
-    id: 'bakery',
-    image: BAKERY_IMG,
-    imageAlt:
-      'Golden crisp freshly baked artisanal croissants and pain au chocolat pastries neatly arranged in a wicker basket in a high end Abuja French bakery cafe.',
-    badge: '15% OFF',
+
+const formatCurrency = (value: number | string | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
+
+const getOfferImage = (offer: Record<string, unknown>): string => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? FALLBACK_IMAGE;
+  return typeof image === 'string' && image.trim() ? image : FALLBACK_IMAGE;
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>): string => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Nearby business';
+  return typeof value === 'string' && value.trim() ? value : 'Nearby business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>): string => {
+  const value = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
+  return typeof value === 'string' && value.trim() ? value : 'Local offer';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.amount, offer.salePrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const getOfferComparePrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.compareAtPrice, offer.originalPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, item?.compareAtPrice, item?.originalPrice, item?.listPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return getOfferPrice(offer);
+};
+
+const toDashboardRecommended = (offer: Record<string, unknown>): RecommendedDeal => {
+  const business = getOfferBusinessName(offer);
+  const title = getOfferTitle(offer);
+  const price = getOfferPrice(offer);
+  const comparePrice = getOfferComparePrice(offer);
+  return {
+    id: String(offer.id ?? title),
+    image: getOfferImage(offer),
+    imageAlt: `${title} by ${business}`,
+    badge: price > 0 ? 'Live Deal' : 'Offer',
     badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
-    distance: '0.5 km away',
-    business: 'Artisan Bakery & Cafe',
-    item: 'Sourdough & Pastries Combo',
-    price: '₦4,500',
-    was: '₦5,300',
-  },
-  {
-    id: 'rooftop',
-    image: ROOFTOP_IMG,
-    imageAlt:
-      'Chic rooftop lounge in Abuja at golden hour sunset with modern cocktail glasses garnished with herbs, appetizers and city skyline views.',
-    badge: 'BOGO FREE',
-    badgeClass: 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
-    distance: '1.2 km away',
-    business: 'The Sky Lounge',
-    item: 'Cocktails & Small Plates',
-    price: '₦8,000',
-    was: '₦16,000',
-  },
-];
+    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    business,
+    item: title,
+    price: formatCurrency(price),
+    was: comparePrice > price ? formatCurrency(comparePrice) : '',
+  };
+};
 
 function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   return (
@@ -151,9 +191,33 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
   const { district, city, radius, setLocation } = useLocation();
   const [hero, setHero] = useState(0);
   const [favs, setFavs] = useState<Record<string, boolean>>({});
+  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const { fullName } = useProfile();
 
+  useEffect(() => {
+    let ignore = false;
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setPublicOffers([]);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+      } catch {
+        if (!ignore) setPublicOffers([]);
+      }
+    };
+
+    loadOffers();
+    return () => { ignore = true; };
+  }, []);
+
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  const profileInitials = fullName.trim() ? fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase().slice(0, 2) : 'U';
+  const recommendedDeals = useMemo(() => publicOffers.slice(0, 2).map(toDashboardRecommended), [publicOffers]);
 
   // Admin-configured announcements rotate in the dashboard banner; when the
   // (local stand-in for `GET /announcements`) list is empty we keep the
@@ -239,7 +303,9 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
               onClick={() => onTab('account')}
               className="relative w-10 h-10 rounded-full overflow-hidden shadow-sm bg-surface-container-highest active:scale-95 transition-transform"
             >
-              <img className="w-full h-full object-cover" alt="Zainab Ahmed" src={AVATAR} />
+              <div className="flex h-full w-full items-center justify-center bg-primary-container text-on-primary text-lg font-bold">
+                {profileInitials}
+              </div>
               <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-badge-discount-text ring-2 ring-surface" />
             </button>
           </div>
@@ -376,7 +442,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
             <div className="flex items-center gap-space-2xs">
               <h2 className="font-heading-sm text-heading-sm text-on-surface">Your Active Deals</h2>
               <span className="w-5 h-5 rounded-full bg-primary-container text-on-primary-container font-caption text-[11px] font-bold flex items-center justify-center">
-                2
+                {publicOffers.length > 0 ? Math.min(publicOffers.length, 2) : 0}
               </span>
             </div>
             <button
@@ -389,85 +455,61 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
             </button>
           </div>
 
-          <div className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
-            <div className="flex items-start justify-between gap-space-xs">
-              <div className="flex gap-space-sm min-w-0">
-                <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                  <img className="w-full h-full object-cover" alt="Prime lunch combo" src={BURGER_IMG} />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-caption text-caption font-semibold text-text-secondary flex items-center gap-1 truncate">
-                    <Icon name="storefront" className="text-primary text-[14px]" />
-                    Urban Grill &amp; Bistro
-                  </span>
-                  <h3 className="font-button-primary text-button-primary text-text-primary truncate">
-                    20% Off Prime Lunch Combo
-                  </h3>
-                  <span className="font-caption text-caption text-tertiary flex items-center gap-1 mt-0.5 font-medium">
-                    <Icon name="timer" className="text-[14px]" />
-                    Expires in 2 days
-                  </span>
-                </div>
-              </div>
-              <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold shrink-0">
-                Ready to Redeem
-              </span>
-            </div>
-            <div className="flex items-center justify-between p-space-xs rounded-lg bg-surface-subtle">
-              <div className="flex flex-col">
-                <span className="font-caption text-[10px] text-text-tertiary uppercase tracking-wider">Pass Code</span>
-                <span className="font-label-md text-label-md font-bold text-on-surface tracking-wider">VT-48F261</span>
-              </div>
-              <button
-                type="button"
-                onClick={onShowQR}
-                className="h-9 px-space-md rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
-              >
-                <Icon name="qr_code_2" className="text-[18px]" />
-                <span>Show QR</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
-            <div className="flex items-start justify-between gap-space-xs">
-              <div className="flex gap-space-sm min-w-0">
-                <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                  <img className="w-full h-full object-cover" alt="Spa treatment room" src={SPA_IMG} />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-caption text-caption font-semibold text-text-secondary flex items-center gap-1 truncate">
-                    <Icon name="spa" className="text-primary text-[14px]" />
-                    Glow &amp; Serenity Spa
-                  </span>
-                  <h3 className="font-button-primary text-button-primary text-text-primary truncate">
-                    Deep Hydration Facial &amp; Manicure
-                  </h3>
-                  <span className="font-caption text-caption text-text-secondary flex items-center gap-1 mt-0.5">
-                    <Icon name="event_available" className="text-[14px] text-primary" />
-                    Thu, Oct 17 • 1:15 PM
+          {publicOffers.length > 0 ? publicOffers.slice(0, 2).map((offer) => {
+            const title = getOfferTitle(offer);
+            const business = getOfferBusinessName(offer);
+            const image = getOfferImage(offer);
+            const price = getOfferPrice(offer);
+            const original = getOfferComparePrice(offer);
+            const discount = original > price ? `${Math.round(((original - price) / original) * 100)}% OFF` : 'Live Deal';
+            return (
+              <div key={String(offer.id ?? title)} className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
+                <div className="flex items-start justify-between gap-space-xs">
+                  <div className="flex gap-space-sm min-w-0">
+                    <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-surface-container">
+                      <img className="w-full h-full object-cover" alt={title} src={image} />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-caption text-caption font-semibold text-text-secondary flex items-center gap-1 truncate">
+                        <Icon name="storefront" className="text-primary text-[14px]" />
+                        {business}
+                      </span>
+                      <h3 className="font-button-primary text-button-primary text-text-primary truncate">
+                        {title}
+                      </h3>
+                      <span className="font-caption text-caption text-tertiary flex items-center gap-1 mt-0.5 font-medium">
+                        <Icon name="timer" className="text-[14px]" />
+                        {original > price ? `Save ${formatCurrency(original - price)}` : 'Limited-time offer'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold shrink-0">
+                    {discount}
                   </span>
                 </div>
+                <div className="flex items-center justify-between p-space-xs rounded-lg bg-surface-subtle">
+                  <div className="flex flex-col">
+                    <span className="font-caption text-[10px] text-text-tertiary uppercase tracking-wider">Price</span>
+                    <span className="font-label-md text-label-md font-bold text-on-surface tracking-wider">
+                      {formatCurrency(price)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onShowQR}
+                    className="h-9 px-space-md rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                  >
+                    <Icon name="qr_code_2" className="text-[18px]" />
+                    <span>Show QR</span>
+                  </button>
+                </div>
               </div>
-              <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary-container font-caption text-[11px] font-semibold shrink-0">
-                Confirmed
-              </span>
+            );
+          }) : (
+            <div className="rounded-xl bg-surface-canvas p-space-md text-text-secondary shadow-sm">
+              Live deals from your area will appear here once the catalogue is available.
             </div>
-            <div className="flex items-center justify-between p-space-xs rounded-lg bg-surface-subtle">
-              <div className="flex items-center gap-2">
-                <Icon name="check_circle" className="text-[18px] text-badge-discount-text" />
-                <span className="font-caption text-caption text-text-secondary font-medium">Slot Reserved</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onNavigate('orders')}
-                className="h-9 px-space-md rounded-xl bg-surface-container-high text-on-surface font-button-secondary text-button-secondary flex items-center gap-1 shadow-sm hover:bg-surface-container-highest transition-colors active:scale-95"
-              >
-                <span>View Pass</span>
-                <Icon name="chevron_right" className="text-[16px]" />
-              </button>
-            </div>
-          </div>
+          )}
         </section>
 
         <section className="px-margin">
@@ -595,7 +637,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
           </div>
 
           <div className="grid grid-cols-2 gap-space-sm">
-            {RECOMMENDED.map((deal) => (
+            {recommendedDeals.length > 0 ? recommendedDeals.map((deal) => (
               <div key={deal.id} className="flex flex-col rounded-xl bg-surface-canvas shadow-sm overflow-hidden group">
                 <div className="relative h-28 w-full bg-surface-container overflow-hidden">
                   <button
@@ -651,7 +693,11 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
                   </div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="col-span-2 rounded-xl bg-surface-canvas p-space-md text-center text-text-secondary shadow-sm">
+                Live deals will appear here once the catalogue is available.
+              </div>
+            )}
           </div>
 
           <button

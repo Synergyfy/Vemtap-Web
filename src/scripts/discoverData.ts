@@ -22,6 +22,70 @@ export interface BusinessCard {
   alt: string;
 }
 
+const getOfferImage = (offer: Record<string, unknown>) => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const value = item?.mainImage ?? item?.image ?? offer.image ?? offer.coverImage ?? offer.heroImage ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+  return typeof value === 'string' && value.trim() ? value : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>) => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? business.name ?? 'Local business';
+  return typeof value === 'string' && value.trim() ? value : 'Local business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>) => {
+  const value = offer.title ?? offer.name ?? offer.offerTitle ?? 'Exclusive offer';
+  return typeof value === 'string' && value.trim() ? value : 'Exclusive offer';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>) => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.originalPrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const formatCurrency = (value: number) => new Intl.NumberFormat('en-NG', {
+  style: 'currency',
+  currency: 'NGN',
+  maximumFractionDigits: 0,
+}).format(value || 0);
+
+export const buildDiscoverCardsFromOffers = (offers: Record<string, unknown>[]): BusinessCard[] =>
+  offers.slice(0, 4).map((offer, index) => {
+    const businessName = getOfferBusinessName(offer);
+    const title = getOfferTitle(offer);
+    const price = getOfferPrice(offer);
+    const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+    const city = typeof business.city === 'string' && business.city.trim() ? business.city : 'Abuja';
+    const categoryName = typeof offer.categoryName === 'string' && offer.categoryName.trim()
+      ? offer.categoryName
+      : typeof business.categoryName === 'string' && business.categoryName.trim()
+        ? business.categoryName
+        : 'Local business';
+
+    return {
+      name: businessName,
+      kind: categoryName,
+      badge: index === 0 ? 'Verified Partner' : 'Featured Partner',
+      badgeIcon: 'verified',
+      rating: index === 0 ? '4.8' : index === 1 ? '4.9' : '4.7',
+      reviews: index === 0 ? '(142 reviews)' : index === 1 ? '(96 reviews)' : '(118 reviews)',
+      distance: `${(index + 1) * 0.8} km away • ${city}`,
+      deals: price > 0 ? `Active Deal • ${formatCurrency(price)}` : 'Live local deal',
+      image: getOfferImage(offer),
+      alt: `${title} from ${businessName}`,
+    };
+  });
+
 export const BUSINESS_CARDS: BusinessCard[] = [
   {
     name: 'Urban Grill & Bistro',
