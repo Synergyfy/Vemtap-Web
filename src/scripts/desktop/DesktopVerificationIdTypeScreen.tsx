@@ -243,9 +243,12 @@ export function DesktopVerificationIdTypeScreen({
           </div>
         </div>
 
-        <div className="w-full bg-surface-canvas rounded-xl p-space-lg shadow-sm flex flex-col sm:flex-row items-center justify-between gap-space-md mt-space-md">
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
           <button
-            className="order-2 sm:order-1 px-space-lg py-space-sm text-text-secondary hover:text-on-surface font-button-secondary text-button-secondary transition-colors rounded-lg flex items-center gap-space-xs"
+            className="order-2 sm:order-1 px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
             type="button"
             onClick={onBack}
           >
@@ -254,7 +257,7 @@ export function DesktopVerificationIdTypeScreen({
           </button>
           <div className="order-1 sm:order-2 flex items-center gap-space-md w-full sm:w-auto">
             <button
-              className="w-full sm:w-auto px-space-xl py-space-sm bg-primary-container text-on-primary font-button-primary text-button-primary rounded-xl shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
+              className="w-full sm:w-auto px-space-xl py-space-sm bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs"
               type="button"
               onClick={onContinue}
             >

@@ -1,19 +1,16 @@
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
+import { DEFAULT_CLAIMED_DEAL } from '../../context/ClaimsContext';
 
 interface ClaimedTermsSheetProps {
   open: boolean;
   onClose: () => void;
+  /** Terms frozen onto the claim; falls back to the sample deal's terms. */
+  terms?: string[];
 }
 
-const TERMS = [
-  'Valid strictly for Dine-in and Takeaway at Apo, Abuja location.',
-  'Offer cannot be merged with ongoing happy hour specials.',
-  'Voucher code expires automatically on 20 Sep 2025 at 11:59 PM.',
-  'One voucher claim per table / group order.',
-];
-
-export function ClaimedTermsSheet({ open, onClose }: ClaimedTermsSheetProps) {
+export function ClaimedTermsSheet({ open, onClose, terms }: ClaimedTermsSheetProps) {
+  const displayTerms = terms && terms.length > 0 ? terms : DEFAULT_CLAIMED_DEAL.terms;
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="w-full flex justify-center pt-3 pb-1">
@@ -31,8 +28,11 @@ export function ClaimedTermsSheet({ open, onClose }: ClaimedTermsSheetProps) {
             <Icon name="close" className="text-[20px]" />
           </button>
         </div>
+        <p className="font-caption text-caption text-text-tertiary">
+          These are the terms that were in force when you claimed this deal.
+        </p>
         <ul className="font-body-md text-body-md text-text-secondary space-y-2 list-disc pl-5">
-          {TERMS.map((term) => (
+          {displayTerms.map((term) => (
             <li key={term}>{term}</li>
           ))}
         </ul>

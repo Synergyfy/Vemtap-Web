@@ -187,9 +187,20 @@ export function BusinessPosCartScreen({
                 </button>
               </div>
               <div className="flex flex-col items-end justify-between shrink-0">
-                <span className="font-label-sm text-label-sm text-on-surface font-semibold">
-                  {naira(line.member * line.qty)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">
+                    {naira(line.member * line.qty)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${line.name}`}
+                    onClick={() => removeLine(line.id)}
+                    className="w-7 h-7 rounded-lg text-error hover:bg-error-container/30 flex items-center justify-center active:scale-90 transition-colors"
+                    title="Remove item"
+                  >
+                    <Icon name="delete_outline" className="text-[17px]" />
+                  </button>
+                </div>
                 <div className="flex items-center gap-1 bg-surface-container rounded-full p-0.5">
                   <button
                     type="button"

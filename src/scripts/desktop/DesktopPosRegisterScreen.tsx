@@ -10,16 +10,25 @@ import {
   type PosTerminalLine,
 } from './posTerminalData';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import { PosModifiersModal } from './PosModifiersModal';
+import { PosCustomerModal } from './PosCustomerModal';
+import { PosLoyaltyPanel } from './PosLoyaltyPanel';
+import { describeModifiers, modifierSurcharge, type PosCustomerRecord } from './posRegisterExtras';
 
 interface DesktopPosRegisterScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
   cart: PosTerminalLine[];
   onCartChange: (lines: PosTerminalLine[]) => void;
-  customer: string | null;
+  customer: PosCustomerRecord | null;
+  onCustomerChange: (customer: PosCustomerRecord | null) => void;
   onCharge: () => void;
   onSplit: () => void;
   onOpenCustomer: () => void;
   onOpenOrders: () => void;
+  /** Opens the Help & Support page (F1). */
+  onHelp: () => void;
+  /** Loyalty points awarded for the current ticket, committed on payment. */
+  onAwardPoints: (points: number) => void;
 }
 
 const CATEGORIES = [
@@ -47,27 +56,40 @@ const BADGE_TONES: Record<PosCatalogItem['badgeTone'], string> = {
   keg: 'bg-surface-canvas/90 backdrop-blur-sm text-text-secondary font-semibold',
 };
 
+/**
+ * Tender shortcuts. VEMTAP QR is removed — the business handles cash, card and
+ * transfer externally. Split Payment routes to the split-bill workspace.
+ */
 const QUICK_TENDER = [
-  { icon: 'credit_card', label: 'POS Card', tone: 'text-primary' },
-  { icon: 'point_of_sale', label: 'Cash Till', tone: 'text-badge-discount-text' },
-  { icon: 'qr_code_scanner', label: 'VEMTAP QR', tone: 'text-tertiary-container' },
+  { icon: 'credit_card', label: 'Card / POS', tone: 'text-primary' },
+  { icon: 'payments', label: 'Cash', tone: 'text-badge-discount-text' },
   { icon: 'account_balance', label: 'Transfer', tone: 'text-secondary' },
+  { icon: 'call_split', label: 'Split Payment', tone: 'text-tertiary' },
 ];
+
+/** Statuses that count as "waiting on the cashier" for the orders badge. */
+const PENDING_STATUSES = new Set(['new', 'accepted', 'preparing', 'ready', 'awaiting-payment']);
 
 export function DesktopPosRegisterScreen({
   onNav,
   cart,
   onCartChange,
   customer,
+  onCustomerChange,
   onCharge,
   onSplit,
-  onOpenCustomer,
   onOpenOrders,
+  onHelp,
+  onAwardPoints,
 }: DesktopPosRegisterScreenProps) {
   const [category, setCategory] = useState(0);
-  const [view, setView] = useState<'grid' | 'list'>('grid');
   const [holdPulse, setHoldPulse] = useState(false);
   const [handoffToast, setHandoffToast] = useState<string | null>(null);
+  const [spaceCharges, setSpaceCharges] = useState(true);
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
+  const [modifiersFor, setModifiersFor] = useState<PosTerminalLine | null>(null);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [ordersPanelOpen, setOrdersPanelOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -82,6 +104,10 @@ export function DesktopPosRegisterScreen({
     return orders.find((o) => o.id === activePosHandoffOrderId) || null;
   }, [activePosHandoffOrderId, orders]);
 
+  // Orders waiting on the till: store/QR orders plus any handed to POS.
+  const pendingOrders = useMemo(() => orders.filter((o) => PENDING_STATUSES.has(o.status)), [orders]);
+  const pendingCount = pendingOrders.length;
+
   const [completedHandoff, setCompletedHandoff] = useState<{
     orderRef: string;
     tender: string;
@@ -90,22 +116,6 @@ export function DesktopPosRegisterScreen({
     items: string;
     customer: string;
   } | null>(null);
-
-  const handleCompleteHandoffPayment = (tender: string) => {
-    if (!handedOffOrder) return;
-    const txnId = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
-    completeOrderFromPos(handedOffOrder.id, tender, txnId);
-    setCompletedHandoff({
-      orderRef: handedOffOrder.orderRef,
-      tender,
-      txnId,
-      total: handedOffOrder.confirmedTotal,
-      items: handedOffOrder.items.map((i) => `${i.name} ×${i.qty}`).join(', '),
-      customer: handedOffOrder.customerName,
-    });
-    setHandoffToast(`Order #${handedOffOrder.orderRef} payment recorded in POS (${tender}).`);
-    window.setTimeout(() => setHandoffToast(null), 3500);
-  };
 
   const totals = useMemo(() => computeTotals(cart), [cart]);
   const itemCount = cart.reduce((sum, line) => sum + line.qty, 0);
@@ -126,6 +136,89 @@ export function DesktopPosRegisterScreen({
     onCartChange(cart.filter((line) => line.id !== id));
   };
 
+  const applyModifiers = (lineId: string, ids: string[]) => {
+    const surcharge = modifierSurcharge(ids);
+    onCartChange(
+      cart.map((line) => {
+        if (line.id !== lineId) return line;
+        const baseUnit = line.modifierIds ? line.unit - modifierSurcharge(line.modifierIds) : line.unit;
+        return {
+          ...line,
+          modifierIds: ids,
+          unit: baseUnit + surcharge,
+          mods: describeModifiers(ids) || line.mods,
+        };
+      }),
+    );
+    setModifiersFor(null);
+  };
+
+  /** Load a pending store order onto the ticket so it can be paid at the till. */
+  const pickOrder = (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    setActivePosHandoffOrderId(orderId);
+    onCartChange(
+      order.items
+        .filter((item) => item.available && !item.removed)
+        .map((item) => ({
+          id: `${order.id}-${item.id}`,
+          name: item.name,
+          mods: [item.variant, ...(item.options ?? [])].filter(Boolean).join(' • ') || item.meta || 'Store order',
+          unit: item.unitPrice,
+          qty: item.qty,
+          sourceOrderRef: order.orderRef,
+        })),
+    );
+    if (customer === null && order.customerName) {
+      onCustomerChange({
+        id: `order-${order.id}`,
+        name: order.customerName,
+        phone: order.customerPhone ?? '',
+        onVemtap: false,
+        tier: 'Member',
+        tierClass: 'bg-surface-container text-text-secondary',
+        points: 0,
+        spend: 0,
+        visits: 1,
+      });
+    }
+    setOrdersPanelOpen(false);
+    setHandoffToast(`Order #${order.orderRef} loaded onto the ticket.`);
+    window.setTimeout(() => setHandoffToast(null), 3000);
+  };
+
+  /** Scan simulation: match a barcode/QR to a catalogue item or a store order. */
+  const simulateScan = () => {
+    const order = pendingOrders[0];
+    const item = POS_CATALOG[Math.floor(Math.random() * POS_CATALOG.length)];
+    // Alternate between a product scan and an order scan so both paths are testable.
+    if (order && Math.random() > 0.5) {
+      pickOrder(order.id);
+      setHandoffToast(`Scanned order #${order.orderRef} — loaded to ticket.`);
+    } else {
+      onCartChange(addLine(cart, item));
+      setHandoffToast(`Scanned ${item.name} — added to ticket.`);
+    }
+    window.setTimeout(() => setHandoffToast(null), 3000);
+  };
+
+  const handleCompleteHandoffPayment = (tender: string) => {
+    if (!handedOffOrder) return;
+    const txnId = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
+    completeOrderFromPos(handedOffOrder.id, tender, txnId);
+    setCompletedHandoff({
+      orderRef: handedOffOrder.orderRef,
+      tender,
+      txnId,
+      total: handedOffOrder.confirmedTotal,
+      items: handedOffOrder.items.map((i) => `${i.name} ×${i.qty}`).join(', '),
+      customer: handedOffOrder.customerName,
+    });
+    setHandoffToast(`Order #${handedOffOrder.orderRef} payment recorded in POS (${tender}).`);
+    window.setTimeout(() => setHandoffToast(null), 3500);
+  };
+
   const createNewTicket = () => {
     onCartChange([]);
     onOpenOrders();
@@ -133,12 +226,18 @@ export function DesktopPosRegisterScreen({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'F3') {
+      if (event.key === 'F1') {
+        event.preventDefault();
+        onHelp();
+      } else if (event.key === 'F3') {
         event.preventDefault();
         searchRef.current?.focus();
       } else if (event.code === 'Space' && document.activeElement?.tagName !== 'INPUT') {
-        event.preventDefault();
-        onCharge();
+        // SPACE charges only when the switch is on.
+        if (spaceCharges) {
+          event.preventDefault();
+          onCharge();
+        }
       } else if (event.key === 'F5') {
         event.preventDefault();
         setHoldPulse(true);
@@ -150,7 +249,9 @@ export function DesktopPosRegisterScreen({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onCharge, onSplit]);
+  }, [onCharge, onSplit, onHelp, spaceCharges]);
+
+  const selectedLine = cart.find((line) => line.id === selectedLineId) ?? null;
 
   return (
     <PosTerminalChrome activeNav="register" onNav={onNav}>
@@ -169,23 +270,67 @@ export function DesktopPosRegisterScreen({
               </span>
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-ping ml-1" />
             </div>
+
+            {/* Orders with live pending count — opens the pending-orders picker. */}
+            <button
+              type="button"
+              onClick={() => setOrdersPanelOpen(true)}
+              title="Pending orders"
+              className="relative flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-surface-tint-blue text-primary hover:bg-primary hover:text-on-primary transition-colors shrink-0"
+            >
+              <Icon name="receipt_long" className="text-[17px]" />
+              <span className="font-label-sm text-label-sm font-semibold tracking-tight">Orders</span>
+              {pendingCount > 0 && (
+                <span className="min-w-[20px] h-5 px-1 rounded-full bg-error text-white font-caption text-caption font-bold flex items-center justify-center">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
           </div>
+
           <div className="flex items-center gap-space-xs overflow-x-auto py-0.5">
             {FUNCTION_KEYS.map((item) => (
-              <div
+              <button
                 key={item.key}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container text-text-secondary shrink-0"
+                type="button"
+                onClick={() => {
+                  if (item.key === 'F1') onHelp();
+                  else if (item.key === 'F3') searchRef.current?.focus();
+                  else if (item.key === 'F5') {
+                    setHoldPulse(true);
+                    window.setTimeout(() => setHoldPulse(false), 900);
+                  } else if (item.key === 'F6') onSplit();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container text-text-secondary hover:bg-surface-container-high transition-colors shrink-0"
               >
                 <kbd className="px-1.5 py-0.5 text-[11px] font-bold rounded bg-surface-canvas shadow-sm text-primary">
                   {item.key}
                 </kbd>
                 <span className="font-caption text-caption font-medium">{item.label}</span>
-              </div>
+              </button>
             ))}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-high text-primary shrink-0">
-              <kbd className="px-2 py-0.5 text-[11px] font-bold rounded bg-primary text-on-primary shadow-sm">SPACE</kbd>
+
+            {/* SPACE ↔ Charge switch */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={spaceCharges}
+              onClick={() => setSpaceCharges((value) => !value)}
+              title={spaceCharges ? 'SPACE charges — click to disable' : 'SPACE is disabled — click to enable charging'}
+              className={`flex items-center gap-2 px-2.5 py-1 rounded-lg shrink-0 transition-colors ${
+                spaceCharges ? 'bg-surface-container-high text-primary' : 'bg-surface-container text-text-tertiary'
+              }`}
+            >
+              <kbd className="px-2 py-0.5 text-[11px] font-bold rounded shadow-sm bg-primary text-on-primary">SPACE</kbd>
               <span className="font-caption text-caption font-bold">Charge</span>
-            </div>
+              <span
+                className={`relative w-8 h-4 rounded-full transition-colors ${spaceCharges ? 'bg-primary' : 'bg-surface-container-highest'}`}
+              >
+                <span
+                  className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${spaceCharges ? 'left-[18px]' : 'left-0.5'}`}
+                />
+              </span>
+            </button>
           </div>
         </div>
       </section>
@@ -199,7 +344,7 @@ export function DesktopPosRegisterScreen({
                 <Icon name="point_of_sale" className="text-[22px]" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono font-bold text-primary text-[14px]">
                     STORE ORDER #{handedOffOrder.orderRef}
                   </span>
@@ -219,11 +364,11 @@ export function DesktopPosRegisterScreen({
             <div className="flex items-center gap-2 flex-wrap shrink-0">
               <button
                 type="button"
-                onClick={() => handleCompleteHandoffPayment('POS Card Terminal')}
+                onClick={onCharge}
                 className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-label-md shadow-sm flex items-center gap-1.5 transition-all"
               >
-                <Icon name="credit_card" className="text-[17px]" />
-                <span>Pay by Card (₦{handedOffOrder.confirmedTotal.toLocaleString()})</span>
+                <Icon name="payments" className="text-[17px]" />
+                <span>Proceed to Payment (₦{handedOffOrder.confirmedTotal.toLocaleString()})</span>
               </button>
 
               <button
@@ -246,7 +391,10 @@ export function DesktopPosRegisterScreen({
 
               <button
                 type="button"
-                onClick={() => setActivePosHandoffOrderId(null)}
+                onClick={() => {
+                  setActivePosHandoffOrderId(null);
+                  onCartChange([]);
+                }}
                 className="px-3 py-2 rounded-xl border border-border bg-surface-canvas hover:bg-surface-subtle text-text-secondary text-caption font-semibold transition-colors"
               >
                 Dismiss
@@ -277,33 +425,23 @@ export function DesktopPosRegisterScreen({
                 </div>
               </div>
               <div className="flex items-center gap-space-xs shrink-0">
+                {/* QR & barcode scanner */}
                 <button
                   type="button"
+                  onClick={simulateScan}
+                  title="Scan QR or barcode"
+                  className="h-12 w-12 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center hover:bg-surface-container-high transition-colors shadow-sm"
+                >
+                  <Icon name="qr_code_scanner" className="text-[22px]" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModifiersFor(selectedLine ?? cart[cart.length - 1] ?? null)}
                   className="h-12 px-space-md rounded-xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary flex items-center gap-1.5 hover:bg-surface-container-high transition-colors shadow-sm"
                 >
                   <Icon name="tune" className="text-[19px]" />
                   <span>+ Modifiers</span>
                 </button>
-                <div className="h-12 p-1 rounded-xl bg-surface-container flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => setView('grid')}
-                    className={`h-10 px-3 rounded-lg flex items-center justify-center ${
-                      view === 'grid' ? 'bg-surface-canvas text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    <Icon name="grid_view" className="text-[20px]" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setView('list')}
-                    className={`h-10 px-3 rounded-lg flex items-center justify-center transition-colors ${
-                      view === 'list' ? 'bg-surface-canvas text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    <Icon name="view_list" className="text-[20px]" />
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -422,7 +560,7 @@ export function DesktopPosRegisterScreen({
                     <h3 className="font-heading-md text-heading-md text-text-primary tracking-tight">Ticket #TK-108</h3>
                   </div>
                   <p className="font-caption text-caption text-text-tertiary mt-1">
-                    Table 04 • Emeka O. • 13:42:09 WAT
+                    Table 04 • {customer?.name ?? 'Walk-in Guest'} • 13:42:09 WAT
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -444,28 +582,32 @@ export function DesktopPosRegisterScreen({
                 </div>
               </div>
 
-              {/* VIP Customer Tag */}
+              {/* Customer tag — walk-in friendly; attach is optional */}
               <div className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between mb-space-md shadow-sm">
-                <div className="flex items-center gap-space-xs">
-                  <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary font-bold text-label-sm flex items-center justify-center shadow-sm">
-                    MJ
+                <div className="flex items-center gap-space-xs min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary font-bold text-label-sm flex items-center justify-center shadow-sm shrink-0">
+                    {customer
+                      ? customer.name.split(' ').map((part) => part[0]).join('').slice(0, 2)
+                      : 'WI'}
                   </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      {customer ?? 'Michael James (VIP Gold)'}
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
+                      {customer ? customer.name : 'Walk-in Guest'}
                     </span>
-                    <span className="font-caption text-caption text-badge-discount-text font-medium">
-                      2,450 pts • 10% Member Perk applied
+                    <span className="font-caption text-caption text-badge-discount-text font-medium truncate">
+                      {customer
+                        ? `${customer.points.toLocaleString()} pts • ${customer.tier}`
+                        : 'No customer attached — payment still allowed'}
                     </span>
                   </div>
                 </div>
                 <button
                   type="button"
-                  title="Change Customer"
-                  onClick={onOpenCustomer}
-                  className="p-1 text-text-tertiary hover:text-primary transition-colors"
+                  title={customer ? 'Change Customer' : 'Attach Customer'}
+                  onClick={() => setCustomerModalOpen(true)}
+                  className="p-1 text-text-tertiary hover:text-primary transition-colors shrink-0"
                 >
-                  <Icon name="cached" className="text-[18px]" />
+                  <Icon name={customer ? 'cached' : 'person_add'} className="text-[18px]" />
                 </button>
               </div>
 
@@ -486,8 +628,15 @@ export function DesktopPosRegisterScreen({
                 ) : (
                   cart.map((line) => {
                     const lineTotal = (line.unit - (line.promo ?? 0)) * line.qty;
+                    const isSelected = selectedLineId === line.id;
                     return (
-                      <div key={line.id} className="p-3 rounded-lg bg-surface flex flex-col gap-2">
+                      <div
+                        key={line.id}
+                        onClick={() => setSelectedLineId(isSelected ? null : line.id)}
+                        className={`p-3 rounded-lg bg-surface flex flex-col gap-2 cursor-pointer transition-shadow ${
+                          isSelected ? 'ring-2 ring-primary' : ''
+                        }`}
+                      >
                         <div className="flex items-start justify-between">
                           <div>
                             <h5 className="font-label-md text-label-md font-semibold text-text-primary">{line.name}</h5>
@@ -513,7 +662,7 @@ export function DesktopPosRegisterScreen({
                           <div className="flex items-center gap-2 bg-surface-canvas rounded-lg px-2 py-0.5 shadow-sm">
                             <button
                               type="button"
-                              onClick={() => changeQty(line.id, -1)}
+                              onClick={(e) => { e.stopPropagation(); changeQty(line.id, -1); }}
                               className="text-text-secondary hover:text-text-primary text-[15px] font-bold"
                             >
                               −
@@ -521,19 +670,30 @@ export function DesktopPosRegisterScreen({
                             <span className="font-label-md text-label-md font-semibold text-text-primary px-1">{line.qty}</span>
                             <button
                               type="button"
-                              onClick={() => changeQty(line.id, 1)}
+                              onClick={(e) => { e.stopPropagation(); changeQty(line.id, 1); }}
                               className="text-text-secondary hover:text-text-primary text-[15px] font-bold"
                             >
                               +
                             </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeLine(line.id)}
-                            className="text-text-tertiary hover:text-error transition-colors"
-                          >
-                            <Icon name="delete" className="text-[18px]" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              title="Edit modifiers"
+                              onClick={(e) => { e.stopPropagation(); setModifiersFor(line); }}
+                              className="text-text-tertiary hover:text-primary transition-colors"
+                            >
+                              <Icon name="tune" className="text-[17px]" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Remove line"
+                              onClick={(e) => { e.stopPropagation(); removeLine(line.id); }}
+                              className="text-text-tertiary hover:text-error transition-colors"
+                            >
+                              <Icon name="delete" className="text-[18px]" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -618,7 +778,7 @@ export function DesktopPosRegisterScreen({
                     <button
                       key={chip.label}
                       type="button"
-                      onClick={onCharge}
+                      onClick={() => (chip.label === 'Split Payment' ? onSplit() : onCharge())}
                       className="py-2 px-1 rounded-lg bg-surface hover:bg-surface-container text-text-primary font-caption text-caption font-semibold transition-colors flex flex-col items-center justify-center gap-1 shadow-sm"
                     >
                       <Icon name={chip.icon} className={`text-[18px] ${chip.tone}`} />
@@ -628,9 +788,109 @@ export function DesktopPosRegisterScreen({
                 </div>
               </div>
             </div>
+
+            {/* Loyalty panel — points balance, next reward, and manual award */}
+            {customer && totals.total > 0 && (
+              <PosLoyaltyPanel
+                customer={customer}
+                ticketTotal={totals.total}
+                onAward={(points) => {
+                  onAwardPoints(points);
+                  setHandoffToast(`${points.toLocaleString()} points awarded to ${customer.name}.`);
+                  window.setTimeout(() => setHandoffToast(null), 3000);
+                }}
+              />
+            )}
           </aside>
         </div>
       </div>
+
+      {/* Pending orders picker */}
+      {ordersPanelOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Pending orders">
+          <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" onClick={() => setOrdersPanelOpen(false)} />
+          <div className="relative w-full max-w-lg bg-surface-canvas rounded-2xl shadow-2xl border border-border-subtle overflow-hidden flex flex-col max-h-[86vh]">
+            <div className="px-space-lg pt-space-lg pb-space-sm border-b border-border-subtle flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-heading-md text-heading-md text-text-primary tracking-tight">Pending Orders</h2>
+                <p className="font-caption text-caption text-text-secondary mt-0.5">
+                  Pick an order to load it onto the ticket and take payment.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOrdersPanelOpen(false)}
+                aria-label="Close"
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-subtle transition-colors"
+              >
+                <Icon name="close" className="text-[20px]" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-space-lg py-space-md">
+              {pendingOrders.length === 0 ? (
+                <div className="py-10 flex flex-col items-center text-center gap-2">
+                  <Icon name="checklist" className="text-[32px] text-text-tertiary" />
+                  <p className="font-body-md text-body-md text-text-secondary">No pending orders — the queue is clear.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {pendingOrders.map((order) => (
+                    <button
+                      key={order.id}
+                      type="button"
+                      onClick={() => pickOrder(order.id)}
+                      className="w-full p-space-sm rounded-xl bg-surface hover:bg-surface-tint-blue text-left transition-colors flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon name="receipt_long" className="text-primary text-[20px] shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-mono font-label-md text-label-md text-text-primary font-semibold block truncate">
+                            #{order.orderRef}
+                          </span>
+                          <span className="font-caption text-caption text-text-secondary truncate block">
+                            {order.customerName} • {order.origin} • {order.items.length} items
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold capitalize">
+                          {order.status}
+                        </span>
+                        <span className="font-label-md text-label-md font-bold text-text-primary">
+                          {formatNaira(order.confirmedTotal)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modifiers modal */}
+      {modifiersFor && (
+        <PosModifiersModal
+          lineName={modifiersFor.name}
+          initial={modifiersFor.modifierIds ?? []}
+          onCancel={() => setModifiersFor(null)}
+          onApply={(ids) => applyModifiers(modifiersFor.id, ids)}
+        />
+      )}
+
+      {/* Customer modal (walk-in optional) */}
+      {customerModalOpen && (
+        <PosCustomerModal
+          onClose={() => setCustomerModalOpen(false)}
+          onSelect={(record) => {
+            onCustomerChange(record);
+            setCustomerModalOpen(false);
+            setHandoffToast(`${record.name} attached to this ticket.`);
+            window.setTimeout(() => setHandoffToast(null), 2500);
+          }}
+        />
+      )}
 
       {handoffToast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
@@ -682,7 +942,7 @@ export function DesktopPosRegisterScreen({
               </div>
               <div className="flex justify-between">
                 <span className="text-text-secondary">Audit Trail:</span>
-                <span className="text-caption text-text-tertiary">Central Order Updated Automatically</span>
+                <span className="font-caption text-text-tertiary">Central Order Updated Automatically</span>
               </div>
             </div>
 

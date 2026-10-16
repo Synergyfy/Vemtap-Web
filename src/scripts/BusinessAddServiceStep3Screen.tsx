@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { resolveServiceSector, getServiceSectorPreset } from './serviceClassification';
 import type { ServiceDraft } from './serviceDraft';
+import { PRESET_POLICIES, type ServicePolicy } from './serviceStudioShared';
 
 interface BusinessAddServiceStep3ScreenProps {
   draft: ServiceDraft;
@@ -45,9 +47,62 @@ export function BusinessAddServiceStep3Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddServiceStep3ScreenProps) {
-  const [lead, setLead] = useState(LEAD_OPTIONS[0]);
-  const [horizon, setHorizon] = useState(HORIZON_OPTIONS[1]);
-  const [capacity, setCapacity] = useState(2);
+  const lead = draft.leadNotice ?? LEAD_OPTIONS[0];
+  const horizon = draft.bookingHorizon ?? HORIZON_OPTIONS[1];
+  const capacity = draft.concurrentBookings ?? 2;
+
+  const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBody, setEditBody] = useState('');
+
+  const [addingCustomPolicy, setAddingCustomPolicy] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newBody, setNewBody] = useState('');
+
+  const policies: ServicePolicy[] =
+    draft.policies && draft.policies.length > 0 ? draft.policies : PRESET_POLICIES;
+
+  const handleStartEditPolicy = (policy: ServicePolicy) => {
+    setEditingPolicyId(policy.id);
+    setEditTitle(policy.title);
+    setEditBody(policy.body);
+  };
+
+  const handleSavePolicyEdit = (id: string) => {
+    const updated = policies.map((p) =>
+      p.id === id ? { ...p, title: editTitle.trim(), body: editBody.trim() } : p
+    );
+    onDraftChange({ policies: updated });
+    setEditingPolicyId(null);
+  };
+
+  const handleDeletePolicy = (id: string) => {
+    const updated = policies.filter((p) => p.id !== id);
+    onDraftChange({ policies: updated });
+  };
+
+  const handleAddCustomPolicy = () => {
+    if (!newTitle.trim() || !newBody.trim()) return;
+    const newPolicy: ServicePolicy = {
+      id: `custom-${Date.now()}`,
+      title: newTitle.trim(),
+      body: newBody.trim(),
+      preset: false,
+      removable: true,
+    };
+    onDraftChange({ policies: [...policies, newPolicy] });
+    setNewTitle('');
+    setNewBody('');
+    setAddingCustomPolicy(false);
+  };
+
+  const handleRestorePresets = () => {
+    onDraftChange({ policies: [...PRESET_POLICIES] });
+  };
+
+  // Suggested policies derived from inherited business classification
+  const sector = resolveServiceSector([draft.primaryCategory], [draft.subCategory]);
+  const preset = getServiceSectorPreset(sector);
 
   const allSelected = draft.branches.maitama && draft.branches.wuseII;
 
@@ -278,7 +333,7 @@ export function BusinessAddServiceStep3Screen({
                         : 'bg-surface-subtle text-text-secondary hover:bg-surface-container'
                     }`}
                     type="button"
-                    onClick={() => setLead(option)}
+                    onClick={() => onDraftChange({ leadNotice: option })}
                   >
                     {option}
                   </button>
@@ -304,7 +359,7 @@ export function BusinessAddServiceStep3Screen({
                         : 'bg-surface-subtle text-text-secondary hover:bg-surface-container'
                     }`}
                     type="button"
-                    onClick={() => setHorizon(option)}
+                    onClick={() => onDraftChange({ bookingHorizon: option })}
                   >
                     {option}
                   </button>
@@ -325,7 +380,7 @@ export function BusinessAddServiceStep3Screen({
                   aria-label="Decrease concurrent bookings"
                   className="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center text-on-surface hover:bg-surface-container active:scale-95 transition-all shadow-sm"
                   type="button"
-                  onClick={() => setCapacity((current) => Math.max(1, current - 1))}
+                  onClick={() => onDraftChange({ concurrentBookings: Math.max(1, capacity - 1) })}
                 >
                   <Icon name="remove" className="text-[18px]" />
                 </button>
@@ -337,7 +392,7 @@ export function BusinessAddServiceStep3Screen({
                   aria-label="Increase concurrent bookings"
                   className="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center text-on-surface hover:bg-surface-container active:scale-95 transition-all shadow-sm"
                   type="button"
-                  onClick={() => setCapacity((current) => Math.min(12, current + 1))}
+                  onClick={() => onDraftChange({ concurrentBookings: Math.min(12, capacity + 1) })}
                 >
                   <Icon name="add" className="text-[18px]" />
                 </button>
@@ -346,37 +401,189 @@ export function BusinessAddServiceStep3Screen({
           </section>
 
           <section className="flex flex-col gap-space-sm">
-            <div className="flex items-center gap-1.5">
-              <Icon name="verified_user" className="text-primary text-[20px]" />
-              <h2 className="font-heading-sm text-heading-sm text-on-surface">Policies &amp; Automation</h2>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-1.5">
+                <Icon name="verified_user" className="text-primary text-[20px]" />
+                <h2 className="font-heading-sm text-heading-sm text-on-surface">Policies &amp; Automation</h2>
+                <span className="font-caption text-caption font-semibold px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary">
+                  {preset.label} Presets
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRestorePresets}
+                  className="font-caption text-caption font-semibold px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high text-text-secondary transition-colors"
+                >
+                  Restore
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddingCustomPolicy(true)}
+                  className="font-caption text-caption font-semibold px-2.5 py-1 rounded-full bg-surface-tint-blue hover:bg-primary-container text-primary hover:text-on-primary transition-colors flex items-center gap-1"
+                >
+                  <Icon name="add" className="text-[14px]" />
+                  <span>Custom Policy</span>
+                </button>
+              </div>
             </div>
+
+            {/* Add Custom Policy Form */}
+            {addingCustomPolicy && (
+              <div className="p-space-sm rounded-xl border border-primary/20 bg-surface-container-lowest space-y-2.5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">
+                    Add Custom Policy
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAddingCustomPolicy(false)}
+                    className="text-text-tertiary hover:text-text-secondary"
+                  >
+                    <Icon name="close" className="text-[18px]" />
+                  </button>
+                </div>
+                <div>
+                  <label className="block font-caption text-caption text-text-secondary mb-1">Title</label>
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="e.g. Deposit Required, Dress Code..."
+                    className="w-full px-3 py-1.5 rounded-lg bg-surface-subtle border border-outline/20 font-body-sm text-body-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block font-caption text-caption text-text-secondary mb-1">Terms</label>
+                  <textarea
+                    rows={2}
+                    value={newBody}
+                    onChange={(e) => setNewBody(e.target.value)}
+                    placeholder="Specify conditions and rules..."
+                    className="w-full px-3 py-1.5 rounded-lg bg-surface-subtle border border-outline/20 font-body-sm text-body-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setAddingCustomPolicy(false)}
+                    className="px-3 py-1 rounded-lg text-text-secondary hover:bg-surface-container font-label-sm text-label-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomPolicy}
+                    disabled={!newTitle.trim() || !newBody.trim()}
+                    className="px-3.5 py-1 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold hover:bg-primary-container disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="bg-surface-container-lowest rounded-xl p-space-md flex flex-col gap-space-md shadow-[0_2px_8px_rgba(13,37,76,0.03)]">
-              <div className="flex items-start gap-space-sm">
-                <div className="w-8 h-8 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0 mt-0.5">
-                  <Icon name="schedule" className="text-[18px]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-label-md text-label-md font-semibold text-text-primary">
-                    Free Cancellation Cutoff
-                  </p>
-                  <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Complimentary cancellation up to 2 hours before scheduled session start.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-space-sm">
-                <div className="w-8 h-8 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center shrink-0 mt-0.5">
-                  <Icon name="hourglass_top" className="text-[18px]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-label-md text-label-md font-semibold text-text-primary">
-                    Late Arrival Grace Window
-                  </p>
-                  <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    15 minutes buffer window maintained before the appointment slot is released.
-                  </p>
-                </div>
-              </div>
+              {policies.map((policy) => {
+                const isEditing = editingPolicyId === policy.id;
+                const isLocked = Boolean(policy.locked || policy.removable === false);
+
+                return (
+                  <div
+                    key={policy.id}
+                    className="flex flex-col gap-2 p-2.5 rounded-xl bg-surface-subtle transition-all"
+                  >
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full px-2.5 py-1 rounded-lg bg-surface-canvas border border-outline/20 font-label-md text-label-md font-semibold text-text-primary"
+                        />
+                        <textarea
+                          rows={2}
+                          value={editBody}
+                          onChange={(e) => setEditBody(e.target.value)}
+                          className="w-full px-2.5 py-1 rounded-lg bg-surface-canvas border border-outline/20 font-body-sm text-body-sm text-text-primary resize-none"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingPolicyId(null)}
+                            className="px-2.5 py-1 rounded-lg text-text-secondary hover:bg-surface-container font-label-sm text-label-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSavePolicyEdit(policy.id)}
+                            className="px-3 py-1 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-space-sm">
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                            isLocked
+                              ? 'bg-surface-container text-text-secondary'
+                              : 'bg-surface-container text-primary'
+                          }`}
+                        >
+                          <Icon name={isLocked ? 'lock' : 'verified_user'} className="text-[18px]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-label-md text-label-md font-semibold text-text-primary">
+                                {policy.title}
+                              </p>
+                              {isLocked ? (
+                                <span className="text-[10px] font-bold uppercase text-text-secondary bg-surface-container px-1 rounded">
+                                  Locked
+                                </span>
+                              ) : policy.preset ? (
+                                <span className="text-[10px] font-bold uppercase text-badge-discount-text bg-badge-discount-bg px-1 rounded">
+                                  Preset
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold uppercase text-primary bg-surface-tint-blue px-1 rounded">
+                                  Custom
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditPolicy(policy)}
+                                className="p-1 text-text-secondary hover:text-primary transition-colors"
+                              >
+                                <Icon name="edit" className="text-[16px]" />
+                              </button>
+                              {!isLocked && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePolicy(policy.id)}
+                                  className="p-1 text-text-secondary hover:text-error transition-colors"
+                                >
+                                  <Icon name="delete" className="text-[16px]" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="font-caption text-caption text-text-secondary mt-0.5">
+                            {policy.body}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
               <div className="bg-surface-tint-blue p-space-sm rounded-xl flex items-start gap-space-xs mt-1">
                 <Icon className="text-primary text-[20px] shrink-0 mt-0.5" filled name="sms" />
                 <p className="font-caption text-caption text-on-secondary-container leading-relaxed">

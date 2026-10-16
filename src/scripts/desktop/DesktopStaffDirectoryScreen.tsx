@@ -172,8 +172,9 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
             <Icon name="chevron_right" className="text-[14px]" />
             <span className="text-text-primary font-medium">Team Directory</span>
           </nav>
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg pt-space-xs">
-            <div className="flex flex-col gap-space-2xs max-w-2xl">
+          {/* Header — stacks until `xl` so it fits iPad Pro 13 */}
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-space-lg pt-space-xs">
+            <div className="flex flex-col gap-space-2xs max-w-2xl min-w-0">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
                 Staff &amp; Team Access Directory
               </h1>

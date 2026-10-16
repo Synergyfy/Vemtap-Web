@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { getTrialDaysLeft, hasActiveTrial } from '../utils/trialState';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionOverviewScreenProps {
@@ -78,6 +79,8 @@ export function SubscriptionOverviewScreen({
   onViewAddons,
 }: SubscriptionOverviewScreenProps) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const trialActive = hasActiveTrial();
+  const trialDaysLeft = getTrialDaysLeft();
 
   return (
     <AppScreen surface="bg-surface-canvas">
@@ -229,14 +232,26 @@ export function SubscriptionOverviewScreen({
 
         {/* Action CTAs */}
         <section className="flex flex-col gap-2.5 mt-4">
-          <button
-            className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            type="button"
-            onClick={onStartTrial}
-          >
-            <span>Start 30-Day Free Trial</span>
-            <Icon name="arrow_forward" className="text-[18px]" />
-          </button>
+          {trialActive ? (
+            <button
+              className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              type="button"
+              onClick={onStartTrial}
+            >
+              <Icon name="verified" filled className="text-[18px]" />
+              <span>View My Active Trial ({trialDaysLeft} days left)</span>
+              <Icon name="arrow_forward" className="text-[18px]" />
+            </button>
+          ) : (
+            <button
+              className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              type="button"
+              onClick={onStartTrial}
+            >
+              <span>Start 30-Day Free Trial</span>
+              <Icon name="arrow_forward" className="text-[18px]" />
+            </button>
+          )}
           <button
             className="w-full h-11 rounded-xl bg-surface-tint-blue text-primary-container font-button-secondary text-button-secondary active:scale-[0.98] transition-all flex items-center justify-center"
             type="button"
@@ -247,7 +262,9 @@ export function SubscriptionOverviewScreen({
           <div className="flex items-center justify-center gap-1.5 mt-1 text-text-secondary">
             <Icon name="lock" className="text-[15px] text-text-tertiary" />
             <span className="font-caption text-caption">
-              No credit card required to start your free trial. Cancel anytime.
+              {trialActive
+                ? 'Your free trial is active — no card on file, cancel anytime.'
+                : 'No credit card required to start your free trial. Cancel anytime.'}
             </span>
           </div>
         </section>

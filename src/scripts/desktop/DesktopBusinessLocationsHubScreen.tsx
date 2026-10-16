@@ -109,10 +109,11 @@ export function DesktopBusinessLocationsHubScreen({
           <Icon name="chevron_right" className="text-[14px]" />
           <span className="text-primary font-semibold">Locations & Branches</span>
         </div>
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-md mt-space-2xs">
-          <div>
+        {/* Header — stacks until `xl` so it fits iPad Pro 13 */}
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-md mt-space-2xs">
+          <div className="min-w-0">
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Locations & Branch Network Management
+              Locations &amp; Branch Network Management
             </h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs max-w-3xl">
               Manage physical store outlets, localized operating hours, local inventory pools, and geofence beacon

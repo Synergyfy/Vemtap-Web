@@ -12,6 +12,12 @@ interface BusinessSidebarRailProps {
   onSelect?: (key: string) => void;
   headerHeight?: '16' | '20';
   sections?: BusinessSidebarSection[];
+  /**
+   * POS mode: the rail shrinks to an icon-only strip (`72px`) so the POS menu can
+   * open beside it instead of replacing it. Labels, badges, dropdowns and the
+   * footer are hidden.
+   */
+  collapsed?: boolean;
 }
 
 const RAIL_TOP: Record<'16' | '20', string> = { '16': 'top-16', '20': 'top-20' };
@@ -21,11 +27,15 @@ export function BusinessSidebarRail({
   onSelect,
   headerHeight = '16',
   sections = BUSINESS_SIDEBAR_SECTIONS,
+  collapsed = false,
 }: BusinessSidebarRailProps) {
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
 
-  const activeSectionHasChildren = sections.some(
-    (s) => s.key === activeSectionKey && s.items && s.items.length > 0
+  // Sections hidden from the main rail (e.g. Store Front, which moved inside POS).
+  const visibleSections = sections.filter((section) => !section.hidden);
+
+  const activeSectionHasChildren = visibleSections.some(
+    (s) => s.key === activeSectionKey && !s.link && s.items && s.items.length > 0
   );
 
   // Single open dropdown state: collapsed by default, opens if user is currently inside a dropdown page
@@ -44,7 +54,9 @@ export function BusinessSidebarRail({
   }, [activeSectionKey, activeSectionHasChildren]);
 
   const handleParentClick = (section: BusinessSidebarSection) => {
-    if (!section.items || section.items.length === 0) {
+    // Direct-link sections (POS), childless sections and collapsed (POS) mode
+    // never expand — a click just navigates to the section's default page.
+    if (section.link || !section.items || section.items.length === 0 || collapsed) {
       onSelect?.(section.defaultKey);
       return;
     }
@@ -68,12 +80,16 @@ export function BusinessSidebarRail({
 
   return (
     <aside
-      className={`hidden lg:flex fixed left-0 ${RAIL_TOP[headerHeight]} bottom-0 z-40 w-[72px] xl:w-64 flex-col border-r border-border-subtle bg-surface-canvas overflow-y-auto select-none`}
+      className={`hidden lg:flex fixed left-0 ${RAIL_TOP[headerHeight]} bottom-0 z-40 ${
+        collapsed ? 'w-[72px]' : 'w-[72px] lg:w-64'
+      } flex-col border-r border-border-subtle bg-surface-canvas overflow-y-auto select-none`}
       aria-label="Business Dashboard Navigation"
     >
-      <nav className="flex flex-col p-2 xl:p-3 space-y-1">
-        {sections.map((section) => {
-          const hasChildren = Boolean(section.items && section.items.length > 0);
+      <nav className={`flex flex-col ${collapsed ? 'p-2' : 'p-2 lg:p-3'} space-y-1`}>
+        {visibleSections.map((section) => {
+          // Link sections (POS) keep their items for the POS rail but never show a
+          // dropdown chevron on the main rail.
+          const hasChildren = !section.link && Boolean(section.items && section.items.length > 0);
           const isSectionActive = activeSectionKey === section.key;
           const isOpen = openSectionKey === section.key;
 
@@ -86,13 +102,15 @@ export function BusinessSidebarRail({
                 aria-current={!hasChildren && isSectionActive ? 'page' : undefined}
                 title={section.label}
                 onClick={() => handleParentClick(section)}
-                className={`group flex items-center justify-between w-full rounded-xl px-3 py-2.5 text-left transition-all ${
+                className={`group flex items-center w-full rounded-xl py-2.5 text-left transition-all ${
+                  collapsed ? 'justify-center px-0' : 'justify-between px-3'
+                } ${
                   isSectionActive
                     ? 'bg-surface-tint-blue/80 text-primary font-semibold'
                     : 'text-text-secondary hover:text-on-surface hover:bg-surface-subtle'
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className={`flex items-center ${collapsed ? '' : 'gap-3'} min-w-0`}>
                   <Icon
                     name={section.icon}
                     className={`text-[20px] shrink-0 transition-colors ${
@@ -101,12 +119,12 @@ export function BusinessSidebarRail({
                         : 'text-text-tertiary group-hover:text-on-surface'
                     }`}
                   />
-                  <span className="hidden xl:block truncate font-label-md text-label-md">
+                  <span className={`${collapsed ? 'hidden' : 'hidden lg:block'} truncate font-label-md text-label-md`}>
                     {section.label}
                   </span>
                 </div>
 
-                <div className="hidden xl:flex items-center gap-1.5 shrink-0">
+                <div className={`${collapsed ? 'hidden' : 'hidden lg:flex'} items-center gap-1.5 shrink-0`}>
                   {section.badge && (
                     <span
                       className={`px-1.5 py-0.5 rounded-full font-caption text-[10px] font-bold tracking-tight uppercase leading-none ${
@@ -127,11 +145,11 @@ export function BusinessSidebarRail({
                 </div>
               </button>
 
-              {/* Sub-Items Dropdown List (Expanded) */}
-              {hasChildren && (
+              {/* Sub-Items Dropdown List (Expanded) — hidden while collapsed (POS mode) */}
+              {hasChildren && !collapsed && (
                 <div
                   className={`flex-col pl-4 pr-1 mt-0.5 space-y-0.5 border-l-2 border-border-subtle/80 ml-5 ${
-                    isOpen ? 'hidden xl:flex' : 'hidden'
+                    isOpen ? 'hidden lg:flex' : 'hidden'
                   }`}
                 >
                   {section.items!.map((subItem) => {
@@ -186,20 +204,22 @@ export function BusinessSidebarRail({
         })}
       </nav>
 
-      {/* Footer System Status Indicator */}
-      <div className="mt-auto p-3 border-t border-border-subtle hidden xl:block">
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-surface-subtle">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-            <span className="font-caption text-[11px] text-text-secondary font-medium">
-              VEMTAP Store Cloud
+      {/* Footer System Status Indicator — hidden while collapsed (POS mode) */}
+      {!collapsed && (
+        <div className="mt-auto p-3 border-t border-border-subtle hidden lg:block">
+          <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-surface-subtle">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
+              <span className="font-caption text-[11px] text-text-secondary font-medium">
+                VEMTAP Store Cloud
+              </span>
+            </div>
+            <span className="font-caption text-[10px] font-bold text-badge-discount-text uppercase tracking-wider">
+              Online
             </span>
           </div>
-          <span className="font-caption text-[10px] font-bold text-badge-discount-text uppercase tracking-wider">
-            Online
-          </span>
         </div>
-      </div>
+      )}
     </aside>
   );
 }

@@ -112,7 +112,7 @@ export function DesktopAddProductStep1Screen({
       icon: newCatIcon,
       productCount: 1,
       activeBranches: ['all'],
-      qrDestinationUrl: `/storefront?category=${slug}`,
+      qrDestinationUrl: `/business/urban-grill-bistro-104/products?category=${slug}`,
     });
     setCategories(getCentralCategories('product'));
     onDraftChange({
@@ -159,7 +159,7 @@ export function DesktopAddProductStep1Screen({
 
   return (
     <Shell activeNav="catalog" onNav={onNav}>
-      <div className="w-full pb-space-3xl flex flex-col gap-space-xl">
+      <div className="w-full max-w-7xl mx-auto px-margin pb-space-3xl flex flex-col gap-space-xl">
         <nav aria-label="Breadcrumb" className="flex items-center gap-space-xs text-caption font-caption text-text-secondary">
           <button
             type="button"
@@ -769,38 +769,36 @@ export function DesktopAddProductStep1Screen({
             </section>
           </div>
         </div>
+      </div>
 
-        <div className="sticky bottom-4 z-30 mt-space-sm bg-surface-canvas/95 backdrop-blur-md rounded-2xl shadow-xl p-space-md flex flex-col sm:flex-row items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-md">
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1 text-text-secondary hover:text-text-primary font-label-md text-label-md transition-colors"
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
             >
               <Icon name="arrow_back" className="text-[18px]" />
               <span>Back to Catalog</span>
             </button>
-            <span className="text-text-tertiary hidden sm:inline">•</span>
-            <span className="font-caption text-caption text-badge-discount-text font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-              Basics valid &amp; ready for pricing setup
-            </span>
-          </div>
-          <div className="flex items-center gap-space-sm w-full sm:w-auto">
             <button
               type="button"
               onClick={handleSaveDraft}
-              className="flex-1 sm:flex-none px-space-lg py-space-xs rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-button-secondary text-button-secondary transition-all"
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
             >
-              Save as Draft
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft</span>
             </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
             <button
               type="button"
               onClick={handleNext}
-              className="flex-1 sm:flex-none px-space-xl py-space-xs rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-space-xs"
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
             >
               <span>Continue to Pricing &amp; Availability</span>
-              <Icon name="arrow_forward" className="text-[18px]" />
+              <Icon name="arrow_forward" className="text-[20px]" />
             </button>
           </div>
         </div>

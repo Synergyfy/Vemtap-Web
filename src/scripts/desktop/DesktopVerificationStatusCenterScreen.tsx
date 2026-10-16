@@ -1,11 +1,13 @@
 import { Icon } from '../../components/ui/Icon';
-import { BusinessVerificationChrome } from './BusinessVerificationChrome';
+import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopVerificationStatusCenterScreenProps {
   onBack: () => void;
   onUpdateInfo: () => void;
   onManageLocations?: () => void;
   onBrand?: () => void;
+  /** Dashboard rail navigation — keeps the status centre inside the portal. */
+  onNav?: (key: BusinessPortalNavKey) => void;
 }
 
 const BUSINESS_IMG =
@@ -24,9 +26,10 @@ export function DesktopVerificationStatusCenterScreen({
   onUpdateInfo,
   onManageLocations,
   onBrand,
+  onNav,
 }: DesktopVerificationStatusCenterScreenProps) {
   return (
-    <BusinessVerificationChrome activeNav="trust" onBrand={onBrand}>
+    <BusinessPortalChrome activeNav="more-verification" onNav={onNav} onBrand={onBrand}>
       <div className="max-w-6xl mx-auto py-space-lg px-margin flex flex-col gap-space-xl w-full">
         <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest shadow-sm">
           <div className="absolute -right-20 -top-24 w-80 h-80 rounded-full bg-primary/5 pointer-events-none blur-2xl" />
@@ -386,6 +389,6 @@ export function DesktopVerificationStatusCenterScreen({
           </button>
         </div>
       </div>
-    </BusinessVerificationChrome>
+    </BusinessPortalChrome>
   );
 }

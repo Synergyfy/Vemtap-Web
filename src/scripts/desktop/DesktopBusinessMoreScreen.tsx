@@ -10,7 +10,9 @@ interface DesktopBusinessMoreScreenProps {
   onOpenStorefront: () => void;
   onOpenSubscription: () => void;
   onOpenVerification: () => void;
+  onOpenNotifications: () => void;
   onOpenSupport: () => void;
+  onOpenSettings: () => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
   onOpenStoreOrdering?: (sub?: 'dashboard' | 'qr' | 'settings') => void;
@@ -53,7 +55,9 @@ export function DesktopBusinessMoreScreen({
   onOpenStorefront,
   onOpenSubscription,
   onOpenVerification,
+  onOpenNotifications,
   onOpenSupport,
+  onOpenSettings,
   onSwitchConsumer,
   onSignOut,
   onOpenStoreOrdering,
@@ -77,14 +81,14 @@ export function DesktopBusinessMoreScreen({
   const sections: SectionData[] = [
     {
       key: 'store-ordering',
-      label: 'Store Ordering & QR Touchpoints',
+      label: 'Store Front & QR Touchpoints',
       badge: 'Live',
       badgeClass: GREEN_BADGE,
       rows: [
         {
           key: 'ordering-dash',
           icon: 'qr_code_scanner',
-          title: 'Store Ordering Dashboard',
+          title: 'Store Front Dashboard',
           sub: 'Live customer orders from QR codes & storefront',
           badge: 'Live',
           badgeClass: GREEN_BADGE,
@@ -200,7 +204,7 @@ export function DesktopBusinessMoreScreen({
           sub: 'Till alerts, payout updates & staff clock-ins',
           badge: '4 unread',
           badgeClass: ERROR_BADGE,
-          onClick: () => showToast('Opening notification center'),
+          onClick: onOpenNotifications,
         },
       ],
     },
@@ -241,6 +245,14 @@ export function DesktopBusinessMoreScreen({
           title: 'Store Settings',
           sub: 'VAT/Taxes, thermal receipts & terminal permissions',
           onClick: () => showToast('Store settings coming soon'),
+        },
+        {
+          key: 'business-settings',
+          icon: 'settings',
+          iconClass: NEUTRAL_ICON,
+          title: 'Business Settings',
+          sub: 'NDPR data rights, transaction PIN & account security',
+          onClick: onOpenSettings,
         },
       ],
     },

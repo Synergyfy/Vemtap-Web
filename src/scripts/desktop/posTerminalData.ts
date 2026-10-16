@@ -7,6 +7,10 @@ export interface PosTerminalLine {
   /** Per-unit promotional or member discount in NGN. */
   promo?: number;
   qty: number;
+  /** Applied modifier ids (temperature, sauces, sides…). */
+  modifierIds?: string[];
+  /** Reference of the store order this line was loaded from, if any. */
+  sourceOrderRef?: string;
 }
 
 export const VAT_RATE = 0.075;

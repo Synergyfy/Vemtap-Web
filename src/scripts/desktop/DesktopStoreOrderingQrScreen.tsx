@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
-import type { StoreQrRecord } from '../storeOrderingData';
 import { getCentralCategories, URBAN_PRODUCTS } from '../catalogueData';
 
 interface DesktopStoreOrderingQrScreenProps {
@@ -60,12 +59,9 @@ function VemtapQrSvg({ size = 180 }: { size?: number }) {
 }
 
 export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrScreenProps) {
-  const { qrCodes, addQrCode, toggleQrActive } = useStoreOrdering();
+  const { addQrCode } = useStoreOrdering();
   const categories = getCentralCategories('product');
 
-  const [filterType, setFilterType] = useState<string>('all');
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
-  const [previewQr, setPreviewQr] = useState<StoreQrRecord | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [primaryQrTab, setPrimaryQrTab] = useState<'store' | 'category' | 'product'>('store');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id ?? '');
@@ -84,12 +80,6 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
     window.setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const filteredQrs = qrCodes.filter((qr) => {
-    if (filterType !== 'all' && qr.type !== filterType) return false;
-    if (selectedBranch !== 'all' && qr.branchId !== selectedBranch) return false;
-    return true;
-  });
-
   const handleCreateQr = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
@@ -101,7 +91,12 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
           ? 'Maitama Heights'
           : 'Garki Branch';
 
-    let defaultUrl = `https://vemtap.com/business/urban-grill-bistro-104?src=${newType}-qr&branch=${newBranch}`;
+    // QR destinations open the storefront directly: store & custom codes land on
+    // the full catalogue page, product codes land on the product detail page.
+    let defaultUrl = `https://vemtap.com/business/urban-grill-bistro-104/products?src=${newType}-qr&branch=${newBranch}`;
+    if (newType === 'product' && URBAN_PRODUCTS[0]) {
+      defaultUrl = `https://vemtap.com/business/urban-grill-bistro-104/products/${URBAN_PRODUCTS[0].id}?src=product-qr&branch=${newBranch}`;
+    }
     if (newDestination.trim()) {
       defaultUrl = newDestination.trim();
     }
@@ -123,13 +118,6 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
     setNewTargetLabel('');
   };
 
-  const handleCopyLink = (url: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(url);
-      showToast('QR code destination link copied to clipboard!');
-    }
-  };
-
   const handlePrint = () => {
     window.print();
   };
@@ -146,7 +134,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 onClick={() => onNav('store-ordering-dashboard')}
                 className="hover:text-primary transition-colors"
               >
-                Store Ordering
+                Store Front
               </button>
               <span>/</span>
               <span className="text-text-primary font-semibold">QR Codes &amp; Placement</span>
@@ -224,10 +212,10 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 <div className="flex-1 flex flex-col gap-3">
                   <div>
                     <div className="text-label-lg font-bold text-text-primary">Urban Grill &amp; Bistro — Full Storefront</div>
-                    <div className="text-body-sm text-text-secondary mt-1">Points to the full digital store catalogue. Customers browse all categories and items.</div>
+                    <div className="text-body-sm text-text-secondary mt-1">Opens the full storefront catalogue — every product with search &amp; category tabs. Customers browse all items and order directly.</div>
                   </div>
                   <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle font-mono text-[11px] text-text-secondary break-all">
-                    https://vemtap.com/business/urban-grill-bistro-104?src=store-qr
+                    https://vemtap.com/business/urban-grill-bistro-104/products?src=store-qr
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
@@ -244,7 +232,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => showToast('Store QR copied to clipboard!')} className="flex-1 py-2 rounded-xl border border-border text-text-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-surface-subtle transition-colors">
+                    <button type="button" onClick={() => { navigator.clipboard?.writeText('https://vemtap.com/business/urban-grill-bistro-104/products?src=store-qr'); showToast('Store QR link copied!'); }} className="flex-1 py-2 rounded-xl border border-border text-text-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-surface-subtle transition-colors">
                       <Icon name="content_copy" className="text-[16px]" /> Copy Link
                     </button>
                     <button type="button" onClick={handlePrint} className="flex-1 py-2 rounded-xl bg-primary text-on-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-primary/90 transition-colors shadow-sm">
@@ -272,7 +260,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 {(() => {
                   const cat = categories.find(c => c.id === selectedCategoryId);
                   if (!cat) return null;
-                  const catUrl = `https://vemtap.com/business/urban-grill-bistro-104/storefront?category=${cat.slug}&src=cat-qr`;
+                  const catUrl = `https://vemtap.com/business/urban-grill-bistro-104/products?category=${cat.id}&src=cat-qr`;
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -336,7 +324,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 {(() => {
                   const prod = URBAN_PRODUCTS.find(p => p.id === selectedProductId);
                   if (!prod) return null;
-                  const prodUrl = `https://vemtap.com/business/urban-grill-bistro-104/storefront/product/${prod.id}?src=prod-qr`;
+                  const prodUrl = `https://vemtap.com/business/urban-grill-bistro-104/products/${prod.id}?src=prod-qr`;
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -374,269 +362,6 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
             )}
           </div>
         </div>
-
-        {/* Filters and Counters */}
-        <div className="bg-surface-canvas border border-border-subtle rounded-2xl p-space-md shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-space-md">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setFilterType('all')}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-label-md transition-colors ${
-                filterType === 'all'
-                  ? 'bg-primary text-on-primary font-semibold'
-                  : 'bg-surface-subtle text-text-secondary hover:text-on-surface'
-              }`}
-            >
-              All Types ({qrCodes.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterType('store')}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-label-md transition-colors ${
-                filterType === 'store'
-                  ? 'bg-primary text-on-primary font-semibold'
-                  : 'bg-surface-subtle text-text-secondary hover:text-on-surface'
-              }`}
-            >
-              Store QR
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterType('section')}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-label-md transition-colors ${
-                filterType === 'section'
-                  ? 'bg-primary text-on-primary font-semibold'
-                  : 'bg-surface-subtle text-text-secondary hover:text-on-surface'
-              }`}
-            >
-              Section QR
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterType('product')}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-label-md transition-colors ${
-                filterType === 'product'
-                  ? 'bg-primary text-on-primary font-semibold'
-                  : 'bg-surface-subtle text-text-secondary hover:text-on-surface'
-              }`}
-            >
-              Product QR
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterType('custom')}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-label-md transition-colors ${
-                filterType === 'custom'
-                  ? 'bg-primary text-on-primary font-semibold'
-                  : 'bg-surface-subtle text-text-secondary hover:text-on-surface'
-              }`}
-            >
-              Custom Placement
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-surface-subtle border border-border-subtle rounded-xl px-3 py-1.5">
-            <span className="text-caption text-text-tertiary font-medium">Branch:</span>
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="bg-transparent text-label-md font-semibold text-on-surface focus:outline-hidden cursor-pointer"
-            >
-              <option value="all">All Branches</option>
-              <option value="wuse-2">Wuse II Flagship</option>
-              <option value="maitama">Maitama Heights</option>
-              <option value="garki">Garki Branch</option>
-            </select>
-          </div>
-        </div>
-
-        {/* QR Code Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-space-lg">
-          {filteredQrs.map((qr) => (
-            <div
-              key={qr.id}
-              className={`rounded-2xl border transition-all overflow-hidden flex flex-col justify-between ${
-                qr.active
-                  ? 'bg-surface-canvas border-border-subtle shadow-xs hover:shadow-md'
-                  : 'bg-surface-subtle/60 border-border-subtle opacity-75'
-              }`}
-            >
-              {/* Card Header & QR Visual Preview */}
-              <div className="p-space-lg flex items-start gap-4">
-                <div
-                  onClick={() => setPreviewQr(qr)}
-                  className="w-24 h-24 shrink-0 p-2 rounded-xl bg-white border border-border-subtle shadow-xs flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
-                  title="Click to expand &amp; download"
-                >
-                  <VemtapQrSvg size={80} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 rounded-full font-caption text-[11px] font-bold uppercase tracking-wider bg-surface-tint-blue text-primary">
-                      {qr.type} QR
-                    </span>
-                    <span className={`w-2 h-2 rounded-full ${qr.active ? 'bg-badge-discount-text' : 'bg-text-tertiary'}`} />
-                    <span className="text-[11px] text-text-tertiary">
-                      {qr.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-
-                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary line-clamp-1">
-                    {qr.name}
-                  </h3>
-
-                  <p className="text-caption text-text-secondary mt-0.5 line-clamp-1">
-                    {qr.targetLabel}
-                  </p>
-
-                  <span className="text-[11px] text-text-tertiary block mt-1">
-                    Branch: {qr.branchName}
-                  </span>
-                </div>
-              </div>
-
-              {/* Attribution Metrics */}
-              <div className="px-space-lg py-2.5 bg-surface-subtle border-y border-border-subtle grid grid-cols-3 gap-2 text-center text-caption">
-                <div>
-                  <span className="text-text-tertiary block text-[10px] uppercase font-semibold">Scans</span>
-                  <span className="font-bold text-text-primary">{qr.scansCount}</span>
-                </div>
-                <div>
-                  <span className="text-text-tertiary block text-[10px] uppercase font-semibold">Orders</span>
-                  <span className="font-bold text-primary">{qr.ordersCount}</span>
-                </div>
-                <div>
-                  <span className="text-text-tertiary block text-[10px] uppercase font-semibold">Sales</span>
-                  <span className="font-bold text-badge-discount-text">
-                    ₦{(qr.revenueGenerated / 1000).toFixed(0)}k
-                  </span>
-                </div>
-              </div>
-
-              {/* Card Footer Actions */}
-              <div className="p-space-md bg-surface-canvas flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => toggleQrActive(qr.id)}
-                  className={`text-caption font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${
-                    qr.active
-                      ? 'border-border text-text-secondary hover:text-error'
-                      : 'border-primary text-primary hover:bg-surface-tint-blue'
-                  }`}
-                >
-                  {qr.active ? 'Deactivate' : 'Activate'}
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleCopyLink(qr.destinationUrl)}
-                    title="Copy Link"
-                    className="p-2 rounded-lg text-text-secondary hover:text-primary hover:bg-surface-subtle transition-colors"
-                  >
-                    <Icon name="link" className="text-[18px]" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewQr(qr)}
-                    className="px-3 py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary text-caption font-semibold flex items-center gap-1 transition-colors"
-                  >
-                    <Icon name="visibility" className="text-[16px]" />
-                    <span>Preview &amp; Print</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Modal: QR Preview, Download & Print */}
-        {previewQr && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
-              onClick={() => setPreviewQr(null)}
-            />
-
-            <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-space-xl border border-border-subtle z-10 space-y-space-lg text-center animate-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-full font-caption text-[10px] font-bold uppercase bg-surface-tint-blue text-primary">
-                    {previewQr.type} QR
-                  </span>
-                  <span className="font-semibold text-text-primary text-[14px]">
-                    {previewQr.branchName}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPreviewQr(null)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-subtle"
-                >
-                  <Icon name="close" className="text-[18px]" />
-                </button>
-              </div>
-
-              {/* Printable Stand Card Container */}
-              <div className="p-6 rounded-2xl bg-gradient-to-b from-surface-subtle to-white border border-border-subtle/80 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-primary tracking-widest uppercase mb-1">
-                  VEMTAP EXPRESS TOUCHPOINT
-                </span>
-                <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary mb-3">
-                  {previewQr.name}
-                </h3>
-
-                <div className="p-4 bg-white rounded-2xl border-2 border-primary/20 shadow-sm my-2">
-                  <VemtapQrSvg size={180} />
-                </div>
-
-                <div className="mt-3 text-caption text-text-secondary max-w-xs">
-                  <p className="font-semibold text-text-primary">{previewQr.targetLabel}</p>
-                  <p className="text-[11px] text-text-tertiary mt-1">
-                    Scan with any smartphone camera to browse menu &amp; order directly.
-                  </p>
-                </div>
-              </div>
-
-              {/* Destination URL Display */}
-              <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle flex items-center justify-between gap-2 text-caption">
-                <span className="truncate text-text-secondary font-mono text-[11px]">
-                  {previewQr.destinationUrl}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleCopyLink(previewQr.destinationUrl)}
-                  className="text-primary font-semibold hover:underline shrink-0"
-                >
-                  Copy
-                </button>
-              </div>
-
-              {/* Download / Print Actions */}
-              <div className="flex items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="flex-1 py-2.5 rounded-xl border border-border hover:bg-surface-subtle text-text-primary font-label-md font-semibold flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Icon name="print" className="text-[18px]" />
-                  <span>Print Standee</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    showToast('QR PNG ready for download.');
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-label-md font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm"
-                >
-                  <Icon name="download" className="text-[18px]" />
-                  <span>Download SVG</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Modal: Create New QR Code */}
         {createModalOpen && (

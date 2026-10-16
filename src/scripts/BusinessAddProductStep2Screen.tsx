@@ -1,5 +1,6 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessAddProductStep2ScreenProps {
@@ -24,7 +25,8 @@ export function BusinessAddProductStep2Screen({
   const compare = parseNaira(draft.comparePrice);
   const discount = compare - base;
   const margin = base > 0 ? Math.round(((base - cost) / base) * 100) : 0;
-  const combinedStock = draft.variants.reduce(
+  const activeVariants = getActiveVariants(draft);
+  const combinedStock = activeVariants.reduce(
     (total, variant) => total + (parseInt(variant.inventory, 10) || 0),
     0,
   );
@@ -220,7 +222,7 @@ export function BusinessAddProductStep2Screen({
                 />
               </button>
             </div>
-            {draft.variantsEnabled && (
+            {draft.variantsEnabled ? (
               <div className="flex flex-col gap-space-md pt-2" id="variant-section-body">
                 <div className="flex items-center justify-between bg-surface-container-low px-space-md py-space-xs rounded-lg">
                   <div className="flex items-center gap-2">
@@ -237,6 +239,13 @@ export function BusinessAddProductStep2Screen({
                   </button>
                 </div>
                 <div className="flex flex-col gap-space-sm" id="variant-list">
+                  {draft.variants.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-outline-variant bg-surface-subtle px-4 py-5 text-center">
+                      <span className="font-label-md text-label-md text-text-secondary">
+                        No variants yet — add your first option below.
+                      </span>
+                    </div>
+                  )}
                   {draft.variants.map((variant) => (
                     <div
                       key={variant.id}
@@ -288,6 +297,23 @@ export function BusinessAddProductStep2Screen({
                   <Icon name="add_circle" className="text-[20px]" />+ Add Another Option / Variant
                 </button>
               </div>
+            ) : (
+              <div className="flex items-start gap-3 bg-surface-subtle p-4 rounded-xl">
+                <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                  <Icon name="inventory_2" className="text-[20px]" />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-label-md text-label-md text-text-primary font-semibold">
+                    Sold as a single standard item
+                  </span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    Customers will see one price and one stock count. Variants are switched off.
+                    {draft.variants.length > 0
+                      ? ` Your ${draft.variants.length} saved option${draft.variants.length === 1 ? '' : 's'} will be kept and restored if you switch this back on.`
+                      : ''}
+                  </span>
+                </div>
+              </div>
             )}
           </section>
 
@@ -307,9 +333,11 @@ export function BusinessAddProductStep2Screen({
                   <Icon name="production_quantity_limits" className="text-[22px]" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-caption text-caption text-text-secondary">Combined Variant Stock</span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    {draft.variantsEnabled ? 'Combined Variant Stock' : 'Standard Product Stock'}
+                  </span>
                   <span className="font-heading-sm text-heading-sm text-on-surface">
-                    {combinedStock} units available
+                    {draft.variantsEnabled ? `${combinedStock} units available` : 'Single item — no variants'}
                   </span>
                 </div>
               </div>

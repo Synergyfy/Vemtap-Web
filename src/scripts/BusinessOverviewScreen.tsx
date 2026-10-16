@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
 import { BusinessModeHeader } from './BusinessModeHeader';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 
@@ -12,7 +11,10 @@ interface BusinessOverviewScreenProps {
   onBoost: () => void;
   onAddOns: () => void;
   onOpenOrders: () => void;
+  onOpenBookings: () => void;
   onOpenMessages: () => void;
+  /** Opens the POS menu page (Point of Sale + Store Front pages). */
+  onOpenPosMenu: () => void;
 }
 
 const RECENT_ORDERS = [
@@ -31,7 +33,9 @@ export function BusinessOverviewScreen({
   onBoost,
   onAddOns,
   onOpenOrders,
+  onOpenBookings,
   onOpenMessages,
+  onOpenPosMenu,
 }: BusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
   const [bannerIndex, setBannerIndex] = useState(0);
@@ -66,7 +70,7 @@ export function BusinessOverviewScreen({
       label: 'Bookings',
       value: stats.bookings,
       note: 'Next in 35 mins',
-      onClick: onOpenOrders,
+      onClick: onOpenBookings,
     },
     {
       icon: 'chat_bubble',
@@ -123,7 +127,6 @@ export function BusinessOverviewScreen({
                 </span>
               </div>
             </div>
-            <BusinessBranchSelect align="right" />
           </div>
 
           {/* Banner Carousel */}
@@ -188,29 +191,49 @@ export function BusinessOverviewScreen({
           </div>
 
           {/* Quick Actions */}
-          <div className="px-margin mt-space-sm grid grid-cols-2 gap-space-xs">
+          <div className="px-margin mt-space-sm flex flex-col gap-space-xs">
+            {/* POS — full-width primary quick action opening the POS menu page */}
             <button
-              className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
+              className="bg-gradient-to-r from-primary to-primary-container rounded-xl p-3 shadow-sm flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
               type="button"
-              onClick={onBoost}
+              onClick={onOpenPosMenu}
             >
-              <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
-                <Icon name="rocket_launch" className="text-[20px]" />
+              <div className="w-9 h-9 rounded-lg bg-surface-canvas/90 text-primary flex items-center justify-center shrink-0">
+                <Icon name="point_of_sale" className="text-[20px]" />
               </div>
-              <span className="font-label-md text-label-md font-semibold text-text-primary">Boost a Deal</span>
-              <span className="font-caption text-caption text-text-secondary">Your budget, your reach</span>
-            </button>
-            <button
-              className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
-              type="button"
-              onClick={onAddOns}
-            >
-              <div className="w-9 h-9 rounded-lg bg-tertiary-fixed text-tertiary flex items-center justify-center">
-                <Icon name="add_circle" className="text-[20px]" />
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="font-label-md text-label-md font-semibold text-on-primary">POS</span>
+                <span className="font-caption text-caption text-on-primary/80 truncate">
+                  Register, orders &amp; store front
+                </span>
               </div>
-              <span className="font-label-md text-label-md font-semibold text-text-primary">Paid Add-ons</span>
-              <span className="font-caption text-caption text-text-secondary">SMS credits & promotion</span>
+              <Icon name="chevron_right" className="text-[20px] text-on-primary shrink-0" />
             </button>
+
+            <div className="grid grid-cols-2 gap-space-xs">
+              <button
+                className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
+                type="button"
+                onClick={onBoost}
+              >
+                <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="rocket_launch" className="text-[20px]" />
+                </div>
+                <span className="font-label-md text-label-md font-semibold text-text-primary">Boost a Deal</span>
+                <span className="font-caption text-caption text-text-secondary">Your budget, your reach</span>
+              </button>
+              <button
+                className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
+                type="button"
+                onClick={onAddOns}
+              >
+                <div className="w-9 h-9 rounded-lg bg-tertiary-fixed text-tertiary flex items-center justify-center">
+                  <Icon name="add_circle" className="text-[20px]" />
+                </div>
+                <span className="font-label-md text-label-md font-semibold text-text-primary">Paid Add-ons</span>
+                <span className="font-caption text-caption text-text-secondary">SMS credits &amp; promotion</span>
+              </button>
+            </div>
           </div>
 
           {/* Recent Orders */}

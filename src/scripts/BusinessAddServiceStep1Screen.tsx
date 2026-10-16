@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { describeServiceSector, getBusinessClassificationOptions } from './serviceClassification';
 import type { ServiceDraft } from './serviceDraft';
+import { ServiceImageUploader } from '../components/ServiceImageUploader';
+import { ServiceLocationSelectorModal } from '../components/ServiceLocationSelectorModal';
+import { SERVICE_LOCATIONS, locationsToBranches } from './serviceStudioShared';
 
 interface BusinessAddServiceStep1ScreenProps {
   draft: ServiceDraft;
@@ -9,26 +13,9 @@ interface BusinessAddServiceStep1ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  businessCategories?: string[];
+  businessSubcategories?: string[];
 }
-
-const SERVICE_IMAGES = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA5kJCcN5hfN4CHAyjM9ztBajNRH9N3SkL38ksjE3AyoelX4MEYejaPFoGwctYS266qyorIoQKcWEmZNs7Q5kgsygotoz2TJKsdyOZYsKcGnxlqAEEA6v2xVfV-oWp54srCsfwKZnaL4Xke7K7ZfNfVhgRqlpp7nIUNRt-iHDnIJxgjld79QZmEiqRPpWOQJ6NN-L-WTDKk9tyaTUh62Bs2W5DGAuGcrqcwBfQezAWCYT5AF74uuP4PBg',
-    alt: 'Serene luxury spa aesthetic treatment room with warm ambient backlighting, neatly folded organic white towels, aromatic botanical diffusers, and a sleek treatment bed prepared with soft plush linens in serene minimalist aesthetic.',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDRT0JQg87G9GpBxmx2LkeUI6CVnJYmoSzQkXqIfpXgrEHHK-8SRiJ6rD8DLL7wUTzIU_W7JZH0Zfctt_2QFYSHy3FVQhZjp29LOim6qzQqQsIWVDtxIOwpCiOnvR4L6Nr8Mvsm6CUgbuiTSefV96fF9xBR4EBcOrUB-vQuigJdrV7EnEw3NosjORfttKVk5hqtAGK6SuaGbV3m5X7Sjsy4owvD8Ymt8DolSWp3nfU08hLvk97VNm6RfA',
-    alt: 'Close up aesthetic shot of serene model receiving a soothing organic botanical facial cleansing application with gentle aesthetic foaming bubbles.',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBtmwhvUUzD_ewKDmRA7m2RX9FD_aCLK1mv9J6RIZYxdp48G05Oo9CRs5k20Al-7eNX4KhPSR3NzayISpP6-r4_7rjXDG26tpyKYdSyWO9PdNtiDpCpcwfTvGjaz_tFELxleutDcQh7ZCjt5SOkkP32s9Y-6DQg43OIo1-zEK46FVL65J-_xp8qAlen7Zeb4E0pbl3WbVua18bMh0O1xqkA1Hb4M2Lz88hW52Pad1MUSMKqP6QYEElbSQ',
-    alt: 'High quality aesthetic cosmetic glass droppers with amber liquid botanical hydrating facial serum on natural clean stone slab.',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC6zBmPpSqLRhs0pmUGVti6x3UYkA-lYXmXV18ADSgilBGs30Z9VXlA4W9epW6Rem-X7KENLu3sRHxz7QfQoNiokDvylgXO_G37r6MC7iUCWk0hYzp18QwE-X5FC148oP7-6NlJdQBhNN6E8tekaeQbFfkSicnNEU17PDPBAE4DA74ecJ6n6HUbpFx0zt6RDjE8hfy_TFLKUG62Ibn8EZtGakkD7861AV82uIgLrTgD-uC4CvkFxlhf7w',
-    alt: 'Gentle relaxing facial jade roller massage on smooth glowing skin in bright airy modern skincare treatment suite.',
-  },
-];
 
 const DELIVERY_OPTIONS: Array<{
   value: ServiceDraft['deliveryFormat'];
@@ -53,8 +40,24 @@ export function BusinessAddServiceStep1Screen({
   onBack,
   onNext,
   onSaveDraft,
+  businessCategories = [],
+  businessSubcategories = [],
 }: BusinessAddServiceStep1ScreenProps) {
-  const [gender, setGender] = useState<'all' | 'women' | 'men'>('all');
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+
+  const handleLocationSave = (selectedIds: string[]) => {
+    onDraftChange({
+      locations: selectedIds,
+      branches: locationsToBranches(selectedIds),
+    });
+  };
+
+  // Available business categories if the business supports multiple classifications
+  const categoryOptions = getBusinessClassificationOptions(businessCategories, businessSubcategories);
+
+  // The service inherits its classification from the business profile, so the
+  // sector is derived from the draft rather than re-asked here.
+  const sectorLabel = describeServiceSector([draft.primaryCategory], [draft.subCategory]);
 
   const toggleHighlight = (index: number) => {
     onDraftChange({
@@ -119,68 +122,10 @@ export function BusinessAddServiceStep1Screen({
         </section>
 
         <section className="px-margin mt-space-sm flex flex-col gap-space-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-space-2xs">
-              <h2 className="font-heading-sm text-heading-sm text-on-surface">Service Media</h2>
-              <span className="text-error font-heading-sm text-heading-sm">*</span>
-            </div>
-            <span className="font-caption text-caption text-text-secondary">4 / 10 photos</span>
-          </div>
-          <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden shadow-sm bg-surface-container-high group">
-            <img
-              className="w-full h-full object-cover"
-              alt={SERVICE_IMAGES[0].alt}
-              src={SERVICE_IMAGES[0].src}
-            />
-            <div className="absolute top-space-sm left-space-sm right-space-sm flex items-center justify-between pointer-events-none">
-              <div className="bg-on-surface/85 backdrop-blur-md px-space-xs py-1 rounded-full flex items-center gap-1 shadow-sm">
-                <Icon className="text-[14px] text-tertiary-fixed" filled name="star" />
-                <span className="font-label-sm text-label-sm text-on-primary font-medium">Cover Photo</span>
-              </div>
-              <div className="bg-surface-container-lowest/90 backdrop-blur-md px-space-xs py-1 rounded-full flex items-center gap-1 shadow-sm">
-                <Icon className="text-[14px] text-text-secondary" name="drag_indicator" />
-                <span className="font-caption text-caption text-text-secondary">Drag to reorder</span>
-              </div>
-            </div>
-            <button
-              className="absolute bottom-space-sm right-space-sm bg-surface-container-lowest/95 hover:bg-surface-container-lowest active:scale-95 text-text-primary px-space-sm py-1.5 rounded-lg shadow-md flex items-center gap-1.5 transition-all"
-              type="button"
-            >
-              <Icon className="text-[16px] text-primary" name="photo_camera" />
-              <span className="font-button-secondary text-button-secondary font-medium">Change</span>
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-space-xs">
-            {SERVICE_IMAGES.slice(1).map((image, index) => (
-              <div
-                key={image.src}
-                className="relative aspect-square rounded-lg overflow-hidden shadow-sm bg-surface-container"
-              >
-                <img className="w-full h-full object-cover" alt={image.alt} src={image.src} />
-                <span className="absolute bottom-1 right-1 bg-on-surface/75 text-on-primary rounded-full p-0.5 w-4 h-4 flex items-center justify-center text-[10px]">
-                  {index + 1}
-                </span>
-              </div>
-            ))}
-            <button
-              className="aspect-square rounded-lg bg-surface-container-low hover:bg-surface-container active:scale-95 flex flex-col items-center justify-center gap-1 transition-all"
-              type="button"
-            >
-              <div className="w-7 h-7 rounded-full bg-surface-container-highest flex items-center justify-center text-primary">
-                <Icon name="add_a_photo" className="text-[18px]" />
-              </div>
-              <span className="font-caption text-caption text-primary font-medium">+ Add</span>
-            </button>
-          </div>
-          <div className="bg-surface-tint-blue rounded-xl p-space-sm flex items-start gap-space-xs">
-            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-              <Icon className="text-primary text-[18px]" filled name="lightbulb" />
-            </div>
-            <p className="font-caption text-caption text-text-secondary leading-snug">
-              <strong className="text-primary font-medium">Pro Tip:</strong> Clean ambient treatment photos increase
-              appointment bookings by up to <span className="text-primary font-semibold">3.4x</span>.
-            </p>
-          </div>
+          <ServiceImageUploader
+            currentImage={draft.image}
+            onImageChange={(imageUrl) => onDraftChange({ image: imageUrl })}
+          />
         </section>
 
         <section className="px-margin mt-space-lg flex flex-col gap-space-sm">
@@ -232,53 +177,104 @@ export function BusinessAddServiceStep1Screen({
               <button
                 className="text-primary font-label-sm text-label-sm font-medium px-space-xs py-1 rounded hover:bg-surface-container transition-colors"
                 type="button"
+                onClick={() => setLocationModalOpen(true)}
               >
                 Change
               </button>
             </div>
+            {draft.locations && draft.locations.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {draft.locations.map((locId) => {
+                  const loc = SERVICE_LOCATIONS.find((l) => l.id === locId);
+                  return (
+                    <span
+                      key={locId}
+                      className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-container text-text-secondary"
+                    >
+                      {loc?.name || locId}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
 
         <section className="px-margin mt-space-lg flex flex-col gap-space-sm">
-          <h2 className="font-heading-sm text-heading-sm text-on-surface">Category &amp; Treatment Type</h2>
+          <h2 className="font-heading-sm text-heading-sm text-on-surface">Service Category</h2>
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-md">
-            <div className="flex items-center justify-between pb-space-xs">
-              <div className="flex items-center gap-space-xs">
-                <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary">
-                  <Icon name="self_improvement" className="text-[18px]" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-caption text-caption text-text-secondary">Primary Category</span>
-                  <span className="font-label-md text-label-md text-text-primary font-semibold">
-                    {draft.primaryCategory}
+            <div className="bg-surface-tint-blue rounded-xl p-space-sm flex items-start gap-space-sm">
+              <div className="w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center shrink-0">
+                <Icon name="verified" className="text-[18px]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">Service Category</span>
+                  <span className="font-caption text-caption font-semibold text-primary bg-surface-canvas px-1.5 py-0.5 rounded-full">
+                    Inherited
                   </span>
                 </div>
-              </div>
-              <button
-                className="font-label-sm text-label-sm text-primary font-medium px-space-xs py-1 rounded hover:bg-surface-tint-blue transition-colors"
-                type="button"
-              >
-                Change
-              </button>
-            </div>
-            <div className="flex items-center justify-between pb-space-xs">
-              <div className="flex items-center gap-space-xs">
-                <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary">
-                  <Icon name="face_retouching_natural" className="text-[18px]" />
+                <p className="font-caption text-caption text-text-secondary mt-0.5">
+                  Matched to your business profile — no need to enter it again.
+                </p>
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-space-2xs">
+                  <span className="font-label-md text-label-md font-semibold text-primary">{draft.primaryCategory}</span>
+                  <Icon name="chevron_right" className="text-[16px] text-text-tertiary" />
+                  <span className="font-label-sm text-label-sm font-medium text-text-primary">{draft.subCategory}</span>
                 </div>
-                <div className="flex flex-col">
-                  <span className="font-caption text-caption text-text-secondary">Sub-Category</span>
-                  <span className="font-label-md text-label-md text-text-primary font-semibold">
-                    {draft.subCategory}
-                  </span>
-                </div>
+                <p className="font-caption text-caption text-text-tertiary mt-0.5">
+                  {sectorLabel} settings and suggested policies are applied automatically in the next steps.
+                </p>
+
+                {categoryOptions.length > 1 && (
+                  <div className="mt-3 pt-3 border-t border-primary/10 flex flex-col gap-2">
+                    <span className="font-caption text-caption font-semibold text-text-primary">
+                      Switch to another category from your business profile:
+                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      {categoryOptions.map((opt) => {
+                        const isSelected =
+                          draft.primaryCategory.toLowerCase() === opt.category.toLowerCase();
+                        return (
+                          <button
+                            key={opt.category}
+                            type="button"
+                            onClick={() => {
+                              onDraftChange({
+                                primaryCategory: opt.category,
+                                subCategory: opt.subCategory,
+                              });
+                            }}
+                            className={`flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${
+                              isSelected
+                                ? 'bg-surface-canvas border-primary shadow-xs ring-1 ring-primary'
+                                : 'bg-surface-canvas/60 border-outline/20 hover:bg-surface-canvas text-text-secondary'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Icon
+                                name={isSelected ? 'radio_button_checked' : 'radio_button_unchecked'}
+                                className={`text-[16px] ${isSelected ? 'text-primary' : 'text-text-tertiary'}`}
+                              />
+                              <div className="truncate">
+                                <span className={`block font-label-sm text-label-sm truncate ${isSelected ? 'font-semibold text-text-primary' : 'font-medium'}`}>
+                                  {opt.category}
+                                </span>
+                                <span className="block font-caption text-caption text-text-tertiary truncate">
+                                  {opt.subCategory}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="font-caption text-caption px-1.5 py-0.5 rounded bg-surface-container text-text-secondary shrink-0">
+                              {opt.preset.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
-              <button
-                className="font-label-sm text-label-sm text-primary font-medium px-space-xs py-1 rounded hover:bg-surface-tint-blue transition-colors"
-                type="button"
-              >
-                Change
-              </button>
             </div>
             <div className="flex flex-col gap-space-xs pt-space-2xs">
               <span className="font-label-md text-label-md text-text-primary font-medium">
@@ -385,7 +381,7 @@ export function BusinessAddServiceStep1Screen({
               <span className="font-label-md text-label-md text-text-primary font-medium">Gender Suitability</span>
               <div className="flex items-center gap-space-xs">
                 {GENDER_OPTIONS.map((option) => {
-                  const isSelected = gender === option.value;
+                  const isSelected = (draft.genderSuitability || 'all') === option.value;
                   return (
                     <button
                       key={option.value}
@@ -395,7 +391,7 @@ export function BusinessAddServiceStep1Screen({
                           : 'bg-surface-container-low text-text-secondary font-medium hover:bg-surface-container'
                       }`}
                       type="button"
-                      onClick={() => setGender(option.value)}
+                      onClick={() => onDraftChange({ genderSuitability: option.value })}
                     >
                       {option.label}
                     </button>
@@ -403,25 +399,42 @@ export function BusinessAddServiceStep1Screen({
                 })}
               </div>
             </div>
-            <div className="flex items-center justify-between pt-space-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-space-xs">
               <div className="flex flex-col">
                 <span className="font-label-md text-label-md text-text-primary font-medium">
-                  Minimum Age Requirement
+                  Age Range Requirement
                 </span>
                 <span className="font-caption text-caption text-text-secondary">
-                  Mandatory for client consent forms
+                  Specify minimum and optional maximum age
                 </span>
               </div>
-              <div className="flex items-center gap-space-xs">
-                <span className="bg-surface-container px-space-sm py-1.5 rounded-full font-label-md text-label-md text-text-primary font-semibold">
-                  Ages 16+
-                </span>
-                <button
-                  className="w-8 h-8 rounded-full bg-surface-container-low hover:bg-surface-container flex items-center justify-center text-secondary transition-colors"
-                  type="button"
-                >
-                  <Icon name="edit" className="text-[18px]" />
-                </button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-surface-container px-3 py-1.5 rounded-xl">
+                  <span className="font-caption text-caption text-text-secondary">Min:</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={120}
+                    value={draft.ageMin ?? 16}
+                    onChange={(e) => onDraftChange({ ageMin: Number(e.target.value) || 0 })}
+                    className="w-12 bg-transparent font-label-md text-label-md font-semibold text-text-primary text-center focus:outline-none"
+                  />
+                </div>
+                <span className="text-text-tertiary">–</span>
+                <div className="flex items-center gap-1 bg-surface-container px-3 py-1.5 rounded-xl">
+                  <span className="font-caption text-caption text-text-secondary">Max:</span>
+                  <input
+                    type="number"
+                    min={draft.ageMin ?? 16}
+                    max={120}
+                    placeholder="None"
+                    value={draft.ageMax ?? ''}
+                    onChange={(e) =>
+                      onDraftChange({ ageMax: e.target.value ? Number(e.target.value) : undefined })
+                    }
+                    className="w-12 bg-transparent font-label-md text-label-md font-semibold text-text-primary text-center focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -445,6 +458,13 @@ export function BusinessAddServiceStep1Screen({
           Save as Draft &amp; Exit
         </button>
       </div>
+
+      <ServiceLocationSelectorModal
+        isOpen={locationModalOpen}
+        onClose={() => setLocationModalOpen(false)}
+        selectedLocations={draft.locations || ['main']}
+        onSave={handleLocationSave}
+      />
     </AppScreen>
   );
 }

@@ -666,7 +666,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile }: Desktop
                           onClick={() => onNav('messages')}
                         >
                           <Icon name="chat" className="text-[16px]" />
-                          <span>Direct Message</span>
+                          <span>In-App Chat</span>
                         </button>
                         <button
                           type="button"

@@ -895,12 +895,15 @@ export function DesktopDealStudioStep3Screen({
           </div>
         </div>
 
-        <div className="mt-space-2xl pt-space-lg flex flex-col sm:flex-row items-center justify-between gap-space-md bg-surface-canvas rounded-xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-sm w-full sm:w-auto">
             <button
               type="button"
               onClick={onBack}
-              className="h-[52px] px-space-lg rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-button-secondary text-button-secondary transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
             >
               <Icon name="arrow_back" className="text-[18px]" />
               <span>Back to Step 2: Limits &amp; Rules</span>
@@ -908,9 +911,9 @@ export function DesktopDealStudioStep3Screen({
             <button
               type="button"
               onClick={onSaveDraft}
-              className="h-[52px] px-space-md rounded-xl text-text-secondary hover:text-on-surface transition-colors font-button-secondary text-button-secondary hidden md:flex items-center justify-center gap-1"
+              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
             >
-              <Icon name="bookmark_border" className="text-[18px]" />
+              <Icon name="save" className="text-[18px]" />
               <span>Save as Draft</span>
             </button>
           </div>
@@ -918,7 +921,7 @@ export function DesktopDealStudioStep3Screen({
             <button
               type="button"
               onClick={onNext}
-              className="h-[52px] px-space-2xl rounded-xl bg-primary-container hover:bg-surface-tint text-on-primary font-button-primary text-button-primary transition-all duration-200 transform active:scale-[0.98] shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] flex items-center justify-center gap-2 w-full sm:w-auto"
+              className="px-space-xl py-space-sm rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs"
             >
               <span>Review &amp; Launch Deal</span>
               <Icon name="arrow_forward" className="text-[20px]" />

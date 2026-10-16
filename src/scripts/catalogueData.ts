@@ -292,7 +292,7 @@ export const CENTRAL_CATEGORIES: CentralCategory[] = [
     icon: 'local_fire_department',
     productCount: 4,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=grills',
+    qrDestinationUrl: '/business/urban-grill-bistro-104/products?category=grills',
     stats: {
       scans: 386,
       uniqueScans: 312,
@@ -310,7 +310,7 @@ export const CENTRAL_CATEGORIES: CentralCategory[] = [
     icon: 'lunch_dining',
     productCount: 2,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=burgers',
+    qrDestinationUrl: '/business/urban-grill-bistro-104/products?category=burgers',
     stats: {
       scans: 240,
       uniqueScans: 198,
@@ -328,7 +328,7 @@ export const CENTRAL_CATEGORIES: CentralCategory[] = [
     icon: 'restaurant',
     productCount: 2,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=mains',
+    qrDestinationUrl: '/business/urban-grill-bistro-104/products?category=mains',
     stats: {
       scans: 215,
       uniqueScans: 180,
@@ -346,7 +346,7 @@ export const CENTRAL_CATEGORIES: CentralCategory[] = [
     icon: 'fastfood',
     productCount: 2,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=sides',
+    qrDestinationUrl: '/business/urban-grill-bistro-104/products?category=sides',
     stats: {
       scans: 174,
       uniqueScans: 155,
@@ -364,7 +364,7 @@ export const CENTRAL_CATEGORIES: CentralCategory[] = [
     icon: 'local_bar',
     productCount: 2,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=drinks',
+    qrDestinationUrl: '/business/urban-grill-bistro-104/products?category=drinks',
     stats: {
       scans: 310,
       uniqueScans: 260,
@@ -382,7 +382,7 @@ export const CENTRAL_CATEGORIES: CentralCategory[] = [
     icon: 'cake',
     productCount: 1,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=desserts',
+    qrDestinationUrl: '/business/urban-grill-bistro-104/products?category=desserts',
     stats: {
       scans: 95,
       uniqueScans: 80,
@@ -403,7 +403,7 @@ export const SERVICE_CATEGORIES: CentralCategory[] = [
     icon: 'table_restaurant',
     productCount: 2,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=private-dining',
+    qrDestinationUrl: '/business/glow-serenity-spa-219/services?category=private-dining',
     stats: {
       scans: 142,
       uniqueScans: 120,
@@ -421,7 +421,7 @@ export const SERVICE_CATEGORIES: CentralCategory[] = [
     icon: 'room_service',
     productCount: 2,
     activeBranches: ['all'],
-    qrDestinationUrl: '/storefront?category=event-catering',
+    qrDestinationUrl: '/business/glow-serenity-spa-219/services?category=event-catering',
     stats: {
       scans: 88,
       uniqueScans: 75,

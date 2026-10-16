@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { SocialChannelPicker } from '../../components/SocialChannelPicker';
+import {
+  CHANNEL_PLATFORMS,
+  CHANNEL_PLATFORM_BY_ID,
+  normalizeChannel,
+  type ChannelPlatformId,
+} from '../../utils/socialChannels';
 import { MerchantWorkspaceChrome } from './MerchantWorkspaceChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 
@@ -87,6 +94,18 @@ const TRUST_ITEMS: TrustItem[] = [
   },
 ];
 
+interface StorefrontChannel {
+  id: string;
+  platform: ChannelPlatformId;
+  value: string;
+  touched: boolean;
+}
+
+const STOREFRONT_CHANNELS: StorefrontChannel[] = [
+  { id: 'instagram', platform: 'instagram', value: 'urbangrillbistro', touched: false },
+  { id: 'x', platform: 'x', value: 'urbangrill_ng', touched: false },
+];
+
 interface FeaturedItem {
   image: string;
   alt: string;
@@ -129,8 +148,29 @@ export function DesktopBusinessProfileStorefrontScreen({
   const [toastVisible, setToastVisible] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
+  const [channels, setChannels] = useState<StorefrontChannel[]>(STOREFRONT_CHANNELS);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const channelSeq = useRef(0);
   const toastTimer = useRef<number | undefined>(undefined);
   const copyTimer = useRef<number | undefined>(undefined);
+
+  const usedPlatforms = channels.map((channel) => channel.platform);
+  const allPlatformsAdded = usedPlatforms.length >= CHANNEL_PLATFORMS.length;
+
+  const setChannelValue = (id: string, value: string) =>
+    setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, value, touched: true } : item)));
+
+  const markChannelTouched = (id: string) =>
+    setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, touched: true } : item)));
+
+  const addChannel = (platform: ChannelPlatformId) => {
+    setPickerOpen(false);
+    if (usedPlatforms.includes(platform)) return;
+    setChannels((prev) => [...prev, { id: `${platform}-${channelSeq.current++}`, platform, value: '', touched: false }]);
+  };
+
+  const removeChannel = (id: string) =>
+    setChannels((prev) => prev.filter((channel) => channel.id !== id));
 
   useEffect(
     () => () => {
@@ -405,12 +445,25 @@ export function DesktopBusinessProfileStorefrontScreen({
                     Contact &amp; Public Discovery Channels
                   </h2>
                 </div>
-                <button
-                  type="button"
-                  className="text-primary-container font-label-sm text-label-sm font-semibold hover:underline flex items-center gap-1"
-                >
-                  <Icon name="add" className="text-[16px]" /> Add Channel
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen((open) => !open)}
+                    disabled={allPlatformsAdded}
+                    aria-haspopup="menu"
+                    aria-expanded={pickerOpen}
+                    className="text-primary-container font-label-sm text-label-sm font-semibold hover:underline flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+                  >
+                    <Icon name="add" className="text-[16px]" /> Add Channel
+                  </button>
+                  {pickerOpen ? (
+                    <SocialChannelPicker
+                      used={usedPlatforms}
+                      onSelect={addChannel}
+                      onClose={() => setPickerOpen(false)}
+                    />
+                  ) : null}
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
                 {/* Official Phone */}
@@ -482,32 +535,60 @@ export function DesktopBusinessProfileStorefrontScreen({
                   </div>
                 </div>
                 {/* Social Handles */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    Instagram Handle
-                  </label>
-                  <div className="relative flex items-center">
-                    <span className="absolute left-3.5 font-label-md text-label-md text-text-tertiary">@</span>
-                    <input
-                      className="w-full h-[48px] pl-8 pr-3 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
-                      type="text"
-                      defaultValue="urbangrillbistro"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    X (Twitter) Handle
-                  </label>
-                  <div className="relative flex items-center">
-                    <span className="absolute left-3.5 font-label-md text-label-md text-text-tertiary">@</span>
-                    <input
-                      className="w-full h-[48px] pl-8 pr-3 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
-                      type="text"
-                      defaultValue="urbangrill_ng"
-                    />
-                  </div>
-                </div>
+                {channels.map((channel) => {
+                  const platform = CHANNEL_PLATFORM_BY_ID[channel.platform];
+                  const result = normalizeChannel(channel.platform, channel.value);
+                  const showError = channel.touched && channel.value.trim().length > 0 && !result.ok;
+                  return (
+                    <div key={channel.id} className="flex flex-col gap-1.5">
+                      <label className="font-label-sm text-label-sm font-semibold text-text-primary flex items-center gap-1.5">
+                        {platform.label}
+                        {result.ok ? <Icon name="check_circle" className="text-badge-discount-text text-[14px]" /> : null}
+                      </label>
+                      <div className="relative flex items-center">
+                        <Icon name={platform.icon} className="absolute left-3 text-text-tertiary text-[18px]" />
+                        <input
+                          className={`w-full h-[48px] pl-10 pr-10 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas outline-none transition-all ${
+                            showError ? 'ring-2 ring-error focus:ring-error' : 'focus:ring-2 focus:ring-primary-container'
+                          }`}
+                          type="text"
+                          aria-invalid={showError}
+                          aria-label={`${platform.label} ${platform.kind === 'phone' ? 'phone number' : 'handle'}`}
+                          placeholder={platform.placeholder}
+                          value={channel.value}
+                          onBlur={() => markChannelTouched(channel.id)}
+                          onChange={(event) => setChannelValue(channel.id, event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Remove ${platform.label}`}
+                          onClick={() => removeChannel(channel.id)}
+                          className="absolute right-2 w-7 h-7 flex items-center justify-center rounded-lg text-text-tertiary hover:text-error hover:bg-surface-container transition-colors"
+                        >
+                          <Icon name="delete" className="text-[16px]" />
+                        </button>
+                      </div>
+                      {showError ? (
+                        <span className="font-caption text-caption text-error flex items-center gap-1">
+                          <Icon name="error" className="text-[13px]" />
+                          {result.error}
+                        </span>
+                      ) : result.ok ? (
+                        <a
+                          href={result.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-caption text-caption text-primary-container hover:underline flex items-center gap-1 min-w-0"
+                        >
+                          <Icon name="link" className="text-[13px] shrink-0" />
+                          <span className="truncate">{result.display}</span>
+                        </a>
+                      ) : (
+                        <span className="font-caption text-caption text-text-tertiary">{platform.hint}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
