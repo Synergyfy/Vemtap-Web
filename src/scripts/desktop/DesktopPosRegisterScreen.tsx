@@ -15,6 +15,7 @@ import { PosCustomerModal } from './PosCustomerModal';
 import { PosLoyaltyPanel } from './PosLoyaltyPanel';
 import { usePosSettings } from '../../context/PosSettingsContext';
 import { describeModifiers, modifierSurcharge, type PosCustomerRecord } from './posRegisterExtras';
+import { PosOfflineBar } from '../../components/ui/PosOfflineBar';
 
 interface DesktopPosRegisterScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -335,6 +336,11 @@ export function DesktopPosRegisterScreen({
             </button>
           </div>
         </div>
+      </section>
+
+      {/* Offline state + "Sync Online" — the only place sync lives now that /pos/sync is gone. */}
+      <section className="w-full px-space-md pt-space-xs">
+        <PosOfflineBar />
       </section>
 
       {/* Handed-off Store Order Banner */}

@@ -6,6 +6,7 @@ import { naira } from './catalogueData';
 import { cartCount, cartTotals, formatReceiptText, type PosCartLine } from './posCartData';
 import { usePosSettings } from '../context/PosSettingsContext';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { usePosOffline } from '../context/PosOfflineContext';
 
 interface BusinessPosSaleCompleteScreenProps {
   cart: PosCartLine[];
@@ -67,6 +68,7 @@ export function BusinessPosSaleCompleteScreen({
     showBusinessLogo,
   } = usePosSettings();
   const { branch } = useBusinessBranch();
+  const { isOnline } = usePosOffline();
   const { subtotal, discount, vat, total } = cartTotals(cart, taxMode, taxRate / 100);
   const receiptLines = cart.length > 0 ? cart : [];
   const paidTotal = cart.length > 0 ? total : 27251;
@@ -121,6 +123,19 @@ export function BusinessPosSaleCompleteScreen({
           <span className="font-caption text-caption text-text-secondary">
             Card ····4821 approved · 12:42 PM · Ref VEM-90482
           </span>
+          {!isOnline && (
+            <span className="mt-2 w-full rounded-badge bg-badge-warning-bg border border-badge-warning/40 px-space-sm py-space-2xs flex items-start gap-2 text-left">
+              <Icon name="cloud_off" className="text-badge-warning-text text-[16px] mt-2xs" />
+              <span className="flex-1">
+                <span className="font-body-sm text-body-sm font-semibold text-badge-warning-text block">
+                  Offline — sale saved to the local queue
+                </span>
+                <span className="font-caption text-caption text-text-secondary block">
+                  The order will sync automatically when the connection returns.
+                </span>
+              </span>
+            </span>
+          )}
           <div className="flex items-center gap-space-2xs mt-1">
             <span className="h-6 px-space-xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center gap-1">
               <Icon name="loyalty" className="text-[13px]" />

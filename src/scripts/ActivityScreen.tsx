@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { downloadCsv } from '../utils/exportCsv';
 
 interface ActivityScreenProps {
   onBack: () => void;
@@ -70,6 +71,26 @@ const RECENT_CARDS = [
     special: 'Special Edition',
     favorite: false,
     action: 'browse' as const,
+  },
+];
+
+// Backs the "Export Activity (CSV)" button — mirrors the visit feed shown above.
+const ACTIVITY_LOG: Array<{ type: string; merchant: string; detail: string; date: string; location: string; value: string }> = [
+  {
+    type: 'Redemption',
+    merchant: 'Urban Grill & Bistro',
+    detail: 'Redeemed 20% Off Prime Lunch',
+    date: 'Oct 15, 2024 • 1:15 PM',
+    location: 'Apo Blvd',
+    value: 'Saved ₦4,200',
+  },
+  {
+    type: 'Visit',
+    merchant: 'The Daily Knead Bakery',
+    detail: 'Purchased 2x Artisan Loaves',
+    date: 'Oct 11, 2024',
+    location: 'Wuse II',
+    value: '',
   },
 ];
 
@@ -489,7 +510,14 @@ export function ActivityScreen({
           <div className="flex items-center gap-space-md">
             <button
               type="button"
-              onClick={() => showToast('Preparing your activity CSV export…')}
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_activity_log',
+                  ['Type', 'Merchant', 'Detail', 'Date', 'Location', 'Value'],
+                  ACTIVITY_LOG.map((entry) => [entry.type, entry.merchant, entry.detail, entry.date, entry.location, entry.value]),
+                );
+                showToast('Activity CSV export downloaded');
+              }}
               className="flex items-center gap-1 font-label-sm text-label-sm text-text-secondary hover:text-primary transition-colors active:scale-95"
             >
               <Icon name="download" className="text-[16px]" />

@@ -24,7 +24,6 @@ const POS_ROWS: PosRow[] = [
   { key: 'orders-all', icon: 'receipt_long', title: 'Orders', sub: 'All dine-in, pickup & delivery tickets', badge: '4', badgeClass: 'bg-primary-container text-on-primary' },
   { key: 'orders-bookings', icon: 'calendar_month', title: 'Bookings', sub: 'Reservations & table assignments' },
   { key: 'pos-transactions', icon: 'receipt', title: 'Transactions', sub: 'Receipts, refunds & payment history' },
-  { key: 'pos-sync', icon: 'sync', title: 'Offline & Sync', sub: 'Sell offline and sync when back online' },
   { key: 'pos-settings', icon: 'settings', title: 'POS Settings', sub: 'Business info, receipts, tax, alerts & loyalty' },
 ];
 

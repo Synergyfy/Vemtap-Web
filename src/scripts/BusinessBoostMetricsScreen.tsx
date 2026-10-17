@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BoostTabBar, type BoostTabKey } from '../components/BoostTabBar';
+import { downloadCsv } from '../utils/exportCsv';
+import { printKvTable, printReport } from '../utils/printReport';
 
 interface BusinessBoostMetricsScreenProps {
   onBack: () => void;
@@ -122,6 +124,55 @@ export function BusinessBoostMetricsScreen({ onBack, onTab }: BusinessBoostMetri
     timers.current.push(timer);
   };
 
+  const exportReport = () => {
+    downloadCsv(
+      'boost-campaign-bst-8842.csv',
+      ['Section', 'Metric', 'Value', 'Detail'],
+      [
+        ...KPIS.map((kpi) => [
+          'KPI',
+          kpi.label,
+          `${kpi.value}${kpi.valueSuffix ? ` ${kpi.valueSuffix}` : ''}`,
+          [kpi.sub, kpi.trend, kpi.chip, kpi.box ? `${kpi.box.label}: ${kpi.box.value}` : ''].filter(Boolean).join(' • '),
+        ]),
+        ...FUNNEL_STAGES.map((stage) => ['Funnel', stage.label, stage.value, `${stage.pct} of impressions`]),
+        ...RHYTHM.map((slot) => ['Redemption rhythm', slot.label, `${slot.claims} claims`, `${slot.views} views`]),
+        ...CLUSTERS.map((cluster) => [
+          'Cluster',
+          cluster.name,
+          `${cluster.pct}% of redemptions`,
+          [cluster.diners, cluster.note].filter(Boolean).join(' • '),
+        ]),
+      ],
+    );
+    printReport(
+      'Boost Performance — Prime Lunch Combo (#BST-8842)',
+      `${printKvTable('Campaign', [
+        ['Offer', '20% OFF'],
+        ['Merchant', 'Gourmet Bites Bistro'],
+        ['Status', 'Active • Day 3 of 5 • Ending Oct 23'],
+      ])}
+       ${printKvTable(
+         'Key metrics',
+         KPIS.map((kpi) => [kpi.label, `${kpi.value}${kpi.valueSuffix ? ` ${kpi.valueSuffix}` : ''} — ${kpi.sub}`]),
+       )}
+       ${printKvTable(
+         'Conversion funnel',
+         FUNNEL_STAGES.map((stage) => [stage.label, `${stage.value} (${stage.pct})`]),
+       )}
+       ${printKvTable(
+         'Redemption rhythm',
+         RHYTHM.map((slot) => [slot.label, `${slot.claims} claims / ${slot.views} views`]),
+       )}
+       ${printKvTable(
+         'Location clusters',
+         CLUSTERS.map((cluster) => [cluster.name, `${cluster.pct}% — ${cluster.diners}`]),
+       )}
+       <p class="foot">Report generated ${new Date().toLocaleString('en-NG')}.</p>`,
+    );
+    showToast('CSV downloaded and PDF report opened');
+  };
+
   return (
     <AppScreen>
       <div className="flex flex-col w-full pb-32">
@@ -150,7 +201,7 @@ export function BusinessBoostMetricsScreen({ onBack, onTab }: BusinessBoostMetri
               aria-label="Share or Export Report"
               className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary active:scale-90 transition-transform shadow-sm shrink-0"
               type="button"
-              onClick={() => showToast('Report export options opened')}
+              onClick={exportReport}
             >
               <Icon className="text-[20px]" name="ios_share" />
             </button>

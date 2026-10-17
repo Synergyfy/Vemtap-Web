@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopBusinessBranchPricingScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -19,6 +20,28 @@ const TERMINALS: Array<{ icon: string; name: string }> = [
   { icon: 'tablet_mac', name: 'Wuse Terrace Tab 02' },
   { icon: 'desktop_windows', name: 'VI Main Bar POS 01 (Lagos)' },
   { icon: 'phone_iphone', name: 'VI Handheld Server 03' },
+];
+
+// Mirrors the three branch pricing cards below — backs the "Export CSV" button.
+const BRANCH_PRICING: Array<{ branch: string; address: string; price: string; note: string }> = [
+  {
+    branch: 'Wuse Branch (Flagship Outlet)',
+    address: 'Aminu Kano Crescent, Wuse II, Central Area, Abuja, FCT',
+    price: '₦14,500',
+    note: 'Standard Base',
+  },
+  {
+    branch: 'Victoria Island Branch (Coastal Cluster)',
+    address: 'Ahmadu Bello Way, Victoria Island, Lagos State',
+    price: '₦16,500',
+    note: '+₦2,000 Uplift (Coastal Margin)',
+  },
+  {
+    branch: 'Garki Express Hub (Delisted)',
+    address: 'Festival Road, Area 11, Garki, Abuja, FCT',
+    price: '—',
+    note: 'Item delisted from Garki terminals until facility reactivation',
+  },
 ];
 
 export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: DesktopBusinessBranchPricingScreenProps) {
@@ -104,6 +127,13 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
           </button>
           <button
             type="button"
+            onClick={() => {
+              downloadCsv(
+                'vemtap_branch_pricing',
+                ['Branch', 'Address', 'Selling Price', 'Note'],
+                BRANCH_PRICING.map((row) => [row.branch, row.address, row.price, row.note]),
+              );
+            }}
             className="px-space-md py-space-xs rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-highest transition-colors font-button-secondary text-button-secondary flex items-center gap-space-2xs"
           >
             <Icon name="file_download" className="text-[18px]" />

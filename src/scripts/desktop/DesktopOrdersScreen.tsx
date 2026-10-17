@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopOrdersScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -80,6 +82,27 @@ const ROWS = [
 export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: DesktopOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState('active');
 
+  const downloadStatement = () => {
+    downloadCsv(
+      'vemtap-orders-statement.csv',
+      ['Merchant', 'Order', 'Type', 'Items', 'Date', 'Time', 'Amount', 'Payment', 'Status'],
+      ROWS.map((row) => [row.merchant, row.orderId, row.type, row.specifics, row.date, row.time, row.amount, row.method, row.status]),
+    );
+    printReport(
+      'VEMTAP Orders Statement',
+      `${printKvTable('Statement scope', [
+        ['Period', 'Sep 1 – Oct 15, 2024'],
+        ['Account', 'Customer activity ledger'],
+        ['Entries', `${ROWS.length}`],
+      ])}
+       ${printKvTable(
+         'Transactions',
+         ROWS.map((row) => [`${row.date} — ${row.merchant}`, `${row.amount} · ${row.method} · ${row.status} · ${row.orderId}`]),
+       )}
+       <p class="foot">A CSV copy of this statement downloaded alongside the PDF.</p>`,
+    );
+  };
+
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders" withCustomerRail>
       <div className="w-full bg-surface-canvas">
@@ -127,6 +150,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                 <button
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-canvas text-text-primary font-button-secondary text-button-secondary shadow-sm hover:bg-surface transition-all"
                   type="button"
+                  onClick={downloadStatement}
                 >
                   <Icon name="receipt_long" className="text-[20px] text-text-secondary" />
                   <span>Download Statement (.PDF)</span>

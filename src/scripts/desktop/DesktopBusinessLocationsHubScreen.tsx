@@ -1,6 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopBusinessLocationsHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -123,6 +124,20 @@ export function DesktopBusinessLocationsHubScreen({
           <div className="flex items-center gap-space-sm shrink-0">
             <button
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_branch_directory',
+                  ['Branch', 'Address', 'Manager', 'Phone', 'Geofence', ...LIVE_BRANCHES[0].metrics.map((metric) => metric.label)],
+                  LIVE_BRANCHES.map((branch) => [
+                    branch.name,
+                    branch.address,
+                    branch.manager,
+                    branch.phone,
+                    branch.geofence,
+                    ...branch.metrics.map((metric) => metric.value),
+                  ]),
+                );
+              }}
               className="flex items-center gap-space-2xs px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-all shadow-sm"
             >
               <Icon name="file_download" className="text-[18px] text-text-secondary" />

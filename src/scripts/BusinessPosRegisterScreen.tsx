@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { URBAN_PRODUCTS, naira } from './catalogueData';
 import { cartCount, cartTotals, type PosCartLine } from './posCartData';
+import { PosOfflineBar } from '../components/ui/PosOfflineBar';
 
 interface BusinessPosRegisterScreenProps {
   cart: PosCartLine[];
@@ -266,6 +267,11 @@ export function BusinessPosRegisterScreen({
           })}
         </div>
       </header>
+
+      {/* Offline state + "Sync Online" — the only place sync lives now that /pos/sync is gone. */}
+      <div className="px-margin pt-space-xs">
+        <PosOfflineBar variant="mobile" />
+      </div>
 
       {/* Catalog */}
       <div ref={scrollRef} className="flex-1 flex flex-col pb-48">

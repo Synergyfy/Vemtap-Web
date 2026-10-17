@@ -2,79 +2,164 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { AnalyticsShell } from './AnalyticsShell';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printReport, printKvTable } from '../../utils/printReport';
 
 interface DesktopAnalyticsBusinessScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
 }
 
-const DATE_RANGES = ['Today', '7D', 'Last 30 Days', 'Custom'];
+const PERIODS = ['Today', '7D', 'Last 30 Days'] as const;
+type PeriodKey = (typeof PERIODS)[number];
 
-const DOMAIN_TABS: Array<{ key: string; label: string; icon: string }> = [
-  { key: 'performance', label: 'Business Performance', icon: 'query_stats' },
-  { key: 'patrons', label: 'Patrons & Loyalty', icon: 'group' },
-  { key: 'deals', label: 'Deals & Campaign ROI', icon: 'local_offer' },
-  { key: 'locations', label: 'Locations & Geo-Footfall', icon: 'pin_drop' },
-  { key: 'pos', label: 'POS Terminals', icon: 'point_of_sale' },
+const DOMAIN_TABS: Array<{ key: string; label: string; shortLabel: string; icon: string }> = [
+  { key: 'performance', label: 'Business Performance', shortLabel: 'Business', icon: 'query_stats' },
+  { key: 'patrons', label: 'Patrons & Loyalty', shortLabel: 'Customers', icon: 'group' },
+  { key: 'deals', label: 'Deals & Campaign ROI', shortLabel: 'Deals', icon: 'local_offer' },
+  { key: 'locations', label: 'Locations & Geo-Footfall', shortLabel: 'Locations', icon: 'pin_drop' },
+  { key: 'pos', label: 'POS Terminals', shortLabel: 'POS', icon: 'point_of_sale' },
 ];
 
-const WEEKS: Array<{
+const naira = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
+const count = (value: number) => Math.round(value).toLocaleString('en-US');
+const percent = (value: number) => `${Math.round(value)}%`;
+
+interface AnalyticsKpi {
   label: string;
-  dates: string;
-  amount: string;
-  amountClass: string;
-  targetHeight: string;
-  actualHeight: string;
-  actualClass: string;
-  tooltip?: string;
-  badge?: string;
-}> = [
-  {
-    label: 'Week 1',
-    dates: 'Oct 01 - 07',
-    amount: '₦980,000',
-    amountClass: 'font-label-sm text-label-sm font-bold text-on-surface mb-2',
-    targetHeight: '60%',
-    actualHeight: '65%',
-    actualClass: 'bg-primary rounded-t-md transition-all group-hover:brightness-110 relative',
-    tooltip: '+9%',
-  },
-  {
-    label: 'Week 2',
-    dates: 'Oct 08 - 14',
-    amount: '₦1,100,000',
-    amountClass: 'font-label-sm text-label-sm font-bold text-on-surface mb-2',
-    targetHeight: '65%',
-    actualHeight: '73%',
-    actualClass: 'bg-primary rounded-t-md transition-all group-hover:brightness-110 relative',
-    tooltip: '+12%',
-  },
-  {
-    label: 'Week 3',
-    dates: 'Oct 15 - 21',
-    amount: '₦1,240,000',
-    amountClass: 'font-label-sm text-label-sm font-bold text-on-surface mb-2',
-    targetHeight: '70%',
-    actualHeight: '82%',
-    actualClass: 'bg-primary rounded-t-md transition-all group-hover:brightness-110 relative',
-    tooltip: '+17%',
-  },
-  {
-    label: 'Week 4 (Peak)',
-    dates: 'Oct 22 - 31',
-    amount: '₦1,530,000',
-    amountClass: 'font-label-sm text-label-sm font-bold text-primary mb-2',
-    targetHeight: '75%',
-    actualHeight: '98%',
-    actualClass: 'bg-primary-container rounded-t-md transition-all group-hover:brightness-110 relative shadow-md',
-    badge: 'NEW HIGH',
-  },
-];
+  icon: string;
+  value: string;
+  change: string;
+  changeUp: boolean;
+  note: string;
+  progress?: number;
+}
 
-const CHANNELS: Array<{ dot: string; name: string; amount: string; share: string; orders: string }> = [
-  { dot: 'bg-primary', name: 'In-Store POS', amount: '₦3,010,000', share: '62.0% share', orders: '880 orders' },
-  { dot: 'bg-tertiary-container', name: 'VEMTAP Deals & Vouchers', amount: '₦1,260,000', share: '26.0% share', orders: '370 orders' },
-  { dot: 'bg-secondary', name: 'Online Inquiries', amount: '₦580,000', share: '12.0% share', orders: '170 orders' },
+const KPIS_BY_DOMAIN: Record<
+  string,
+  Array<{
+    label: string;
+    icon: string;
+    base: number;
+    fmt: (value: number) => string;
+    scaled?: boolean;
+    change: string;
+    note: string;
+    progress?: number;
+  }>
+> = {
+  performance: [
+    { label: 'Gross Sales Volume', icon: 'payments', base: 4850000, fmt: naira, change: '+18.4%', note: 'vs previous period' },
+    { label: 'Orders Processed', icon: 'receipt_long', base: 1420, fmt: count, change: '+12.0%', note: '98.6% fulfilled' },
+    { label: 'Average Ticket Value', icon: 'shopping_bag', base: 3415, fmt: naira, scaled: false, change: '+5.2%', note: 'Peak: dinner service' },
+    { label: 'Patron Retention Rate', icon: 'loyalty', base: 64, fmt: percent, scaled: false, change: '+8.4%', note: 'repeat diners', progress: 64 },
+  ],
+  patrons: [
+    { label: 'Active Patrons', icon: 'group', base: 3240, fmt: count, change: '+9.1%', note: 'visited this period' },
+    { label: 'New Signups', icon: 'person_add', base: 412, fmt: count, change: '+14.6%', note: 'joined via store & deals' },
+    { label: 'Loyalty Redeem Rate', icon: 'loyalty', base: 38, fmt: percent, scaled: false, change: '+3.2%', note: 'of issued points', progress: 38 },
+    { label: 'Avg Visit Frequency', icon: 'autorenew', base: 2.8, fmt: (value) => `${value.toFixed(1)}x`, scaled: false, change: '+0.4', note: 'per patron / month' },
+  ],
+  deals: [
+    { label: 'Deal Revenue Attributed', icon: 'local_offer', base: 1260000, fmt: naira, change: '+22.5%', note: '26% of gross intake' },
+    { label: 'Vouchers Redeemed', icon: 'redeem', base: 684, fmt: count, change: '+18.2%', note: 'across 9 campaigns' },
+    { label: 'Campaign ROI', icon: 'campaign', base: 312, fmt: percent, scaled: false, change: '+46%', note: 'return on promo spend', progress: 78 },
+    { label: 'Avg Discount Depth', icon: 'percent', base: 17, fmt: percent, scaled: false, change: '-2.1%', note: 'margin-safe band' },
+  ],
+  locations: [
+    { label: 'Total Footfall', icon: 'pin_drop', base: 5180, fmt: count, change: '+11.3%', note: 'check-ins across branches' },
+    { label: 'Geo Conversion Rate', icon: 'explore', base: 42, fmt: percent, scaled: false, change: '+6.8%', note: 'store visit to order', progress: 42 },
+    { label: 'Top Outlet Revenue', icon: 'storefront', base: 1980000, fmt: naira, change: '+15.2%', note: 'Maitama flagship' },
+    { label: 'Delivery Zone Reach', icon: 'map', base: 24, fmt: (value) => `${Math.round(value)} km2`, scaled: false, change: '+3 km2', note: 'active radius' },
+  ],
+  pos: [
+    { label: 'Terminal Gross Intake', icon: 'point_of_sale', base: 3010000, fmt: naira, change: '+13.7%', note: 'settled on VEMTAP rails' },
+    { label: 'Tickets per Terminal', icon: 'receipt_long', base: 473, fmt: count, change: '+8.9%', note: 'avg across 3 terminals' },
+    { label: 'Offline Synced Orders', icon: 'cloud_sync', base: 126, fmt: count, change: '+31.4%', note: 'queued & flushed' },
+    { label: 'Terminal Uptime', icon: 'schedule', base: 99.4, fmt: (value) => `${value.toFixed(1)}%`, scaled: false, change: '+0.6%', note: '30-day rolling', progress: 99 },
+  ],
+};
+
+const PERIOD_SCALE: Record<PeriodKey, number> = { Today: 0.033, '7D': 0.233, 'Last 30 Days': 1 };
+
+const buildKpis = (domain: string, period: PeriodKey): AnalyticsKpi[] =>
+  (KPIS_BY_DOMAIN[domain] ?? KPIS_BY_DOMAIN.performance).map((kpi) => ({
+    label: kpi.label,
+    icon: kpi.icon,
+    value: kpi.fmt(kpi.scaled === false ? kpi.base : kpi.base * PERIOD_SCALE[period]),
+    change: kpi.change,
+    changeUp: !kpi.change.startsWith('-'),
+    note: kpi.note,
+    progress: kpi.progress,
+  }));
+
+const CHART_BUCKETS: Record<PeriodKey, Array<{ label: string; dates: string }>> = {
+  Today: [
+    { label: '10 AM', dates: 'Morning' },
+    { label: '1 PM', dates: 'Lunch Rush' },
+    { label: '4 PM', dates: 'Afternoon' },
+    { label: '7 PM', dates: 'Dinner Peak' },
+  ],
+  '7D': [
+    { label: 'Mon – Tue', dates: 'Oct 06 – 07' },
+    { label: 'Wed – Thu', dates: 'Oct 08 – 09' },
+    { label: 'Fri – Sat', dates: 'Oct 10 – 11' },
+    { label: 'Sun', dates: 'Oct 12' },
+  ],
+  'Last 30 Days': [
+    { label: 'Week 1', dates: 'Oct 01 - 07' },
+    { label: 'Week 2', dates: 'Oct 08 - 14' },
+    { label: 'Week 3', dates: 'Oct 15 - 21' },
+    { label: 'Week 4 (Peak)', dates: 'Oct 22 - 31' },
+  ],
+};
+
+const CHART_BASE = [980000, 1100000, 1240000, 1530000];
+const CHART_TARGET_PCT = [60, 65, 70, 75];
+const CHART_ACTUAL_PCT = [65, 73, 82, 98];
+const DOMAIN_CHART_SCALE: Record<string, number> = {
+  performance: 1,
+  patrons: 0.55,
+  deals: 0.26,
+  locations: 0.72,
+  pos: 0.62,
+};
+
+const buildWeeks = (domain: string, period: PeriodKey) =>
+  CHART_BUCKETS[period].map((bucket, index) => ({
+    label: bucket.label,
+    dates: bucket.dates,
+    amount: naira(CHART_BASE[index] * (DOMAIN_CHART_SCALE[domain] ?? 1) * PERIOD_SCALE[period]),
+    peak: index === 3,
+    targetHeight: `${CHART_TARGET_PCT[index]}%`,
+    actualHeight: `${CHART_ACTUAL_PCT[index]}%`,
+  }));
+
+const CHANNEL_BASE = [
+  { dot: 'bg-primary', name: 'In-Store POS', amount: 3010000, avgTicket: 3420 },
+  { dot: 'bg-tertiary-container', name: 'VEMTAP Deals & Vouchers', amount: 1260000, avgTicket: 3405 },
+  { dot: 'bg-secondary', name: 'Online Inquiries', amount: 580000, avgTicket: 3412 },
 ];
+const DOMAIN_CHANNEL_SCALE: Record<string, number[]> = {
+  performance: [1, 1, 1],
+  patrons: [0.9, 1.4, 0.7],
+  deals: [0.4, 2.2, 0.9],
+  locations: [1.15, 0.7, 0.8],
+  pos: [1.25, 0.8, 0.5],
+};
+
+const buildChannels = (domain: string, period: PeriodKey) => {
+  const scale = DOMAIN_CHANNEL_SCALE[domain] ?? [1, 1, 1];
+  const weights = CHANNEL_BASE.map((channel, index) => channel.amount * scale[index]);
+  const total = weights.reduce((sum, value) => sum + value, 0) || 1;
+  return CHANNEL_BASE.map((channel, index) => ({
+    dot: channel.dot,
+    name: channel.name,
+    amount: naira(weights[index] * PERIOD_SCALE[period]),
+    share: `${((weights[index] / total) * 100).toFixed(1)}% share`,
+    sharePct: (weights[index] / total) * 100,
+    orders: `${count((weights[index] * PERIOD_SCALE[period]) / channel.avgTicket)} orders`,
+  }));
+};
 
 type HeatLevel = 'low' | 'moderate' | 'high' | 'peak' | 'critical';
 
@@ -179,8 +264,42 @@ const TOP_ITEMS: Array<{
 ];
 
 export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusinessScreenProps) {
-  const [dateRange, setDateRange] = useState('Last 30 Days');
-  const [domainTab, setDomainTab] = useState('performance');
+  const [dateRange, setDateRange] = useState<PeriodKey>('Last 30 Days');
+  const [domain, setDomain] = useState('performance');
+  const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
+  const [domainMenuOpen, setDomainMenuOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const activeDomain = DOMAIN_TABS.find((tab) => tab.key === domain) ?? DOMAIN_TABS[0];
+  const kpis = buildKpis(domain, dateRange);
+  const weeks = buildWeeks(domain, dateRange);
+  const channels = buildChannels(domain, dateRange);
+  const grossTotal = channels.reduce((sum, channel) => sum + Number(channel.amount.replace(/[^0-9]/g, '')), 0);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleExportPdf = () => {
+    printReport(
+      `VEMTAP Executive Report — ${activeDomain.label} (${dateRange})`,
+      `${printKvTable('Key Metrics', kpis.map((kpi) => [kpi.label, `${kpi.value} (${kpi.change})`] as [string, string]))}
+${printKvTable(`${dateRange} Trajectory`, weeks.map((week) => [`${week.label} (${week.dates})`, week.amount] as [string, string]))}
+${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.name, `${channel.amount} — ${channel.share}`] as [string, string]))}`,
+    );
+    showToast('Executive report ready — choose "Save as PDF" in the print dialog.');
+  };
+
+  const handleExportCsv = () => {
+    const rows: Array<Array<string | number>> = [
+      ...kpis.map((kpi) => ['Metric', kpi.label, kpi.value, kpi.change, kpi.note]),
+      ...weeks.map((week) => ['Trend', `${week.label} (${week.dates})`, week.amount, week.peak ? 'Peak' : '', '']),
+      ...channels.map((channel) => ['Channel', channel.name, channel.amount, channel.share, channel.orders]),
+    ];
+    downloadCsv(`vemtap_analytics_${domain}_${dateRange.replace(/\s+/g, '_').toLowerCase()}`, ['Section', 'Name', 'Value', 'Change', 'Note'], rows);
+    showToast(`Exported ${rows.length} analytics rows to CSV`);
+  };
 
   return (
     <AnalyticsShell activeNav="analytics" onNav={onNav}>
@@ -219,40 +338,90 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
 
           {/* Action Toolbar */}
           <div className="flex flex-wrap items-center gap-space-xs">
-            {/* Outlet Selector */}
+            {/* Period Filter Dropdown */}
             <div className="relative inline-block text-left">
               <button
                 className="flex items-center gap-space-xs bg-surface-canvas text-on-surface px-space-md py-2.5 rounded-xl shadow-sm hover:bg-surface-subtle transition-all"
                 type="button"
+                onClick={() => {
+                  setPeriodMenuOpen((open) => !open);
+                  setDomainMenuOpen(false);
+                }}
+                aria-haspopup="listbox"
+                aria-expanded={periodMenuOpen}
               >
-                <Icon name="storefront" className="text-primary text-[20px]" />
-                <span className="font-label-md text-label-md font-semibold">All Branches (3)</span>
+                <Icon name="calendar_month" className="text-primary text-[20px]" />
+                <span className="font-label-md text-label-md font-semibold">{dateRange}</span>
                 <Icon name="expand_more" className="text-text-tertiary text-[18px]" />
               </button>
+              {periodMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-40 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 animate-fade-in" role="listbox">
+                  {PERIODS.map((period) => (
+                    <button
+                      key={period}
+                      type="button"
+                      role="option"
+                      aria-selected={dateRange === period}
+                      onClick={() => {
+                        setDateRange(period);
+                        setPeriodMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center justify-between transition-colors"
+                    >
+                      <span>{period}</span>
+                      {dateRange === period && <Icon name="check" className="text-primary text-[16px]" />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Date Range Filter */}
-            <div className="flex items-center bg-surface-container-low p-1 rounded-xl">
-              {DATE_RANGES.map((range) => (
-                <button
-                  key={range}
-                  type="button"
-                  onClick={() => setDateRange(range)}
-                  className={
-                    dateRange === range
-                      ? 'px-space-sm py-1.5 rounded-lg bg-surface-canvas text-primary font-label-sm text-label-sm font-bold shadow-sm transition-all'
-                      : 'px-space-sm py-1.5 rounded-lg text-text-secondary hover:text-on-surface font-label-sm text-label-sm font-medium transition-colors'
-                  }
-                >
-                  {range}
-                </button>
-              ))}
+            {/* Domain / Metric View Dropdown */}
+            <div className="relative inline-block text-left">
+              <button
+                className="flex items-center gap-space-xs bg-surface-canvas text-on-surface px-space-md py-2.5 rounded-xl shadow-sm hover:bg-surface-subtle transition-all"
+                type="button"
+                onClick={() => {
+                  setDomainMenuOpen((open) => !open);
+                  setPeriodMenuOpen(false);
+                }}
+                aria-haspopup="listbox"
+                aria-expanded={domainMenuOpen}
+              >
+                <Icon name={activeDomain.icon} className="text-primary text-[20px]" />
+                <span className="font-label-md text-label-md font-semibold">{activeDomain.label}</span>
+                <Icon name="expand_more" className="text-text-tertiary text-[18px]" />
+              </button>
+              {domainMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-40 w-60 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 animate-fade-in" role="listbox">
+                  {DOMAIN_TABS.map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      role="option"
+                      aria-selected={domain === tab.key}
+                      onClick={() => {
+                        setDomain(tab.key);
+                        setDomainMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center justify-between transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Icon name={tab.icon} className="text-[16px] text-primary" />
+                        <span>{tab.label}</span>
+                      </span>
+                      {domain === tab.key && <Icon name="check" className="text-primary text-[16px]" />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Export Executive Report */}
             <button
               className="flex items-center gap-space-xs bg-primary text-on-primary px-space-md py-2.5 rounded-xl font-button-secondary text-button-secondary shadow-md hover:bg-surface-tint active:scale-[0.98] transition-all"
               type="button"
+              onClick={handleExportPdf}
             >
               <Icon name="picture_as_pdf" className="text-[18px]" />
               <span>Export Executive PDF</span>
@@ -260,132 +429,59 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
           </div>
         </div>
 
-        {/* Domain Navigation Tabs */}
-        <div className="flex items-center gap-space-xs bg-surface-container-low p-1.5 rounded-xl mb-space-xl overflow-x-auto">
-          {DOMAIN_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setDomainTab(tab.key)}
-              className={
-                domainTab === tab.key
-                  ? 'flex items-center gap-space-xs px-space-md py-2 rounded-lg bg-surface-canvas text-primary font-label-md text-label-md font-bold shadow-sm'
-                  : 'flex items-center gap-space-xs px-space-md py-2 rounded-lg text-text-secondary hover:text-on-surface font-label-md text-label-md font-medium transition-colors'
-              }
-            >
-              <Icon name={tab.icon} className="text-[18px]" />
-              <span>{tab.label}</span>
-            </button>
-          ))}
+        {/* Active View Caption */}
+        <div className="flex items-center gap-space-xs mb-space-xl font-caption text-caption text-text-secondary">
+          <Icon name={activeDomain.icon} className="text-primary text-[16px]" />
+          <span>
+            Showing <span className="font-semibold text-on-surface">{activeDomain.label}</span> for{' '}
+            <span className="font-semibold text-on-surface">{dateRange}</span>
+          </span>
         </div>
 
         {/* Metric Highlights Ribbon (4 Cards) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md mb-space-xl">
-          {/* Card 1: Gross Sales */}
-          <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-primary/5 rounded-full pointer-events-none" />
-            <div>
-              <div className="flex items-center justify-between mb-space-xs">
-                <span className="font-label-sm text-label-sm text-text-secondary font-medium">Gross Sales Volume</span>
-                <Icon name="payments" className="text-primary text-[20px]" />
+          {kpis.map((kpi, index) => (
+            <div
+              key={kpi.label}
+              className="bg-surface-canvas rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between relative overflow-hidden"
+            >
+              {index === 0 && (
+                <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-primary/5 rounded-full pointer-events-none" />
+              )}
+              <div>
+                <div className="flex items-center justify-between mb-space-xs">
+                  <span className="font-label-sm text-label-sm text-text-secondary font-medium">{kpi.label}</span>
+                  <Icon name={kpi.icon} className="text-primary text-[20px]" />
+                </div>
+                <div className="flex items-baseline gap-space-xs mb-space-2xs">
+                  <span className="font-heading-lg text-heading-lg font-bold text-on-surface tracking-tight">{kpi.value}</span>
+                </div>
+                <div className="flex items-center gap-1.5 font-caption text-caption">
+                  <span
+                    className={`inline-flex items-center font-bold ${
+                      kpi.changeUp ? 'text-badge-discount-text' : 'text-text-secondary'
+                    }`}
+                  >
+                    <Icon name={kpi.changeUp ? 'arrow_upward' : 'arrow_downward'} className="text-[14px]" />
+                    {kpi.change.replace(/^[+-]/, '')}
+                  </span>
+                  <span className="text-text-tertiary">{kpi.note}</span>
+                </div>
               </div>
-              <div className="flex items-baseline gap-space-xs mb-space-2xs">
-                <span className="font-heading-lg text-heading-lg font-bold text-on-surface tracking-tight">₦4,850,000</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-caption text-caption">
-                <span className="inline-flex items-center text-badge-discount-text font-bold">
-                  <Icon name="arrow_upward" className="text-[14px]" />
-                  18.4%
-                </span>
-                <span className="text-text-tertiary">vs ₦4,096,000 prev</span>
-              </div>
-            </div>
-            <div className="mt-space-md pt-space-xs flex items-center justify-between">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                <Icon name="check_circle" className="text-[14px]" /> 0% VEMTAP Commission
-              </span>
-              <span className="text-text-tertiary font-caption text-caption">30d Cycle</span>
-            </div>
-          </div>
-
-          {/* Card 2: Orders Processed */}
-          <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-space-xs">
-                <span className="font-label-sm text-label-sm text-text-secondary font-medium">Orders Processed</span>
-                <Icon name="receipt_long" className="text-secondary text-[20px]" />
-              </div>
-              <div className="flex items-baseline gap-space-xs mb-space-2xs">
-                <span className="font-heading-lg text-heading-lg font-bold text-on-surface tracking-tight">1,420</span>
-                <span className="font-caption text-caption text-text-secondary font-medium">tickets</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-caption text-caption">
-                <span className="inline-flex items-center text-badge-discount-text font-bold">
-                  <Icon name="arrow_upward" className="text-[14px]" />
-                  12.0%
-                </span>
-                <span className="text-text-tertiary">+152 more diners</span>
+              <div className="mt-space-md pt-space-xs flex items-center justify-between">
+                {typeof kpi.progress === 'number' ? (
+                  <>
+                    <div className="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-primary h-full rounded-full" style={{ width: `${kpi.progress}%` }} />
+                    </div>
+                    <span className="ml-2 font-caption text-caption font-bold text-primary shrink-0">{kpi.progress}%</span>
+                  </>
+                ) : (
+                  <span className="text-text-tertiary font-caption text-caption">{dateRange} Cycle</span>
+                )}
               </div>
             </div>
-            <div className="mt-space-md pt-space-xs flex items-center justify-between">
-              <div className="flex items-center gap-1 text-text-secondary font-caption text-caption">
-                <span className="w-2 h-2 rounded-full bg-primary" />
-                <span>98.6% Fulfilled</span>
-              </div>
-              <span className="text-text-tertiary font-caption text-caption">Avg 47 / day</span>
-            </div>
-          </div>
-
-          {/* Card 3: Average Ticket Value */}
-          <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-space-xs">
-                <span className="font-label-sm text-label-sm text-text-secondary font-medium">Average Ticket Value</span>
-                <Icon name="shopping_bag" className="text-primary-container text-[20px]" />
-              </div>
-              <div className="flex items-baseline gap-space-xs mb-space-2xs">
-                <span className="font-heading-lg text-heading-lg font-bold text-on-surface tracking-tight">₦3,415</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-caption text-caption">
-                <span className="inline-flex items-center text-badge-discount-text font-bold">
-                  <Icon name="arrow_upward" className="text-[14px]" />
-                  5.2%
-                </span>
-                <span className="text-text-tertiary">+₦170 per cover</span>
-              </div>
-            </div>
-            <div className="mt-space-md pt-space-xs flex items-center justify-between">
-              <span className="text-text-secondary font-caption text-caption">Peak: Dinner service</span>
-              <span className="text-badge-discount-text font-caption text-caption font-semibold">₦4,280 avg</span>
-            </div>
-          </div>
-
-          {/* Card 4: Patron Retention Rate */}
-          <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-space-xs">
-                <span className="font-label-sm text-label-sm text-text-secondary font-medium">Patron Retention Rate</span>
-                <Icon name="loyalty" className="text-tertiary text-[20px]" />
-              </div>
-              <div className="flex items-baseline gap-space-xs mb-space-2xs">
-                <span className="font-heading-lg text-heading-lg font-bold text-on-surface tracking-tight">64%</span>
-                <span className="font-caption text-caption text-text-secondary font-medium">repeat diners</span>
-              </div>
-              <div className="flex items-center gap-1.5 font-caption text-caption">
-                <span className="inline-flex items-center text-badge-discount-text font-bold">
-                  <Icon name="arrow_upward" className="text-[14px]" />
-                  8.4%
-                </span>
-                <span className="text-text-tertiary">Top decile in Abuja</span>
-              </div>
-            </div>
-            <div className="mt-space-md pt-space-xs flex items-center justify-between">
-              <div className="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: '64%' }} />
-              </div>
-              <span className="ml-2 font-caption text-caption font-bold text-primary">64%</span>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* Main Asymmetric Dashboard Grid (8 cols left, 4 cols right on lg screens) */}
@@ -397,13 +493,15 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm mb-space-md">
                 <div>
                   <div className="flex items-center gap-space-xs">
-                    <h2 className="font-heading-md text-heading-md font-bold text-on-surface">Weekly Revenue Trajectory</h2>
-                    <span title="Weekly gross intake compared against monthly run-rate target">
+                    <h2 className="font-heading-md text-heading-md font-bold text-on-surface">
+                      {dateRange === 'Today' ? 'Hourly Revenue Trajectory' : 'Revenue Trajectory'}
+                    </h2>
+                    <span title="Gross intake compared against target run-rate">
                       <Icon name="info" className="text-text-tertiary text-[18px]" />
                     </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary">
-                    Comparing 4-week dynamic cycles against branch target quota
+                    {activeDomain.shortLabel} intake for {dateRange} compared against branch target quota
                   </p>
                 </div>
                 <div className="flex items-center gap-space-md text-caption font-caption">
@@ -418,21 +516,25 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
                 </div>
               </div>
 
-              {/* 4-Week Streak Target Exceeded Banner */}
+              {/* Period Outperformance Streak Banner */}
               <div className="bg-gradient-to-r from-surface-tint-blue via-surface-tint-blue to-badge-discount-bg/30 p-space-md rounded-xl flex items-center justify-between mb-space-lg">
                 <div className="flex items-center gap-space-sm">
                   <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0">
                     <Icon name="trending_up" className="text-[22px]" />
                   </div>
                   <div>
-                    <div className="font-label-md text-label-md font-bold text-on-surface">4-Week Outperformance Streak</div>
+                    <div className="font-label-md text-label-md font-bold text-on-surface">
+                      {dateRange === 'Today' ? 'Same-Day' : dateRange === '7D' ? 'Weekly' : '4-Week'} Outperformance Streak
+                    </div>
                     <div className="font-caption text-caption text-text-secondary">
                       All branches exceeded conservative baseline intake targets.
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">+₦430,000</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">
+                    +{naira(grossTotal * 0.089)}
+                  </span>
                   <div className="font-caption text-caption text-text-secondary font-medium">Above Cumulative Target</div>
                 </div>
               </div>
@@ -440,9 +542,15 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
               {/* Inline SVG Trajectory & Bar Chart Hybrid Visualization */}
               <div className="w-full bg-surface-subtle p-space-md rounded-xl">
                 <div className="h-64 w-full flex items-end justify-between gap-space-md sm:gap-space-xl px-space-md pt-space-md pb-space-xs">
-                  {WEEKS.map((week) => (
+                  {weeks.map((week) => (
                     <div key={week.label} className="flex-1 flex flex-col items-center h-full justify-end group">
-                      <div className={week.amountClass}>{week.amount}</div>
+                      <div
+                        className={`font-label-sm text-label-sm font-bold mb-2 ${
+                          week.peak ? 'text-primary' : 'text-on-surface'
+                        }`}
+                      >
+                        {week.amount}
+                      </div>
                       <div className="w-full max-w-[72px] flex items-end justify-center gap-1.5 h-44">
                         {/* Target Bar */}
                         <div
@@ -450,22 +558,24 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
                           style={{ height: week.targetHeight }}
                         />
                         {/* Actual Bar */}
-                        <div className={week.actualClass} style={{ height: week.actualHeight }}>
-                          {week.tooltip && (
-                            <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-inverse-surface text-inverse-on-surface text-[10px] px-1 py-0.5 rounded pointer-events-none">
-                              {week.tooltip}
-                            </span>
-                          )}
-                          {week.badge && (
+                        <div
+                          className={`rounded-t-md transition-all group-hover:brightness-110 relative ${
+                            week.peak
+                              ? 'bg-primary-container shadow-md'
+                              : 'bg-primary'
+                          }`}
+                          style={{ height: week.actualHeight }}
+                        >
+                          {week.peak && (
                             <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-badge-discount-bg text-badge-discount-text font-bold text-[10px] px-1.5 py-0.5 rounded">
-                              {week.badge}
+                              PEAK
                             </span>
                           )}
                         </div>
                       </div>
                       <span
                         className={
-                          week.label.includes('Peak')
+                          week.peak
                             ? 'font-label-sm text-label-sm text-primary font-bold mt-3'
                             : 'font-label-sm text-label-sm text-text-secondary font-semibold mt-3'
                         }
@@ -488,31 +598,24 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
                     Revenue contribution by customer checkout touchpoint
                   </p>
                 </div>
-                <span className="font-caption text-caption text-text-tertiary">Gross Total: ₦4,850,000</span>
+                <span className="font-caption text-caption text-text-tertiary">Gross Total: {naira(grossTotal)}</span>
               </div>
 
               {/* Segmented Stacked Progress Bar */}
               <div className="w-full h-4 rounded-full overflow-hidden flex bg-surface-container mb-space-md">
-                <div
-                  className="bg-primary hover:opacity-90 transition-opacity"
-                  style={{ width: '62.0%' }}
-                  title="In-Store POS (62.0%)"
-                />
-                <div
-                  className="bg-tertiary-container hover:opacity-90 transition-opacity"
-                  style={{ width: '26.0%' }}
-                  title="VEMTAP Deals & Vouchers (26.0%)"
-                />
-                <div
-                  className="bg-secondary hover:opacity-90 transition-opacity"
-                  style={{ width: '12.0%' }}
-                  title="Online Catalog Inquiries (12.0%)"
-                />
+                {channels.map((channel) => (
+                  <div
+                    key={channel.name}
+                    className={`${channel.dot} hover:opacity-90 transition-opacity`}
+                    style={{ width: `${channel.sharePct.toFixed(1)}%` }}
+                    title={`${channel.name} (${channel.sharePct.toFixed(1)}%)`}
+                  />
+                ))}
               </div>
 
               {/* Channel Breakdown Legend / Details */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md">
-                {CHANNELS.map((channel) => (
+                {channels.map((channel) => (
                   <div key={channel.name} className="p-space-md rounded-xl bg-surface-subtle flex flex-col justify-between">
                     <div className="flex items-center gap-space-xs mb-space-2xs">
                       <span className={`w-3 h-3 rounded-full ${channel.dot}`} />
@@ -682,6 +785,7 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
                 <button
                   className="w-full flex items-center justify-between p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container transition-colors group text-left"
                   type="button"
+                  onClick={handleExportCsv}
                 >
                   <div className="flex items-center gap-space-sm">
                     <div className="w-9 h-9 rounded-lg bg-surface-container-highest text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-on-primary transition-colors">
@@ -740,6 +844,12 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-space-sm bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-xl border border-outline-variant animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
+          <span className="font-label-md text-label-md font-semibold">{toast}</span>
+        </div>
+      )}
     </AnalyticsShell>
   );
 }

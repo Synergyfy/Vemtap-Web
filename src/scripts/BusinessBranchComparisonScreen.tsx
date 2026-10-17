@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { downloadCsv } from '../utils/exportCsv';
 
 interface BusinessBranchComparisonScreenProps {
   onBack: () => void;
@@ -131,7 +132,14 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
             aria-label="Export detailed metrics"
             className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors"
             type="button"
-            onClick={() => showToast('Branch metrics export started')}
+            onClick={() => {
+              downloadCsv(
+                'vemtap_branch_comparison',
+                ['Branch', 'Sales', 'Orders', 'Avg Order Value', 'Occupancy', 'Draw Radius'],
+                SCORECARDS.map((card) => [card.name, card.sales, card.salesMeta, card.aov, card.occupancy, card.radius]),
+              );
+              showToast('Branch metrics export downloaded');
+            }}
           >
             <Icon name="download" className="text-[19px]" />
           </button>
@@ -390,7 +398,16 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
             <button
               className="w-full h-11 bg-surface-canvas text-text-primary rounded-xl font-label-sm text-label-sm font-semibold shadow-sm flex items-center justify-center gap-space-xs transition-colors"
               type="button"
-              onClick={() => showToast('Branch performance report exported')}
+              onClick={() => {
+                const rows: string[][] = [];
+                (Object.keys(METRICS) as MetricKey[]).forEach((key) => {
+                  METRICS[key].values.forEach((value, index) => {
+                    rows.push([BRANCH_BARS[index].name, METRICS[key].label, value]);
+                  });
+                });
+                downloadCsv('vemtap_branch_performance', ['Branch', 'Metric', 'Value'], rows);
+                showToast('Branch performance report downloaded');
+              }}
             >
               <Icon name="file_download" className="text-text-secondary text-[17px]" />
               <span>Export Branch Performance Report</span>

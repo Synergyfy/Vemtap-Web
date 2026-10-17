@@ -6,6 +6,8 @@ import { computeTotals, formatNaira, type PosTerminalLine } from './posTerminalD
 import { formatReceiptText } from '../posCartData';
 import { usePosSettings } from '../../context/PosSettingsContext';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { usePosOffline } from '../../context/PosOfflineContext';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopPosSaleCompleteScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -88,6 +90,7 @@ export function DesktopPosSaleCompleteScreen({
     showBusinessLogo,
   } = usePosSettings();
   const { branch } = useBusinessBranch();
+  const { isOnline } = usePosOffline();
   const totals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
   const { muted, setMuted, play } = useChime();
   const [phone, setPhone] = useState('+234 803 219 8831');
@@ -99,6 +102,45 @@ export function DesktopPosSaleCompleteScreen({
   const flashMessage = (message: string) => {
     setFlash(message);
     window.setTimeout(() => setFlash(null), 2600);
+  };
+
+  /** FIRS-ready fiscal VAT document for this sale. */
+  const downloadFiscalPdf = () => {
+    printReport(
+      `Fiscal VAT Invoice — ${receiptNo}`,
+      `${printKvTable('Supplier', [
+        ['Business', businessName],
+        ['Address', businessAddress ?? '—'],
+        ['Phone', businessPhone ?? '—'],
+        ['Branch', branch?.name ?? 'Head office'],
+      ])}
+       ${printKvTable('Document', [
+        ['Receipt no.', receiptNo],
+        ['Issued', new Date().toLocaleString('en-NG')],
+        ['Customer', customer ?? 'Walk-in'],
+        ['Tax mode', taxLabel],
+      ])}
+       ${printKvTable(
+         'Line items',
+         cart.map(
+           (line) =>
+             [
+               `${line.qty} × ${line.name}${line.mods ? ` — ${line.mods}` : ''}`,
+               formatNaira((line.unit - (line.promo ?? 0)) * line.qty),
+             ] as [string, string],
+         ),
+       )}
+       ${printKvTable('Totals', [
+        ['Gross', formatNaira(totals.gross)],
+        ['Discounts', `-${formatNaira(totals.discount)}`],
+        ['Net', formatNaira(totals.net)],
+        [taxLabel, formatNaira(totals.vat)],
+        ['Total charged', formatNaira(totals.total)],
+        ['Items', `${totals.itemCount}`],
+      ])}
+       <p class="foot">Fiscal document prepared for FIRS filing. 0% VEMTAP commission on settled sales.</p>`,
+    );
+    flashMessage('Fiscal PDF generated for FIRS filing…');
   };
 
   useEffect(() => {
@@ -173,6 +215,24 @@ export function DesktopPosSaleCompleteScreen({
           </div>
         </div>
       </section>
+
+      {/* Offline notice — the sale is parked locally and pushed on reconnect. */}
+      {!isOnline && (
+        <section className="w-full pb-space-sm">
+          <div className="w-full flex items-start gap-space-xs rounded-xl bg-badge-discount-bg/70 px-space-md py-space-sm text-badge-discount-text">
+            <Icon name="cloud_off" className="text-[20px] shrink-0 mt-0.5" />
+            <div className="flex flex-col">
+              <span className="font-label-sm text-label-sm font-bold">
+                Offline — sale saved to the local queue
+              </span>
+              <span className="font-caption text-caption leading-relaxed">
+                The customer receipt is printed. This sale uploads automatically when the till reconnects, or tap
+                <strong className="font-semibold"> Sync Online</strong> on the register.
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Receipt Studio Workspace */}
       <section className="w-full pb-space-lg">
@@ -400,7 +460,7 @@ export function DesktopPosSaleCompleteScreen({
                 </button>
                 <button
                   type="button"
-                  onClick={() => flashMessage('Fiscal PDF generated for FIRS filing…')}
+                  onClick={downloadFiscalPdf}
                   className="p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-low text-left flex flex-col gap-1.5 shadow-sm transition-colors"
                 >
                   <Icon name="picture_as_pdf" className="text-primary text-[22px]" />
