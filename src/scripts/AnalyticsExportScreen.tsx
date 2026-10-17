@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { runExportCenter } from '../utils/exportCenter';
 
 interface AnalyticsExportScreenProps {
   onBack: () => void;
@@ -91,6 +92,12 @@ export function AnalyticsExportScreen({ onBack }: AnalyticsExportScreenProps) {
     if (state !== 'idle' || selectedCount === 0) return;
     setState('loading');
     stateTimer.current = window.setTimeout(() => {
+      runExportCenter({
+        format,
+        selectedKeys: MODULES.filter((module) => checked[module.key]).map((module) => module.key as string),
+        timeframe: 'Sep 10 – Oct 10, 2026',
+        branchFilter: 'All Locations (3)',
+      });
       setState('done');
       resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
     }, 1400);

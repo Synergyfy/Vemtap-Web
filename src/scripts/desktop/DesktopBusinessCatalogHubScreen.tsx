@@ -495,6 +495,8 @@ export function DesktopBusinessCatalogHubScreen({
   const [productDraft, setProductDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(getInitialServiceDraft);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // When set, the add-product/add-service flow is being used to edit this existing row.
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState<CatalogChip>('all');
@@ -505,18 +507,32 @@ export function DesktopBusinessCatalogHubScreen({
   );
 
   const handlePublishProduct = () => {
-    const newRow: CatalogRow = {
-      id: `p_${Date.now()}`,
+    const isEdit = Boolean(editingRowId);
+    const updatedFields = {
       name: productDraft.title || 'New Product Item',
-      image: ROWS[0].image,
       alt: productDraft.title || 'Product Item',
       sku: productDraft.sku || `VG-PROD-${Math.floor(10 + Math.random() * 90)}`,
       sub: productDraft.classification || 'Retail Product',
       category: productDraft.primaryCategory || 'General',
-      categoryIcon: 'storefront',
       price: productDraft.basePrice ? `₦${Number(productDraft.basePrice).toLocaleString('en-US')}` : '₦5,000',
       was: productDraft.comparePrice ? `₦${Number(productDraft.comparePrice).toLocaleString('en-US')}` : undefined,
       dealBadge: productDraft.comparePrice ? 'Special Deal' : undefined,
+    };
+    if (isEdit) {
+      setProductRows((prev) =>
+        prev.map((item) => (item.id === editingRowId ? { ...item, ...updatedFields } : item)),
+      );
+      setEditingRowId(null);
+      setSubFlow('none');
+      setToastMessage(`"${updatedFields.name}" updated successfully.`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+    const newRow: CatalogRow = {
+      id: `p_${Date.now()}`,
+      ...updatedFields,
+      image: ROWS[0].image,
+      categoryIcon: 'storefront',
       branchDot: 'ok',
       branchLabel: 'All 3 Branches',
       branchNote: 'Active in POS & Storefront',
@@ -536,18 +552,32 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handlePublishService = () => {
-    const newServiceRow: CatalogRow = {
-      id: `s_${Date.now()}`,
+    const isEdit = Boolean(editingRowId);
+    const updatedFields = {
       name: serviceDraft.title || 'New Service Session',
-      image: SERVICES_ROWS[0].image,
       alt: serviceDraft.title || 'Service Item',
       sku: serviceDraft.skuCode || `VG-SRV-${Math.floor(10 + Math.random() * 90)}`,
       sub: `${serviceDraft.durationMins || 60} min session`,
       category: serviceDraft.primaryCategory || 'Spa & Wellness',
-      categoryIcon: 'spa',
       price: serviceDraft.basePrice ? `₦${Number(serviceDraft.basePrice).toLocaleString('en-US')}` : '₦18,000',
       was: serviceDraft.comparePrice ? `₦${Number(serviceDraft.comparePrice).toLocaleString('en-US')}` : undefined,
       dealBadge: serviceDraft.comparePrice ? 'Introductory Offer' : undefined,
+    };
+    if (isEdit) {
+      setServiceRows((prev) =>
+        prev.map((item) => (item.id === editingRowId ? { ...item, ...updatedFields } : item)),
+      );
+      setEditingRowId(null);
+      setSubFlow('none');
+      setToastMessage(`"${updatedFields.name}" updated successfully.`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+    const newServiceRow: CatalogRow = {
+      id: `s_${Date.now()}`,
+      ...updatedFields,
+      image: SERVICES_ROWS[0].image,
+      categoryIcon: 'spa',
       branchDot: 'ok',
       branchLabel: 'All 3 Branches',
       branchNote: 'Bookings Enabled',
@@ -601,59 +631,47 @@ export function DesktopBusinessCatalogHubScreen({
 
   // Item Action & Edit State
   const [actionMenuRowId, setActionMenuRowId] = useState<string | null>(null);
-  const [editingItem, setEditingItem] = useState<CatalogRow | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editSku, setEditSku] = useState('');
-  const [editCategory, setEditCategory] = useState('');
-  const [editPrice, setEditPrice] = useState('');
-  const [editStockTone, setEditStockTone] = useState<'ok' | 'error' | 'off'>('ok');
-  const [editStockUnits, setEditStockUnits] = useState('');
-  const [editKitchen, setEditKitchen] = useState(false);
 
-  const handleOpenEditItem = (row: CatalogRow) => {
-    setEditingItem(row);
-    setEditName(row.name);
-    setEditSku(row.sku);
-    setEditCategory(row.category);
-    setEditPrice(row.price);
-    setEditStockTone(row.stock.tone);
-    setEditStockUnits(row.stock.units?.replace(/[^0-9]/g, '') || '20');
-    setEditKitchen(Boolean(row.kitchenLabel));
-    setActionMenuRowId(null);
+  // Leaving the add/edit sub-flows must always return to the catalog list.
+  const exitSubFlow = () => {
+    setEditingRowId(null);
+    setSubFlow('none');
   };
 
-  const handleSaveEditItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingItem || !editName.trim()) return;
+  const parseAmount = (value: string) => value.replace(/[^0-9.]/g, '');
 
-    const updater = (prev: CatalogRow[]) =>
-      prev.map((item) => {
-        if (item.id !== editingItem.id) return item;
-        return {
-          ...item,
-          name: editName.trim(),
-          sku: editSku.trim(),
-          category: editCategory.trim(),
-          price: editPrice.startsWith('₦') ? editPrice.trim() : `₦${editPrice.trim()}`,
-          kitchenLabel: editKitchen,
-          stock: {
-            ...item.stock,
-            tone: editStockTone,
-            label: editStockTone === 'ok' ? 'In Stock' : editStockTone === 'error' ? 'Critical Low' : 'Out of Stock',
-            units: editStockUnits ? `${editStockUnits} units` : item.stock.units,
-          },
-        };
-      });
-
-    if (activeTab === 'products') {
-      setProductRows(updater);
+  // "Edit" reopens the full add-product / add-service flow, prefilled with the row's data,
+  // so every component (basics, pricing, fulfillment, review) stays editable.
+  const handleOpenEditItem = (row: CatalogRow) => {
+    setActionMenuRowId(null);
+    setEditingRowId(row.id);
+    if (row.id.startsWith('s')) {
+      const durationMatch = row.sub.match(/(\d+)\s*min/i);
+      setServiceDraft((prev) => ({
+        ...prev,
+        title: row.name,
+        skuCode: row.sku,
+        primaryCategory: row.category,
+        basePrice: parseAmount(row.price),
+        comparePrice: row.was ? parseAmount(row.was) : '',
+        image: row.image || prev.image,
+        durationMins: durationMatch ? Number(durationMatch[1]) : prev.durationMins,
+      }));
+      setSubFlow('service1');
     } else {
-      setServiceRows(updater);
+      setProductDraft((prev) => ({
+        ...prev,
+        title: row.name,
+        sku: row.sku,
+        skuCode: row.sku,
+        primaryCategory: row.category,
+        classification: row.sub,
+        description: row.alt,
+        basePrice: parseAmount(row.price),
+        comparePrice: row.was ? parseAmount(row.was) : '',
+      }));
+      setSubFlow('addProduct1');
     }
-
-    setToastMessage(`Item "${editName.trim()}" updated successfully.`);
-    setTimeout(() => setToastMessage(null), 3000);
-    setEditingItem(null);
   };
 
   const handleDuplicateItem = (row: CatalogRow) => {
@@ -711,9 +729,9 @@ export function DesktopBusinessCatalogHubScreen({
       <DesktopAddProductStep1Screen
         draft={productDraft}
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => setSubFlow('none')}
+        onBack={() => exitSubFlow()}
         onNext={() => setSubFlow('addProduct2')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -726,7 +744,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct1')}
         onNext={() => setSubFlow('addProduct3')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -739,7 +757,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct2')}
         onNext={() => setSubFlow('productReview')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -757,7 +775,7 @@ export function DesktopBusinessCatalogHubScreen({
         onEditDescription={() => setSubFlow('addProduct1')}
         onEditSteps={() => setSubFlow('addProduct3')}
         onPublish={handlePublishProduct}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -786,6 +804,7 @@ export function DesktopBusinessCatalogHubScreen({
         }}
         onAddAnother={() => {
           setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+          setEditingRowId(null);
           setSubFlow('addProduct1');
         }}
         onNav={onNav}
@@ -798,9 +817,9 @@ export function DesktopBusinessCatalogHubScreen({
       <DesktopAddServiceStep1Screen
         draft={serviceDraft}
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => setSubFlow('none')}
+        onBack={() => exitSubFlow()}
         onNext={() => setSubFlow('service2')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
         businessCategories={businessCategories}
         businessSubcategories={businessSubcategories}
@@ -815,7 +834,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('service1')}
         onNext={() => setSubFlow('service3')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -828,7 +847,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('service2')}
         onNext={() => setSubFlow('serviceReview')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -844,7 +863,7 @@ export function DesktopBusinessCatalogHubScreen({
         onEditBranches={() => setSubFlow('service3')}
         onEditDescription={() => setSubFlow('service1')}
         onPublish={handlePublishService}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -861,6 +880,7 @@ export function DesktopBusinessCatalogHubScreen({
         }}
         onAddAnother={() => {
           setServiceDraft(getInitialServiceDraft());
+          setEditingRowId(null);
           setSubFlow('service1');
         }}
         onNav={onNav}
@@ -947,6 +967,7 @@ export function DesktopBusinessCatalogHubScreen({
                 type="button"
                 onClick={() => {
                   setServiceDraft(getInitialServiceDraft());
+                  setEditingRowId(null);
                   setSubFlow('service1');
                 }}
                 className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"
@@ -958,6 +979,7 @@ export function DesktopBusinessCatalogHubScreen({
                 type="button"
                 onClick={() => {
                   setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+                  setEditingRowId(null);
                   setSubFlow('addProduct1');
                 }}
                 className="flex items-center gap-space-2xs px-space-lg py-space-sm rounded-xl bg-primary-container text-on-primary-container hover:bg-primary transition-all font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98]"
@@ -2138,147 +2160,6 @@ export function DesktopBusinessCatalogHubScreen({
           </div>
         )}
 
-        {/* Edit Item Modal */}
-        {editingItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className="bg-surface-canvas border border-border-subtle rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
-              <div className="p-6 border-b border-border-subtle flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={editingItem.image}
-                    alt={editingItem.name}
-                    className="w-12 h-12 rounded-xl object-cover border border-border-subtle"
-                  />
-                  <div>
-                    <h3 className="font-heading-sm text-heading-sm text-text-primary">Edit Catalog Item</h3>
-                    <p className="font-caption text-caption text-text-secondary">
-                      Update product pricing, stock availability, and branch settings
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingItem(null)}
-                  className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  <Icon name="close" className="text-[20px]" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveEditItem} className="p-6 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
-                    Item Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
-                      Price <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editPrice}
-                      onChange={(e) => setEditPrice(e.target.value)}
-                      placeholder="₦12,500"
-                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
-                      SKU Code
-                    </label>
-                    <input
-                      type="text"
-                      value={editSku}
-                      onChange={(e) => setEditSku(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
-                      Category
-                    </label>
-                    <input
-                      type="text"
-                      value={editCategory}
-                      onChange={(e) => setEditCategory(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
-                      Stock Status
-                    </label>
-                    <select
-                      value={editStockTone}
-                      onChange={(e) => setEditStockTone(e.target.value as any)}
-                      className="w-full px-3 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
-                    >
-                      <option value="ok">In Stock</option>
-                      <option value="error">Critical Low</option>
-                      <option value="off">Out of Stock</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                  <div>
-                    <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
-                      Units Available
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editStockUnits}
-                      onChange={(e) => setEditStockUnits(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div className="pt-5 flex items-center gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={editKitchen}
-                        onChange={(e) => setEditKitchen(e.target.checked)}
-                        className="w-4 h-4 rounded text-primary border-border-subtle focus:ring-primary"
-                      />
-                      <span className="text-xs font-semibold text-text-primary">Kitchen Expedited</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-border-subtle flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setEditingItem(null)}
-                    className="px-4 py-2.5 rounded-xl border border-border-subtle text-text-secondary hover:bg-surface-container text-sm font-semibold transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white text-sm font-semibold shadow-md transition-all"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Toast Notification Alert */}
         {toastMessage && (

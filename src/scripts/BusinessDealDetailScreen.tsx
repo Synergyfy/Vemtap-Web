@@ -5,6 +5,8 @@ interface BusinessDealDetailScreenProps {
   onBack: () => void;
   onBoost: () => void;
   onEditAssignment: () => void;
+  /** Opens the deal studio so the whole deal can be edited. */
+  onEditDeal?: () => void;
 }
 
 const HERO_IMG =
@@ -22,7 +24,12 @@ const BRANCH_AVAILABILITY = [
     { name: 'Garki Express Hub', sub: 'Takeout only branch · Excluded', price: 'Unavailable', available: false },
 ];
 
-export function BusinessDealDetailScreen({ onBack, onBoost, onEditAssignment }: BusinessDealDetailScreenProps) {
+export function BusinessDealDetailScreen({
+  onBack,
+  onBoost,
+  onEditAssignment,
+  onEditDeal,
+}: BusinessDealDetailScreenProps) {
   return (
     <AppScreen>
       {/* Header */}
@@ -106,6 +113,7 @@ export function BusinessDealDetailScreen({ onBack, onBoost, onEditAssignment }: 
             <button
               className="h-11 rounded-lg bg-surface-container-high text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-1 active:bg-surface-variant transition-colors"
               type="button"
+              onClick={onEditDeal}
             >
               <Icon name="edit" className="text-[18px]" />
               <span>Edit</span>

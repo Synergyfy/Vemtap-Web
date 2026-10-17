@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsDesktop } from './hooks/useIsDesktop';
 import { PosSettingsProvider } from './context/PosSettingsContext';
+import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -142,6 +143,7 @@ import {
 import { BusinessVerificationScreen } from './scripts/BusinessVerificationScreen';
 import { VerificationStatusCenterScreen } from './scripts/VerificationStatusCenterScreen';
 import { SubscriptionScreen } from './scripts/SubscriptionScreen';
+import { BusinessBoostScreen } from './scripts/BusinessBoostScreen';
 import { BusinessOrdersScreen } from './scripts/BusinessOrdersScreen';
 import { BusinessMessagesScreen } from './scripts/BusinessMessagesScreen';
 import { BusinessOverviewScreen } from './scripts/BusinessOverviewScreen';
@@ -185,7 +187,6 @@ import { BusinessPosOrderLookupScreen } from './scripts/BusinessPosOrderLookupSc
 import { BusinessPosCustomerDossierScreen } from './scripts/BusinessPosCustomerDossierScreen';
 import { BusinessPosOfflineCheckoutScreen } from './scripts/BusinessPosOfflineCheckoutScreen';
 import { BusinessPosTransactionDetailScreen } from './scripts/BusinessPosTransactionDetailScreen';
-import { BusinessPosSyncScreen } from './scripts/BusinessPosSyncScreen';
 import { BusinessPosOfflineBufferScreen } from './scripts/BusinessPosOfflineBufferScreen';
 import { BusinessPosKitchenStreamScreen } from './scripts/BusinessPosKitchenStreamScreen';
 import { BusinessPosSettingsScreen } from './scripts/BusinessPosSettingsScreen';
@@ -272,6 +273,7 @@ import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealL
 import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
 import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
 import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
+import { MOBILE_ACCOUNT_NAV_EVENT } from './utils/appEvents';
 import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
 import { DesktopBusinessBranchPricingScreen } from './scripts/desktop/DesktopBusinessBranchPricingScreen';
 import { DesktopBusinessCustomersScreen } from './scripts/desktop/DesktopBusinessCustomersScreen';
@@ -301,7 +303,6 @@ import { DesktopPosSaleCompleteScreen } from './scripts/desktop/DesktopPosSaleCo
 import { DesktopPosStockScreen } from './scripts/desktop/DesktopPosStockScreen';
 import { DesktopPosLedgerScreen } from './scripts/desktop/DesktopPosLedgerScreen';
 import { DesktopPosOfflineSaleScreen } from './scripts/desktop/DesktopPosOfflineSaleScreen';
-import { DesktopPosSyncScreen } from './scripts/desktop/DesktopPosSyncScreen';
 import { DesktopPosBufferScreen } from './scripts/desktop/DesktopPosBufferScreen';
 import { DesktopPosKitchenScreen } from './scripts/desktop/DesktopPosKitchenScreen';
 import { DesktopPosCartScreen } from './scripts/desktop/DesktopPosCartScreen';
@@ -431,7 +432,6 @@ type Route =
   | 'pos-dossier'
   | 'pos-offline'
   | 'pos-txn-detail'
-  | 'pos-sync'
   | 'pos-buffer'
   | 'pos-kitchen'
   | 'pos-settings'
@@ -444,6 +444,7 @@ type Route =
   | 'store-ordering-settings'
   | 'boost'
   | 'boost-hub'
+  | 'boost-studio'
   | 'boost-metrics'
   | 'boost-wallet'
   | 'segments-hub'
@@ -599,7 +600,6 @@ const ROUTE_PATH: Record<Route, string> = {
   'pos-dossier': '/pos/customer/dossier',
   'pos-offline': '/pos/offline',
   'pos-txn-detail': '/pos/txn/detail',
-  'pos-sync': '/pos/sync',
   'pos-buffer': '/pos/buffer',
   'pos-kitchen': '/pos/kitchen',
   'pos-settings': '/pos/settings',
@@ -614,6 +614,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'store-ordering-settings': '/business/store-ordering/settings',
   boost: '/boost',
   'boost-hub': '/boost-hub',
+  'boost-studio': '/boost-hub/studio',
   'boost-metrics': '/boost-metrics',
   'boost-wallet': '/boost-wallet',
   'segments-hub': '/segments',
@@ -805,8 +806,10 @@ export default function App() {
                   <BookingProvider>
                     <AccountDeletionProvider>
                       <PosSettingsProvider>
-                        <AppInner />
-                        <BranchSwitchOverlay />
+                        <PosOfflineProvider>
+                          <AppInner />
+                          <BranchSwitchOverlay />
+                        </PosOfflineProvider>
                       </PosSettingsProvider>
                     </AccountDeletionProvider>
                   </BookingProvider>
@@ -876,6 +879,26 @@ function AppInner() {
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
+  /**
+   * Sales completed while the till is offline are parked locally so the cashier
+   * keeps trading; the queue pushes them the moment connectivity returns (or
+   * when "Sync Online" is tapped on the register).
+   */
+  const { isOnline, enqueue } = usePosOffline();
+  const queuePosSaleIfOffline = useCallback(
+    (lines: Array<{ name: string; qty: number; unit: number }>, tender: string) => {
+      if (isOnline) return;
+      const total = lines.reduce((sum, line) => sum + line.unit * line.qty, 0);
+      enqueue({
+        ref: `POS-${10840 + Math.floor(Math.random() * 60)}`,
+        total,
+        tender,
+        items: lines.map((line) => `${line.qty}× ${line.name}`).join(', ') || 'No items',
+      });
+    },
+    [enqueue, isOnline],
+  );
+
   const posTab = (key: PosTabKey) => {
     switch (key) {
       case 'register':
@@ -924,7 +947,9 @@ function AppInner() {
         setRoute('pos-ledger');
         break;
       case 'hardware-and-sync':
-        setRoute('pos-sync');
+        // /pos/sync was removed — offline state + "Sync Online" live on the
+        // register now, so this nav lands on the till.
+        setRoute('pos-register');
         break;
       case 'settings':
         setRoute('pos-settings');
@@ -1341,9 +1366,11 @@ function AppInner() {
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
 
   const openBoost = (item?: string) => {
-    setBoostReturnRoute(route);
+    // The Boost Studio always opens inside the dashboard (side menu intact) —
+    // never in the subscription/onboarding shell.
+    setBoostReturnRoute(route === 'boost-studio' ? 'boost-hub' : route);
     setBoostItem(item ?? null);
-    setRoute('boost');
+    setRoute('boost-studio');
   };
 
   const boostTab = (key: BoostTabKey) => {
@@ -1499,9 +1526,10 @@ function AppInner() {
         setRoute('pos-settings');
         break;
       case 'pos-sync':
-        setPosActiveNav('pos-sync');
-        // Offline & Sync gets its own URL path (/pos/sync) on every viewport.
-        setRoute('pos-sync');
+        // BUG: /pos/sync is gone. Offline state and "Sync Online" now live on
+        // the register itself, so this nav key just lands on the till.
+        setPosActiveNav('pos-home');
+        setRoute('pos-register');
         break;
       case 'settings':
       case 'more-settings':
@@ -1571,6 +1599,20 @@ function AppInner() {
     };
     window.addEventListener(BUSINESS_NAV_EVENT, handleBusinessNav);
     return () => window.removeEventListener(BUSINESS_NAV_EVENT, handleBusinessNav);
+  }, []);
+
+  // The mobile/tablet dashboard headers (below `lg`) render inline with no nav
+  // callback, so the account menu and notification bell announce their intent
+  // through this window event instead.
+  useEffect(() => {
+    const handleMobileAccountNav = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail;
+      if (key === 'dashboard') setRoute('business-hub');
+      else if (key === 'notifications') setRoute('business-notifications');
+      else if (key === 'settings') setRoute('business-settings');
+    };
+    window.addEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
+    return () => window.removeEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
   }, []);
 
   const goToAnalyticsTab = (tab: AnalyticsTabKey) => {
@@ -3249,6 +3291,32 @@ function AppInner() {
         </div>
       );
 
+    case 'boost-studio':
+      // Boost Studio lives at /boost-hub/studio — inside the business dashboard
+      // with the side menu still on screen (not the onboarding shell).
+      if (isDesktop)
+        return (
+          <BusinessBoostScreen
+            chrome="portal"
+            onNav={businessPortalNav}
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute(boostReturnRoute)}
+            growthActive={false}
+            preselectedItem={boostItem ?? null}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessBoostScreen
+            chrome="portal"
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute(boostReturnRoute)}
+            growthActive={false}
+            preselectedItem={boostItem ?? null}
+          />
+        </div>
+      );
+
     case 'boost-metrics':
       if (isDesktop)
         return <DesktopBoostMetricsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
@@ -3568,7 +3636,7 @@ function AppInner() {
             onOpenDealDetail={() => setRoute('hub-deal-detail')}
             onOpenLogs={() => setRoute('analytics-deals')}
             onOpenPos={() => setRoute('business-pos-orders')}
-            onBoost={() => openBoost()}
+            onBoost={(dealName) => openBoost(dealName)}
           />
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -3678,6 +3746,8 @@ function AppInner() {
             onEditPricing={() => setRoute('deal-location-pricing')}
             onConfigureCap={() => setRoute('deal-location-pricing')}
             onChat={() => setRoute('business-messages')}
+            onBoost={() => openBoost('Weekend Prime Lunch Combo')}
+            onEditDeal={() => setRoute('deal-studio')}
           />
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -3844,7 +3914,7 @@ function AppInner() {
             onOpenFilter={() => setRoute('analytics-filter')}
             onOpenExport={() => setRoute('analytics-export')}
             onOpenCatalog={() => setRoute('hub-catalog')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
           />
         );
       return (
@@ -3855,7 +3925,7 @@ function AppInner() {
             onOpenExport={() => setRoute('analytics-export')}
             onTab={businessTab}
             onOpenCatalog={() => setRoute('hub-catalog')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
           />
         </div>
       );
@@ -3957,7 +4027,7 @@ function AppInner() {
             onOpenDisplay={() => setRoute('pos-display-order')}
             onNavMore={() => setRoute('business-more')}
             onOpenQueue={() => setRoute('pos-buffer')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
             onOpenSettings={() => setRoute('pos-settings')}
             onOpenKitchen={() => setRoute('pos-kitchen')}
             onOpenOrderLookup={() => setRoute('pos-order-lookup')}
@@ -3991,7 +4061,7 @@ function AppInner() {
             onOpenDisplay={() => setRoute('pos-display-order')}
             onNavMore={() => setRoute('business-more')}
             onOpenQueue={() => setRoute('pos-buffer')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
             onOpenSettings={() => setRoute('pos-settings')}
             onOpenKitchen={() => setRoute('pos-kitchen')}
           />
@@ -4148,6 +4218,7 @@ function AppInner() {
             }}
             onBack={() => setRoute('pos-register')}
             onComplete={(points) => {
+              queuePosSaleIfOffline(posTermCart, 'Card / POS');
               setPosSalePoints(points);
               setRoute('pos-sale-complete');
             }}
@@ -4162,6 +4233,10 @@ function AppInner() {
             onAwardPoints={(points) => setPosCustomerBonus((prev) => prev + points)}
             onBack={() => setRoute('pos-cart')}
             onReceipt={(points) => {
+              queuePosSaleIfOffline(
+                posCart.map((line) => ({ name: line.name, qty: line.qty, unit: line.unit })),
+                'Card / POS',
+              );
               setPosSalePoints(points);
               setRoute('pos-sale-complete');
             }}
@@ -4325,14 +4400,6 @@ function AppInner() {
       return (
         <div className="biz-flow">
           <BusinessPosTransactionDetailScreen onBack={goBackToPrevious} />
-        </div>
-      );
-
-    case 'pos-sync':
-      if (isDesktop) return <DesktopPosSyncScreen onNav={posTerminalNav} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosSyncScreen onBack={goBackToPrevious} />
         </div>
       );
 

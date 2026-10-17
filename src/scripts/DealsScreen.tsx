@@ -54,8 +54,8 @@ function GreetingHeader({
   const { district, city, radius } = useLocation();
   return (
     <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-      <div className="px-margin py-3 flex items-center justify-between">
-        <div className="flex flex-col">
+      <div className="px-margin py-3 flex items-center justify-between gap-space-2xs min-w-0">
+        <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-space-2xs">
             <span className="font-caption text-caption text-text-secondary">Good evening</span>
             <Icon name="waving_hand" className="text-sm" />
@@ -63,22 +63,22 @@ function GreetingHeader({
           <button
             type="button"
             onClick={onLocation}
-            className="flex items-center gap-1.5 text-left group transition-transform active:scale-95"
+            className="flex flex-nowrap items-center gap-1.5 text-left group transition-transform active:scale-95 min-w-0 whitespace-nowrap"
           >
-            <Icon name="location_on" className="text-primary text-[20px]" filled />
-            <span className="font-button-primary text-button-primary text-text-primary">
+            <Icon name="location_on" className="text-primary text-[20px] filled shrink-0" />
+            <span className="font-button-primary text-button-primary text-text-primary truncate min-w-0">
               {district}, {city}
             </span>
             <Icon
               name="keyboard_arrow_down"
-              className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform"
+              className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform shrink-0"
             />
-            <span className="ml-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-medium">
+            <span className="ml-1 shrink-0 whitespace-nowrap px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-medium">
               Within {radius} km
             </span>
           </button>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             aria-label="Notifications"
             type="button"
@@ -477,24 +477,24 @@ export function DealsScreen({
       {view === 'grid' ? (
         <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">
           <div className="px-margin py-2 flex items-center justify-between">
-            <div className="flex flex-col">
+            <div className="flex flex-col min-w-0 flex-1">
               <span className="font-caption text-caption text-text-secondary font-medium">Deals</span>
               <button
                 type="button"
                 onClick={() => setLocationOpen(true)}
-                className="flex items-center gap-1 mt-0.5 group text-left"
+                className="flex flex-nowrap items-center gap-1 mt-0.5 group text-left min-w-0 whitespace-nowrap"
               >
                 <Icon name="location_on" className="text-primary text-[18px] shrink-0" filled />
-                <span className="font-label-md text-label-md font-bold text-text-primary group-hover:text-primary transition-colors">
+                <span className="font-label-md text-label-md font-bold text-text-primary group-hover:text-primary transition-colors truncate min-w-0">
                   {district}, {city}
                 </span>
-                <Icon name="keyboard_arrow_down" className="text-text-secondary text-[18px]" />
-                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-[11px] font-medium">
+                <Icon name="keyboard_arrow_down" className="text-text-secondary text-[18px] shrink-0" />
+                <span className="ml-1 shrink-0 whitespace-nowrap px-1.5 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-[11px] font-medium">
                   Within {radius} km
                 </span>
               </button>
             </div>
-            <div className="flex items-center gap-space-xs">
+            <div className="flex items-center gap-space-xs shrink-0">
               <button
                 aria-label="Notifications"
                 type="button"

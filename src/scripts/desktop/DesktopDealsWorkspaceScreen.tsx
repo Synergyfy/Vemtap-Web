@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopDealsWorkspaceScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -10,8 +11,37 @@ interface DesktopDealsWorkspaceScreenProps {
   onOpenDealDetail?: () => void;
   onOpenLogs?: () => void;
   onOpenPos?: () => void;
-  onBoost?: () => void;
+  /** Opens the Boost Studio; the deal's name pre-selects it in the campaign. */
+  onBoost?: (dealName?: string) => void;
 }
+
+// Telemetry backing the three live deal cards above — used by "Export Stats".
+const DEAL_STATS: Array<{ title: string; promo: string; price: string; oldPrice: string; branches: string; performance: string }> = [
+  {
+    title: 'Weekend Prime Lunch Combo',
+    promo: '20% OFF',
+    price: '₦9,600',
+    oldPrice: '₦12,000',
+    branches: 'Wuse II, Garki & Maitama',
+    performance: '89 / 128 redeemed (70%) • 39 vouchers pending',
+  },
+  {
+    title: '2-for-1 Smash Burger Thursday',
+    promo: '50% BOGO',
+    price: '₦6,500',
+    oldPrice: '₦13,000',
+    branches: 'Wuse II Branch only',
+    performance: '412 total claims • 84% boost cap taken',
+  },
+  {
+    title: 'After-Work Chill Pass',
+    promo: '22% OFF',
+    price: '₦4,200',
+    oldPrice: '₦5,400',
+    branches: 'Maitama & Wuse II',
+    performance: '78 claims today • 75% daily cap reached',
+  },
+];
 
 interface DealCardProps {
   image: string;
@@ -253,6 +283,13 @@ export function DesktopDealsWorkspaceScreen({
           <div className="flex items-center gap-space-sm justify-end">
             <button
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_deal_stats',
+                  ['Deal', 'Promo', 'Price', 'Was', 'Branches', 'Performance'],
+                  DEAL_STATS.map((deal) => [deal.title, deal.promo, deal.price, deal.oldPrice, deal.branches, deal.performance]),
+                );
+              }}
               className="h-[48px] px-space-md rounded-xl bg-surface-container hover:bg-surface-container-high text-primary font-label-md text-label-md flex items-center gap-space-xs transition-colors"
             >
               <Icon name="download" className="text-[20px]" />
@@ -424,7 +461,7 @@ export function DesktopDealsWorkspaceScreen({
             primaryAction={
               <button
                 type="button"
-                onClick={onBoost}
+                onClick={() => onBoost?.('Weekend Prime Lunch Combo')}
                 className="flex-1 h-11 px-3 rounded-xl bg-tertiary-container hover:bg-tertiary text-on-tertiary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm transition-all"
               >
                 <Icon name="rocket_launch" className="text-[18px]" />
@@ -563,7 +600,7 @@ export function DesktopDealsWorkspaceScreen({
             primaryAction={
               <button
                 type="button"
-                onClick={onBoost}
+                onClick={() => onBoost?.('After-Work Chill Pass')}
                 className="flex-1 h-11 px-3 rounded-xl bg-tertiary-container hover:bg-tertiary text-on-tertiary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm transition-all"
               >
                 <Icon name="rocket_launch" className="text-[18px]" />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { AnalyticsShell } from './AnalyticsShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { runExportCenter } from '../../utils/exportCenter';
 
 interface DesktopAnalyticsExportScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -90,6 +91,12 @@ export function DesktopAnalyticsExportScreen({ onNav, onBack }: DesktopAnalytics
     if (state !== 'idle' || selectedCount === 0) return;
     setState('loading');
     stateTimer.current = window.setTimeout(() => {
+      runExportCenter({
+        format,
+        selectedKeys: MODULES.filter((module) => checked[module.key]).map((module) => module.key as string),
+        timeframe: 'Sep 10 – Oct 10, 2026',
+        branchFilter: 'All Locations (3)',
+      });
       setState('done');
       resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
     }, 1400);

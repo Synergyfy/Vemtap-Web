@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { downloadCsv } from '../utils/exportCsv';
+import { printKvTable, printReport } from '../utils/printReport';
 
 interface BusinessPosDisplayReceiptScreenProps {
   onBack: () => void;
@@ -58,6 +60,35 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
     }
     setRecipient('');
     showToast(`Receipt forwarded to ${value}`);
+  };
+
+  const downloadReceiptPdf = () => {
+    downloadCsv(
+      'UrbanGrill_TK108.csv',
+      ['Item', 'Detail', 'Price'],
+      ITEMS.map((item) => [`${item.qty} ${item.name}`, item.meta, item.price]),
+    );
+    printReport(
+      'VEMTAP Receipt — Order #TK-108',
+      `${printKvTable('Payment', [
+        ['Merchant', 'Urban Grill & Bistro'],
+        ['Order', '#TK-108'],
+        ['Reference', 'VEM-REC-894210'],
+        ['Auth code', '#990214'],
+      ])}
+       ${printKvTable('Items', ITEMS.map((item) => [`${item.qty} ${item.name} — ${item.meta}`, item.price]))}
+       ${printKvTable(
+         'Totals',
+         [
+           ...BREAKDOWN.map(
+             (line) => [line.label, line.extra ? `${line.value} (${line.extra})` : line.value] as [string, string],
+           ),
+           ['Net total paid', '₦31,768.00'],
+         ],
+       )}
+       <p class="foot">A CSV copy of the itemised receipt downloaded alongside this PDF.</p>`,
+    );
+    showToast('PDF downloaded: UrbanGrill_TK108.pdf');
   };
 
   return (
@@ -297,7 +328,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
             <button
               className="flex items-center justify-center gap-space-2xs h-10 bg-surface-canvas text-text-primary rounded-xl font-label-sm text-label-sm font-semibold transition-all active:scale-95 shadow-sm"
               type="button"
-              onClick={() => showToast('PDF downloaded: UrbanGrill_TK108.pdf')}
+              onClick={downloadReceiptPdf}
             >
               <Icon name="download" className="text-primary text-[17px]" />
               <span>Download PDF</span>

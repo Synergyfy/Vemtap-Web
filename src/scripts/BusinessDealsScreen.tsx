@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 interface BusinessDealsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -168,17 +169,8 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
             >
               <Icon name="search" className="text-[22px]" />
             </button>
-            <button
-              aria-label="Notifications"
-              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface relative"
-              type="button"
-            >
-              <Icon name="notifications" className="text-[22px]" />
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-primary" />
-            </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-              <Icon name="person" className="text-on-primary text-[18px]" />
-            </div>
+            <MobileNotificationBell />
+            <MobileAccountMenu />
           </div>
         </div>
       </header>

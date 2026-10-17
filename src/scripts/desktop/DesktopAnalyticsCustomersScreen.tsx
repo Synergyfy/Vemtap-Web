@@ -1,6 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { AnalyticsShell } from './AnalyticsShell';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopAnalyticsCustomersScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -94,6 +95,18 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
             <button
               className="bg-surface-canvas hover:bg-surface-subtle text-text-primary px-space-sm py-2.5 rounded-xl font-label-md text-label-md font-medium flex items-center gap-space-2xs shadow-sm transition-all active:scale-95"
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_customer_intelligence',
+                  ['Metric', 'Value', 'Note'],
+                  [
+                    ['Avg Lifetime Value', '₦38,400', '+8.4% vs benchmark'],
+                    ['VIP Rev Share', '₦13.8M', 'High frequency, high basket'],
+                    ['At-Risk Churn Value', '₦950k', 'No visit in 45+ days'],
+                    ...COHORT_POINTS.map((point) => [`Cohort ${point.week}`, point.value, point.note]),
+                  ],
+                );
+              }}
             >
               <Icon name="file_download" className="text-[18px] text-text-secondary" />
               <span>Export Directory (CSV)</span>

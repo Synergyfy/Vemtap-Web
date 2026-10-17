@@ -8,6 +8,7 @@ import { useContacts } from '../context/ContactsContext';
 import { SheetShell } from '../components/sheets/SheetShell';
 import { AddCustomerMethodsDialog } from '../components/customers/AddCustomerMethodsDialog';
 import { SendInviteDialog } from '../components/customers/SendInviteDialog';
+import { downloadCsv } from '../utils/exportCsv';
 
 interface BusinessCustomersScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -421,7 +422,20 @@ export function BusinessCustomersScreen({
               className="p-1 rounded-full text-primary hover:bg-primary/10 transition-colors shrink-0"
               title="Export Segment"
               type="button"
-              onClick={() => showToast('Exporting 76 patron records (CSV)…')}
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_customer_segment',
+                  ['Name', 'Tier', 'Contact', 'Activity', 'Category'],
+                  visibleCustomers.map((customer) => [
+                    customer.name,
+                    customer.tierLabel,
+                    customer.contact,
+                    customer.activityLine.segments.map((segment) => segment.text).join(' ').trim(),
+                    customer.category,
+                  ]),
+                );
+                showToast(`Exported ${visibleCustomers.length} patron records (CSV)`);
+              }}
             >
               <Icon name="download" className="text-[17px]" />
             </button>
@@ -715,10 +729,9 @@ export function BusinessCustomersScreen({
         <div className="w-full flex justify-center pt-3 pb-1">
           <div className="w-12 h-1.5 rounded-full bg-surface-dim" />
         </div>
-        <form
-          onSubmit={handleManualAdd}
-          className="px-margin pb-space-lg flex flex-col gap-space-sm max-h-[80vh] overflow-y-auto"
-        >
+        <form onSubmit={handleManualAdd} className="flex flex-col max-h-[86vh]">
+          {/* Scrollable field body — the action footer stays pinned below */}
+          <div className="px-margin flex flex-col gap-space-sm overflow-y-auto min-h-0 flex-1 pb-space-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-space-sm">
               <span className="w-9 h-9 rounded-xl bg-primary-container/20 text-primary flex items-center justify-center">
@@ -829,8 +842,10 @@ export function BusinessCustomersScreen({
               {addError}
             </p>
           )}
+          </div>
 
-          <div className="flex gap-space-xs pt-space-2xs">
+          {/* Pinned actions — always visible at the bottom of the sheet */}
+          <div className="px-margin pt-space-sm shrink-0 border-t border-border-subtle bg-surface-canvas flex gap-space-xs pb-4">
             <button
               type="button"
               onClick={closeManualSheet}
