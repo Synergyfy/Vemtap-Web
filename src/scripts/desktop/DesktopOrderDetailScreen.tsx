@@ -11,6 +11,7 @@ import {
   orderStatusLabel,
   orderTimeline,
 } from '../orderData';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopOrderDetailScreenProps {
   /** BUG-015: the ref of the order opened from Orders. */
@@ -415,7 +416,30 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrd
                 </button>
                 <button
                   className="w-full h-12 rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary shadow-sm hover:bg-surface-container-high transition-colors flex items-center justify-center gap-2"
-                  onClick={() => showToast('PDF receipt saved to your device')}
+                  onClick={() => {
+                    printReport(
+                      `Receipt — Order #${order.ref}`,
+                      `${printKvTable('Order summary', [
+                        ['Order ref', order.ref],
+                        ['Merchant', order.merchantName],
+                        ['Placed', `${formatOrderTime(order.submittedAt)} WAT`],
+                        ['Fulfillment', FULFILLMENT_LABELS[order.fulfillment]],
+                        ['Payment', `${PAYMENT_STATUS_LABELS[order.paymentStatus]} · ${PAYMENT_METHOD_LABELS[order.paymentMethod]}`]
+                      ])}
+                       <h2>Items</h2>
+                       <table class="kv"><tbody>
+                         ${order.lines
+                           .map(
+                             (line) =>
+                               `<tr><td>${line.qty} × ${line.name}${line.options ? ` (${line.options})` : ''}</td><td>${money(line.price * line.qty)}</td></tr>`
+                           )
+                           .join('')}
+                         <tr class="total"><td>Total</td><td>${money(order.total)}</td></tr>
+                       </tbody></table>
+                       <p class="foot">Vemtap receipt — proof of order. Pickup PIN ${pickupPin}.</p>`
+                    );
+                    showToast('Receipt opened — save it as PDF from the print dialog');
+                  }}
                   type="button"
                 >
                   <Icon name="download" className="text-[20px] text-text-secondary" />

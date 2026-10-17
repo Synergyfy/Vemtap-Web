@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopMoreSubscriptionScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -28,6 +30,56 @@ const INVOICES = [
  */
 export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscriptionScreenProps) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+
+  /** Every invoice as a CSV register, plus a print-ready PDF statement. */
+  const downloadAllInvoices = () => {
+    downloadCsv(
+      'vemtap-invoice-history.csv',
+      ['Invoice', 'Date', 'Amount', 'Status'],
+      INVOICES.map((invoice) => [invoice.id, invoice.date, invoice.amount, invoice.status]),
+    );
+    printReport(
+      'VEMTAP Invoice History — Gourmet Bites Bistro',
+      `${printKvTable('Account', [
+        ['Plan', 'VEMTAP Growth'],
+        ['Renews', '1 Nov 2025'],
+        ['Payment method', 'Mastercard ending •• 4291'],
+      ])}
+       ${printKvTable(
+         'Invoices',
+         INVOICES.map((invoice) => [invoice.id, `${invoice.date} • ${invoice.amount} • ${invoice.status}`]),
+       )}
+       <p class="foot">A CSV copy of the invoice register downloaded alongside this PDF.</p>`,
+    );
+  };
+
+  /** Single invoice — print-ready PDF tax invoice. */
+  const downloadInvoice = (id: string, date: string, amount: string, status: string) => {
+    const net = amount.replace('₦', '');
+    printReport(
+      `VEMTAP Tax Invoice ${id}`,
+      `${printKvTable('Invoice', [
+        ['Invoice number', id],
+        ['Issued', date],
+        ['Status', status],
+      ])}
+       ${printKvTable('Supplier', [
+        ['Supplier', 'VEMTAP Technologies Ltd'],
+        ['TIN', '20194418-0001'],
+        ['Contact', 'billing@vemtap.ng'],
+      ])}
+       ${printKvTable('Customer', [
+        ['Business', 'Gourmet Bites Bistro'],
+        ['TIN', 'TIN-8894102-NG'],
+      ])}
+       ${printKvTable('Line items', [
+        ['VEMTAP Growth plan — monthly subscription', `₦${net}.00`],
+        ['VAT (7.5%)', 'included'],
+        ['Total charged', `₦${net}.00`],
+      ])}
+       <p class="foot">0% VEMTAP commission on settled sales. VAT invoices are filed with FIRS on your behalf.</p>`,
+    );
+  };
 
   return (
     <BusinessPortalChrome activeNav="more-subscription" onNav={onNav}>
@@ -155,6 +207,7 @@ export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscription
             <button
               className="font-label-sm text-label-sm text-primary font-semibold hover:underline flex items-center gap-1"
               type="button"
+              onClick={downloadAllInvoices}
             >
               <Icon name="download" className="text-[15px]" />
               <span>Download all</span>
@@ -176,6 +229,7 @@ export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscription
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:bg-surface-subtle hover:text-on-surface transition-colors"
                     type="button"
                     aria-label={`Download ${invoice.id}`}
+                    onClick={() => downloadInvoice(invoice.id, invoice.date, invoice.amount, invoice.status)}
                   >
                     <Icon name="download" className="text-[18px]" />
                   </button>

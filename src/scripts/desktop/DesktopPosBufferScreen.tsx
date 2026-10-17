@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { exportEncryptedBackup, printOfflineXTape } from '../../utils/posOffline';
 
 interface DesktopPosBufferScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -133,6 +134,21 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
   };
 
   const rows = QUEUED_TXNS.filter((txn) => tab === 'all' || tab === 'audit' || txn.type === tab);
+
+  /**
+   * Serialize the offline queue into a portable .dat vault file.
+   * Delegates to the shared AES-GCM vault helper in utils/posOffline.
+   */
+  const exportVault = () =>
+    exportEncryptedBackup(QUEUED_TXNS, { till: 'Till 01 (Wuse II)', cashier: 'Emeka Okafor' });
+
+  /** Local X-tape summary printed straight from the till. */
+  const printXTape = () =>
+    printOfflineXTape(QUEUED_TXNS, {
+      till: 'Till 01 (Wuse II)',
+      cashier: 'Emeka Okafor',
+      networkNote: 'Offline — transactions buffered locally',
+    });
 
   return (
     <PosTerminalChrome onNav={onNav} activeNav="register">
@@ -413,9 +429,10 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
               <div className="flex flex-col gap-space-xs pt-1">
                 <button
                   type="button"
-                  onClick={() =>
-                    runAction(printState, setPrintState, 1200, 2500, 'Offline X-tape summary printed')
-                  }
+                  onClick={() => {
+                    printXTape();
+                    runAction(printState, setPrintState, 1200, 2500, 'Offline X-tape summary printed');
+                  }}
                   className="w-full py-3 rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary font-semibold flex items-center justify-center gap-2 hover:bg-surface-container-high transition-all active:scale-[0.98]"
                 >
                   <Icon
@@ -434,9 +451,10 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    runAction(backupState, setBackupState, 1400, 3000, 'Backup saved: till01_offline_dump.dat')
-                  }
+                  onClick={() => {
+                    void exportVault();
+                    runAction(backupState, setBackupState, 1400, 3000, 'Backup saved: till01_offline_dump.dat');
+                  }}
                   className="w-full py-3 rounded-xl bg-surface-container-high text-on-surface font-button-secondary text-button-secondary font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
                 >
                   <Icon

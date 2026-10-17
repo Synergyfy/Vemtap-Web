@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
-import { PosSyncContent } from './DesktopPosSyncScreen';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopBusinessPosOrdersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -40,19 +40,30 @@ export function DesktopBusinessPosOrdersScreen({
     setShiftState('closing');
     window.setTimeout(() => {
       setShiftState('printed');
+      printReport(
+        'Z-Report — Shift Close',
+        `${printKvTable('Shift', [
+          ['Date', new Date().toLocaleDateString('en-NG')],
+          ['Till', 'Till 01 (Wuse II)'],
+          ['Cashier', 'Tunde Bakare'],
+        ])}
+         ${printKvTable(
+           'Transactions',
+           RECENT.map((row) => [`${row.id} • ${row.time}`, `${row.total} • ${row.method} • ${row.channel}`]),
+         )}
+         ${printKvTable('Totals', [
+          ['Transactions', `${RECENT.length}`],
+          ['Card', '₦28,300.00'],
+          ['Transfer', '₦19,400.00'],
+          ['Cash', '₦6,800.00'],
+          ['Gross takings', '₦54,500.00'],
+          ['Expected cash in drawer', '₦6,800.00'],
+        ])}
+         <p class="foot">Z-Report generated at shift close. Retain for reconciliation.</p>`,
+      );
       showToast('Z-Report printed — shift closed');
     }, 1500);
   };
-
-  // "Offline & Sync" sidebar item → dedicated sync dashboard, rendered inside
-  // the same business portal chrome. "Transactions" keeps the POS ledger below.
-  if (activeNav === 'pos-sync') {
-    return (
-      <BusinessPortalChrome activeNav="pos-sync" onNav={onNav}>
-        <PosSyncContent />
-      </BusinessPortalChrome>
-    );
-  }
 
   return (
     <BusinessPortalChrome activeNav={activeNav} onNav={onNav}>

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/ui/Icon';
+import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from '../../utils/appEvents';
 
-/** Fired by the shared account menu so the app router can route to sign-in. */
-export const SIGN_OUT_EVENT = 'vemtap:sign-out';
+// Re-exported here for existing desktop imports; the canonical constants live
+// in `src/utils/appEvents.ts` so mobile/tablet headers can share them.
+export { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT };
 
 /**
  * Fired by the collapsed business rail while the app is in POS mode. The POS
@@ -11,7 +13,6 @@ export const SIGN_OUT_EVENT = 'vemtap:sign-out';
  * rendered many levels below `App`), so it announces the intent through this event
  * and `App` routes back to the normal, expanded business portal.
  */
-export const BUSINESS_NAV_EVENT = 'vemtap:business-nav';
 
 /** Width of the collapsed business rail used by POS mode. */
 export const POS_MAIN_RAIL_WIDTH = '72px';
@@ -62,7 +63,6 @@ const RAIL_ICONS: Record<string, string> = {
   register: 'point_of_sale',
   products: 'sell',
   ledger: 'account_balance',
-  'hardware-and-sync': 'sync',
 };
 
 export interface RailItem<T extends string> {

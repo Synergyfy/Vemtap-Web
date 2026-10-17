@@ -1,5 +1,6 @@
 import { Icon } from '../../components/ui/Icon';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopVerificationIdSuccessScreenProps {
   onBack: () => void;
@@ -288,6 +289,19 @@ export function DesktopVerificationIdSuccessScreen({
             <button
               className="w-full sm:w-auto px-space-lg py-space-sm rounded-xl font-label-md text-label-md font-medium text-text-primary hover:bg-surface-container-low transition-colors flex items-center justify-center gap-space-xs"
               type="button"
+              onClick={() =>
+                printReport(
+                  'VEMTAP Identity Verification Receipt',
+                  `${printKvTable('Verified business', [
+                    ['Legal name', legalName],
+                    ['Document', documentLabel],
+                    ['Reference', reference],
+                    ['Verified', `${verifiedDate} at ${verifiedTime}`],
+                    ['Validation', 'NIMC Validated • 256-Bit Vault Enclave'],
+                  ])}
+                   <p class="foot">This receipt confirms identity verification only. It is not a tax or incorporation document.</p>`,
+                )
+              }
             >
               <Icon name="file_download" className="text-[18px]" />
               <span>Download Verification Receipt (PDF)</span>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { exportEncryptedBackup, printOfflineXTape } from '../utils/posOffline';
 
 interface BusinessPosOfflineBufferScreenProps {
   onBack: () => void;
@@ -131,6 +132,18 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
       }, workingLabel),
     );
   };
+
+  /** Real AES-GCM vault dump of the offline queue. */
+  const exportVault = () =>
+    exportEncryptedBackup(QUEUED_TXNS, { till: 'Till 01 (Wuse II)', cashier: 'Emeka Okafor' });
+
+  /** Local X-tape summary printed straight from the till. */
+  const printXTape = () =>
+    printOfflineXTape(QUEUED_TXNS, {
+      till: 'Till 01 (Wuse II)',
+      cashier: 'Emeka Okafor',
+      networkNote: 'Offline — transactions buffered locally',
+    });
 
   const rows = QUEUED_TXNS.filter((txn) => tab === 'all' || tab === 'audit' || txn.type === tab);
 
@@ -348,15 +361,10 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
             <div className="flex flex-col gap-space-xs pt-1">
               <button
                 type="button"
-                onClick={() =>
-                  runAction(
-                    printState,
-                    setPrintState,
-                    1200,
-                    2500,
-                    'Offline X-tape summary printed',
-                  )
-                }
+                onClick={() => {
+                  printXTape();
+                  runAction(printState, setPrintState, 1200, 2500, 'Offline X-tape summary printed');
+                }}
                 className="w-full h-11 rounded-xl bg-surface-subtle text-text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
               >
                 <Icon
@@ -375,15 +383,16 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
               </button>
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  void exportVault();
                   runAction(
                     backupState,
                     setBackupState,
                     1400,
                     3000,
                     'Backup saved: till01_offline_dump.dat',
-                  )
-                }
+                  );
+                }}
                 className="w-full h-11 rounded-xl bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
               >
                 <Icon

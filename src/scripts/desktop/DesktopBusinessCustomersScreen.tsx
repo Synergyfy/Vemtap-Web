@@ -6,6 +6,7 @@ import { useContacts, type BusinessContact } from '../../context/ContactsContext
 import { DesktopModal, ModalCloseButton } from '../../components/desktop/DesktopModal';
 import { AddCustomerMethodsDialog } from '../../components/customers/AddCustomerMethodsDialog';
 import { SendInviteDialog } from '../../components/customers/SendInviteDialog';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopBusinessCustomersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -450,6 +451,24 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
           <div className="flex flex-wrap items-center gap-space-sm shrink-0">
             <button
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_customer_directory',
+                  ['Name', 'Phone', 'Email', 'Member ID', 'Segment', 'LTV', 'Points', 'Last Activity'],
+                  visibleRows.map((patron) => [
+                    patron.name,
+                    patron.phone,
+                    patron.email,
+                    patron.memberId,
+                    patron.segment.label,
+                    patron.ltv,
+                    patron.points,
+                    patron.lastWhen,
+                  ]),
+                );
+                setToastMessage(`Exported ${visibleRows.length} patron records (CSV)`);
+                setTimeout(() => setToastMessage(null), 4000);
+              }}
               className="flex items-center gap-space-xs px-space-md py-2.5 rounded-xl bg-surface-canvas shadow-sm text-text-primary font-label-md text-label-md hover:bg-surface-container transition-all active:scale-[0.98]"
             >
               <Icon name="download" className="text-[18px] text-text-secondary" />

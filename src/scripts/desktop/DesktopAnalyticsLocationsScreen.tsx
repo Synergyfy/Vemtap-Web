@@ -1,6 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { AnalyticsShell } from './AnalyticsShell';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopAnalyticsLocationsScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -71,6 +72,13 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
             <button
               className="flex items-center gap-space-2xs px-space-md py-2.5 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_20px_-4px_rgba(6,108,244,0.3)] hover:bg-surface-tint transition-all active:scale-[0.98]"
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_location_analytics',
+                  ['Branch', 'Revenue', 'Share'],
+                  SHARE_LEGEND.map((branch) => [branch.name, branch.amount, branch.share]),
+                );
+              }}
             >
               <Icon name="download" className="text-[18px]" />
               <span>Export Report</span>

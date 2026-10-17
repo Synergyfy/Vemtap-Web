@@ -35,7 +35,9 @@ const TERMINAL_TO_RAIL: Record<PosTerminalNavKey, string> = {
   bookings: 'orders-bookings',
   products: 'pos-stock',
   ledger: 'pos-transactions',
-  'hardware-and-sync': 'pos-sync',
+  // "Hardware & Sync" no longer has its own page — the offline banner and
+  // "Sync Online" button live on the register itself.
+  'hardware-and-sync': 'pos-sale',
   settings: 'pos-settings',
 };
 
@@ -46,7 +48,6 @@ const RAIL_TO_TERMINAL: Record<string, PosTerminalNavKey> = {
   // Bookings must land on the bookings page — not the order lookup page.
   'orders-bookings': 'bookings',
   'pos-transactions': 'ledger',
-  'pos-sync': 'hardware-and-sync',
   'pos-stock': 'products',
   'pos-ledger': 'ledger',
   'pos-settings': 'settings',

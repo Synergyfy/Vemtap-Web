@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { CheckoutHubShell } from './CheckoutHubShell';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopPosDisplayReceiptScreenProps {
   onDone?: () => void;
@@ -70,6 +72,35 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
     setLinkCopied(true);
   };
 
+  const downloadReceiptPdf = () => {
+    downloadCsv(
+      'vemtap-receipt-TK-108.csv',
+      ['Item', 'Detail', 'Amount'],
+      RECEIPT_ITEMS.map((item) => [item.name, item.detail, item.amount]),
+    );
+    printReport(
+      'VEMTAP Receipt — Order #TK-108',
+      `${printKvTable('Payment', [
+        ['Merchant', 'Urban Grill & Bistro'],
+        ['Order', '#TK-108 • Till 01 (Wuse II)'],
+        ['Method', 'Contactless Card Tap • Card ending •• 4092 (Stanbic IBTC)'],
+        ['Reference', 'VEM-REC-894210'],
+        ['Auth code', '#990214'],
+        ['Date', 'Oct 17, 2024, 2:14 PM'],
+      ])}
+       ${printKvTable('Items', RECEIPT_ITEMS.map((item) => [`${item.name} — ${item.detail}`, item.amount]))}
+       ${printKvTable('Totals', [
+        ['Subtotal', '₦29,200.00'],
+        ['VEMTAP Member Perk (5% OFF)', '-₦1,572.00'],
+        ['VAT (7.5% Fed Inland Revenue)', '₦2,072.00'],
+        ['Staff Tip (15% to Sunday M.)', '+₦4,140.00'],
+        ['Net total paid', '₦31,768.00 — Payment Settled'],
+      ])}
+       <p class="foot">A CSV copy of the itemised receipt downloaded alongside this PDF.</p>`,
+    );
+    setToast('Receipt PDF generated — download starting.');
+  };
+
   return (
     <CheckoutHubShell>
       <div className="relative w-full overflow-hidden bg-gradient-to-b from-surface-container-low via-surface to-surface pb-space-3xl pt-space-xl">
@@ -124,7 +155,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
               <div className="flex items-center gap-space-xs self-start lg:self-center">
                 <button
                   type="button"
-                  onClick={() => setToast('Receipt PDF generated — download starting.')}
+                  onClick={downloadReceiptPdf}
                   className="flex items-center gap-space-2xs rounded-xl bg-surface-tint-blue px-space-md py-2.5 font-button-secondary text-button-secondary text-primary transition-all hover:bg-primary hover:text-on-primary"
                 >
                   <Icon name="download" className="text-[18px]" />
@@ -487,7 +518,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                 <div className="mt-space-md grid grid-cols-2 gap-space-xs pt-space-xs">
                   <button
                     type="button"
-                    onClick={() => setToast('Receipt PDF generated — download starting.')}
+                    onClick={downloadReceiptPdf}
                     className="flex items-center justify-center gap-space-2xs rounded-xl bg-surface-container-low py-3 font-button-secondary text-button-secondary font-semibold text-on-surface transition-all hover:bg-surface-container-high"
                   >
                     <Icon name="picture_as_pdf" className="text-[18px] text-primary" />

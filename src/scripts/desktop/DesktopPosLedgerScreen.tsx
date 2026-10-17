@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 
 interface DesktopPosLedgerScreenProps {
@@ -60,6 +62,12 @@ const TENDER_SPLIT = [
   { label: 'VEMTAP Direct QR / NIP', value: 36450, pct: 10.7, txns: 12, bar: 'bg-secondary', dot: 'bg-secondary' },
 ];
 
+const RANGES = [
+  { key: 'shift', label: 'This Shift' },
+  { key: 'today', label: 'Today' },
+  { key: 'week', label: '7 Days' },
+] as const;
+
 function Barcode({ value }: { value: string }) {
   // Deterministic pseudo-barcode derived from the value so the SVG renders consistently.
   const bars = useMemo(() => {
@@ -99,6 +107,49 @@ function Barcode({ value }: { value: string }) {
 export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerScreenProps) {
   const [range, setRange] = useState<'shift' | 'today' | 'week'>('shift');
 
+  const rangeLabel = RANGES.find((item) => item.key === range)?.label ?? 'Current Shift';
+
+  const money = (value: number) => `₦${value.toLocaleString('en-US')}`;
+
+  const exportLedger = () => {
+    downloadCsv(
+      `pos-ledger-${range}.csv`,
+      ['Time', 'Receipt', 'Ticket', 'Type', 'Customer', 'Items', 'Tender', 'Amount', 'Status'],
+      TXNS.map((txn) => [
+        txn.time,
+        txn.receipt,
+        txn.ticket,
+        txn.type,
+        txn.customer,
+        txn.items,
+        txn.tender,
+        txn.amount,
+        STATUS_META[txn.status].label,
+      ]),
+    );
+  };
+
+  const printZReport = () => {
+    printReport(
+      `Z-Report — ${rangeLabel}`,
+      `${printKvTable('Shift', [
+        ['Range', rangeLabel],
+        ['Date', new Date().toLocaleDateString('en-NG')],
+        ['Till', 'Till 01 (Wuse II)'],
+      ])}
+       ${printKvTable(
+         'Summary',
+         summary.map((item) => [item.label, `${item.value} — ${item.meta}`] as [string, string]),
+       )}
+       ${printKvTable(
+         'Tender split',
+         TENDER_SPLIT.map((item) => [item.label, `${money(item.value)} • ${item.pct}% • ${item.txns} txns`] as [string, string]),
+       )}
+       ${printKvTable('Transactions', TXNS.map((txn) => [`${txn.time} ${txn.receipt}`, `${txn.customer} • ${money(txn.amount)} • ${txn.tender} • ${STATUS_META[txn.status].label}`] as [string, string]))}
+       <p class="foot">Z-Report generated for reconciliation. Net realized ₦309,450.</p>`,
+    );
+  };
+
   const summary = useMemo(
     () => [
       { label: 'Gross Shift Volume', value: '₦342,850', meta: 'Net realized ₦309,450', icon: 'trending_up', tone: 'text-primary' },
@@ -135,11 +186,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
           </div>
           <div className="flex flex-wrap items-center gap-space-xs">
             <div className="flex items-center p-1 rounded-lg bg-surface">
-              {([
-                { key: 'shift', label: 'This Shift' },
-                { key: 'today', label: 'Today' },
-                { key: 'week', label: '7 Days' },
-              ] as const).map((item) => (
+              {RANGES.map((item) => (
                 <button
                   key={item.key}
                   type="button"
@@ -156,6 +203,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
             </div>
             <button
               type="button"
+              onClick={exportLedger}
               className="h-11 px-space-md rounded-lg bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-semibold flex items-center gap-1.5 hover:bg-surface-container-high transition-colors"
             >
               <Icon name="download" className="text-[18px]" />
@@ -163,6 +211,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
             </button>
             <button
               type="button"
+              onClick={printZReport}
               className="h-11 px-space-md rounded-lg bg-primary-container hover:bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold flex items-center gap-1.5 transition-colors"
             >
               <Icon name="summarize" className="text-[18px]" />

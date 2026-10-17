@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { downloadCsv } from '../utils/exportCsv';
+import { printKvTable, printReport } from '../utils/printReport';
 
 interface SavingsScreenProps {
   onBack: () => void;
@@ -117,6 +119,31 @@ export function SavingsScreen({ onBack, onOpenRewards, onSupport }: SavingsScree
     if (exportPhase !== 'idle') return;
     setExportPhase('preparing');
     window.setTimeout(() => {
+      const timeframeLabel = TIMEFRAMES.find((item) => item.key === timeframe)?.label ?? 'This Month';
+      downloadCsv(
+        'vemtap-savings-statement.csv',
+        ['Merchant', 'Redeemed', 'Code', 'Deal', 'Was', 'Paid', 'Saved'],
+        LEDGER_ITEMS.map((item) => [item.name, item.time, item.code, item.deal, item.was, item.paid, item.saved]),
+      );
+      printReport(
+        `VEMTAP Savings Statement — ${timeframeLabel}`,
+        `${printKvTable('Statement', [
+          ['Period', timeframeLabel],
+          ['Total saved', TOTALS[timeframe]],
+          ['Redemptions', `${LEDGER_ITEMS.length}`],
+        ])}
+         ${printKvTable(
+           'Redemptions',
+           LEDGER_ITEMS.map(
+             (item) => [`${item.name} — ${item.time}`, `${item.deal} • paid ${item.paid} (was ${item.was}) • saved ${item.saved} • ${item.code}`] as [string, string],
+           ),
+         )}
+         ${printKvTable(
+           'By category',
+           CATEGORIES.map((category) => [category.label, `${category.amount} — ${category.meta}`] as [string, string]),
+         )}
+         <p class="foot">A CSV copy of this statement downloaded alongside the PDF.</p>`,
+      );
       setExportPhase('done');
       showToast('Statement downloaded to Files');
       window.setTimeout(() => setExportPhase('idle'), 2000);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopActivityScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -36,6 +37,26 @@ const STATS: Array<{ icon: string; value: string; label: string }> = [
   { icon: 'account_balance_wallet', value: '₦48,500', label: 'Total Saved' },
   { icon: 'local_activity', value: '14', label: 'Deals Claimed' },
   { icon: 'storefront', value: '8', label: 'Spots Visited' },
+];
+
+// Backs the "Export Activity (CSV)" button — mirrors the visit/recent cards below.
+const ACTIVITY_LOG: Array<{ type: string; merchant: string; detail: string; date: string; location: string; value: string }> = [
+  {
+    type: 'Redemption',
+    merchant: 'Urban Grill & Bistro',
+    detail: 'Redeemed 20% Off Prime Lunch',
+    date: 'Oct 15, 2024 • 1:15 PM',
+    location: 'Apo Blvd',
+    value: 'Saved ₦4,200',
+  },
+  {
+    type: 'Visit',
+    merchant: 'The Daily Knead Bakery',
+    detail: 'Purchased 2x Artisan Loaves',
+    date: 'Oct 11, 2024',
+    location: 'Wuse II',
+    value: '',
+  },
 ];
 
 const RECENT_CARDS = [
@@ -512,7 +533,14 @@ export function DesktopActivityScreen({
             <div className="flex items-center gap-space-md">
               <button
                 type="button"
-                onClick={() => showToast('Preparing your activity CSV export…')}
+                onClick={() => {
+                  downloadCsv(
+                    'vemtap_activity_log',
+                    ['Type', 'Merchant', 'Detail', 'Date', 'Location', 'Value'],
+                    ACTIVITY_LOG.map((entry) => [entry.type, entry.merchant, entry.detail, entry.date, entry.location, entry.value]),
+                  );
+                  showToast('Activity CSV export downloaded');
+                }}
                 className="flex items-center gap-1 font-label-sm text-label-sm text-text-secondary hover:text-primary transition-colors"
               >
                 <Icon name="download" className="text-[16px]" />

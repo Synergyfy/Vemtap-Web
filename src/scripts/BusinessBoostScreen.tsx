@@ -4,6 +4,8 @@ import { Icon } from '../components/ui/Icon';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { SubscriptionHeader } from './SubscriptionHeader';
 import { SubscriptionChrome } from './desktop/SubscriptionChrome';
+import { BusinessPortalChrome } from './desktop/BusinessPortalChrome';
+import { BusinessModeHeader } from './BusinessModeHeader';
 import { PUBLIC_IMAGES } from './publicPosData';
 
 interface BusinessBoostScreenProps {
@@ -11,6 +13,14 @@ interface BusinessBoostScreenProps {
   onDone: () => void;
   growthActive: boolean;
   preselectedItem?: string | null;
+  /**
+   * Which shell the studio runs in. `subscription` keeps the public
+   * subscription/onboarding chrome; `portal` keeps the signed-in business
+   * dashboard chrome (side menu + header) so the studio opens in-dashboard.
+   */
+  chrome?: 'subscription' | 'portal';
+  /** Dashboard sidebar navigation — required when `chrome="portal"` on desktop. */
+  onNav?: (key: string) => void;
 }
 
 type ContentKind = 'deals' | 'profile' | 'products' | 'services';
@@ -18,6 +28,12 @@ type ContentKind = 'deals' | 'profile' | 'products' | 'services';
 interface BoostItem {
   key: string;
   name: string;
+  /**
+   * Alternate names this item is known by elsewhere in the app (the deals list
+   * and the catalog use their own titles) so "Boost Deal" from any list can
+   * pre-select the matching pool entry.
+   */
+  aliases?: string[];
   typeLabel: string;
   meta: string;
   statusLabel: string;
@@ -40,6 +56,9 @@ const CONTENT_POOL: BoostItem[] = [
   {
     key: 'lunch-combo',
     name: '20% Off Prime Lunch Combo',
+    // The deals list and the deal detail screens call this deal by its
+    // campaign title — keep both names so Boost Deal pre-selects this card.
+    aliases: ['Weekend Prime Lunch Combo', 'Prime Lunch Combo'],
     typeLabel: 'Deal',
     meta: '₦9,600 • Voucher #VT-48F261',
     statusLabel: 'Best Performer',
@@ -76,6 +95,46 @@ const CONTENT_POOL: BoostItem[] = [
     perfIcon: 'auto_awesome',
     perfText: 'New — no claims yet',
     locText: 'All Abuja branches',
+  },
+  {
+    key: 'smash-burger',
+    name: '2-for-1 Smash Burger Thursday',
+    typeLabel: 'Deal',
+    meta: '₦6,500 • 412 claims',
+    statusLabel: 'Boost Active',
+    statusClass: 'bg-primary-container text-on-primary',
+    icon: 'lunch_dining',
+    iconBox: 'bg-surface-tint-blue text-primary',
+    kind: 'deals',
+    image: PUBLIC_IMAGES.burger,
+    thumbBadge: 'BOGO',
+    thumbBadgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+    cardLabel: '50% BOGO',
+    cardLabelClass: 'text-badge-discount-text',
+    cardDesc: 'Two smash burgers for the price of one',
+    perfIcon: 'trending_up',
+    perfText: '412 claims · boost running',
+    locText: 'Wuse II Branch only',
+  },
+  {
+    key: 'chill-pass',
+    name: 'After-Work Chill Pass',
+    typeLabel: 'Deal',
+    meta: '₦4,200 • 78 claims',
+    statusLabel: 'Active',
+    statusClass: 'bg-surface-container text-secondary',
+    icon: 'local_bar',
+    iconBox: 'bg-secondary-container text-on-secondary-container',
+    kind: 'deals',
+    image: PUBLIC_IMAGES.fries,
+    thumbBadge: 'HAPPY HOUR',
+    thumbBadgeClass: 'bg-surface-canvas/90 text-text-primary',
+    cardLabel: '22% OFF',
+    cardLabelClass: 'text-tertiary',
+    cardDesc: 'Craft bar bites & drinks, weekdays 4–7 PM',
+    perfIcon: 'schedule',
+    perfText: 'Weekdays · 4:00 PM – 7:00 PM',
+    locText: 'Maitama & Wuse II',
   },
   {
     key: 'storefront-profile',
@@ -237,7 +296,14 @@ const DAY_NAMES: Record<string, string> = {
   sun: 'Sun',
 };
 
-export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedItem }: BusinessBoostScreenProps) {
+export function BusinessBoostScreen({
+  onBack,
+  onDone,
+  growthActive,
+  preselectedItem,
+  chrome = 'subscription',
+  onNav,
+}: BusinessBoostScreenProps) {
   const isDesktop = useIsDesktop();
   const [phase, setPhase] = useState<BoostPhase>(preselectedItem ? 'content' : 'objective');
   const [objective, setObjective] = useState('customers');
@@ -284,7 +350,18 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
 
   useEffect(() => {
     if (!preselectedItem) return;
-    const found = CONTENT_POOL.find((entry) => entry.name.toLowerCase() === preselectedItem.toLowerCase());
+    // The deals list, catalog and deal-detail screens each name the same item
+    // differently, so match loosely: exact name, pool key, or any alias —
+    // ignoring case, punctuation and spacing.
+    const normalize = (value: string) =>
+      value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const wanted = normalize(preselectedItem);
+    const found = CONTENT_POOL.find(
+      (entry) =>
+        normalize(entry.name) === wanted ||
+        normalize(entry.key) === wanted ||
+        (entry.aliases ?? []).some((alias) => normalize(alias) === wanted),
+    );
     if (found) {
       setSelectedKeys([found.key]);
       if (found.kind === 'deals') setObjective('deal');
@@ -734,6 +811,63 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
                   Select one or more deals, products, services or your storefront profile.
                 </p>
               </div>
+              {preselected && item && (
+                <div className="rounded-xl bg-surface-tint-blue/60 border border-primary/20 px-space-sm py-space-2xs flex items-start gap-space-2xs">
+                  <Icon name="rocket_launch" className="text-primary text-[18px] mt-0.5 shrink-0" />
+                  <p className="font-label-sm text-label-sm text-on-surface">
+                    <span className="font-semibold">Campaign started from “{item.name}”</span> — it is already
+                    selected below. Boosting one thing at a time works, but deals promoted together reach more
+                    diners.
+                  </p>
+                </div>
+              )}
+              {preselected && (
+                <div className="rounded-xl border border-border-subtle bg-surface-canvas p-space-sm flex flex-col gap-space-2xs">
+                  <div className="flex items-center justify-between gap-space-xs">
+                    <span className="font-label-md text-label-md text-on-surface font-semibold">
+                      Suggested: boost these together
+                    </span>
+                    <span className="font-caption text-caption text-text-tertiary">
+                      {selectedKeys.length} of {contentPool.length} selected
+                    </span>
+                  </div>
+                  <div className="flex gap-space-2xs overflow-x-auto pb-1 -mx-1 px-1">
+                    {contentPool
+                      .filter((entry) => !selectedKeys.includes(entry.key))
+                      .map((entry) => (
+                        <button
+                          className="shrink-0 w-[190px] max-w-[70vw] rounded-lg border border-border-subtle bg-surface-canvas overflow-hidden text-left active:scale-[0.98] transition-all hover:border-primary/40"
+                          key={entry.key}
+                          type="button"
+                          onClick={() => toggleContent(entry.key)}
+                        >
+                          <span className="flex items-center gap-space-2xs p-space-2xs">
+                            <span
+                              className="w-10 h-10 rounded-md bg-cover bg-center shrink-0"
+                              style={{ backgroundImage: `url('${entry.image}')` }}
+                            />
+                            <span className="flex flex-col min-w-0 flex-1">
+                              <span className="font-label-sm text-label-sm text-on-surface font-semibold truncate">
+                                {entry.name}
+                              </span>
+                              <span className="font-caption text-caption text-text-secondary truncate">
+                                {entry.typeLabel} · {entry.meta}
+                              </span>
+                            </span>
+                            <span className="w-7 h-7 rounded-full bg-primary-container text-on-primary flex items-center justify-center shrink-0">
+                              <Icon name="add" className="text-[16px]" />
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    {contentPool.every((entry) => selectedKeys.includes(entry.key)) && (
+                      <span className="font-caption text-caption text-text-secondary px-1 py-2">
+                        Everything available is already in this campaign 🎉
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Content grid — 1 col mobile, 2 col md, 3 col lg */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-sm">
                 {contentPool.map((entry) => {
@@ -2245,46 +2379,76 @@ export function BusinessBoostScreen({ onBack, onDone, growthActive, preselectedI
 
   const screenTitle = phase === 'success' ? 'Campaign Status' : 'Create Campaign';
 
-  if (isDesktop) {
-    return (
-      <SubscriptionChrome onBrand={onBack} activeNav="deals" breadcrumb={screenTitle}>
-        <div className="max-w-6xl mx-auto px-margin py-space-xl w-full flex flex-col">
-          <div className="w-full flex flex-col">
-            <div className="flex items-center gap-space-sm px-margin pt-space-xs pb-space-sm">
-              <button
-                aria-label="Back"
-                className="w-10 h-10 rounded-full bg-surface-canvas border border-border-subtle/60 shadow-sm flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-colors shrink-0"
-                type="button"
-                onClick={handleBack}
-              >
-                <Icon name="arrow_back" className="text-[20px]" />
-              </button>
-              <div className="flex flex-col min-w-0">
-                <span className="font-caption text-caption text-text-secondary">Campaign Boost</span>
-                <h1 className="font-heading-md text-heading-md text-text-primary truncate">{screenTitle}</h1>
-              </div>
+  const desktopBody = (
+    <>
+      <div className="max-w-6xl mx-auto px-margin py-space-xl w-full flex flex-col">
+        <div className="w-full flex flex-col">
+          <div className="flex items-center gap-space-sm px-margin pt-space-xs pb-space-sm">
+            <button
+              aria-label="Back"
+              className="w-10 h-10 rounded-full bg-surface-canvas border border-border-subtle/60 shadow-sm flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-colors shrink-0"
+              type="button"
+              onClick={handleBack}
+            >
+              <Icon name="arrow_back" className="text-[20px]" />
+            </button>
+            <div className="flex flex-col min-w-0">
+              <span className="font-caption text-caption text-text-secondary">Campaign Boost</span>
+              <h1 className="font-heading-md text-heading-md text-text-primary truncate">{screenTitle}</h1>
             </div>
-            {renderPhase()}
+          </div>
+          {renderPhase()}
+        </div>
+      </div>
+      {toast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none w-max max-w-lg px-margin">
+          <div className="bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-full font-label-sm text-label-sm shadow-xl flex items-center gap-2">
+            <Icon name="check_circle" className="text-badge-discount-text text-[18px]" />
+            <span>{toast}</span>
           </div>
         </div>
-        {toast && (
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none w-max max-w-lg px-margin">
-            <div className="bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-full font-label-sm text-label-sm shadow-xl flex items-center gap-2">
-              <Icon name="check_circle" className="text-badge-discount-text text-[18px]" />
-              <span>{toast}</span>
-            </div>
-          </div>
-        )}
+      )}
+    </>
+  );
+
+  if (isDesktop) {
+    // In-dashboard entry (Boost Studio tab / Boost Deal) — the business side
+    // menu stays on screen instead of dropping into the onboarding shell.
+    if (chrome === 'portal') {
+      return (
+        <BusinessPortalChrome activeNav="more-marketing" onNav={onNav}>
+          {desktopBody}
+        </BusinessPortalChrome>
+      );
+    }
+
+    return (
+      <SubscriptionChrome onBrand={onBack} activeNav="deals" breadcrumb={screenTitle}>
+        {desktopBody}
       </SubscriptionChrome>
     );
   }
 
   return (
     <AppScreen surface="bg-surface-canvas">
-      <SubscriptionHeader
-        title={phase === 'success' ? 'Campaign Status' : 'Create Campaign'}
-        onBack={handleBack}
-      />
+      {chrome === 'portal' ? (
+        <>
+          <BusinessModeHeader title={screenTitle} />
+          {/* Dashboard header has no back arrow — keep an exit back to the hub. */}
+          <div className="px-margin pt-space-sm">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="h-9 px-space-sm rounded-full bg-surface-container-low flex items-center gap-space-2xs text-on-surface-variant active:bg-surface-container transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[17px]" />
+              <span className="font-label-sm text-label-sm">Back to Boost</span>
+            </button>
+          </div>
+        </>
+      ) : (
+        <SubscriptionHeader title={screenTitle} onBack={handleBack} />
+      )}
       {renderPhase()}
       {toast && (
         <div className="fixed bottom-32 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-50 pointer-events-none">

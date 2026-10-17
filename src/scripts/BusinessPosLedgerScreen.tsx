@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { PosTabBar, POS_NAV_MAIN, type PosTabKey } from '../components/PosTabBar';
 import { naira } from './catalogueData';
+import { downloadCsv } from '../utils/exportCsv';
 
 interface BusinessPosLedgerScreenProps {
   onNav: (key: PosTabKey) => void;
@@ -197,7 +198,18 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
             <button
               key={chip.label}
               type="button"
-              onClick={() => showToast(`${chip.label} filter applied to ledger`)}
+              onClick={() =>
+                chip.label === 'Export CSV'
+                  ? (() => {
+                      downloadCsv(
+                        'vemtap_pos_ledger',
+                        ['Tx ID', 'Time', 'Customer', 'Method', 'Amount (NGN)', 'Status', 'Items', 'Sync'],
+                        rows.map((tx) => [tx.id, tx.time, tx.customer, tx.method, tx.amount, tx.status, tx.items, tx.sync]),
+                      );
+                      showToast(`Exported ${rows.length} ledger entries (CSV)`);
+                    })()
+                  : showToast(`${chip.label} filter applied to ledger`)
+              }
               className="h-9 px-space-xs rounded-full bg-surface-canvas border border-border-subtle font-label-sm text-label-sm text-on-surface flex items-center gap-1 whitespace-nowrap shrink-0 active:scale-95 transition-transform"
             >
               <Icon name={chip.icon} className="text-primary text-[14px]" />

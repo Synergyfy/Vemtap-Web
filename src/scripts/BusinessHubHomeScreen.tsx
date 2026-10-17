@@ -2,6 +2,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 
 export type HubModuleKey = 'deals' | 'catalog' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile';
@@ -138,17 +139,8 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
             </div>
           </div>
           <div className="flex items-center gap-space-xs">
-            <button
-              aria-label="Notifications"
-              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
-              type="button"
-              onClick={() => showToast('No new business notifications')}
-            >
-              <Icon name="notifications" className="text-[22px]" />
-            </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
-            </div>
+            <MobileNotificationBell />
+            <MobileAccountMenu />
           </div>
         </div>
       </header>

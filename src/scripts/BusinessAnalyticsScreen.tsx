@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { downloadCsv } from '../utils/exportCsv';
+import { printReport, printKvTable } from '../utils/printReport';
 
 export type AnalyticsTab = 'overview' | 'audience';
 
@@ -12,6 +14,7 @@ interface BusinessAnalyticsScreenProps {
 
 type NavKey = 'overview' | 'traffic' | 'offers' | 'audience' | 'manage';
 type ChipKey = 'business' | 'customers' | 'deals' | 'locations' | 'pos';
+type PeriodKey = 'Today' | '7D' | '30D' | 'Custom';
 
 const NAV_ITEMS: { key: NavKey; icon: string; label: string }[] = [
   { key: 'overview', icon: 'dashboard', label: 'Overview' },
@@ -21,15 +24,124 @@ const NAV_ITEMS: { key: NavKey; icon: string; label: string }[] = [
   { key: 'manage', icon: 'tune', label: 'Manage' },
 ];
 
-const DATE_RANGES = ['Today', '7D', '30D', 'Custom'];
+const PERIODS: PeriodKey[] = ['Today', '7D', '30D', 'Custom'];
 
-const BRANCHES = ['All Branches (3)', 'Downtown Hub', 'Wuse II Flagship', 'Maitama Heights'];
+const PERIOD_SCALE: Record<PeriodKey, number> = { Today: 0.033, '7D': 0.233, '30D': 1, Custom: 1 };
 
-const CHANNELS = [
-  { name: 'In-Store POS', meta: 'Countertop & Tableside', amount: '₦3,010,000', share: '62.0% share', dot: 'bg-primary', shareClass: 'text-text-secondary' },
-  { name: 'VEMTAP Deals & Vouchers', meta: 'Mobile discovery purchases', amount: '₦1,260,000', share: '26.0% share', dot: 'bg-primary-container', shareClass: 'text-badge-discount-text' },
-  { name: 'Online Catalog Inquiries', meta: 'Social link orders', amount: '₦580,000', share: '12.0% share', dot: 'bg-secondary-container', shareClass: 'text-text-secondary' },
-];
+const naira = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
+const countFmt = (value: number) => Math.round(value).toLocaleString('en-US');
+
+interface ChannelRow {
+  name: string;
+  meta: string;
+  base: number;
+  sharePct: number;
+  dot: string;
+  shareClass: string;
+}
+
+const OVERVIEW_CONFIG: Record<
+  'business' | 'deals' | 'pos',
+  {
+    heroLabel: string;
+    heroBase: number;
+    heroFmt: (value: number) => string;
+    heroDelta: string;
+    heroDeltaUp: boolean;
+    heroNote: string;
+    metrics: Array<{
+      label: string;
+      base?: number;
+      fmt?: (value: number) => string;
+      fixedValue?: string;
+      delta: string;
+      deltaClass: string;
+    }>;
+    channels: ChannelRow[];
+  }
+> = {
+  business: {
+    heroLabel: 'Gross Sales Volume',
+    heroBase: 4850000,
+    heroFmt: naira,
+    heroDelta: '18.4%',
+    heroDeltaUp: true,
+    heroNote: '0% platform commission',
+    metrics: [
+      { label: 'Orders', base: 1420, fmt: countFmt, delta: '+12%', deltaClass: 'text-badge-discount-text' },
+      { label: 'Avg Ticket', fixedValue: '₦3,415', delta: '+5.2%', deltaClass: 'text-badge-discount-text' },
+      { label: 'Retention', fixedValue: '64%', delta: 'Repeat', deltaClass: 'text-primary' },
+    ],
+    channels: [
+      { name: 'In-Store POS', meta: 'Countertop & Tableside', base: 3010000, sharePct: 62, dot: 'bg-primary', shareClass: 'text-text-secondary' },
+      { name: 'VEMTAP Deals & Vouchers', meta: 'Mobile discovery purchases', base: 1260000, sharePct: 26, dot: 'bg-primary-container', shareClass: 'text-badge-discount-text' },
+      { name: 'Online Catalog Inquiries', meta: 'Social link orders', base: 580000, sharePct: 12, dot: 'bg-secondary-container', shareClass: 'text-text-secondary' },
+    ],
+  },
+  deals: {
+    heroLabel: 'Deal Revenue Attributed',
+    heroBase: 1260000,
+    heroFmt: naira,
+    heroDelta: '22.5%',
+    heroDeltaUp: true,
+    heroNote: '26% of gross intake',
+    metrics: [
+      { label: 'Vouchers', base: 684, fmt: countFmt, delta: '+18%', deltaClass: 'text-badge-discount-text' },
+      { label: 'Campaign ROI', fixedValue: '312%', delta: '+46%', deltaClass: 'text-badge-discount-text' },
+      { label: 'Discount', fixedValue: '17%', delta: 'Margin-safe', deltaClass: 'text-primary' },
+    ],
+    channels: [
+      { name: 'Lunch Combo Deals', meta: 'Weekday set menus', base: 620000, sharePct: 49, dot: 'bg-primary', shareClass: 'text-text-secondary' },
+      { name: 'Voucher Redemptions', meta: 'In-store claimed', base: 410000, sharePct: 33, dot: 'bg-primary-container', shareClass: 'text-badge-discount-text' },
+      { name: 'Referral Rewards', meta: 'Bring-a-friend credits', base: 230000, sharePct: 18, dot: 'bg-secondary-container', shareClass: 'text-text-secondary' },
+    ],
+  },
+  pos: {
+    heroLabel: 'Terminal Gross Intake',
+    heroBase: 3010000,
+    heroFmt: naira,
+    heroDelta: '13.7%',
+    heroDeltaUp: true,
+    heroNote: 'settled on VEMTAP rails',
+    metrics: [
+      { label: 'Tickets', base: 1420, fmt: countFmt, delta: '+9%', deltaClass: 'text-badge-discount-text' },
+      { label: 'Offline Sync', base: 126, fmt: countFmt, delta: '+31%', deltaClass: 'text-badge-discount-text' },
+      { label: 'Uptime', fixedValue: '99.4%', delta: '3 terminals', deltaClass: 'text-primary' },
+    ],
+    channels: [
+      { name: 'Countertop Terminal', meta: 'Front desk checkout', base: 1380000, sharePct: 46, dot: 'bg-primary', shareClass: 'text-text-secondary' },
+      { name: 'Tableside Terminal', meta: 'Waiter handhelds', base: 1050000, sharePct: 35, dot: 'bg-primary-container', shareClass: 'text-badge-discount-text' },
+      { name: 'Drive-Thru Kiosk', meta: 'Self-service lane', base: 580000, sharePct: 19, dot: 'bg-secondary-container', shareClass: 'text-text-secondary' },
+    ],
+  },
+};
+
+const TREND_BUCKETS: Record<PeriodKey, Array<{ label: string; amount: number }>> = {
+  Today: [
+    { label: '10A', amount: 98000 },
+    { label: '1P', amount: 110000 },
+    { label: '4P', amount: 124000 },
+    { label: '7P', amount: 153000 },
+  ],
+  '7D': [
+    { label: 'Mon', amount: 250000 },
+    { label: 'Wed', amount: 281000 },
+    { label: 'Fri', amount: 340000 },
+    { label: 'Sun', amount: 309000 },
+  ],
+  '30D': [
+    { label: 'W1', amount: 980000 },
+    { label: 'W2', amount: 1100000 },
+    { label: 'W3', amount: 1240000 },
+    { label: 'W4', amount: 1530000 },
+  ],
+  Custom: [
+    { label: 'W1', amount: 980000 },
+    { label: 'W2', amount: 1100000 },
+    { label: 'W3', amount: 1240000 },
+    { label: 'W4', amount: 1530000 },
+  ],
+};
 
 const TOP_ITEMS = [
   { name: 'Prime Ribeye Steak', meta: '248 sold • Main Course', amount: '₦1,200,000', delta: '+14% MoM', width: '82%' },
@@ -58,8 +170,9 @@ const PATRONS = [
 export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: BusinessAnalyticsScreenProps) {
   const [nav, setNav] = useState<NavKey>(initialTab);
   const [chip, setChip] = useState<ChipKey>(initialTab === 'audience' ? 'customers' : 'business');
-  const [dateRange, setDateRange] = useState('Today');
-  const [branch, setBranch] = useState(0);
+  const [dateRange, setDateRange] = useState<PeriodKey>('Today');
+  const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
+  const [domainMenuOpen, setDomainMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -81,6 +194,40 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const handleExportReport = () => {
+    printReport(
+      `VEMTAP Analytics Report — ${activeChip.label} (${dateRange})`,
+      `${printKvTable('Key Metrics', [
+        [overview.heroLabel, `${overview.heroFmt(overview.heroBase * periodScale)} (${overview.heroDelta})`],
+        ...overview.metrics.map(
+          (metric) => [metric.label, metric.fixedValue ?? metric.fmt?.((metric.base ?? 0) * periodScale) ?? '—'] as [string, string],
+        ),
+      ])}
+${printKvTable('Sales Channels', overview.channels.map((channel) => [channel.name, `${naira(channel.base * periodScale)} — ${channel.sharePct}% share`] as [string, string]))}
+${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket.label, naira(bucket.amount * periodScale)] as [string, string]))}`,
+    );
+    showToast('Report ready — choose "Save as PDF" in the print dialog.');
+  };
+
+  const handleExportCsv = () => {
+    const rows: Array<Array<string | number>> = [
+      [overview.heroLabel, overview.heroFmt(overview.heroBase * periodScale), overview.heroDelta],
+      ...overview.metrics.map((metric) => [
+        metric.label,
+        metric.fixedValue ?? metric.fmt?.((metric.base ?? 0) * periodScale) ?? '—',
+        metric.delta,
+      ]),
+      ...overview.channels.map((channel) => [
+        channel.name,
+        naira(channel.base * periodScale),
+        `${channel.sharePct}% share`,
+      ]),
+      ...TREND_BUCKETS[dateRange].map((bucket) => [`Trend ${bucket.label}`, naira(bucket.amount * periodScale), '']),
+    ];
+    downloadCsv(`vemtap_analytics_${overviewKey}_${dateRange.toLowerCase()}`, ['Metric', 'Value', 'Change'], rows);
+    showToast(`Exported ${rows.length} rows to CSV`);
+  };
+
   const handleNav = (key: NavKey) => {
     if (key === 'overview' || key === 'audience') {
       onNavigate(key);
@@ -90,11 +237,14 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
   };
 
   const handleChip = (key: ChipKey) => {
+    setDomainMenuOpen(false);
     if (key === 'business') {
+      setChip('business');
       onNavigate('overview');
       return;
     }
     if (key === 'customers') {
+      setChip('customers');
       onNavigate('audience');
       return;
     }
@@ -103,16 +253,20 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
       return;
     }
     setChip(key);
-    showToast(key === 'deals' ? 'Deal campaign analytics syncing…' : 'POS terminal sync status refreshed');
+    showToast(key === 'deals' ? 'Deal campaign analytics loaded' : 'POS terminal sync status refreshed');
   };
 
   const chips: { key: ChipKey; label: string; icon?: string }[] = [
-    { key: 'business', label: 'Business' },
+    { key: 'business', label: 'Business', icon: 'query_stats' },
     { key: 'customers', label: 'Customers', icon: 'group' },
-    { key: 'deals', label: 'Deals' },
-    { key: 'locations', label: 'Locations' },
-    { key: 'pos', label: 'POS Sync' },
+    { key: 'deals', label: 'Deals', icon: 'local_offer' },
+    { key: 'locations', label: 'Locations', icon: 'pin_drop' },
+    { key: 'pos', label: 'POS Sync', icon: 'point_of_sale' },
   ];
+  const activeChip = chips.find((item) => item.key === chip) ?? chips[0];
+  const overviewKey: 'business' | 'deals' | 'pos' = chip === 'deals' || chip === 'pos' ? chip : 'business';
+  const overview = OVERVIEW_CONFIG[overviewKey];
+  const periodScale = PERIOD_SCALE[dateRange];
 
   const header = (
     <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
@@ -127,25 +281,16 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
             >
               <Icon name="arrow_back" className="text-[20px]" />
             </button>
-            <button
-              aria-label="Select location"
-              className="h-9 px-space-sm rounded-full bg-surface-container-low flex items-center gap-space-2xs text-on-surface hover:bg-surface-container transition-colors min-w-0"
-              type="button"
-              onClick={() => setBranch((current) => (current + 1) % BRANCHES.length)}
-            >
-              <Icon name="storefront" className="text-primary text-[17px]" />
-              <span className="font-label-sm text-label-sm text-on-surface font-semibold max-w-[110px] truncate">
-                {BRANCHES[branch]}
-              </span>
-              <Icon name="expand_more" className="text-on-surface-variant text-[16px]" />
-            </button>
+            <span className="font-label-sm text-label-sm text-on-surface font-semibold truncate">
+              Analytics &amp; Intelligence
+            </span>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
             <button
               aria-label="Export report"
               className="w-9 h-9 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors"
               type="button"
-              onClick={() => showToast('Report export queued…')}
+              onClick={handleExportReport}
             >
               <Icon name="ios_share" className="text-[18px]" />
             </button>
@@ -154,20 +299,46 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar pb-space-2xs">
-          {DATE_RANGES.map((range) => (
-            <button
-              className={`h-7 px-space-sm rounded-full font-label-sm text-label-sm whitespace-nowrap flex items-center gap-space-2xs transition-colors ${
-                dateRange === range ? 'bg-surface-tint-blue text-primary font-semibold' : 'bg-surface-container-low text-text-secondary'
-              }`}
-              key={range}
-              type="button"
-              onClick={() => setDateRange(range)}
+        {/* Period dropdown (replaces the old date-range chips) */}
+        <div className="relative">
+          <button
+            aria-expanded={periodMenuOpen}
+            aria-haspopup="listbox"
+            className="h-9 px-space-sm rounded-full bg-surface-container-low flex items-center gap-space-2xs text-on-surface hover:bg-surface-container transition-colors"
+            type="button"
+            onClick={() => {
+              setPeriodMenuOpen((open) => !open);
+              setDomainMenuOpen(false);
+            }}
+          >
+            <Icon name="calendar_month" className="text-primary text-[16px]" />
+            <span className="font-label-sm text-label-sm font-semibold">{dateRange}</span>
+            <Icon name="expand_more" className="text-on-surface-variant text-[16px]" />
+          </button>
+          {periodMenuOpen && (
+            <div
+              className="absolute left-0 top-full mt-1 z-50 w-44 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 animate-fade-in"
+              role="listbox"
             >
-              {range === 'Custom' && <Icon name="date_range" className="text-[14px]" />}
-              <span>{range}</span>
-            </button>
-          ))}
+              {PERIODS.map((period) => (
+                <button
+                  aria-selected={dateRange === period}
+                  className="w-full px-3 py-2 text-left font-label-sm text-label-sm text-text-primary hover:bg-surface-container-low flex items-center justify-between"
+                  key={period}
+                  role="option"
+                  type="button"
+                  onClick={() => {
+                    setDateRange(period);
+                    setPeriodMenuOpen(false);
+                    showToast(`Period set to ${period}`);
+                  }}
+                >
+                  <span>{period}</span>
+                  {dateRange === period && <Icon name="check" className="text-primary text-[16px]" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </header>
@@ -198,25 +369,44 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
   );
 
   const categoryChips = (
-    <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar -mx-margin px-margin pt-space-xs">
-      {chips.map((item) => {
-        const active = chip === item.key;
-        return (
-          <button
-            className={`h-8 px-space-md rounded-full font-label-sm text-label-sm whitespace-nowrap transition-all active:scale-95 flex items-center gap-space-2xs ${
-              active
-                ? 'bg-primary-container text-on-primary shadow-sm font-semibold'
-                : 'bg-surface-container-low text-text-secondary'
-            }`}
-            key={item.key}
-            type="button"
-            onClick={() => handleChip(item.key)}
-          >
-            {item.icon && <Icon name={item.icon} className="text-[15px]" />}
-            <span>{item.label}</span>
-          </button>
-        );
-      })}
+    <div className="relative">
+      <button
+        aria-expanded={domainMenuOpen}
+        aria-haspopup="listbox"
+        className="h-9 px-space-sm rounded-full bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center gap-space-2xs shadow-sm active:scale-95 transition-transform"
+        type="button"
+        onClick={() => {
+          setDomainMenuOpen((open) => !open);
+          setPeriodMenuOpen(false);
+        }}
+      >
+        {activeChip.icon && <Icon name={activeChip.icon} className="text-[15px]" />}
+        <span>{activeChip.label}</span>
+        <Icon name="expand_more" className="text-[16px]" />
+      </button>
+      {domainMenuOpen && (
+        <div
+          className="absolute left-0 top-full mt-1 z-50 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 animate-fade-in"
+          role="listbox"
+        >
+          {chips.map((item) => (
+            <button
+              aria-selected={chip === item.key}
+              className="w-full px-3 py-2 text-left font-label-sm text-label-sm text-text-primary hover:bg-surface-container-low flex items-center justify-between"
+              key={item.key}
+              role="option"
+              type="button"
+              onClick={() => handleChip(item.key)}
+            >
+              <span className="flex items-center gap-2">
+                {item.icon && <Icon name={item.icon} className="text-[15px] text-primary" />}
+                <span>{item.label}</span>
+              </span>
+              {chip === item.key && <Icon name="check" className="text-primary text-[16px]" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -229,65 +419,29 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
             <span className="font-caption text-caption text-text-secondary tracking-wide uppercase font-semibold">
               Analytics &amp; Intelligence
             </span>
-            <h1 className="font-heading-sm text-heading-sm text-text-primary tracking-tight">Business Performance</h1>
+            <h1 className="font-heading-sm text-heading-sm text-text-primary tracking-tight">{overview.heroLabel}</h1>
           </div>
           <button
             className="h-9 px-space-sm rounded-xl bg-surface-tint-blue text-primary font-label-sm text-label-sm flex items-center gap-space-2xs shadow-sm active:scale-95 transition-transform"
             type="button"
-            onClick={() => showToast('Performance report exported')}
+            onClick={handleExportCsv}
           >
             <Icon name="file_download" className="text-[16px]" />
             <span>Export</span>
           </button>
         </div>
         <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar">
-          <button
-            className="h-8 px-space-sm rounded-full bg-surface-container-low text-text-primary font-label-sm text-label-sm flex items-center gap-space-2xs shadow-sm shrink-0"
-            type="button"
-            onClick={() => setBranch((current) => (current + 1) % BRANCHES.length)}
-          >
-            <Icon name="store" className="text-primary text-[14px]" />
-            <span className="font-semibold">{BRANCHES[branch]}</span>
-            <Icon name="keyboard_arrow_down" className="text-on-surface-variant text-[15px]" />
-          </button>
-          <button
-            className="h-8 px-space-sm rounded-full bg-surface-container-low text-text-primary font-label-sm text-label-sm flex items-center gap-space-2xs shadow-sm shrink-0"
-            type="button"
-            onClick={() => setDateRange((current) => (current === 'Custom' ? 'Today' : 'Custom'))}
-          >
+          <span className="shrink-0 flex items-center gap-space-2xs px-space-sm h-8 rounded-full bg-surface-container-low text-text-primary font-label-sm text-label-sm">
             <Icon name="calendar_today" className="text-text-secondary text-[14px]" />
-            <span>Last {dateRange === 'Custom' ? '30 Days' : '30 Days'}</span>
-            <Icon name="keyboard_arrow_down" className="text-on-surface-variant text-[15px]" />
-          </button>
+            <span className="font-semibold">{dateRange}</span>
+          </span>
           <span className="shrink-0 flex items-center px-space-xs py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
             <span>Live Sync</span>
           </span>
         </div>
-        {/* Category switcher */}
-        <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar p-1 bg-surface-container-low rounded-xl">
-          {[
-            { key: 'business', label: 'Business' },
-            { key: 'customers', label: 'Customers' },
-            { key: 'deals', label: 'Deals' },
-            { key: 'locations', label: 'Locations' },
-            { key: 'pos', label: 'POS Terminal' },
-          ].map((item) => {
-            const active = item.key === 'business';
-            return (
-              <button
-                className={`h-7 px-space-sm rounded-lg font-label-sm text-label-sm whitespace-nowrap transition-all ${
-                  active ? 'bg-surface-canvas text-primary font-semibold shadow-sm' : 'text-text-secondary'
-                }`}
-                key={item.key}
-                type="button"
-                onClick={() => handleChip(item.key as ChipKey)}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Domain switcher dropdown (replaces the old chip row) */}
+        {categoryChips}
       </section>
 
       {/* Hero KPI */}
@@ -295,24 +449,31 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
         <div className="p-space-md rounded-2xl bg-surface-canvas shadow-sm flex flex-col gap-space-xs relative overflow-hidden">
           <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-primary/5 pointer-events-none" />
           <div className="flex items-center justify-between">
-            <span className="font-label-sm text-label-sm text-text-secondary">Gross Sales Volume</span>
-            <span className="inline-flex items-center gap-0.5 px-space-2xs py-0.5 rounded-md bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-              <Icon name="arrow_upward" className="text-[13px]" />
-              18.4%
+            <span className="font-label-sm text-label-sm text-text-secondary">{overview.heroLabel}</span>
+            <span
+              className={`inline-flex items-center gap-0.5 px-space-2xs py-0.5 rounded-md font-caption text-caption font-semibold ${
+                overview.heroDeltaUp ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'
+              }`}
+            >
+              <Icon name={overview.heroDeltaUp ? 'arrow_upward' : 'arrow_downward'} className="text-[13px]" />
+              {overview.heroDelta}
             </span>
           </div>
-          <div className="font-heading-md text-heading-md text-text-primary font-bold">₦4,850,000</div>
+          <div className="font-heading-md text-heading-md text-text-primary font-bold">
+            {overview.heroFmt(overview.heroBase * periodScale)}
+          </div>
           <div className="flex items-center justify-between text-text-tertiary font-caption text-caption">
-            <span>vs. ₦4,096,000 previous cycle</span>
-            <span className="text-primary font-semibold">0% platform commission</span>
+            <span>Period: {dateRange}</span>
+            <span className="text-primary font-semibold">{overview.heroNote}</span>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-space-xs">
-          {[
-            { label: 'Orders', value: '1,420', delta: '+12%', deltaClass: 'text-badge-discount-text' },
-            { label: 'Avg Ticket', value: '₦3,415', delta: '+5.2%', deltaClass: 'text-badge-discount-text' },
-            { label: 'Retention', value: '64%', delta: 'Repeat', deltaClass: 'text-primary' },
-          ].map((metric) => (
+          {overview.metrics.map((metric) => ({
+            label: metric.label,
+            value: metric.fixedValue ?? metric.fmt?.((metric.base ?? 0) * periodScale) ?? '—',
+            delta: metric.delta,
+            deltaClass: metric.deltaClass,
+          })).map((metric) => (
             <div className="p-space-sm rounded-2xl bg-surface-canvas shadow-sm flex flex-col gap-0.5" key={metric.label}>
               <span className="font-caption text-caption text-text-secondary truncate">{metric.label}</span>
               <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">{metric.value}</span>
@@ -328,7 +489,7 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <h2 className="font-label-md text-label-md text-text-primary font-semibold">Revenue Trend</h2>
-              <span className="font-caption text-caption text-text-secondary">Weekly performance trajectory</span>
+              <span className="font-caption text-caption text-text-secondary">{dateRange} performance trajectory</span>
             </div>
             <div className="flex items-center gap-space-2xs text-text-secondary font-caption text-caption">
               <span className="w-2.5 h-2.5 rounded-sm bg-primary" />
@@ -353,18 +514,24 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
               <circle cx="268" cy="10" fill="#066cf4" r="4" stroke="#ffffff" strokeWidth="2" />
             </svg>
             <div className="flex justify-around text-text-tertiary font-caption text-caption pt-space-2xs">
-              <span className="w-16 text-center">W1 (₦980k)</span>
-              <span className="w-16 text-center">W2 (₦1.1M)</span>
-              <span className="w-16 text-center">W3 (₦1.24M)</span>
-              <span className="w-16 text-center text-primary font-semibold">W4 (₦1.53M)</span>
+              {TREND_BUCKETS[dateRange].map((bucket, index) => (
+                <span
+                  className={`w-16 text-center ${index === 3 ? 'text-primary font-semibold' : ''}`}
+                  key={bucket.label}
+                >
+                  {bucket.label} ({naira(bucket.amount * periodScale)})
+                </span>
+              ))}
             </div>
           </div>
           <div className="p-space-xs rounded-xl bg-surface-container-low flex items-center justify-between text-on-surface">
             <div className="flex items-center gap-space-2xs">
               <Icon name="bolt" className="text-primary text-[17px]" />
-              <span className="font-label-sm text-label-sm font-semibold">Target Exceeded: +₦430,000</span>
+              <span className="font-label-sm text-label-sm font-semibold">
+                Target Exceeded: +{naira(overview.heroBase * periodScale * 0.089)}
+              </span>
             </div>
-            <span className="font-caption text-caption text-text-secondary">4-week streak</span>
+            <span className="font-caption text-caption text-text-secondary">{dateRange} streak</span>
           </div>
         </div>
       </section>
@@ -380,12 +547,12 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
             <Icon name="donut_large" className="text-text-tertiary text-[18px]" />
           </div>
           <div className="w-full h-2.5 rounded-full bg-surface-container flex overflow-hidden">
-            <div className="h-full bg-primary" style={{ width: '62%' }} />
-            <div className="h-full bg-primary-container" style={{ width: '26%' }} />
-            <div className="h-full bg-secondary-container" style={{ width: '12%' }} />
+            {overview.channels.map((channel) => (
+              <div className={`h-full ${channel.dot}`} key={channel.name} style={{ width: `${channel.sharePct}%` }} />
+            ))}
           </div>
           <div className="flex flex-col gap-space-xs">
-            {CHANNELS.map((channel) => (
+            {overview.channels.map((channel) => (
               <div className="flex items-center justify-between p-space-xs rounded-xl bg-surface-subtle" key={channel.name}>
                 <div className="flex items-center gap-space-xs min-w-0">
                   <span className={`w-3 h-3 rounded-full shrink-0 ${channel.dot}`} />
@@ -395,8 +562,12 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
                   </div>
                 </div>
                 <div className="flex flex-col items-end shrink-0">
-                  <span className="font-label-sm text-label-sm text-text-primary font-semibold">{channel.amount}</span>
-                  <span className={`font-caption text-caption font-semibold ${channel.shareClass}`}>{channel.share}</span>
+                  <span className="font-label-sm text-label-sm text-text-primary font-semibold">
+                    {naira(channel.base * periodScale)}
+                  </span>
+                  <span className={`font-caption text-caption font-semibold ${channel.shareClass}`}>
+                    {channel.sharePct}% share
+                  </span>
                 </div>
               </div>
             ))}
@@ -499,7 +670,7 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
         <button
           className="w-full h-11 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all"
           type="button"
-          onClick={() => showToast('Executive PDF report generated')}
+          onClick={handleExportReport}
         >
           <Icon name="picture_as_pdf" className="text-[18px]" />
           <span>Download PDF Executive Report</span>
@@ -777,7 +948,14 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
         <button
           className="w-full h-11 bg-surface-container-low text-text-primary font-label-sm text-label-sm font-semibold rounded-xl flex items-center justify-center gap-space-2xs active:scale-95 transition-all"
           type="button"
-          onClick={() => showToast('Exporting 1,842 patron records (CSV)...')}
+          onClick={() => {
+            downloadCsv(
+              'vemtap_customer_directory',
+              ['Name', 'Visits', 'Total Spend', 'Segment'],
+              PATRONS.map((patron) => [patron.name, patron.meta, patron.amount, patron.tag]),
+            );
+            showToast(`Exported ${PATRONS.length} patron records (CSV)`);
+          }}
         >
           <Icon name="download" className="text-on-surface-variant text-[16px]" />
           <span>Export Customer Directory (CSV)</span>

@@ -11,6 +11,7 @@ import {
   orderStatusLabel,
   orderTimeline,
 } from './orderData';
+import { printKvTable, printReport } from '../utils/printReport';
 
 interface OrderDetailScreenProps {
   /** BUG-015: the ref of the order opened from the Orders list. */
@@ -397,7 +398,30 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
           </button>
           <button
             type="button"
-            onClick={() => showToast('PDF receipt saved to your device')}
+            onClick={() => {
+              printReport(
+                `Receipt — Order #${order.ref}`,
+                `${printKvTable('Order summary', [
+                  ['Order ref', order.ref],
+                  ['Merchant', order.merchantName],
+                  ['Placed', `${formatOrderTime(order.submittedAt)} WAT`],
+                  ['Fulfillment', FULFILLMENT_LABELS[order.fulfillment]],
+                  ['Payment', `${PAYMENT_STATUS_LABELS[order.paymentStatus]} · ${PAYMENT_METHOD_LABELS[order.paymentMethod]}`]
+                ])}
+                 <h2>Items</h2>
+                 <table class="kv"><tbody>
+                   ${order.lines
+                     .map(
+                       (line) =>
+                         `<tr><td>${line.qty} × ${line.name}${line.options ? ` (${line.options})` : ''}</td><td>${money(line.price * line.qty)}</td></tr>`
+                     )
+                     .join('')}
+                   <tr class="total"><td>Total</td><td>${money(order.total)}</td></tr>
+                 </tbody></table>
+                 <p class="foot">Vemtap receipt — proof of order. Pickup PIN ${pickupPin}.</p>`
+              );
+              showToast('Receipt opened — save it as PDF from the print dialog');
+            }}
             className="h-12 rounded-xl bg-surface-container-low text-text-secondary font-button-secondary text-button-secondary flex items-center justify-center gap-2 hover:bg-surface-container-high transition-colors active:scale-[0.98]"
           >
             <Icon name="download" className="text-[19px]" />
