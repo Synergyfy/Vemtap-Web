@@ -2,14 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { BoostTabKey } from '../../components/BoostTabBar';
-<<<<<<< HEAD
 import { hasApiConfig } from '../../lib/api';
 import { adWalletService } from '../../services';
 import type { AdWalletSummary, AdWalletTransaction } from '../../services/types';
-=======
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
->>>>>>> dev
 
 interface DesktopBoostWalletScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -227,9 +224,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
     timers.current.push(timer);
   };
 
-<<<<<<< HEAD
   const accountNumber = walletSummary.virtualAccount?.number ?? DEFAULT_WALLET_SUMMARY.virtualAccount?.number ?? '9940284411';
-=======
   /** September VAT invoice — real PDF (print → save) + CSV ledger attachment. */
   const downloadVatInvoice = () => {
     const vatRows = LEDGER.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]);
@@ -291,7 +286,6 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
     );
     showToast('Statement history downloaded (CSV + PDF)');
   };
->>>>>>> dev
 
   const copyAccount = () => {
     if (navigator.clipboard?.writeText) {
