@@ -172,7 +172,7 @@ export function DiscoverScreen({ onTab, onOpenUrban, onOpenSpa, onOpenFilters, o
 
             {businessCards.map((card, index) => (
               <article
-                key={card.name}
+                key={`${card.name}-${index}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => openCard(index)}

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { apiGet, apiPatch, apiPost, hasApiConfig } from '../lib/api';
+import { apiGet, apiPatch, hasApiConfig } from '../lib/api';
+import { ordersService } from '../services/ordersService';
 import {
   MERCHANT_IMAGE,
   MERCHANT_NAME,
@@ -202,10 +203,17 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
     const hydrate = async () => {
       try {
-        const remoteOrders = await apiGet<SubmittedOrder[]>('/orders?merchant=me');
+        const remoteOrders = await ordersService.getMyOrders({ page: 1, limit: 20 });
         if (!ignore && Array.isArray(remoteOrders) && remoteOrders.length > 0) {
           setOrders(remoteOrders);
           writeOrders(remoteOrders);
+          return;
+        }
+
+        const fallback = await apiGet<SubmittedOrder[]>('/orders?merchant=me').catch(() => [] as SubmittedOrder[]);
+        if (!ignore && Array.isArray(fallback) && fallback.length > 0) {
+          setOrders(fallback);
+          writeOrders(fallback);
         }
       } catch {
         // Keep seeded local data while the backend is unavailable.
@@ -278,9 +286,37 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setOrders((current) => [order, ...current]);
 
       if (hasApiConfig()) {
-        void apiPost<SubmittedOrder, SubmittedOrder>('/orders', order)
+        const payload = {
+          ref: order.ref,
+          merchantId: order.merchantId,
+          merchantName: order.merchantName,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          items: order.lines.map((line) => ({
+            id: line.id,
+            productId: line.productId,
+            name: line.name,
+            quantity: line.qty,
+            price: line.price,
+            image: line.image,
+            options: line.options,
+            instructions: line.instructions,
+          })),
+          subtotal: order.subtotal,
+          savings: order.savings,
+          deliveryFee: order.deliveryFee,
+          total: order.total,
+          fulfillment: order.fulfillment,
+          note: order.note,
+          status: initialStatus,
+          paymentMethod: paymentMethod,
+          paymentStatus: paymentMethod === 'pay-at-counter' ? 'not-required' : 'pending',
+          marketingConsent: order.marketingConsent,
+        };
+
+        void ordersService.createOrder(payload)
           .then((remoteOrder) => {
-            if (!remoteOrder?.ref) return;
+            if (!remoteOrder) return;
             setOrders((current) => {
               const next = current.some((existing) => existing.ref === remoteOrder.ref)
                 ? current

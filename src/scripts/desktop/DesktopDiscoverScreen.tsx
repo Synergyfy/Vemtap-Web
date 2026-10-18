@@ -127,7 +127,7 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-space-md">
             {businessCards.map((card, index) => (
               <article
-                key={card.name}
+                key={`${card.name}-${index}`}
                 role={index < 2 ? 'button' : undefined}
                 onClick={index < 2 ? () => onOpenBusiness(index) : undefined}
                 className={`w-full bg-surface-canvas rounded-2xl overflow-hidden shadow-sm flex flex-col active:scale-[0.99] transition-transform ${

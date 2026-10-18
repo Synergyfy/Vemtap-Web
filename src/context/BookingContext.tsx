@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { bookingService } from '../services/bookingService';
 import {
   SPA_ADDONS,
   SPA_CLIENT,
@@ -132,6 +133,47 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       /* storage unavailable — keep in-memory */
     }
   }, [appointments]);
+
+  useEffect(() => {
+    const loadAppointments = async () => {
+      try {
+        const remoteBookings = await bookingService.getMyBookings({ page: 1, limit: 20 });
+        if (remoteBookings.length > 0) {
+          setAppointments((prev) => {
+            const remoteAsSpa = remoteBookings.map((booking) => ({
+              ref: booking.ref,
+              merchantName: booking.merchantName,
+              clientName: booking.clientName,
+              clientPhone: booking.clientPhone,
+              serviceNames: booking.serviceNames,
+              addonNames: booking.addonNames,
+              dateISO: booking.dateISO,
+              dateLong: booking.dateLong,
+              dateShort: booking.dateShort,
+              time: booking.time,
+              durationMinutes: booking.durationMinutes,
+              durationLabel: booking.durationLabel,
+              therapistLabel: booking.therapistLabel,
+              notes: booking.notes,
+              reminder: booking.reminder,
+              servicesSubtotal: booking.servicesSubtotal,
+              discount: booking.discount,
+              payable: booking.payable,
+              status: booking.status,
+              createdAt: booking.createdAt,
+            }));
+            const merged = [...remoteAsSpa, ...prev.filter((item) => !remoteAsSpa.some((remote) => remote.ref === item.ref))];
+            localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(merged.slice(0, 60)));
+            return merged;
+          });
+        }
+      } catch {
+        // Leave local demo data in place when the backend is unavailable.
+      }
+    };
+
+    void loadAppointments();
+  }, []);
 
   const services = useMemo(
     () =>
@@ -278,8 +320,21 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       status: 'confirmed',
       createdAt: Date.now(),
     };
+    const bookingPayload = {
+      branchId: '00000000-0000-0000-0000-000000000000',
+      itemId: services[0]?.id ? String(services[0].id) : undefined,
+      date: dateISO,
+      time,
+      notes,
+      status: 'confirmed',
+      merchantName: SPA_MERCHANT.name,
+      clientName: SPA_CLIENT.name,
+    };
+
     setAppointments((prev) => [record, ...prev]);
     setConfirmedRef(ref);
+
+    void bookingService.createBooking(bookingPayload).catch(() => undefined);
     return { ok: true, ref };
   }, [
     services,
