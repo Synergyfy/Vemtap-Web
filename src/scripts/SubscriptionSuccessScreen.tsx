@@ -1,5 +1,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { downloadCsv } from '../utils/exportCsv';
+import { printKvTable, printReport } from '../utils/printReport';
 
 interface SubscriptionSuccessScreenProps {
   onGoDashboard: () => void;
@@ -37,6 +39,30 @@ export function SubscriptionSuccessScreen({
   onGoDashboard,
   onExploreFeatures,
 }: SubscriptionSuccessScreenProps) {
+  const downloadTaxInvoice = () => {
+    downloadCsv(
+      'vemtap-tax-invoice-VT-SUB-982410.csv',
+      ['Field', 'Value'],
+      [
+        ...RECEIPT_ROWS.map((row) => [row.label, row.value]),
+        ['Plan', 'VEMTAP Growth'],
+        ['Amount paid', '₦5,000.00'],
+        ['Payment method', 'Mastercard •••• 4128'],
+      ],
+    );
+    printReport(
+      'VEMTAP Tax Invoice — VT-SUB-982410',
+      `${printKvTable('Invoice', RECEIPT_ROWS.map((row) => [row.label, row.value] as [string, string]))}
+       ${printKvTable('Line items', [
+         ['VEMTAP Growth plan — monthly subscription', '₦4,651.16'],
+         ['VAT (7.5%)', '₦348.84'],
+         ['Amount paid', '₦5,000.00'],
+       ])}
+       ${printKvTable('Payment', [['Method', 'Mastercard •••• 4128']])}
+       <p class="foot">A CSV copy of this tax invoice downloaded alongside the PDF.</p>`,
+    );
+  };
+
   return (
     <AppScreen surface="bg-surface-canvas">
       <div className="flex flex-col w-full flex-1 px-margin pb-10">
@@ -145,6 +171,7 @@ export function SubscriptionSuccessScreen({
             <button
               className="font-caption text-caption text-primary font-semibold flex items-center gap-1 hover:underline active:opacity-75"
               type="button"
+              onClick={downloadTaxInvoice}
             >
               <Icon name="receipt_long" className="text-[14px]" />
               Download Tax Invoice • PDF

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { getTrialDaysLeft, hasActiveTrial } from '../../utils/trialState';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionOverviewScreenProps {
@@ -48,6 +49,42 @@ const HOW_TRIAL_WORKS = [
   { step: '3', body: 'Subscribe anytime to keep full visibility live.' },
 ];
 
+const COMPARISON_ROWS: {
+  feature: string;
+  free: string | boolean;
+  growth: string | boolean;
+}[] = [
+  { feature: 'Business profile & storefront page', free: true, growth: true },
+  { feature: 'Product & service catalog', free: 'Up to 10 items', growth: 'Unlimited' },
+  { feature: 'Deals & flash offers', free: false, growth: true },
+  { feature: 'Hyper-local discovery feed listing', free: 'Basic (organic)', growth: 'Priority (3.4x views)' },
+  { feature: 'Verified trust badge', free: false, growth: true },
+  { feature: 'Customer messaging & direct chat', free: false, growth: true },
+  { feature: 'QR codes & smart NFC tags', free: false, growth: true },
+  { feature: 'Loyalty & Tap rewards program', free: false, growth: true },
+  { feature: 'Revenue & visit analytics', free: 'Overview only', growth: 'Full real-time suite' },
+  { feature: 'Multi-location management', free: false, growth: true },
+  { feature: 'Dedicated WhatsApp account manager', free: false, growth: true },
+];
+
+function ComparisonValue({ value }: { value: string | boolean }) {
+  if (value === true) {
+    return (
+      <span className="w-5 h-5 rounded-full bg-surface-tint-blue flex items-center justify-center shrink-0">
+        <Icon name="check" className="text-[14px] font-bold text-primary-container" />
+      </span>
+    );
+  }
+  if (value === false) {
+    return (
+      <span className="w-5 h-5 rounded-full bg-surface-container-high flex items-center justify-center shrink-0">
+        <Icon name="close" className="text-[14px] text-text-tertiary" />
+      </span>
+    );
+  }
+  return <span className="font-label-sm text-label-sm text-text-primary text-right">{value}</span>;
+}
+
 const FEATURE_CARDS = [
   {
     icon: 'near_me',
@@ -81,6 +118,8 @@ export function DesktopSubscriptionOverviewScreen({
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const price = billing === 'monthly' ? '₦5,000' : '₦4,000';
   const priceNote = billing === 'monthly' ? '/ month' : '/ month, billed annually';
+  const trialActive = hasActiveTrial();
+  const trialDaysLeft = getTrialDaysLeft();
 
   return (
     <SubscriptionChrome onBrand={onBack} activeNav="billing">
@@ -217,14 +256,26 @@ export function DesktopSubscriptionOverviewScreen({
             </section>
 
             <section className="flex flex-col sm:flex-row gap-space-sm">
-              <button
-                type="button"
-                onClick={onStartTrial}
-                className="flex-1 h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
-              >
-                <span>Start 30-Day Free Trial</span>
-                <Icon name="arrow_forward" className="text-[18px]" />
-              </button>
+              {trialActive ? (
+                <button
+                  type="button"
+                  onClick={onStartTrial}
+                  className="flex-1 h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
+                >
+                  <Icon name="verified" filled className="text-[18px]" />
+                  <span>View My Active Trial ({trialDaysLeft} days left)</span>
+                  <Icon name="arrow_forward" className="text-[18px]" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onStartTrial}
+                  className="flex-1 h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
+                >
+                  <span>Start 30-Day Free Trial</span>
+                  <Icon name="arrow_forward" className="text-[18px]" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onSubscribe}
@@ -236,7 +287,9 @@ export function DesktopSubscriptionOverviewScreen({
             <div className="flex items-center justify-center gap-space-2xs -mt-space-sm">
               <Icon name="lock" className="text-[15px] text-text-tertiary" />
               <span className="font-caption text-caption text-text-secondary">
-                No credit card required to start your free trial. Cancel anytime.
+                {trialActive
+                  ? 'Your free trial is active — no card on file, cancel anytime.'
+                  : 'No credit card required to start your free trial. Cancel anytime.'}
               </span>
             </div>
 
@@ -335,6 +388,77 @@ export function DesktopSubscriptionOverviewScreen({
               <p className="font-caption text-caption text-text-secondary leading-relaxed">{card.body}</p>
             </div>
           ))}
+        </section>
+
+        {/* Free vs Growth comparison */}
+        <section className="rounded-2xl bg-surface-canvas shadow-md border border-border-subtle/60 overflow-hidden">
+          <div className="p-space-lg pb-space-sm flex flex-col gap-space-2xs">
+            <h2 className="font-heading-md text-heading-md text-text-primary">Free vs Growth</h2>
+            <p className="font-label-sm text-label-sm text-text-secondary">
+              See exactly what you unlock when you move from the free plan to Growth — or when your 30-day trial converts.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse">
+              <thead>
+                <tr className="bg-surface-subtle">
+                  <th className="text-left font-label-md text-label-md text-text-primary px-space-lg py-space-sm w-1/2">
+                    Feature
+                  </th>
+                  <th className="text-center font-label-md text-label-md text-text-secondary px-space-sm py-space-sm w-1/4">
+                    Free
+                  </th>
+                  <th className="text-center font-label-md text-label-md text-primary-container px-space-sm py-space-sm w-1/4">
+                    Growth
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARISON_ROWS.map((row, index) => (
+                  <tr
+                    className={`border-t border-border-subtle/60 ${index % 2 === 1 ? 'bg-surface-subtle/40' : ''}`}
+                    key={row.feature}
+                  >
+                    <td className="px-space-lg py-space-sm font-label-sm text-label-sm text-text-primary">
+                      {row.feature}
+                    </td>
+                    <td className="px-space-sm py-space-sm flex items-center justify-center">
+                      <ComparisonValue value={row.free} />
+                    </td>
+                    <td className="px-space-sm py-space-sm flex items-center justify-center">
+                      <ComparisonValue value={row.growth} />
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-border-subtle/60 bg-surface-tint-blue/60">
+                  <td className="px-space-lg py-space-sm font-label-md text-label-md text-text-primary font-semibold">
+                    Price
+                  </td>
+                  <td className="px-space-sm py-space-sm text-center font-label-md text-label-md text-text-secondary font-semibold">
+                    ₦0
+                  </td>
+                  <td className="px-space-sm py-space-sm text-center font-label-md text-label-md text-primary-container font-semibold">
+                    {price}/mo
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="p-space-md flex flex-col sm:flex-row items-center justify-between gap-space-sm border-t border-border-subtle/60">
+            <span className="font-caption text-caption text-text-secondary">
+              {trialActive
+                ? `Your trial has ${trialDaysLeft} days left — subscribe anytime to keep Growth live.`
+                : 'Start free — upgrade only when you are ready. No card required to try.'}
+            </span>
+            <button
+              type="button"
+              onClick={trialActive ? onStartTrial : onSubscribe}
+              className="h-11 px-space-lg rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs shrink-0"
+            >
+              <span>{trialActive ? 'View My Active Trial' : 'Start 30-Day Free Trial'}</span>
+              <Icon name="arrow_forward" className="text-[18px]" />
+            </button>
+          </div>
         </section>
 
         <section className="rounded-xl bg-surface-tint-blue p-space-lg shadow-sm flex flex-col sm:flex-row items-center justify-between gap-space-md">

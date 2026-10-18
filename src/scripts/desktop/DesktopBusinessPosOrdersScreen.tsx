@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopBusinessPosOrdersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -39,6 +40,27 @@ export function DesktopBusinessPosOrdersScreen({
     setShiftState('closing');
     window.setTimeout(() => {
       setShiftState('printed');
+      printReport(
+        'Z-Report — Shift Close',
+        `${printKvTable('Shift', [
+          ['Date', new Date().toLocaleDateString('en-NG')],
+          ['Till', 'Till 01 (Wuse II)'],
+          ['Cashier', 'Tunde Bakare'],
+        ])}
+         ${printKvTable(
+           'Transactions',
+           RECENT.map((row) => [`${row.id} • ${row.time}`, `${row.total} • ${row.method} • ${row.channel}`]),
+         )}
+         ${printKvTable('Totals', [
+          ['Transactions', `${RECENT.length}`],
+          ['Card', '₦28,300.00'],
+          ['Transfer', '₦19,400.00'],
+          ['Cash', '₦6,800.00'],
+          ['Gross takings', '₦54,500.00'],
+          ['Expected cash in drawer', '₦6,800.00'],
+        ])}
+         <p class="foot">Z-Report generated at shift close. Retain for reconciliation.</p>`,
+      );
       showToast('Z-Report printed — shift closed');
     }, 1500);
   };
@@ -48,11 +70,7 @@ export function DesktopBusinessPosOrdersScreen({
       <div className="w-full bg-background">
         <div className="w-full py-space-xl space-y-space-lg">
           <div className="flex flex-wrap items-center gap-space-sm">
-            <button type="button" className="flex items-center gap-space-xs px-space-sm py-space-xs rounded-xl border border-border bg-surface text-on-surface font-label-sm text-label-sm hover:bg-surface-subtle">
-              <Icon name="store" className="text-[16px] text-primary" />
-              Wuse II Branch / Till 01
-              <Icon name="expand_more" className="text-[14px]" />
-            </button>
+            {/* Branch/location lives in the header only — no duplicate control here. */}
             <div className="flex items-center bg-surface-subtle rounded-xl p-space-2xs">
               {FILTERS.map((f) => (
                 <button

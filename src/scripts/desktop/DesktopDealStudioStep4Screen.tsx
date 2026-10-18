@@ -1,9 +1,26 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
 import { dealDurationLabel } from './desktopDealStudio';
+import {
+  DEAL_TYPE_OPTIONS,
+  DEFAULT_BUNDLE_CATALOG,
+  claimLimitLabel,
+  dealTypeTitle,
+  describeComboRules,
+  formatFlashValidity,
+  resolveDealPricing,
+  validateDealConfiguration,
+} from '../deals/dealStudioShared';
+import {
+  DEAL_PUBLICATION_COPY,
+  publishDeal,
+  type DealPublicationResult,
+} from '../deals/dealPublication';
 
 interface DesktopDealStudioStep4ScreenProps {
   draft: ProductDraft;
@@ -15,6 +32,7 @@ interface DesktopDealStudioStep4ScreenProps {
   onPublish: () => void;
   onAnalytics: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: string) => void;
 }
 
 const SHOWCASE_IMAGES: Array<{ src: string; alt: string }> = [
@@ -47,17 +65,6 @@ const BRANCH_ROWS: Array<{ key: keyof DealStudioDraft['branches']; label: string
   { key: 'maitama', label: 'Maitama Heights' },
 ];
 
-const MEMBER_STEPS = [
-  'Member taps voucher in VEMTAP and secures unique dynamic QR token.',
-  'Presents QR at Wuse II or Garki II before meal prep / bill closure.',
-];
-
-const MERCHANT_TERMS = [
-  'Valid strictly for dine-in & takeaway orders; not redeemable for alcohol swaps.',
-  'Cannot be combined with in-house loyalty stamp cards or lunch combos.',
-  'Unredeemed claims automatically roll back to merchant after Nov 2, 2025.',
-];
-
 const TO_NUMBER = (value: string) => {
   const parsed = Number.parseInt(value.replace(/\D/g, ''), 10);
   return Number.isNaN(parsed) ? 0 : parsed;
@@ -75,16 +82,54 @@ export function DesktopDealStudioStep4Screen({
   onPublish,
   onAnalytics,
   onSaveDraft,
+  onNav,
 }: DesktopDealStudioStep4ScreenProps) {
   const [showModal, setShowModal] = useState(false);
+  const [publication, setPublication] = useState<DealPublicationResult | null>(null);
 
+  const activeVariants = getActiveVariants(draft);
   const variantPriceSource =
-    draft.variants.find((variant) => variant.name === 'Regular')?.price ?? draft.variants[0]?.price ?? draft.basePrice;
+    activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice;
   const parsedVariantPrice = TO_NUMBER(variantPriceSource);
   const basePrice = parsedVariantPrice > 0 ? parsedVariantPrice : TO_NUMBER(draft.basePrice);
   const discount = studio.discountPct;
-  const dealPrice = Math.round(basePrice * (1 - discount / 100));
-  const savings = basePrice - dealPrice;
+  const bundleCatalog = [{ id: 'current', name: draft.title, price: basePrice }, ...DEFAULT_BUNDLE_CATALOG];
+  const pricing = resolveDealPricing(studio, basePrice, bundleCatalog);
+  const dealPrice = pricing.dealPrice;
+  const savings = pricing.savings;
+  const savingsPct = pricing.savingsPct;
+  const strategyTitle = dealTypeTitle(studio.strategy);
+  const strategyIcon = DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
+  const comboRules = studio.strategy === 'combo' ? describeComboRules(studio.combo, basePrice, bundleCatalog) : [];
+
+  // Everything that must hold before the deal can be published: pricing rules
+  // plus the operational requirements the storefront/customers rely on.
+  const readinessErrors: string[] = [
+    ...validateDealConfiguration(studio, basePrice, bundleCatalog),
+    ...(studio.vouchers <= 0 ? ['Set the total promotional quantity to at least 1.'] : []),
+    ...(studio.claimSteps.length === 0 ? ['Add at least one “how to claim” instruction.'] : []),
+    ...(studio.terms.length === 0 ? ['Add at least one term & condition.'] : []),
+    ...(Object.values(studio.branches).every((value) => !value) ? ['Select at least one participating branch.'] : []),
+    ...(Object.values(studio.days).every((value) => !value) ? ['Select at least one redemption day.'] : []),
+  ];
+  const canPublish = readinessErrors.length === 0;
+
+  const handlePublish = () => {
+    if (!canPublish) return;
+    // The status here is whatever the service returns — not an assumption.
+    setPublication(publishDeal({ dealTitle: draft.title, studio }));
+    setShowModal(true);
+  };
+  const strategyDetail =
+    studio.strategy === 'fixed'
+      ? `Fixed Amount Off (₦${FORMAT_AMOUNT(studio.fixed.amountOff)} off${
+          studio.fixed.minSpend > 0 ? ` • min spend ₦${FORMAT_AMOUNT(studio.fixed.minSpend)}` : ''
+        })`
+      : studio.strategy === 'tiered'
+        ? `Tiered / Flash Happy Hour (${studio.flash.discountPct}% off in window)`
+        : studio.strategy === 'combo'
+          ? (comboRules[0] ?? 'Combo & Bundle Deal')
+          : `Percentage Discount (${discount}% Off)`;
   const activeBranches = BRANCH_ROWS.filter((branch) => studio.branches[branch.key]);
   const activeDays = DAY_ORDER.filter((day) => studio.days[day.key]);
   const dayIndices = activeDays.map((day) => DAY_ORDER.findIndex((entry) => entry.key === day.key));
@@ -97,11 +142,11 @@ export function DesktopDealStudioStep4Screen({
         ? `${activeDays[0].label} – ${activeDays[activeDays.length - 1].label}`
         : activeDays.map((day) => day.label).join(', ');
 
-  const claimLimit = studio.claimOnce ? '1 Per Customer' : `Up to ${studio.maxClaims} Per Customer`;
+  const claimLimit = claimLimitLabel(studio);
   const giftingPrivileges = !studio.gifting ? 'Not Allowed' : studio.otpVerify ? 'Allowed with OTP' : 'Allowed';
 
-  return (
-    <BusinessSetupChrome activeNav="deals">
+  const inner = (
+    <>
       <div className="w-full max-w-7xl mx-auto px-space-xl py-space-xl flex flex-col gap-space-2xl">
         <div className="flex flex-col gap-space-md">
           <div className="flex flex-wrap items-center justify-between gap-space-md">
@@ -177,7 +222,7 @@ export function DesktopDealStudioStep4Screen({
                   <img className="w-full h-full object-cover" alt={SHOWCASE_IMAGES[0].alt} src={SHOWCASE_IMAGES[0].src} />
                   <div className="absolute top-space-xs left-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-space-2xs shadow-sm">
                     <Icon name="local_offer" className="text-[14px]" />
-                    <span>{discount}% OFF</span>
+                    <span>{savingsPct}% OFF</span>
                   </div>
                 </div>
                 <div className="flex flex-col justify-between flex-1 gap-space-sm">
@@ -188,16 +233,21 @@ export function DesktopDealStudioStep4Screen({
                         <span>Auto-Synced</span>
                       </span>
                       <span className="px-space-xs py-space-2xs rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-caption text-caption font-semibold flex items-center gap-space-2xs">
-                        <Icon name="bolt" className="text-[14px]" />
-                        <span>Flash Deal</span>
+                        <Icon name={strategyIcon} className="text-[14px]" />
+                        <span>{strategyTitle}</span>
                       </span>
                     </div>
                     <h3 className="font-heading-sm text-heading-sm text-on-surface">
-                      {discount}% Off {draft.title}
+                      {studio.strategy === 'percentage'
+                        ? `${discount}% Off ${draft.title}`
+                        : `${strategyTitle}: ${draft.title}`}
                     </h3>
                     <p className="font-caption text-caption text-on-surface-variant line-clamp-2">
-                      Prime 45-day dry-aged Black Angus cut served with truffle chimichurri and flame-roasted bone
-                      marrow mash.
+                      {studio.strategy === 'tiered'
+                        ? `Validity: ${formatFlashValidity(studio.flash)} • ${studio.flash.days}, ${studio.flash.window}`
+                        : studio.strategy === 'combo'
+                          ? (comboRules[1] ?? comboRules[0] ?? '')
+                          : `${strategyDetail} — Prime 45-day dry-aged Black Angus cut served with truffle chimichurri and flame-roasted bone marrow mash.`}
                     </p>
                   </div>
                   <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-wrap items-baseline justify-between gap-space-xs">
@@ -207,11 +257,11 @@ export function DesktopDealStudioStep4Screen({
                         ₦{FORMAT_AMOUNT(dealPrice)}
                       </span>
                       <span className="font-label-sm text-label-sm text-text-tertiary line-through">
-                        ₦{FORMAT_AMOUNT(basePrice)}
+                        ₦{FORMAT_AMOUNT(pricing.originalTotal)}
                       </span>
                     </div>
                     <span className="font-caption text-caption font-semibold text-badge-discount-text">
-                      Save ₦{FORMAT_AMOUNT(savings)} ({discount}% Off)
+                      Save ₦{FORMAT_AMOUNT(Math.max(savings, 0))} ({savingsPct}% Off)
                     </span>
                   </div>
                 </div>
@@ -239,12 +289,12 @@ export function DesktopDealStudioStep4Screen({
                     <Icon name="inventory_2" className="text-[20px]" />
                   </div>
                   <div className="flex flex-col">
-                    <span className="font-caption text-caption text-on-surface-variant">Available Vouchers</span>
+                    <span className="font-caption text-caption text-on-surface-variant">Quantity Limit</span>
                     <span className="font-label-md text-label-md text-on-surface font-semibold">
-                      {studio.vouchers} Total Vouchers
+                      {studio.vouchers} Total Units
                     </span>
                     <span className="font-caption text-caption text-badge-discount-text flex items-center gap-space-2xs mt-0.5">
-                      <Icon name="lock" className="text-[12px]" /> Inventory locked upon launch
+                      <Icon name="lock" className="text-[12px]" /> Total promotional stock
                     </span>
                   </div>
                 </div>
@@ -257,6 +307,20 @@ export function DesktopDealStudioStep4Screen({
                     <span className="font-label-md text-label-md text-on-surface font-semibold">{claimLimit}</span>
                     <span className="font-caption text-caption text-on-surface-variant mt-0.5">
                       Fair-share community rule applied
+                    </span>
+                  </div>
+                </div>
+                <div className="p-space-md rounded-xl bg-surface-subtle flex items-start gap-space-sm">
+                  <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-primary">
+                    <Icon name="shopping_cart" className="text-[20px]" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-caption text-caption text-on-surface-variant">Max Per Order</span>
+                    <span className="font-label-md text-label-md text-on-surface font-semibold">
+                      {studio.maxUnitsPerOrder} Units
+                    </span>
+                    <span className="font-caption text-caption text-on-surface-variant mt-0.5">
+                      Per single order or redemption
                     </span>
                   </div>
                 </div>
@@ -384,25 +448,22 @@ export function DesktopDealStudioStep4Screen({
                     How Member Claims (Customer Flow)
                   </span>
                   <ol className="flex flex-col gap-space-sm pl-space-2xs">
-                    {MEMBER_STEPS.map((step, index) => (
+                    {studio.claimSteps.length === 0 && (
+                      <li className="font-body-md text-body-md text-error">
+                        No claim instructions yet — add them in “How to Claim”.
+                      </li>
+                    )}
+                    {studio.claimSteps.map((step, index) => (
                       <li
-                        key={step}
+                        key={`${index}-${step}`}
                         className="flex items-start gap-space-xs font-body-md text-body-md text-on-surface-variant"
                       >
                         <span className="font-semibold text-primary font-caption text-caption px-space-xs py-space-2xs rounded-full bg-surface-tint-blue shrink-0">
-                          {index === 0 ? '01' : '02'}
+                          {String(index + 1).padStart(2, '0')}
                         </span>
                         <span>{step}</span>
                       </li>
                     ))}
-                    <li className="flex items-start gap-space-xs font-body-md text-body-md text-on-surface-variant">
-                      <span className="font-semibold text-primary font-caption text-caption px-space-xs py-space-2xs rounded-full bg-surface-tint-blue shrink-0">
-                        03
-                      </span>
-                      <span>
-                        Cashier scans token with VEMTAP Business scanner; ₦{FORMAT_AMOUNT(dealPrice)} paid instantly.
-                      </span>
-                    </li>
                   </ol>
                 </div>
                 <div className="flex flex-col gap-space-sm">
@@ -411,9 +472,14 @@ export function DesktopDealStudioStep4Screen({
                     Enforced Merchant Terms
                   </span>
                   <ul className="flex flex-col gap-space-sm">
-                    {MERCHANT_TERMS.map((term) => (
+                    {studio.terms.length === 0 && (
+                      <li className="font-body-md text-body-md text-error">
+                        No terms yet — add them in “Terms &amp; Conditions”.
+                      </li>
+                    )}
+                    {studio.terms.map((term, index) => (
                       <li
-                        key={term}
+                        key={`${index}-${term}`}
                         className="flex items-start gap-space-xs font-body-md text-body-md text-on-surface-variant"
                       >
                         <Icon name="check_circle" className="text-[18px] text-badge-discount-text shrink-0 mt-0.5" />
@@ -513,13 +579,34 @@ export function DesktopDealStudioStep4Screen({
                 </div>
               </div>
               <div className="flex flex-col gap-space-sm pt-space-md">
+                {!canPublish && (
+                  <div className="rounded-xl bg-error/5 border border-error/20 p-space-sm flex flex-col gap-space-2xs">
+                    <span className="font-label-sm text-label-sm text-error font-semibold flex items-center gap-space-2xs">
+                      <Icon name="error" className="text-[16px]" />
+                      Complete these before publishing
+                    </span>
+                    <ul className="flex flex-col gap-1">
+                      {readinessErrors.map((error) => (
+                        <li key={error} className="font-caption text-caption text-error flex items-start gap-space-2xs">
+                          <span className="mt-1 w-1 h-1 rounded-full bg-error shrink-0" />
+                          <span>{error}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <button
                   type="button"
-                  onClick={() => setShowModal(true)}
-                  className="w-full h-14 rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary-container/25 hover:bg-primary active:scale-[0.99] transition-all flex items-center justify-center gap-space-xs text-center cursor-pointer"
+                  onClick={handlePublish}
+                  disabled={!canPublish}
+                  className={`w-full h-14 rounded-xl font-button-primary text-button-primary shadow-lg flex items-center justify-center gap-space-xs text-center transition-all ${
+                    canPublish
+                      ? 'bg-primary-container text-on-primary shadow-primary-container/25 hover:bg-primary active:scale-[0.99] cursor-pointer'
+                      : 'bg-surface-container-high text-text-tertiary shadow-none cursor-not-allowed'
+                  }`}
                 >
                   <span>Publish Deal to Nearby Feeds</span>
-                  <span className="text-lg">🔥 🚀</span>
+                  <span className="text-lg">{canPublish ? '🔥 🚀' : '🔒'}</span>
                 </button>
                 <button
                   type="button"
@@ -556,7 +643,45 @@ export function DesktopDealStudioStep4Screen({
         </div>
       </div>
 
-      {showModal && (
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-sm w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back to Step 3: Branch Availability</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
+            >
+              <Icon name="save" className="text-[18px]" />
+              <span>Save as Draft</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={!canPublish}
+              className={`px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg flex items-center justify-center gap-space-xs transition-all ${
+                canPublish
+                  ? 'bg-primary hover:bg-primary-container text-on-primary shadow-primary/20 cursor-pointer'
+                  : 'bg-surface-container-high text-text-tertiary shadow-none cursor-not-allowed opacity-50'
+              }`}
+            >
+              <span>Publish Deal to Nearby Feeds</span>
+              <span className="text-lg">{canPublish ? '🔥 🚀' : '🔒'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showModal && publication && (
         <div
           className="fixed inset-0 z-50 bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-space-md"
           onClick={() => setShowModal(false)}
@@ -567,13 +692,18 @@ export function DesktopDealStudioStep4Screen({
             onClick={(event) => event.stopPropagation()}
             className="w-full max-w-md rounded-2xl bg-surface-container-lowest p-space-xl shadow-2xl flex flex-col items-center text-center gap-space-lg transform transition-all"
           >
-            <div className="w-16 h-16 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shadow-inner">
-              <Icon name="rocket_launch" className="text-[36px]" />
+            <div
+              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner ${DEAL_PUBLICATION_COPY[publication.status].tone}`}
+            >
+              <Icon name={DEAL_PUBLICATION_COPY[publication.status].icon} className="text-[36px]" />
             </div>
             <div className="flex flex-col gap-space-2xs">
-              <h3 className="font-heading-md text-heading-md text-on-surface font-bold">Deal Broadcast Live!</h3>
-              <p className="font-body-md text-body-md text-on-surface-variant">
-                Your woodfire ribeye steak flash promotion is now visible to ~1,420 members within 3.5 km.
+              <h3 className="font-heading-md text-heading-md text-on-surface font-bold">
+                {DEAL_PUBLICATION_COPY[publication.status].title}
+              </h3>
+              <p className="font-body-md text-body-md text-on-surface-variant">{publication.message}</p>
+              <p className="font-caption text-caption text-text-tertiary mt-space-2xs">
+                Status: {publication.status} • Ref {publication.reference}
               </p>
             </div>
             <div className="w-full flex flex-col gap-space-xs">
@@ -598,6 +728,19 @@ export function DesktopDealStudioStep4Screen({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (onNav) {
+    return (
+      <MerchantShell activeNav="business-deals" onNav={onNav}>
+        {inner}
+      </MerchantShell>
+    );
+  }
+  return (
+    <BusinessSetupChrome activeNav="deals">
+      {inner}
     </BusinessSetupChrome>
   );
 }

@@ -172,12 +172,12 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-caption text-text-tertiary">
-              <span>Store Ordering</span>
+              <span>Store Front</span>
               <span>/</span>
               <span className="text-text-primary font-semibold">Live Ordering Dashboard</span>
             </div>
             <h1 className="text-heading-xl font-heading-xl text-text-primary tracking-tight">
-              Store Ordering Dashboard
+              Store Front Dashboard
             </h1>
             <p className="text-body-sm text-text-secondary">
               Real-time customer orders placed via Store QR, Section QR, Product QR, and Public Storefront.

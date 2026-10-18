@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
+
 import { BusinessModeHeader } from './BusinessModeHeader';
 
 interface BusinessPosOrdersScreenProps {
@@ -36,9 +36,6 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay }: B
       <div className="flex flex-col w-full flex-1 pb-24">
         {/* Sub-Header / Location Bar Context */}
         <div className="px-margin pt-space-xs pb-space-sm flex items-center justify-between">
-          <div className="flex items-center gap-space-xs">
-            <BusinessBranchSelect leading="dot" nameClassName="font-heading-sm text-heading-sm text-text-primary" />
-          </div>
           <div className="flex items-center gap-space-xs">
             <button
               className="h-9 px-space-sm rounded-full bg-surface-container-high flex items-center gap-space-2xs text-on-surface-variant hover:bg-surface-variant transition-colors"

@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
-import type { DealStudioDraft } from './desktopDealStudio';
+import type { DealStudioDraft, DealStrategy } from './desktopDealStudio';
+import { DEAL_TYPE_OPTIONS, DEFAULT_BUNDLE_CATALOG, resolveDealPricing, validateDealConfiguration } from '../deals/dealStudioShared';
+import type { ComboProduct } from '../deals/dealStudioShared';
+import { DealTypeConfigurator, DealTypeSelector } from '../deals/DealStudioConfigurator';
 
 interface DesktopDealStudioStep1ScreenProps {
   draft: ProductDraft;
@@ -11,6 +16,7 @@ interface DesktopDealStudioStep1ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: string) => void;
 }
 
 const ITEM_IMAGE: Array<{ src: string; alt: string }> = [
@@ -24,38 +30,6 @@ const PREVIEW_IMAGES: Array<{ src: string; alt: string }> = [
   {
     src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCzBHh02gfmqp0x37SftNFU3itW4G36jPTi2zQ4yw8rmibfHzdVCK_Ckq8uge2v_9yzO2mQOI70JdHTyY46baSGvp3oI2esxrZU06uwa65zUWcat5YqlzUI0VrfPWT7WMkOzT1DcLTRo1hvQPVI5i-stgDgManlRU6vYwijTc-5WnhmTd_3_bzL--pB9doRxZPINchLIBn5jcVPnCCiI0Klf6-m64mVaIoxvKvaeoiM-jl43f2mrggoUg',
     alt: 'Tender woodfire ribeye steak sliced into pink medium rare strips with herb compound butter dripping on top, fresh fine dining ambiance, macro food photography',
-  },
-];
-
-const PRESETS: Array<{ val: number; label: string; sub?: 'price' | 'sweet' | 'volume' }> = [
-  { val: 15, label: '15%', sub: 'price' },
-  { val: 20, label: '20% OFF', sub: 'sweet' },
-  { val: 25, label: '25%', sub: 'price' },
-  { val: 30, label: '30%', sub: 'price' },
-  { val: 40, label: '40%', sub: 'volume' },
-];
-
-const ALTERNATIVES: Array<{ id: string; icon: string; title: string; tag: string; body: string }> = [
-  {
-    id: 'fixed',
-    icon: 'attach_money',
-    title: 'Fixed Amount Off (₦ Off)',
-    tag: 'Cart Trigger',
-    body: 'Flat monetary reduction (e.g., ₦2,500 off total table bill with minimum spend of ₦15,000).',
-  },
-  {
-    id: 'combo',
-    icon: 'fastfood',
-    title: 'Combo & Bundle Deal (BOGO / Pair)',
-    tag: 'High Margin',
-    body: 'Buy 1 Woodfire Steak Get 1 Craft Mocktail Free, or pair with Truffle Fries bundle.',
-  },
-  {
-    id: 'happy',
-    icon: 'schedule',
-    title: 'Tiered / Flash Happy Hour',
-    tag: 'Off-Peak Surge',
-    body: 'Deeper 30% discount automatically active during quiet mid-week lunches (Tuesday–Thursday 2–5 PM).',
   },
 ];
 
@@ -80,30 +54,39 @@ export function DesktopDealStudioStep1Screen({
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopDealStudioStep1ScreenProps) {
-  const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
+  const [page, setPage] = useState<'choose' | 'configure'>(studio.strategy ? 'configure' : 'choose');
 
+  const activeVariants = getActiveVariants(draft);
   const variantPriceSource =
-    draft.variants.find((variant) => variant.name === 'Regular')?.price ?? draft.variants[0]?.price ?? draft.basePrice;
+    activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice;
   const parsedVariantPrice = TO_NUMBER(variantPriceSource);
   const basePrice = parsedVariantPrice > 0 ? parsedVariantPrice : TO_NUMBER(draft.basePrice);
-  const discount = studio.discountPct;
-  const dealPrice = Math.round(basePrice * (1 - discount / 100));
-  const savings = basePrice - dealPrice;
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
 
-  const setDiscount = (value: number) => {
-    onStudioChange({ discountPct: Math.min(60, Math.max(5, value)) });
+  const bundleCatalog: ComboProduct[] = [
+    { id: 'current', name: draft.title, price: basePrice },
+    ...DEFAULT_BUNDLE_CATALOG,
+  ];
+  const activeStrategy = DEAL_TYPE_OPTIONS.find((item) => item.id === studio.strategy);
+  const configErrors = studio.strategy ? validateDealConfiguration(studio, basePrice, bundleCatalog) : [];
+  // Live preview math for whatever type is selected (percentage before a type is chosen).
+  const pricing = resolveDealPricing({ ...studio, strategy: studio.strategy ?? 'percentage' }, basePrice, bundleCatalog);
+
+  const chooseStrategy = (id: DealStrategy) => {
+    onStudioChange({ strategy: id });
+    setPage('configure');
+    window.scrollTo(0, 0);
   };
 
-  const presetSub = (preset: { val: number; sub?: 'price' | 'sweet' | 'volume' }) => {
-    if (preset.sub === 'sweet') return 'Sweet Spot';
-    if (preset.sub === 'volume') return 'High Volume';
-    return `₦${FORMAT_AMOUNT(Math.round(basePrice * (1 - preset.val / 100)))}`;
+  const backToChoose = () => {
+    setPage('choose');
+    window.scrollTo(0, 0);
   };
 
-  return (
-    <BusinessSetupChrome activeNav="deals">
+  const inner = (
+    <>
       <section className="w-full bg-surface-canvas shadow-sm">
         <div className="max-w-7xl mx-auto px-space-xl py-space-md">
           <div className="flex flex-wrap items-center justify-between gap-space-sm mb-space-md">
@@ -185,14 +168,25 @@ export function DesktopDealStudioStep1Screen({
               </span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold tracking-tight">
-              Choose Discount Strategy
+              {page === 'choose' ? 'Choose Discount Strategy' : (activeStrategy?.title ?? 'Configure Deal')}
             </h1>
             <p className="font-body-md text-body-md text-on-surface-variant mt-space-2xs max-w-2xl">
-              Select how your deal is priced and presented to drive fast foot-traffic and convert high-intent diners
-              nearby.
+              {page === 'choose'
+                ? 'Select how your deal is priced and presented to drive fast foot-traffic and convert high-intent diners nearby.'
+                : (activeStrategy?.description ?? '')}
             </p>
           </div>
           <div className="flex items-center gap-space-xs">
+            {page === 'configure' && (
+              <button
+                type="button"
+                onClick={backToChoose}
+                className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue text-primary font-label-md text-label-md hover:bg-secondary-fixed transition-colors flex items-center gap-space-xs"
+              >
+                <Icon name="swap_horiz" className="text-[18px]" />
+                <span>Change Deal Type</span>
+              </button>
+            )}
             <button
               type="button"
               className="px-space-md py-space-xs rounded-xl bg-surface-container-low hover:bg-surface-container font-label-md text-label-md text-on-surface-variant transition-colors flex items-center gap-space-xs"
@@ -250,247 +244,51 @@ export function DesktopDealStudioStep1Screen({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
           <div className="lg:col-span-7 flex flex-col gap-space-lg">
-            <button
-              type="button"
-              onClick={() => setSelectedStrategy('percentage')}
-              className={`w-full text-left bg-surface-canvas rounded-2xl p-space-md shadow-sm relative overflow-hidden transition-shadow ${
-                selectedStrategy === 'percentage' ? 'ring-1 ring-primary' : 'hover:shadow-md'
-              }`}
-            >
-              <div
-                className={`absolute top-0 left-0 right-0 h-1.5 ${
-                  selectedStrategy === 'percentage' ? 'bg-primary' : 'bg-surface-container-highest'
-                }`}
-              />
-              <div className="flex items-start justify-between gap-space-md mb-space-sm pt-space-2xs">
-                <div className="flex items-center gap-space-sm">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      selectedStrategy === 'percentage'
-                        ? 'bg-primary text-on-primary'
-                        : 'bg-surface-container-high text-on-surface-variant'
-                    }`}
-                  >
-                    <Icon name="percent" className="text-[24px]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-space-xs">
+            {page === 'choose' ? (
+              <>
+                <div className="flex items-center justify-between px-space-2xs">
+                  <span className="font-label-md text-label-md text-on-surface font-bold">
+                    Available Deal Types
+                  </span>
+                  <span className="font-caption text-caption text-on-surface-variant">
+                    Each type opens its own configuration step
+                  </span>
+                </div>
+                <DealTypeSelector selected={studio.strategy} onSelect={chooseStrategy} variant="desktop" />
+              </>
+            ) : (
+              <div className="bg-surface-canvas rounded-2xl p-space-md shadow-sm">
+                <div className="flex items-center justify-between mb-space-md">
+                  <div className="flex items-center gap-space-xs">
+                    <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0">
+                      <Icon name={activeStrategy?.icon ?? 'percent'} className="text-[22px]" />
+                    </div>
+                    <div>
                       <h2 className="font-heading-sm text-heading-sm text-on-surface font-bold">
-                        Percentage Discount (% Off)
+                        Configure {activeStrategy?.title}
                       </h2>
-                      <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold tracking-wide uppercase">
-                        Recommended
-                      </span>
+                      <p className="font-caption text-caption text-on-surface-variant">
+                        Set the rules, then review the live price breakdown before continuing
+                      </p>
                     </div>
-                    <p className="font-body-md text-body-md text-on-surface-variant">
-                      Most familiar to diners; maximizes spontaneous map click-throughs.
-                    </p>
                   </div>
-                </div>
-                <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center shadow-sm shrink-0 ${
-                    selectedStrategy === 'percentage' ? 'bg-primary text-on-primary' : 'bg-surface-container-highest'
-                  }`}
-                >
-                  <Icon name="check" className="text-[16px]" />
-                </div>
-              </div>
-
-              {selectedStrategy === 'percentage' ? (
-                <>
-                  <div className="mt-space-sm">
-                    <label className="block font-label-sm text-label-sm text-on-surface-variant font-medium mb-space-xs">
-                      Quick Strategy Presets
-                    </label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-space-xs">
-                  {PRESETS.map((preset) => {
-                    const active = preset.val === discount;
-                    return (
-                      <button
-                        key={preset.val}
-                        type="button"
-                        onClick={() => setDiscount(preset.val)}
-                        className={`py-space-sm px-space-xs rounded-xl font-label-md text-label-md text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                          active
-                            ? 'bg-primary text-on-primary shadow-md'
-                            : 'bg-surface-container-low hover:bg-surface-tint-blue text-on-surface'
-                        }`}
-                      >
-                        <span className="font-bold">{preset.label}</span>
-                        <span
-                          className={`font-caption text-caption scale-90 ${
-                            active ? 'text-on-primary opacity-90' : 'text-on-surface-variant'
-                          }`}
-                        >
-                          {presetSub(preset)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="mt-space-md p-space-sm rounded-xl bg-surface-container-low">
-                <div className="flex items-center justify-between mb-space-sm">
-                  <span className="font-label-md text-label-md text-on-surface font-semibold">
-                    Fine-tune Discount Rate
-                  </span>
-                  <div className="flex items-center gap-space-xs bg-surface-canvas rounded-xl px-space-sm py-space-2xs shadow-sm">
-                    <input
-                      className="w-12 bg-transparent text-right font-heading-sm text-heading-sm font-bold text-primary focus:outline-none"
-                      max={60}
-                      min={5}
-                      type="number"
-                      value={discount}
-                      onChange={(event) => setDiscount(Number(event.target.value))}
-                    />
-                    <span className="font-heading-sm text-heading-sm font-bold text-primary">%</span>
-                  </div>
-                </div>
-                <input
-                  className="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary"
-                  max={60}
-                  min={5}
-                  type="range"
-                  value={discount}
-                  onChange={(event) => setDiscount(Number(event.target.value))}
-                />
-                <div className="flex justify-between items-center mt-space-xs font-caption text-caption text-on-surface-variant">
-                  <span>5% (Light Promo)</span>
-                  <span className="text-primary font-semibold">20% - 25% (Sweet Spot)</span>
-                  <span>60% (Flash Clearance)</span>
-                </div>
-              </div>
-
-              <div className="mt-space-md rounded-2xl bg-surface-tint-blue p-space-sm">
-                <div className="flex items-center justify-between pb-space-xs mb-space-sm">
-                  <span className="font-label-md text-label-md text-primary font-bold flex items-center gap-1">
-                    <Icon name="calculate" className="text-[18px]" /> Real-Time Revenue &amp; Value Breakdown
-                  </span>
-                  <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    0% VEMTAP Commission
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-space-sm text-left">
-                  <div className="bg-surface-canvas p-space-sm rounded-xl shadow-sm">
-                    <span className="block font-caption text-caption text-on-surface-variant mb-1">
-                      Original Catalog
-                    </span>
-                    <span className="font-heading-sm text-heading-sm text-on-surface-variant line-through font-semibold">
-                      ₦{FORMAT_AMOUNT(basePrice)}
-                    </span>
-                    <span className="block font-caption text-caption text-text-tertiary mt-1">Base menu price</span>
-                  </div>
-                  <div className="bg-surface-canvas p-space-sm rounded-xl shadow-sm bg-gradient-to-br from-surface-canvas to-surface-tint-blue">
-                    <span className="block font-caption text-caption text-primary font-medium mb-1">
-                      Deal Member Price
-                    </span>
-                    <span className="font-heading-md text-heading-md text-primary font-bold tracking-tight">
-                      ₦{FORMAT_AMOUNT(dealPrice)}
-                    </span>
-                    <span className="block font-caption text-caption text-primary font-medium mt-1">
-                      Diner pays on tap
-                    </span>
-                  </div>
-                  <div className="bg-surface-canvas p-space-sm rounded-xl shadow-sm">
-                    <span className="block font-caption text-caption text-on-surface-variant mb-1">
-                      Customer Savings
-                    </span>
-                    <span className="font-heading-sm text-heading-sm text-badge-discount-text font-bold">
-                      ₦{FORMAT_AMOUNT(savings)}
-                    </span>
-                    <span className="block font-caption text-caption text-badge-discount-text font-medium mt-1">
-                      {discount}% Direct Value
-                    </span>
-                  </div>
-                  <div className="bg-surface-canvas p-space-sm rounded-xl shadow-sm">
-                    <span className="block font-caption text-caption text-on-surface-variant mb-1">
-                      Net Take-Home
-                    </span>
-                    <span className="font-heading-sm text-heading-sm text-on-surface font-bold">
-                      ₦{FORMAT_AMOUNT(dealPrice)}
-                    </span>
-                    <span className="block font-caption text-caption text-on-surface-variant mt-1">
-                      Instant Direct Payout
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-space-sm flex items-center justify-between text-on-surface-variant font-caption text-caption pt-space-xs">
-                  <span className="flex items-center gap-1">
-                    <Icon name="verified" className="text-[15px] text-badge-discount-text" />
-                    VEMTAP zero-intermediary guarantee: Diners pay direct via terminal at your location.
-                  </span>
-                  <button type="button" className="text-primary hover:underline font-medium">
-                    Fee policy details
-                  </button>
-                </div>
-              </div>
-                </>
-              ) : (
-                <div className="mt-space-md rounded-xl border border-dashed border-outline-variant p-space-md text-center">
-                  <div className="w-9 h-9 rounded-xl bg-surface-container-high text-primary flex items-center justify-center mx-auto mb-space-xs">
-                    <Icon name="touch_app" className="text-[20px]" />
-                  </div>
-                  <span className="font-label-sm text-label-sm text-on-surface-variant">
-                    Select Percentage Discount to configure presets, fine-tuning and live pricing math
-                  </span>
-                </div>
-              )}
-            </button>
-
-            <div className="flex flex-col gap-space-md">
-              <div className="flex items-center justify-between px-space-2xs">
-                <span className="font-label-md text-label-md text-on-surface font-bold">
-                  Alternative Promotional Strategies
-                </span>
-                <span className="font-caption text-caption text-on-surface-variant">
-                  Switch to test other dynamic models
-                </span>
-              </div>
-              {ALTERNATIVES.map((option) => {
-                const active = selectedStrategy === option.id;
-                return (
                   <button
-                    key={option.id}
                     type="button"
-                    onClick={() => setSelectedStrategy(option.id)}
-                    className={`w-full text-left rounded-2xl p-space-sm shadow-sm hover:shadow-md transition-shadow cursor-pointer flex items-center justify-between gap-space-sm ${
-                      active ? 'bg-surface-tint-blue ring-1 ring-primary' : 'bg-surface-canvas'
-                    }`}
+                    onClick={backToChoose}
+                    className="px-space-sm py-space-2xs rounded-lg bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container transition-colors flex items-center gap-space-2xs"
                   >
-                    <div className="flex items-center gap-space-md">
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          active ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
-                        }`}
-                      >
-                        <Icon name={option.icon} className="text-[22px]" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-space-xs">
-                          <h3 className="font-label-md text-label-md text-on-surface font-bold">{option.title}</h3>
-                          <span className="px-space-xs py-space-2xs rounded bg-surface-container text-on-surface-variant font-caption text-caption">
-                            {option.tag}
-                          </span>
-                        </div>
-                        <p className="font-caption text-caption text-on-surface-variant mt-0.5 text-left">
-                          {option.body}
-                        </p>
-                      </div>
-                    </div>
-                    <div
-                      className={`w-5 h-5 rounded-full shrink-0 flex items-center justify-center ${
-                        active ? 'bg-primary' : 'bg-surface-container-highest'
-                      }`}
-                    >
-                      <span
-                        className={`w-2.5 h-2.5 rounded-full ${active ? 'bg-on-primary' : 'bg-transparent'}`}
-                      />
-                    </div>
+                    <Icon name="arrow_back" className="text-[14px]" />
+                    <span>Back to Types</span>
                   </button>
-                );
-              })}
-            </div>
+                </div>
+                <DealTypeConfigurator
+                  basePrice={basePrice}
+                  catalog={bundleCatalog}
+                  studio={studio}
+                  onStudioChange={onStudioChange}
+                />
+              </div>
+            )}
 
             <div className="rounded-2xl bg-gradient-to-r from-surface-tint-blue to-surface-canvas p-space-md shadow-sm flex items-start gap-space-md">
               <div className="w-12 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-md">
@@ -544,7 +342,7 @@ export function DesktopDealStudioStep1Screen({
                     />
                     <div className="absolute top-3 left-3 px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm flex items-center gap-1">
                       <Icon name="bolt" className="text-[14px]" />
-                      <span>{discount}% OFF</span>
+                      <span>{Math.max(pricing.savingsPct, 0)}% OFF</span>
                     </div>
                     <div className="absolute top-3 right-3 px-space-xs py-space-2xs rounded-full bg-inverse-surface/80 text-inverse-on-surface backdrop-blur font-caption text-caption flex items-center gap-1">
                       <Icon name="location_on" className="text-[13px]" />
@@ -564,17 +362,17 @@ export function DesktopDealStudioStep1Screen({
                     </div>
                     <h3 className="font-heading-sm text-heading-sm text-on-surface font-bold">{draft.title}</h3>
                     <p className="font-caption text-caption text-on-surface-variant line-clamp-1">
-                      350g prime rib cut with garlic rosemary glaze &amp; side greens
+                      {studio.strategy ? 'Deal configured in the Deal Studio' : '350g prime rib cut with garlic rosemary glaze & side greens'}
                     </p>
                     <div className="flex items-baseline gap-space-xs mt-space-2xs pt-space-2xs">
                       <span className="font-heading-md text-heading-md font-bold text-primary">
-                        ₦{FORMAT_AMOUNT(dealPrice)}
+                        ₦{FORMAT_AMOUNT(pricing.dealPrice)}
                       </span>
                       <span className="font-label-md text-label-md text-on-surface-variant line-through font-normal">
-                        ₦{FORMAT_AMOUNT(basePrice)}
+                        ₦{FORMAT_AMOUNT(pricing.originalTotal)}
                       </span>
                       <span className="font-caption text-caption font-semibold text-badge-discount-text ml-auto bg-badge-discount-bg px-space-xs py-space-2xs rounded-md">
-                        Save ₦{FORMAT_AMOUNT(savings)}
+                        Save ₦{FORMAT_AMOUNT(Math.max(pricing.savings, 0))}
                       </span>
                     </div>
                     <div className="mt-space-sm pt-space-xs">
@@ -639,7 +437,7 @@ export function DesktopDealStudioStep1Screen({
                   <div className="flex-1 bg-primary/50 rounded-t h-[70%]" title="Day 3: 9" />
                   <div className="flex-1 bg-primary/70 rounded-t h-[85%]" title="Day 4: 11" />
                   <div className="flex-1 bg-primary rounded-t h-[100%]" title="Day 5: 14" />
-                  <div className="flex-1 bg-primary rounded-t h-[90%]" title="Day 6: 12" />
+                  <div className="flex-1 bg-primary/90 rounded-t h-[90%]" title="Day 6: 12" />
                   <div className="flex-1 bg-primary/60 rounded-t h-[60%]" title="Day 7: 8" />
                 </div>
                 <div className="flex justify-between text-on-surface-variant font-caption text-caption text-[11px] mt-1">
@@ -657,15 +455,18 @@ export function DesktopDealStudioStep1Screen({
           </div>
         </div>
 
-        <div className="mt-space-xl pt-space-md bg-surface-canvas rounded-2xl p-space-md shadow-sm flex flex-col sm:flex-row items-center justify-between gap-space-md">
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-sm order-2 sm:order-1">
             <button
               type="button"
-              onClick={onBack}
+              onClick={page === 'configure' ? backToChoose : onBack}
               className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
             >
               <Icon name="arrow_back" className="text-[18px]" />
-              <span>Back to Catalog</span>
+              <span>{page === 'configure' ? 'Back to Deal Types' : 'Back to Catalog'}</span>
             </button>
             <button
               type="button"
@@ -673,31 +474,48 @@ export function DesktopDealStudioStep1Screen({
               className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
             >
               <Icon name="save" className="text-[18px]" />
-              <span>Save as Draft &amp; Exit</span>
+              <span>Save as Draft</span>
             </button>
           </div>
           <div className="flex items-center gap-space-md w-full sm:w-auto order-1 sm:order-2">
             <div className="hidden md:flex flex-col text-right">
               <span className="font-caption text-caption text-on-surface-variant">Selected Strategy:</span>
               <span className="font-label-md text-label-md text-on-surface font-bold">
-                {selectedStrategy === 'percentage'
-                  ? `${discount}% Percentage Discount (₦${FORMAT_AMOUNT(dealPrice)})`
-                  : selectedStrategy
-                    ? (ALTERNATIVES.find((option) => option.id === selectedStrategy)?.title ?? 'Strategy selected')
-                    : 'No strategy selected yet'}
+                {studio.strategy
+                  ? `${activeStrategy?.title ?? 'Strategy'} (₦${FORMAT_AMOUNT(pricing.dealPrice)})`
+                  : 'No strategy selected yet'}
               </span>
+              {studio.strategy && configErrors.length > 0 && (
+                <span className="font-caption text-caption text-error">{configErrors[0]}</span>
+              )}
             </div>
             <button
               type="button"
-              onClick={onNext}
-              className="w-full sm:w-auto px-space-xl py-space-sm rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs"
+              disabled={!studio.strategy || configErrors.length > 0}
+              onClick={() => {
+                if (studio.strategy && configErrors.length === 0) onNext();
+              }}
+              className="w-full sm:w-auto px-space-xl py-space-sm rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs disabled:opacity-40 disabled:shadow-none"
             >
-              <span>Continue to Limits &amp; Rules</span>
-              <Icon name="arrow_forward" className="text-[20px]" />
+              <span>{!studio.strategy ? 'Select a deal type to continue' : configErrors.length > 0 ? 'Fix setup to continue' : 'Continue to Limits & Rules'}</span>
+              {studio.strategy && configErrors.length === 0 && <Icon name="arrow_forward" className="text-[20px]" />}
             </button>
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (onNav) {
+    return (
+      <MerchantShell activeNav="business-deals" onNav={onNav}>
+        {inner}
+      </MerchantShell>
+    );
+  }
+  return (
+    <BusinessSetupChrome activeNav="deals">
+      {inner}
     </BusinessSetupChrome>
   );
 }

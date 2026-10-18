@@ -6,6 +6,7 @@ interface SubscriptionTrialActiveScreenProps {
   onBack: () => void;
   onExploreDashboard: () => void;
   onSubscribe: () => void;
+  onCreateCampaign?: () => void;
 }
 
 const TRIAL_INCLUDES = [
@@ -28,6 +29,7 @@ export function SubscriptionTrialActiveScreen({
   onBack,
   onExploreDashboard,
   onSubscribe,
+  onCreateCampaign,
 }: SubscriptionTrialActiveScreenProps) {
   return (
     <AppScreen surface="bg-surface-canvas">
@@ -93,19 +95,31 @@ export function SubscriptionTrialActiveScreen({
         </div>
 
         {/* Growth Visibility Nudge */}
-        <div className="bg-surface-canvas rounded-2xl p-3.5 shadow-sm flex items-start gap-3 border-l-4 border-primary-container mb-5">
-          <div className="w-9 h-9 rounded-full bg-surface-tint-blue flex items-center justify-center shrink-0">
-            <Icon name="rocket_launch" className="text-primary text-[20px]" />
+        <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm flex flex-col gap-3 border-l-4 border-primary-container mb-5">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-surface-tint-blue flex items-center justify-center shrink-0">
+              <Icon name="rocket_launch" className="text-primary text-[20px]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-label-md text-label-md font-semibold text-text-primary">
+                Get seen 3.4x more with Growth
+              </p>
+              <p className="font-caption text-caption text-text-secondary mt-0.5 leading-snug">
+                Your trial keeps the lights on — Growth puts you at the top of neighborhood discovery with priority pin
+                placement, the verified badge and hyperlocal deal broadcast.
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="font-label-md text-label-md font-semibold text-text-primary">
-              Get seen 3.4x more with Growth
-            </p>
-            <p className="font-caption text-caption text-text-secondary mt-0.5 leading-snug">
-              Your trial keeps the lights on — Growth puts you at the top of neighborhood discovery with priority pin
-              placement, the verified badge and hyperlocal deal broadcast.
-            </p>
-          </div>
+          {onCreateCampaign && (
+            <button
+              type="button"
+              onClick={onCreateCampaign}
+              className="w-full sm:w-auto self-start px-4 py-2 bg-primary-container active:scale-[0.98] transition-all rounded-xl flex items-center justify-center gap-2 text-on-primary font-label-md text-label-md font-semibold shadow-[0_4px_14px_-3px_rgba(6,108,244,0.35)]"
+            >
+              <Icon name="campaign" className="text-[18px]" />
+              <span>Create Campaign</span>
+            </button>
+          )}
         </div>
 
         {/* Action CTAs */}
@@ -115,7 +129,7 @@ export function SubscriptionTrialActiveScreen({
             type="button"
             onClick={onExploreDashboard}
           >
-            <span>Explore My Business Dashboard</span>
+            <span>Continue to Cluster</span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
           <button

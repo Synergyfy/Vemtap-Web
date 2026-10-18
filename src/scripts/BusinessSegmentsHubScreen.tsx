@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 export interface SegmentRef {
   name: string;
@@ -406,17 +407,8 @@ export function BusinessSegmentsHubScreen({
             </div>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
-            <button
-              aria-label="Notifications"
-              className="w-10 h-10 flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-container transition-colors"
-              type="button"
-              onClick={() => showToast('No new segment notifications')}
-            >
-              <Icon className="text-[22px]" name="notifications" />
-            </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon className="text-on-primary text-[18px]" name="person" />
-            </div>
+            <MobileNotificationBell />
+            <MobileAccountMenu />
           </div>
         </div>
         <div className="flex items-center gap-space-xs overflow-x-auto px-margin pb-space-xs">

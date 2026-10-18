@@ -7,6 +7,10 @@ interface DesktopDealAnalyticsScreenProps {
   onEditPricing?: () => void;
   onConfigureCap?: () => void;
   onChat?: () => void;
+  /** Opens the Boost Studio with this deal preselected. */
+  onBoost?: () => void;
+  /** Opens the deal studio so every part of the deal can be edited. */
+  onEditDeal?: () => void;
 }
 
 const HERO_IMAGE =
@@ -23,6 +27,8 @@ export function DesktopDealAnalyticsScreen({
   onEditPricing,
   onConfigureCap,
   onChat,
+  onBoost,
+  onEditDeal,
 }: DesktopDealAnalyticsScreenProps) {
   return (
     <MerchantWorkspaceChrome activeNav="business-deals" onNav={onNav}>
@@ -84,6 +90,7 @@ export function DesktopDealAnalyticsScreen({
           <div className="flex flex-wrap items-center gap-space-xs flex-shrink-0">
             <button
               type="button"
+              onClick={onBoost}
               className="h-[48px] px-space-md rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center gap-space-xs shadow-md hover:bg-primary transition-all active:scale-[0.98]"
             >
               <Icon name="rocket_launch" className="text-[20px]" />
@@ -91,6 +98,7 @@ export function DesktopDealAnalyticsScreen({
             </button>
             <button
               type="button"
+              onClick={onEditDeal}
               className="h-[48px] px-space-md rounded-xl bg-surface-canvas text-text-primary font-button-secondary text-button-secondary shadow-sm hover:bg-surface-subtle transition-colors flex items-center gap-1.5"
             >
               <Icon name="edit" className="text-text-secondary text-[18px]" />

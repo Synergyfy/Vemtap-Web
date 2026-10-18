@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { CalendarPicker } from '../components/ui/CalendarPicker';
+import { SheetShell } from '../components/sheets/SheetShell';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
 import { BusinessModeHeader } from './BusinessModeHeader';
+import { spaDateKey, spaToday } from './spaBookingData';
 
 interface BusinessBookingsHubScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -27,6 +29,22 @@ const CALENDAR_DAYS = [
   { key: 'mon', top: 'Mon', day: '21', sub: 'Oct' },
   { key: 'tue', top: 'Tue', day: '22', sub: 'Oct' },
 ];
+
+const todayISO = () => spaDateKey(spaToday());
+
+/** Baseline bookings per weekday (Sun → Sat); Mondays the venue is closed. */
+const WEEKDAY_BOOKINGS = [7, 0, 4, 5, 5, 6, 8];
+
+/** Deterministic booking count for a date — caption shown under each calendar day. */
+const bookingsForIso = (iso: string, todayCount: number) => {
+  if (iso === todayISO()) return todayCount;
+  const weekday = new Date(`${iso}T00:00:00`).getDay();
+  if (weekday === 1) return 0;
+  const day = Number(iso.slice(8, 10));
+  const month = Number(iso.slice(5, 7));
+  const swing = (day * 3 + month) % 4;
+  return Math.max(1, WEEKDAY_BOOKINGS[weekday] - swing);
+};
 
 interface BookingRow {
   time: string;
@@ -132,19 +150,27 @@ export function BusinessBookingsHubScreen({
   const [activeDay, setActiveDay] = useState('today');
   const [statusPill, setStatusPill] = useState<BookingStatusKey>('upcoming');
   const [checkedIn, setCheckedIn] = useState(false);
+  // Full calendar — month grid with the booking count for every day.
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedISO, setSelectedISO] = useState<string>(() => todayISO());
 
   return (
     <AppScreen>
       <BusinessModeHeader title="Orders" />
       <div className="flex flex-col w-full flex-1 pb-24">
-        {/* Dynamic Location Switcher & Context Action Bar */}
+        {/* Context Action Bar */}
         <div className="px-margin pt-space-sm pb-space-xs flex items-center justify-between">
-          <BusinessBranchSelect leading="location" />
           <div className="flex items-center gap-space-xs">
             <button
               aria-label="Open Calendar Grid"
-              className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface-variant active:bg-surface-container-high transition-colors"
+              aria-pressed={calendarOpen}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                calendarOpen
+                  ? 'bg-primary-container text-on-primary'
+                  : 'bg-surface-container-low text-on-surface-variant active:bg-surface-container-high'
+              }`}
               type="button"
+              onClick={() => setCalendarOpen((open) => !open)}
             >
               <Icon name="calendar_month" className="text-[20px]" />
             </button>
@@ -342,6 +368,59 @@ export function BusinessBookingsHubScreen({
           ))}
         </div>
       </div>
+      {/* Full calendar — the booking count sits under every day */}
+      <SheetShell open={calendarOpen} onClose={() => setCalendarOpen(false)}>
+        <div className="px-margin py-space-md flex flex-col gap-space-sm">
+          <div className="flex items-start justify-between gap-space-sm">
+            <div className="flex flex-col">
+              <h3 className="font-heading-sm text-heading-sm text-on-surface">Full Calendar</h3>
+              <span className="font-caption text-caption text-text-secondary">
+                Number of bookings on each day
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Close calendar"
+              onClick={() => setCalendarOpen(false)}
+              className="w-8 h-8 rounded-full bg-surface-container-low flex items-center justify-center text-text-secondary shrink-0"
+            >
+              <Icon name="close" className="text-[18px]" />
+            </button>
+          </div>
+
+          <div className="rounded-2xl bg-surface-container-lowest p-space-sm">
+            <CalendarPicker
+              valueISO={selectedISO}
+              onSelect={setSelectedISO}
+              isDateDisabled={(date) => {
+                const start = spaToday();
+                start.setHours(0, 0, 0, 0);
+                return date.getTime() < start.getTime();
+              }}
+              dateNote={(iso) => {
+                const count = bookingsForIso(iso, BOOKING_ROWS.length);
+                if (!count) return undefined;
+                return { label: `${count}`, tone: count >= 6 ? 'discount' : 'default' };
+              }}
+            />
+          </div>
+
+          <div className="rounded-xl bg-surface-container-low px-space-sm py-space-xs flex items-center justify-between gap-space-sm">
+            <span className="font-label-sm text-label-sm text-on-surface font-semibold truncate">
+              {new Date(`${selectedISO}T00:00:00`).toLocaleDateString('en-GB', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'long',
+              })}
+            </span>
+            <span className="font-label-sm text-label-sm text-primary shrink-0">
+              {bookingsForIso(selectedISO, BOOKING_ROWS.length)} booking
+              {bookingsForIso(selectedISO, BOOKING_ROWS.length) === 1 ? '' : 's'}
+            </span>
+          </div>
+        </div>
+      </SheetShell>
+
       <BusinessTabBar onTab={onTab} />
     </AppScreen>
   );

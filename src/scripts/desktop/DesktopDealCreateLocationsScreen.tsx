@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printKvTable, printReport } from '../../utils/printReport';
 interface DesktopDealCreateLocationsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onBack?: () => void;
@@ -27,6 +29,77 @@ export function DesktopDealCreateLocationsScreen({
     [],
   );
   const handleSelectAll = () => setBranches((prev) => ({ ...prev, wuse: true, vi: true }));
+
+  const MATRIX = [
+    {
+      branch: 'Wuse Branch',
+      status: 'Live & Accepting',
+      location: 'Central Area, Abuja, FCT',
+      participating: branches.wuse,
+      price: '₦9,600',
+      pricingNote: 'Standard MSRP -20%',
+      allocation: '50 vouchers',
+      customPrice: customPrice.wuse ? 'Yes' : 'No',
+    },
+    {
+      branch: 'Victoria Island Branch',
+      status: 'Live & Accepting',
+      location: 'Lagos Island, Lagos State',
+      participating: branches.vi,
+      price: '₦10,800',
+      pricingNote: '+₦1,200 logistics surcharge (10% off Lagos MSRP)',
+      allocation: '30 vouchers',
+      customPrice: customPrice.vi ? 'Yes' : 'No',
+    },
+    {
+      branch: 'Garki Branch',
+      status: 'Renovation / Paused',
+      location: 'Area 11, Garki, Abuja, FCT',
+      participating: branches.garki,
+      price: 'Excluded from active deal rotation',
+      pricingNote: 'Auto-activates once reopening is confirmed',
+      allocation: '—',
+      customPrice: 'No',
+    },
+  ];
+
+  const handleExportMatrix = () => {
+    downloadCsv(
+      'prime-lunch-combo-pricing-matrix.csv',
+      ['Branch', 'Status', 'Location', 'Participating', 'Deal price', 'Pricing note', 'Weekly allocation', 'Custom price'],
+      MATRIX.map((row) => [
+        row.branch,
+        row.status,
+        row.location,
+        row.participating ? 'Yes' : 'No',
+        row.price,
+        row.pricingNote,
+        row.allocation,
+        row.customPrice,
+      ]),
+    );
+    printReport(
+      'Prime Lunch Combo — Branch Participation & Pricing Matrix',
+      `${printKvTable('Deal', [
+        ['Deal', 'Prime Lunch Combo'],
+        ['Base discount', '20% Off MSRP'],
+        ['Standard deal price', '₦9,600 (MSRP ₦12,000)'],
+        ['Schedule', 'Mon–Fri 12:00 PM – 4:00 PM • Valid 30 days'],
+      ])}
+       ${printKvTable(
+         'Branch matrix',
+         MATRIX.map(
+           (row) =>
+             [
+               `${row.branch} — ${row.status}`,
+               `${row.participating ? 'Participating' : 'Not participating'} • ${row.price} • ${row.allocation} • ${row.pricingNote}`,
+             ] as [string, string],
+         ),
+       )}
+       <p class="foot">A CSV copy of this matrix downloaded alongside the PDF.</p>`,
+    );
+  };
+
   const handleSaveDraft = () => {
     draftTimers.current.forEach((timer) => window.clearTimeout(timer));
     draftTimers.current = [];
@@ -243,6 +316,7 @@ export function DesktopDealCreateLocationsScreen({
                     <button
                       type="button"
                       title="Export matrix specs"
+                      onClick={handleExportMatrix}
                       className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-container-low transition-colors"
                     >
                       <Icon name="download" className="text-[20px]" />

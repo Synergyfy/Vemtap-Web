@@ -3,14 +3,19 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { naira } from './catalogueData';
 import { cartCount, cartTotals, type PosCartLine } from './posCartData';
+import { POS_CUSTOMERS } from './desktop/posRegisterExtras';
+import { usePosSettings } from '../context/PosSettingsContext';
 
 interface BusinessPosCartScreenProps {
   cart: PosCartLine[];
   onCartChange: Dispatch<SetStateAction<PosCartLine[]>>;
   customer: string | null;
+  /** Points awarded to this customer earlier in the sale (e.g. at payment). */
+  customerBonus: number;
   onBack: () => void;
   onCharge: () => void;
   onOpenCustomer: () => void;
+  onRemoveCustomer: () => void;
 }
 
 const QUICK_ACTIONS = [
@@ -24,11 +29,16 @@ export function BusinessPosCartScreen({
   cart,
   onCartChange,
   customer,
+  customerBonus,
   onBack,
   onCharge,
   onOpenCustomer,
+  onRemoveCustomer,
 }: BusinessPosCartScreenProps) {
   const attached = customer !== null;
+  const customerRecord = customer ? POS_CUSTOMERS.find((entry) => entry.name === customer) : undefined;
+  const memberPoints = (customerRecord?.points ?? 0) + customerBonus;
+  const { taxMode, taxRate, taxLabel } = usePosSettings();
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -46,7 +56,7 @@ export function BusinessPosCartScreen({
   };
 
   const count = cartCount(cart);
-  const { subtotal, discount, vat, total } = cartTotals(cart);
+  const { subtotal, discount, vat, total } = cartTotals(cart, taxMode, taxRate / 100);
 
   const changeQty = (id: string, delta: number) => {
     onCartChange((prev) =>
@@ -124,14 +134,16 @@ export function BusinessPosCartScreen({
       <div className="flex flex-col pb-36">
         {/* Loyalty banner */}
         <div className="px-margin py-space-2xs">
-          <button
-            type="button"
-            onClick={onOpenCustomer}
-            className={`w-full rounded-xl p-space-sm shadow-sm flex items-center justify-between gap-space-xs text-left active:scale-[0.99] transition-transform ${
+          <div
+            className={`w-full rounded-xl p-space-sm shadow-sm flex items-center justify-between gap-space-xs ${
               attached ? 'bg-badge-discount-bg' : 'bg-surface-container-high'
             }`}
           >
-            <div className="flex items-center gap-space-xs min-w-0">
+            <button
+              type="button"
+              onClick={onOpenCustomer}
+              className="flex items-center gap-space-xs min-w-0 flex-1 text-left active:scale-[0.99] transition-transform"
+            >
               <span
                 className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
                   attached ? 'bg-badge-discount-text/15' : 'bg-primary-fixed'
@@ -143,23 +155,37 @@ export function BusinessPosCartScreen({
                   className={`text-[18px] ${attached ? 'text-badge-discount-text' : 'text-on-primary-fixed'}`}
                 />
               </span>
-              <div className="flex flex-col min-w-0">
+              <span className="flex flex-col min-w-0">
                 <span className="font-label-sm text-label-sm text-on-surface truncate">
-                  {attached ? `${customer} · Gold Member` : 'No customer attached'}
+                  {attached ? `${customer} · ${customerRecord?.tier ?? 'Member'}` : 'No customer attached'}
                 </span>
                 <span className="font-caption text-caption text-text-secondary truncate">
-                  {attached ? '2,450 points · 5% member pricing active' : 'Tap to attach a customer & unlock member pricing'}
+                  {attached
+                    ? `${memberPoints.toLocaleString()} points · 5% member pricing active`
+                    : 'Tap to attach a customer & unlock member pricing'}
                 </span>
-              </div>
-            </div>
-            <span
-              className={`font-caption text-caption font-semibold shrink-0 ${
-                attached ? 'text-badge-discount-text' : 'text-primary'
-              }`}
-            >
-              {attached ? 'Attached' : 'Change'}
-            </span>
-          </button>
+              </span>
+            </button>
+            {attached ? (
+              <span className="flex items-center gap-1 shrink-0">
+                <span className="font-caption text-caption font-semibold text-badge-discount-text">Attached</span>
+                <button
+                  type="button"
+                  title="Remove customer"
+                  aria-label="Remove customer from this ticket"
+                  onClick={() => {
+                    onRemoveCustomer();
+                    showToast('Customer removed from this ticket');
+                  }}
+                  className="w-7 h-7 rounded-full bg-badge-discount-text/15 hover:bg-badge-discount-text/30 text-badge-discount-text flex items-center justify-center transition-colors"
+                >
+                  <Icon name="person_remove" className="text-[16px]" />
+                </button>
+              </span>
+            ) : (
+              <span className="font-caption text-caption font-semibold text-primary shrink-0">Change</span>
+            )}
+          </div>
         </div>
 
         {/* Cart lines */}
@@ -187,9 +213,20 @@ export function BusinessPosCartScreen({
                 </button>
               </div>
               <div className="flex flex-col items-end justify-between shrink-0">
-                <span className="font-label-sm text-label-sm text-on-surface font-semibold">
-                  {naira(line.member * line.qty)}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">
+                    {naira(line.member * line.qty)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${line.name}`}
+                    onClick={() => removeLine(line.id)}
+                    className="w-7 h-7 rounded-lg text-error hover:bg-error-container/30 flex items-center justify-center active:scale-90 transition-colors"
+                    title="Remove item"
+                  >
+                    <Icon name="delete_outline" className="text-[17px]" />
+                  </button>
+                </div>
                 <div className="flex items-center gap-1 bg-surface-container rounded-full p-0.5">
                   <button
                     type="button"
@@ -275,10 +312,14 @@ export function BusinessPosCartScreen({
                   </span>
                 </div>
               )}
-              <div className="flex justify-between items-center">
-                <span className="font-body-md text-body-md text-text-secondary">VAT (7.5%)</span>
-                <span className="font-label-sm text-label-sm text-on-surface font-semibold">{naira(vat)}</span>
-              </div>
+              {taxMode !== 'none' && (
+                <div className="flex justify-between items-center">
+                  <span className="font-body-md text-body-md text-text-secondary">
+                    {taxLabel} ({taxRate}%){taxMode === 'inclusive' && ' · included'}
+                  </span>
+                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">{naira(vat)}</span>
+                </div>
+              )}
               <div className="h-px bg-surface-container-high w-full my-0.5" />
               <div className="flex justify-between items-end">
                 <div className="flex flex-col">

@@ -15,6 +15,9 @@ import { DesktopAddServiceStep3Screen } from './DesktopAddServiceStep3Screen';
 import { DesktopServiceReviewScreen } from './DesktopServiceReviewScreen';
 import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
 import { INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
+import { getBusinessSetupSnapshot } from '../businessSetup';
+import { classifyServiceFromBusiness } from '../serviceClassification';
+import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 import {
   getCentralCategories,
   addCentralCategory,
@@ -423,7 +426,7 @@ export function DesktopBusinessCatalogHubScreen({
         icon: catFormIcon,
         productCount: 0,
         activeBranches: ['all'],
-        qrDestinationUrl: `/storefront?category=${slug}`,
+        qrDestinationUrl: `/business/urban-grill-bistro-104/products?category=${slug}`,
       });
       setCentralCategories(getCentralCategories());
       setToastMessage(`Category "${catFormName.trim()}" created successfully.`);
@@ -471,9 +474,29 @@ export function DesktopBusinessCatalogHubScreen({
     | 'serviceReview'
     | 'servicePublished'
   >('none');
+
+  const businessSnapshot = getBusinessSetupSnapshot();
+  const businessDraft = businessSnapshot?.data.draft as BusinessProfileDraft | undefined;
+  const businessCategories = businessDraft?.categories ?? [];
+  const businessSubcategories = businessDraft?.tags ?? [];
+
+  const getInitialServiceDraft = (): ServiceDraft => {
+    const classification = classifyServiceFromBusiness(businessCategories, businessSubcategories);
+    if (classification) {
+      return {
+        ...INITIAL_SERVICE_DRAFT,
+        primaryCategory: classification.primaryCategory,
+        subCategory: classification.subCategory,
+      };
+    }
+    return { ...INITIAL_SERVICE_DRAFT };
+  };
+
   const [productDraft, setProductDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
-  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ ...INITIAL_SERVICE_DRAFT });
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(getInitialServiceDraft);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // When set, the add-product/add-service flow is being used to edit this existing row.
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState<CatalogChip>('all');
@@ -484,18 +507,32 @@ export function DesktopBusinessCatalogHubScreen({
   );
 
   const handlePublishProduct = () => {
-    const newRow: CatalogRow = {
-      id: `p_${Date.now()}`,
+    const isEdit = Boolean(editingRowId);
+    const updatedFields = {
       name: productDraft.title || 'New Product Item',
-      image: ROWS[0].image,
       alt: productDraft.title || 'Product Item',
       sku: productDraft.sku || `VG-PROD-${Math.floor(10 + Math.random() * 90)}`,
       sub: productDraft.classification || 'Retail Product',
       category: productDraft.primaryCategory || 'General',
-      categoryIcon: 'storefront',
       price: productDraft.basePrice ? `₦${Number(productDraft.basePrice).toLocaleString('en-US')}` : '₦5,000',
       was: productDraft.comparePrice ? `₦${Number(productDraft.comparePrice).toLocaleString('en-US')}` : undefined,
       dealBadge: productDraft.comparePrice ? 'Special Deal' : undefined,
+    };
+    if (isEdit) {
+      setProductRows((prev) =>
+        prev.map((item) => (item.id === editingRowId ? { ...item, ...updatedFields } : item)),
+      );
+      setEditingRowId(null);
+      setSubFlow('none');
+      setToastMessage(`"${updatedFields.name}" updated successfully.`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+    const newRow: CatalogRow = {
+      id: `p_${Date.now()}`,
+      ...updatedFields,
+      image: ROWS[0].image,
+      categoryIcon: 'storefront',
       branchDot: 'ok',
       branchLabel: 'All 3 Branches',
       branchNote: 'Active in POS & Storefront',
@@ -515,18 +552,32 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handlePublishService = () => {
-    const newServiceRow: CatalogRow = {
-      id: `s_${Date.now()}`,
+    const isEdit = Boolean(editingRowId);
+    const updatedFields = {
       name: serviceDraft.title || 'New Service Session',
-      image: SERVICES_ROWS[0].image,
       alt: serviceDraft.title || 'Service Item',
       sku: serviceDraft.skuCode || `VG-SRV-${Math.floor(10 + Math.random() * 90)}`,
       sub: `${serviceDraft.durationMins || 60} min session`,
       category: serviceDraft.primaryCategory || 'Spa & Wellness',
-      categoryIcon: 'spa',
       price: serviceDraft.basePrice ? `₦${Number(serviceDraft.basePrice).toLocaleString('en-US')}` : '₦18,000',
       was: serviceDraft.comparePrice ? `₦${Number(serviceDraft.comparePrice).toLocaleString('en-US')}` : undefined,
       dealBadge: serviceDraft.comparePrice ? 'Introductory Offer' : undefined,
+    };
+    if (isEdit) {
+      setServiceRows((prev) =>
+        prev.map((item) => (item.id === editingRowId ? { ...item, ...updatedFields } : item)),
+      );
+      setEditingRowId(null);
+      setSubFlow('none');
+      setToastMessage(`"${updatedFields.name}" updated successfully.`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+    const newServiceRow: CatalogRow = {
+      id: `s_${Date.now()}`,
+      ...updatedFields,
+      image: SERVICES_ROWS[0].image,
+      categoryIcon: 'spa',
       branchDot: 'ok',
       branchLabel: 'All 3 Branches',
       branchNote: 'Bookings Enabled',
@@ -578,15 +629,109 @@ export function DesktopBusinessCatalogHubScreen({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Item Action & Edit State
+  const [actionMenuRowId, setActionMenuRowId] = useState<string | null>(null);
+
+  // Leaving the add/edit sub-flows must always return to the catalog list.
+  const exitSubFlow = () => {
+    setEditingRowId(null);
+    setSubFlow('none');
+  };
+
+  const parseAmount = (value: string) => value.replace(/[^0-9.]/g, '');
+
+  // "Edit" reopens the full add-product / add-service flow, prefilled with the row's data,
+  // so every component (basics, pricing, fulfillment, review) stays editable.
+  const handleOpenEditItem = (row: CatalogRow) => {
+    setActionMenuRowId(null);
+    setEditingRowId(row.id);
+    if (row.id.startsWith('s')) {
+      const durationMatch = row.sub.match(/(\d+)\s*min/i);
+      setServiceDraft((prev) => ({
+        ...prev,
+        title: row.name,
+        skuCode: row.sku,
+        primaryCategory: row.category,
+        basePrice: parseAmount(row.price),
+        comparePrice: row.was ? parseAmount(row.was) : '',
+        image: row.image || prev.image,
+        durationMins: durationMatch ? Number(durationMatch[1]) : prev.durationMins,
+      }));
+      setSubFlow('service1');
+    } else {
+      setProductDraft((prev) => ({
+        ...prev,
+        title: row.name,
+        sku: row.sku,
+        skuCode: row.sku,
+        primaryCategory: row.category,
+        classification: row.sub,
+        description: row.alt,
+        basePrice: parseAmount(row.price),
+        comparePrice: row.was ? parseAmount(row.was) : '',
+      }));
+      setSubFlow('addProduct1');
+    }
+  };
+
+  const handleDuplicateItem = (row: CatalogRow) => {
+    const newId = `${row.id}-copy-${Date.now()}`;
+    const newSku = `${row.sku}-CP`;
+    const duplicated: CatalogRow = {
+      ...row,
+      id: newId,
+      sku: newSku,
+      name: `${row.name} (Copy)`,
+    };
+
+    if (activeTab === 'products') {
+      setProductRows((prev) => [duplicated, ...prev]);
+    } else {
+      setServiceRows((prev) => [duplicated, ...prev]);
+    }
+
+    setActionMenuRowId(null);
+    setToastMessage(`Duplicated "${row.name}" as "${duplicated.name}".`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleToggleHideItem = (row: CatalogRow) => {
+    const nextHidden = !row.hidden;
+    const updater = (prev: CatalogRow[]) =>
+      prev.map((item) => (item.id === row.id ? { ...item, hidden: nextHidden } : item));
+
+    if (activeTab === 'products') {
+      setProductRows(updater);
+    } else {
+      setServiceRows(updater);
+    }
+
+    setActionMenuRowId(null);
+    setToastMessage(`"${row.name}" is now ${nextHidden ? 'hidden from storefront' : 'visible in storefront'}.`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleDeleteItem = (row: CatalogRow) => {
+    if (activeTab === 'products') {
+      setProductRows((prev) => prev.filter((item) => item.id !== row.id));
+    } else {
+      setServiceRows((prev) => prev.filter((item) => item.id !== row.id));
+    }
+
+    setActionMenuRowId(null);
+    setToastMessage(`"${row.name}" removed from catalog.`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   // Replicated Onboarding flows inside Hub Catalog
   if (subFlow === 'addProduct1') {
     return (
       <DesktopAddProductStep1Screen
         draft={productDraft}
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => setSubFlow('none')}
+        onBack={() => exitSubFlow()}
         onNext={() => setSubFlow('addProduct2')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -599,7 +744,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct1')}
         onNext={() => setSubFlow('addProduct3')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -612,7 +757,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct2')}
         onNext={() => setSubFlow('productReview')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -630,7 +775,7 @@ export function DesktopBusinessCatalogHubScreen({
         onEditDescription={() => setSubFlow('addProduct1')}
         onEditSteps={() => setSubFlow('addProduct3')}
         onPublish={handlePublishProduct}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -659,6 +804,7 @@ export function DesktopBusinessCatalogHubScreen({
         }}
         onAddAnother={() => {
           setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+          setEditingRowId(null);
           setSubFlow('addProduct1');
         }}
         onNav={onNav}
@@ -671,10 +817,12 @@ export function DesktopBusinessCatalogHubScreen({
       <DesktopAddServiceStep1Screen
         draft={serviceDraft}
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => setSubFlow('none')}
+        onBack={() => exitSubFlow()}
         onNext={() => setSubFlow('service2')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
+        businessCategories={businessCategories}
+        businessSubcategories={businessSubcategories}
       />
     );
   }
@@ -686,7 +834,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('service1')}
         onNext={() => setSubFlow('service3')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -699,7 +847,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('service2')}
         onNext={() => setSubFlow('serviceReview')}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -715,7 +863,7 @@ export function DesktopBusinessCatalogHubScreen({
         onEditBranches={() => setSubFlow('service3')}
         onEditDescription={() => setSubFlow('service1')}
         onPublish={handlePublishService}
-        onSaveDraft={() => setSubFlow('none')}
+        onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
       />
     );
@@ -731,7 +879,8 @@ export function DesktopBusinessCatalogHubScreen({
           setSubFlow('none');
         }}
         onAddAnother={() => {
-          setServiceDraft({ ...INITIAL_SERVICE_DRAFT });
+          setServiceDraft(getInitialServiceDraft());
+          setEditingRowId(null);
           setSubFlow('service1');
         }}
         onNav={onNav}
@@ -788,15 +937,15 @@ export function DesktopBusinessCatalogHubScreen({
           </div>
         </div>
 
-        {/* Page Header & Multi-action Deck */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-lg">
-          <div className="max-w-3xl">
+        {/* Page Header & Multi-action Deck — stacks until `xl` so it fits iPad Pro 13 */}
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-lg">
+          <div className="max-w-3xl min-w-0">
             <div className="inline-flex items-center gap-space-xs px-space-xs py-space-2xs rounded bg-surface-tint-blue text-primary font-label-sm text-label-sm mb-space-xs">
               <Icon name="hub" className="text-[16px]" />
               <span>Enterprise SKU Multi-Tenancy</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Central Products & Services Catalogue
+              Central Products &amp; Services Catalogue
             </h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
               Centralized multi-location catalog. Manage dishes, retail merchandise, and services across Abuja and Lagos
@@ -804,29 +953,6 @@ export function DesktopBusinessCatalogHubScreen({
             </p>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-space-sm">
-            <div className="relative shrink-0">
-              <label className="sr-only" htmlFor="locationSelector">
-                Scope Branch
-              </label>
-              <div className="flex items-center gap-space-xs bg-surface-container-lowest px-space-md py-space-xs rounded-xl shadow-sm text-on-surface cursor-pointer hover:bg-surface-subtle transition-colors">
-                <Icon name="domain" className="text-primary text-[20px]" />
-                <div className="text-left">
-                  <span className="block font-caption text-caption text-text-secondary leading-none">Branch Scope</span>
-                  <select
-                    className="bg-transparent font-label-md text-label-md font-semibold text-on-surface outline-none cursor-pointer pr-space-xs"
-                    defaultValue="all"
-                    id="locationSelector"
-                  >
-                    <option value="all">All Locations (Abuja & Lagos)</option>
-                    <option value="wuse">Wuse II Branch (Abuja)</option>
-                    <option value="maitama">Maitama Flagship (Abuja)</option>
-                    <option value="vi">Victoria Island (Lagos)</option>
-                  </select>
-                </div>
-                <Icon name="expand_more" className="text-text-secondary text-[18px]" />
-              </div>
-            </div>
-
             {/* Side-by-side Add Buttons on the same line */}
             <div className="flex items-center gap-space-sm shrink-0 whitespace-nowrap">
               <button
@@ -840,7 +966,8 @@ export function DesktopBusinessCatalogHubScreen({
               <button
                 type="button"
                 onClick={() => {
-                  setServiceDraft({ ...INITIAL_SERVICE_DRAFT });
+                  setServiceDraft(getInitialServiceDraft());
+                  setEditingRowId(null);
                   setSubFlow('service1');
                 }}
                 className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"
@@ -852,6 +979,7 @@ export function DesktopBusinessCatalogHubScreen({
                 type="button"
                 onClick={() => {
                   setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+                  setEditingRowId(null);
                   setSubFlow('addProduct1');
                 }}
                 className="flex items-center gap-space-2xs px-space-lg py-space-sm rounded-xl bg-primary-container text-on-primary-container hover:bg-primary transition-all font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98]"
@@ -1459,10 +1587,11 @@ export function DesktopBusinessCatalogHubScreen({
                           </button>
                         </td>
                         <td className="py-space-md px-space-md text-right">
-                          <div className="flex items-center justify-end gap-space-2xs">
+                          <div className="flex items-center justify-end gap-space-2xs relative">
                             <button
                               type="button"
                               title="Edit Item"
+                              onClick={() => handleOpenEditItem(row)}
                               className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                             >
                               <Icon name="edit" className="text-[20px]" />
@@ -1475,13 +1604,56 @@ export function DesktopBusinessCatalogHubScreen({
                             >
                               <Icon name="tune" className="text-[20px]" />
                             </button>
-                            <button
-                              type="button"
-                              title="More Options"
-                              className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors"
-                            >
-                              <Icon name="more_vert" className="text-[20px]" />
-                            </button>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                title="More Options"
+                                onClick={() => setActionMenuRowId((cur) => (cur === row.id ? null : row.id))}
+                                className={`p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors ${
+                                  actionMenuRowId === row.id ? 'bg-surface-container text-primary' : ''
+                                }`}
+                              >
+                                <Icon name="more_vert" className="text-[20px]" />
+                              </button>
+
+                              {actionMenuRowId === row.id && (
+                                <div className="absolute right-0 top-full mt-1 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 z-40 text-left animate-fade-in">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name="edit" className="text-[16px] text-primary" />
+                                    <span>Edit Details</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDuplicateItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name="content_copy" className="text-[16px] text-secondary" />
+                                    <span>Duplicate Item</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleHideItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name={row.hidden ? 'visibility' : 'visibility_off'} className="text-[16px] text-text-secondary" />
+                                    <span>{row.hidden ? 'Show on Storefront' : 'Hide from Storefront'}</span>
+                                  </button>
+                                  <div className="my-1 border-t border-border-subtle" />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteItem(row)}
+                                    className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 transition-colors"
+                                  >
+                                    <Icon name="delete" className="text-[16px]" />
+                                    <span>Delete Item</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -1674,10 +1846,11 @@ export function DesktopBusinessCatalogHubScreen({
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 relative">
                         <button
                           type="button"
                           title="Edit Item"
+                          onClick={() => handleOpenEditItem(row)}
                           className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                         >
                           <Icon name="edit" className="text-[18px]" />
@@ -1690,13 +1863,56 @@ export function DesktopBusinessCatalogHubScreen({
                         >
                           <Icon name="tune" className="text-[18px]" />
                         </button>
-                        <button
-                          type="button"
-                          title="More Options"
-                          className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors"
-                        >
-                          <Icon name="more_vert" className="text-[18px]" />
-                        </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            title="More Options"
+                            onClick={() => setActionMenuRowId((cur) => (cur === row.id ? null : row.id))}
+                            className={`p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors ${
+                              actionMenuRowId === row.id ? 'bg-surface-container text-primary' : ''
+                            }`}
+                          >
+                            <Icon name="more_vert" className="text-[18px]" />
+                          </button>
+
+                          {actionMenuRowId === row.id && (
+                            <div className="absolute right-0 bottom-full mb-1 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 z-40 text-left animate-fade-in">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name="edit" className="text-[16px] text-primary" />
+                                <span>Edit Details</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name="content_copy" className="text-[16px] text-secondary" />
+                                <span>Duplicate Item</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleHideItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name={row.hidden ? 'visibility' : 'visibility_off'} className="text-[16px] text-text-secondary" />
+                                <span>{row.hidden ? 'Show on Storefront' : 'Hide from Storefront'}</span>
+                              </button>
+                              <div className="my-1 border-t border-border-subtle" />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteItem(row)}
+                                className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 transition-colors"
+                              >
+                                <Icon name="delete" className="text-[16px]" />
+                                <span>Delete Item</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1943,6 +2159,7 @@ export function DesktopBusinessCatalogHubScreen({
             </div>
           </div>
         )}
+
 
         {/* Toast Notification Alert */}
         {toastMessage && (

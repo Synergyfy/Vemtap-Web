@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { CalendarPicker } from '../../components/ui/CalendarPicker';
+import { spaDateKey, spaToday } from '../../scripts/spaBookingData';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopBusinessBookingsScreenProps {
@@ -110,7 +112,23 @@ const STAFF = [
   { name: 'Chef Ibrahim', role: 'Kitchen', status: 'Prepping', color: 'text-on-surface-variant' },
 ];
 
-export function DesktopBusinessBookingsScreen({ onNav, onOpenOrders }: DesktopBusinessBookingsScreenProps) {
+/** Baseline bookings per weekday (Sun → Sat). Mondays the venue is closed. */
+const WEEKDAY_BOOKINGS = [7, 0, 4, 5, 5, 6, 8];
+
+const todayISO = () => spaDateKey(spaToday());
+
+/** Deterministic booking count for any date — powers the Full Calendar captions. */
+const bookingsForIso = (iso: string) => {
+  if (iso === todayISO()) return BOOKINGS.length;
+  const weekday = new Date(`${iso}T00:00:00`).getDay();
+  if (weekday === 1) return 0; // Mondays — closed, no reservations
+  const day = Number(iso.slice(8, 10));
+  const month = Number(iso.slice(5, 7));
+  const swing = (day * 3 + month) % 4; // 0–3, stable per date
+  return Math.max(1, WEEKDAY_BOOKINGS[weekday] - swing);
+};
+
+export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookingsScreenProps) {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [voucherOpen, setVoucherOpen] = useState(false);
@@ -119,6 +137,9 @@ export function DesktopBusinessBookingsScreen({ onNav, onOpenOrders }: DesktopBu
   const [checkedIn, setCheckedIn] = useState<Record<string, boolean>>({});
   const [seated, setSeated] = useState<Record<string, boolean>>({});
   const [chimeOn, setChimeOn] = useState(true);
+  // Full Calendar — month grid with the booking count under every day.
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedISO, setSelectedISO] = useState<string>(() => todayISO());
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -137,20 +158,16 @@ export function DesktopBusinessBookingsScreen({ onNav, onOpenOrders }: DesktopBu
         <div className="w-full py-space-xl space-y-space-lg">
           <div className="flex flex-wrap items-center justify-between gap-space-md">
             <div className="flex flex-wrap items-center gap-space-sm">
-              <button type="button" className="flex items-center gap-space-xs px-space-sm py-space-xs rounded-xl border border-border bg-surface text-on-surface font-label-sm text-label-sm hover:bg-surface-subtle">
-                <Icon name="store" className="text-[16px] text-primary" />
-                Wuse II Branch
-                <Icon name="expand_more" className="text-[14px]" />
-              </button>
-              <div className="flex items-center bg-surface-subtle rounded-xl p-space-2xs">
-                <button type="button" onClick={onOpenOrders} className="px-space-sm py-space-2xs rounded-lg font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface">
-                  Orders
-                </button>
-                <button type="button" className="px-space-sm py-space-2xs rounded-lg bg-surface text-primary font-label-sm text-label-sm font-semibold shadow-sm">
-                  Bookings
-                </button>
-              </div>
-              <button type="button" className="px-space-sm py-space-xs rounded-xl border border-border bg-surface text-on-surface font-label-sm text-label-sm hover:bg-surface-subtle flex items-center gap-space-2xs">
+              <button
+                type="button"
+                aria-pressed={calendarOpen}
+                onClick={() => setCalendarOpen((open) => !open)}
+                className={`h-11 px-space-md rounded-xl border font-label-sm text-label-sm flex items-center gap-space-2xs transition-colors ${
+                  calendarOpen
+                    ? 'border-primary bg-surface-tint-blue text-primary font-semibold shadow-sm'
+                    : 'border-border bg-surface text-on-surface hover:bg-surface-subtle'
+                }`}
+              >
                 <Icon name="calendar_month" className="text-[16px]" />
                 Full Calendar
               </button>
@@ -164,6 +181,99 @@ export function DesktopBusinessBookingsScreen({ onNav, onOpenOrders }: DesktopBu
               New Manual Booking
             </button>
           </div>
+
+          {/* Full Calendar — every day carries its booking count */}
+          {calendarOpen && (
+            <section className="rounded-2xl border border-border-subtle bg-surface-canvas shadow-sm p-space-lg">
+              <div className="flex flex-wrap items-start justify-between gap-space-sm mb-space-md">
+                <div>
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Full Calendar</h2>
+                  <p className="font-caption text-caption text-text-secondary">
+                    Bookings per day — select a date to review that day&apos;s reservations.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCalendarOpen(false)}
+                  className="h-9 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-secondary font-label-sm text-label-sm flex items-center gap-space-2xs"
+                >
+                  <Icon name="close" className="text-[15px]" />
+                  Close
+                </button>
+              </div>
+
+              <div className="grid gap-space-lg lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+                <CalendarPicker
+                  valueISO={selectedISO}
+                  onSelect={setSelectedISO}
+                  isDateDisabled={(date) => {
+                    const start = spaToday();
+                    start.setHours(0, 0, 0, 0);
+                    return date.getTime() < start.getTime();
+                  }}
+                  dateNote={(iso) => {
+                    const count = bookingsForIso(iso);
+                    if (!count) return undefined;
+                    return {
+                      label: `${count}`,
+                      tone: count >= 6 ? 'discount' : 'default',
+                    };
+                  }}
+                />
+
+                <div className="flex flex-col gap-space-sm">
+                  <div className="flex items-center justify-between gap-space-sm">
+                    <div className="flex flex-col">
+                      <span className="font-label-sm text-label-sm text-text-secondary font-semibold">
+                        {new Date(`${selectedISO}T00:00:00`).toLocaleDateString('en-GB', {
+                          weekday: 'long',
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </span>
+                      <span className="font-heading-sm text-heading-sm text-text-primary">
+                        {bookingsForIso(selectedISO)} booking{bookingsForIso(selectedISO) === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                      {bookingsForIso(selectedISO) >= 6 ? 'High demand' : bookingsForIso(selectedISO) > 0 ? 'Availability open' : 'Closed'}
+                    </span>
+                  </div>
+
+                  {selectedISO === todayISO() ? (
+                    <div className="flex flex-col gap-space-2xs">
+                      {BOOKINGS.map((booking) => (
+                        <div
+                          key={booking.id}
+                          className="flex items-center justify-between gap-space-sm px-space-sm py-space-xs rounded-xl bg-surface-subtle"
+                        >
+                          <div className="flex items-center gap-space-xs min-w-0">
+                            <span className="font-label-sm text-label-sm text-text-primary font-semibold shrink-0">
+                              {booking.time}
+                            </span>
+                            <span className="font-body-sm text-body-sm text-text-secondary truncate">
+                              {booking.guest} • Party of {booking.party}
+                            </span>
+                          </div>
+                          <span className="font-caption text-caption text-text-tertiary shrink-0">{booking.table}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : bookingsForIso(selectedISO) > 0 ? (
+                    <div className="rounded-xl bg-surface-subtle px-space-sm py-space-md font-body-sm text-body-sm text-text-secondary">
+                      {bookingsForIso(selectedISO)} reservations already on the books for this day. Open the day in the
+                      bookings list below to manage check-ins.
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-surface-subtle px-space-sm py-space-md font-body-sm text-body-sm text-text-secondary">
+                      No bookings on this day — the venue is closed on Mondays.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
           <div className="flex items-center gap-space-sm overflow-x-auto pb-space-2xs">
             {DATE_STRIP.map((d) => (

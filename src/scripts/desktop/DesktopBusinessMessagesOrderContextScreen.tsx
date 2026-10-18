@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { MessagesAttachmentButton } from './MessagesAttachmentButton';
+import { MessagesChatActions } from './MessagesChatActions';
 import { MessagesShareAttachmentModal } from './MessagesShareAttachmentModal';
 import { MessagesSelectRecipientModal } from './MessagesSelectRecipientModal';
 
@@ -14,6 +16,8 @@ export type MessagesWorkspaceView =
 interface DesktopBusinessMessagesOrderContextScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onView: (view: MessagesWorkspaceView) => void;
+  /** Opens the customer's full CRM profile (Customers page) from the chat header menu. */
+  onViewCustomerProfile?: (name: string) => void;
 }
 
 type ConvFilter = 'all' | 'unread' | 'orders' | 'bookings' | 'deals';
@@ -107,18 +111,43 @@ const DOSSIER_NOTES = [
   { label: 'Allergies', value: 'None on file', icon: 'health_and_safety' },
 ];
 
-export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: DesktopBusinessMessagesOrderContextScreenProps) {
+export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onViewCustomerProfile }: DesktopBusinessMessagesOrderContextScreenProps) {
   const [selectedId, setSelectedId] = useState('c1');
   const [filter, setFilter] = useState<ConvFilter>('all');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
-  const [showAttachment, setShowAttachment] = useState(false);
   const [showRecipient, setShowRecipient] = useState(false);
   const [extraMessages, setExtraMessages] = useState<Array<{ id: string; text: string; time: string }>>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
+  const [muted, setMuted] = useState(false);
+  const [transferred, setTransferred] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  // Close the message-filter menu on outside click or Escape.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onPointer = (event: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) setSettingsOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSettingsOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [settingsOpen]);
+
+  /** A conversation stays unread until it is marked read from the filters menu. */
+  const unreadOf = (c: OrderConv) => (readIds.has(c.id) ? 0 : c.unread);
 
   const filtered = CONVS.filter((c) => {
-    if (filter === 'unread' && c.unread === 0) return false;
+    if (filter === 'unread' && unreadOf(c) === 0) return false;
     if (filter === 'orders' && c.channel !== 'orders') return false;
     if (filter === 'bookings' && c.channel !== 'bookings') return false;
     if (filter === 'deals' && c.channel !== 'deals') return false;
@@ -136,6 +165,17 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
     window.setTimeout(() => streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }), 50);
   };
 
+  /** Start a chat from the recipient picker without leaving this inbox. */
+  const startChatWith = (name: string) => {
+    if (!name) return;
+    const match = CONVS.find((c) => c.name.toLowerCase() === name.toLowerCase());
+    if (match) {
+      setFilter('all');
+      setSearch('');
+      setSelectedId(match.id);
+    }
+  };
+
   return (
     <BusinessPortalChrome activeNav="messages" onNav={onNav}>
       <div className="w-full bg-background">
@@ -149,14 +189,83 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
           </div>
           <div className="flex flex-wrap items-center gap-space-md font-label-sm text-label-sm text-on-surface-variant">
             <span>Avg response: 1m 42s</span>
-            <button type="button" aria-label="Message filters" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-              <Icon name="tune" className="text-[18px]" />
-            </button>
-            <button type="button" onClick={() => onView('compose')} className="h-9 px-space-sm rounded-xl bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 flex items-center gap-space-2xs shadow-sm">
+
+            {/* Settings / filters — opens a working menu for this inbox */}
+            <div className="relative" ref={settingsRef}>
+              <button
+                type="button"
+                aria-label="Message filters"
+                aria-haspopup="menu"
+                aria-expanded={settingsOpen}
+                title="Filters & settings"
+                onClick={() => setSettingsOpen((open) => !open)}
+                className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-colors ${
+                  settingsOpen ? 'border-primary text-primary bg-surface-tint-blue' : 'border-border text-on-surface-variant hover:bg-surface-subtle'
+                }`}
+              >
+                <Icon name="tune" className="text-[18px]" />
+              </button>
+              {settingsOpen && (
+                <div
+                  role="menu"
+                  aria-label="Inbox filters"
+                  className="absolute right-0 top-full mt-space-xs z-40 w-64 py-space-xs bg-surface-canvas rounded-xl shadow-[0_12px_32px_-8px_rgba(13,37,76,0.18)] border border-border-subtle flex flex-col"
+                >
+                  <div className="px-space-sm py-space-2xs">
+                    <span className="font-label-sm text-label-sm text-text-secondary font-semibold">Show conversations</span>
+                  </div>
+                  {FILTERS.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={filter === f.key}
+                      onClick={() => setFilter(f.key)}
+                      className="flex items-center justify-between gap-space-sm px-space-sm py-space-xs font-label-md text-label-md text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors text-left"
+                    >
+                      <span>{f.label}</span>
+                      {filter === f.key && <Icon name="check" className="text-[16px] text-primary" />}
+                    </button>
+                  ))}
+                  <div className="h-px bg-border-subtle my-space-2xs" />
+                  <button
+                    type="button"
+                    onClick={() => setReadIds(new Set(CONVS.map((c) => c.id)))}
+                    className="flex items-center gap-space-sm px-space-sm py-space-xs font-label-md text-label-md text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors text-left"
+                  >
+                    <Icon name="done_all" className="text-[18px]" />
+                    <span>Mark all as read</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMuted((m) => !m)}
+                    className="flex items-center gap-space-sm px-space-sm py-space-xs font-label-md text-label-md text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors text-left"
+                  >
+                    <Icon name={muted ? 'notifications_off' : 'notifications'} className="text-[18px]" />
+                    <span>{muted ? 'Unmute notifications' : 'Mute notifications'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Compose — starts a new message on this page (tooltip explains the flow) */}
+            <button
+              type="button"
+              title="Compose a new message: pick a customer or staff member, then chat with their order, booking and deal context attached."
+              onClick={() => setShowRecipient(true)}
+              className="h-9 px-space-sm rounded-xl bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 flex items-center gap-space-2xs shadow-sm"
+            >
               <Icon name="edit" className="text-[16px]" />
               Compose
             </button>
-            <button type="button" onClick={() => onView('search')} className="h-9 px-space-sm rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center gap-space-2xs">
+
+            {/* Search — focuses the search box in the conversation list */}
+            <button
+              type="button"
+              title="Search conversations"
+              onClick={() => searchInputRef.current?.focus()}
+              className="h-9 px-space-sm rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center gap-space-2xs"
+            >
               <Icon name="search" className="text-[16px]" />
               Search
             </button>
@@ -165,7 +274,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
 
         <div className="w-full py-space-md">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-md" style={{ height: 'calc(100vh - 140px)', minHeight: '680px' }}>
-            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <aside className="lg:col-span-4 xl:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border space-y-space-xs">
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-sm text-heading-sm text-on-surface">Conversations</h2>
@@ -174,10 +283,12 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
                 <div className="relative">
                   <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-tertiary" />
                   <input
+                    ref={searchInputRef}
                     type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search inbox…"
+                    aria-label="Search inbox"
                     className="w-full h-11 pl-10 pr-space-sm rounded-xl border border-border bg-surface-subtle font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none focus:border-primary"
                   />
                 </div>
@@ -223,8 +334,8 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
                           ))}
                         </span>
                       </span>
-                      {c.unread > 0 && (
-                        <span className="w-5 h-5 bg-error text-on-error rounded-full font-caption text-caption flex items-center justify-center font-semibold shrink-0 self-center">{c.unread}</span>
+                      {unreadOf(c) > 0 && (
+                        <span className="w-5 h-5 bg-error text-on-error rounded-full font-caption text-caption flex items-center justify-center font-semibold shrink-0 self-center">{unreadOf(c)}</span>
                       )}
                     </button>
                   );
@@ -245,7 +356,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
               </div>
             </aside>
 
-            <section className="lg:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <section className="lg:col-span-8 xl:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-md border-b border-border flex items-center justify-between gap-space-sm">
                 <div className="flex items-center gap-space-sm min-w-0">
                   <span className="relative">
@@ -261,12 +372,11 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
                   </div>
                 </div>
                 <div className="flex items-center gap-space-xs">
-                  <button type="button" aria-label="Call" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-                    <Icon name="call" className="text-[18px]" />
-                  </button>
-                  <button type="button" aria-label="More options" className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-                    <Icon name="more_vert" className="text-[18px]" />
-                  </button>
+                  <MessagesChatActions
+                    customerName={selected.name}
+                    onViewProfile={() => onViewCustomerProfile?.(selected.name)}
+                    onSearch={() => searchInputRef.current?.focus()}
+                  />
                 </div>
               </div>
 
@@ -364,18 +474,9 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
                   ))}
                 </div>
                 <div className="flex items-end gap-space-xs">
-                  <div className="flex items-center gap-space-2xs">
-                    {[
-                      { icon: 'image', label: 'Image', action: () => setShowAttachment(true) },
-                      { icon: 'description', label: 'File', action: () => setShowAttachment(true) },
-                      { icon: 'receipt_long', label: 'Invoice', action: () => setShowAttachment(true) },
-                      { icon: 'local_offer', label: 'Deal', action: () => setShowAttachment(true) },
-                    ].map((a) => (
-                      <button key={a.icon} type="button" aria-label={a.label} onClick={a.action} className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface">
-                        <Icon name={a.icon} className="text-[18px]" />
-                      </button>
-                    ))}
-                  </div>
+                  <MessagesAttachmentButton
+                    renderModal={(close) => <MessagesShareAttachmentModal onClose={close} />}
+                  />
                   <textarea
                     rows={2}
                     value={draft}
@@ -397,7 +498,9 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
               </div>
             </section>
 
-            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            {/* Customer dossier: only fits beside the thread from `xl` up — below that
+                the full CRM profile opens from the chat header / dossier shortcut. */}
+            <aside className="hidden xl:flex lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Customer Dossier</h2>
               </div>
@@ -480,7 +583,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
                 </div>
 
                 <div className="p-space-sm">
-                  <button type="button" className="w-full h-11 rounded-xl border border-primary text-primary font-label-sm text-label-sm hover:bg-surface-tint-blue flex items-center justify-center gap-space-2xs">
+                  <button type="button" onClick={() => onViewCustomerProfile?.(selected.name)} className="w-full h-11 rounded-xl border border-primary text-primary font-label-sm text-label-sm hover:bg-surface-tint-blue flex items-center justify-center gap-space-2xs">
                     <Icon name="person" className="text-[16px]" />
                     View Full Customer CRM Profile
                   </button>
@@ -503,6 +606,25 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
                     ))}
                   </ul>
                 </div>
+
+                {/* Staff backup — moved here from the old compose screen */}
+                <div className="p-space-sm">
+                  <div className="rounded-xl border border-primary/30 bg-surface-tint-blue/50 p-space-sm flex items-start gap-space-xs">
+                    <Icon name="support_agent" className="text-[18px] text-primary shrink-0 mt-0.5" filled />
+                    <div>
+                      <div className="font-label-sm text-label-sm text-on-surface font-semibold">Need Staff Backup?</div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">Transfer this conversation to Floor Manager or Kitchen Lead with full context.</p>
+                      <button
+                        type="button"
+                        onClick={() => setTransferred(true)}
+                        disabled={transferred}
+                        className="mt-space-2xs h-9 px-space-sm rounded-lg bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 disabled:opacity-70 disabled:hover:opacity-70"
+                      >
+                        {transferred ? 'Transferred ✓' : 'Transfer Call'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="p-space-xs border-t border-border flex items-center gap-space-xs">
@@ -524,11 +646,10 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView }: Des
         </div>
       </div>
 
-      {showAttachment && <MessagesShareAttachmentModal onClose={() => setShowAttachment(false)} />}
       {showRecipient && (
         <MessagesSelectRecipientModal
           onClose={() => setShowRecipient(false)}
-          onStartChat={() => onView('compose')}
+          onStartChat={startChatWith}
         />
       )}
     </BusinessPortalChrome>

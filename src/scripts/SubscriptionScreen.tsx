@@ -8,6 +8,7 @@ import { SubscriptionPaymentScreen } from './SubscriptionPaymentScreen';
 import { SubscriptionSuccessScreen } from './SubscriptionSuccessScreen';
 import { SubscriptionAddonsScreen } from './SubscriptionAddonsScreen';
 import { BusinessBoostScreen } from './BusinessBoostScreen';
+import { hasActiveTrial } from '../utils/trialState';
 
 export type SubscriptionStep =
   | 'overview'
@@ -43,6 +44,16 @@ export function SubscriptionScreen({
     window.scrollTo(0, 0);
   }, [step]);
 
+  // If a trial is already active, never show the "start trial" entry points
+  // again — land directly on the active-trial screen so the period can't be
+  // reset or duplicated by re-entering the flow.
+  useEffect(() => {
+    if (hasActiveTrial() && step === 'overview') {
+      setStep('trialActive');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const goToPayment = (from: SubscriptionStep) => {
     setPaymentFrom(from);
     setStep('payment');
@@ -65,6 +76,16 @@ export function SubscriptionScreen({
           />
         );
       case 'trialConfirm':
+        if (hasActiveTrial()) {
+          return (
+            <SubscriptionTrialActiveScreen
+              onBack={() => setStep('overview')}
+              onExploreDashboard={onExit}
+              onCreateCampaign={() => goToBoost('trialActive')}
+              onSubscribe={() => goToPayment('trialActive')}
+            />
+          );
+        }
         return (
           <SubscriptionTrialConfirmScreen
             onBack={() => setStep('overview')}
@@ -76,7 +97,8 @@ export function SubscriptionScreen({
         return (
           <SubscriptionTrialActiveScreen
             onBack={() => setStep('overview')}
-            onExploreDashboard={() => goToBoost('trialActive')}
+            onExploreDashboard={onExit}
+            onCreateCampaign={() => goToBoost('trialActive')}
             onSubscribe={() => goToPayment('trialActive')}
           />
         );

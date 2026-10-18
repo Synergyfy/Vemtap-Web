@@ -3,13 +3,21 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { naira } from './catalogueData';
 import { cartCount, cartTotals, type PosCartLine } from './posCartData';
+import { POS_CUSTOMERS, pointsForAmount, unlockedRewards } from './desktop/posRegisterExtras';
+import { PosAddPointsModal, PosRewardsModal } from './PosPointsModals';
+import { usePosSettings } from '../context/PosSettingsContext';
 
 interface BusinessPosPaymentScreenProps {
   cart: PosCartLine[];
   customer: string | null;
+  /** Points awarded to this customer earlier in the sale. */
+  customerBonus: number;
+  /** Persist manually awarded points for the attached customer. */
+  onAwardPoints: (points: number) => void;
   onBack: () => void;
   onNewSale: () => void;
-  onReceipt: () => void;
+  /** Opens the receipt, handing it the loyalty points earned by this sale. */
+  onReceipt: (loyaltyPoints: number) => void;
 }
 
 type TenderMode = 'cash' | 'card' | 'transfer' | 'vemtap' | 'split';
@@ -30,15 +38,34 @@ const MODE_LABEL: Record<TenderMode, string> = {
   split: 'Split tender settled',
 };
 
-export function BusinessPosPaymentScreen({ cart, customer, onBack, onNewSale, onReceipt }: BusinessPosPaymentScreenProps) {
+export function BusinessPosPaymentScreen({
+  cart,
+  customer,
+  customerBonus,
+  onAwardPoints,
+  onBack,
+  onNewSale,
+  onReceipt,
+}: BusinessPosPaymentScreenProps) {
   const [mode, setMode] = useState<TenderMode>('cash');
   const [received, setReceived] = useState(0);
   const [done, setDone] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pointsModalOpen, setPointsModalOpen] = useState(false);
+  const [rewardsModalOpen, setRewardsModalOpen] = useState(false);
   const toastTimer = useRef<number | null>(null);
 
   const count = cartCount(cart);
-  const { subtotal, discount, vat, total } = cartTotals(cart);
+  const { taxMode, taxRate, taxLabel, loyaltyEnabled, allowWalkIn } = usePosSettings();
+  const { subtotal, discount, vat, total } = cartTotals(cart, taxMode, taxRate / 100);
+
+  // Loyalty — previous balance (directory) + anything awarded this sale + points attached to the order.
+  const customerRecord = customer ? POS_CUSTOMERS.find((entry) => entry.name === customer) : undefined;
+  const previousPoints = customerRecord?.points ?? 0;
+  const currentPoints = previousPoints + customerBonus;
+  const orderPoints = loyaltyEnabled ? pointsForAmount(total) : 0;
+  const projectedTotal = currentPoints + orderPoints;
+  const eligibleCount = unlockedRewards(currentPoints).length;
 
   useEffect(() => {
     setReceived(total);
@@ -61,6 +88,10 @@ export function BusinessPosPaymentScreen({ cart, customer, onBack, onNewSale, on
   const change = Math.max(0, received - total);
 
   const complete = () => {
+    if (!allowWalkIn && !customer) {
+      showToast('Walk-in sales are off — attach a customer to take payment');
+      return;
+    }
     if (mode === 'cash' && received < total) {
       showToast('Cash received is below the amount due');
       return;
@@ -105,10 +136,17 @@ export function BusinessPosPaymentScreen({ cart, customer, onBack, onNewSale, on
             <div className="flex items-center justify-between">
               <span className="font-caption text-caption text-text-secondary">
                 {customer ?? 'Walk-in guest'}
-                {customer ? ' · VIP · 540 pts' : ''}
+                {customer ? ` · ${customerRecord?.tier ?? 'Member'} · ${currentPoints.toLocaleString()} pts` : ''}
               </span>
               <span className="font-caption text-caption text-text-secondary">
-                Sub {naira(subtotal)} · VAT {naira(vat)}
+                Sub {naira(subtotal)}
+                {taxMode !== 'none' && (
+                  <>
+                    {' · '}
+                    {taxLabel} {naira(vat)}
+                    {taxMode === 'inclusive' ? ' incl.' : ''}
+                  </>
+                )}
                 {discount > 0 ? ` · -${naira(discount)}` : ''}
               </span>
             </div>
@@ -289,6 +327,47 @@ export function BusinessPosPaymentScreen({ cart, customer, onBack, onNewSale, on
           )}
         </div>
 
+        {/* Points & rewards — visible before completing payment when a customer is attached */}
+        {customer && loyaltyEnabled && (
+          <div className="px-margin pt-space-sm">
+            <div className="rounded-2xl bg-badge-discount-bg p-space-sm shadow-sm flex flex-col gap-space-2xs">
+              <div className="flex items-center justify-between gap-space-xs">
+                <span className="flex items-center gap-1 font-label-sm text-label-sm font-semibold text-on-surface">
+                  <Icon name="stars" className="text-[15px] text-badge-discount-text" />
+                  Points from this order
+                </span>
+                <span className="font-label-md text-label-md font-bold text-badge-discount-text">
+                  +{orderPoints.toLocaleString()} pts
+                </span>
+              </div>
+              <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
+                <span>Previous {previousPoints.toLocaleString()} pts</span>
+                <span>
+                  Total <span className="font-semibold text-text-primary">{projectedTotal.toLocaleString()} pts</span>
+                </span>
+              </div>
+              <div className="flex gap-space-xs pt-space-2xs">
+                <button
+                  type="button"
+                  onClick={() => setPointsModalOpen(true)}
+                  className="flex-1 h-9 rounded-lg bg-surface-canvas hover:bg-surface-container-high border border-border-subtle text-text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 transition-colors"
+                >
+                  <Icon name="add_circle" className="text-[15px] text-primary" />
+                  <span>Add points</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRewardsModalOpen(true)}
+                  className="flex-1 h-9 rounded-lg bg-surface-canvas hover:bg-surface-container-high border border-border-subtle text-text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 transition-colors"
+                >
+                  <Icon name="workspace_premium" className="text-[15px] text-badge-discount-text" />
+                  <span>Rewards{eligibleCount > 0 ? ` (${eligibleCount})` : ''}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Footnotes */}
         <div className="px-margin pt-space-sm flex flex-col gap-space-2xs">
           {[
@@ -350,10 +429,14 @@ export function BusinessPosPaymentScreen({ cart, customer, onBack, onNewSale, on
                 <span className="font-caption text-caption text-text-secondary">Tender</span>
                 <span className="font-caption text-caption text-on-surface">{TENDER_MODES.find((m) => m.key === mode)?.label}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="font-caption text-caption text-text-secondary">Loyalty</span>
-                <span className="font-caption text-caption text-badge-discount-text">+272 points earned</span>
-              </div>
+              {customer && loyaltyEnabled && (
+                <div className="flex justify-between">
+                  <span className="font-caption text-caption text-text-secondary">Loyalty</span>
+                  <span className="font-caption text-caption text-badge-discount-text">
+                    +{(orderPoints + customerBonus).toLocaleString()} points earned
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="font-caption text-caption text-text-secondary">Change due</span>
                 <span className="font-caption text-caption text-on-surface">{mode === 'cash' ? naira(change) : '—'}</span>
@@ -371,7 +454,7 @@ export function BusinessPosPaymentScreen({ cart, customer, onBack, onNewSale, on
             <div className="flex gap-space-xs">
               <button
                 type="button"
-                onClick={onReceipt}
+                onClick={() => onReceipt(orderPoints + customerBonus)}
                 className="flex-1 h-10 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs"
               >
                 <Icon name="receipt_long" className="text-text-secondary text-[16px]" />
@@ -388,6 +471,30 @@ export function BusinessPosPaymentScreen({ cart, customer, onBack, onNewSale, on
             </div>
           </div>
         </div>
+      )}
+
+      {/* Manual points + eligible rewards — both reachable before completing payment */}
+      {pointsModalOpen && customer && (
+        <PosAddPointsModal
+          customerName={customer}
+          currentPoints={currentPoints}
+          suggested={orderPoints}
+          onClose={() => setPointsModalOpen(false)}
+          onAward={(points) => {
+            onAwardPoints(points);
+            setPointsModalOpen(false);
+            showToast(`${points.toLocaleString()} points added to ${customer}.`);
+          }}
+        />
+      )}
+
+      {rewardsModalOpen && customer && (
+        <PosRewardsModal
+          customerName={customer}
+          points={currentPoints}
+          projectedTotal={projectedTotal}
+          onClose={() => setRewardsModalOpen(false)}
+        />
       )}
 
       {toast && (

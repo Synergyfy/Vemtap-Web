@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
+import { BusinessSetupProgress } from '../../components/BusinessSetupProgress';
+import { useBusinessSetupNav } from '../businessSetup';
 
 export type BusinessVerificationNavKey =
   | 'profile'
@@ -10,16 +12,6 @@ export type BusinessVerificationNavKey =
   | 'analytics'
   | 'payouts'
   | 'trust';
-
-const NAV_ITEMS: Array<{ key: BusinessVerificationNavKey; label: string }> = [
-  { key: 'profile', label: 'Profile' },
-  { key: 'locations', label: 'Locations' },
-  { key: 'catalog', label: 'Catalog' },
-  { key: 'deals', label: 'Deals' },
-  { key: 'analytics', label: 'Analytics' },
-  { key: 'payouts', label: 'Payouts' },
-  { key: 'trust', label: 'Trust & Verification' },
-];
 
 const FOOTER_LINKS = ['Privacy Policy', 'Terms of Service', 'Merchant Helpdesk'];
 
@@ -32,42 +24,26 @@ interface BusinessVerificationChromeProps {
 
 export function BusinessVerificationChrome({
   children,
-  activeNav = 'trust',
+  activeNav: _activeNav = 'trust',
   onNav,
   onBrand,
 }: BusinessVerificationChromeProps) {
+  const setupNav = useBusinessSetupNav();
   return (
     <div className="w-full min-h-screen bg-background font-body-md text-body-md text-on-surface antialiased flex flex-col">
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-28 max-w-7xl mx-auto px-margin flex flex-col justify-between">
           <div className="h-16 flex items-center justify-between">
-            <div className="flex items-center gap-space-lg">
+            <div className="flex items-center gap-space-md">
               <button type="button" onClick={onBrand} className="flex items-center gap-space-xs">
                 <Logo variant="full" className="h-10 md:h-11 w-auto" />
                 <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0 leading-none">
                   BUSINESS
                 </span>
               </button>
-              <nav className="hidden xl:flex items-center gap-space-xs">
-                {NAV_ITEMS.map((item) => {
-                  const active = item.key === activeNav;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      aria-current={active ? 'page' : undefined}
-                      onClick={() => onNav?.(item.key)}
-                      className={`px-space-sm py-space-xs rounded-lg font-label-md text-label-md transition-colors ${
-                        active
-                          ? 'bg-surface-tint-blue text-primary font-semibold'
-                          : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </nav>
+              <div className="hidden md:flex items-center gap-space-xs pl-space-md text-on-surface-variant border-l border-border-subtle/80">
+                <span className="font-label-md text-label-md text-text-secondary">Trust &amp; Verification</span>
+              </div>
             </div>
             <div className="flex items-center gap-space-md">
               <div className="hidden md:flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-subtle text-text-secondary">
@@ -107,6 +83,13 @@ export function BusinessVerificationChrome({
       </header>
 
       <main className="w-full pt-28 bg-background min-h-screen flex-1">
+        {setupNav && (
+          <div className="sticky top-28 z-40 bg-background/95 backdrop-blur-md border-b border-border-subtle">
+            <div className="max-w-7xl mx-auto px-margin py-space-sm">
+              <BusinessSetupProgress {...setupNav} variant="desktop" />
+            </div>
+          </div>
+        )}
         <div className="flex flex-col w-full">{children}</div>
       </main>
 

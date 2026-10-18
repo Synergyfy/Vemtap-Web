@@ -73,18 +73,37 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
         </button>
       </div>
 
-      <div className="flex items-center justify-between pt-4 border-t border-surface-container">
-        <button type="button" onClick={onSaveDraft} className="h-11 px-5 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-secondary font-button-secondary text-button-secondary transition-colors cursor-pointer">
-          Save Draft
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="h-11 px-6 rounded-xl bg-primary-container text-on-primary shadow-[0_4px_14px_rgba(6,108,244,0.28)] hover:bg-primary active:scale-95 font-button-primary text-button-primary transition-all cursor-pointer flex items-center gap-2"
-        >
-          <span>Continue to Deal Studio</span>
-          <Icon name="arrow_forward" className="text-[18px]" />
-        </button>
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80 mt-auto">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
+            >
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onNext}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+            >
+              <span>Continue to Deal Studio</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

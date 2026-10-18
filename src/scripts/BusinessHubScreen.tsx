@@ -6,7 +6,7 @@ import { BusinessHubCatalogScreen } from './BusinessHubCatalogScreen';
 import { BusinessProductAssignmentScreen } from './BusinessProductAssignmentScreen';
 import { BusinessDealsScreen } from './BusinessDealsScreen';
 import { BusinessDealDetailScreen } from './BusinessDealDetailScreen';
-import { BusinessCreateDealScreen } from './BusinessCreateDealScreen';
+import { BusinessDealStudioFlow } from './BusinessDealStudioFlow';
 import { BusinessDealAssignmentScreen } from './BusinessDealAssignmentScreen';
 import { BusinessCustomersScreen } from './BusinessCustomersScreen';
 import { BusinessCustomerProfileScreen } from './BusinessCustomerProfileScreen';
@@ -36,6 +36,7 @@ export function BusinessHubScreen({
   initialCustomer,
   onBackCustomerProfile,
   onOpenAnalytics,
+  onPreviewInvite,
 }: {
   initialStep?: BusinessHubStep;
   onTab: (tab: BusinessTabKey) => void;
@@ -47,6 +48,7 @@ export function BusinessHubScreen({
   initialCustomer?: string;
   onBackCustomerProfile?: () => void;
   onOpenAnalytics?: () => void;
+  onPreviewInvite?: (url: string) => void;
 }) {
   const [step, setStep] = useState<BusinessHubStep>(initialStep);
   const [assignmentItem, setAssignmentItem] = useState('Woodfire Aged Ribeye Steak');
@@ -102,10 +104,11 @@ export function BusinessHubScreen({
             onBack={() => setStep('deals')}
             onBoost={() => onBoost('Weekend Prime Lunch Combo')}
             onEditAssignment={() => setStep('dealAssignment')}
+            onEditDeal={() => setStep('dealCreate')}
           />
         );
       case 'dealCreate':
-        return <BusinessCreateDealScreen onBack={() => setStep('deals')} onReview={() => setStep('dealDetail')} />;
+        return <BusinessDealStudioFlow onComplete={() => setStep('deals')} onExit={() => setStep('deals')} />;
       case 'dealAssignment':
         return <BusinessDealAssignmentScreen onBack={() => setStep('dealDetail')} />;
       case 'customers':
@@ -122,6 +125,7 @@ export function BusinessHubScreen({
               setStep('customerProfile');
             }}
             onOpenAnalytics={onOpenAnalytics}
+            onPreviewInvite={onPreviewInvite}
           />
         );
       case 'customerProfile':

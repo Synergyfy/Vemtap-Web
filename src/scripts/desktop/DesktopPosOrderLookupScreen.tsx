@@ -42,18 +42,36 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
 
   const query = input.trim();
 
+  // Idempotent retrieval, scoped to the active tab so each mode behaves as the
+  // cashier expects: QR / Order # read the order reference, Phone reads the
+  // customer identity. Nothing is looked up until Look up is pressed.
   const order: SubmittedOrder | null = useMemo(() => {
-    if (!query) return null;
-    const pick = (found: SubmittedOrder | SubmittedOrder[] | null | undefined): SubmittedOrder | null =>
-      Array.isArray(found) ? found[0] ?? null : found ?? null;
-    if (mode === 'phone') return pick(orders.findByCustomer(query));
-    return pick(orders.findByRef(query)) ?? pick(orders.findByCustomer(query));
-  }, [query, mode, orders]);
+    if (!searched || !query) return null;
+    if (mode === 'phone') return orders.findByCustomer(query)[0] ?? null;
+    return orders.findByRef(query) ?? null;
+  }, [searched, query, mode, orders]);
+
+  // Recent orders listed under the Look up button so an order can be picked and
+  // processed without knowing its reference up front.
+  const recentOrders = useMemo(() => orders.orders.slice(0, 6), [orders.orders]);
 
   const handleLookup = () => {
     if (!query) return;
+    // Resolve synchronously — the memo below only computes after `searched`
+    // flips true on the next render.
+    const found =
+      mode === 'phone'
+        ? orders.findByCustomer(query)[0] ?? null
+        : orders.findByRef(query) ?? null;
     setSearched(true);
-    if (!order) showToast(`No order matches “${query}”`);
+    if (!found) showToast(`No order matches “${query}”`);
+  };
+
+  /** Open an order straight from the recent list (reference lookup, ready to act). */
+  const openRecent = (recent: SubmittedOrder) => {
+    setMode('order-number');
+    setInput(recent.ref);
+    setSearched(true);
   };
 
   const handleScan = () => {
@@ -113,7 +131,10 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
                     key={item.key}
                     type="button"
                     onClick={() => {
+                      // Each tab owns its own query — switching resets the field so a
+                      // reference never leaks into the Phone tab (or vice versa).
                       setMode(item.key);
+                      setInput('');
                       setSearched(false);
                     }}
                     className={`flex-1 h-11 rounded-xl font-label-sm text-label-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
@@ -167,6 +188,59 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
                 Look up
               </button>
             </div>
+          </section>
+
+          {/* Recent orders — listed right after the Look up button so a cashier can
+              pick an order and process it without typing a reference first. */}
+          <section className="bg-surface-canvas rounded-2xl shadow-md p-6 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
+                Recent Orders
+              </h2>
+              <span className="font-caption text-caption text-text-tertiary">Newest first</span>
+            </div>
+            {recentOrders.length === 0 ? (
+              <div className="py-4 flex items-center gap-2">
+                <Icon name="info" className="text-text-secondary text-[18px]" />
+                <p className="font-body-md text-body-md text-text-secondary">No orders yet — they will appear here.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {recentOrders.map((recent) => (
+                  <button
+                    key={recent.ref}
+                    type="button"
+                    onClick={() => openRecent(recent)}
+                    className={`w-full rounded-xl px-4 py-3 flex items-center justify-between gap-4 text-left transition-colors ${
+                      order?.ref === recent.ref
+                        ? 'bg-surface-tint-blue'
+                        : 'bg-surface-subtle hover:bg-surface-container-high'
+                    }`}
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <Icon name="receipt_long" className="text-primary text-[20px] shrink-0" />
+                      <span className="flex flex-col min-w-0">
+                        <span className="font-mono font-label-md text-label-md text-text-primary font-semibold truncate">
+                          #{recent.ref}
+                        </span>
+                        <span className="font-caption text-caption text-text-secondary truncate">
+                          {recent.customerName}
+                          {recent.customerPhone ? ` • ${recent.customerPhone}` : ''} •{' '}
+                          {formatOrderTime(recent.submittedAt)}
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-3 shrink-0">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                        {orderStatusLabel(recent.status)}
+                      </span>
+                      <span className="font-label-md text-label-md font-bold text-text-primary">{money(recent.total)}</span>
+                      <Icon name="chevron_right" className="text-text-tertiary text-[18px]" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
 
           {searched && !order && (

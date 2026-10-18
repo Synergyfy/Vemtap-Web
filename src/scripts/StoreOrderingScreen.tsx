@@ -34,6 +34,7 @@ export function StoreOrderingScreen({
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [subTab, setSubTab] = useState<'dashboard' | 'qr' | 'settings'>(initialSubTab);
+  const [originFilter, setOriginFilter] = useState<'all' | 'storefront' | 'deals' | 'pos'>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<StoreOrder | null>(null);
@@ -49,7 +50,24 @@ export function StoreOrderingScreen({
     window.setTimeout(() => setToast(null), 2500);
   };
 
+  const originCounts = {
+    all: orders.length,
+    storefront: orders.filter((o) =>
+      ['Storefront', 'Public Store Page', 'Store QR', 'Category QR', 'Product QR'].includes(o.origin)
+    ).length,
+    deals: orders.filter((o) => ['Deal', 'Cluster'].includes(o.origin)).length,
+    pos: orders.filter((o) => ['POS', 'POS Walk-in'].includes(o.origin)).length,
+  };
+
   const filteredOrders = orders.filter((o) => {
+    if (originFilter === 'storefront') {
+      if (!['Storefront', 'Public Store Page', 'Store QR', 'Category QR', 'Product QR'].includes(o.origin)) return false;
+    } else if (originFilter === 'deals') {
+      if (!['Deal', 'Cluster'].includes(o.origin)) return false;
+    } else if (originFilter === 'pos') {
+      if (!['POS', 'POS Walk-in'].includes(o.origin)) return false;
+    }
+
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -103,14 +121,14 @@ export function StoreOrderingScreen({
           </button>
           <Logo variant="full" className="h-7 w-auto" />
           <span className="text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary leading-none">
-            STORE
+            STORE FRONT
           </span>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-            <span>Store Orders</span>
+            <span>Store Front</span>
           </div>
         </div>
       </header>
@@ -157,7 +175,39 @@ export function StoreOrderingScreen({
       {/* Main Content Area */}
       <main className="w-full max-w-[430px] px-4 py-3 flex-1">
         {subTab === 'dashboard' && (
-          <div className="space-y-4">
+          <div className="space-y-3.5">
+            {/* Origin Channel Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+              {[
+                { key: 'all' as const, label: 'All Channels', count: originCounts.all },
+                { key: 'storefront' as const, label: 'Store Front', count: originCounts.storefront },
+                { key: 'deals' as const, label: 'Deals', count: originCounts.deals },
+                { key: 'pos' as const, label: 'POS', count: originCounts.pos },
+              ].map((ot) => (
+                <button
+                  key={ot.key}
+                  type="button"
+                  onClick={() => setOriginFilter(ot.key)}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold shrink-0 transition-all flex items-center gap-1.5 ${
+                    originFilter === ot.key
+                      ? 'bg-primary text-on-primary shadow-xs'
+                      : 'bg-surface-canvas border border-border-subtle text-text-secondary hover:text-on-surface'
+                  }`}
+                >
+                  <span>{ot.label}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      originFilter === ot.key
+                        ? 'bg-on-primary/20 text-on-primary'
+                        : 'bg-surface-container text-text-tertiary'
+                    }`}
+                  >
+                    {ot.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
             {/* Metric Summary horizontal pills */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-caption">
               <button
@@ -271,9 +321,24 @@ export function StoreOrderingScreen({
                           <span className="font-semibold text-text-primary text-[14px] block">
                             {order.customerName}
                           </span>
-                          <span className="text-[11px] text-text-tertiary">
-                            {order.customerPhone} • {order.origin}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-[11px] text-text-tertiary">
+                              {order.customerPhone}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary">
+                              <Icon
+                                name={order.origin.includes('Deal') ? 'local_offer' : order.origin.includes('POS') ? 'point_of_sale' : 'storefront'}
+                                className="text-[11px]"
+                              />
+                              <span>
+                                {['Storefront', 'Public Store Page', 'Store QR', 'Category QR', 'Product QR'].includes(order.origin)
+                                  ? 'Store Front'
+                                  : ['Deal', 'Cluster'].includes(order.origin)
+                                    ? 'Deal'
+                                    : order.origin}
+                              </span>
+                            </span>
+                          </div>
                         </div>
                         <div className="text-right">
                           <span className="font-bold text-text-primary text-[14px] block">
@@ -399,7 +464,7 @@ export function StoreOrderingScreen({
         {/* Sub-tab: Settings */}
         {subTab === 'settings' && (
           <div className="space-y-4 bg-surface-canvas p-4 rounded-2xl border border-border-subtle shadow-xs">
-            <h4 className="font-bold text-text-primary text-[15px]">Store Ordering Rules</h4>
+            <h4 className="font-bold text-text-primary text-[15px]">Store Front Rules</h4>
 
             <label className="flex items-center justify-between py-2 border-b border-border-subtle cursor-pointer">
               <span className="text-body-sm font-medium">Accept Store Orders</span>

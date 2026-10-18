@@ -569,6 +569,31 @@ export function DesktopProductPricingConfigScreen({
           </div>
         </div>
       </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-sm w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Cancel &amp; Discard</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onSaved}
+              className="px-space-xl py-space-sm rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs cursor-pointer"
+            >
+              <span>Save Product &amp; Availability</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </button>
+          </div>
+        </div>
+      </div>
     </Shell>
   );
 }

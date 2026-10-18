@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopDealsWorkspaceScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -10,8 +11,37 @@ interface DesktopDealsWorkspaceScreenProps {
   onOpenDealDetail?: () => void;
   onOpenLogs?: () => void;
   onOpenPos?: () => void;
-  onBoost?: () => void;
+  /** Opens the Boost Studio; the deal's name pre-selects it in the campaign. */
+  onBoost?: (dealName?: string) => void;
 }
+
+// Telemetry backing the three live deal cards above — used by "Export Stats".
+const DEAL_STATS: Array<{ title: string; promo: string; price: string; oldPrice: string; branches: string; performance: string }> = [
+  {
+    title: 'Weekend Prime Lunch Combo',
+    promo: '20% OFF',
+    price: '₦9,600',
+    oldPrice: '₦12,000',
+    branches: 'Wuse II, Garki & Maitama',
+    performance: '89 / 128 redeemed (70%) • 39 vouchers pending',
+  },
+  {
+    title: '2-for-1 Smash Burger Thursday',
+    promo: '50% BOGO',
+    price: '₦6,500',
+    oldPrice: '₦13,000',
+    branches: 'Wuse II Branch only',
+    performance: '412 total claims • 84% boost cap taken',
+  },
+  {
+    title: 'After-Work Chill Pass',
+    promo: '22% OFF',
+    price: '₦4,200',
+    oldPrice: '₦5,400',
+    branches: 'Maitama & Wuse II',
+    performance: '78 claims today • 75% daily cap reached',
+  },
+];
 
 interface DealCardProps {
   image: string;
@@ -185,9 +215,9 @@ export function DesktopDealsWorkspaceScreen({
   return (
     <MerchantPortalChrome activeNav="business-deals" onNav={onNav} content="full">
       <div className="w-full px-margin py-space-xl flex flex-col gap-space-xl max-w-[1600px] mx-auto">
-        {/* Top Workspace Header & Breadcrumbs */}
-        <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-lg">
-          <div className="flex flex-col gap-space-2xs max-w-3xl">
+        {/* Top Workspace Header & Breadcrumbs — stacks until `xl` so it fits iPad Pro 13 */}
+        <section className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-lg">
+          <div className="flex flex-col gap-space-2xs max-w-3xl min-w-0">
             <nav aria-label="Breadcrumb" className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption mb-1">
               <button type="button" onClick={() => onNav('overview')} className="hover:text-primary transition-colors">Home</button>
               <Icon name="chevron_right" className="text-[14px]" />
@@ -195,7 +225,7 @@ export function DesktopDealsWorkspaceScreen({
               <Icon name="chevron_right" className="text-[14px]" />
               <span className="text-text-primary font-medium">Campaigns &amp; Deals</span>
             </nav>
-            <div className="flex items-center gap-space-sm">
+            <div className="flex flex-wrap items-center gap-space-2xs sm:gap-space-sm">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Campaigns &amp; Deals Management</h1>
               <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-medium">
                 Workspace Active
@@ -207,7 +237,7 @@ export function DesktopDealsWorkspaceScreen({
             </p>
           </div>
 
-          <div className="flex items-center gap-space-sm flex-wrap self-start lg:self-end">
+          <div className="flex items-center gap-space-sm flex-wrap self-start xl:self-end">
             <div className="flex items-center gap-2 px-space-sm py-2 rounded-xl bg-surface-container-low shadow-sm">
               <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-ping" />
               <span className="font-label-sm text-label-sm text-text-secondary">
@@ -228,23 +258,6 @@ export function DesktopDealsWorkspaceScreen({
         {/* Top Controls Command Deck */}
         <section className="bg-surface-canvas rounded-2xl p-space-md shadow-[0_4px_20px_-4px_rgba(13,37,76,0.06)] flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-space-md">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-space-sm flex-1">
-            <div className="relative min-w-[240px]">
-              <label className="sr-only" htmlFor="branch-selector">Select Branch</label>
-              <div className="relative flex items-center">
-                <Icon name="store" className="absolute left-3 text-[20px] text-primary pointer-events-none" />
-                <select
-                  className="w-full h-[48px] pl-10 pr-9 bg-surface-subtle hover:bg-surface-container-low rounded-xl font-label-md text-label-md text-text-primary appearance-none cursor-pointer focus:outline-none focus:bg-surface-canvas transition-colors"
-                  id="branch-selector"
-                  defaultValue="all"
-                >
-                  <option value="all">All Locations (3 Branches)</option>
-                  <option value="wuse">Wuse II Branch (Abuja)</option>
-                  <option value="maitama">Maitama Flagship (Abuja)</option>
-                  <option value="vi">Victoria Island (Lagos)</option>
-                </select>
-                <Icon name="expand_more" className="absolute right-3 text-[20px] text-text-tertiary pointer-events-none" />
-              </div>
-            </div>
 
             <div className="relative flex-1 min-w-[280px]">
               <label className="sr-only" htmlFor="deal-search">Search Deals</label>
@@ -270,6 +283,13 @@ export function DesktopDealsWorkspaceScreen({
           <div className="flex items-center gap-space-sm justify-end">
             <button
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_deal_stats',
+                  ['Deal', 'Promo', 'Price', 'Was', 'Branches', 'Performance'],
+                  DEAL_STATS.map((deal) => [deal.title, deal.promo, deal.price, deal.oldPrice, deal.branches, deal.performance]),
+                );
+              }}
               className="h-[48px] px-space-md rounded-xl bg-surface-container hover:bg-surface-container-high text-primary font-label-md text-label-md flex items-center gap-space-xs transition-colors"
             >
               <Icon name="download" className="text-[20px]" />
@@ -441,7 +461,7 @@ export function DesktopDealsWorkspaceScreen({
             primaryAction={
               <button
                 type="button"
-                onClick={onBoost}
+                onClick={() => onBoost?.('Weekend Prime Lunch Combo')}
                 className="flex-1 h-11 px-3 rounded-xl bg-tertiary-container hover:bg-tertiary text-on-tertiary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm transition-all"
               >
                 <Icon name="rocket_launch" className="text-[18px]" />
@@ -580,7 +600,7 @@ export function DesktopDealsWorkspaceScreen({
             primaryAction={
               <button
                 type="button"
-                onClick={onBoost}
+                onClick={() => onBoost?.('After-Work Chill Pass')}
                 className="flex-1 h-11 px-3 rounded-xl bg-tertiary-container hover:bg-tertiary text-on-tertiary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm transition-all"
               >
                 <Icon name="rocket_launch" className="text-[18px]" />

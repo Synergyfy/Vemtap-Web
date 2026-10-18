@@ -9,7 +9,14 @@ interface DesktopAllServicesScreenProps {
 }
 
 export function DesktopAllServicesScreen({ onNav, onBack }: DesktopAllServicesScreenProps) {
-  const [category, setCategory] = useState<(typeof CATEGORIES)[number]['key']>('all');
+  // Category QR links land here with ?category=<key> — open pre-filtered while the
+  // category tabs stay available for easy navigation.
+  const [category, setCategory] = useState<(typeof CATEGORIES)[number]['key']>(() => {
+    const param = new URLSearchParams(window.location.search).get('category');
+    return param && CATEGORIES.some((item) => item.key === param)
+      ? (param as (typeof CATEGORIES)[number]['key'])
+      : 'all';
+  });
   const [query, setQuery] = useState('');
 
   const services = useMemo(() => {

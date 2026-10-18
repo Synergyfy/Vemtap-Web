@@ -2,6 +2,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 
 export type HubModuleKey = 'deals' | 'catalog' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile';
@@ -11,6 +12,7 @@ interface BusinessHubHomeScreenProps {
   onOpenModule: (module: HubModuleKey) => void;
 }
 
+// Order mirrors the desktop Business dropdown — keep both lists in sync.
 const MENU_CARDS: {
   key: HubModuleKey;
   icon: string;
@@ -21,6 +23,14 @@ const MENU_CARDS: {
   chips: { label: string; chipClass: string }[];
 }[] = [
   {
+    key: 'catalog',
+    icon: 'inventory_2',
+    iconBox: 'bg-secondary-fixed text-on-secondary-fixed-variant',
+    title: 'Products & Services',
+    desc: 'Manage your central catalogue & branch inventory',
+    chips: [{ label: '42 Items • 8 Services', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
+  },
+  {
     key: 'deals',
     icon: 'sell',
     iconBox: 'bg-tertiary-fixed text-tertiary',
@@ -30,14 +40,6 @@ const MENU_CARDS: {
       { label: '3 Active', chipClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' },
       { label: '1 Scheduled', chipClass: 'bg-surface-container text-text-secondary' },
     ],
-  },
-  {
-    key: 'catalog',
-    icon: 'inventory_2',
-    iconBox: 'bg-secondary-fixed text-on-secondary-fixed-variant',
-    title: 'Products & Services',
-    desc: 'Manage your central catalogue & branch inventory',
-    chips: [{ label: '42 Items â€¢ 8 Services', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
   },
   {
     key: 'customers',
@@ -52,9 +54,17 @@ const MENU_CARDS: {
     icon: 'stars',
     filled: true,
     iconBox: 'bg-surface-container-high text-primary',
-    title: 'Loyalty Programme',
+    title: 'Loyalty & Rewards',
     desc: 'Configure points, rewards & customer tiers',
-    chips: [{ label: 'Active â€¢ 3 Rewards', chipClass: 'bg-surface-tint-blue text-primary font-semibold' }],
+    chips: [{ label: 'Active • 3 Rewards', chipClass: 'bg-surface-tint-blue text-primary font-semibold' }],
+  },
+  {
+    key: 'staff',
+    icon: 'badge',
+    iconBox: 'bg-secondary-fixed text-on-secondary-fixed-variant',
+    title: 'Staff & Permissions',
+    desc: 'Manage employee accounts and role permissions',
+    chips: [{ label: '6 Staff • 3 Roles', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
   },
   {
     key: 'locations',
@@ -63,14 +73,6 @@ const MENU_CARDS: {
     title: 'Locations & Branches',
     desc: 'Manage branches and where the business operates',
     chips: [{ label: '3 Branches (2 Active)', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
-  },
-  {
-    key: 'staff',
-    icon: 'badge',
-    iconBox: 'bg-secondary-fixed text-on-secondary-fixed-variant',
-    title: 'Staff & Team Access',
-    desc: 'Manage employee accounts and role permissions',
-    chips: [{ label: '6 Staff â€¢ 3 Roles', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
   },
   {
     key: 'profile',
@@ -137,17 +139,8 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
             </div>
           </div>
           <div className="flex items-center gap-space-xs">
-            <button
-              aria-label="Notifications"
-              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
-              type="button"
-              onClick={() => showToast('No new business notifications')}
-            >
-              <Icon name="notifications" className="text-[22px]" />
-            </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
-            </div>
+            <MobileNotificationBell />
+            <MobileAccountMenu />
           </div>
         </div>
       </header>

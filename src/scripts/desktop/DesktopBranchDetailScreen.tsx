@@ -1,6 +1,8 @@
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopBranchDetailScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -556,6 +558,32 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
             </div>
             <button
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'wuse-branch-compliance-dossier.csv',
+                  ['Field', 'Value'],
+                  DOSSIER_ROWS.map((row) => [row.label, row.value]),
+                );
+                printReport(
+                  'Compliance Dossier — Wuse II Branch',
+                  `${printKvTable('Outlet', [
+                    ['Branch', 'Wuse II — Apo Boulevard'],
+                    ['Jurisdiction', 'Abuja Municipal (AMAC)'],
+                    ['Status', 'Live & Accepting'],
+                  ])}
+                   ${printKvTable(
+                     'Statutory compliance',
+                     DOSSIER_ROWS.map((row) => [row.label, row.value] as [string, string]),
+                   )}
+                   ${printKvTable('Inventory & POS', [
+                     ...INVENTORY_METRICS.map(
+                       (metric) => [metric.label, `${metric.value} — ${metric.sub}`] as [string, string],
+                     ),
+                     ['POS units', POS_UNITS.map((unit) => unit.name).join(', ')],
+                   ])}
+                   <p class="foot">A CSV copy of this dossier downloaded alongside the PDF.</p>`,
+                );
+              }}
               className="w-full py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container text-on-surface font-button-secondary text-button-secondary transition-colors flex items-center justify-center gap-space-2xs"
             >
               <Icon name="download" className="text-[18px]" />

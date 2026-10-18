@@ -5,6 +5,8 @@ import { BoostTabBar, type BoostTabKey } from '../components/BoostTabBar';
 import { hasApiConfig } from '../lib/api';
 import { adWalletService } from '../services';
 import type { AdWalletSummary, AdWalletTransaction } from '../services/types';
+import { downloadCsv } from '../utils/exportCsv';
+import { printKvTable, printReport } from '../utils/printReport';
 
 interface BusinessBoostWalletScreenProps {
   onBack: () => void;
@@ -215,6 +217,70 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
   };
 
   const accountNumber = walletSummary.virtualAccount?.number ?? DEFAULT_WALLET_SUMMARY.virtualAccount?.number ?? '9940284411';
+  /** September VAT invoice — real PDF (print → save) + CSV ledger attachment. */
+  const downloadVatInvoice = () => {
+    const vatRows = LEDGER.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]);
+    downloadCsv('vemtap-boost-vat-september.csv', ['Date', 'Description', 'Reference', 'Amount', 'Status'], vatRows);
+    printReport(
+      'VEMTAP Boost Wallet — VAT Invoice (September)',
+      `${printKvTable('Merchant', [
+        ['Registered name', 'Gourmet Bites Bistro'],
+        ['TIN', 'TIN-8894102-NG'],
+        ['NDPR status', 'Active'],
+        ['FIRS verification', 'Verified'],
+      ])}
+       ${printKvTable('VAT summary', [
+        ['Billing period', 'September 1 – 30, 2026'],
+        ['Standard rated spend', '₦382,000.00'],
+        ['VAT @ 7.5%', '₦28,650.00'],
+        ['Total charged', '₦410,650.00'],
+      ])}
+       ${printKvTable(
+         'Wallet transactions',
+         vatRows.map((row) => [`${row[0]} — ${row[1]}`, `${row[3]} (${row[4]}) · ${row[2]}`]),
+       )}
+       <p class="foot">A CSV copy of the transaction ledger downloaded alongside this invoice.</p>`,
+    );
+    showToast('September VAT invoice + CSV ledger downloaded');
+  };
+
+  /** Historical VAT archive — CSV of prior periods. */
+  const openVatArchive = () => {
+    downloadCsv(
+      'vemtap-boost-vat-archive.csv',
+      ['Period', 'Standard rated spend', 'VAT @ 7.5%', 'Total charged', 'Status'],
+      [
+        ['August 2026', '₦341,500.00', '₦25,612.50', '₦367,112.50', 'Filed'],
+        ['July 2026', '₦298,200.00', '₦22,365.00', '₦320,565.00', 'Filed'],
+        ['June 2026', '₦276,900.00', '₦20,767.50', '₦297,667.50', 'Filed'],
+        ['May 2026', '₦254,300.00', '₦19,072.50', '₦273,372.50', 'Filed'],
+      ],
+    );
+    showToast('Historical VAT archive downloaded as CSV');
+  };
+
+  /** Full wallet statement history — CSV ledger + print-ready PDF statement. */
+  const openStatementHistory = () => {
+    downloadCsv(
+      'boost-wallet-statement-history.csv',
+      ['Date', 'Description', 'Reference', 'Amount', 'Status'],
+      LEDGER.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]),
+    );
+    printReport(
+      'Boost Wallet Statement History — VEM-WAL-709',
+      `${printKvTable('Wallet', [
+        ['Wallet ref', 'VEM-WAL-709'],
+        ['Merchant', 'Gourmet Bites Bistro'],
+        ['Protection', 'Tier-1 Escrow Protected'],
+      ])}
+       ${printKvTable(
+         'Transactions',
+         LEDGER.map((entry) => [`${entry.date} — ${entry.title}`, `${entry.amount} • ${entry.status} • ${entry.ref}`]),
+       )}
+       <p class="foot">A CSV copy of this statement downloaded alongside the PDF.</p>`,
+    );
+    showToast('Statement history downloaded (CSV + PDF)');
+  };
 
   const copyAccount = () => {
     if (navigator.clipboard?.writeText) {
@@ -264,7 +330,7 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
             aria-label="Statement History"
             className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-low text-secondary active:scale-95 transition-transform shadow-sm shrink-0"
             type="button"
-            onClick={() => showToast('Statement history opened')}
+            onClick={openStatementHistory}
           >
             <Icon className="text-[22px]" name="receipt_long" />
           </button>
@@ -329,7 +395,7 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
                 <button
                   className="h-11 px-4 rounded-xl bg-surface-canvas/20 text-on-primary font-button-secondary text-button-secondary backdrop-blur-md flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all"
                   type="button"
-                  onClick={() => showToast('VAT invoice download started')}
+                  onClick={openVatArchive}
                 >
                   <Icon className="text-[18px]" name="description" />
                   <span>Tax Invoices</span>
@@ -595,7 +661,7 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
               <button
                 className="p-2.5 rounded-xl bg-surface-container-low text-text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
                 type="button"
-                onClick={() => showToast('September VAT invoice downloaded')}
+                onClick={downloadVatInvoice}
               >
                 <Icon className="text-[18px] text-primary" name="download" />
                 <span>September VAT</span>
@@ -603,7 +669,7 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
               <button
                 className="p-2.5 rounded-xl bg-surface-container-low text-text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
                 type="button"
-                onClick={() => showToast('Historical VAT archive opened')}
+                onClick={openVatArchive}
               >
                 <Icon className="text-[18px] text-primary" name="calendar_month" />
                 <span>Historical VAT</span>

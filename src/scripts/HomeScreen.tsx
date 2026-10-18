@@ -261,24 +261,37 @@ function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation
 
   return (
     <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-      <div className="px-margin py-3 flex items-center justify-between">
-        <div className="flex flex-col">
+      <div className="px-margin py-3 flex items-center justify-between gap-space-2xs min-w-0">
+        <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-space-2xs">
             <span className="font-caption text-caption text-text-secondary">Good evening</span>
             <Icon name="waving_hand" className="text-sm" />
           </div>
-          <button type="button" onClick={onLocation} className="flex items-center gap-1.5 text-left group transition-transform active:scale-95">
+          <button
+            type="button"
+            onClick={onLocation}
+            className="flex items-center gap-1.5 text-left group transition-transform active:scale-95"
+          >
             <Icon name="location_on" className="text-primary text-[20px]" filled />
-            <span className="font-button-primary text-button-primary text-text-primary">{district}, {city}</span>
-            <Icon name="keyboard_arrow_down" className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform" />
+            <span className="font-button-primary text-button-primary text-text-primary">
+              {district}, {city}
+            </span>
+            <Icon
+              name="keyboard_arrow_down"
+              className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform"
+            />
             <span className="ml-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-medium">
               Within {radius} km
             </span>
           </button>
         </div>
-
         <div className="flex items-center gap-2.5">
-          <button aria-label="Notifications" type="button" onClick={onNotifications} className="relative w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-text-primary shadow-sm active:scale-95 transition-transform">
+          <button
+            aria-label="Notifications"
+            type="button"
+            onClick={onNotifications}
+            className="relative w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-text-primary shadow-sm active:scale-95 transition-transform"
+          >
             <Icon name="notifications" className="text-[22px]" />
             <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest" />
           </button>

@@ -79,13 +79,13 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
                 onClick={() => onNav('store-ordering-dashboard')}
                 className="hover:text-primary transition-colors"
               >
-                Store Ordering
+                Store Front
               </button>
               <span>/</span>
               <span className="text-text-primary font-semibold">Ordering Settings</span>
             </div>
             <h1 className="text-heading-xl font-heading-xl text-text-primary tracking-tight">
-              Store Ordering Configuration
+              Store Front Configuration
             </h1>
             <p className="text-body-sm text-text-secondary">
               Control pickup policies, participating branches, preparation lead times, and staff alerts.

@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsDesktop } from './hooks/useIsDesktop';
+import { PosSettingsProvider } from './context/PosSettingsContext';
+import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -17,10 +19,12 @@ import { ProductDetailScreen } from './scripts/ProductDetailScreen';
 import { CheckoutScreen } from './scripts/CheckoutScreen';
 import { OrderPlacedScreen } from './scripts/OrderPlacedScreen';
 import { ContactsProvider, useContacts } from './context/ContactsContext';
+import { CampaignsProvider } from './context/CampaignsContext';
 import { AccountDeletionProvider } from './context/AccountDeletionContext';
 import type { SubmittedOrder } from './context/OrdersContext';
 import { useCart } from './context/CartContext';
 import { URBAN_BUSINESS, SPA_BUSINESS, resolveBusinessPath, productPath, servicePath } from './scripts/businessData';
+import { CustomerInviteJoinScreen } from './scripts/CustomerInviteJoinScreen';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
 import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
 import { ServiceDetailScreen } from './scripts/ServiceDetailScreen';
@@ -128,12 +132,23 @@ import { MenuProductsScreen } from './scripts/MenuProductsScreen';
 import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
 import { BusinessAccountChoiceScreen } from './scripts/BusinessAccountChoiceScreen';
 import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
+import { BusinessDealStudioFlow } from './scripts/BusinessDealStudioFlow';
+import {
+  BusinessSetupNavContext,
+  clearBusinessSetupSnapshot,
+  getBusinessSetupSnapshot,
+  hasBusinessSetupSnapshot,
+  setBusinessSetupVerificationState,
+  type BusinessSetupNavValue,
+} from './scripts/businessSetup';
 import { BusinessVerificationScreen } from './scripts/BusinessVerificationScreen';
 import { VerificationStatusCenterScreen } from './scripts/VerificationStatusCenterScreen';
 import { SubscriptionScreen } from './scripts/SubscriptionScreen';
+import { BusinessBoostScreen } from './scripts/BusinessBoostScreen';
 import { BusinessOrdersScreen } from './scripts/BusinessOrdersScreen';
 import { BusinessMessagesScreen } from './scripts/BusinessMessagesScreen';
 import { BusinessOverviewScreen } from './scripts/BusinessOverviewScreen';
+import { BusinessPosMenuScreen } from './scripts/BusinessPosMenuScreen';
 import { BusinessHubScreen } from './scripts/BusinessHubScreen';
 import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
 import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
@@ -173,14 +188,9 @@ import { BusinessPosOrderLookupScreen } from './scripts/BusinessPosOrderLookupSc
 import { BusinessPosCustomerDossierScreen } from './scripts/BusinessPosCustomerDossierScreen';
 import { BusinessPosOfflineCheckoutScreen } from './scripts/BusinessPosOfflineCheckoutScreen';
 import { BusinessPosTransactionDetailScreen } from './scripts/BusinessPosTransactionDetailScreen';
-import { BusinessPosSyncScreen } from './scripts/BusinessPosSyncScreen';
 import { BusinessPosOfflineBufferScreen } from './scripts/BusinessPosOfflineBufferScreen';
 import { BusinessPosKitchenStreamScreen } from './scripts/BusinessPosKitchenStreamScreen';
-import { BusinessPosHardwareScreen } from './scripts/BusinessPosHardwareScreen';
 import { BusinessPosSettingsScreen } from './scripts/BusinessPosSettingsScreen';
-import { BusinessPosReceiptScreen } from './scripts/BusinessPosReceiptScreen';
-import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
-import { BusinessPosPermissionsScreen } from './scripts/BusinessPosPermissionsScreen';
 import { PublicPosMenuScreen } from './scripts/PublicPosMenuScreen';
 import { PublicPosCartReviewScreen } from './scripts/PublicPosCartReviewScreen';
 import { PublicPosOrderTrackingScreen } from './scripts/PublicPosOrderTrackingScreen';
@@ -250,13 +260,21 @@ import { DesktopSubscriptionScreen } from './scripts/desktop/DesktopSubscription
 import { DesktopBusinessOrdersScreen } from './scripts/desktop/DesktopBusinessOrdersScreen';
 import { DesktopBusinessPosOrdersScreen } from './scripts/desktop/DesktopBusinessPosOrdersScreen';
 import { DesktopBusinessMessagesWorkspaceScreen } from './scripts/desktop/DesktopBusinessMessagesWorkspaceScreen';
+import { CampaignsChannelScreen } from './scripts/campaigns/CampaignsChannelScreen';
+import { DesktopMoreSubscriptionScreen } from './scripts/desktop/DesktopMoreSubscriptionScreen';
+import { DesktopMoreAddOnsScreen } from './scripts/desktop/DesktopMoreAddOnsScreen';
+import { DesktopBusinessNotificationsScreen } from './scripts/desktop/DesktopBusinessNotificationsScreen';
+import { DesktopBusinessHelpSupportScreen } from './scripts/desktop/DesktopBusinessHelpSupportScreen';
+import { DesktopBusinessSettingsScreen } from './scripts/desktop/DesktopBusinessSettingsScreen';
 import { DesktopDealsWorkspaceScreen } from './scripts/desktop/DesktopDealsWorkspaceScreen';
+import { DesktopDealStudioFlow } from './scripts/desktop/DesktopDealStudioFlow';
 import { DesktopBusinessProfilePreviewStudioScreen } from './scripts/desktop/DesktopBusinessProfilePreviewStudioScreen';
 import { DesktopBusinessOverviewScreen } from './scripts/desktop/DesktopBusinessOverviewScreen';
 import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealLocationPricingScreen';
 import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
 import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
-import { SIGN_OUT_EVENT } from './scripts/desktop/PortalShell';
+import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
+import { MOBILE_ACCOUNT_NAV_EVENT } from './utils/appEvents';
 import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
 import { DesktopBusinessBranchPricingScreen } from './scripts/desktop/DesktopBusinessBranchPricingScreen';
 import { DesktopBusinessCustomersScreen } from './scripts/desktop/DesktopBusinessCustomersScreen';
@@ -286,7 +304,6 @@ import { DesktopPosSaleCompleteScreen } from './scripts/desktop/DesktopPosSaleCo
 import { DesktopPosStockScreen } from './scripts/desktop/DesktopPosStockScreen';
 import { DesktopPosLedgerScreen } from './scripts/desktop/DesktopPosLedgerScreen';
 import { DesktopPosOfflineSaleScreen } from './scripts/desktop/DesktopPosOfflineSaleScreen';
-import { DesktopPosSyncScreen } from './scripts/desktop/DesktopPosSyncScreen';
 import { DesktopPosBufferScreen } from './scripts/desktop/DesktopPosBufferScreen';
 import { DesktopPosKitchenScreen } from './scripts/desktop/DesktopPosKitchenScreen';
 import { DesktopPosCartScreen } from './scripts/desktop/DesktopPosCartScreen';
@@ -297,25 +314,28 @@ import { DesktopPosCustomerLookupScreen } from './scripts/desktop/DesktopPosCust
 import { DesktopPosOrderLookupScreen } from './scripts/desktop/DesktopPosOrderLookupScreen';
 import { DesktopPosCustomerDossierScreen } from './scripts/desktop/DesktopPosCustomerDossierScreen';
 import { DesktopPosTransactionDetailScreen } from './scripts/desktop/DesktopPosTransactionDetailScreen';
-import { DesktopPosHardwareScreen } from './scripts/desktop/DesktopPosHardwareScreen';
-import { DesktopPosReceiptScreen } from './scripts/desktop/DesktopPosReceiptScreen';
-import { DesktopPosTaxesScreen } from './scripts/desktop/DesktopPosTaxesScreen';
 import { DesktopPublicPosCartScreen } from './scripts/desktop/DesktopPublicPosCartScreen';
 import { DesktopPublicPosTrackingScreen } from './scripts/desktop/DesktopPublicPosTrackingScreen';
 import { DesktopPublicPosMenuScreen } from './scripts/desktop/DesktopPublicPosMenuScreen';
 import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGeneralSettingsScreen';
-import { DesktopPosPermissionsScreen } from './scripts/desktop/DesktopPosPermissionsScreen';
 import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
 import { SEED_POS_TERMINAL_LINES, type PosTerminalLine } from './scripts/desktop/posTerminalData';
+import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
 import { StoreOrderingProvider } from './context/StoreOrderingContext';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { DesktopStoreOrderingDashboard } from './scripts/desktop/DesktopStoreOrderingDashboard';
 import { DesktopStoreOrderingQrScreen } from './scripts/desktop/DesktopStoreOrderingQrScreen';
 import { DesktopStoreOrderingSettingsScreen } from './scripts/desktop/DesktopStoreOrderingSettingsScreen';
 import { StoreOrderingScreen } from './scripts/StoreOrderingScreen';
+import { ClusterOnboardingScreen } from './scripts/ClusterOnboardingScreen';
+import { DesktopClusterOnboardingScreen } from './scripts/desktop/DesktopClusterOnboardingScreen';
+import { ClusterSystemScreen } from './scripts/ClusterSystemScreen';
+import { DesktopClusterSystemScreen } from './scripts/desktop/DesktopClusterSystemScreen';
 
 type Route =
   | 'welcome'
+  | 'cluster-onboarding'
+  | 'cluster-system'
   | 'discover-deals'
   | 'start-vemtap'
   | 'auth-code'
@@ -357,7 +377,11 @@ type Route =
   | 'business-bookings'
   | 'business-pos-orders'
   | 'business-messages'
+  | 'business-messages-sms'
+  | 'business-messages-email'
+  | 'business-subscription'
   | 'business-overview'
+  | 'business-pos-menu'
   | 'business-hub'
   | 'hub-locations'
   | 'hub-branch-detail'
@@ -365,9 +389,11 @@ type Route =
   | 'hub-services'
   | 'hub-deals'
   | 'hub-customers'
+  | 'customer-invite-join'
   | 'hub-profile'
   | 'deal-location-pricing'
   | 'deal-create-locations'
+  | 'deal-studio'
   | 'business-profile-studio'
   | 'hub-deal-detail'
   | 'business-branch-pricing'
@@ -407,14 +433,9 @@ type Route =
   | 'pos-dossier'
   | 'pos-offline'
   | 'pos-txn-detail'
-  | 'pos-sync'
   | 'pos-buffer'
   | 'pos-kitchen'
   | 'pos-settings'
-  | 'pos-hardware'
-  | 'pos-receipt'
-  | 'pos-taxes'
-  | 'pos-permissions'
   | 'public-pos-menu'
   | 'public-pos-cart'
   | 'public-pos-tracking'
@@ -424,6 +445,7 @@ type Route =
   | 'store-ordering-settings'
   | 'boost'
   | 'boost-hub'
+  | 'boost-studio'
   | 'boost-metrics'
   | 'boost-wallet'
   | 'segments-hub'
@@ -431,6 +453,9 @@ type Route =
   | 'segment-create'
   | 'segment-detail'
   | 'business-add-ons'
+  | 'business-notifications'
+  | 'business-support'
+  | 'business-settings'
   | 'deal-detail'
   | 'how-to-claim'
   | 'claim-success'
@@ -518,7 +543,11 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-bookings': '/business/orders/bookings',
   'business-pos-orders': '/business/orders/pos',
   'business-messages': '/business/messages',
+  'business-messages-sms': '/business/messages/sms',
+  'business-messages-email': '/business/messages/email',
+  'business-subscription': '/business/subscription',
   'business-overview': '/business/overview',
+  'business-pos-menu': '/business/pos/menu',
   'business-hub': '/business/hub',
   'hub-locations': '/business/hub/locations',
   'hub-branch-detail': '/business/hub/locations/branch',
@@ -526,9 +555,13 @@ const ROUTE_PATH: Record<Route, string> = {
   'hub-services': '/business/hub/catalog/services',
   'hub-deals': '/business/hub/deals',
   'hub-customers': '/business/hub/customers',
+  // Dynamic public path (/join/{slug}?invite=…) — placeholder entry; the
+  // URL-sync effect never overwrites it (see renderRoute effect).
+  'customer-invite-join': '/join',
   'hub-profile': '/business/hub/profile',
   'deal-location-pricing': '/business/deals/location-pricing',
   'deal-create-locations': '/business/deals/create/locations',
+  'deal-studio': '/business/deals/create/studio',
   'business-profile-studio': '/business/settings/profile',
   'hub-deal-detail': '/business/hub/deals/detail',
   'business-branch-pricing': '/business/catalog/branch-pricing',
@@ -568,23 +601,21 @@ const ROUTE_PATH: Record<Route, string> = {
   'pos-dossier': '/pos/customer/dossier',
   'pos-offline': '/pos/offline',
   'pos-txn-detail': '/pos/txn/detail',
-  'pos-sync': '/pos/sync',
   'pos-buffer': '/pos/buffer',
   'pos-kitchen': '/pos/kitchen',
   'pos-settings': '/pos/settings',
-  'pos-hardware': '/pos/settings/hardware',
-  'pos-receipt': '/pos/settings/receipt',
-  'pos-taxes': '/pos/settings/taxes',
-  'pos-permissions': '/pos/settings/permissions',
   'public-pos-menu': '/public/pos/menu',
   'public-pos-cart': '/public/pos/cart',
   'public-pos-tracking': '/public/pos/tracking',
   'business-more': '/business/more',
+  'cluster-onboarding': '/business/cluster/onboarding',
+  'cluster-system': '/business/cluster',
   'store-ordering-dashboard': '/business/store-ordering',
   'store-ordering-qr': '/business/store-ordering/qr',
   'store-ordering-settings': '/business/store-ordering/settings',
   boost: '/boost',
   'boost-hub': '/boost-hub',
+  'boost-studio': '/boost-hub/studio',
   'boost-metrics': '/boost-metrics',
   'boost-wallet': '/boost-wallet',
   'segments-hub': '/segments',
@@ -592,6 +623,9 @@ const ROUTE_PATH: Record<Route, string> = {
   'segment-create': '/segments/create',
   'segment-detail': '/segments/detail',
   'business-add-ons': '/business/add-ons',
+  'business-notifications': '/business/notifications',
+  'business-support': '/business/support',
+  'business-settings': '/business/settings',
   'deal-detail': '/deals/lunch-combo',
   'how-to-claim': '/how-to-claim',
   'claim-success': '/claim/success',
@@ -742,6 +776,8 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
 }
 
 function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
+  // Public customer invite page — reachable signed-out via /join/{business-slug}.
+  if (path.startsWith('/join/')) return 'customer-invite-join';
   const direct = PATH_ROUTE.get(path);
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
@@ -765,16 +801,22 @@ export default function App() {
           <ClaimsProvider>
             <OrdersProvider>
               <ContactsProvider>
+              <CampaignsProvider>
               <BusinessBranchProvider>
                 <CartProvider>
                   <BookingProvider>
                     <AccountDeletionProvider>
-                      <AppInner />
-                      <BranchSwitchOverlay />
+                      <PosSettingsProvider>
+                        <PosOfflineProvider>
+                          <AppInner />
+                          <BranchSwitchOverlay />
+                        </PosOfflineProvider>
+                      </PosSettingsProvider>
                     </AccountDeletionProvider>
                   </BookingProvider>
                 </CartProvider>
               </BusinessBranchProvider>
+              </CampaignsProvider>
               </ContactsProvider>
             </OrdersProvider>
           </ClaimsProvider>
@@ -829,9 +871,34 @@ function AppInner() {
   const [posCart, setPosCart] = useState<PosCartLine[]>(SEED_POS_CART);
   const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>(SEED_POS_TERMINAL_LINES);
   const [posCustomer, setPosCustomer] = useState<string | null>(null);
+  const [posCustomerRecord, setPosCustomerRecord] = useState<PosCustomerRecord | null>(null);
+  /** Loyalty points earned by the sale currently shown on the receipt screen. */
+  const [posSalePoints, setPosSalePoints] = useState(0);
+  /** Points manually awarded to the mobile-flow customer during the sale. */
+  const [posCustomerBonus, setPosCustomerBonus] = useState(0);
   const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
+
+  /**
+   * Sales completed while the till is offline are parked locally so the cashier
+   * keeps trading; the queue pushes them the moment connectivity returns (or
+   * when "Sync Online" is tapped on the register).
+   */
+  const { isOnline, enqueue } = usePosOffline();
+  const queuePosSaleIfOffline = useCallback(
+    (lines: Array<{ name: string; qty: number; unit: number }>, tender: string) => {
+      if (isOnline) return;
+      const total = lines.reduce((sum, line) => sum + line.unit * line.qty, 0);
+      enqueue({
+        ref: `POS-${10840 + Math.floor(Math.random() * 60)}`,
+        total,
+        tender,
+        items: lines.map((line) => `${line.qty}× ${line.name}`).join(', ') || 'No items',
+      });
+    },
+    [enqueue, isOnline],
+  );
 
   const posTab = (key: PosTabKey) => {
     switch (key) {
@@ -870,6 +937,10 @@ function AppInner() {
       case 'orders':
         setRoute('pos-order-lookup');
         break;
+      case 'bookings':
+        // Bookings have their own page — never the order lookup.
+        setRoute('business-bookings');
+        break;
       case 'products':
         setRoute('pos-stock');
         break;
@@ -877,7 +948,9 @@ function AppInner() {
         setRoute('pos-ledger');
         break;
       case 'hardware-and-sync':
-        setRoute('pos-sync');
+        // /pos/sync was removed — offline state + "Sync Online" live on the
+        // register now, so this nav lands on the till.
+        setRoute('pos-register');
         break;
       case 'settings':
         setRoute('pos-settings');
@@ -935,7 +1008,9 @@ function AppInner() {
 
   useEffect(() => {
     const expected =
-      route === 'product-detail'
+      route === 'customer-invite-join'
+        ? null // dynamic /join/{slug}?invite=… path — never overwritten
+        : route === 'product-detail'
         ? detailProduct
           ? productPath(URBAN_BUSINESS.slug, detailProduct.id)
           : null
@@ -1292,9 +1367,11 @@ function AppInner() {
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
 
   const openBoost = (item?: string) => {
-    setBoostReturnRoute(route);
+    // The Boost Studio always opens inside the dashboard (side menu intact) —
+    // never in the subscription/onboarding shell.
+    setBoostReturnRoute(route === 'boost-studio' ? 'boost-hub' : route);
     setBoostItem(item ?? null);
-    setRoute('boost');
+    setRoute('boost-studio');
   };
 
   const boostTab = (key: BoostTabKey) => {
@@ -1381,13 +1458,17 @@ function AppInner() {
       case 'orders-bookings':
         setRoute('business-bookings');
         break;
-      case 'orders-history':
-        setRoute('business-orders');
-        break;
       case 'messages':
       case 'messages-all':
       case 'messages-inquiries':
+      case 'messages-inapp':
         setRoute('business-messages');
+        break;
+      case 'messages-sms':
+        setRoute('business-messages-sms');
+        break;
+      case 'messages-email':
+        setRoute('business-messages-email');
         break;
       case 'catalog':
       case 'business-catalog':
@@ -1424,23 +1505,38 @@ function AppInner() {
         break;
       case 'pos-home':
         setPosActiveNav('pos-home');
-        setRoute('business-pos-orders');
+        // Dedicated POS overview with its own URL path (/pos/home).
+        setRoute('pos-home');
         break;
       case 'pos-sale':
-        // Intentionally launches the full POS terminal register (leaves business sidebar)
+        // Launches the full POS terminal register. The business sidebar stays on
+        // screen (collapsed) with the POS menu beside it.
         setRoute('pos-register');
         break;
       case 'pos-transactions':
         setPosActiveNav('pos-transactions');
         setRoute('business-pos-orders');
         break;
+      case 'pos-stock':
+        setRoute('pos-stock');
+        break;
+      case 'pos-ledger':
+        setRoute('pos-ledger');
+        break;
+      case 'pos-settings':
+        setRoute('pos-settings');
+        break;
       case 'pos-sync':
-        setPosActiveNav('pos-sync');
-        setRoute('business-pos-orders');
+        // BUG: /pos/sync is gone. Offline state and "Sync Online" now live on
+        // the register itself, so this nav key just lands on the till.
+        setPosActiveNav('pos-home');
+        setRoute('pos-register');
         break;
       case 'settings':
       case 'more-settings':
-        setRoute('hub-profile');
+        // Business Settings — NDPR data rights, transaction PIN, account
+        // deletion and the rest of the account-holder security controls.
+        setRoute('business-settings');
         break;
       // Store Ordering
       case 'store-ordering':
@@ -1453,6 +1549,14 @@ function AppInner() {
       case 'store-ordering-settings':
         setRoute('store-ordering-settings');
         break;
+      // Cluster section
+      case 'cluster-system':
+      case 'cluster':
+        setRoute('cluster-system');
+        break;
+      case 'cluster-onboarding':
+        setRoute('cluster-onboarding');
+        break;
       // More section
       case 'more':
         setRoute('business-more');
@@ -1461,31 +1565,56 @@ function AppInner() {
         setRoute('boost-hub');
         break;
       case 'more-subscription':
-        setRoute('subscription');
+        // Dashboard subscription & billing — designed for an existing account,
+        // NOT the business-onboarding subscription flow (route 'subscription').
+        setRoute('business-subscription');
         break;
       case 'more-addons':
+        // Dashboard add-ons & credits — same reasoning as above.
         setRoute('business-add-ons');
         break;
       case 'more-notifications':
-        setRoute('business-overview');
+        // Dashboard notifications — the account-holder feed, not the overview.
+        setRoute('business-notifications');
         break;
       case 'more-verification':
-        setRoute('business-verification');
-        break;
-      case 'more-qr-nfc':
-        setRoute('store-ordering-qr');
-        break;
-      case 'more-payments':
-        setRoute('hub-profile');
+        // Dashboard verification status center — not the onboarding KYC flow.
+        setRoute('verification-status');
         break;
       case 'more-support':
-        setRoute('support');
-        break;
-      case 'more-integrations':
-        setRoute('business-hub');
+        // Dashboard Help & Support — never the public consumer help centre.
+        setRoute('business-support');
         break;
     }
   };
+
+  // The collapsed business rail inside the POS shell navigates via a window
+  // event, since the POS chrome is rendered several levels below this router.
+  const businessPortalNavRef = useRef(businessPortalNav);
+  businessPortalNavRef.current = businessPortalNav;
+
+  useEffect(() => {
+    const handleBusinessNav = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail;
+      businessPortalNavRef.current(key);
+    };
+    window.addEventListener(BUSINESS_NAV_EVENT, handleBusinessNav);
+    return () => window.removeEventListener(BUSINESS_NAV_EVENT, handleBusinessNav);
+  }, []);
+
+  // The mobile/tablet dashboard headers (below `lg`) render inline with no nav
+  // callback, so the account menu and notification bell announce their intent
+  // through this window event instead.
+  useEffect(() => {
+    const handleMobileAccountNav = (event: Event) => {
+      const key = (event as CustomEvent<string>).detail;
+      if (key === 'dashboard') setRoute('business-hub');
+      else if (key === 'notifications') setRoute('business-notifications');
+      else if (key === 'settings') setRoute('business-settings');
+    };
+    window.addEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
+    return () => window.removeEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
+  }, []);
 
   const goToAnalyticsTab = (tab: AnalyticsTabKey) => {
     setRoute(`analytics-${tab}` as Route);
@@ -2238,20 +2367,23 @@ function AppInner() {
         </>
       );
 
-    case 'claimed-terms':
+    case 'claimed-terms': {
+      // Show the terms frozen onto the claim, not whatever the live offer has.
+      const claimTerms = activeClaim?.terms ?? claims.latestOf('self')?.terms;
       if (isDesktop)
         return (
           <>
             {renderClaimed()}
-            <ClaimedTermsModal open onClose={() => setRoute('claimed-deal')} />
+            <ClaimedTermsModal open onClose={() => setRoute('claimed-deal')} terms={claimTerms} />
           </>
         );
       return (
         <>
           {renderClaimed()}
-          <ClaimedTermsSheet open onClose={() => setRoute('claimed-deal')} />
+          <ClaimedTermsSheet open onClose={() => setRoute('claimed-deal')} terms={claimTerms} />
         </>
       );
+    }
 
     case 'merchant-chat':
       if (isDesktop)
@@ -2942,7 +3074,7 @@ function AppInner() {
       // reuse the existing (intact) consumer account or register a fresh,
       // separate business identity. Reusing skips the marketing intro and
       // lands directly on "Tell us about your business".
-      const showAccountChoice = authed && !businessSetupSkipIntro;
+      const showAccountChoice = authed && !businessSetupSkipIntro && !hasBusinessSetupSnapshot();
       const leaveOnboarding = () => {
         setBusinessSetupSkipIntro(false);
         const destination = authed
@@ -2954,6 +3086,11 @@ function AppInner() {
       };
       const finishOnboarding = () => {
         setBusinessSetupSkipIntro(false);
+        setBusinessSetupVerificationState('in-progress');
+        setRoute('business-verification');
+      };
+      const openVerification = () => {
+        setBusinessSetupVerificationState('in-progress');
         setRoute('business-verification');
       };
       const useNewAccount = () => {
@@ -2991,6 +3128,7 @@ function AppInner() {
                   leaveOnboarding();
                 }
               }}
+              onOpenVerification={openVerification}
               onComplete={finishOnboarding}
             />
           ) : (
@@ -3003,6 +3141,7 @@ function AppInner() {
                   leaveOnboarding();
                 }
               }}
+              onOpenVerification={openVerification}
               onComplete={finishOnboarding}
             />
           )}
@@ -3010,39 +3149,61 @@ function AppInner() {
       );
     }
 
-    case 'business-verification':
-      if (isDesktop)
-        return (
-          <DesktopBusinessVerificationScreen
-            onBack={() => setRoute('home')}
-            onComplete={() => setRoute('home')}
-            onActivate={() => setRoute('subscription')}
-            onPreviewStorefront={() => setRoute('storefront')}
-            onConfigureStorefront={() => setRoute('storefront')}
-            onCreateDeal={() => setRoute('deals')}
-            onQrStands={() => setRoute('business-overview')}
-          />
-        );
-      return (
+    case 'business-verification': {
+      // If onboarding is mid-flight, verification is the third setup section:
+      // keep the tracker visible, let Back return to setup (progress preserved),
+      // and only clear saved progress once verification is truly finished.
+      const setupSnapshot = getBusinessSetupSnapshot();
+      const backFromVerification = () => setRoute(setupSnapshot ? 'business-onboarding' : 'home');
+      const finishVerification = () => {
+        setBusinessSetupVerificationState('complete');
+        clearBusinessSetupSnapshot();
+        setRoute('home');
+      };
+      const verificationNav: BusinessSetupNavValue | null = setupSnapshot
+        ? {
+            activeSection: 'verification',
+            profileCompleted: true,
+            offeringsCompleted: true,
+            verificationState: setupSnapshot.verificationState,
+            onSelectSection: (id) => {
+              if (id !== 'verification') setRoute('business-onboarding');
+            },
+          }
+        : null;
+      const screen = isDesktop ? (
+        <DesktopBusinessVerificationScreen
+          onBack={backFromVerification}
+          onComplete={finishVerification}
+          onActivate={() => setRoute('subscription')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onConfigureStorefront={() => setRoute('storefront')}
+          onCreateDeal={() => setRoute('deals')}
+          onQrStands={() => setRoute('business-overview')}
+        />
+      ) : (
         <BusinessVerificationScreen
-          onBack={() => setRoute('home')}
-          onComplete={() => setRoute('home')}
+          onBack={backFromVerification}
+          onComplete={finishVerification}
           onActivate={() => setRoute('subscription')}
           onPreviewStorefront={() => setRoute('storefront')}
         />
       );
+      return <BusinessSetupNavContext.Provider value={verificationNav}>{screen}</BusinessSetupNavContext.Provider>;
+    }
 
     case 'verification-status':
       if (isDesktop)
         return (
           <DesktopVerificationStatusCenterScreen
-            onBack={() => setRoute('home')}
+            onNav={businessPortalNav}
+            onBack={() => setRoute('business-overview')}
             onUpdateInfo={() => setRoute('business-verification')}
           />
         );
       return (
         <VerificationStatusCenterScreen
-          onBack={() => setRoute('home')}
+          onBack={() => setRoute('business-overview')}
           onUpdateInfo={() => setRoute('business-verification')}
         />
       );
@@ -3052,7 +3213,7 @@ function AppInner() {
         return (
           <DesktopSubscriptionScreen
             initialStep="overview"
-            onExit={() => setRoute('business-overview')}
+            onExit={() => setRoute('cluster-onboarding')}
             onViewBusiness={() => setRoute('storefront')}
             onBoost={() => setRoute('boost')}
           />
@@ -3060,7 +3221,7 @@ function AppInner() {
       return (
         <SubscriptionScreen
           initialStep="overview"
-          onExit={() => setRoute('business-overview')}
+          onExit={() => setRoute('cluster-onboarding')}
           onViewBusiness={() => setRoute('storefront')}
           onBoost={() => setRoute('boost')}
         />
@@ -3147,6 +3308,32 @@ function AppInner() {
             onBoost={(item) => openBoost(item)}
             onOpenMetrics={() => setRoute('boost-metrics')}
             onOpenSegments={() => setRoute('segments-hub')}
+          />
+        </div>
+      );
+
+    case 'boost-studio':
+      // Boost Studio lives at /boost-hub/studio — inside the business dashboard
+      // with the side menu still on screen (not the onboarding shell).
+      if (isDesktop)
+        return (
+          <BusinessBoostScreen
+            chrome="portal"
+            onNav={businessPortalNav}
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute(boostReturnRoute)}
+            growthActive={false}
+            preselectedItem={boostItem ?? null}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessBoostScreen
+            chrome="portal"
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute(boostReturnRoute)}
+            growthActive={false}
+            preselectedItem={boostItem ?? null}
           />
         </div>
       );
@@ -3257,18 +3444,92 @@ function AppInner() {
       );
 
     case 'business-add-ons':
-      if (isDesktop)
-        return (
-          <DesktopSubscriptionScreen
-            initialStep="addons"
-            onExit={() => setRoute('business-overview')}
-            onViewBusiness={() => setRoute('storefront')}
-            onBoost={() => setRoute('boost')}
-          />
-        );
+      // Dashboard add-ons & credits — for an existing account, inside the business
+      // portal chrome. The onboarding add-ons flow (route 'subscription', step
+      // 'addons') remains for the setup journey only.
+      if (isDesktop) return <DesktopMoreAddOnsScreen onNav={businessPortalNav} />;
       return (
         <SubscriptionScreen
           initialStep="addons"
+          onExit={() => setRoute('business-overview')}
+          onViewBusiness={() => setRoute('storefront')}
+          onBoost={() => setRoute('boost')}
+        />
+      );
+
+    case 'business-notifications':
+      // Dashboard notifications — account-holder feed inside the business
+      // portal (the consumer route 'notifications' keeps its own chrome).
+      if (isDesktop) return <DesktopBusinessNotificationsScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <NotificationsScreen
+            onBack={() => setRoute('business-more')}
+            onOpenPass={() => {
+              setClaimedFrom('business-notifications');
+              setRoute('claimed-deal');
+            }}
+            onOpenBooking={() => setRoute('booking-detail')}
+            onOpenGift={() => {
+              setClaimedFrom('business-notifications');
+              setRoute('claimed-deal');
+            }}
+            onOpenRewards={() => setRoute('rewards')}
+            onBrowseDeals={() => setRoute('discover')}
+            onOpenPreferences={() => setRoute('preferences')}
+          />
+        </div>
+      );
+
+    case 'business-support':
+      // Dashboard Help & Support — merchant help inside the portal, not the
+      // public consumer help centre (routes 'help' / 'support').
+      if (isDesktop) return <DesktopBusinessHelpSupportScreen onNav={businessPortalNav} />;
+      return (
+        <div className="biz-flow">
+          <HelpCentreScreen
+            onBack={() => setRoute('business-more')}
+            onStartChat={() => setRoute('support')}
+            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenTerms={() => setRoute('terms')}
+          />
+        </div>
+      );
+
+    case 'business-settings':
+      // Business Settings for an existing account — NDPR data rights,
+      // transaction PIN change, account deletion, security & preferences.
+      if (isDesktop)
+        return (
+          <DesktopBusinessSettingsScreen
+            onNav={businessPortalNav}
+            onSignOut={() => {
+              signOut();
+              setRoute('welcome');
+            }}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <AccountSettingsScreen
+            onBack={() => setRoute('business-more')}
+            onOpenPrivacy={() => setRoute('privacy')}
+            onOpenTerms={() => setRoute('terms')}
+            onSignOut={() => {
+              signOut();
+              setRoute('welcome');
+            }}
+          />
+        </div>
+      );
+
+    case 'business-subscription':
+      // Dashboard subscription & billing — for an existing account, inside the
+      // business portal chrome (not the onboarding SubscriptionChrome).
+      if (isDesktop) return <DesktopMoreSubscriptionScreen onNav={businessPortalNav} />;
+      return (
+        <SubscriptionScreen
+          initialStep="overview"
           onExit={() => setRoute('business-overview')}
           onViewBusiness={() => setRoute('storefront')}
           onBoost={() => setRoute('boost')}
@@ -3280,10 +3541,11 @@ function AppInner() {
         return (
           <DesktopBusinessOverviewScreen
             onNav={businessPortalNav}
-            onSubscribe={() => setRoute('subscription')}
+            onSubscribe={() => setRoute('business-subscription')}
             onBoost={() => openBoost()}
             onAddOns={() => setRoute('business-add-ons')}
             onOpenOrders={() => setRoute('business-orders')}
+            onOpenBookings={() => setRoute('business-bookings')}
             onOpenMessages={() => setRoute('business-messages')}
           />
         );
@@ -3294,7 +3556,21 @@ function AppInner() {
           onBoost={() => openBoost()}
           onAddOns={() => setRoute('business-add-ons')}
           onOpenOrders={() => setRoute('business-orders')}
+          onOpenBookings={() => setRoute('business-bookings')}
           onOpenMessages={() => setRoute('business-messages')}
+          onOpenPosMenu={() => setRoute('business-pos-menu')}
+        />
+      );
+
+    case 'business-pos-menu':
+      // Mobile-only POS menu page (POS overview quick action). Desktop uses the
+      // POS rail instead — fall back to the POS overview if reached there.
+      if (isDesktop) return <DesktopBusinessOverviewScreen onNav={businessPortalNav} onSubscribe={() => setRoute('business-subscription')} onBoost={() => openBoost()} onAddOns={() => setRoute('business-add-ons')} onOpenOrders={() => setRoute('business-orders')} onOpenBookings={() => setRoute('business-bookings')} onOpenMessages={() => setRoute('business-messages')} />;
+      return (
+        <BusinessPosMenuScreen
+          onOpenPage={(key) => businessPortalNav(key)}
+          onBack={() => setRoute('business-overview')}
+          onTab={businessTab}
         />
       );
 
@@ -3376,15 +3652,28 @@ function AppInner() {
         return (
           <DesktopDealsWorkspaceScreen
             onNav={businessPortalNav}
-            onCreateDeal={() => setRoute('deal-create-locations')}
+            onCreateDeal={() => setRoute('deal-studio')}
             onEditDeal={() => setRoute('deal-location-pricing')}
             onOpenDealDetail={() => setRoute('hub-deal-detail')}
             onOpenLogs={() => setRoute('analytics-deals')}
             onOpenPos={() => setRoute('business-pos-orders')}
-            onBoost={() => openBoost()}
+            onBoost={(dealName) => openBoost(dealName)}
           />
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+
+    case 'deal-studio':
+      if (isDesktop)
+        return (
+          <DesktopDealStudioFlow
+            onComplete={() => setRoute('hub-deals')}
+            onExit={() => setRoute('hub-deals')}
+            onNav={businessPortalNav}
+          />
+        );
+      return (
+        <BusinessDealStudioFlow onComplete={() => setRoute('hub-deals')} onExit={() => setRoute('hub-deals')} />
+      );
 
     case 'hub-customers':
       if (isDesktop)
@@ -3394,6 +3683,10 @@ function AppInner() {
             onViewProfile={(name) => {
               setHubCustomerName(name);
               setRoute('hub-customer-profile');
+            }}
+            onPreviewInvite={(url) => {
+              window.history.pushState(null, '', url);
+              setRoute('customer-invite-join');
             }}
           />
         );
@@ -3410,8 +3703,19 @@ function AppInner() {
             setRoute('hub-customer-profile');
           }}
           onOpenAnalytics={() => setRoute('analytics-customers')}
+          onPreviewInvite={(url) => {
+            window.history.pushState(null, '', url);
+            setRoute('customer-invite-join');
+          }}
         />
       );
+
+    case 'customer-invite-join': {
+      // Public invite page: /join/{business-slug}?invite=TOKEN — no auth guard.
+      const inviteSlug = decodeURIComponent(window.location.pathname.split('/')[2] ?? '');
+      const inviteToken = new URLSearchParams(window.location.search).get('invite');
+      return <CustomerInviteJoinScreen businessSlug={inviteSlug} inviteToken={inviteToken} />;
+    }
 
     case 'hub-profile':
       if (isDesktop)
@@ -3463,6 +3767,8 @@ function AppInner() {
             onEditPricing={() => setRoute('deal-location-pricing')}
             onConfigureCap={() => setRoute('deal-location-pricing')}
             onChat={() => setRoute('business-messages')}
+            onBoost={() => openBoost('Weekend Prime Lunch Combo')}
+            onEditDeal={() => setRoute('deal-studio')}
           />
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -3629,7 +3935,7 @@ function AppInner() {
             onOpenFilter={() => setRoute('analytics-filter')}
             onOpenExport={() => setRoute('analytics-export')}
             onOpenCatalog={() => setRoute('hub-catalog')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
           />
         );
       return (
@@ -3640,7 +3946,7 @@ function AppInner() {
             onOpenExport={() => setRoute('analytics-export')}
             onTab={businessTab}
             onOpenCatalog={() => setRoute('hub-catalog')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
           />
         </div>
       );
@@ -3695,7 +4001,14 @@ function AppInner() {
       );
 
     case 'pos-split-bill':
-      if (isDesktop) return <DesktopSplitBillScreen onPay={() => setRoute('pos-display-pay')} />;
+      if (isDesktop)
+        return (
+          <DesktopSplitBillScreen
+            cart={posTermCart}
+            onBack={() => setRoute('pos-register')}
+            onPay={() => setRoute('pos-payment')}
+          />
+        );
       return (
         <div className="biz-flow">
           <BusinessSplitBillScreen onBack={goBackToPrevious} onPay={() => setRoute('pos-display-pay')} />
@@ -3735,7 +4048,7 @@ function AppInner() {
             onOpenDisplay={() => setRoute('pos-display-order')}
             onNavMore={() => setRoute('business-more')}
             onOpenQueue={() => setRoute('pos-buffer')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
             onOpenSettings={() => setRoute('pos-settings')}
             onOpenKitchen={() => setRoute('pos-kitchen')}
             onOpenOrderLookup={() => setRoute('pos-order-lookup')}
@@ -3769,7 +4082,7 @@ function AppInner() {
             onOpenDisplay={() => setRoute('pos-display-order')}
             onNavMore={() => setRoute('business-more')}
             onOpenQueue={() => setRoute('pos-buffer')}
-            onOpenSync={() => setRoute('pos-sync')}
+            onOpenSync={() => setRoute('pos-register')}
             onOpenSettings={() => setRoute('pos-settings')}
             onOpenKitchen={() => setRoute('pos-kitchen')}
           />
@@ -3783,11 +4096,19 @@ function AppInner() {
             onNav={posTerminalNav}
             cart={posTermCart}
             onCartChange={setPosTermCart}
-            customer={posCustomer}
+            customer={posCustomerRecord}
+            onCustomerChange={(record) => {
+              setPosCustomerRecord(record);
+              setPosCustomer(record ? record.name : null);
+            }}
             onCharge={() => setRoute('pos-payment')}
             onSplit={() => setRoute('pos-split-bill')}
             onOpenCustomer={() => setRoute('pos-customer')}
             onOpenOrders={() => setRoute('pos-order-lookup')}
+            onHelp={() => setRoute('business-support')}
+            onAwardPoints={(points) => {
+              setPosCustomerRecord((record) => (record ? { ...record, points: record.points + points } : record));
+            }}
           />
         );
       return (
@@ -3798,7 +4119,7 @@ function AppInner() {
             onBack={() => setRoute('pos-home')}
             onCharge={() => setRoute('pos-cart')}
             onOpenCustomer={() => setRoute('pos-customer')}
-            onOpenOrders={() => setRoute('business-pos-orders')}
+            onOpenOrders={() => setRoute('pos-order-lookup')}
           />
         </div>
       );
@@ -3822,9 +4143,14 @@ function AppInner() {
             cart={posCart}
             onCartChange={setPosCart}
             customer={posCustomer}
+            customerBonus={posCustomerBonus}
             onBack={() => setRoute('pos-register')}
             onCharge={() => setRoute('pos-payment')}
             onOpenCustomer={() => setRoute('pos-customer')}
+            onRemoveCustomer={() => {
+              setPosCustomer(null);
+              setPosCustomerBonus(0);
+            }}
           />
         </div>
       );
@@ -3859,6 +4185,7 @@ function AppInner() {
             onBack={goBackToPrevious}
             onAttach={(name) => {
               setPosCustomer(name);
+              setPosCustomerBonus(0);
               setRoute('pos-cart');
             }}
             onRegisterNew={() => setRoute('hub-customers')}
@@ -3873,6 +4200,7 @@ function AppInner() {
             onNav={posTerminalNav}
             cart={posTermCart}
             customer={posCustomer}
+            awardedPoints={posSalePoints}
             onNewSale={() => {
               setPosTermCart(SEED_POS_TERMINAL_LINES);
               setPosCustomer(null);
@@ -3886,10 +4214,12 @@ function AppInner() {
           <BusinessPosSaleCompleteScreen
             cart={posCart}
             customer={posCustomer}
+            awardedPoints={posSalePoints}
             onBack={() => setRoute('pos-home')}
             onNewSale={() => {
               setPosCart([]);
               setPosCustomer(null);
+              setPosCustomerBonus(0);
               setRoute('pos-register');
             }}
           />
@@ -3902,9 +4232,17 @@ function AppInner() {
           <DesktopPosPaymentScreen
             onNav={posTerminalNav}
             cart={posTermCart}
-            customer={posCustomer}
+            customer={posCustomerRecord}
+            onCustomerChange={(record) => {
+              setPosCustomerRecord(record);
+              setPosCustomer(record ? record.name : null);
+            }}
             onBack={() => setRoute('pos-register')}
-            onComplete={() => setRoute('pos-sale-complete')}
+            onComplete={(points) => {
+              queuePosSaleIfOffline(posTermCart, 'Card / POS');
+              setPosSalePoints(points);
+              setRoute('pos-sale-complete');
+            }}
           />
         );
       return (
@@ -3912,11 +4250,21 @@ function AppInner() {
           <BusinessPosPaymentScreen
             cart={posCart}
             customer={posCustomer}
+            customerBonus={posCustomerBonus}
+            onAwardPoints={(points) => setPosCustomerBonus((prev) => prev + points)}
             onBack={() => setRoute('pos-cart')}
-            onReceipt={() => setRoute('pos-sale-complete')}
+            onReceipt={(points) => {
+              queuePosSaleIfOffline(
+                posCart.map((line) => ({ name: line.name, qty: line.qty, unit: line.unit })),
+                'Card / POS',
+              );
+              setPosSalePoints(points);
+              setRoute('pos-sale-complete');
+            }}
             onNewSale={() => {
               setPosCart([]);
               setPosCustomer(null);
+              setPosCustomerBonus(0);
               setRoute('pos-register');
             }}
           />
@@ -4076,14 +4424,6 @@ function AppInner() {
         </div>
       );
 
-    case 'pos-sync':
-      if (isDesktop) return <DesktopPosSyncScreen onNav={posTerminalNav} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosSyncScreen onBack={goBackToPrevious} />
-        </div>
-      );
-
     case 'pos-buffer':
       if (isDesktop)
         return <DesktopPosBufferScreen onNav={posTerminalNav} onReturnToRegister={() => setRoute('pos-offline')} />;
@@ -4174,60 +4514,10 @@ function AppInner() {
       );
 
     case 'pos-settings':
-      if (isDesktop)
-        return (
-          <DesktopPosGeneralSettingsScreen
-            onNav={posTerminalNav}
-            onOpenHardware={() => setRoute('pos-hardware')}
-            onOpenReceipt={() => setRoute('pos-receipt')}
-            onOpenTaxes={() => setRoute('pos-taxes')}
-          />
-        );
+      if (isDesktop) return <DesktopPosGeneralSettingsScreen onNav={posTerminalNav} />;
       return (
         <div className="biz-flow">
-          <BusinessPosSettingsScreen
-            onBack={goBackToPrevious}
-            onOpenReceipt={() => setRoute('pos-receipt')}
-            onOpenHardware={() => setRoute('pos-hardware')}
-            onOpenTaxes={() => setRoute('pos-taxes')}
-            onOpenPermissions={() => setRoute('pos-permissions')}
-            onOpenKitchen={() => setRoute('pos-kitchen')}
-          />
-        </div>
-      );
-
-    case 'pos-hardware':
-      if (isDesktop)
-        return <DesktopPosHardwareScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosHardwareScreen onBack={() => setRoute('pos-settings')} />
-        </div>
-      );
-
-    case 'pos-receipt':
-      if (isDesktop)
-        return <DesktopPosReceiptScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosReceiptScreen onBack={() => setRoute('pos-settings')} />
-        </div>
-      );
-
-    case 'pos-taxes':
-      if (isDesktop)
-        return <DesktopPosTaxesScreen onNav={posTerminalNav} onBack={() => setRoute('pos-settings')} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosTaxesScreen onBack={() => setRoute('pos-settings')} />
-        </div>
-      );
-
-    case 'pos-permissions':
-      if (isDesktop) return <DesktopPosPermissionsScreen onNav={posTerminalNav} />;
-      return (
-        <div className="biz-flow">
-          <BusinessPosPermissionsScreen onBack={() => setRoute('pos-settings')} />
+          <BusinessPosSettingsScreen onBack={goBackToPrevious} />
         </div>
       );
 
@@ -4240,9 +4530,12 @@ function AppInner() {
             onOpenAnalytics={() => setRoute('analytics-business')}
             onOpenMarketing={() => setRoute('boost-hub')}
             onOpenStorefront={() => setRoute('storefront')}
-            onOpenSubscription={() => setRoute('subscription')}
-            onOpenVerification={() => setRoute('business-verification')}
-            onOpenSupport={() => setRoute('support')}
+            onOpenSubscription={() => setRoute('business-subscription')}
+            onOpenVerification={() => setRoute('verification-status')}
+            onOpenNotifications={() => setRoute('business-notifications')}
+            onOpenSupport={() => setRoute('business-support')}
+            onOpenSettings={() => setRoute('business-settings')}
+            onOpenCluster={() => setRoute('cluster-system')}
             onSwitchConsumer={() => setRoute('home')}
             onOpenStoreOrdering={(sub) =>
               setRoute(
@@ -4262,23 +4555,16 @@ function AppInner() {
       return (
         <BusinessMoreScreen
           onTab={businessTab}
-          onOpenPos={() => setRoute('pos-home')}
           onOpenAnalytics={() => setRoute('analytics-business')}
           onOpenMarketing={() => setRoute('boost-hub')}
-          onOpenStorefront={() => setRoute('storefront')}
           onOpenSubscription={() => setRoute('subscription')}
-          onOpenVerification={() => setRoute('business-verification')}
-          onOpenSupport={() => setRoute('support')}
+          onOpenAddOns={() => setRoute('business-add-ons')}
+          onOpenVerification={() => setRoute('verification-status')}
+          onOpenNotifications={() => setRoute('business-notifications')}
+          onOpenSupport={() => setRoute('business-support')}
+          onOpenSettings={() => setRoute('business-settings')}
+          onOpenCluster={() => setRoute('cluster-system')}
           onSwitchConsumer={() => setRoute('home')}
-          onOpenStoreOrdering={(sub) =>
-            setRoute(
-              sub === 'qr'
-                ? 'store-ordering-qr'
-                : sub === 'settings'
-                ? 'store-ordering-settings'
-                : 'store-ordering-dashboard',
-            )
-          }
           onSignOut={() => {
             signOut();
             setRoute('welcome');
@@ -4318,8 +4604,33 @@ function AppInner() {
       );
 
     case 'business-messages':
-      if (isDesktop) return <DesktopBusinessMessagesWorkspaceScreen onNav={businessPortalNav} />;
-      return <BusinessMessagesScreen initialStep="home" onTab={businessTab} />;
+      if (isDesktop)
+        return (
+          <DesktopBusinessMessagesWorkspaceScreen
+            onNav={businessPortalNav}
+            onViewCustomerProfile={(name) => {
+              setHubCustomerName(name);
+              setRoute('hub-customer-profile');
+            }}
+          />
+        );
+      return (
+        <BusinessMessagesScreen
+          initialStep="home"
+          onTab={businessTab}
+          onSelectChannel={(key) => {
+            if (key === 'chat') setRoute('business-messages');
+            else if (key === 'sms') setRoute('business-messages-sms');
+            else setRoute('business-messages-email');
+          }}
+        />
+      );
+
+    case 'business-messages-sms':
+      return <CampaignsChannelScreen channel="sms" onNav={businessPortalNav} onTab={businessTab} />;
+
+    case 'business-messages-email':
+      return <CampaignsChannelScreen channel="email" onNav={businessPortalNav} onTab={businessTab} />;
 
     case 'store-ordering-dashboard':
       if (isDesktop) return <DesktopStoreOrderingDashboard onNav={businessPortalNav} />;
@@ -4350,15 +4661,50 @@ function AppInner() {
           onNavigateRoute={(r) => setRoute(r as Route)}
         />
       );
+    case 'cluster-onboarding':
+      if (isDesktop)
+        return (
+          <DesktopClusterOnboardingScreen
+            onComplete={() => setRoute('cluster-system')}
+            onSkip={() => setRoute('business-overview')}
+            onCreateDeal={() => setRoute('deal-studio')}
+            onCreateProduct={() => setRoute('hub-catalog')}
+            onCreateLocation={() => setRoute('deal-create-locations')}
+          />
+        );
       return (
-        <StoreOrderingScreen
-          onTab={businessTab}
-          initialSubTab="settings"
-          onNavigateRoute={(r) => setRoute(r as Route)}
+        <ClusterOnboardingScreen
+          onComplete={() => setRoute('cluster-system')}
+          onSkip={() => setRoute('business-overview')}
+          onCreateDeal={() => setRoute('deal-studio')}
+          onCreateProduct={() => setRoute('hub-catalog')}
+          onCreateLocation={() => setRoute('deal-create-locations')}
         />
       );
 
-      default:
+    case 'cluster-system':
+      if (isDesktop)
+        return (
+          <DesktopClusterSystemScreen
+            onNav={businessPortalNav}
+            onOpenOnboarding={() => setRoute('cluster-onboarding')}
+            onCreateDeal={() => setRoute('deal-studio')}
+            onCreateProduct={() => setRoute('hub-catalog')}
+            onCreateLocation={() => setRoute('deal-create-locations')}
+          />
+        );
+      return (
+        <ClusterSystemScreen
+          onBack={() => setRoute('business-overview')}
+          onTab={businessTab}
+          onOpenOnboarding={() => setRoute('cluster-onboarding')}
+          onCreateDeal={() => setRoute('deal-studio')}
+          onCreateProduct={() => setRoute('hub-catalog')}
+          onCreateLocation={() => setRoute('deal-create-locations')}
+        />
+      );
+
+    default:
         return null;
     }
   };

@@ -30,9 +30,25 @@ export const SEED_POS_CART: PosCartLine[] = [
 
 export const cartCount = (lines: PosCartLine[]) => lines.reduce((sum, line) => sum + line.qty, 0);
 
-export const cartTotals = (lines: PosCartLine[]) => {
+/** How the till treats tax — derived from POS Settings → Tax & Pricing (shared via PosSettingsContext). */
+export type TaxMode = 'none' | 'checkout' | 'inclusive';
+
+/** Default tax rate — the live rate comes from POS Settings. */
+export const VAT_RATE = 0.075;
+
+/** Renders receipt text with the [business name] token replaced by the live name. */
+export function formatReceiptText(text: string, businessName: string): string {
+  return text.replace(/\[business name\]/gi, businessName);
+}
+
+export const cartTotals = (lines: PosCartLine[], mode: TaxMode = 'checkout', rate: number = VAT_RATE) => {
   const subtotal = lines.reduce((sum, line) => sum + line.unit * line.qty, 0);
   const discount = lines.reduce((sum, line) => sum + (line.unit - line.member) * line.qty, 0);
-  const vat = Math.round((subtotal - discount) * 0.075);
-  return { subtotal, discount, vat, total: subtotal - discount + vat };
+  const net = subtotal - discount;
+  // 'none' → no tax at all; 'checkout' → charged on top of the net;
+  // 'inclusive' → already inside the listed prices, so only the embedded
+  // portion is reported and the total stays net.
+  const vat = mode === 'none' ? 0 : mode === 'inclusive' ? net - Math.round(net / (1 + rate)) : Math.round(net * rate);
+  const total = mode === 'inclusive' ? net : net + vat;
+  return { subtotal, discount, vat, total };
 };

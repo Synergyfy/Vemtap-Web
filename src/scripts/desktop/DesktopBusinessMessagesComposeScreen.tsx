@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { MessagesAttachmentButton } from './MessagesAttachmentButton';
 import { MessagesShareAttachmentModal } from './MessagesShareAttachmentModal';
 import type { MessagesWorkspaceView } from './DesktopBusinessMessagesOrderContextScreen';
 
@@ -91,7 +92,6 @@ export function DesktopBusinessMessagesComposeScreen({ onNav, onView }: DesktopB
   const [charCount, setCharCount] = useState(184);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const [showAttachment, setShowAttachment] = useState(false);
   const [attachedContext, setAttachedContext] = useState('BK-77402');
   const [activeAddons, setActiveAddons] = useState<string[]>(['a1']);
   const [showContextPicker, setShowContextPicker] = useState(false);
@@ -157,7 +157,7 @@ export function DesktopBusinessMessagesComposeScreen({ onNav, onView }: DesktopB
 
         <div className="w-full py-space-md">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-md" style={{ height: 'calc(100vh - 160px)', minHeight: '680px' }}>
-            <aside className="lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <aside className="lg:col-span-4 xl:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border space-y-space-xs">
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-sm text-heading-sm text-on-surface">Client Inboxes</h2>
@@ -232,7 +232,7 @@ export function DesktopBusinessMessagesComposeScreen({ onNav, onView }: DesktopB
               </div>
             </aside>
 
-            <section className="lg:col-span-5 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <section className="lg:col-span-8 xl:col-span-5 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border space-y-space-xs">
                 <div className="flex items-center gap-space-xs">
                   <span className="font-label-sm text-label-sm text-on-surface-variant shrink-0">To:</span>
@@ -356,18 +356,9 @@ export function DesktopBusinessMessagesComposeScreen({ onNav, onView }: DesktopB
                   <button type="button" className="font-label-sm text-label-sm text-primary hover:underline shrink-0">Change Signer</button>
                 </div>
                 <div className="flex items-center justify-between gap-space-xs">
-                  <div className="flex items-center gap-space-2xs">
-                    {[
-                      { icon: 'image', label: 'Image' },
-                      { icon: 'description', label: 'File' },
-                      { icon: 'local_offer', label: 'Deal' },
-                      { icon: 'receipt_long', label: 'Receipt' },
-                    ].map((a) => (
-                      <button key={a.icon} type="button" aria-label={a.label} onClick={() => setShowAttachment(true)} className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface">
-                        <Icon name={a.icon} className="text-[18px]" />
-                      </button>
-                    ))}
-                  </div>
+                  <MessagesAttachmentButton
+                    renderModal={(close) => <MessagesShareAttachmentModal onClose={close} />}
+                  />
                   <div className="flex items-center gap-space-xs">
                     <button type="button" className="h-11 px-space-md rounded-xl border border-border font-label-md text-label-md text-on-surface-variant hover:bg-surface-subtle">
                       Save Draft
@@ -402,7 +393,7 @@ export function DesktopBusinessMessagesComposeScreen({ onNav, onView }: DesktopB
               </div>
             </section>
 
-            <aside className="lg:col-span-4 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+            <aside className="hidden xl:flex lg:col-span-4 bg-surface rounded-2xl shadow-sm border border-border flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Customer Summary</h2>
               </div>
@@ -505,8 +496,6 @@ export function DesktopBusinessMessagesComposeScreen({ onNav, onView }: DesktopB
           </div>
         </div>
       </div>
-
-      {showAttachment && <MessagesShareAttachmentModal onClose={() => setShowAttachment(false)} />}
     </BusinessPortalChrome>
   );
 }

@@ -1,6 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopBusinessLocationsHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -109,10 +110,11 @@ export function DesktopBusinessLocationsHubScreen({
           <Icon name="chevron_right" className="text-[14px]" />
           <span className="text-primary font-semibold">Locations & Branches</span>
         </div>
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-md mt-space-2xs">
-          <div>
+        {/* Header — stacks until `xl` so it fits iPad Pro 13 */}
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-space-md mt-space-2xs">
+          <div className="min-w-0">
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Locations & Branch Network Management
+              Locations &amp; Branch Network Management
             </h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs max-w-3xl">
               Manage physical store outlets, localized operating hours, local inventory pools, and geofence beacon
@@ -122,6 +124,20 @@ export function DesktopBusinessLocationsHubScreen({
           <div className="flex items-center gap-space-sm shrink-0">
             <button
               type="button"
+              onClick={() => {
+                downloadCsv(
+                  'vemtap_branch_directory',
+                  ['Branch', 'Address', 'Manager', 'Phone', 'Geofence', ...LIVE_BRANCHES[0].metrics.map((metric) => metric.label)],
+                  LIVE_BRANCHES.map((branch) => [
+                    branch.name,
+                    branch.address,
+                    branch.manager,
+                    branch.phone,
+                    branch.geofence,
+                    ...branch.metrics.map((metric) => metric.value),
+                  ]),
+                );
+              }}
               className="flex items-center gap-space-2xs px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-all shadow-sm"
             >
               <Icon name="file_download" className="text-[18px] text-text-secondary" />

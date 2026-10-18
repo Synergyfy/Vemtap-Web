@@ -1,4 +1,5 @@
-import { Icon } from '../components/ui/Icon';
+import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
+import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 export function BusinessModeHeader({ title }: { title: string }) {
   return (
@@ -16,16 +17,10 @@ export function BusinessModeHeader({ title }: { title: string }) {
           </div>
         </div>
         <div className="flex items-center gap-space-xs">
-          <button
-            aria-label="Notifications"
-            className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors"
-            type="button"
-          >
-            <Icon name="notifications" className="text-[22px]" />
-          </button>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <Icon name="person" className="text-on-primary text-[18px]" />
-          </div>
+          {/* Branch control — the location at the top header drives this page. */}
+          <BusinessBranchSelect iconOnly align="right" />
+          <MobileNotificationBell />
+          <MobileAccountMenu />
         </div>
       </div>
     </header>

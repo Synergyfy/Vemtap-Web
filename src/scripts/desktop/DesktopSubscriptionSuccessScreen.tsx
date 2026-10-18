@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { SubscriptionChrome } from './SubscriptionChrome';
+import { downloadCsv } from '../../utils/exportCsv';
+import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopSubscriptionSuccessScreenProps {
   onGoDashboard: () => void;
@@ -50,6 +52,24 @@ export function DesktopSubscriptionSuccessScreen({
   const handleCopy = () => {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  const handleDownloadInvoice = () => {
+    downloadCsv(
+      'vemtap-subscription-invoice-VT-SUB-982410.csv',
+      ['Field', 'Value'],
+      [...RECEIPT_ROWS.map((row) => [row.label, row.value]), ['Amount Paid', '₦5,000.00']],
+    );
+    printReport(
+      'VEMTAP Subscription Invoice — VT-SUB-982410',
+      `${printKvTable('Invoice', RECEIPT_ROWS.map((row) => [row.label, row.value] as [string, string]))}
+       ${printKvTable('Line items', [
+         ['VEMTAP Growth plan — monthly subscription', '₦4,651.16'],
+         ['VAT (7.5%)', '₦348.84'],
+         ['Amount paid', '₦5,000.00'],
+       ])}
+       <p class="foot">A CSV copy of this invoice downloaded alongside the PDF.</p>`,
+    );
   };
 
   return (
@@ -130,6 +150,7 @@ export function DesktopSubscriptionSuccessScreen({
             </div>
             <button
               type="button"
+              onClick={handleDownloadInvoice}
               className="mt-space-md w-full h-11 rounded-xl bg-surface-tint-blue text-primary-container font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs active:scale-[0.98] transition-all"
             >
               <Icon name="download" className="text-[18px]" />

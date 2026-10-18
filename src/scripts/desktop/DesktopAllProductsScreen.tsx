@@ -20,7 +20,12 @@ const CATEGORIES: { key: string; label: string }[] = [
 
 export function DesktopAllProductsScreen({ onNav, onBack }: DesktopAllProductsScreenProps) {
   const cart = useCart();
-  const [category, setCategory] = useState('all');
+  // Category QR links land here with ?category=<id> — open pre-filtered while the
+  // category tabs stay available for easy navigation.
+  const [category, setCategory] = useState(() => {
+    const param = new URLSearchParams(window.location.search).get('category');
+    return param && CATEGORIES.some((item) => item.key === param) ? param : 'all';
+  });
   const [query, setQuery] = useState('');
 
   const products = useMemo(() => {

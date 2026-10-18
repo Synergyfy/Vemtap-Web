@@ -1,5 +1,6 @@
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
 
@@ -10,6 +11,7 @@ interface DesktopDealStudioStep2ScreenProps {
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  onNav?: (key: string) => void;
 }
 
 const PREVIEW_IMAGES: Array<{ src: string; alt: string }> = [
@@ -52,14 +54,23 @@ export function DesktopDealStudioStep2Screen({
   onBack,
   onNext,
   onSaveDraft,
+  onNav,
 }: DesktopDealStudioStep2ScreenProps) {
   const adjustVouchers = (delta: number) => {
     const next = Math.min(1000, Math.max(5, studio.vouchers + delta));
     onStudioChange({ vouchers: next });
   };
 
-  return (
-    <BusinessSetupChrome activeNav="deals">
+  const adjustUnitsPerOrder = (delta: number) => {
+    onStudioChange({ maxUnitsPerOrder: Math.min(50, Math.max(1, studio.maxUnitsPerOrder + delta)) });
+  };
+
+  const adjustClaims = (delta: number) => {
+    onStudioChange({ maxClaims: Math.min(30, Math.max(1, studio.maxClaims + delta)) });
+  };
+
+  const inner = (
+    <>
       <div className="w-full bg-surface-container-lowest px-space-xl py-space-lg shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-space-md">
           <div className="flex flex-col gap-space-2xs">
@@ -162,40 +173,73 @@ export function DesktopDealStudioStep2Screen({
                   Capacity Control
                 </span>
               </div>
-              <div className="bg-surface-subtle p-space-md rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-space-md">
-                <div>
-                  <label className="font-label-md text-label-md text-on-surface font-semibold block">
-                    Total Available Vouchers
-                  </label>
-                  <span className="font-caption text-caption text-text-secondary">
-                    Capped volume released across all digital channels
-                  </span>
+              <div className="bg-surface-subtle p-space-md rounded-xl flex flex-col gap-space-md">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md">
+                  <div>
+                    <label className="font-label-md text-label-md text-on-surface font-semibold block">
+                      Quantity Limit
+                    </label>
+                    <span className="font-caption text-caption text-text-secondary">
+                      Total promotional stock released across all digital channels
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-space-xs">
+                    <button
+                      type="button"
+                      aria-label="Decrease quantity limit"
+                      onClick={() => adjustVouchers(-5)}
+                      className="w-10 h-10 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
+                    >
+                      <Icon name="remove" className="text-[20px]" />
+                    </button>
+                    <input
+                      className="w-16 h-10 text-center font-heading-sm text-heading-sm font-bold bg-surface-canvas rounded-lg text-primary focus:outline-none"
+                      max={1000}
+                      min={5}
+                      type="number"
+                      value={studio.vouchers}
+                      onChange={(event) => onStudioChange({ vouchers: Number(event.target.value) })}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Increase quantity limit"
+                      onClick={() => adjustVouchers(5)}
+                      className="w-10 h-10 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
+                    >
+                      <Icon name="add" className="text-[20px]" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-space-xs">
-                  <button
-                    type="button"
-                    aria-label="Decrease vouchers"
-                    onClick={() => adjustVouchers(-5)}
-                    className="w-10 h-10 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
-                  >
-                    <Icon name="remove" className="text-[20px]" />
-                  </button>
-                  <input
-                    className="w-16 h-10 text-center font-heading-sm text-heading-sm font-bold bg-surface-canvas rounded-lg text-primary focus:outline-none"
-                    max={1000}
-                    min={5}
-                    type="number"
-                    value={studio.vouchers}
-                    onChange={(event) => onStudioChange({ vouchers: Number(event.target.value) })}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Increase vouchers"
-                    onClick={() => adjustVouchers(5)}
-                    className="w-10 h-10 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
-                  >
-                    <Icon name="add" className="text-[20px]" />
-                  </button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md">
+                  <div>
+                    <label className="font-label-md text-label-md text-on-surface font-semibold block">
+                      Max Units per Order
+                    </label>
+                    <span className="font-caption text-caption text-text-secondary">
+                      How many units one customer may redeem in a single order
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-space-xs">
+                    <button
+                      type="button"
+                      aria-label="Decrease max units per order"
+                      onClick={() => adjustUnitsPerOrder(-1)}
+                      className="w-10 h-10 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
+                    >
+                      <Icon name="remove" className="text-[20px]" />
+                    </button>
+                    <span className="w-16 h-10 text-center leading-10 font-heading-sm text-heading-sm font-bold bg-surface-canvas rounded-lg text-primary">
+                      {studio.maxUnitsPerOrder}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Increase max units per order"
+                      onClick={() => adjustUnitsPerOrder(1)}
+                      className="w-10 h-10 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
+                    >
+                      <Icon name="add" className="text-[20px]" />
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-tertiary-fixed text-on-tertiary-fixed">
@@ -294,16 +338,60 @@ export function DesktopDealStudioStep2Screen({
                     >
                       Allow Multiple Claims (Reusable)
                     </span>
-                    <div className="flex items-center gap-space-xs bg-surface-canvas px-space-xs py-space-2xs rounded-lg">
-                      <span className="font-caption text-caption text-text-secondary">Max</span>
-                      <span className="font-label-sm text-label-sm font-bold text-on-surface">
-                        {studio.maxClaims} / month
-                      </span>
-                    </div>
                   </div>
                   <p className="font-caption text-caption text-text-secondary mt-space-2xs text-left">
                     Encourages repeat footfall among regulars with cooldown intervals between billings.
                   </p>
+                  {!studio.claimOnce && (
+                    <div className="flex flex-col gap-space-xs mt-space-sm">
+                      <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-canvas">
+                        <div className="flex flex-col">
+                          <span className="font-label-md text-label-md text-on-surface font-semibold">
+                            Max claims per customer
+                          </span>
+                          <span className="font-caption text-caption text-text-secondary">
+                            How many times one customer may claim this deal
+                          </span>
+                        </div>
+                        <div
+                          className={`flex items-center gap-space-xs ${
+                            studio.unlimitedClaims ? 'opacity-40 pointer-events-none' : ''
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            aria-label="Decrease max claims"
+                            onClick={() => adjustClaims(-1)}
+                            className="w-9 h-9 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
+                          >
+                            <Icon name="remove" className="text-[18px]" />
+                          </button>
+                          <span className="w-14 text-center font-label-md text-label-md font-bold text-on-surface">
+                            {studio.maxClaims} / month
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="Increase max claims"
+                            onClick={() => adjustClaims(1)}
+                            className="w-9 h-9 rounded-lg bg-surface-container-highest text-on-surface hover:bg-surface-container flex items-center justify-center transition-colors"
+                          >
+                            <Icon name="add" className="text-[18px]" />
+                          </button>
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-space-xs p-space-sm rounded-lg bg-surface-canvas cursor-pointer select-none">
+                        <input
+                          className="w-4 h-4 rounded text-primary accent-primary"
+                          type="checkbox"
+                          checked={studio.unlimitedClaims}
+                          onChange={(event) => onStudioChange({ unlimitedClaims: event.target.checked })}
+                        />
+                        <span className="font-body-md text-body-md text-on-surface">
+                          Allow unlimited claims (no per-customer cap)
+                        </span>
+                      </label>
+                    </div>
+                  )}
                 </div>
               </label>
             </div>
@@ -533,7 +621,15 @@ export function DesktopDealStudioStep2Screen({
                 <div className="p-space-md flex flex-col gap-space-sm bg-surface-canvas">
                   <div className="flex flex-wrap items-center gap-space-2xs font-caption text-caption">
                     <span className="px-space-xs py-space-2xs rounded bg-surface-container-high text-on-surface font-medium flex items-center gap-1">
-                      <Icon name="person" className="text-[14px]" /> 1 Per Diner
+                      <Icon name="person" className="text-[14px]" />{' '}
+                      {studio.claimOnce
+                        ? '1 Per Diner'
+                        : studio.unlimitedClaims
+                          ? 'Unlimited Per Diner'
+                          : `${studio.maxClaims} Per Diner`}
+                    </span>
+                    <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">
+                      Max {studio.maxUnitsPerOrder} per Order
                     </span>
                     <span className="px-space-xs py-space-2xs rounded bg-surface-tint-blue text-primary font-medium flex items-center gap-1">
                       <Icon name="payments" className="text-[14px]" /> Min Spend ₦5,000
@@ -676,6 +772,19 @@ export function DesktopDealStudioStep2Screen({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (onNav) {
+    return (
+      <MerchantShell activeNav="business-deals" onNav={onNav}>
+        {inner}
+      </MerchantShell>
+    );
+  }
+  return (
+    <BusinessSetupChrome activeNav="deals">
+      {inner}
     </BusinessSetupChrome>
   );
 }

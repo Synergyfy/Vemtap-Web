@@ -382,33 +382,6 @@ export function DesktopBusinessProfileBrandingScreen({
               </div>
             </div>
 
-            <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-space-md pt-space-xs pb-space-lg">
-              <button
-                type="button"
-                onClick={onBack}
-                className="w-full sm:w-auto px-space-lg py-space-sm rounded-xl bg-surface-canvas hover:bg-surface-subtle text-text-secondary font-button-secondary text-button-secondary shadow-sm flex items-center justify-center gap-space-xs transition-colors"
-              >
-                <Icon name="arrow_back" className="text-[18px]" />
-                <span>Back to Step 1</span>
-              </button>
-              <div className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-space-sm">
-                <button
-                  type="button"
-                  onClick={onSaveDraft}
-                  className="w-full sm:w-auto px-space-lg py-space-sm rounded-xl bg-surface-canvas hover:bg-surface-subtle text-text-secondary font-button-secondary text-button-secondary shadow-sm transition-colors"
-                >
-                  Save as Draft
-                </button>
-                <button
-                  type="button"
-                  onClick={onNext}
-                  className="w-full sm:w-auto px-space-xl py-space-sm rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary-container/20 flex items-center justify-center gap-space-xs active:scale-[0.98] transition-all"
-                >
-                  <span>Continue to Contact &amp; Channels</span>
-                  <Icon name="arrow_forward" className="text-[20px]" />
-                </button>
-              </div>
-            </div>
           </div>
 
           <div className="lg:col-span-5 sticky top-24 flex flex-col gap-space-md">
@@ -520,6 +493,39 @@ export function DesktopBusinessProfileBrandingScreen({
                 conversions on the iOS &amp; Android consumer feed.
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
+          <div className="flex items-center gap-space-md w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
+            >
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back to Step 1</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-secondary hover:text-on-surface hover:bg-surface-subtle font-label-md text-label-md transition-colors"
+            >
+              <Icon name="save" className="text-[16px]" />
+              <span>Save as Draft</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onNext}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+            >
+              <span>Continue to Contact &amp; Channels</span>
+              <Icon name="arrow_forward" className="text-[20px]" />
+            </button>
           </div>
         </div>
       </div>

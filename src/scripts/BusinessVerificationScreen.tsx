@@ -10,6 +10,8 @@ import { VerificationCacSuccessScreen } from './VerificationCacSuccessScreen';
 import { VerificationReviewScreen } from './VerificationReviewScreen';
 import { VerificationCompleteScreen } from './VerificationCompleteScreen';
 import { VerificationUnregisteredScreen } from './VerificationUnregisteredScreen';
+import { BusinessSetupProgress } from '../components/BusinessSetupProgress';
+import { useBusinessSetupNav } from './businessSetup';
 import {
   DEFAULT_ID_NUMBERS,
   ID_TYPE_CONFIG,
@@ -43,6 +45,7 @@ export function BusinessVerificationScreen({
   onPreviewStorefront: () => void;
 }) {
   const [step, setStep] = useState<VerificationStep>('intro');
+  const setupNav = useBusinessSetupNav();
   const [draft, setDraft] = useState<VerificationDraft>({
     ...INITIAL_VERIFICATION_DRAFT,
     entity: '',
@@ -164,5 +167,14 @@ export function BusinessVerificationScreen({
     }
   };
 
-  return <div className="biz-flow">{renderStep()}</div>;
+  return (
+    <div className="biz-flow">
+      {setupNav && (
+        <div className="w-full max-w-[430px] mx-auto px-gutter pt-safe pt-2">
+          <BusinessSetupProgress {...setupNav} variant="mobile" />
+        </div>
+      )}
+      {renderStep()}
+    </div>
+  );
 }
