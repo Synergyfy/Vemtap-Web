@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { hasApiConfig } from '../lib/api';
 import { bookingService } from '../services/bookingService';
 import {
   SPA_ADDONS,
@@ -127,6 +128,11 @@ export function BookingProvider({ children }: { children: ReactNode }) {
   const [appointments, setAppointments] = useState<SpaAppointment[]>(() => readAppointments());
 
   useEffect(() => {
+    if (!hasApiConfig()) {
+      setAppointments([]);
+      return;
+    }
+
     try {
       localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(appointments.slice(0, 60)));
     } catch {
@@ -135,40 +141,40 @@ export function BookingProvider({ children }: { children: ReactNode }) {
   }, [appointments]);
 
   useEffect(() => {
+    if (!hasApiConfig()) {
+      setAppointments([]);
+      return;
+    }
+
     const loadAppointments = async () => {
       try {
         const remoteBookings = await bookingService.getMyBookings({ page: 1, limit: 20 });
-        if (remoteBookings.length > 0) {
-          setAppointments((prev) => {
-            const remoteAsSpa = remoteBookings.map((booking) => ({
-              ref: booking.ref,
-              merchantName: booking.merchantName,
-              clientName: booking.clientName,
-              clientPhone: booking.clientPhone,
-              serviceNames: booking.serviceNames,
-              addonNames: booking.addonNames,
-              dateISO: booking.dateISO,
-              dateLong: booking.dateLong,
-              dateShort: booking.dateShort,
-              time: booking.time,
-              durationMinutes: booking.durationMinutes,
-              durationLabel: booking.durationLabel,
-              therapistLabel: booking.therapistLabel,
-              notes: booking.notes,
-              reminder: booking.reminder,
-              servicesSubtotal: booking.servicesSubtotal,
-              discount: booking.discount,
-              payable: booking.payable,
-              status: booking.status,
-              createdAt: booking.createdAt,
-            }));
-            const merged = [...remoteAsSpa, ...prev.filter((item) => !remoteAsSpa.some((remote) => remote.ref === item.ref))];
-            localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(merged.slice(0, 60)));
-            return merged;
-          });
-        }
+        setAppointments(remoteBookings.map((booking) => ({
+          ref: booking.ref,
+          merchantName: booking.merchantName,
+          clientName: booking.clientName,
+          clientPhone: booking.clientPhone,
+          serviceNames: booking.serviceNames,
+          addonNames: booking.addonNames,
+          dateISO: booking.dateISO,
+          dateLong: booking.dateLong,
+          dateShort: booking.dateShort,
+          time: booking.time,
+          durationMinutes: booking.durationMinutes,
+          durationLabel: booking.durationLabel,
+          therapistLabel: booking.therapistLabel,
+          notes: booking.notes,
+          reminder: booking.reminder,
+          servicesSubtotal: booking.servicesSubtotal,
+          discount: booking.discount,
+          payable: booking.payable,
+          status: booking.status,
+          createdAt: booking.createdAt,
+        })));
+        localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(remoteBookings.slice(0, 60)));
       } catch {
-        // Leave local demo data in place when the backend is unavailable.
+        setAppointments([]);
+        localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify([]));
       }
     };
 
@@ -287,6 +293,11 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     if (!services.length) {
       return { ok: false, error: 'Select at least one service before confirming.' };
     }
+
+    if (!hasApiConfig()) {
+      return { ok: false, error: 'API is not configured. Set VITE_API_BASE_URL before booking a service.' };
+    }
+
     // BUG-025: revalidate at confirmation time to avoid double bookings.
     if (!spaIsSlotAvailable(dateISO, time, durationMinutes, takenSlots)) {
       return {
@@ -294,9 +305,21 @@ export function BookingProvider({ children }: { children: ReactNode }) {
         error: 'That time slot is no longer available. Please pick another time.',
       };
     }
+
     let ref = newAppointmentRef();
     const existing = new Set(appointments.map((appt) => appt.ref));
     while (existing.has(ref)) ref = newAppointmentRef();
+
+    const bookingPayload = {
+      branchId: '00000000-0000-0000-0000-000000000000',
+      itemId: services[0]?.id ? String(services[0].id) : undefined,
+      date: dateISO,
+      time,
+      notes,
+      status: 'confirmed',
+      merchantName: SPA_MERCHANT.name,
+      clientName: SPA_CLIENT.name,
+    };
 
     const record: SpaAppointment = {
       ref,
@@ -320,21 +343,42 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       status: 'confirmed',
       createdAt: Date.now(),
     };
-    const bookingPayload = {
-      branchId: '00000000-0000-0000-0000-000000000000',
-      itemId: services[0]?.id ? String(services[0].id) : undefined,
-      date: dateISO,
-      time,
-      notes,
-      status: 'confirmed',
-      merchantName: SPA_MERCHANT.name,
-      clientName: SPA_CLIENT.name,
-    };
 
     setAppointments((prev) => [record, ...prev]);
     setConfirmedRef(ref);
 
-    void bookingService.createBooking(bookingPayload).catch(() => undefined);
+    void bookingService.createBooking(bookingPayload)
+      .then((nextBooking) => {
+        if (!nextBooking) return;
+        setAppointments((prev) => [
+          {
+            ref: nextBooking.ref || ref,
+            merchantName: nextBooking.merchantName,
+            clientName: nextBooking.clientName,
+            clientPhone: nextBooking.clientPhone,
+            serviceNames: nextBooking.serviceNames,
+            addonNames: nextBooking.addonNames,
+            dateISO: nextBooking.dateISO,
+            dateLong: nextBooking.dateLong,
+            dateShort: nextBooking.dateShort,
+            time: nextBooking.time,
+            durationMinutes: nextBooking.durationMinutes,
+            durationLabel: nextBooking.durationLabel,
+            therapistLabel: nextBooking.therapistLabel,
+            notes: nextBooking.notes,
+            reminder: nextBooking.reminder,
+            servicesSubtotal: nextBooking.servicesSubtotal,
+            discount: nextBooking.discount,
+            payable: nextBooking.payable,
+            status: nextBooking.status,
+            createdAt: nextBooking.createdAt,
+          },
+          ...prev.filter((appt) => appt.ref !== ref),
+        ]);
+        setConfirmedRef(nextBooking.ref || ref);
+      })
+      .catch(() => undefined);
+
     return { ok: true, ref };
   }, [
     services,
