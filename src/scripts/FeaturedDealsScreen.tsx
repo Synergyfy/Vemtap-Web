@@ -81,6 +81,18 @@ const getOfferComparePrice = (offer: Record<string, unknown>): number => {
   return getOfferPrice(offer);
 };
 
+const isUsableOffer = (offer: Record<string, unknown>): boolean => {
+  const business =
+    getOfferBusinessName(offer) !== 'Nearby business'
+      ? getOfferBusinessName(offer)
+      : '';
+  const title = getOfferTitle(offer) !== 'Local offer' ? getOfferTitle(offer) : '';
+  const price = getOfferPrice(offer);
+  const comparePrice = getOfferComparePrice(offer);
+
+  return Boolean(business && title && (price > 0 || comparePrice > 0));
+};
+
 const toFeaturedDeal = (offer: Record<string, unknown>): FeaturedDeal => {
   const title = getOfferTitle(offer);
   const price = getOfferPrice(offer);
@@ -168,7 +180,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
     };
   }, []);
 
-  const deals = useMemo(() => publicOffers.slice(0, 5).map(toFeaturedDeal), [publicOffers]);
+  const deals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 5).map(toFeaturedDeal), [publicOffers]);
 
   useEffect(() => {
     setSaved((prev) => {

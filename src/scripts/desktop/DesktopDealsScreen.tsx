@@ -30,12 +30,6 @@ interface DesktopDealsScreenProps {
   } | null, onClaimed?: () => void) => void;
 }
 
-const DEAL_OF_DAY_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuB_l35VLFaK11RltRrE-nzB22BkuA_N75zreMrW6RsT9blVALkpXOAXKbAn-lFN7t03ty5K377JuUw39bCaUxSTVQcHS3Dmr4ahhy5GFgVK2hPI0sGkeYaxf1d4joa1uxsJeNRwJ9-e8PPl5ObqKpgnkji83P015ig14H-AAPPhXw0JC7obYa-ebKvoJIkE-nX7kF-TW34CZ_t1p-J7y8FMqvweALg7JOeOIZGSf0D8';
-
-const DEAL_OF_DAY_ALT =
-  'High-end rooftop fine dining experience at sunset featuring a lavish 5-course gourmet meal with artisanal wine pairings, glowing warm amber candlelight, panoramic Abuja skyline views, elegant plating with modern culinary aesthetics, vibrant rich warm colors, and editorial food photography lighting';
-
 interface DiscoveryDeal {
   image: string;
   imageAlt: string;
@@ -92,8 +86,8 @@ const getOfferImage = (offer: Record<string, unknown>): string => {
     (offer.business && typeof offer.business === 'object'
       ? ((offer.business as Record<string, unknown>).logo ?? (offer.business as Record<string, unknown>).image)
       : undefined) ??
-    DEAL_OF_DAY_IMAGE;
-  return typeof imageValue === 'string' && imageValue.trim() ? imageValue : DEAL_OF_DAY_IMAGE;
+    'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+  return typeof imageValue === 'string' && imageValue.trim() ? imageValue : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
 };
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
@@ -144,6 +138,18 @@ const getOfferComparePrice = (offer: Record<string, unknown>): number => {
     if (Number.isFinite(numeric) && numeric >= 0) return numeric;
   }
   return getOfferPrice(offer);
+};
+
+const isUsableOffer = (offer: Record<string, unknown>): boolean => {
+  const business =
+    getOfferBusinessName(offer) !== 'Local business'
+      ? getOfferBusinessName(offer)
+      : '';
+  const title = getOfferTitle(offer) !== 'Local offer' ? getOfferTitle(offer) : '';
+  const price = getOfferPrice(offer);
+  const compare = getOfferComparePrice(offer);
+
+  return Boolean(business && title && (price > 0 || compare > 0));
 };
 
 const toDiscoveryDeal = (offer: Record<string, unknown>): DiscoveryDeal => {
@@ -204,19 +210,24 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const toastTimer = useRef<number | undefined>(undefined);
   const claimTimers = useRef<Record<string, number>>({});
+  const apiReady = hasApiConfig();
 
   useEffect(() => {
     let ignore = false;
     const loadOffers = async () => {
       if (!hasApiConfig()) {
+        console.log('[DesktopDealsScreen] No API config detected; skipping public offers request.');
         if (!ignore) setPublicOffers([]);
         return;
       }
       try {
+        console.log('[DesktopDealsScreen] Requesting public offers...');
         const response = await catalogueService.getPublicOffers({ page: 1, limit: 6 });
         const rows = Array.isArray(response?.data) ? response.data : [];
+        console.log('[DesktopDealsScreen] Raw public offers payload:', rows);
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch {
+      } catch (error) {
+        console.error('[DesktopDealsScreen] Public offers request failed:', error);
         if (!ignore) setPublicOffers([]);
       }
     };
@@ -227,8 +238,16 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     };
   }, []);
 
-  const discoveryDeals = useMemo(() => publicOffers.slice(0, 6).map(toDiscoveryDeal), [publicOffers]);
-  const catalogDeals = useMemo(() => publicOffers.slice(0, 6).map(toCatalogDeal), [publicOffers]);
+  const discoveryDeals = useMemo(() => {
+    const filtered = publicOffers.filter(isUsableOffer);
+    console.log('[DesktopDealsScreen] Filtered discovery deals:', filtered);
+    return filtered.slice(0, 6).map(toDiscoveryDeal);
+  }, [publicOffers]);
+  const catalogDeals = useMemo(() => {
+    const filtered = publicOffers.filter(isUsableOffer);
+    console.log('[DesktopDealsScreen] Filtered catalog deals:', filtered);
+    return filtered.slice(0, 6).map(toCatalogDeal);
+  }, [publicOffers]);
   const featuredDeal = catalogDeals[0] ?? null;
 
   useEffect(() => {
@@ -269,6 +288,48 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
       </div>
     </div>
   ) : null;
+
+  if (!publicOffers.length) {
+    return (
+      <>
+        <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
+          <section className="w-full max-w-7xl mx-auto px-margin py-space-3xl">
+            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
+                <Icon name="info" className="text-[22px]" />
+              </div>
+              <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+              <p className="mt-1 font-body-md text-body-md text-text-secondary">
+                Publish live public offers to populate this feed.
+              </p>
+            </div>
+          </section>
+        </DesktopPage>
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
+      </>
+    );
+  }
+
+  if (!apiReady) {
+    return (
+      <>
+        <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
+          <section className="w-full max-w-7xl mx-auto px-margin py-space-3xl">
+            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
+                <Icon name="info" className="text-[22px]" />
+              </div>
+              <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+              <p className="mt-1 font-body-md text-body-md text-text-secondary">
+                Connect the API and publish public offers to populate this feed.
+              </p>
+            </div>
+          </section>
+        </DesktopPage>
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
+      </>
+    );
+  }
 
   if (view === 'list') {
     return (
@@ -607,25 +668,24 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                 <div className="lg:col-span-7 relative min-h-[280px] lg:min-h-full overflow-hidden">
                   <img
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    alt={DEAL_OF_DAY_ALT}
-                    src={DEAL_OF_DAY_IMAGE}
+                    alt={featuredDeal.imageAlt || featuredDeal.title}
+                    src={featuredDeal.image}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-on-surface/90 via-on-surface/40 to-transparent lg:hidden" />
                   <div className="absolute top-4 left-4 flex flex-wrap items-center gap-space-xs z-10">
                     <span className="px-space-sm py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm">
-                      50% OFF
+                      {featuredDeal.discount}
                     </span>
                     <span className="px-space-sm py-1 bg-surface-canvas/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm flex items-center gap-1">
                       <Icon name="star" className="text-[14px]" />
-                      Top Pick
-                    </span>
-                    <span className="px-space-sm py-1 bg-primary text-on-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm">
-                      Special Promo
+                      {featuredDeal.badge?.label ?? 'Live'}
                     </span>
                   </div>
                   <div className="absolute bottom-4 left-4 z-10 flex items-center gap-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-sm py-1.5 rounded-full shadow-sm text-on-surface">
                     <Icon name="timer" className="text-tertiary-container text-[18px]" />
-                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">Ends in 07h 48m 12s</span>
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">
+                      {featuredDeal.extra?.label ?? 'Active now'}
+                    </span>
                   </div>
                 </div>
 
@@ -638,7 +698,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                       <div className="flex items-center gap-space-xs">
                         <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
                         <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-secondary">
-                          Deal of the Day
+                          {featuredDeal.badge?.label ?? 'Deal of the Day'}
                         </span>
                       </div>
                       <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption">
@@ -673,9 +733,9 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                       </div>
                       <div className="flex items-center justify-between text-text-secondary font-caption text-caption pt-1">
                         <span>
-                          Vouchers remaining: <strong className="text-text-primary">12 of 30 left</strong>
+                          {featuredDeal.extra?.label ?? 'Live offer'}
                         </span>
-                        <span className="text-tertiary font-semibold">Claimed fast</span>
+                        <span className="text-tertiary font-semibold">{featuredDeal.save}</span>
                       </div>
                       <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
                         <div className="h-full bg-primary-container rounded-full" style={{ width: '60%' }} />

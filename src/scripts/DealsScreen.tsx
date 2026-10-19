@@ -99,6 +99,18 @@ const getOfferComparePrice = (offer: Record<string, unknown>): number => {
   return getOfferPrice(offer);
 };
 
+const isUsableOffer = (offer: Record<string, unknown>): boolean => {
+  const business =
+    getOfferBusinessName(offer) !== 'Local business'
+      ? getOfferBusinessName(offer)
+      : '';
+  const title = getOfferTitle(offer) !== 'Local offer' ? getOfferTitle(offer) : '';
+  const price = getOfferPrice(offer);
+  const compare = getOfferComparePrice(offer);
+
+  return Boolean(business && title && (price > 0 || compare > 0));
+};
+
 const toDealCardModel = (offer: Record<string, unknown>) => {
   const title = getOfferTitle(offer);
   const business = getOfferBusinessName(offer);
@@ -301,6 +313,7 @@ export function DealsScreen({
   const [locationOpen, setLocationOpen] = useState(false);
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const { district, city, radius, setLocation } = useLocation();
+  const apiReady = hasApiConfig();
 
   useEffect(() => {
     let ignore = false;
@@ -324,8 +337,124 @@ export function DealsScreen({
     return () => { ignore = true; };
   }, []);
 
-  const displayDeals = useMemo(() => publicOffers.slice(0, 6), [publicOffers]);
+  const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 6), [publicOffers]);
   const featuredDeal = displayDeals[0] ? toDealCardModel(displayDeals[0]) : null;
+
+  if (!displayDeals.length) {
+    return (
+      <AppScreen>
+        <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">
+          <div className="px-margin py-2 flex items-center justify-between">
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="font-caption text-caption text-text-secondary font-medium">Deals</span>
+              <div className="flex flex-nowrap items-center gap-1 mt-0.5 text-left min-w-0 whitespace-nowrap">
+                <Icon name="location_on" className="text-primary text-[18px] shrink-0" filled />
+                <span className="font-label-md text-label-md font-bold text-text-primary truncate min-w-0">
+                  {district}, {city}
+                </span>
+                <span className="ml-1 shrink-0 whitespace-nowrap px-1.5 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-[11px] font-medium">
+                  Within {radius} km
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-space-xs shrink-0">
+              <button
+                aria-label="Notifications"
+                type="button"
+                onClick={onOpenNotifications}
+                className="relative w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+              >
+                <Icon name="notifications" className="text-[24px]" />
+                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+              </button>
+              <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-label-sm shadow-xs cursor-pointer">
+                <Icon name="person" className="text-[20px]" />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex flex-col relative w-full pt-[92px] pb-24 bg-surface px-margin">
+          <div className="w-full rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
+              <Icon name="info" className="text-[22px]" />
+            </div>
+            <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+            <p className="mt-1 font-body-md text-body-md text-text-secondary">
+              Publish live public offers to populate this feed.
+            </p>
+          </div>
+        </main>
+
+        <MobileTabBar active="deals" onTab={onTab} />
+        <LocationRadiusModal
+          open={locationOpen}
+          onClose={() => setLocationOpen(false)}
+          onApply={setLocation}
+          district={district}
+          radius={radius}
+        />
+      </AppScreen>
+    );
+  }
+
+  if (!apiReady) {
+    return (
+      <AppScreen>
+        <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">
+          <div className="px-margin py-2 flex items-center justify-between">
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="font-caption text-caption text-text-secondary font-medium">Deals</span>
+              <div className="flex flex-nowrap items-center gap-1 mt-0.5 text-left min-w-0 whitespace-nowrap">
+                <Icon name="location_on" className="text-primary text-[18px] shrink-0" filled />
+                <span className="font-label-md text-label-md font-bold text-text-primary truncate min-w-0">
+                  {district}, {city}
+                </span>
+                <span className="ml-1 shrink-0 whitespace-nowrap px-1.5 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-[11px] font-medium">
+                  Within {radius} km
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-space-xs shrink-0">
+              <button
+                aria-label="Notifications"
+                type="button"
+                onClick={onOpenNotifications}
+                className="relative w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+              >
+                <Icon name="notifications" className="text-[24px]" />
+                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+              </button>
+              <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-label-sm shadow-xs cursor-pointer">
+                <Icon name="person" className="text-[20px]" />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex flex-col relative w-full pt-[92px] pb-24 bg-surface px-margin">
+          <div className="w-full rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
+              <Icon name="info" className="text-[22px]" />
+            </div>
+            <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+            <p className="mt-1 font-body-md text-body-md text-text-secondary">
+              Connect the API and publish public offers to populate this feed.
+            </p>
+          </div>
+        </main>
+
+        <MobileTabBar active="deals" onTab={onTab} />
+        <LocationRadiusModal
+          open={locationOpen}
+          onClose={() => setLocationOpen(false)}
+          onApply={setLocation}
+          district={district}
+          radius={radius}
+        />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>
@@ -405,7 +534,7 @@ export function DealsScreen({
                     <div className="flex items-center gap-1.5">
                       <Icon name="local_fire_department" className="text-primary text-[18px]" filled />
                       <span className="font-label-sm text-[12px] font-bold uppercase tracking-wider text-text-secondary">
-                        FEATURED DEAL OF THE DAY
+                        DEAL OF THE DAY
                       </span>
                     </div>
                     <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
@@ -416,15 +545,12 @@ export function DealsScreen({
                     <img alt={featuredDeal.title} className="w-full h-full object-cover" src={featuredDeal.image} />
                     <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
                       <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-[11px] font-bold shadow-xs flex items-center gap-1">
-                        <Icon name="star" className="text-[13px]" filled />Top Pick
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium">
-                        Live Promo
+                        <Icon name="star" className="text-[13px]" filled />{featuredDeal.discount}
                       </span>
                     </div>
                     <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium flex items-center gap-1">
                       <Icon name="hourglass_top" className="text-[13px] text-tertiary-fixed" />
-                      Active now
+                      {featuredDeal.distance}
                     </div>
                   </div>
                   <div className="p-space-md flex flex-col">
