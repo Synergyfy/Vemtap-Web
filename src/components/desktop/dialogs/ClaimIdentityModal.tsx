@@ -2,6 +2,16 @@ import { useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 
+export interface ClaimDealSummary {
+  title?: string;
+  business?: string;
+  location?: string;
+  price?: number;
+  oldPrice?: number;
+  discountLabel?: string;
+  image?: string;
+}
+
 export interface ClaimIdentityModalProps {
   open: boolean;
   onClose: () => void;
@@ -10,6 +20,7 @@ export interface ClaimIdentityModalProps {
   onSomeoneElse: () => void;
   /** Signed-in customer's profile so the copy names the real account holder. */
   identity?: { name: string } | null;
+  deal?: ClaimDealSummary | null;
 }
 
 type Option = 'myself' | 'gift' | 'other';
@@ -53,9 +64,19 @@ export function ClaimIdentityModal({
   onGift,
   onSomeoneElse,
   identity,
+  deal,
 }: ClaimIdentityModalProps) {
   const [selected, setSelected] = useState<Option>('myself');
   const customerName = identity?.name?.trim();
+  const dealTitle = deal?.title || 'This deal';
+  const businessName = deal?.business?.trim() || 'This business';
+  const dealLocation = deal?.location?.trim() || 'Your selected location';
+  const dealImage =
+    deal?.image ||
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuCae9ls0dapHyTLe-tYB9uhNt_hUJE2QAAdV2y_MVPHC76VbKWGYmtiOiPlDFj-_cbwZ4ybtfZvIghTgM4PFsM1-MiS3ASzXHSm7QQ0_QjhA-3HQ_zgW5WfD8CmyMNsBVqD3UPI93tx9chuEy1esEjbXiMYwbt1lUkEWhlqTSIfmIcXeUhHL_1My2jkMLk2CjwQ3_42znyGtZVtN740cPIGEbbniuGZ7eRx1xnRMqkM';
+  const price = typeof deal?.price === 'number' ? deal.price : 0;
+  const oldPrice = typeof deal?.oldPrice === 'number' ? deal.oldPrice : price;
+  const discountLabel = deal?.discountLabel || 'Instant VEMTAP savings';
 
   const handleContinue = () => {
     if (selected === 'gift') onGift();
@@ -84,7 +105,7 @@ export function ClaimIdentityModal({
           How would you like to claim this deal?
         </h2>
         <p className="font-body-md text-body-md text-text-secondary">
-          Choose who will redeem this voucher pass at Urban Grill &amp; Bistro.
+          Choose who will redeem this voucher pass at {businessName}.
         </p>
       </div>
 
@@ -93,22 +114,26 @@ export function ClaimIdentityModal({
           <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 relative bg-surface-dim">
             <img
               className="w-full h-full object-cover"
-              alt="Plated artisanal grilled platter with colorful seasoned vegetable medley at Urban Grill & Bistro Apo Abuja"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCae9ls0dapHyTLe-tYB9uhNt_hUJE2QAAdV2y_MVPHC76VbKWGYmtiOiPlDFj-_cbwZ4ybtfZvIghTgM4PFsM1-MiS3ASzXHSm7QQ0_QjhA-3HQ_zgW5WfD8CmyMNsBVqD3UPI93tx9chuEy1esEjbXiMYwbt1lUkEWhlqTSIfmIcXeUhHL_1My2jkMLk2CjwQ3_42znyGtZVtN740cPIGEbbniuGZ7eRx1xnRMqkM"
+              alt={`${dealTitle} at ${businessName}`}
+              src={dealImage}
             />
           </div>
           <div className="flex-1 min-w-0 flex flex-col gap-0.5">
             <span className="font-caption text-caption font-semibold uppercase tracking-wider text-text-tertiary truncate">
-              Urban Grill &amp; Bistro • Apo, Abuja
+              {businessName} • {dealLocation}
             </span>
             <h3 className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate leading-tight">
-              Prime 3-Course Lunch Combo &amp; Craft Beverage
+              {dealTitle}
             </h3>
             <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 pt-0.5">
-              <span className="font-button-primary text-button-primary font-bold text-on-surface">₦9,600</span>
-              <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                Save ₦2,400 (20% OFF)
+              <span className="font-button-primary text-button-primary font-bold text-on-surface">
+                {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(price)}
               </span>
+              {oldPrice > 0 && oldPrice !== price ? (
+                <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                  {discountLabel}
+                </span>
+              ) : null}
               <span className="text-text-tertiary text-[11px] font-caption hidden sm:inline">
                 • Zero upfront payment • Pay in-store
               </span>

@@ -8,7 +8,7 @@ import { CommentsDrawer } from '../../components/desktop/dialogs/CommentsDrawer'
 import { HowToClaimModal } from '../../components/desktop/dialogs/HowToClaimModal';
 import { ClaimConfirmationModal } from '../../components/desktop/dialogs/ClaimConfirmationModal';
 import { ClaimAuthModal } from '../../components/desktop/dialogs/ClaimAuthModal';
-import { ClaimIdentityModal } from '../../components/desktop/dialogs/ClaimIdentityModal';
+import { ClaimIdentityModal, type ClaimDealSummary } from '../../components/desktop/dialogs/ClaimIdentityModal';
 import { SomeoneElseModal } from '../../components/desktop/dialogs/SomeoneElseModal';
 import { RecipientVerificationModal } from '../../components/desktop/dialogs/RecipientVerificationModal';
 import { RecipientSummaryModal } from '../../components/desktop/dialogs/RecipientSummaryModal';
@@ -19,6 +19,7 @@ import type { GiftRecipientSummary } from '../GiftSentScreen';
 interface DesktopDealDetailScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
+  deal?: ClaimDealSummary | null;
   /**
    * BUG-006/008/009 — when provided, a finished claim/gift hands the record to
    * the app shell so it can open the real outcome screen (claim success /
@@ -144,10 +145,19 @@ const TABS: Array<{ key: Tab; icon: string; label: string }> = [
   { key: 'comments', icon: 'chat_bubble_outline', label: 'Community Q&A (32)' },
 ];
 
-export function DesktopDealDetailScreen({ onNav, onBack, onClaimComplete }: DesktopDealDetailScreenProps) {
+export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }: DesktopDealDetailScreenProps) {
   const { authed, claimed, signIn, markClaimed } = useAuth();
   const claims = useClaims();
   const profile = useProfile();
+  const selectedDeal: ClaimDealSummary = {
+    title: deal?.title ?? 'Prime 3-Course Lunch Combo & Craft Beverage',
+    business: deal?.business ?? 'Urban Grill & Bistro',
+    location: deal?.location ?? 'Apo, Abuja',
+    price: typeof deal?.price === 'number' ? deal.price : 9600,
+    oldPrice: typeof deal?.oldPrice === 'number' ? deal.oldPrice : 12000,
+    discountLabel: deal?.discountLabel ?? 'Save ₦2,400 (20% OFF)',
+    image: deal?.image ?? MAIN_IMAGE,
+  };
   const [dialog, setDialog] = useState<Dialog>(null);
   const [pendingStep, setPendingStep] = useState<PendingStep>('identity');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
@@ -1061,6 +1071,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, onClaimComplete }: Desk
         open={dialog === 'claimConfirm'}
         onClose={() => setDialog(null)}
         onConfirm={completeClaim}
+        deal={selectedDeal}
       />
       <ClaimAuthModal
         open={dialog === 'auth'}
@@ -1073,6 +1084,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, onClaimComplete }: Desk
       <ClaimIdentityModal
         open={dialog === 'identity'}
         identity={{ name: profile.fullName }}
+        deal={selectedDeal}
         onClose={() => setDialog(null)}
         onClaimSelf={completeClaim}
         onGift={() => setDialog('gift')}

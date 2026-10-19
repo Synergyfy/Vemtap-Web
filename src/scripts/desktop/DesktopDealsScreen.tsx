@@ -10,8 +10,24 @@ interface DesktopDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
-  onOpenDeal: () => void;
-  onClaim?: (onClaimed?: () => void) => void;
+  onOpenDeal: (deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number;
+    oldPrice?: number;
+    discountLabel?: string;
+    image?: string;
+  }) => void;
+  onClaim?: (deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number;
+    oldPrice?: number;
+    discountLabel?: string;
+    image?: string;
+  } | null, onClaimed?: () => void) => void;
 }
 
 const DEAL_OF_DAY_IMAGE =
@@ -366,11 +382,27 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   key={deal.title}
                   role="button"
                   tabIndex={0}
-                  onClick={onOpenDeal}
+                  onClick={() => onOpenDeal({
+                    title: deal.title,
+                    business: deal.store,
+                    location: `${city}, ${district}`,
+                    price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                    oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                    discountLabel: deal.save,
+                    image: deal.image,
+                  })}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      onOpenDeal();
+                      onOpenDeal({
+                        title: deal.title,
+                        business: deal.store,
+                        location: `${city}, ${district}`,
+                        price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                        oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                        discountLabel: deal.save,
+                        image: deal.image,
+                      });
                     }
                   }}
                   className="group relative flex flex-col bg-surface-container-lowest rounded-2xl overflow-hidden shadow-[0_4px_18px_-2px_rgba(13,37,76,0.04)] hover:shadow-[0_12px_28px_-6px_rgba(6,108,244,0.12)] transition-all duration-300 cursor-pointer"
@@ -459,7 +491,16 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onClaim?.(() => claimDeal(deal.title));
+                          const selected = {
+                            title: deal.title,
+                            business: deal.store,
+                            location: `${city}, ${district}`,
+                            price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                            oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                            discountLabel: deal.save,
+                            image: deal.image,
+                          };
+                          onClaim?.(selected, () => claimDeal(deal.title));
                         }}
                       >
                         {claimed[deal.title] ? 'Claimed!' : 'Claim'}
@@ -677,7 +718,16 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onClaim?.(() => setHeroClaimed(true));
+                        const selected = {
+                          title: featuredDeal?.title ?? 'Featured deal',
+                          business: featuredDeal?.store ?? 'Nearby business',
+                          location: `${city}, ${district}`,
+                          price: Number.parseFloat(String(featuredDeal?.price ?? '0').replace(/[^\d.]/g, '')) || 0,
+                          oldPrice: Number.parseFloat(String(featuredDeal?.oldPrice ?? '0').replace(/[^\d.]/g, '')) || 0,
+                          discountLabel: featuredDeal?.save ?? 'Live Deal',
+                          image: featuredDeal?.image ?? '',
+                        };
+                        onClaim?.(selected, () => setHeroClaimed(true));
                       }}
                     >
                       <span>{heroClaimed ? 'Claimed!' : 'Claim Deal'}</span>
@@ -747,11 +797,27 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   key={deal.title}
                   role="button"
                   tabIndex={0}
-                  onClick={onOpenDeal}
+                  onClick={() => onOpenDeal({
+                    title: deal.title,
+                    business: deal.store,
+                    location: `${city}, ${district}`,
+                    price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                    oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                    discountLabel: deal.save,
+                    image: deal.image,
+                  })}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      onOpenDeal();
+                      onOpenDeal({
+                        title: deal.title,
+                        business: deal.store,
+                        location: `${city}, ${district}`,
+                        price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                        oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                        discountLabel: deal.save,
+                        image: deal.image,
+                      });
                     }
                   }}
                   className="bg-surface-canvas rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col group cursor-pointer"
@@ -816,7 +882,16 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onClaim?.(() => claimDeal(deal.title));
+                          const selected = {
+                            title: deal.title,
+                            business: deal.store,
+                            location: `${city}, ${district}`,
+                            price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                            oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                            discountLabel: deal.save,
+                            image: deal.image,
+                          };
+                          onClaim?.(selected, () => claimDeal(deal.title));
                         }}
                       >
                         {claimed[deal.title] ? 'Claimed!' : 'Claim'}

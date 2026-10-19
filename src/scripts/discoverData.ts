@@ -20,6 +20,9 @@ export interface BusinessCard {
   deals: string;
   image: string;
   alt: string;
+  venue?: 'urban' | 'spa';
+  slug?: string;
+  id?: string;
 }
 
 const getOfferImage = (offer: Record<string, unknown>) => {
@@ -71,6 +74,22 @@ export const buildDiscoverCardsFromOffers = (offers: Record<string, unknown>[]):
       : typeof business.categoryName === 'string' && business.categoryName.trim()
         ? business.categoryName
         : 'Local business';
+    const normalizedName = businessName.toLowerCase();
+    const venue = normalizedName.includes('spa') || normalizedName.includes('serenity') || normalizedName.includes('glow')
+      ? 'spa'
+      : normalizedName.includes('grill') || normalizedName.includes('bistro') || normalizedName.includes('restaurant')
+        ? 'urban'
+        : undefined;
+    const slugValue = typeof business.slug === 'string' && business.slug.trim()
+      ? business.slug.trim()
+      : typeof offer.slug === 'string' && offer.slug.trim()
+        ? offer.slug.trim()
+        : businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `business-${index + 1}`;
+    const idValue = typeof business.id === 'string' && business.id.trim()
+      ? business.id.trim()
+      : typeof offer.id === 'string' && offer.id.trim()
+        ? offer.id.trim()
+        : String(index + 1);
 
     return {
       name: businessName,
@@ -83,6 +102,9 @@ export const buildDiscoverCardsFromOffers = (offers: Record<string, unknown>[]):
       deals: price > 0 ? `Active Deal • ${formatCurrency(price)}` : 'Live local deal',
       image: getOfferImage(offer),
       alt: `${title} from ${businessName}`,
+      venue,
+      slug: slugValue,
+      id: idValue,
     };
   });
 
@@ -99,6 +121,9 @@ export const BUSINESS_CARDS: BusinessCard[] = [
     image:
       'https://lh3.googleusercontent.com/aida-public/AB6AXuCzyZN6TCyT9Y7SXehS0lBf6jPgb7r1FOxCfjStuBDzCIjbc5FTJ4PWgv0Smq0juGeyxCQ_arOnHXmm1rP5VR6kPv1xh2S5p8goKg_hhQIXk2QTJH9JM8ETDEvCIaj_aw9pNgwCRS-ErYvWQRlnGmj2brPLLGchrUJWaNRU75OdnHIkr7C5JOmq5yYYqwn1tFBLn8fs8Eio7PZ2vX6OD26P5a9Waow-JeBh3MvBJQzMX4YOSQJXnYXPHQ',
     alt: 'Vibrant modern restaurant interior of Urban Grill & Bistro in Abuja with warm ambient lighting, open grill kitchen, sleek wood tables, contemporary pendant lights and gourmet grilled steak plates being arranged by chefs in high-end casual atmosphere.',
+    venue: 'urban',
+    slug: 'urban-grill-bistro-104',
+    id: '104',
   },
   {
     name: 'Glow & Serenity Spa',
@@ -112,6 +137,9 @@ export const BUSINESS_CARDS: BusinessCard[] = [
     image:
       'https://lh3.googleusercontent.com/aida-public/AB6AXuD12KhKwa_t67ebHn03hDHeo3R_i4Yb9kW5hTx3TV6pPBPnZ6CSph1CTJSnAAkCkEywtN1QQYXCp4-bKYCG5eICRwkchdABl2RUE9D4Y7W6jOTduudJl2BZlHJO6q1btnZKbiKDLklZgIUpp3G99Jd9wFaBnPsHOeQcTCC7640bnnE8Rd8FYYeeNFs0YuKEQJFYYkT86WGsjnSIeh4qOD-tED-5E16KydNEcJv-5Hu--Y8IfZuoSbY_tg',
     alt: 'Luxury modern day spa aesthetic with minimal eucalyptus leaf arrangements, bamboo elements, soft white towels, tranquil warm candle lighting, smooth river stones, and clean minimalist interior design promoting wellness and deep relaxation.',
+    venue: 'spa',
+    slug: 'glow-serenity-spa-219',
+    id: '219',
   },
   {
     name: 'Sole District Boutique',

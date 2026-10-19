@@ -7,6 +7,7 @@ import { URBAN_PRODUCTS, naira } from './catalogueData';
 
 export interface BusinessProfileScreenProps {
   venue: 'urban' | 'spa';
+  business?: { name?: string; slug?: string } | null;
   onBack: () => void;
   onOpenDeals: () => void;
   onOpenProducts?: () => void;
@@ -48,8 +49,8 @@ const getOfferImage = (offer: Record<string, unknown>): string => {
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
-  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Urban Grill & Bistro';
-  return typeof value === 'string' && value.trim() ? value : 'Urban Grill & Bistro';
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Selected business';
+  return typeof value === 'string' && value.trim() ? value : 'Selected business';
 };
 
 const getOfferTitle = (offer: Record<string, unknown>): string => {
@@ -327,10 +328,11 @@ const SPA_REVIEWS = [
 
 function UrbanProfile({
   offers,
+  businessName,
   onOpenDeals,
   onOpenProducts,
   onClaim,
-}: Pick<BusinessProfileScreenProps, 'onOpenDeals' | 'onOpenProducts' | 'onClaim'> & { offers: Record<string, unknown>[] }) {
+}: Pick<BusinessProfileScreenProps, 'onOpenDeals' | 'onOpenProducts' | 'onClaim'> & { offers: Record<string, unknown>[]; businessName: string }) {
   const [following, setFollowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<number, boolean>>({});
@@ -345,8 +347,8 @@ function UrbanProfile({
     return URBAN_PRODUCTS_PREVIEW;
   }, [offers]);
 
-  const profileName = offers.length > 0 ? getOfferBusinessName(offers[0]) : 'Urban Grill & Bistro';
-  const profileSummary = offers.length > 0 ? getOfferDescription(offers[0]) : 'Urban Grill & Bistro is a premier culinary destination in Apo, offering artisanal flame-grilled steaks, hand-crafted burgers, and fine wines. Fresh local ingredients with modern recipes.';
+  const profileName = offers.length > 0 ? getOfferBusinessName(offers[0]) : businessName;
+  const profileSummary = offers.length > 0 ? getOfferDescription(offers[0]) : `${businessName} is a premier culinary destination in Apo, offering artisanal flame-grilled steaks, hand-crafted burgers, and fine wines. Fresh local ingredients with modern recipes.`;
 
   return (
     <main className="relative w-full pt-14 pb-safe bg-surface min-h-screen">
@@ -682,10 +684,11 @@ function UrbanProfile({
 
 function SpaProfile({
   offers,
+  businessName,
   onOpenServices,
   onOpenService,
   onClaim,
-}: Pick<BusinessProfileScreenProps, 'onOpenServices' | 'onOpenService' | 'onClaim'> & { offers: Record<string, unknown>[] }) {
+}: Pick<BusinessProfileScreenProps, 'onOpenServices' | 'onOpenService' | 'onClaim'> & { offers: Record<string, unknown>[]; businessName: string }) {
   const [following, setFollowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<number, boolean>>({});
@@ -695,8 +698,8 @@ function SpaProfile({
     return SPA_DEALS;
   }, [offers]);
 
-  const profileName = offers.length > 0 ? getOfferBusinessName(offers[0]) : 'Glow & Serenity Spa & Salon';
-  const profileSummary = offers.length > 0 ? getOfferDescription(offers[0]) : 'Glow & Serenity is an upscale grooming, beauty salon and wellness clinic in Maitama Heights offering luxury hair styling, facial therapies, therapeutic massages, and aesthetic skin care.';
+  const profileName = offers.length > 0 ? getOfferBusinessName(offers[0]) : businessName;
+  const profileSummary = offers.length > 0 ? getOfferDescription(offers[0]) : `${businessName} is an upscale grooming, beauty salon and wellness clinic in Maitama Heights offering luxury hair styling, facial therapies, therapeutic massages, and aesthetic skin care.`;
 
   const scrollToDeals = () => {
     document.getElementById('spa-deals-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -1044,6 +1047,7 @@ function SpaProfile({
 
 export function BusinessProfileScreen({
   venue,
+  business,
   onBack,
   onOpenDeals,
   onOpenProducts,
@@ -1084,6 +1088,8 @@ export function BusinessProfileScreen({
     setLinkCopied(true);
     window.setTimeout(() => setLinkCopied(false), 1800);
   };
+
+  const businessName = business?.name?.trim() || (venue === 'spa' ? 'Selected spa business' : 'Selected business');
 
   return (
     <AppScreen>
@@ -1138,9 +1144,9 @@ export function BusinessProfileScreen({
         )}
       </header>
       {venue === 'urban' ? (
-        <UrbanProfile offers={publicOffers} onOpenDeals={onOpenDeals} onOpenProducts={onOpenProducts} onClaim={onClaim} />
+        <UrbanProfile businessName={businessName} offers={publicOffers} onOpenDeals={onOpenDeals} onOpenProducts={onOpenProducts} onClaim={onClaim} />
       ) : (
-        <SpaProfile offers={publicOffers} onOpenServices={onOpenServices} onOpenService={onOpenService} onClaim={onClaim} />
+        <SpaProfile businessName={businessName} offers={publicOffers} onOpenServices={onOpenServices} onOpenService={onOpenService} onClaim={onClaim} />
       )}
     </AppScreen>
   );

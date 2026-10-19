@@ -7,8 +7,7 @@ import { catalogueService } from '../services/catalogueService';
 
 interface DiscoverScreenProps {
   onTab: (tab: MobileTabKey) => void;
-  onOpenUrban: () => void;
-  onOpenSpa: () => void;
+  onOpenBusiness: (business: BusinessCard) => void;
   onOpenFilters: () => void;
   onOpenNotifications: () => void;
   onBusinessSetup: () => void;
@@ -17,7 +16,7 @@ interface DiscoverScreenProps {
 
 import { BUSINESS_CARDS, DISCOVER_CATEGORIES, buildDiscoverCardsFromOffers, type BusinessCard } from './discoverData';
 
-export function DiscoverScreen({ onTab, onOpenUrban, onOpenSpa, onOpenFilters, onOpenNotifications, onBusinessSetup, onOpenLocation }: DiscoverScreenProps) {
+export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNotifications, onBusinessSetup, onOpenLocation }: DiscoverScreenProps) {
   const [category, setCategory] = useState('All');
   const [mapView, setMapView] = useState(false);
   const [businessCards, setBusinessCards] = useState<BusinessCard[]>(BUSINESS_CARDS);
@@ -63,9 +62,19 @@ export function DiscoverScreen({ onTab, onOpenUrban, onOpenSpa, onOpenFilters, o
     setBookmarked((prev) => prev.map((value, i) => (i === index ? !value : value)));
 
   const openCard = (index: number) => {
-    if (index === 0) onOpenUrban();
-    else if (index === 1) onOpenSpa();
-    else showToast(businessCards[index]?.name + ' profile is coming soon');
+    const card = businessCards[index];
+    if (!card || !card.name) return;
+
+    const normalized = card.name.toLowerCase();
+    const isSpa = card.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
+    const isUrban = card.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
+
+    if (!isSpa && !isUrban && normalized.trim() !== '') {
+      onOpenBusiness(card);
+      return;
+    }
+
+    onOpenBusiness(card);
   };
 
   return (

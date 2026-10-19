@@ -49,8 +49,12 @@ export function resolveBusinessPath(path: string): {
 
   const rawSlug = decodeURIComponent(parts[0]);
   const slug = LEGACY_BUSINESS_PATHS[`/business/${rawSlug}`]?.replace('/business/', '') ?? rawSlug;
-  const business = findBusinessBySlug(slug);
-  if (!business) return null;
+  const business = findBusinessBySlug(slug) ?? {
+    slug,
+    id: slug,
+    name: 'Selected business',
+    venue: 'urban',
+  };
 
   const section = parts[1] ?? '';
   if (section === 'products' && parts[2]) {

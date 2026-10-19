@@ -11,8 +11,24 @@ interface DesktopHomeScreenProps {
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
   onOpenDeals: () => void;
-  onOpenDeal: () => void;
-  onClaim?: (onClaimed?: () => void) => void;
+  onOpenDeal: (deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number;
+    oldPrice?: number;
+    discountLabel?: string;
+    image?: string;
+  }) => void;
+  onClaim?: (deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number;
+    oldPrice?: number;
+    discountLabel?: string;
+    image?: string;
+  } | null, onClaimed?: () => void) => void;
 }
 
 const HERO_LIST_IMAGE =
@@ -118,14 +134,16 @@ const toListDeal = (offer: Record<string, unknown>) => {
   const price = getApiPrice(offer);
   const original = getApiComparePrice(offer);
   const title = getApiTitle(offer);
+  const business = getApiBusinessName(offer);
   return {
     image: getNestedImage(offer),
-    imageAlt: `${title} by ${getApiBusinessName(offer)}`,
+    imageAlt: `${title} by ${business}`,
     discount: price > 0 ? 'Live Deal' : 'OFFER',
     timer: 'Limited time',
     meta: typeof offer.distance === 'string' && offer.distance.trim() ? `${offer.distance} • Nearby` : 'Nearby',
     rating: '4.9',
     title,
+    store: business,
     copy: typeof offer.description === 'string' && offer.description.trim() ? offer.description : 'Fresh local offer from nearby vendors.',
     price: formatCurrency(price),
     oldPrice: original > price ? formatCurrency(original) : '',
@@ -134,14 +152,17 @@ const toListDeal = (offer: Record<string, unknown>) => {
 
 const toTrendingDeal = (offer: Record<string, unknown>) => {
   const price = getApiPrice(offer);
+  const original = getApiComparePrice(offer);
   const title = getApiTitle(offer);
+  const business = getApiBusinessName(offer);
   return {
     image: getNestedImage(offer),
-    imageAlt: `${title} by ${getApiBusinessName(offer)}`,
+    imageAlt: `${title} by ${business}`,
     claimed: 'Live deal',
     title,
-    store: `${getApiBusinessName(offer)} • Nearby`,
+    store: business,
     price: formatCurrency(price),
+    oldPrice: original > price ? formatCurrency(original) : '',
     discount: 'Live Deal',
   };
 };
@@ -198,6 +219,25 @@ export function DesktopHomeScreen({
   const [spotlightPaused, setSpotlightPaused] = useState(false);
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
+
+  const createDealPayload = (deal: {
+    title: string;
+    business?: string;
+    store?: string;
+    meta?: string;
+    price: string | number;
+    oldPrice?: string | number;
+    discount?: string;
+    image: string;
+  }) => ({
+    title: deal.title,
+    business: deal.business ?? deal.store ?? deal.meta?.split('•')[0]?.trim() ?? 'Nearby business',
+    location: `${city}, ${district}`,
+    price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+    oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+    discountLabel: deal.discount ?? 'Live Deal',
+    image: deal.image,
+  });
 
   useEffect(() => {
     let ignore = false;
@@ -484,7 +524,17 @@ export function DesktopHomeScreen({
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            onClaim?.();
+                            const offer = spotlightData[spotlightIndex];
+                            const selected = {
+                              title: offer?.title ?? 'Featured deal',
+                              business: offer?.merchant?.split('•')[0]?.trim() ?? 'Nearby business',
+                              location: `${city}, ${district}`,
+                              price: Number.parseFloat(String((offer?.price ?? '0').replace(/[^\d.]/g, '')) || '0') || 0,
+                              oldPrice: Number.parseFloat(String((offer?.oldPrice ?? '0').replace(/[^\d.]/g, '')) || '0') || 0,
+                              discountLabel: offer?.discount ?? 'Live Deal',
+                              image: offer?.image ?? '',
+                            };
+                            onClaim?.(selected);
                           }}
                         >
                           <span>Claim Voucher</span>
@@ -550,11 +600,27 @@ export function DesktopHomeScreen({
                     key={deal.title}
                     role="button"
                     tabIndex={0}
-                    onClick={onOpenDeal}
+                    onClick={() => onOpenDeal({
+                      title: deal.title,
+                      business: deal.meta?.split('•')[0]?.trim() || 'Nearby business',
+                      location: `${city}, ${district}`,
+                      price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                      oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                      discountLabel: deal.discount,
+                      image: deal.image,
+                    })}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        onOpenDeal();
+                        onOpenDeal({
+                          title: deal.title,
+                          business: deal.meta?.split('•')[0]?.trim() || 'Nearby business',
+                          location: `${city}, ${district}`,
+                          price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                          oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                          discountLabel: deal.discount,
+                          image: deal.image,
+                        });
                       }
                     }}
                     className="bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer"
@@ -663,11 +729,27 @@ export function DesktopHomeScreen({
                     key={deal.title}
                     role="button"
                     tabIndex={0}
-                    onClick={onOpenDeal}
+                    onClick={() => onOpenDeal({
+                      title: deal.title,
+                      business: deal.store,
+                      location: `${city}, ${district}`,
+                      price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                      oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                      discountLabel: deal.discount,
+                      image: deal.image,
+                    })}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        onOpenDeal();
+                        onOpenDeal({
+                          title: deal.title,
+                          business: deal.store,
+                          location: `${city}, ${district}`,
+                          price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                          oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                          discountLabel: deal.discount,
+                          image: deal.image,
+                        });
                       }
                     }}
                     className="min-w-[280px] sm:min-w-[340px] bg-surface-canvas rounded-xl p-space-md shadow-sm hover:shadow-md transition-all flex gap-3.5 items-center shrink-0 cursor-pointer"
@@ -938,7 +1020,16 @@ export function DesktopHomeScreen({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onClaim?.(() => showToast("Chef's Tasting Voucher reserved for 15 mins!"));
+                      const selected = {
+                        title: 'Chef\'s 5-Course Tasting Menu & Wine Pairing',
+                        business: 'The Sky Lounge & Grill',
+                        location: `${city}, ${district}`,
+                        price: 24500,
+                        oldPrice: 49000,
+                        discountLabel: '50% OFF',
+                        image: HERO_GRID_IMAGE,
+                      };
+                      onClaim?.(selected, () => showToast("Chef's Tasting Voucher reserved for 15 mins!"));
                     }}
                   >
                     <span>Claim Voucher</span>
@@ -1000,11 +1091,27 @@ export function DesktopHomeScreen({
                 key={`${deal.title}-${index}`}
                 role="button"
                 tabIndex={0}
-                onClick={onOpenDeal}
+                onClick={() => onOpenDeal({
+                  title: deal.title,
+                  business: deal.store,
+                  location: `${city}, ${district}`,
+                  price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                  oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                  discountLabel: deal.discount,
+                  image: deal.image,
+                })}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    onOpenDeal();
+                    onOpenDeal({
+                      title: deal.title,
+                      business: deal.store,
+                      location: `${city}, ${district}`,
+                      price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                      oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                      discountLabel: deal.discount,
+                      image: deal.image,
+                    });
                   }
                 }}
                 className="group relative bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer"
@@ -1060,7 +1167,16 @@ export function DesktopHomeScreen({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onClaim?.(() => showToast(`${deal.title} voucher is ready to claim.`));
+                      const selected = {
+                        title: deal.title,
+                        business: deal.store,
+                        location: `${city}, ${district}`,
+                        price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                        oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                        discountLabel: deal.discount,
+                        image: deal.image,
+                      };
+                      onClaim?.(selected, () => showToast(`${deal.title} voucher is ready to claim.`));
                     }}
                   >
                     Claim
@@ -1091,11 +1207,25 @@ export function DesktopHomeScreen({
                   key={deal.title}
                   role="button"
                   tabIndex={0}
-                  onClick={onOpenDeal}
+                  onClick={() => onOpenDeal(createDealPayload({
+                    title: deal.title,
+                    price: deal.price,
+                    oldPrice: 0,
+                    discount: deal.discount,
+                    image: deal.image,
+                    business: deal.store,
+                  }))}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      onOpenDeal();
+                      onOpenDeal(createDealPayload({
+                        title: deal.title,
+                        price: deal.price,
+                        oldPrice: 0,
+                        discount: deal.discount,
+                        image: deal.image,
+                        business: deal.store,
+                      }));
                     }
                   }}
                   className="bg-surface-canvas rounded-2xl p-space-md flex flex-col sm:flex-row items-center gap-space-md shadow-sm hover:shadow-md transition-all cursor-pointer"
@@ -1128,7 +1258,16 @@ export function DesktopHomeScreen({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onClaim?.(() => showToast(`${deal.title} voucher is live.`));
+                          const selected = {
+                            title: deal.title,
+                            business: deal.store,
+                            location: `${city}, ${district}`,
+                            price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                            oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                            discountLabel: deal.discount,
+                            image: deal.image,
+                          };
+                          onClaim?.(selected, () => showToast(`${deal.title} voucher is live.`));
                         }}
                       >
                         Claim Deal

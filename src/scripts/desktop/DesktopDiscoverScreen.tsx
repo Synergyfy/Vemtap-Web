@@ -8,7 +8,7 @@ import { BUSINESS_CARDS, DISCOVER_CATEGORIES, buildDiscoverCardsFromOffers, type
 interface DesktopDiscoverScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenFilters: () => void;
-  onOpenBusiness: (index: number) => void;
+  onOpenBusiness: (business: BusinessCard) => void;
   onBusinessSetup: () => void;
 }
 
@@ -128,11 +128,9 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
             {businessCards.map((card, index) => (
               <article
                 key={`${card.name}-${index}`}
-                role={index < 2 ? 'button' : undefined}
-                onClick={index < 2 ? () => onOpenBusiness(index) : undefined}
-                className={`w-full bg-surface-canvas rounded-2xl overflow-hidden shadow-sm flex flex-col active:scale-[0.99] transition-transform ${
-                  index < 2 ? 'cursor-pointer' : ''
-                }`}
+                role="button"
+                onClick={() => onOpenBusiness(card)}
+                className="w-full bg-surface-canvas rounded-2xl overflow-hidden shadow-sm flex flex-col active:scale-[0.99] transition-transform cursor-pointer"
               >
                 <div className="relative w-full aspect-[16/9] bg-surface-container overflow-hidden">
                   <img className="w-full h-full object-cover" alt={card.alt} src={card.image} />

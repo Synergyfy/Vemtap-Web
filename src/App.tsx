@@ -23,7 +23,16 @@ import { CampaignsProvider } from './context/CampaignsContext';
 import { AccountDeletionProvider } from './context/AccountDeletionContext';
 import type { SubmittedOrder } from './context/OrdersContext';
 import { useCart } from './context/CartContext';
-import { URBAN_BUSINESS, SPA_BUSINESS, resolveBusinessPath, productPath, servicePath } from './scripts/businessData';
+import {
+  URBAN_BUSINESS,
+  SPA_BUSINESS,
+  businessPath,
+  businessSubPath,
+  resolveBusinessPath,
+  productPath,
+  servicePath,
+  type BusinessProfileRef,
+} from './scripts/businessData';
 import { CustomerInviteJoinScreen } from './scripts/CustomerInviteJoinScreen';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
 import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
@@ -214,7 +223,7 @@ import { ShareSheet } from './components/sheets/ShareSheet';
 import { ClaimAuthSheet } from './components/sheets/ClaimAuthSheet';
 import { ClaimConfirmSheet } from './components/sheets/ClaimConfirmSheet';
 import { ClaimIdentitySheet } from './components/sheets/ClaimIdentitySheet';
-import { ClaimIdentityModal } from './components/desktop/dialogs/ClaimIdentityModal';
+import { ClaimIdentityModal, type ClaimDealSummary } from './components/desktop/dialogs/ClaimIdentityModal';
 import { CommentsDrawer } from './components/desktop/dialogs/CommentsDrawer';
 import { ClaimAuthModal } from './components/desktop/dialogs/ClaimAuthModal';
 import { ClaimConfirmationModal } from './components/desktop/dialogs/ClaimConfirmationModal';
@@ -835,10 +844,15 @@ function AppInner() {
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
   const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
+    const match = resolveBusinessPath(window.location.pathname);
+    return match?.business ?? null;
+  });
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
   const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
   const [feedFrom, setFeedFrom] = useState<Route>('home');
   const [dealFrom, setDealFrom] = useState<Route>('home');
+  const [selectedDeal, setSelectedDeal] = useState<ClaimDealSummary | null>(null);
   const [bizFrom, setBizFrom] = useState<Route>('discover');
   const [profileFrom, setProfileFrom] = useState<Route>('discover');
   const [catalogueFrom, setCatalogueFrom] = useState<Route>('storefront');
@@ -955,9 +969,42 @@ function AppInner() {
     }
   };
 
+  const resolveRoutePath = useCallback((target: Route) => {
+    const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : URBAN_BUSINESS;
+    const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : SPA_BUSINESS;
+
+    switch (target) {
+      case 'storefront':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'deals') : ROUTE_PATH.storefront;
+      case 'storefront-products':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'products') : ROUTE_PATH['storefront-products'];
+      case 'storefront-menu':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'menu') : ROUTE_PATH['storefront-menu'];
+      case 'business-profile':
+        return selectedBusiness ? businessPath(selectedBusiness) : ROUTE_PATH['business-profile'];
+      case 'checkout':
+        return businessSubPath(activeUrbanBusiness, 'checkout');
+      case 'order-placed':
+        return businessSubPath(activeUrbanBusiness, 'order-placed');
+      case 'spa-profile':
+        return businessPath(activeSpaBusiness);
+      case 'spa-storefront':
+        return businessSubPath(activeSpaBusiness, 'shop');
+      case 'spa-services':
+        return businessSubPath(activeSpaBusiness, 'services');
+      case 'service-detail':
+        return detailService ? servicePath(activeSpaBusiness.slug, detailService.slug) : ROUTE_PATH['service-detail'];
+      case 'product-detail':
+        return detailProduct ? productPath(activeUrbanBusiness.slug, detailProduct.id) : ROUTE_PATH['product-detail'];
+      default:
+        return ROUTE_PATH[target];
+    }
+  }, [detailProduct, detailService, selectedBusiness]);
+
   const setRoute = (target: Route) => {
     if (target === route) return;
-    window.history.pushState(null, '', ROUTE_PATH[target]);
+    const targetPath = resolveRoutePath(target);
+    if (window.location.pathname !== targetPath) window.history.pushState(null, '', targetPath);
     setRouteState(target);
   };
 
@@ -966,7 +1013,8 @@ function AppInner() {
     if (!base) return;
     setDetailProduct({ ...base, ...display, id: base.id });
     if (from) setDetailFrom(from);
-    const target = productPath(URBAN_BUSINESS.slug, base.id);
+    const businessRef = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : URBAN_BUSINESS;
+    const target = productPath(businessRef.slug, base.id);
     if (window.location.pathname !== target) window.history.pushState(null, '', target);
     setRouteState('product-detail');
   };
@@ -981,7 +1029,8 @@ function AppInner() {
     if (!base) return;
     setDetailService(base);
     if (from) setServiceFrom(from);
-    const target = servicePath(SPA_BUSINESS.slug, base.slug);
+    const businessRef = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : SPA_BUSINESS;
+    const target = servicePath(businessRef.slug, base.slug);
     if (window.location.pathname !== target) window.history.pushState(null, '', target);
     setRouteState('service-detail');
   };
@@ -1007,22 +1056,23 @@ function AppInner() {
     const expected =
       route === 'customer-invite-join'
         ? null // dynamic /join/{slug}?invite=… path — never overwritten
-        : route === 'product-detail'
-        ? detailProduct
-          ? productPath(URBAN_BUSINESS.slug, detailProduct.id)
-          : null
-        : route === 'service-detail'
-          ? detailService
-            ? servicePath(SPA_BUSINESS.slug, detailService.slug)
-            : null
-          : ROUTE_PATH[route];
+        : resolveRoutePath(route);
     if (expected && window.location.pathname !== expected) {
       window.history.replaceState(null, '', expected);
     }
+
+    const pathMatch = resolveBusinessPath(window.location.pathname);
+    if (pathMatch && (!selectedBusiness || selectedBusiness.slug !== pathMatch.business.slug)) {
+      setSelectedBusiness(pathMatch.business);
+    }
+
     const onPopState = () => {
       const path = window.location.pathname;
       setRouteState(entryRoute(path, authed, isDesktop));
       const match = resolveBusinessPath(path);
+      if (match) {
+        setSelectedBusiness((prev) => (prev && prev.slug === match.business.slug ? prev : match.business));
+      }
       if (match?.section === 'products') {
         const base = findProduct(match.productId);
         if (base) setDetailProduct((prev) => (prev && prev.id === base.id ? prev : base));
@@ -1034,7 +1084,7 @@ function AppInner() {
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [authed, isDesktop, route, detailProduct, detailService]);
+  }, [authed, isDesktop, route, detailProduct, detailService, resolveRoutePath, selectedBusiness]);
 
   useEffect(() => {
     if (route !== 'product-detail' || detailProduct) return;
@@ -1065,8 +1115,9 @@ function AppInner() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
   }, [route]);
 
-  const openDeal = (from: Route) => {
+  const openDeal = (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
+    setSelectedDeal(deal ?? null);
     setRoute('deal-detail');
   };
 
@@ -1151,8 +1202,15 @@ function AppInner() {
   const [claimDialog, setClaimDialog] = useState<'gift' | 'giftConfirm' | 'other' | 'verify' | 'summary' | null>(null);
   const claimSuccessRef = useRef<(() => void) | null>(null);
 
-  const openClaimPopup = (onClaimed?: () => void) => {
-    claimSuccessRef.current = onClaimed ?? null;
+  const openClaimPopup = (dealOrCallback?: ClaimDealSummary | ((() => void) | null), onClaimed?: () => void) => {
+    const deal = typeof dealOrCallback === 'function' || dealOrCallback == null ? null : dealOrCallback;
+    const callback = typeof dealOrCallback === 'function' ? dealOrCallback : onClaimed ?? null;
+
+    if (deal) {
+      setSelectedDeal(deal);
+    }
+
+    claimSuccessRef.current = callback;
     setClaimPopupOpen(true);
   };
 
@@ -1906,7 +1964,7 @@ function AppInner() {
             onOpenFilters={() => openFeedRoute('filters', 'home')}
             onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
             onOpenDeals={() => setRoute('deals')}
-            onOpenDeal={() => openDeal('home')}
+            onOpenDeal={(deal) => openDeal('home', deal ?? null)}
             onClaim={openClaimPopup}
           />
         );
@@ -1930,7 +1988,7 @@ function AppInner() {
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'deals')}
             onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
-            onOpenDeal={() => openDeal('deals')}
+            onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
             onClaim={openClaimPopup}
           />
         );
@@ -1967,6 +2025,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute(dealFrom)}
             onClaimComplete={handleClaimComplete}
+            deal={selectedDeal}
           />
         );
       return <>{renderDetail()}</>;
@@ -2061,6 +2120,7 @@ function AppInner() {
               open
               onClose={() => setRoute('deal-detail')}
               onConfirm={() => setRoute('claim-identity')}
+              deal={selectedDeal}
             />
           </>
         );
@@ -2079,6 +2139,7 @@ function AppInner() {
             <ClaimIdentityModal
               open
               identity={{ name: profile.fullName }}
+              deal={selectedDeal}
               onClaimSelf={() => setClaimSelfConfirmOpen(true)}
               onGift={() => setRoute('claim-gift')}
               onSomeoneElse={() => {
@@ -2416,6 +2477,7 @@ function AppInner() {
       if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
       return (
         <MerchantDealsScreen
+          business={selectedBusiness}
           onBack={() => setRoute(bizFrom)}
           onOpenDeal={() => openDeal('storefront')}
           onBusinessSetup={() => setRoute('business-onboarding')}
@@ -2478,6 +2540,7 @@ function AppInner() {
       return (
         <BusinessProfileScreen
           venue="urban"
+          business={selectedBusiness}
           onBack={() => setRoute(profileFrom)}
           onOpenDeals={() => {
             setBizFrom('business-profile');
@@ -2496,6 +2559,7 @@ function AppInner() {
       return (
         <BusinessProfileScreen
           venue="spa"
+          business={selectedBusiness}
           onBack={() => setRoute(profileFrom)}
           onOpenDeals={() => setRoute(profileFrom)}
           onOpenServices={() => {
@@ -2797,9 +2861,32 @@ function AppInner() {
           <DesktopDiscoverScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'discover')}
-            onOpenBusiness={(index) => {
+            onOpenBusiness={(business) => {
+              const normalized = (business.name ?? '').toLowerCase();
+              const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
+              const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
+
+              const businessName = business.name?.trim() || 'Selected business';
+              const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
+              const businessRef: BusinessProfileRef = {
+                slug: slugBase,
+                id: business.id || slugBase,
+                name: businessName,
+                venue: isSpa ? 'spa' : 'urban',
+              };
+
+              setSelectedBusiness(businessRef);
               setProfileFrom('discover');
-              setRoute(index === 1 ? 'spa-storefront' : 'storefront');
+
+              if (isSpa) {
+                setRoute('spa-profile');
+                return;
+              }
+
+              if (isUrban || !isSpa) {
+                setRoute('business-profile');
+                return;
+              }
             }}
             onBusinessSetup={() => setRoute('business-onboarding')}
           />
@@ -2812,13 +2899,31 @@ function AppInner() {
             else if (tab === 'saved') setRoute('saved');
             else if (tab === 'account') setRoute('account');
           }}
-          onOpenUrban={() => {
+          onOpenBusiness={(business) => {
+            const normalized = (business.name ?? '').toLowerCase();
+            const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
+            const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
+            const businessName = business.name?.trim() || 'Selected business';
+            const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
+            const businessRef: BusinessProfileRef = {
+              slug: slugBase,
+              id: business.id || slugBase,
+              name: businessName,
+              venue: isSpa ? 'spa' : 'urban',
+            };
+
+            setSelectedBusiness(businessRef);
             setProfileFrom('discover');
-            setRoute('business-profile');
-          }}
-          onOpenSpa={() => {
-            setProfileFrom('discover');
-            setRoute('spa-profile');
+
+            if (isSpa) {
+              setRoute('spa-profile');
+              return;
+            }
+
+            if (isUrban || !isSpa) {
+              setRoute('business-profile');
+              return;
+            }
           }}
           onOpenFilters={() => openFeedRoute('filters', 'discover')}
           onOpenNotifications={() => setRoute('notifications')}
@@ -4708,6 +4813,7 @@ function AppInner() {
           <ClaimIdentityModal
             open
             identity={{ name: profile.fullName }}
+            deal={selectedDeal}
             onClose={closeClaimPopup}
             onClaimSelf={() => finishClaimChoice('self')}
             onGift={() => finishClaimChoice('gift')}

@@ -5,6 +5,14 @@ export interface ClaimConfirmationModalProps {
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number;
+    oldPrice?: number;
+    discountLabel?: string;
+  } | null;
 }
 
 const REDEMPTION: Array<{ icon: string; label: string; value: string }> = [
@@ -13,7 +21,14 @@ const REDEMPTION: Array<{ icon: string; label: string; value: string }> = [
   { icon: 'place', label: 'Location:', value: 'Plot 14 Apo Boulevard, Apo District, Abuja (0.8 km)' },
 ];
 
-export function ClaimConfirmationModal({ open, onClose, onConfirm }: ClaimConfirmationModalProps) {
+export function ClaimConfirmationModal({ open, onClose, onConfirm, deal }: ClaimConfirmationModalProps) {
+  const dealTitle = deal?.title || 'This deal';
+  const businessName = deal?.business?.trim() || 'This business';
+  const dealLocation = deal?.location?.trim() || 'Your selected location';
+  const price = typeof deal?.price === 'number' ? deal.price : 0;
+  const oldPrice = typeof deal?.oldPrice === 'number' ? deal.oldPrice : price;
+  const discountLabel = deal?.discountLabel || 'Instant savings';
+
   return (
     <DesktopModal
       open={open}
@@ -50,26 +65,30 @@ export function ClaimConfirmationModal({ open, onClose, onConfirm }: ClaimConfir
               </div>
               <div className="min-w-0">
                 <span className="font-caption text-caption text-text-secondary block">Selected Merchant</span>
-                <span className="font-heading-sm text-heading-sm text-on-surface">Urban Grill &amp; Bistro</span>
-                <span className="font-caption text-caption text-text-tertiary block">Apo District, Abuja</span>
+                <span className="font-heading-sm text-heading-sm text-on-surface">{businessName}</span>
+                <span className="font-caption text-caption text-text-tertiary block">{dealLocation}</span>
               </div>
             </div>
             <span className="bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-2.5 py-1 rounded-md font-semibold shrink-0">
-              20% SAVINGS
+              {discountLabel}
             </span>
           </div>
 
           <div className="px-space-xs pt-1 space-y-space-xs font-body-md text-body-md">
             <div className="flex items-center justify-between text-text-secondary gap-space-sm">
-              <span className="line-clamp-1 pr-2">Prime 3-Course Lunch Combo &amp; Craft Beverage</span>
-              <span className="text-text-tertiary line-through font-label-md">₦12,000</span>
+              <span className="line-clamp-1 pr-2">{dealTitle}</span>
+              <span className="text-text-tertiary line-through font-label-md">
+                {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(oldPrice)}
+              </span>
             </div>
             <div className="flex items-center justify-between text-badge-discount-text">
               <span className="flex items-center gap-1 font-label-md">
                 <Icon name="local_offer" className="text-[16px]" />
                 Exclusive VEMTAP Discount
               </span>
-              <span className="font-semibold">-₦2,400</span>
+              <span className="font-semibold">
+                -{new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Math.max(oldPrice - price, 0))}
+              </span>
             </div>
             <div className="flex items-center justify-between text-text-secondary pt-1 font-label-md gap-space-sm">
               <span className="flex items-center gap-1">
@@ -85,7 +104,9 @@ export function ClaimConfirmationModal({ open, onClose, onConfirm }: ClaimConfir
                 <span className="font-caption text-caption text-text-secondary block">Amount Payable at Counter</span>
                 <span className="font-caption text-caption text-text-tertiary">Pay upon arrival after service</span>
               </div>
-              <span className="font-heading-md text-heading-md text-on-surface font-bold">₦9,600</span>
+              <span className="font-heading-md text-heading-md text-on-surface font-bold">
+                {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(price)}
+              </span>
             </div>
           </div>
         </div>
