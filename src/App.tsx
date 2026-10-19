@@ -195,8 +195,8 @@ import { PublicPosMenuScreen } from './scripts/PublicPosMenuScreen';
 import { PublicPosCartReviewScreen } from './scripts/PublicPosCartReviewScreen';
 import { PublicPosOrderTrackingScreen } from './scripts/PublicPosOrderTrackingScreen';
 import type { PosTabKey } from './components/PosTabBar';
-import { SEED_POS_CART, type PosCartLine } from './scripts/posCartData';
-import { SEED_PUBLIC_CART, type PublicCartLine } from './scripts/publicPosData';
+import { type PosCartLine } from './scripts/posCartData';
+import { type PublicCartLine } from './scripts/publicPosData';
 import type { BusinessTabKey } from './components/BusinessTabBar';
 import { BusinessBoostHubScreen } from './scripts/BusinessBoostHubScreen';
 import { BusinessBoostMetricsScreen } from './scripts/BusinessBoostMetricsScreen';
@@ -319,7 +319,7 @@ import { DesktopPublicPosTrackingScreen } from './scripts/desktop/DesktopPublicP
 import { DesktopPublicPosMenuScreen } from './scripts/desktop/DesktopPublicPosMenuScreen';
 import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGeneralSettingsScreen';
 import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
-import { SEED_POS_TERMINAL_LINES, type PosTerminalLine } from './scripts/desktop/posTerminalData';
+import { type PosTerminalLine } from './scripts/desktop/posTerminalData';
 import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
 import { StoreOrderingProvider } from './context/StoreOrderingContext';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
@@ -861,15 +861,12 @@ function AppInner() {
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
   const [activeConversation, setActiveConversation] = useState('urban');
-  const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary>({
-    name: 'Amara Okafor',
-    email: 'amara@email.com',
-  });
+  const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
   const [claimSelfConfirmOpen, setClaimSelfConfirmOpen] = useState(false);
-  const [posCart, setPosCart] = useState<PosCartLine[]>(SEED_POS_CART);
-  const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>(SEED_POS_TERMINAL_LINES);
+  const [posCart, setPosCart] = useState<PosCartLine[]>([]);
+  const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>([]);
   const [posCustomer, setPosCustomer] = useState<string | null>(null);
   const [posCustomerRecord, setPosCustomerRecord] = useState<PosCustomerRecord | null>(null);
   /** Loyalty points earned by the sale currently shown on the receipt screen. */
@@ -877,7 +874,7 @@ function AppInner() {
   /** Points manually awarded to the mobile-flow customer during the sale. */
   const [posCustomerBonus, setPosCustomerBonus] = useState(0);
   const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
-  const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
+  const [publicCart, setPublicCart] = useState<PublicCartLine[]>([]);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
   /**
@@ -1741,12 +1738,8 @@ function AppInner() {
         return (
           <DesktopSignInScreen
             onSignIn={async ({ identifier, password }) => {
-              try {
-                await signIn({ identifier, password });
-                setRoute('discovering');
-              } catch {
-                setRoute('sign-in');
-              }
+              await signIn({ identifier, password });
+              setRoute('discovering');
             }}
             onGoogleSignIn={async () => {
               if (!hasApiConfig()) {
@@ -1777,12 +1770,8 @@ function AppInner() {
         <SignInScreen
           onBack={() => setRoute('welcome')}
           onSignIn={async ({ identifier, password }) => {
-            try {
-              await signIn({ identifier, password });
-              setRoute('discovering');
-            } catch {
-              setRoute('sign-in');
-            }
+            await signIn({ identifier, password });
+            setRoute('discovering');
           }}
           onGoogleSignIn={async () => {
             if (!hasApiConfig()) {
@@ -4202,7 +4191,7 @@ function AppInner() {
             customer={posCustomer}
             awardedPoints={posSalePoints}
             onNewSale={() => {
-              setPosTermCart(SEED_POS_TERMINAL_LINES);
+              setPosTermCart([]);
               setPosCustomer(null);
               setRoute('pos-register');
             }}

@@ -15,8 +15,8 @@ export interface ConfirmGiftSendModalProps {
 type DispatchState = 'idle' | 'sending' | 'sent';
 
 export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient }: ConfirmGiftSendModalProps) {
-  const recipientName = recipient?.name ?? 'Samuel Adeleke';
-  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
+  const recipientName = recipient?.name ?? 'Gift Recipient';
+  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : 'Phone not provided';
   const firstName = recipientName.split(/\s+/)[0] || recipientName || 'recipient';
   const [agreed, setAgreed] = useState(true);
   const [state, setState] = useState<DispatchState>('idle');

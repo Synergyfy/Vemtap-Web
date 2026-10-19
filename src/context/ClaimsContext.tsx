@@ -1,16 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { apiGet, apiPost, hasApiConfig } from '../lib/api';
+import { apiGet, hasApiConfig } from '../lib/api';
 
 /**
  * Claim, gift and redemption records for the signed-in customer.
  *
- * The app has no network layer yet (backend gap: `POST /claims`,
- * `GET /claims?customer=me`). Until that endpoint exists, records live in
- * localStorage so that:
- *  - every claim method (myself / gift / someone else) produces a durable
- *    reference the customer can revisit from My Deals,
- *  - gifts are recorded as gifts (sender is NOT shown as the redeemer),
- *  - claim-for-someone-else keeps the claimer and the redeemer distinct.
+ * The backend contract uses customer-scoped claim listing under `/me/claims`.
+ * This frontend keeps a localStorage fallback for the app shell while the
+ * backend payload shape is being wired up, so the UI remains stable without
+ * sending requests to invalid routes.
  */
 
 export type ClaimKind = 'self' | 'gift' | 'someone-else';
@@ -66,22 +63,17 @@ interface ClaimsContextValue {
 
 const CLAIMS_KEY = 'vemtap_claims';
 
-/** The single deal the customer surfaces currently claim. Backend gap: deal detail is not fetched per id. */
+/** Generic default values used only when the backend does not return claim metadata. */
 export const DEFAULT_CLAIMED_DEAL = {
-  dealTitle: 'Lunch Combo — 20% Off',
-  dealBusiness: 'Urban Grill & Bistro',
-  dealImage:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuDHNsQYzlQAh9oju3O9Pp7b2OqE4Q1w9NTs0_fLXsac8VzxG06oD2NcwkkT8F3q8guxDTRfKEplRfmk3C-S9j62uAZ-X3SG4rkR3dDcngRx8sOpiwe5UeKWYk-lyy81904uUukw2Do3wMAOVj0Vg_7dv90NC6KTvhmoR0HFL6aPR56jOI4gZrX7w67mzbdQcgA44gm5lNRoAe6oGg6V1rNX8nBhjhfYCCBlRIssV7QqZImEOkPqpYnQDw',
-  /** Canonical customer-facing terms for the sample deal (shown pre-claim, frozen on claim). */
-  terms: [
-    'Valid strictly for Dine-in and Takeaway at Apo, Abuja location.',
-    'Offer cannot be merged with ongoing happy hour specials.',
-    'Voucher code expires automatically on 20 Sep 2025 at 11:59 PM.',
-    'One voucher claim per table / group order.',
-  ],
+  dealTitle: 'Live claim',
+  dealBusiness: 'Partner merchant',
+  dealImage: '',
+  terms: ['Terms are provided by the merchant at the time the claim is created.'],
 };
 
 const readClaims = (): ClaimRecord[] => {
+  if (!hasApiConfig()) return [];
+
   try {
     const raw = window.localStorage.getItem(CLAIMS_KEY);
     if (!raw) return [];
@@ -97,6 +89,8 @@ const readClaims = (): ClaimRecord[] => {
 };
 
 const writeClaims = (claims: ClaimRecord[]) => {
+  if (!hasApiConfig()) return;
+
   try {
     window.localStorage.setItem(CLAIMS_KEY, JSON.stringify(claims));
   } catch {
@@ -142,7 +136,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
 
     const hydrate = async () => {
       try {
-        const remoteClaims = await apiGet<ClaimRecord[]>('/claims?customer=me');
+        const remoteClaims = await apiGet<ClaimRecord[]>('/me/claims');
         if (!ignore && Array.isArray(remoteClaims)) {
           setClaims(remoteClaims);
           writeClaims(remoteClaims);
@@ -163,42 +157,27 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
       const record: ClaimRecord = {
         ref: newRef(input.kind, claims),
         kind: input.kind,
-        dealTitle: input.dealTitle ?? DEFAULT_CLAIMED_DEAL.dealTitle,
-        dealBusiness: input.dealBusiness ?? DEFAULT_CLAIMED_DEAL.dealBusiness,
-        dealImage: input.dealImage ?? DEFAULT_CLAIMED_DEAL.dealImage,
-        terms: input.terms ?? DEFAULT_CLAIMED_DEAL.terms,
+        dealTitle: input.dealTitle ?? 'Live claim',
+        dealBusiness: input.dealBusiness ?? 'Partner merchant',
+        dealImage: input.dealImage,
+        terms: input.terms,
         code: newCode(claims),
         status: input.kind === 'gift' ? 'gift-sent' : 'claimed',
         createdAt: Date.now(),
         recipient: input.recipient,
         sender: input.sender,
       };
+
+      if (!hasApiConfig()) {
+        return record;
+      }
+
       setClaims((current) => {
         if (current.some((claim) => claim.ref === record.ref)) return current;
         const next = [record, ...current].slice(0, 40);
         writeClaims(next);
         return next;
       });
-
-      if (hasApiConfig()) {
-        void apiPost<ClaimRecord, ClaimInput>('/claims', {
-          ...input,
-          dealTitle: record.dealTitle,
-          dealBusiness: record.dealBusiness,
-          dealImage: record.dealImage,
-        })
-          .then((remoteClaim) => {
-            if (!remoteClaim?.ref) return;
-            setClaims((current) => {
-              const next = current.some((claim) => claim.ref === remoteClaim.ref)
-                ? current
-                : [remoteClaim, ...current].slice(0, 40);
-              writeClaims(next);
-              return next;
-            });
-          })
-          .catch(() => undefined);
-      }
 
       return record;
     },

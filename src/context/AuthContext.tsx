@@ -48,7 +48,31 @@ const writeFlag = (key: string, value: boolean) => {
   }
 };
 
-const persistProfileFromUser = (user?: { firstName?: string; lastName?: string; email?: string; phone?: string; name?: string }) => {
+const readNestedUser = (value: unknown): { firstName?: string; lastName?: string; email?: string; phone?: string; name?: string } | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+
+  const candidate = value as Record<string, unknown>;
+  if (candidate.firstName || candidate.lastName || candidate.name || candidate.email || candidate.phone) {
+    return {
+      firstName: typeof candidate.firstName === 'string' ? candidate.firstName : undefined,
+      lastName: typeof candidate.lastName === 'string' ? candidate.lastName : undefined,
+      name: typeof candidate.name === 'string' ? candidate.name : undefined,
+      email: typeof candidate.email === 'string' ? candidate.email : undefined,
+      phone: typeof candidate.phone === 'string' ? candidate.phone : undefined,
+    };
+  }
+
+  for (const nestedKey of ['data', 'result', 'payload', 'user', 'profile']) {
+    const nested = candidate[nestedKey];
+    const found = readNestedUser(nested);
+    if (found) return found;
+  }
+
+  return undefined;
+};
+
+const persistProfileFromUser = (input?: unknown) => {
+  const user = readNestedUser(input) ?? readNestedUser((input as { user?: unknown })?.user);
   if (!user) return;
 
   const fullName = (user.name ?? '').trim();
@@ -102,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               identifier,
               password: password.trim(),
             });
-            persistProfileFromUser(response?.user);
+            persistProfileFromUser(response);
             writeFlag(AUTHED_KEY, true);
             setAuthed(true);
             return;

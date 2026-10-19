@@ -6,10 +6,12 @@ export interface ConfirmGiftSendSheetProps {
   onClose: () => void;
   onConfirm: () => void;
   onEdit: () => void;
-  recipient: { name: string; email: string; phone?: string };
+  recipient?: { name: string; email: string; phone?: string } | null;
 }
 
 export function ConfirmGiftSendSheet({ open, onClose, onConfirm, onEdit, recipient }: ConfirmGiftSendSheetProps) {
+  const safeRecipient = recipient ?? { name: 'Gift Recipient', email: 'No email provided', phone: '0801 234 5678' };
+
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="w-full flex justify-center pt-3 pb-space-xs">
@@ -58,7 +60,7 @@ export function ConfirmGiftSendSheet({ open, onClose, onConfirm, onEdit, recipie
                 </div>
                 <div>
                   <div className="flex items-center gap-space-2xs">
-                    <span className="font-heading-sm text-heading-sm text-text-primary">{recipient.name}</span>
+                    <span className="font-heading-sm text-heading-sm text-text-primary">{safeRecipient.name}</span>
                     <Icon name="verified" className="text-primary text-[18px]" filled />
                   </div>
                   <span className="font-caption text-caption text-text-tertiary">Verified Contact</span>
@@ -75,7 +77,7 @@ export function ConfirmGiftSendSheet({ open, onClose, onConfirm, onEdit, recipie
                   <Icon name="mail" className="text-[18px] text-text-tertiary" />
                   <span className="font-caption text-caption">Email Address</span>
                 </div>
-                <span className="font-label-md text-label-md text-text-primary font-medium">{recipient.email}</span>
+                <span className="font-label-md text-label-md text-text-primary font-medium">{safeRecipient.email}</span>
               </div>
               <div className="w-full h-px bg-surface-container-high/60" />
               <div className="flex items-center justify-between py-1">
@@ -84,7 +86,7 @@ export function ConfirmGiftSendSheet({ open, onClose, onConfirm, onEdit, recipie
                   <span className="font-caption text-caption">Mobile Phone</span>
                 </div>
                 <span className="font-label-md text-label-md text-text-primary font-medium">
-                  {recipient.phone || '0801 234 5678'}
+                  {safeRecipient.phone || '0801 234 5678'}
                 </span>
               </div>
             </div>

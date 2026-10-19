@@ -105,18 +105,10 @@ export const normalizeBookingRecord = (
 
 export const bookingService = {
   getMyBookings: async (params?: Record<string, string | number | boolean | undefined>): Promise<NormalizedBookingAppointment[]> => {
-    try {
-      const response = await api.get<unknown>('/me/bookings', { params });
-      return extractArray(response)
-        .map((item) => normalizeBookingRecord(item))
-        .filter((item): item is NormalizedBookingAppointment => Boolean(item));
-    } catch (error) {
-      const fallback = await api.get<unknown>('/bookings', { params }).catch(() => null);
-      if (!fallback) throw error;
-      return extractArray(fallback)
-        .map((item) => normalizeBookingRecord(item))
-        .filter((item): item is NormalizedBookingAppointment => Boolean(item));
-    }
+    const response = await api.get<unknown>('/me/bookings', { params });
+    return extractArray(response)
+      .map((item) => normalizeBookingRecord(item))
+      .filter((item): item is NormalizedBookingAppointment => Boolean(item));
   },
 
   createBooking: async (payload: Record<string, unknown>) => {

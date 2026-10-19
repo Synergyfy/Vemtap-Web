@@ -33,6 +33,40 @@ const API_BASE_URL = normalizeApiBaseUrl(
 const ACCESS_TOKEN_KEY = 'vemtap_access_token';
 const REFRESH_TOKEN_KEY = 'vemtap_refresh_token';
 
+const readNestedToken = (payload: unknown, keys: string[]): string | undefined => {
+  const seen = new Set<unknown>();
+
+  const visit = (value: unknown): string | undefined => {
+    if (value === null || value === undefined || typeof value !== 'object') {
+      return undefined;
+    }
+
+    if (seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+
+    for (const key of keys) {
+      const candidate = (value as Record<string, unknown>)[key];
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+
+    for (const nestedKey of ['data', 'result', 'payload', 'auth', 'tokens']) {
+      const nestedValue = (value as Record<string, unknown>)[nestedKey];
+      const nestedToken = visit(nestedValue);
+      if (nestedToken) {
+        return nestedToken;
+      }
+    }
+
+    return undefined;
+  };
+
+  return visit(payload);
+};
+
 const readStorage = (key: string) => {
   try {
     return window.localStorage.getItem(key);
@@ -133,8 +167,8 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
           : await refreshResponse.text();
 
         if (refreshResponse.ok) {
-          const nextAccessToken = typeof refreshPayload === 'object' && refreshPayload && 'accessToken' in refreshPayload ? String((refreshPayload as { accessToken?: string }).accessToken) : null;
-          const nextRefreshToken = typeof refreshPayload === 'object' && refreshPayload && 'refreshToken' in refreshPayload ? String((refreshPayload as { refreshToken?: string }).refreshToken) : refreshToken;
+          const nextAccessToken = readNestedToken(refreshPayload, ['accessToken', 'access_token', 'token']);
+          const nextRefreshToken = readNestedToken(refreshPayload, ['refreshToken', 'refresh_token', 'refresh']) ?? refreshToken;
           if (nextAccessToken) {
             setAuthTokens(nextAccessToken, nextRefreshToken);
             return request<TResponse>(path, { ...options, __retry: true } as ApiRequestOptions & { __retry?: boolean });
@@ -143,6 +177,10 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
       } catch {
         // ignore refresh failures and let the normal error handling below fire
       }
+    }
+
+    if (response.status === 401 && !isAuthAttempt) {
+      clearAuthTokens();
     }
 
     const messageText =

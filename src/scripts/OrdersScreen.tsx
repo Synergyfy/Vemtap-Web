@@ -26,9 +26,6 @@ interface OrdersScreenProps {
 
 type Hub = 'orders' | 'bookings';
 
-const SPA_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBO8mzoeLehe5p8uSLXesvatMxVjYR42ABeOPmuFYI827KTEwRO_SPbscYV7f85BXGejWcdoe2uaUHATPe7YX9Rznp1ckMjgg-u7m-vBxw0Z67DFpm0ufm4rg1v1fGgqvCCskKZshUlIKCtKB50TjOwwucnjYkGAVmSwO0YgV_OxiLRsYEJ5-ds90djDhdE4ldxF1jZdkv2QhqFByRPUAEcfTeF26LVqRB4KKWSUseg';
-
 const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Maitama%20Heights%2C%20Abuja';
 
 const ORDER_STEPS = [
@@ -51,14 +48,8 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
   const [hub, setHub] = useState<Hub>('orders');
   const [orderFilter, setOrderFilter] = useState<OrderFilterKey>('all');
   const [bookingFilter, setBookingFilter] = useState<BookingFilterKey>('all');
-  const [toast, setToast] = useState<string | null>(null);
   const orders = useOrders();
   const spaBooking = useBooking();
-
-  const showToast = (message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2200);
-  };
 
   const myOrders = orders.orders;
   const activeOrders = myOrders.filter((order) => isActiveOrderStatus(order.status));
@@ -67,7 +58,6 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
   /** Real appointment records (BUG-025) — confirmed = upcoming. */
   const upcomingAppointments = spaBooking.appointments.filter((item) => item.status === 'confirmed');
   const pastAppointments = spaBooking.appointments.filter((item) => item.status !== 'confirmed');
-  const hasAppointments = spaBooking.appointments.length > 0;
 
   const bookingFilters: ReadonlyArray<{ key: BookingFilterKey; label: string; count: number }> = [
     { key: 'all', label: 'All', count: spaBooking.appointments.length },
@@ -312,32 +302,6 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
           </div>
         </div>
 
-        {hub === 'orders' && (
-          <div className="px-margin mb-space-sm">
-            <button
-              type="button"
-              onClick={() => setHub('bookings')}
-              className="w-full bg-secondary-fixed/50 rounded-xl p-space-sm flex items-center gap-space-sm text-left hover:bg-secondary-fixed/70 transition-colors"
-            >
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                <Icon name="event_available" className="text-[20px]" filled />
-              </div>
-              <div className="flex-1 min-w-0">
-                <span className="font-label-sm text-label-sm font-semibold text-text-primary block truncate">
-                  Upcoming: Glow &amp; Serenity Spa
-                </span>
-                <span className="font-caption text-caption text-text-secondary block truncate">
-                  Tomorrow, 1:15 PM â€¢ Amara K.
-                </span>
-              </div>
-              <span className="text-primary font-label-sm text-label-sm font-bold flex items-center gap-0.5 shrink-0">
-                View
-                <Icon name="arrow_forward" className="text-[15px]" />
-              </span>
-            </button>
-          </div>
-        )}
-
         <div className="w-full overflow-x-auto no-scrollbar mb-space-md pl-margin">
           <div className="flex items-center gap-space-xs pr-margin">
             {filterChips.map((item) => (
@@ -432,7 +396,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                         className="flex gap-space-sm items-start text-left w-full rounded-lg hover:bg-surface-subtle transition-colors p-space-2xs -m-space-2xs"
                       >
                         <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                          <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={SPA_IMG} />
+                          <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={DIRECTIONS_URL} />
                         </div>
                         <div className="flex flex-col flex-1 min-w-0">
                           <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
@@ -452,83 +416,15 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                           </span>
                         </div>
                       </button>
-                      <div className="flex items-center gap-space-xs pt-space-2xs">
-                        <button
-                          type="button"
-                          onClick={() => showToast('Added to your calendar')}
-                          className="flex-1 h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
-                        >
-                          <Icon name="event" className="text-[16px]" />
-                          <span>Add to Calendar</span>
-                        </button>
-                        <a
-                          href={DIRECTIONS_URL}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex-1 h-10 rounded-xl bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 shadow-sm hover:bg-primary transition-colors"
-                        >
-                          <Icon name="near_me" className="text-[16px]" />
-                          <span>Get Directions</span>
-                        </a>
-                      </div>
                     </article>
                   ))
-                ) : hasAppointments ? (
+                ) : (
                   <div className="bg-surface-container-low rounded-xl p-space-md flex items-start gap-space-sm">
                     <Icon name="event_available" className="text-text-secondary text-[22px] flex-shrink-0 mt-0.5" />
                     <p className="font-caption text-caption text-text-secondary leading-relaxed">
                       No upcoming appointments. Book a service to see it here.
                     </p>
                   </div>
-                ) : (
-                  <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
-                    <div className="flex items-center justify-between gap-space-xs">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-semibold">
-                        <Icon name="verified" className="text-[13px]" filled />
-                        CONFIRMED • GS-4829
-                      </span>
-                      <span className="font-label-sm text-label-sm font-bold text-text-primary">₦24,000</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onOpenBooking}
-                      className="flex gap-space-sm items-start text-left w-full rounded-lg hover:bg-surface-subtle transition-colors p-space-2xs -m-space-2xs"
-                    >
-                      <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                        <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={SPA_IMG} />
-                      </div>
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">Glow &amp; Serenity Spa</h2>
-                        <div className="flex items-center gap-1 text-text-secondary font-caption text-caption">
-                          <Icon name="calendar_today" className="text-[13px] text-primary" />
-                          <span>Demo booking • open a service to book a real slot</span>
-                        </div>
-                        <p className="font-caption text-caption text-text-secondary truncate">
-                          Deep Hydration Facial &amp; Gel Manicure
-                        </p>
-                        <span className="font-caption text-caption text-text-tertiary">Specialist: Amara K.</span>
-                      </div>
-                    </button>
-                    <div className="flex items-center gap-space-xs pt-space-2xs">
-                      <button
-                        type="button"
-                        onClick={() => onNavigate('spa-booking')}
-                        className="flex-1 h-10 rounded-xl bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 shadow-sm hover:bg-primary transition-colors"
-                      >
-                        <Icon name="event" className="text-[16px]" />
-                        <span>Book Appointment</span>
-                      </button>
-                      <a
-                        href={DIRECTIONS_URL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
-                      >
-                        <Icon name="near_me" className="text-[16px]" />
-                        <span>Get Directions</span>
-                      </a>
-                    </div>
-                  </article>
                 ))}
 
               {showPastBooking &&
@@ -548,7 +444,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                       </div>
                       <div className="flex gap-space-sm items-start">
                         <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                          <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={SPA_IMG} />
+                          <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={DIRECTIONS_URL} />
                         </div>
                         <div className="flex flex-col flex-1 min-w-0">
                           <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
@@ -565,70 +461,16 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-space-xs pt-space-2xs">
-                        <button
-                          type="button"
-                          onClick={() => onNavigate('support')}
-                          className="flex-1 h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
-                        >
-                          <Icon name="star" className="text-[16px]" />
-                          <span>Review</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onNavigate('spa-booking')}
-                          className="flex-1 h-10 rounded-xl bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 shadow-sm hover:bg-primary transition-colors"
-                        >
-                          <Icon name="refresh" className="text-[16px]" />
-                          <span>Book Again</span>
-                        </button>
-                      </div>
                     </article>
                   ))
-                ) : !hasAppointments ? (
-                  <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-text-secondary font-caption text-[11px] font-semibold">
-                        COMPLETED • GS-44102
-                      </span>
-                      <span className="font-label-sm text-label-sm font-bold text-text-primary">₦12,000</span>
-                    </div>
-                    <div className="flex gap-space-sm items-start">
-                      <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                        <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={SPA_IMG} />
-                      </div>
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">Glow &amp; Serenity Spa</h2>
-                        <div className="flex items-center gap-1 text-text-secondary font-caption text-caption">
-                          <Icon name="calendar_today" className="text-[13px] text-primary" />
-                          <span>Sat, Sep 20 • 11:00 AM</span>
-                        </div>
-                        <p className="font-caption text-caption text-text-secondary truncate">
-                          Weekend Glow Facial &amp; Sauna Detox
-                        </p>
-                        <span className="font-caption text-caption text-text-tertiary">Therapist: Ifeoma A.</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-space-xs pt-space-2xs">
-                      <button
-                        type="button"
-                        onClick={() => onNavigate('support')}
-                        className="flex-1 h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
-                      >
-                        <Icon name="star" className="text-[16px]" />
-                        <span>Review</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onNavigate('spa-booking')}
-                        className="flex-1 h-10 rounded-xl bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 shadow-sm hover:bg-primary transition-colors"
-                      >
-                        <Icon name="refresh" className="text-[16px]" />
-                        <span>Book Again</span>
-                      </button>
-                    </div>
-                  </article>
-                ) : null)}
+                ) : (
+                  <div className="bg-surface-container-low rounded-xl p-space-md flex items-start gap-space-sm">
+                    <Icon name="history" className="text-text-secondary text-[22px] flex-shrink-0 mt-0.5" />
+                    <p className="font-caption text-caption text-text-secondary leading-relaxed">
+                      Your completed appointments will appear here.
+                    </p>
+                  </div>
+                ))}
             </>
           )}
 
@@ -652,12 +494,6 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
           </div>
         </div>
       </main>
-
-      {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface px-4 py-2 rounded-full font-label-md text-label-md shadow-lg z-50 pointer-events-none">
-          {toast}
-        </div>
-      )}
 
       <MobileTabBar active="account" onTab={onTab} />
     </AppScreen>

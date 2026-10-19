@@ -4,7 +4,9 @@ import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useLocation } from '../context/LocationContext';
+import { useOrders } from '../context/OrdersContext';
 import { useProfile } from '../context/ProfileContext';
+import { useBooking } from '../context/BookingContext';
 import { hasApiConfig } from '../services/api/client';
 import { catalogueService } from '../services/catalogueService';
 import {
@@ -53,34 +55,7 @@ const TONE_LABEL: Record<AnnouncementTone, string> = {
 const CAFE_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCgCwLd5w58QXLgV11MHD52EEti1eL21CVWe5XjaydFi7gB0n_HlN0ZRXV3yob4ZVn5VXviRWWZGYsv1AaFBYmLz5MGyZoBIQR2PaZJDI_Hy-6Q8Q2qX_UNm3TBcOS5Clrs17aHV0AbIlu45JooU-HWsPtb3bHzQbC2hp0eLB-F0K_mX7KOrm8At7tLg-OaWWH65X7PtLDGbNibqkIdLveIrO70jZrzaDghvLUUoFza5ZW1bMN8Ce0DQw';
 
-const SPA_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAUht6A5A8VJ2HVlciOxmOfSNjrxImixN6H4ySSvfeIstmp4yModG1rl0m4ECsbrxVAV8pTA38yVQ8e2us9V0WqpxW9ApXdSL7mq3OZRdaY6o0S4LIcXDDtbHQMWJEL2Sy5nylvEMstB6f0RmvU5bDO1WyOQeSqrvRpAV3nvIpFumqvEsCGt1kwrVPQ5vpREyevCJrPxEitPQF-pjFYRAGrKYxjwVhamRnG5lIlaXpHwoUcODTXMFjgJQ';
-
-const ROOFTOP_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAeAtQWLIyjDZGAe_fGVP6-PK-Lk91gGmK43js0O1SG0JI8juksx-Y5XG-gKRg-1EgZYzOc3jX33vXfe-mpI7w313488dgKy5JIV8SMnK7-0Ei5EH5KRDURZq289Tt4LG6hhlrwFy8dhbVG9Ber29ljbzVK0Ov5hUoyRSnPB_WMxFJ-yqeKTY_VwxLq02F9hmq2X8QqN3nBgucmRXuu4h8ytG-Jrb1Ncfl-FAvp74kGc9Pmoc6FG8yhBA';
-
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
-
-const HERO_SLIDES: HeroSlide[] = [
-  {
-    image: CAFE_IMG,
-    pill: 'Weekend Special',
-    title: 'Weekend Deals Are Here',
-    subtitle: 'Explore curated flash discounts from top-rated dining spots near Apo.',
-  },
-  {
-    image: SPA_IMG,
-    pill: 'Wellness Week',
-    title: 'Glow Season at the Spa',
-    subtitle: 'Up to 25% off facials and sauna rituals at Glow & Serenity Spa this week.',
-  },
-  {
-    image: ROOFTOP_IMG,
-    pill: 'After Work',
-    title: 'Sunset Rooftop Nights',
-    subtitle: 'Cocktails and small plates with skyline views at The Sky Lounge.',
-  },
-];
 
 interface RecommendedDeal {
   id: string;
@@ -193,6 +168,8 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
   const [favs, setFavs] = useState<Record<string, boolean>>({});
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const { fullName } = useProfile();
+  const { orders } = useOrders();
+  const { appointments } = useBooking();
 
   useEffect(() => {
     let ignore = false;
@@ -219,12 +196,8 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
   const profileInitials = fullName.trim() ? fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase().slice(0, 2) : 'U';
   const recommendedDeals = useMemo(() => publicOffers.slice(0, 2).map(toDashboardRecommended), [publicOffers]);
 
-  // Admin-configured announcements rotate in the dashboard banner; when the
-  // (local stand-in for `GET /announcements`) list is empty we keep the
-  // editorial slides so the banner never renders blank.
   const banners = useMemo<HeroSlide[]>(() => {
     const active = activeAnnouncements();
-    if (active.length === 0) return HERO_SLIDES;
     return active.map((item) => ({
       image: item.image || CAFE_IMG,
       pill: TONE_LABEL[item.tone],
@@ -234,6 +207,53 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
       destination: item.destination,
     }));
   }, []);
+
+  const savedPotential = publicOffers.reduce((sum, offer) => {
+    const price = getOfferPrice(offer);
+    const compare = getOfferComparePrice(offer);
+    return sum + Math.max(compare - price, 0);
+  }, 0);
+  const recentEvents = useMemo(() => {
+    const events: Array<{ id: string; label: string; subtitle: string; value: string; icon: string; tone: 'primary' | 'success' | 'neutral'; }> = [];
+
+    orders.slice(0, 2).forEach((order) => {
+      events.push({
+        id: `order-${order.ref}`,
+        label: order.status === 'submitted' ? 'Order placed' : 'Order update',
+        subtitle: `${order.merchantName} • ${new Date(order.submittedAt).toLocaleDateString()}`,
+        value: `${order.total > 0 ? formatCurrency(order.total) : 'Live order'}`,
+        icon: 'receipt_long',
+        tone: 'primary',
+      });
+    });
+
+    appointments.slice(0, 2).forEach((appointment) => {
+      events.push({
+        id: `booking-${appointment.ref}`,
+        label: appointment.status === 'confirmed' ? 'Booking confirmed' : 'Booking updated',
+        subtitle: `${appointment.merchantName} • ${appointment.dateShort} ${appointment.time}`,
+        value: formatCurrency(appointment.payable),
+        icon: 'calendar_today',
+        tone: 'success',
+      });
+    });
+
+    publicOffers.slice(0, 2).forEach((offer) => {
+      const title = getOfferTitle(offer);
+      const business = getOfferBusinessName(offer);
+      const price = getOfferPrice(offer);
+      events.push({
+        id: `offer-${String(offer.id ?? title)}`,
+        label: 'Local deal live',
+        subtitle: `${business} • ${title}`,
+        value: formatCurrency(price),
+        icon: 'local_offer',
+        tone: 'neutral',
+      });
+    });
+
+    return events.slice(0, 3);
+  }, [publicOffers, orders, appointments]);
 
   const goToDestination = (destination?: AnnouncementDestination) => {
     if (!destination) {
@@ -245,6 +265,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
   };
 
   useEffect(() => {
+    if (banners.length === 0) return undefined;
     const id = window.setInterval(() => setHero((current) => (current + 1) % banners.length), 5000);
     return () => window.clearInterval(id);
   }, [banners.length]);
@@ -369,22 +390,22 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
               <div className="w-8 h-8 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary-container mb-space-2xs">
                 <Icon name="confirmation_number" className="text-[18px]" />
               </div>
-              <span className="font-heading-md text-heading-md text-text-primary font-bold">3</span>
-              <span className="font-caption text-caption text-text-secondary truncate">Active Deals</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold">{publicOffers.length}</span>
+              <span className="font-caption text-caption text-text-secondary truncate">Live Deals</span>
             </div>
             <div className="flex flex-col p-space-sm rounded-xl bg-surface-canvas shadow-sm">
               <div className="w-8 h-8 rounded-lg bg-tertiary-fixed flex items-center justify-center text-tertiary mb-space-2xs">
-                <Icon name="stars" className="text-[18px]" filled />
+                <Icon name="receipt_long" className="text-[18px]" />
               </div>
-              <span className="font-heading-md text-heading-md text-text-primary font-bold">2,450</span>
-              <span className="font-caption text-caption text-text-secondary truncate">VEM Points</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold">{orders.length}</span>
+              <span className="font-caption text-caption text-text-secondary truncate">Orders</span>
             </div>
             <div className="flex flex-col p-space-sm rounded-xl bg-surface-canvas shadow-sm">
               <div className="w-8 h-8 rounded-lg bg-badge-discount-bg flex items-center justify-center text-badge-discount-text mb-space-2xs">
-                <Icon name="account_balance_wallet" className="text-[18px]" />
+                <Icon name="calendar_today" className="text-[18px]" />
               </div>
-              <span className="font-heading-md text-heading-md text-badge-discount-text font-bold">₦24.5k</span>
-              <span className="font-caption text-caption text-text-secondary truncate">Saved Total</span>
+              <span className="font-heading-md text-heading-md text-badge-discount-text font-bold">{appointments.length}</span>
+              <span className="font-caption text-caption text-text-secondary truncate">Bookings</span>
             </div>
           </div>
         </section>
@@ -531,36 +552,43 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
 
             <div className="flex items-center justify-between bg-surface-subtle p-space-sm rounded-xl">
               <div className="flex flex-col">
-                <span className="font-caption text-caption text-text-tertiary">Tier Status</span>
-                <span className="font-button-primary text-button-primary text-text-primary">Gold Member • Tier 3</span>
+                <span className="font-caption text-caption text-text-tertiary">Member Status</span>
+                <span className="font-button-primary text-button-primary text-text-primary">
+                  {publicOffers.length > 0 ? 'Live local member' : 'Member profile ready'}
+                </span>
               </div>
               <div className="flex flex-col items-end">
-                <span className="font-caption text-caption text-text-tertiary">Balance</span>
-                <span className="font-heading-sm text-heading-sm text-tertiary-container font-bold">2,450 pts</span>
+                <span className="font-caption text-caption text-text-tertiary">Potential Savings</span>
+                <span className="font-heading-sm text-heading-sm text-tertiary-container font-bold">
+                  {formatCurrency(savedPotential)}
+                </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between font-caption text-caption text-text-secondary">
-                <span>Progress to Platinum</span>
-                <span className="font-semibold text-text-primary">2,450 / 3,000 pts</span>
+                <span>Live catalogue coverage</span>
+                <span className="font-semibold text-text-primary">{publicOffers.length} nearby offers</span>
               </div>
               <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden">
-                <div className="h-full bg-primary-container rounded-full" style={{ width: '81%' }} />
+                <div
+                  className="h-full bg-primary-container rounded-full"
+                  style={{ width: `${Math.min(100, publicOffers.length * 25)}%` }}
+                />
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-space-2xs text-text-secondary">
               <span className="font-caption text-caption flex items-center gap-1">
                 <Icon name="redeem" className="text-badge-discount-text text-[16px]" />
-                <strong>3 rewards</strong> available to unlock right now
+                <strong>{Math.max(publicOffers.length, 0)}</strong> live offers in your area
               </span>
               <button
                 type="button"
                 onClick={() => onNavigate('savings')}
                 className="text-primary-container font-label-sm text-label-sm font-semibold hover:underline"
               >
-                Claim
+                View
               </button>
             </div>
           </div>
@@ -568,61 +596,40 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR }: DashboardScreen
 
         <section className="px-margin flex flex-col gap-space-sm">
           <SectionHeader title="Recent Activity" action="View Activity" onAction={() => onNavigate('activity')} />
-          <div className="rounded-xl bg-surface-canvas shadow-sm divide-y divide-border-subtle overflow-hidden">
-            <div className="flex items-center justify-between p-space-sm hover:bg-surface-subtle transition-colors">
-              <div className="flex items-center gap-space-sm min-w-0">
-                <div className="w-10 h-10 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary-container shrink-0">
-                  <Icon name="local_activity" className="text-[20px]" />
+          {recentEvents.length > 0 ? (
+            <div className="rounded-xl bg-surface-canvas shadow-sm divide-y divide-border-subtle overflow-hidden">
+              {recentEvents.map((event) => (
+                <div key={event.id} className="flex items-center justify-between p-space-sm hover:bg-surface-subtle transition-colors">
+                  <div className="flex items-center gap-space-sm min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                        event.tone === 'success'
+                          ? 'bg-badge-discount-bg text-badge-discount-text'
+                          : event.tone === 'primary'
+                            ? 'bg-surface-tint-blue text-primary-container'
+                            : 'bg-secondary-container text-on-secondary-fixed-variant'
+                      }`}
+                    >
+                      <Icon name={event.icon} className="text-[20px]" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
+                        {event.label}
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary truncate">
+                        {event.subtitle}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="font-label-sm text-label-sm font-bold text-badge-discount-text shrink-0">{event.value}</span>
                 </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                    Deal Claimed
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary truncate">
-                    Urban Grill &amp; Bistro • Today, 10:42 AM
-                  </span>
-                </div>
-              </div>
-              <span className="font-label-sm text-label-sm font-bold text-badge-discount-text shrink-0">+100 pts</span>
+              ))}
             </div>
-
-            <div className="flex items-center justify-between p-space-sm hover:bg-surface-subtle transition-colors">
-              <div className="flex items-center gap-space-sm min-w-0">
-                <div className="w-10 h-10 rounded-full bg-badge-discount-bg flex items-center justify-center text-badge-discount-text shrink-0">
-                  <Icon name="qr_code" className="text-[20px]" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                    In-Store QR Redemption
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary truncate">
-                    Sole District Boutique • Yesterday, 4:15 PM
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col items-end shrink-0">
-                <span className="font-label-sm text-label-sm font-bold text-badge-discount-text">Saved ₦4,000</span>
-                <span className="font-caption text-[11px] text-text-tertiary">+200 pts</span>
-              </div>
+          ) : (
+            <div className="rounded-xl bg-surface-canvas p-space-md text-text-secondary shadow-sm">
+              No recent orders or bookings yet. Your live activity will appear here once the backend syncs.
             </div>
-
-            <div className="flex items-center justify-between p-space-sm hover:bg-surface-subtle transition-colors">
-              <div className="flex items-center gap-space-sm min-w-0">
-                <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-fixed-variant shrink-0">
-                  <Icon name="rate_review" className="text-[20px]" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                    Review Submitted
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary truncate">
-                    Cafe Neo Artisan • Oct 14, 2:30 PM
-                  </span>
-                </div>
-              </div>
-              <span className="font-label-sm text-label-sm font-bold text-badge-discount-text shrink-0">+50 pts</span>
-            </div>
-          </div>
+          )}
         </section>
 
         <section className="px-margin flex flex-col gap-space-sm">

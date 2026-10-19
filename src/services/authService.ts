@@ -21,12 +21,38 @@ export interface AuthTokensResponse {
   user?: AuthUser;
 }
 
-const readTokenValue = (payload: AuthTokensResponse, keys: string[]) => {
-  for (const key of keys) {
-    const value = (payload as Record<string, unknown>)[key];
-    if (typeof value === 'string' && value.trim()) return value;
-  }
-  return undefined;
+const readTokenValue = (payload: unknown, keys: string[]) => {
+  const seen = new Set<unknown>();
+
+  const visit = (value: unknown): string | undefined => {
+    if (value === null || value === undefined || typeof value !== 'object') {
+      return undefined;
+    }
+
+    if (seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+
+    for (const key of keys) {
+      const candidate = (value as Record<string, unknown>)[key];
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+
+    for (const nestedKey of ['data', 'result', 'payload', 'auth', 'tokens']) {
+      const nestedValue = (value as Record<string, unknown>)[nestedKey];
+      const nestedToken = visit(nestedValue);
+      if (nestedToken) {
+        return nestedToken;
+      }
+    }
+
+    return undefined;
+  };
+
+  return visit(payload);
 };
 
 export const authService = {
@@ -36,9 +62,11 @@ export const authService = {
     const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
     const refreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']);
 
-    if (accessToken) {
-      setAuthTokens(accessToken, refreshToken);
+    if (!accessToken) {
+      throw new Error('Login response did not include an access token.');
     }
+
+    setAuthTokens(accessToken, refreshToken);
 
     return response;
   },
@@ -53,9 +81,11 @@ export const authService = {
     const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
     const nextRefreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']) ?? refreshToken;
 
-    if (accessToken) {
-      setAuthTokens(accessToken, nextRefreshToken ?? refreshToken);
+    if (!accessToken) {
+      throw new Error('Refresh response did not include a new access token.');
     }
+
+    setAuthTokens(accessToken, nextRefreshToken ?? refreshToken);
 
     return response;
   },

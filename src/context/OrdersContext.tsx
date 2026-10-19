@@ -141,11 +141,13 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     const hydrate = async () => {
       try {
         const remoteOrders = await ordersService.getMyOrders({ page: 1, limit: 20 });
+        console.log('orders api payload', remoteOrders);
         if (!ignore) {
           setOrders(Array.isArray(remoteOrders) ? remoteOrders : []);
           writeOrders(Array.isArray(remoteOrders) ? remoteOrders : []);
         }
-      } catch {
+      } catch (error) {
+        console.error('orders api error', error);
         if (!ignore) {
           setOrders([]);
           writeOrders([]);

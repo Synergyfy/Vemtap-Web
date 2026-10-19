@@ -7,7 +7,7 @@ import { maskPhone } from '../../utils/format';
 
 interface DesktopGiftSentScreenProps {
   onNav: (key: DesktopNavKey) => void;
-  recipient: GiftRecipientSummary;
+  recipient?: GiftRecipientSummary | null;
   onBack: () => void;
   onDone: () => void;
   onSendAnother: () => void;
@@ -25,8 +25,8 @@ export function DesktopGiftSentScreen({
   const [copied, setCopied] = useState(false);
   const timers = useRef<number[]>([]);
 
-  const recipientName = recipient?.name || 'Amara Okafor';
-  const recipientEmail = recipient?.email || 'amara@email.com';
+  const recipientName = recipient?.name || 'Recipient';
+  const recipientEmail = recipient?.email || 'No email provided';
   const recipientPhone = recipient?.phone || claim?.recipient?.phone;
   const reference = claim?.ref ?? '#VT-GIFT-83921';
 

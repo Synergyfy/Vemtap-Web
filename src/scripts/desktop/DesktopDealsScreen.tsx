@@ -561,130 +561,139 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
 
         <div className="max-w-7xl mx-auto px-margin py-space-xl w-full flex flex-col gap-space-2xl">
           <section className="w-full relative rounded-2xl bg-surface-canvas shadow-md overflow-hidden group">
-            <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[380px]">
-              <div className="lg:col-span-7 relative min-h-[280px] lg:min-h-full overflow-hidden">
-                <img
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  alt={DEAL_OF_DAY_ALT}
-                  src={DEAL_OF_DAY_IMAGE}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-on-surface/90 via-on-surface/40 to-transparent lg:hidden" />
-                <div className="absolute top-4 left-4 flex flex-wrap items-center gap-space-xs z-10">
-                  <span className="px-space-sm py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm">
-                    50% OFF
-                  </span>
-                  <span className="px-space-sm py-1 bg-surface-canvas/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm flex items-center gap-1">
-                    <Icon name="star" className="text-[14px]" />
-                    Top Pick
-                  </span>
-                  <span className="px-space-sm py-1 bg-primary text-on-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm">
-                    Special Promo
-                  </span>
-                </div>
-                <div className="absolute bottom-4 left-4 z-10 flex items-center gap-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-sm py-1.5 rounded-full shadow-sm text-on-surface">
-                  <Icon name="timer" className="text-tertiary-container text-[18px]" />
-                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">Ends in 07h 48m 12s</span>
-                </div>
-              </div>
-
-              <div
-                className="lg:col-span-5 p-space-xl flex flex-col justify-between bg-surface-canvas relative z-10 cursor-pointer"
-                onClick={onOpenFeatured}
-              >
-                <div className="space-y-space-md">
-                  <div className="flex items-center justify-between gap-space-sm">
-                    <div className="flex items-center gap-space-xs">
-                      <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                      <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-secondary">
-                        Deal of the Day
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption">
-                      <Icon name="distance" className="text-[15px] text-primary" />
-                      <span>Apo Legacy Tower • 1.1km</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-space-2xs">
-                    <span className="font-label-md text-label-md text-primary font-semibold">
-                      {featuredDeal ? featuredDeal.store : 'The Sky Lounge & Grill'}
+            {featuredDeal ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[380px]">
+                <div className="lg:col-span-7 relative min-h-[280px] lg:min-h-full overflow-hidden">
+                  <img
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    alt={DEAL_OF_DAY_ALT}
+                    src={DEAL_OF_DAY_IMAGE}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-on-surface/90 via-on-surface/40 to-transparent lg:hidden" />
+                  <div className="absolute top-4 left-4 flex flex-wrap items-center gap-space-xs z-10">
+                    <span className="px-space-sm py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm">
+                      50% OFF
                     </span>
-                    <h2 className="font-heading-lg text-heading-lg font-bold text-text-primary leading-tight">
-                      {featuredDeal ? featuredDeal.title : "Chef's 5-Course Sunset Tasting Menu & Wine Pairing"}
-                    </h2>
-                    <p className="font-body-md text-body-md text-text-secondary">
-                      {featuredDeal ? featuredDeal.copy : 'Immerse your senses with signature slow-roasted cuts, fresh Atlantic bites, and sommelier-curated vintage reserves.'}
-                    </p>
+                    <span className="px-space-sm py-1 bg-surface-canvas/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm flex items-center gap-1">
+                      <Icon name="star" className="text-[14px]" />
+                      Top Pick
+                    </span>
+                    <span className="px-space-sm py-1 bg-primary text-on-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm">
+                      Special Promo
+                    </span>
                   </div>
-
-                  <div className="p-space-sm bg-surface-subtle rounded-xl space-y-space-2xs">
-                    <div className="flex items-baseline gap-space-sm">
-                      <span className="font-display-hero text-display-hero text-primary font-bold">
-                        {featuredDeal ? featuredDeal.price : '₦22,500'}
-                      </span>
-                      <span className="font-body-lg text-body-lg text-text-tertiary line-through">
-                        {featuredDeal ? featuredDeal.oldPrice : '₦45,000'}
-                      </span>
-                      <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
-                        {featuredDeal ? featuredDeal.save : 'Save ₦22,500'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-text-secondary font-caption text-caption pt-1">
-                      <span>
-                        Vouchers remaining: <strong className="text-text-primary">12 of 30 left</strong>
-                      </span>
-                      <span className="text-tertiary font-semibold">Claimed fast</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-                      <div className="h-full bg-primary-container rounded-full" style={{ width: '60%' }} />
-                    </div>
+                  <div className="absolute bottom-4 left-4 z-10 flex items-center gap-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-sm py-1.5 rounded-full shadow-sm text-on-surface">
+                    <Icon name="timer" className="text-tertiary-container text-[18px]" />
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">Ends in 07h 48m 12s</span>
                   </div>
                 </div>
 
-                <div className="pt-space-md flex items-center justify-between gap-space-md border-t border-transparent">
-                  <div className="flex items-center gap-space-md text-text-secondary">
+                <div
+                  className="lg:col-span-5 p-space-xl flex flex-col justify-between bg-surface-canvas relative z-10 cursor-pointer"
+                  onClick={onOpenFeatured}
+                >
+                  <div className="space-y-space-md">
+                    <div className="flex items-center justify-between gap-space-sm">
+                      <div className="flex items-center gap-space-xs">
+                        <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                        <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-secondary">
+                          Deal of the Day
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption">
+                        <Icon name="distance" className="text-[15px] text-primary" />
+                        <span>{featuredDeal.distance}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-space-2xs">
+                      <span className="font-label-md text-label-md text-primary font-semibold">
+                        {featuredDeal.store}
+                      </span>
+                      <h2 className="font-heading-lg text-heading-lg font-bold text-text-primary leading-tight">
+                        {featuredDeal.title}
+                      </h2>
+                      <p className="font-body-md text-body-md text-text-secondary">
+                        {featuredDeal.copy}
+                      </p>
+                    </div>
+
+                    <div className="p-space-sm bg-surface-subtle rounded-xl space-y-space-2xs">
+                      <div className="flex items-baseline gap-space-sm">
+                        <span className="font-display-hero text-display-hero text-primary font-bold">
+                          {featuredDeal.price}
+                        </span>
+                        <span className="font-body-lg text-body-lg text-text-tertiary line-through">
+                          {featuredDeal.oldPrice}
+                        </span>
+                        <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
+                          {featuredDeal.save}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-text-secondary font-caption text-caption pt-1">
+                        <span>
+                          Vouchers remaining: <strong className="text-text-primary">12 of 30 left</strong>
+                        </span>
+                        <span className="text-tertiary font-semibold">Claimed fast</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+                        <div className="h-full bg-primary-container rounded-full" style={{ width: '60%' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-space-md flex items-center justify-between gap-space-md border-t border-transparent">
+                    <div className="flex items-center gap-space-md text-text-secondary">
+                      <button
+                        className="flex items-center gap-1 transition-colors text-text-secondary hover:text-primary"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleHeroLike();
+                        }}
+                      >
+                        <Icon
+                          name="favorite"
+                          className={`text-[20px] ${heroLiked ? 'text-error' : 'text-tertiary'}`}
+                          filled={heroLiked}
+                        />
+                        <span className="font-label-sm text-label-sm">148</span>
+                      </button>
+                      <button
+                        className="flex items-center gap-1 hover:text-primary transition-colors text-text-secondary"
+                        type="button"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Icon name="chat_bubble_outline" className="text-[20px]" />
+                        <span className="font-label-sm text-label-sm">32</span>
+                      </button>
+                    </div>
                     <button
-                      className="flex items-center gap-1 transition-colors text-text-secondary hover:text-primary"
+                      className={`px-space-lg h-12 font-button-primary text-button-primary rounded-xl flex items-center gap-space-xs transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                        heroClaimed
+                          ? 'bg-badge-discount-bg text-badge-discount-text'
+                          : 'bg-primary-container hover:bg-primary text-on-primary shadow-md shadow-primary-container/20'
+                      }`}
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        toggleHeroLike();
+                        onClaim?.(() => setHeroClaimed(true));
                       }}
                     >
-                      <Icon
-                        name="favorite"
-                        className={`text-[20px] ${heroLiked ? 'text-error' : 'text-tertiary'}`}
-                        filled={heroLiked}
-                      />
-                      <span className="font-label-sm text-label-sm">148</span>
-                    </button>
-                    <button
-                      className="flex items-center gap-1 hover:text-primary transition-colors text-text-secondary"
-                      type="button"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <Icon name="chat_bubble_outline" className="text-[20px]" />
-                      <span className="font-label-sm text-label-sm">32</span>
+                      <span>{heroClaimed ? 'Claimed!' : 'Claim Deal'}</span>
+                      <Icon name="arrow_forward" className="text-[18px]" />
                     </button>
                   </div>
-                  <button
-                    className={`px-space-lg h-12 font-button-primary text-button-primary rounded-xl flex items-center gap-space-xs transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                      heroClaimed
-                        ? 'bg-badge-discount-bg text-badge-discount-text'
-                        : 'bg-primary-container hover:bg-primary text-on-primary shadow-md shadow-primary-container/20'
-                    }`}
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onClaim?.(() => setHeroClaimed(true));
-                    }}
-                  >
-                    <span>{heroClaimed ? 'Claimed!' : 'Claim Deal'}</span>
-                    <Icon name="arrow_forward" className="text-[18px]" />
-                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-xl text-center">
+                <p className="font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+                <p className="mt-1 font-body-md text-body-md text-text-secondary">
+                  Nearby local offers will appear here when the public catalogue is active.
+                </p>
+              </div>
+            )}
           </section>
 
           <div className="flex flex-col gap-space-lg">
@@ -818,15 +827,17 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
               ))}
             </div>
 
-            <div className="mt-space-lg flex justify-center">
-              <button
-                className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all hover:gap-space-xs"
-                type="button"
-              >
-                <span>Load More Apo Neighborhood Offers</span>
-                <Icon name="keyboard_arrow_down" className="text-[18px]" />
-              </button>
-            </div>
+            {discoveryDeals.length > 0 && (
+              <div className="mt-space-lg flex justify-center">
+                <button
+                  className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all hover:gap-space-xs"
+                  type="button"
+                >
+                  <span>Load More Apo Neighborhood Offers</span>
+                  <Icon name="keyboard_arrow_down" className="text-[18px]" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </DesktopPage>

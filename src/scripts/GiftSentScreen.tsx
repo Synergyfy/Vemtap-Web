@@ -21,8 +21,8 @@ interface GiftSentScreenProps {
 
 export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack, claim }: GiftSentScreenProps) {
   const [copied, setCopied] = useState(false);
-  const recipientName = recipient?.name || 'Amara Okafor';
-  const recipientEmail = recipient?.email || 'amara@email.com';
+  const recipientName = recipient?.name || 'Recipient';
+  const recipientEmail = recipient?.email || 'No email provided';
   const recipientPhone = recipient?.phone || claim?.recipient?.phone;
   const maskedPhone = recipientPhone ? maskPhone(recipientPhone) : null;
   const reference = claim?.ref ?? '#VT-GIFT-83921';
