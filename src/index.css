@@ -235,3 +235,159 @@
   font-size: 13px;
   line-height: 17px;
 }
+
+/* ============================================================
+   Mobile compact typography — OPAY-style scale.
+   The shared tokens in tailwind.config.js also size desktop,
+   so they can't be shrunk there. Below the 1024px mobile/
+   desktop breakpoint (mirrors useIsDesktop), every text token
+   utility is re-declared smaller so mobile screens — Account
+   (name → Activity & Deals rows), Deals, claim sheets, booking
+   confirmations, toasts — read as densely as OPAY's app.
+   Desktop (>= 1024px) is untouched, and icon sizing
+   (text-[Npx] on Icon) is deliberately excluded.
+   Declared after @tailwind utilities as single-class rules,
+   these win by source order at equal specificity (same
+   mechanism as .biz-flow above). .biz-flow-wrapped business
+   screens have higher specificity, so their differing sizes
+   are re-declared at the bottom of this block to match.
+   ============================================================ */
+@media (max-width: 1023.98px) {
+  .text-display-hero {
+    font-size: 26px;
+    line-height: 32px;
+  }
+
+  .text-display-hero-mobile {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .text-heading-lg {
+    font-size: 19px;
+    line-height: 25px;
+  }
+
+  .text-heading-md {
+    font-size: 17px;
+    line-height: 23px;
+  }
+
+  .text-heading-sm {
+    font-size: 15px;
+    line-height: 20px;
+  }
+
+  .text-body-lg {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .text-body-md {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .text-button-primary {
+    font-size: 14px;
+    line-height: 18px;
+  }
+
+  .text-button-secondary {
+    font-size: 13px;
+    line-height: 17px;
+  }
+
+  .text-label-md {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .text-label-sm {
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  .text-caption {
+    font-size: 10px;
+    line-height: 13px;
+  }
+
+  /* Tailwind's default scale (text-xs … text-3xl), used sporadically
+     alongside the tokens — shrink to match the same OPAY density. */
+  .text-xs {
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  .text-sm {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .text-base {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .text-lg {
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  .text-xl {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .text-2xl {
+    font-size: 21px;
+    line-height: 28px;
+  }
+
+  .text-3xl {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  /* .biz-flow (business mobile hub/orders/messages/more/onboarding/boost/
+     segments/analytics…) has higher specificity than the plain token
+     overrides above, so its older, slightly larger scale would win on
+     mobile. Re-declare the sizes that differ, with the same OPAY values —
+     the matching ones (heading-sm, body-lg/md, buttons) need no override.
+     Desktop (>= 1024px) keeps the original biz-flow scale untouched. */
+  .biz-flow .text-display-hero {
+    font-size: 26px;
+    line-height: 32px;
+  }
+
+  .biz-flow .text-display-hero-mobile {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .biz-flow .text-heading-lg {
+    font-size: 19px;
+    line-height: 25px;
+  }
+
+  .biz-flow .text-heading-md {
+    font-size: 17px;
+    line-height: 23px;
+  }
+
+  .biz-flow .text-label-md {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .biz-flow .text-label-sm {
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  .biz-flow .text-caption {
+    font-size: 10px;
+    line-height: 13px;
+  }
+}

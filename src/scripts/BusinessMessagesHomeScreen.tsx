@@ -3,13 +3,14 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MessagesSubNav, type MessagesChannelKey } from '../components/campaigns/MessagesSubNav';
-import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { MobileLocationMenu } from '../components/BusinessHeaderMenus';
+import type { BusinessChatContact } from './messagesContact';
 
 interface BusinessMessagesHomeScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onOpenSearch: () => void;
   onNewMessage: () => void;
-  onOpenConversation: (thread: 'deal' | 'order' | 'general' | 'booking') => void;
+  onOpenConversation: (thread: 'deal' | 'order' | 'general' | 'booking', contact: BusinessChatContact) => void;
   /** Sub-navigation between In-App Chat and the campaign channels. */
   onSelectChannel?: (key: MessagesChannelKey) => void;
 }
@@ -41,6 +42,8 @@ interface ConversationRow {
   showYouPrefix?: boolean;
   readIcon?: 'done_all' | null;
   thread: 'deal' | 'order' | 'general' | 'booking';
+  /** True when the thread is with a business rather than an individual customer. */
+  isBusiness?: boolean;
   tags: ('unread' | 'orders' | 'deals' | 'bookings')[];
 }
 
@@ -116,6 +119,7 @@ const CONVERSATIONS: ConversationRow[] = [
     chipClass: 'bg-surface-container text-on-secondary-container',
     message: 'Do you have the 100ml bottle available in your Wuse II store?',
     messagePrimary: true,
+    isBusiness: true,
     thread: 'general',
     tags: ['unread'],
   },
@@ -174,7 +178,6 @@ export function BusinessMessagesHomeScreen({
   onSelectChannel,
 }: BusinessMessagesHomeScreenProps) {
   const [chip, setChip] = useState<InboxChipKey>('all');
-  const { branch } = useBusinessBranch();
 
   const visibleConversations = CONVERSATIONS.filter((row) => {
     if (chip === 'all') return true;
@@ -195,6 +198,8 @@ export function BusinessMessagesHomeScreen({
             </div>
           </div>
           <div className="flex items-center gap-space-xs">
+            {/* Branch switching lives in the header, like the other business screens. */}
+            <MobileLocationMenu />
             <button
               aria-label="Search conversations"
               className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
@@ -272,10 +277,6 @@ export function BusinessMessagesHomeScreen({
               <span className="font-caption text-caption font-semibold">Connected</span>
               <span className="font-caption text-caption opacity-75">â€¢ Instant customer sync active</span>
             </div>
-            <div className="flex items-center gap-1 font-caption text-caption font-semibold">
-              <span>{branch.shortName} Hub</span>
-              <Icon name="expand_more" className="text-[14px]" />
-            </div>
           </div>
         </div>
 
@@ -288,7 +289,9 @@ export function BusinessMessagesHomeScreen({
               }`}
               key={row.id}
               type="button"
-              onClick={() => onOpenConversation(row.thread)}
+              onClick={() =>
+                onOpenConversation(row.thread, { name: row.name, avatar: row.img, isBusiness: row.isBusiness })
+              }
             >
               <div className="relative shrink-0">
                 <img alt={row.alt} className="w-[50px] h-[50px] rounded-full object-cover shadow-inner" src={row.img} />

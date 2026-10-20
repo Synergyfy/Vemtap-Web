@@ -125,6 +125,12 @@ export function BusinessAddServiceStep1Screen({
           <ServiceImageUploader
             currentImage={draft.image}
             onImageChange={(imageUrl) => onDraftChange({ image: imageUrl })}
+            aiContext={{
+              itemName: draft.title,
+              itemDescription: draft.description,
+              category: draft.primaryCategory,
+              subcategory: draft.subCategory,
+            }}
           />
         </section>
 

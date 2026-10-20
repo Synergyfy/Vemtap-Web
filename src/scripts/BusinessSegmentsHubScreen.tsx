@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
-import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 export interface SegmentRef {
   name: string;
@@ -407,6 +407,7 @@ export function BusinessSegmentsHubScreen({
             </div>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
+            <MobileLocationMenu />
             <MobileNotificationBell />
             <MobileAccountMenu />
           </div>

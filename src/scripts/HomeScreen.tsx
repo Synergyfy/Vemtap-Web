@@ -224,6 +224,7 @@ export interface HomeScreenProps {
   onOpenFeatured: () => void;
   onOpenDeals: () => void;
   onOpenDeal: () => void;
+  onOpenBusiness: () => void;
   onOpenNotifications: () => void;
   onEnroll: () => void;
   onAccount: () => void;
@@ -369,7 +370,15 @@ function TrendingSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]
   );
 }
 
-function BusinessesSection({ items, onSeeAll }: { items: DealSummary[]; onSeeAll: () => void }) {
+function BusinessesSection({
+  items,
+  onSeeAll,
+  onOpenBusiness,
+}: {
+  items: DealSummary[];
+  onSeeAll: () => void;
+  onOpenBusiness: () => void;
+}) {
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -385,7 +394,11 @@ function BusinessesSection({ items, onSeeAll }: { items: DealSummary[]; onSeeAll
           </div>
         ) : (
           items.map((business) => (
-            <div key={business.id} className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow">
+            <div
+              key={business.id}
+              {...dealCardProps(onOpenBusiness)}
+              className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+            >
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center shrink-0 overflow-hidden">
                   <img className="w-full h-full object-cover" alt={business.imageAlt} src={business.image} />
@@ -468,7 +481,17 @@ function EnrollmentPrompt({ onEnroll }: { onEnroll: () => void }) {
   );
 }
 
-export function HomeScreen({ onTab, onOpenFilters, onOpenFeatured, onOpenDeals, onOpenDeal, onOpenNotifications, onEnroll, onAccount }: HomeScreenProps) {
+export function HomeScreen({
+  onTab,
+  onOpenFilters,
+  onOpenFeatured,
+  onOpenDeals,
+  onOpenDeal,
+  onOpenBusiness,
+  onOpenNotifications,
+  onEnroll,
+  onAccount,
+}: HomeScreenProps) {
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [category, setCategory] = useState('All');
   const [locationOpen, setLocationOpen] = useState(false);
@@ -770,7 +793,7 @@ export function HomeScreen({ onTab, onOpenFilters, onOpenFeatured, onOpenDeals, 
           </section>
 
           <TrendingSection items={liveDeals.slice(0, 3)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
-          <BusinessesSection items={liveDeals} onSeeAll={onOpenDeals} />
+          <BusinessesSection items={liveDeals} onSeeAll={() => onTab('discover')} onOpenBusiness={onOpenBusiness} />
           <PopularSection items={liveDeals.slice(0, 2)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
           <EnrollmentPrompt onEnroll={onEnroll} />
         </div>

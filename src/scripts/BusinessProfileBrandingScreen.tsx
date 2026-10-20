@@ -4,6 +4,8 @@ import { pickAndUploadImage } from '../services/uploadService';
 import type { BrandingResult } from './desktop/DesktopBusinessProfileBrandingScreen';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { CreateWithAiButton } from '../components/CreateWithAiButton';
+import type { AiPromptContext } from './aiDesignAssistant';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
 
 interface BusinessProfileBrandingScreenProps {
@@ -74,6 +76,14 @@ export function BusinessProfileBrandingScreen({
     } finally {
       setUploading(false);
     }
+  };
+
+  /** Business facts already in the onboarding draft — feed the AI prompt. */
+  const aiBrandContext: AiPromptContext = {
+    businessName: draft.name,
+    category: draft.categories.join(', '),
+    subcategory: draft.tags.join(', '),
+    description: draft.description,
   };
 
   const handleChangeLogo = async () => {
@@ -231,6 +241,14 @@ export function BusinessProfileBrandingScreen({
                 <p className="font-caption text-caption text-text-tertiary">Optimal resolution: 400 × 400px</p>
               </div>
             </div>
+            <div className="mt-space-xs">
+              <CreateWithAiButton
+                aspectRatio="square"
+                assetType="logo"
+                context={aiBrandContext}
+                fileHint="Square 1:1 (PNG, JPG max 5MB)"
+              />
+            </div>
           </section>
 
           <section className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
@@ -269,6 +287,14 @@ export function BusinessProfileBrandingScreen({
                   JPG, WEBP up to 10MB
                 </span>
               </div>
+            </div>
+            <div className="mt-space-xs">
+              <CreateWithAiButton
+                aspectRatio="16/9"
+                assetType="banner"
+                context={aiBrandContext}
+                fileHint="JPG, WEBP up to 10MB"
+              />
             </div>
           </section>
 

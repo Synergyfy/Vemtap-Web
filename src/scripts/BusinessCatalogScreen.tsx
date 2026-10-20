@@ -1,6 +1,13 @@
 import { Fragment, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
+import { FilterMenu } from '../components/FilterMenu';
 import { Icon } from '../components/ui/Icon';
+import { AddProductMethodsDialog } from '../components/import/AddProductMethodsDialog';
+import { ProductImportWizard } from '../components/import/ProductImportWizard';
+import { useImportedProducts, resolveProductDisplayImage } from './productImport/importedProductStore';
+import { summariseImport } from './productImport/importSummary';
+import { getCategoryImageByName, naira } from './catalogueData';
+import type { ImportedProduct } from './productImport/importTypes';
 
 interface BusinessCatalogScreenProps {
   onBack: () => void;
@@ -84,6 +91,32 @@ const SEED_ITEMS: CatalogItem[] = [
   },
 ];
 
+/** Maps an imported (or manually added) product into the onboarding catalog card. */
+function importedToCatalogItem(product: ImportedProduct): CatalogItem {
+  const published = product.status === 'published';
+  return {
+    id: product.id,
+    name: product.name || 'Untitled imported product',
+    category: `${product.category || 'General'} • Imported`,
+    categoryTone: 'muted',
+    // Own image first, category image as a fallback only — linked, never copied.
+    image: (() => {
+      const displayImage = resolveProductDisplayImage(product, getCategoryImageByName);
+      if (!displayImage) return undefined;
+      const isCategoryImage = !product.images.find((entry) => entry.trim() !== '');
+      return { src: displayImage, alt: isCategoryImage ? `${product.category} category image` : product.name };
+    })(),
+    icon: 'inventory_2',
+    tileCaption: published ? 'Live' : 'Draft',
+    priceParts: [{ amount: product.price !== null ? naira(product.price) : '—' }],
+    priceBadge: published ? 'Published' : 'Imported Draft',
+    footerIcon: published ? 'check_circle' : 'edit_note',
+    footerText: published ? 'Visible on your storefront' : 'Hidden until you publish it',
+    footerTone: published ? 'green' : 'secondary',
+    meta: product.stock !== null ? `Inventory: ${product.stock} ${product.unit || 'units'}` : 'Add stock later',
+  };
+}
+
 export function BusinessCatalogScreen({
   onBack,
   onNext,
@@ -93,9 +126,32 @@ export function BusinessCatalogScreen({
 }: BusinessCatalogScreenProps) {
   const [items, setItems] = useState<CatalogItem[]>(SEED_ITEMS);
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [methodsOpen, setMethodsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const importedProducts = useImportedProducts();
+  const allItems = [...importedProducts.map(importedToCatalogItem), ...items];
 
   const query = search.trim().toLowerCase();
-  const visibleItems = query ? items.filter((item) => item.name.toLowerCase().includes(query)) : items;
+
+  const categoryChoices = [
+    { value: '', label: 'All categories' },
+    ...Array.from(new Set(allItems.map((item) => item.category))).map((name) => ({
+      value: name,
+      label: name,
+    })),
+  ];
+
+  /** Category filter and search both have to agree before an item shows. */
+  const visibleItems = allItems.filter(
+    (item) =>
+      (category === '' || item.category === category) &&
+      (query === '' ||
+        item.name.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query)),
+  );
 
   const handleRemove = (id: string) => {
     setItems((current) => current.filter((item) => item.id !== id));
@@ -157,7 +213,7 @@ export function BusinessCatalogScreen({
             <button
               className="group relative flex flex-col p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left"
               type="button"
-              onClick={onAddProduct}
+              onClick={() => setMethodsOpen(true)}
             >
               <div className="w-10 h-10 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center mb-space-sm group-hover:bg-primary group-hover:text-on-primary transition-colors">
                 <Icon name="shopping_bag" className="text-[22px]" />
@@ -167,7 +223,7 @@ export function BusinessCatalogScreen({
                 <Icon name="tv_displays" className="text-[18px] text-primary-container font-bold" />
               </span>
               <span className="font-caption text-caption text-text-secondary mt-1 line-clamp-2">
-                Retail, Food &amp; Drinks, physical inventory items.
+                One at a time, or bulk import a CSV/Excel file.
               </span>
             </button>
             <button
@@ -212,16 +268,20 @@ export function BusinessCatalogScreen({
             <div className="flex items-center gap-space-2xs">
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Current Catalog</h3>
               <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm font-semibold">
-                {items.length}
+                {allItems.length}
               </span>
             </div>
-            <button
-              className="font-label-sm text-label-sm text-primary flex items-center gap-0.5 hover:underline"
-              type="button"
-            >
-              <Icon name="tune" className="text-[16px]" />
-              Filter
-            </button>
+            <FilterMenu
+              align="right"
+              buttonClassName="font-label-sm text-label-sm text-primary flex items-center gap-0.5 hover:underline"
+              choices={categoryChoices}
+              icon="tune"
+              iconClassName="text-[16px]"
+              label="Filter"
+              onChange={setCategory}
+              title="Filter by category"
+              value={category}
+            />
           </div>
 
           <div className="relative flex items-center">
@@ -291,14 +351,16 @@ export function BusinessCatalogScreen({
                         >
                           <Icon name="edit" className="text-[18px]" />
                         </button>
-                        <button
-                          aria-label="Remove item"
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-subtle active:scale-95 transition-all"
-                          type="button"
-                          onClick={() => handleRemove(item.id)}
-                        >
-                          <Icon name="delete" className="text-[18px]" />
-                        </button>
+                        {!item.id.startsWith('imp_') && (
+                          <button
+                            aria-label="Remove item"
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-subtle active:scale-95 transition-all"
+                            type="button"
+                            onClick={() => handleRemove(item.id)}
+                          >
+                            <Icon name="delete" className="text-[18px]" />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-space-2xs mt-2">
@@ -342,6 +404,30 @@ export function BusinessCatalogScreen({
                 </div>
               </article>
             ))}
+            {visibleItems.length === 0 && (
+              <div className="py-space-xl flex flex-col items-center text-center">
+                <span className="w-14 h-14 rounded-full bg-surface-container-high text-text-tertiary flex items-center justify-center mb-space-sm">
+                  <Icon name="search_off" className="text-[26px]" />
+                </span>
+                <span className="font-label-md text-label-md text-text-primary font-semibold">
+                  No catalog items found
+                </span>
+                <span className="font-caption text-caption text-text-secondary mt-1 max-w-xs leading-relaxed">
+                  {category !== '' ? `Nothing in ${category}` : 'Nothing matches your search'}
+                  {query !== '' ? ` for “${search.trim()}”` : ''}. Clear the filters to see the whole catalog.
+                </span>
+                <button
+                  className="mt-space-sm h-10 px-space-md rounded-xl bg-surface-container-low text-text-primary font-button-secondary text-button-secondary font-medium active:scale-95 transition-transform"
+                  type="button"
+                  onClick={() => {
+                    setCategory('');
+                    setSearch('');
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="mt-space-2xl flex flex-col items-center gap-space-sm">
@@ -371,6 +457,38 @@ export function BusinessCatalogScreen({
           </div>
         </section>
       </div>
+
+      {/* Add Product: manual / bulk import / connect platform (coming soon) */}
+      <AddProductMethodsDialog
+        open={methodsOpen}
+        onClose={() => setMethodsOpen(false)}
+        onAddManually={() => {
+          setMethodsOpen(false);
+          onAddProduct?.();
+        }}
+        onBulkImport={() => {
+          setMethodsOpen(false);
+          setImportOpen(true);
+        }}
+      />
+
+      {/* Reusable Bulk Product Import wizard */}
+      <ProductImportWizard
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        existingSkus={[]}
+        existingNames={allItems.map((item) => item.name)}
+        onImported={(importResult) => {
+          setToast(summariseImport(importResult));
+          window.setTimeout(() => setToast(null), 4000);
+        }}
+      />
+
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
+          {toast}
+        </div>
+      )}
     </AppScreen>
   );
 }

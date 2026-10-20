@@ -157,6 +157,12 @@ export function DesktopAddServiceStep1Screen({
                 currentImage={draft.image}
                 onImageChange={(url) => onDraftChange({ image: url })}
                 aspectRatio="16/9"
+                aiContext={{
+                  itemName: draft.title,
+                  itemDescription: draft.description,
+                  category: draft.primaryCategory,
+                  subcategory: draft.subCategory,
+                }}
               />
 
               <div className="flex items-center gap-3 p-3.5 rounded-xl bg-surface-tint-blue text-on-surface-variant">

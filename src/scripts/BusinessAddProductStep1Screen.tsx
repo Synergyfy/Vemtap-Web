@@ -1,5 +1,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { CreateWithAiButton } from '../components/CreateWithAiButton';
+import type { AiPromptContext } from './aiDesignAssistant';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessAddProductStep1ScreenProps {
@@ -58,6 +60,14 @@ export function BusinessAddProductStep1Screen({
     { caption: 'Sub-Category', value: draft.subCategory, icon: 'outdoor_grill', active: false },
     { caption: 'Item Classification', value: draft.classification, icon: 'local_fire_department', active: false },
   ];
+
+  /** Product facts from the draft — business facts come from setup state. */
+  const aiProductContext: AiPromptContext = {
+    itemName: draft.title,
+    itemDescription: draft.description,
+    category: draft.primaryCategory,
+    subcategory: draft.subCategory,
+  };
 
   const addBullet = (text: string) => {
     onDraftChange({ description: `${draft.description}\n• ${text}` });
@@ -196,6 +206,14 @@ export function BusinessAddProductStep1Screen({
                 <strong className="font-semibold text-primary">3x higher customer engagement</strong> and faster
                 checkouts.
               </p>
+            </div>
+            <div className="pt-space-2xs">
+              <CreateWithAiButton
+                aspectRatio="square"
+                assetType="product"
+                context={aiProductContext}
+                fileHint="Up to 6 high-res shots"
+              />
             </div>
           </div>
 

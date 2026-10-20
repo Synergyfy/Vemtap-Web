@@ -41,6 +41,20 @@ const ROWS: OrderRow[] = [];
 
 export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBooking: _onOpenBooking }: DesktopOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState('active');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [merchant, setMerchant] = useState('all');
+
+  // Merchant options come from the rows themselves, so the menu can never
+  // offer a store the table has nothing to show for.
+  const merchantChoices = [
+    { value: 'all', label: 'All Partner Merchants' },
+    ...Array.from(new Set(ROWS.map((row) => row.merchant))).map((name) => ({
+      value: name,
+      label: name,
+    })),
+  ];
+
+  const query = searchQuery.trim().toLowerCase();
 
   const downloadStatement = () => {
     downloadCsv(
@@ -192,8 +206,10 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                   <input
                     className="w-full h-11 pl-11 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas shadow-inner"
                     id="orderSearchInput"
+                    onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder="Search by Order ID (#UG-9021), store name, or item..."
                     type="text"
+                    value={searchQuery}
                   />
                 </div>
                 <div className="md:col-span-3">
@@ -220,12 +236,17 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                       name="storefront"
                       className="absolute left-3 text-[20px] text-text-tertiary pointer-events-none"
                     />
-                    <select className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer">
-                      <option>All Partner Merchants</option>
-                      <option>Urban Grill &amp; Bistro</option>
-                      <option>Cafe Neo Artisanal</option>
-                      <option>Velvet Stitch Couture</option>
-                      <option>Glow &amp; Serenity Spa</option>
+                    <select
+                      aria-label="Filter by partner merchant"
+                      className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer"
+                      onChange={(event) => setMerchant(event.target.value)}
+                      value={merchant}
+                    >
+                      {merchantChoices.map((choice) => (
+                        <option key={choice.value} value={choice.value}>
+                          {choice.label}
+                        </option>
+                      ))}
                     </select>
                     <Icon
                       name="expand_more"
@@ -236,7 +257,13 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                 <div className="md:col-span-1 flex items-center justify-end">
                   <button
                     aria-label="Reset filters"
-                    className="w-11 h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors"
+                    className="w-11 h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={merchant === 'all' && query === ''}
+                    onClick={() => {
+                      setMerchant('all');
+                      setSearchQuery('');
+                    }}
+                    title="Reset search and merchant filter"
                     type="button"
                   >
                     <Icon name="filter_alt_off" className="text-[20px]" />

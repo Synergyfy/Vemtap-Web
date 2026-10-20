@@ -202,11 +202,7 @@ export function DesktopBusinessOperationsHubScreen({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-xs sm:gap-space-sm">
-            <button type="button" className="flex items-center gap-space-xs px-3.5 py-2.5 rounded-lg bg-surface-subtle hover:bg-surface-container transition-colors text-text-primary font-label-md text-label-md shadow-sm">
-              <Icon name="storefront" className="text-primary text-[20px]" />
-              <span className="font-semibold text-text-primary">All Locations (2 Branches)</span>
-              <Icon name="expand_more" className="text-text-tertiary text-[18px]" />
-            </button>
+            {/* Branch/location lives in the portal header switcher, not in-page. */}
             <button
               type="button"
               onClick={onPreviewStorefront}

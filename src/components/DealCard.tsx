@@ -138,7 +138,7 @@ export function PeekDealCard({ image, imageAlt, name, badge, meta }: PeekDealCar
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between">
-            <h3 className="font-heading-sm text-heading-sm text-text-primary truncate text-[16px]">
+            <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">
               {name}
             </h3>
             <span className="font-label-sm text-caption text-badge-discount-text bg-badge-discount-bg font-bold px-2 py-0.5 rounded-full shrink-0 ml-2">

@@ -2,10 +2,10 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 
-export type HubModuleKey = 'deals' | 'catalog' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile';
+export type HubModuleKey = 'deals' | 'catalog' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile' | 'referrals';
 
 interface BusinessHubHomeScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -82,12 +82,20 @@ const MENU_CARDS: {
     desc: 'Manage how your business appears to customers',
     chips: [{ label: 'Verified', chipClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' }],
   },
+  {
+    key: 'referrals',
+    icon: 'group_add',
+    iconBox: 'bg-surface-tint-blue text-primary-container',
+    title: 'Referrals',
+    desc: 'Invite other businesses and earn referral rewards',
+    chips: [{ label: 'Programme preview', chipClass: 'bg-surface-container text-text-secondary' }],
+  },
 ];
 
 export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeScreenProps) {
-  const [branchOpen, setBranchOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const { branch, branches, switchTo } = useBusinessBranch();
+  // Branch switching lives only in the header's MobileLocationMenu.
+  const { branch } = useBusinessBranch();
 
   const showToast = (message: string) => {
     setToast(message);
@@ -96,49 +104,19 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
 
   return (
     <AppScreen>
-      {/* Header with branch switcher */}
+      {/* Header — the persistent location switcher lives beside the bell. */}
       <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 px-gutter flex items-center justify-between">
           <div className="flex items-center gap-space-sm min-w-0">
-            <div className="flex flex-col relative">
-              {branchOpen && <div className="fixed inset-0 z-30" onClick={() => setBranchOpen(false)} />}
+            <div className="flex flex-col min-w-0">
               <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">Business</span>
-              <button
-                className="flex items-center gap-space-2xs text-left -ml-1 pl-1 pr-2 rounded-lg min-h-[32px] relative"
-                type="button"
-                onClick={() => setBranchOpen((open) => !open)}
-              >
-                <span className="font-label-md text-label-md font-semibold text-on-surface truncate max-w-[160px]">
-                  {branch.name}
-                </span>
-                <Icon
-                  name="arrow_drop_down"
-                  className={`text-text-secondary transition-colors text-[18px] ${branchOpen ? 'rotate-180 text-primary' : ''}`}
-                />
-              </button>
-              {branchOpen && (
-                <div className="absolute top-full left-0 mt-1 w-56 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle z-40 p-1 flex flex-col">
-                  {branches.map((option) => (
-                    <button
-                      className={`w-full h-9 text-left px-2.5 rounded-lg font-label-sm text-label-sm flex items-center justify-between transition-colors ${
-                        option.key === branch.key ? 'bg-surface-tint-blue text-primary font-semibold' : 'hover:bg-surface-subtle text-on-surface'
-                      }`}
-                      key={option.key}
-                      type="button"
-                      onClick={() => {
-                        switchTo(option.key);
-                        setBranchOpen(false);
-                      }}
-                    >
-                      <span className="truncate">{option.name}</span>
-                      {option.key === branch.key && <Icon name="check" className="text-[16px]" />}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <h1 className="font-label-md text-label-md font-semibold text-on-surface truncate max-w-[160px]">
+                {branch.name}
+              </h1>
             </div>
           </div>
           <div className="flex items-center gap-space-xs">
+            <MobileLocationMenu />
             <MobileNotificationBell />
             <MobileAccountMenu />
           </div>
@@ -168,31 +146,6 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
               Manage your business, locations, catalogue and customers.
             </p>
-          </div>
-        </div>
-
-        {/* Branch Pill Carousel */}
-        <div className="w-full my-space-sm">
-          <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-1">
-            {branches.map((pillBranch) => {
-              const active = pillBranch.key === branch.key;
-              return (
-                <button
-                  className={`shrink-0 flex items-center gap-space-2xs px-space-md h-9 rounded-full font-label-md text-label-md transition-all active:scale-95 ${
-                    active
-                      ? 'bg-surface-tint-blue text-primary-container font-semibold shadow-sm'
-                      : 'bg-surface-container-low text-text-secondary hover:bg-surface-container'
-                  }`}
-                  key={pillBranch.key}
-                  type="button"
-                  onClick={() => switchTo(pillBranch.key)}
-                >
-                  {active && <Icon name="location_on" filled className="text-[16px]" />}
-                  <span>{pillBranch.shortName} Branch</span>
-                  {active && <Icon name="expand_more" className="text-[14px]" />}
-                </button>
-              );
-            })}
           </div>
         </div>
 

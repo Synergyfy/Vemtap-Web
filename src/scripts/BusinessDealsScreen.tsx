@@ -5,7 +5,8 @@ import { DealsPanel } from '../components/business/DealsPanel';
 import { hasApiConfig } from '../services/api/client';
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { FilterMenu } from '../components/FilterMenu';
+import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 interface BusinessDealsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -14,17 +15,20 @@ interface BusinessDealsScreenProps {
   onCreateDeal: () => void;
 }
 
-const BRANCH_OPTIONS = ['All Locations (3)', 'Wuse Branch', 'Victoria Island', 'Maitama Suite'];
+type DealStatus = 'active' | 'scheduled' | 'expired' | 'draft';
 
-const DEAL_TABS = [
-  { key: 'active', label: 'Active (6)', icon: 'local_fire_department' },
-  { key: 'scheduled', label: 'Scheduled (2)' },
-  { key: 'expired', label: 'Expired (14)' },
-  { key: 'drafts', label: 'Drafts (3)' },
+/** Tab keys double as the `status` each deal is filtered on. */
+const DEAL_TABS: { key: DealStatus; label: string; icon?: string }[] = [
+  { key: 'active', label: 'Active', icon: 'local_fire_department' },
+  { key: 'scheduled', label: 'Scheduled' },
+  { key: 'expired', label: 'Expired' },
+  { key: 'draft', label: 'Drafts' },
 ];
 
 interface DealCard {
   key: string;
+  /** Lifecycle slot the tabs filter on. */
+  status: DealStatus;
   name: string;
   category: string;
   price: string;
@@ -45,6 +49,7 @@ interface DealCard {
 const DEALS: DealCard[] = [
   {
     key: 'lunch-combo',
+    status: 'active',
     name: 'Weekend Prime Lunch Combo',
     category: 'Urban Grill & Bistro · Combo',
     price: '₦9,600',
@@ -63,6 +68,7 @@ const DEALS: DealCard[] = [
   },
   {
     key: 'smash-burger',
+    status: 'active',
     name: '2-for-1 Smash Burger Thursday',
     category: 'Burger Bar Specials',
     price: '₦6,500',
@@ -85,6 +91,7 @@ const DEALS: DealCard[] = [
   },
   {
     key: 'chill-pass',
+    status: 'active',
     name: 'After-Work Chill Pass',
     category: 'Craft Bar & Bites',
     price: '₦4,200',
@@ -103,18 +110,35 @@ const DEALS: DealCard[] = [
 ];
 
 export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }: BusinessDealsScreenProps) {
-  const [branch, setBranch] = useState('All Locations (3)');
-  const [branchOpen, setBranchOpen] = useState(false);
-  const [tab, setTab] = useState('active');
+  const [tab, setTab] = useState<DealStatus>('active');
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsDeal, setActionsDeal] = useState<DealCard | null>(null);
   const [paused, setPaused] = useState<Record<string, boolean>>({});
 
+  const query = search.trim().toLowerCase();
+
+  /** Tab, category filter and search must all agree before a card shows. */
   const visibleDeals = DEALS.filter(
-    (deal) => search.trim() === '' || deal.name.toLowerCase().includes(search.trim().toLowerCase()),
+    (deal) =>
+      deal.status === tab &&
+      (category === '' || deal.category === category) &&
+      (query === '' ||
+        deal.name.toLowerCase().includes(query) ||
+        deal.branchLine.toLowerCase().includes(query) ||
+        deal.category.toLowerCase().includes(query)),
   );
 
+  const statusCount = (status: DealStatus) => DEALS.filter((deal) => deal.status === status).length;
+
+  const categoryChoices = [
+    { value: '', label: 'All categories' },
+    ...Array.from(new Set(DEALS.map((deal) => deal.category))).map((name) => ({
+      value: name,
+      label: name,
+    })),
+  ];
   // Live: real deals at the active branch; the designed list below is the demo.
   if (hasApiConfig()) {
     return (
@@ -131,52 +155,11 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
 
   return (
     <AppScreen>
-      {/* Header with branch selector */}
+      {/* Header — the persistent location switcher lives beside the bell. */}
       <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 px-margin flex items-center justify-between gap-space-sm">
           <div className="flex items-center min-w-0 flex-1">
-            <div className="relative">
-              {branchOpen && <div className="fixed inset-0 z-30" onClick={() => setBranchOpen(false)} />}
-              <button
-                className="min-h-[44px] px-space-xs flex items-center gap-space-2xs text-left max-w-full rounded-lg"
-                type="button"
-                onClick={() => setBranchOpen((open) => !open)}
-              >
-                <Icon name="storefront" className="text-primary text-[20px] shrink-0" />
-                <div className="flex flex-col min-w-0">
-                  <span className="font-caption text-caption text-text-secondary truncate">Branch Selector</span>
-                  <div className="flex items-center gap-space-2xs">
-                    <span className="font-label-md text-label-md text-on-surface font-semibold truncate">{branch}</span>
-                    <Icon
-                      name="expand_more"
-                      className={`text-on-surface-variant text-[16px] shrink-0 transition-transform ${branchOpen ? 'rotate-180' : ''}`}
-                    />
-                  </div>
-                </div>
-              </button>
-              {branchOpen && (
-                <div className="absolute top-full left-0 mt-1.5 w-56 bg-surface-canvas rounded-xl shadow-xl p-1.5 z-40 flex flex-col">
-                  {BRANCH_OPTIONS.map((option) => (
-                    <button
-                      className={`w-full text-left px-3 py-2 rounded-lg font-label-sm text-label-sm flex items-center justify-between transition-colors ${
-                        option === branch
-                          ? 'bg-surface-tint-blue text-primary font-semibold'
-                          : 'text-on-surface hover:bg-surface-subtle'
-                      }`}
-                      key={option}
-                      type="button"
-                      onClick={() => {
-                        setBranch(option);
-                        setBranchOpen(false);
-                      }}
-                    >
-                      <span>{option}</span>
-                      {option === branch && <Icon name="check" className="text-[16px]" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">Deals</h1>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
             <button
@@ -186,6 +169,7 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
             >
               <Icon name="search" className="text-[22px]" />
             </button>
+            <MobileLocationMenu />
             <MobileNotificationBell />
             <MobileAccountMenu />
           </div>
@@ -226,13 +210,17 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
-            <button
-              className="h-11 px-space-sm bg-surface-container-low rounded-xl text-on-surface flex items-center gap-space-2xs shadow-sm shrink-0"
-              type="button"
-            >
-              <Icon name="tune" className="text-primary text-[18px]" />
-              <span className="font-label-sm text-label-sm font-semibold">Filter</span>
-            </button>
+            <FilterMenu
+              align="right"
+              buttonClassName="h-11 px-space-sm bg-surface-container-low rounded-xl text-on-surface flex items-center gap-space-2xs shadow-sm shrink-0 font-label-sm text-label-sm font-semibold"
+              choices={categoryChoices}
+              icon="tune"
+              iconClassName="text-primary text-[18px]"
+              label="Filter"
+              onChange={setCategory}
+              title="Filter by category"
+              value={category}
+            />
           </div>
 
           {/* Tabs */}
@@ -251,7 +239,9 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
                   onClick={() => setTab(dealTab.key)}
                 >
                   {dealTab.icon && <Icon name={dealTab.icon} className="text-[16px]" />}
-                  <span>{dealTab.label}</span>
+                  <span>
+                    {dealTab.label} ({statusCount(dealTab.key)})
+                  </span>
                 </button>
               );
             })}
@@ -444,6 +434,31 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
               </div>
             </div>
           ))}
+          {visibleDeals.length === 0 && (
+            <div className="bg-surface-canvas rounded-2xl shadow-sm p-space-lg flex flex-col items-center text-center">
+              <span className="w-14 h-14 rounded-full bg-surface-container-high text-text-tertiary flex items-center justify-center mb-space-sm">
+                <Icon name="search_off" className="text-[26px]" />
+              </span>
+              <span className="font-label-md text-label-md text-on-surface font-semibold">No deals match this view</span>
+              <span className="font-caption text-caption text-text-secondary mt-1 max-w-xs leading-relaxed">
+                Nothing here for {DEAL_TABS.find((entry) => entry.key === tab)?.label ?? 'this tab'}
+                {category !== '' ? ` in ${category}` : ''}
+                {query !== '' ? ` matching “${search.trim()}”` : ''}. Clear the filters to see every deal.
+              </span>
+              {(category !== '' || query !== '') && (
+                <button
+                  className="mt-space-sm h-10 px-space-md rounded-xl bg-surface-container-low text-on-surface font-button-secondary text-button-secondary font-medium active:scale-95 transition-transform"
+                  type="button"
+                  onClick={() => {
+                    setCategory('');
+                    setSearch('');
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

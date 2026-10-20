@@ -24,6 +24,7 @@ export type DesktopNavKey =
   | 'messages'
   | 'cart'
   | 'notifications'
+  | 'referrals'
   | 'account-settings'
   | 'storefront'
   | 'all-products'
@@ -70,6 +71,7 @@ const CUSTOMER_NAV_ITEMS: Array<{ key: DesktopNavKey; label: string }> = [
   { key: 'messages', label: 'Messages' },
   { key: 'cart', label: 'Saved Items & Stores' },
   { key: 'notifications', label: 'Notifications' },
+  { key: 'referrals', label: 'Referrals & Rewards' },
   { key: 'account-settings', label: 'Account & Security' },
 ];
 
@@ -79,7 +81,7 @@ const customerNavItem = (key: DesktopNavKey) => CUSTOMER_NAV_ITEMS.find((item) =
 const CUSTOMER_NAV_GROUPS: ReadonlyArray<RailGroup<DesktopNavKey>> = [
   { label: '', items: [customerNavItem('dashboard')] },
   { label: 'Shopping', items: [customerNavItem('my-deals'), customerNavItem('orders'), customerNavItem('messages')] },
-  { label: 'Account', items: [customerNavItem('cart'), customerNavItem('account-settings')] },
+  { label: 'Account', items: [customerNavItem('cart'), customerNavItem('referrals'), customerNavItem('account-settings')] },
 ];
 
 const CUSTOMER_RAIL_ICONS: Readonly<Record<string, string>> = {
@@ -88,6 +90,7 @@ const CUSTOMER_RAIL_ICONS: Readonly<Record<string, string>> = {
   orders: 'receipt_long',
   messages: 'forum',
   cart: 'bookmark',
+  referrals: 'group_add',
   'account-settings': 'settings',
 };
 

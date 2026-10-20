@@ -66,8 +66,6 @@ const BRANCHES: {
 ];
 
 export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps) {
-  const [operatingView, setOperatingView] = useState('Abuja Flagship (Maitama)');
-  const [viewOpen, setViewOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -120,56 +118,6 @@ export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps)
             <Icon name="add_location_alt" className="text-[19px]" />
             <span>Add Location</span>
           </button>
-        </section>
-
-        {/* Active Operating Context Switcher Bar */}
-        <section className="px-margin mb-space-md">
-          <div className="w-full bg-surface-tint-blue rounded-xl p-space-sm flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-space-xs min-w-0">
-              <div className="w-9 h-9 rounded-lg bg-surface-canvas flex items-center justify-center text-primary-container shadow-xs shrink-0">
-                <Icon name="store" filled className="text-[20px]" />
-              </div>
-              <div className="min-w-0">
-                <span className="font-caption text-caption text-primary uppercase font-bold tracking-wider block">
-                  Active Operating View
-                </span>
-                <p className="font-label-md text-label-md text-text-primary font-semibold truncate">
-                  {operatingView}
-                </p>
-              </div>
-            </div>
-            <div className="relative shrink-0">
-              {viewOpen && <div className="fixed inset-0 z-30" onClick={() => setViewOpen(false)} />}
-              <button
-                className="px-space-sm py-space-2xs bg-surface-canvas text-primary-container font-label-sm text-label-sm rounded-lg hover:bg-surface-container-high transition-colors font-semibold shadow-xs flex items-center gap-1"
-                type="button"
-                onClick={() => setViewOpen((open) => !open)}
-              >
-                <span>Switch</span>
-                <Icon name="expand_more" className={`text-[16px] transition-transform ${viewOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {viewOpen && (
-                <div className="absolute right-0 top-full mt-1 w-56 rounded-xl bg-surface-canvas shadow-xl z-40 p-space-xs flex flex-col gap-space-2xs">
-                  {['Abuja Flagship (Maitama)', 'Victoria Island Hub'].map((option) => (
-                    <button
-                      className={`w-full text-left px-space-xs py-space-xs rounded-lg font-label-sm text-label-sm flex items-center justify-between ${
-                        option === operatingView ? 'bg-surface-tint-blue text-primary font-semibold' : 'hover:bg-surface-container-low text-text-primary'
-                      }`}
-                      key={option}
-                      type="button"
-                      onClick={() => {
-                        setOperatingView(option);
-                        setViewOpen(false);
-                      }}
-                    >
-                      <span className="truncate">{option}</span>
-                      {option === operatingView && <Icon name="check" className="text-[16px]" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
         </section>
 
         {/* Branch Card List */}

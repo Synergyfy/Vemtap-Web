@@ -1,10 +1,29 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
+import { FilterMenu } from '../components/FilterMenu';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { CatalogueItemsPanel } from '../components/business/CatalogueItemsPanel';
 import { hasApiConfig } from '../services/api/client';
+import { AddProductMethodsDialog } from '../components/import/AddProductMethodsDialog';
+import { ProductImportWizard } from '../components/import/ProductImportWizard';
+import { ImportedProductsReview } from '../components/import/ImportedProductsReview';
+import { useImportedProducts, resolveProductDisplayImage, saveImportedProducts, publishImportedProducts } from './productImport/importedProductStore';
+import { parseMoney } from './productImport/importRecords';
+import { summariseImport } from './productImport/importSummary';
+import { getCategoryImageByName, naira } from './catalogueData';
+import type { ImportedProduct } from './productImport/importTypes';
+import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
+import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
+import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
+import { BusinessProductReviewScreen } from './BusinessProductReviewScreen';
+import { INITIAL_PRODUCT_DRAFT } from './productDraft';
+import type { ProductDraft } from './productDraft';
+
+/** Neutral placeholder shown for imported products without an image. */
+const PLACEHOLDER_IMG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' fill='%23e5e7eb'/%3E%3Ctext x='40' y='44' font-size='9' text-anchor='middle' fill='%239ca3af'%3Eno image%3C/text%3E%3C/svg%3E";
 
 interface BusinessHubCatalogScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -138,23 +157,182 @@ const CATALOG_ITEMS: CatalogItem[] = [
 ];
 
 const FILTER_CHIPS = ['All Status', 'Active Deals (4)', 'Low Stock', 'Dine-In & Takeaway'];
-const LOCATION_OPTIONS = ['All Locations (2)', 'Maitama Abuja (Main)', 'Victoria Island Lagos'];
+
+/** Maps a bulk-imported product onto the mobile catalogue card model. */
+function importedToItem(product: ImportedProduct): CatalogItem {
+  const published = product.status === 'published';
+  const onSale = product.salePrice !== null && product.price !== null && product.salePrice < product.price;
+  const stock = product.stock;
+  return {
+    key: product.id,
+    category: product.category || 'General',
+    sku: product.sku || '—',
+    statusLabel: published ? 'Published' : product.needsReview ? 'Draft • Needs Review' : 'Imported Draft',
+    statusDot: published ? 'bg-badge-discount-text' : 'bg-outline',
+    statusClass: published ? 'text-badge-discount-text' : 'text-text-secondary',
+    name: product.name || 'Untitled imported product',
+    price: product.price !== null ? naira(onSale ? (product.salePrice as number) : product.price) : '—',
+    comparePrice: onSale && product.price !== null ? naira(product.price) : undefined,
+    baseNote: published ? undefined : 'draft',
+    // Own image first, then the category image as a fallback (linked, not copied).
+    img: resolveProductDisplayImage(product, getCategoryImageByName) ?? PLACEHOLDER_IMG,
+    alt: product.description || product.name || 'Imported product',
+    note: published ? undefined : 'Hidden from storefront until you publish it',
+    noteIcon: published ? undefined : 'edit_note',
+    noteClass: published ? undefined : 'text-text-tertiary',
+    availabilityPill: published ? 'Published across your locations' : 'Draft — publish from Review when ready',
+    pillIcon: published ? 'apartment' : 'edit_note',
+    pillClass: published ? 'bg-surface-tint-blue text-primary' : 'bg-surface-container-high text-text-secondary',
+    stockLabel: stock !== null ? `In Stock (${stock} ${product.unit || 'units'})` : 'Stock not set',
+    stockOn: (stock ?? 0) > 0,
+    actionLabel: 'Review',
+    actionIcon: 'rate_review',
+  };
+}
 
 export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: BusinessHubCatalogScreenProps) {
-  const [location, setLocation] = useState('All Locations (2)');
-  const [locationOpen, setLocationOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [tab, setTab] = useState('products');
   const [chip, setChip] = useState('All Status');
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
   const [stock, setStock] = useState<Record<string, boolean>>(
     Object.fromEntries(CATALOG_ITEMS.map((item) => [item.key, item.stockOn])),
   );
   const [sheetItem, setSheetItem] = useState<string | null>(null);
 
-  const visibleItems = CATALOG_ITEMS.filter((item) =>
-    search.trim() === '' ? true : item.name.toLowerCase().includes(search.trim().toLowerCase()),
-  );
+  // Bulk import state (shared wizard + review used across the whole app)
+  const importedProducts = useImportedProducts();
+  const [view, setView] = useState<'catalog' | 'importReview'>('catalog');
+  const [addMethodsOpen, setAddMethodsOpen] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Manual add-product flow: reuses the same onboarding wizard steps.
+  const [manualStep, setManualStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [manualDraft, setManualDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
+
+  const importedItems = importedProducts.map(importedToItem);
+  const importedKeys = new Set(importedProducts.map((product) => product.id));
+  const allItems = [...importedItems, ...CATALOG_ITEMS];
+  const draftImportCount = importedProducts.filter((product) => product.status === 'draft').length;
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3500);
+  };
+
+  const categoryChoices = [
+    { value: '', label: 'All categories' },
+    ...Array.from(new Set(allItems.map((item) => item.category))).map((name) => ({
+      value: name,
+      label: name,
+    })),
+  ];
+
+  const visibleItems = allItems.filter((item) => {
+    if (category !== '' && item.category !== category) return false;
+    const query = search.trim().toLowerCase();
+    return (
+      query === '' ||
+      item.name.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query) ||
+      item.sku.toLowerCase().includes(query)
+    );
+  });
+
+  if (view === 'importReview') {
+    return (
+      <AppScreen>
+        <div className="px-margin pt-space-md pb-space-xl">
+          <ImportedProductsReview onBack={() => setView('catalog')} />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
+      </AppScreen>
+    );
+  }
+
+  // Manual add-product: same four steps as onboarding, published into the catalogue.
+  if (manualStep > 0) {
+    const changeManualDraft = (patch: Partial<ProductDraft>) =>
+      setManualDraft((previous) => ({ ...previous, ...patch }));
+    const handleManualPublish = () => {
+      const { saved } = saveImportedProducts(
+        { batchId: 'manual', fileName: 'manual-entry', importedAt: Date.now() },
+        [
+          {
+            rowId: `manual_${Date.now()}`,
+            rowNumber: 1,
+            name: manualDraft.title,
+            description: manualDraft.description,
+            sku: manualDraft.skuCode,
+            barcode: '',
+            category: manualDraft.primaryCategory,
+            price: parseMoney(manualDraft.basePrice),
+            salePrice: parseMoney(manualDraft.comparePrice),
+            costPrice: parseMoney(manualDraft.costPrice),
+            bulkPricing: [],
+            stock: manualDraft.variantsEnabled
+              ? manualDraft.variants.reduce((total, variant) => total + (parseMoney(variant.inventory) ?? 0), 0)
+              : null,
+            unit: 'unit',
+            variants: manualDraft.variants.map((variant) => ({ name: variant.name, price: parseMoney(variant.price) })),
+            images: [],
+            extra: {},
+          },
+        ],
+        { existingSkus: new Set(allItems.map((item) => item.sku)) },
+      );
+      if (saved.length > 0) publishImportedProducts([saved[0].id]);
+      setManualStep(0);
+      setManualDraft({ ...INITIAL_PRODUCT_DRAFT });
+      showToast(saved.length > 0 ? `“${manualDraft.title || 'Product'}” published to your catalogue.` : 'This product already exists (same SKU).');
+    };
+    return (
+      <AppScreen>
+        {manualStep === 1 && (
+          <BusinessAddProductStep1Screen
+            draft={manualDraft}
+            onDraftChange={changeManualDraft}
+            onBack={() => setManualStep(0)}
+            onNext={() => setManualStep(2)}
+            onSaveDraft={() => setManualStep(0)}
+          />
+        )}
+        {manualStep === 2 && (
+          <BusinessAddProductStep2Screen
+            draft={manualDraft}
+            onDraftChange={changeManualDraft}
+            onBack={() => setManualStep(1)}
+            onNext={() => setManualStep(3)}
+            onSaveDraft={() => setManualStep(0)}
+          />
+        )}
+        {manualStep === 3 && (
+          <BusinessAddProductStep3Screen
+            draft={manualDraft}
+            onDraftChange={changeManualDraft}
+            onBack={() => setManualStep(2)}
+            onNext={() => setManualStep(4)}
+            onSaveDraft={() => setManualStep(0)}
+          />
+        )}
+        {manualStep === 4 && (
+          <BusinessProductReviewScreen
+            draft={manualDraft}
+            onBack={() => setManualStep(3)}
+            onEditBasics={() => setManualStep(1)}
+            onEditPricing={() => setManualStep(2)}
+            onEditBranches={() => setManualStep(3)}
+            onEditFulfillment={() => setManualStep(3)}
+            onEditDescription={() => setManualStep(1)}
+            onPublish={handleManualPublish}
+            onSaveDraft={() => setManualStep(0)}
+          />
+        )}
+      </AppScreen>
+    );
+  }
 
   // Live: the branch's real catalogue; the designed list below is the demo.
   if (hasApiConfig()) {
@@ -174,46 +352,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
     <AppScreen>
       <BusinessHubHeader />
       <div className="flex flex-col w-full flex-1 pb-24">
-        {/* Location Switcher + Add New */}
-        <div className="px-margin pt-space-xs pb-space-sm flex items-center justify-between gap-space-xs">
-          <div className="relative">
-            {locationOpen && <div className="fixed inset-0 z-30" onClick={() => setLocationOpen(false)} />}
-            <button
-              className="flex items-center gap-space-2xs bg-surface-container-high text-on-surface px-space-sm py-space-2xs rounded-full shadow-sm hover:bg-surface-container-highest transition-colors"
-              type="button"
-              onClick={() => setLocationOpen((open) => !open)}
-            >
-              <Icon name="storefront" className="text-[16px] text-primary" />
-              <span className="font-label-sm text-label-sm font-semibold truncate max-w-[130px]">{location}</span>
-              <Icon
-                name="expand_more"
-                className={`text-[16px] text-on-surface-variant transition-transform duration-200 ${locationOpen ? 'rotate-180' : ''}`}
-              />
-            </button>
-            {locationOpen && (
-              <div className="absolute top-full left-0 mt-1 w-56 bg-surface-canvas rounded-xl shadow-xl z-40 p-space-xs flex flex-col gap-space-2xs">
-                {LOCATION_OPTIONS.map((option) => (
-                  <button
-                    className={`w-full text-left px-space-xs py-space-xs rounded-lg font-label-sm text-label-sm flex items-center justify-between ${
-                      option === location
-                        ? 'bg-surface-tint-blue text-primary font-semibold'
-                        : 'hover:bg-surface-container-low text-text-primary'
-                    }`}
-                    key={option}
-                    type="button"
-                    onClick={() => {
-                      setLocation(option);
-                      setLocationOpen(false);
-                    }}
-                  >
-                    <span>{option}</span>
-                    {option === location && <Icon name="check" className="text-[16px]" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
+        {/* Add New — location is picked from the persistent top-bar icon */}
+        <div className="px-margin pt-space-xs pb-space-sm flex items-center justify-end gap-space-xs">
           {/* Split Add Action */}
           <div className="relative">
             {addOpen && <div className="fixed inset-0 z-30" onClick={() => setAddOpen(false)} />}
@@ -232,7 +372,10 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                 <button
                   className="w-full text-left px-space-sm py-space-xs rounded-lg hover:bg-surface-container text-text-primary font-label-sm text-label-sm flex items-center gap-space-xs"
                   type="button"
-                  onClick={() => setAddOpen(false)}
+                  onClick={() => {
+                    setAddOpen(false);
+                    setAddMethodsOpen(true);
+                  }}
                 >
                   <Icon name="inventory_2" className="text-primary text-[18px]" />
                   <span>+ Add Product</span>
@@ -275,6 +418,30 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
           </div>
         </div>
 
+        {/* Imported drafts banner */}
+        {draftImportCount > 0 && (
+          <div className="px-margin mb-space-sm">
+            <button
+              className="w-full flex items-center gap-space-sm bg-surface-tint-blue rounded-xl px-space-sm py-space-xs text-left active:scale-[0.99] transition-all"
+              type="button"
+              onClick={() => setView('importReview')}
+            >
+              <span className="w-8 h-8 rounded-lg bg-primary-container text-on-primary flex items-center justify-center shrink-0">
+                <Icon name="upload_file" className="text-[17px]" />
+              </span>
+              <span className="flex flex-col min-w-0 flex-1">
+                <span className="font-label-sm text-label-sm text-primary font-semibold truncate">
+                  {draftImportCount.toLocaleString()} imported product{draftImportCount === 1 ? '' : 's'} in draft
+                </span>
+                <span className="font-caption text-caption text-text-secondary truncate">
+                  Review, add images and publish when ready
+                </span>
+              </span>
+              <Icon name="chevron_right" className="text-[18px] text-primary shrink-0" />
+            </button>
+          </div>
+        )}
+
         {/* Search & Quick Filter */}
         <div className="px-margin flex flex-col gap-space-xs mb-space-md">
           <div className="relative flex items-center w-full">
@@ -286,13 +453,18 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <button
-              aria-label="Clear or filter"
-              className="absolute right-space-sm text-outline hover:text-text-primary flex items-center"
-              type="button"
-            >
-              <Icon name="tune" className="text-[18px]" />
-            </button>
+            <FilterMenu
+              align="right"
+              ariaLabel="Filter catalogue by category"
+              buttonClassName="absolute right-space-sm top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg text-outline hover:text-text-primary transition-colors"
+              choices={categoryChoices}
+              icon="tune"
+              iconClassName="text-[18px]"
+              label={null}
+              onChange={setCategory}
+              title="Filter by category"
+              value={category}
+            />
           </div>
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-space-2xs">
             {FILTER_CHIPS.map((filterChip) => {
@@ -420,19 +592,19 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                 <div className="flex items-center gap-2">
                   <button
                     aria-label={`Toggle stock for ${item.name}`}
-                    className={`w-9 h-5 rounded-full transition-colors ${stock[item.key] ? 'bg-primary-container' : 'bg-surface-dim'}`}
+                    className={`w-9 h-5 rounded-full transition-colors ${stock[item.key] ?? item.stockOn ? 'bg-primary-container' : 'bg-surface-dim'}`}
                     role="switch"
                     type="button"
-                    onClick={() => setStock((current) => ({ ...current, [item.key]: !current[item.key] }))}
+                    onClick={() => setStock((current) => ({ ...current, [item.key]: !(current[item.key] ?? item.stockOn) }))}
                   >
                     <span
                       className={`block w-4 h-4 rounded-full bg-surface-canvas shadow transition-transform ${
-                        stock[item.key] ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                        stock[item.key] ?? item.stockOn ? 'translate-x-[18px]' : 'translate-x-[2px]'
                       }`}
                     />
                   </button>
                   <span className="font-label-sm text-label-sm text-text-secondary">
-                    {stock[item.key] ? item.stockLabel : 'Off Shelf'}
+                    {(stock[item.key] ?? item.stockOn) ? item.stockLabel : 'Off Shelf'}
                   </span>
                 </div>
                 <div className="flex items-center gap-space-2xs">
@@ -447,7 +619,10 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                   <button
                     className="flex items-center gap-1 px-space-xs py-1 rounded-md bg-surface-canvas shadow-sm text-primary font-label-sm text-label-sm font-medium hover:bg-surface-container-high transition-colors"
                     type="button"
-                    onClick={() => onOpenAssignment(item.name)}
+                    onClick={() => {
+                      if (importedKeys.has(item.key)) setView('importReview');
+                      else onOpenAssignment(item.name);
+                    }}
                   >
                     <Icon name={item.actionIcon} className="text-[15px]" />
                     <span>{item.actionLabel}</span>
@@ -463,8 +638,22 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
               </div>
               <h4 className="font-heading-sm text-heading-sm text-text-primary">No items found</h4>
               <p className="font-body-md text-body-md text-text-secondary max-w-xs mt-1">
-                Try a different search or switch location filter.
+                {category !== '' || search.trim() !== ''
+                  ? 'Nothing matches this search and category filter. Clear them to see the whole catalogue.'
+                  : 'Try a different search or pick another status filter.'}
               </p>
+              {(category !== '' || search.trim() !== '') && (
+                <button
+                  className="mt-space-sm h-10 px-space-md rounded-xl bg-surface-container-low text-on-surface font-button-secondary text-button-secondary font-medium active:scale-95 transition-transform"
+                  type="button"
+                  onClick={() => {
+                    setCategory('');
+                    setSearch('');
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -526,6 +715,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
           <button
             className="flex items-center gap-1.5 px-space-sm py-2 rounded-full bg-primary-container text-on-primary-container font-label-md text-label-md font-semibold shadow-md active:scale-95 transition-all"
             type="button"
+            onClick={() => setAddMethodsOpen(true)}
           >
             <Icon name="add_circle" className="text-[18px]" />
             <span>+ Add Product</span>
@@ -541,6 +731,39 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
       </div>
 
       <BusinessTabBar active="business" onTab={onTab} />
+
+      {/* Add Product: manual / bulk import / connect platform (coming soon) */}
+      <AddProductMethodsDialog
+        open={addMethodsOpen}
+        onClose={() => setAddMethodsOpen(false)}
+        onAddManually={() => {
+          setAddMethodsOpen(false);
+          setManualDraft({ ...INITIAL_PRODUCT_DRAFT });
+          setManualStep(1);
+        }}
+        onBulkImport={() => {
+          setAddMethodsOpen(false);
+          setImportWizardOpen(true);
+        }}
+      />
+
+      {/* Reusable Bulk Product Import wizard */}
+      <ProductImportWizard
+        open={importWizardOpen}
+        onClose={() => setImportWizardOpen(false)}
+        existingSkus={allItems.map((item) => item.sku)}
+        existingNames={allItems.map((item) => item.name)}
+        onImported={(importResult) => {
+          showToast(summariseImport(importResult));
+        }}
+        onOpenReview={() => setView('importReview')}
+      />
+
+      {toast && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
+          {toast}
+        </div>
+      )}
     </AppScreen>
   );
 }

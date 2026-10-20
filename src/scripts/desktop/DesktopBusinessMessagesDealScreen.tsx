@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { MessagesAttachmentButton } from './MessagesAttachmentButton';
@@ -138,10 +139,18 @@ export function DesktopBusinessMessagesDealScreen({ onNav, onView, onViewCustome
           </div>
           <div className="flex flex-wrap items-center gap-space-md font-label-sm text-label-sm text-on-surface-variant">
             <span>18 Active Chats</span>
-            <button type="button" className="h-9 px-space-sm rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center gap-space-2xs">
-              <Icon name="tune" className="text-[16px]" />
-              Filter
-            </button>
+            {/* Mirrors the channel chips in the list panel so the header control filters too. */}
+            <FilterMenu
+              align="right"
+              buttonClassName="h-9 px-space-sm rounded-xl border border-border font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-subtle flex items-center gap-space-2xs"
+              choices={FILTERS.map((f) => ({ value: f.key, label: f.label }))}
+              icon="tune"
+              iconClassName="text-[16px]"
+              label="Filter"
+              onChange={(next) => setFilter(next as DealFilter)}
+              title="Filter conversations"
+              value={filter}
+            />
             <button type="button" onClick={() => onView('compose')} className="h-9 px-space-sm rounded-xl bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 flex items-center gap-space-2xs shadow-sm">
               <Icon name="campaign" className="text-[16px]" filled />
               Broadcast Deal Update

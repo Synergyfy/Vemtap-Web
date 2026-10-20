@@ -74,6 +74,12 @@ interface BusinessBranchContextValue {
   branch: BusinessBranchData;
   branches: BusinessBranchData[];
   switching: boolean;
+  /**
+   * Whether the signed-in user may move between locations. Single-site staff
+   * only see their own branch, so the header switcher degrades to a read-only
+   * "you are here" card instead of a list of branches.
+   */
+  canSwitchLocations: boolean;
   switchTo: (key: string) => void;
   /** UUID of the active live branch, for branch-scoped API calls; undefined in demo mode. */
   activeBranchId?: string;
@@ -113,7 +119,14 @@ const toBranchData = (branch: ProfileBranch): BusinessBranchData => ({
 
 const BusinessBranchContext = createContext<BusinessBranchContextValue | null>(null);
 
-export function BusinessBranchProvider({ children }: { children: ReactNode }) {
+export function BusinessBranchProvider({
+  children,
+  canSwitchLocations = true,
+}: {
+  children: ReactNode;
+  /** Set false for staff scoped to a single location. Defaults to true. */
+  canSwitchLocations?: boolean;
+}) {
   const myBusiness = useMyBusiness();
   const liveBranches = useMemo(
     () => (myBusiness.data?.branches ?? []).filter((b) => b.id && b.isActive !== false).map(toBranchData),
@@ -147,7 +160,9 @@ export function BusinessBranchProvider({ children }: { children: ReactNode }) {
     branches.find((option) => option.key === branchKey) ?? branches.find((option) => option.isMainBranch) ?? branches[0];
 
   return (
-    <BusinessBranchContext.Provider value={{ branch, branches, switching, switchTo, activeBranchId: branch.id, isLive }}>
+    <BusinessBranchContext.Provider
+      value={{ branch, branches, switching, canSwitchLocations, switchTo, activeBranchId: branch.id, isLive }}
+    >
       {children}
     </BusinessBranchContext.Provider>
   );
@@ -157,7 +172,14 @@ export function useBusinessBranch(): BusinessBranchContextValue {
   const context = useContext(BusinessBranchContext);
   if (!context) {
     const branch = BUSINESS_BRANCHES[0];
-    return { branch, branches: BUSINESS_BRANCHES, switching: false, switchTo: () => {}, isLive: false };
+    return {
+      branch,
+      branches: BUSINESS_BRANCHES,
+      switching: false,
+      canSwitchLocations: true,
+      switchTo: () => {},
+      isLive: false,
+    };
   }
   return context;
 }
