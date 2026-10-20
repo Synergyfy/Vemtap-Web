@@ -207,6 +207,7 @@ import {
 import type { IntelligenceTab } from './components/business/IntelligencePanel';
 import { DesktopLiveAccountScreen, LiveAccountScreen, type AccountPage } from './scripts/LiveAccountScreens';
 import { DesktopLiveMessagesScreen, LiveMessagesScreen } from './scripts/LiveMessagesScreens';
+import { DesktopLivePosScreen, LivePosScreen, type LivePosPage } from './scripts/LivePosScreens';
 import {
   DesktopLiveBoostHubScreen,
   DesktopLiveBoostStudioScreen,
@@ -1720,6 +1721,22 @@ function AppInner() {
       <DesktopLiveAccountScreen page={page} onNav={businessPortalNav} onOpenLink={openLink} />
     ) : (
       <LiveAccountScreen page={page} onBack={() => setRoute('business-more')} onOpenLink={openLink} />
+    );
+  };
+
+  /** Live POS pages; the designed demo screens stay for demo mode. */
+  const livePos = (page: LivePosPage) => {
+    const nav = {
+      onNewSale: () => setRoute('pos-register'),
+      onOpen: (target: 'ledger' | 'kitchen' | 'stock') => setRoute(target === 'ledger' ? 'pos-ledger' : target === 'kitchen' ? 'pos-kitchen' : 'pos-stock'),
+      onOpenHome: () => setRoute('pos-home'),
+      onOpenTaxes: () => setRoute('pos-taxes'),
+      onOpenReceipt: () => setRoute('pos-receipt'),
+    };
+    return isDesktop ? (
+      <DesktopLivePosScreen page={page} nav={nav} onNav={posTerminalNav} />
+    ) : (
+      <LivePosScreen page={page} nav={nav} onBack={() => setRoute(page === 'home' ? 'business-overview' : 'pos-home')} />
     );
   };
 
@@ -4636,6 +4653,7 @@ function AppInner() {
       );
 
     case 'pos-home':
+      if (hasApiConfig()) return livePos('home');
       if (isDesktop)
         return (
           <DesktopPosHomeScreen
@@ -4669,6 +4687,7 @@ function AppInner() {
       );
 
     case 'pos-home-offline':
+      if (hasApiConfig()) return livePos('home');
       if (isDesktop)
         return (
           <DesktopPosHomeScreen
@@ -4702,6 +4721,7 @@ function AppInner() {
       );
 
     case 'pos-register':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosRegisterScreen
@@ -4737,6 +4757,7 @@ function AppInner() {
       );
 
     case 'pos-cart':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosCartScreen
@@ -4806,6 +4827,7 @@ function AppInner() {
       );
 
     case 'pos-sale-complete':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosSaleCompleteScreen
@@ -4839,6 +4861,7 @@ function AppInner() {
       );
 
     case 'pos-payment':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosPaymentScreen
@@ -4884,6 +4907,7 @@ function AppInner() {
       );
 
     case 'pos-product-shift':
+      if (hasApiConfig()) return livePos('stock');
       if (isDesktop)
         return (
           <DesktopPosProductShiftScreen
@@ -4921,6 +4945,7 @@ function AppInner() {
       );
 
     case 'pos-stock':
+      if (hasApiConfig()) return livePos('stock');
       if (isDesktop)
         return (
           <DesktopPosStockScreen
@@ -4940,6 +4965,7 @@ function AppInner() {
       );
 
     case 'pos-ledger':
+      if (hasApiConfig()) return livePos('ledger');
       if (isDesktop)
         return <DesktopPosLedgerScreen onNav={posTerminalNav} onOpenOrder={() => setRoute('pos-txn-detail')} />;
       return (
@@ -5019,6 +5045,7 @@ function AppInner() {
       );
 
     case 'pos-offline':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return <DesktopPosOfflineSaleScreen onNav={posTerminalNav} />;
       return (
@@ -5028,6 +5055,7 @@ function AppInner() {
       );
 
     case 'pos-txn-detail':
+      if (hasApiConfig()) return livePos('ledger');
       if (isDesktop)
         return <DesktopPosTransactionDetailScreen onNav={posTerminalNav} onBack={goBackToPrevious} />;
       return (
@@ -5114,6 +5142,7 @@ function AppInner() {
       );
 
     case 'pos-kitchen':
+      if (hasApiConfig()) return livePos('kitchen');
       if (isDesktop)
         return <DesktopPosKitchenScreen onNav={posTerminalNav} onReturnToRegister={() => setRoute('pos-register')} />;
       return (
@@ -5126,6 +5155,7 @@ function AppInner() {
       );
 
     case 'pos-settings':
+      if (hasApiConfig()) return livePos('settings');
       if (isDesktop)
         return (
           <DesktopPosGeneralSettingsScreen

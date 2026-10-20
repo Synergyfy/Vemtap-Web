@@ -58,8 +58,12 @@ export type CatalogueItemUpdate = Partial<CatalogueItemInput> & { status?: strin
 const asList = (res: CatalogueItem[] | { data: CatalogueItem[] }) => (Array.isArray(res) ? res : res.data ?? []);
 
 export const catalogueItemsService = {
+  /** The API accepts `itemType` but does not apply it, so the type is also filtered here. */
   list: (query: { branchId?: string; itemType?: 'product' | 'service'; limit?: number } = {}) =>
-    api.get<CatalogueItem[] | { data: CatalogueItem[] }>('/catalogue/items', { params: { ...query } }).then(asList),
+    api
+      .get<CatalogueItem[] | { data: CatalogueItem[] }>('/catalogue/items', { params: { ...query } })
+      .then(asList)
+      .then((items) => (query.itemType ? items.filter((item) => (item.itemType ?? 'product') === query.itemType) : items)),
   create: (input: CatalogueItemInput) => api.post<CatalogueItem>('/catalogue/items', input),
   update: (id: string, input: CatalogueItemUpdate) => api.patch<CatalogueItem>(`/catalogue/items/${id}`, input),
   /** Permanent delete everywhere; the backend needs `applyGlobally` (or a branchId). */
