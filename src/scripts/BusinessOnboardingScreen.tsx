@@ -41,9 +41,9 @@ import {
 } from './businessSetup';
 import { INITIAL_DEAL_STUDIO_DRAFT } from './dealStudio';
 import type { DealStudioDraft } from './dealStudio';
-import { INITIAL_PRODUCT_DRAFT } from './productDraft';
+import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import type { ProductDraft } from './productDraft';
-import { INITIAL_SERVICE_DRAFT } from './serviceDraft';
+import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT } from './serviceDraft';
 import type { ServiceDraft } from './serviceDraft';
 import { classifyServiceFromBusiness } from './serviceClassification';
 
@@ -206,13 +206,13 @@ export function BusinessOnboardingScreen({
     () => (stored?.data.extraBranches as BusinessBranch[] | undefined) ?? [],
   );
   const [productDraft, setProductDraft] = useState<ProductDraft>(
-    () => (stored?.data.productDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+    () => (stored?.data.productDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [dealDraft, setDealDraft] = useState<ProductDraft>(
     () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
   );
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
-    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? INITIAL_SERVICE_DRAFT,
+    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? (hasApiConfig() ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT),
   );
   const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
     () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? INITIAL_DEAL_STUDIO_DRAFT,
@@ -418,7 +418,7 @@ export function BusinessOnboardingScreen({
           onEditBranches={() => setStepIndex(10)}
           onEditFulfillment={() => setStepIndex(10)}
           onEditDescription={() => setStepIndex(8)}
-          onPublish={() => setStepIndex(12)}
+          onPublish={() => sync.publishProduct(productDraft, () => setStepIndex(12))}
           onSaveDraft={onBack}
         />
       );
@@ -483,7 +483,7 @@ export function BusinessOnboardingScreen({
           onEditBasics={() => setStepIndex(14)}
           onEditPricing={() => setStepIndex(15)}
           onEditBranches={() => setStepIndex(16)}
-          onPublish={() => setStepIndex(18)}
+          onPublish={() => sync.publishService(serviceDraft, () => setStepIndex(18))}
           onSaveDraft={onBack}
         />
       );

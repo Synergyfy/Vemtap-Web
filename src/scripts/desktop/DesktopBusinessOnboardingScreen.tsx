@@ -23,8 +23,8 @@ import { DesktopAddServiceStep2Screen } from './DesktopAddServiceStep2Screen';
 import { DesktopAddServiceStep3Screen } from './DesktopAddServiceStep3Screen';
 import { DesktopServiceReviewScreen } from './DesktopServiceReviewScreen';
 import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
-import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
-import { INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
+import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
+import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
 import { INITIAL_DEAL_STUDIO_DRAFT, type DealStudioDraft } from './desktopDealStudio';
 import { DesktopDealStudioStep1Screen } from './DesktopDealStudioStep1Screen';
 import { DesktopDealStudioStep2Screen } from './DesktopDealStudioStep2Screen';
@@ -186,10 +186,10 @@ export function DesktopBusinessOnboardingScreen({
     () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
   );
   const [productDraft, setProductDraft] = useState<ProductDraft>(
-    () => (stored?.data.productDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+    () => (stored?.data.productDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
-    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? INITIAL_SERVICE_DRAFT,
+    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? (hasApiConfig() ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT),
   );
   const [dealDraft, setDealDraft] = useState<ProductDraft>(
     () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
@@ -356,7 +356,7 @@ export function DesktopBusinessOnboardingScreen({
           onEditFulfillment={() => setStep('addProduct3')}
           onEditDescription={() => setStep('addProduct1')}
           onEditSteps={() => setStep('addProduct3')}
-          onPublish={() => setStep('productPublished')}
+          onPublish={() => sync.publishProduct(productDraft, () => setStep('productPublished'))}
           onSaveDraft={onBack}
         />
       );
@@ -431,7 +431,7 @@ export function DesktopBusinessOnboardingScreen({
           onEditPricing={() => setStep('service2')}
           onEditBranches={() => setStep('service3')}
           onEditDescription={() => setStep('service1')}
-          onPublish={() => setStep('servicePublished')}
+          onPublish={() => sync.publishService(serviceDraft, () => setStep('servicePublished'))}
           onSaveDraft={onBack}
         />
       );

@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
+import { CatalogueItemsPanel } from '../components/business/CatalogueItemsPanel';
+import { hasApiConfig } from '../services/api/client';
 
 interface BusinessHubCatalogScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -153,6 +155,20 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
   const visibleItems = CATALOG_ITEMS.filter((item) =>
     search.trim() === '' ? true : item.name.toLowerCase().includes(search.trim().toLowerCase()),
   );
+
+  // Live: the branch's real catalogue; the designed list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <BusinessHubHeader />
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
+          <h1 className="font-heading-md text-heading-md text-text-primary">Products &amp; Services</h1>
+          <CatalogueItemsPanel />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>

@@ -6,6 +6,16 @@ import { useBusinessCategoryOptions } from './useBusinessCategoryOptions';
 import { myBusinessKeys } from './useMyBusiness';
 import { BUSINESS_CATEGORIES } from '../../scripts/businessOnboardingSeed';
 import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import {
+  catalogueItemsService,
+  productDraftToInput,
+  serviceDraftToInput,
+  type ProductDraftLike,
+  type ServiceDraftLike,
+} from '../../services/catalogueItemsService';
+import { catalogueItemKeys } from './useCatalogueItems';
 
 /** The setup draft fields both onboarding screens share. */
 export interface OnboardingProfileDraft {
@@ -31,6 +41,7 @@ export function useOnboardingSync() {
   const live = hasApiConfig();
   const queryClient = useQueryClient();
   const categories = useBusinessCategoryOptions(BUSINESS_CATEGORIES);
+  const { activeBranchId } = useBusinessBranch();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +58,7 @@ export function useOnboardingSync() {
     setError(null);
     save()
       .then(next)
-      .catch((e: unknown) => setError(apiErrorMessage(e, 'Could not save this step. Please try again.')))
+      .catch((e: unknown) => setError(planErrorMessage(e) ?? apiErrorMessage(e, 'Could not save this step. Please try again.')))
       .finally(() => setSaving(false));
   };
 
@@ -91,6 +102,21 @@ export function useOnboardingSync() {
           }),
         next,
       ),
+    /** Publishes the setup's product to the main branch, then moves on. */
+    publishProduct: (draft: ProductDraftLike, next: () => void) =>
+      saveThen(async () => {
+        if (!live) return;
+        if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
+        await catalogueItemsService.create(productDraftToInput(draft, activeBranchId));
+        await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
+      }, next),
+    publishService: (draft: ServiceDraftLike, next: () => void) =>
+      saveThen(async () => {
+        if (!live) return;
+        if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
+        await catalogueItemsService.create(serviceDraftToInput(draft, activeBranchId));
+        await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
+      }, next),
     saveLocation: (location: { address?: string; city?: string; state?: string; latitude?: number; longitude?: number }, next: () => void) =>
       saveThen(() => patch(location), next),
   };
