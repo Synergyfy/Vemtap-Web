@@ -12,6 +12,8 @@ interface BusinessBoostHubScreenProps {
   onBoost: (item?: string) => void;
   onOpenMetrics: () => void;
   onOpenSegments: () => void;
+  /** Opens the 6-step Create Campaign wizard; falls back to Boost studio. */
+  onCreateCampaign?: () => void;
 }
 
 type HubStatusTab = 'active' | 'scheduled' | 'completed' | 'draft';
@@ -386,7 +388,7 @@ const buildCampaignFromOffer = (offer: Record<string, unknown>, index: number): 
 
 const fmt = (value: number) => Math.round(value).toLocaleString('en-US');
 
-export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, onOpenSegments }: BusinessBoostHubScreenProps) {
+export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, onOpenSegments, onCreateCampaign }: BusinessBoostHubScreenProps) {
   const [statusTab, setStatusTab] = useState<HubStatusTab>('active');
   const [toast, setToast] = useState<string | null>(null);
   const [liveCampaigns, setLiveCampaigns] = useState<HubCampaign[]>([]);
@@ -530,7 +532,7 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
           <button
             className="w-full h-11 bg-primary-container hover:bg-primary active:scale-[0.98] text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs transition-all shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)]"
             type="button"
-            onClick={() => onBoost()}
+            onClick={() => (onCreateCampaign ? onCreateCampaign() : onBoost())}
           >
             <Icon className="text-[20px]" name="add_circle" />
             <span>Create Campaign</span>

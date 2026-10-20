@@ -11,6 +11,8 @@ interface DesktopBoostHubScreenProps {
   onBoost: (item: string) => void;
   onOpenMetrics: () => void;
   onOpenSegments: () => void;
+  /** Opens the 6-step Create Campaign wizard; falls back to Boost studio. */
+  onCreateCampaign?: () => void;
 }
 
 type HubStatusTab = 'active' | 'scheduled' | 'completed' | 'draft';
@@ -338,6 +340,7 @@ export function DesktopBoostHubScreen({
   onBoost,
   onOpenMetrics,
   onOpenSegments,
+  onCreateCampaign,
 }: DesktopBoostHubScreenProps) {
   const [statusTab, setStatusTab] = useState<HubStatusTab>('active');
   const [toast, setToast] = useState<string | null>(null);
@@ -470,7 +473,7 @@ export function DesktopBoostHubScreen({
           <div className="flex items-center gap-space-sm flex-shrink-0">
             <button
               type="button"
-              onClick={() => onBoost('')}
+              onClick={() => (onCreateCampaign ? onCreateCampaign() : onBoost(''))}
               className="px-space-lg h-[46px] rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-md hover:shadow-lg transition-all flex items-center gap-space-xs"
             >
               <Icon name="add_circle" className="text-[20px]" />
@@ -732,7 +735,7 @@ export function DesktopBoostHubScreen({
               </div>
               <button
                 type="button"
-                onClick={() => onBoost('')}
+                onClick={() => (onCreateCampaign ? onCreateCampaign() : onBoost(''))}
                 className="mt-space-2xs h-10 w-full bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-lg flex items-center justify-center gap-space-xs transition-colors shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)]"
               >
                 <Icon className="text-[18px]" name="add_circle" />

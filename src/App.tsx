@@ -170,6 +170,8 @@ import { DesktopBusinessDealLedgerScreen } from './scripts/desktop/DesktopBusine
 import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
 import { BusinessCategoriesScreen } from './scripts/BusinessCategoriesScreen';
 import { BusinessIntelligenceScreen } from './scripts/BusinessIntelligenceScreen';
+import { BusinessCampaignWizardScreen } from './scripts/BusinessCampaignWizardScreen';
+import { DesktopCampaignWizardScreen } from './scripts/desktop/DesktopCampaignWizardScreen';
 import { DesktopBusinessIntelligenceScreen } from './scripts/desktop/DesktopBusinessIntelligenceScreen';
 import {
   BusinessDiscoveryPresenceScreen,
@@ -483,6 +485,7 @@ type Route =
   | 'pos-taxes'
   | 'business-categories'
   | 'analytics-intelligence'
+  | 'campaign-create'
   | 'network-dashboard'
   | 'network-milestones'
   | 'network-referrals'
@@ -663,6 +666,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'pos-taxes': '/pos/settings/taxes',
   'business-categories': '/business/hub/catalog/categories',
   'analytics-intelligence': '/business/analytics/intelligence',
+  'campaign-create': '/boost-hub/campaigns/new',
   'network-dashboard': '/business/network',
   'network-milestones': '/business/network/milestones',
   'network-referrals': '/business/network/referrals',
@@ -3487,6 +3491,7 @@ function AppInner() {
             onBoost={(item) => openBoost(item)}
             onOpenMetrics={() => setRoute('boost-metrics')}
             onOpenSegments={() => setRoute('segments-hub')}
+            onCreateCampaign={() => setRoute('campaign-create')}
           />
         );
       return (
@@ -3497,6 +3502,7 @@ function AppInner() {
             onBoost={(item) => openBoost(item)}
             onOpenMetrics={() => setRoute('boost-metrics')}
             onOpenSegments={() => setRoute('segments-hub')}
+            onCreateCampaign={() => setRoute('campaign-create')}
           />
         </div>
       );
@@ -4752,6 +4758,17 @@ function AppInner() {
     case 'network-discovery':
       if (isDesktop) return <DesktopBusinessDiscoveryPresenceScreen onNav={businessPortalNav} />;
       return <BusinessDiscoveryPresenceScreen onBack={() => setRoute('network-dashboard')} />;
+
+    case 'campaign-create':
+      if (isDesktop)
+        return (
+          <DesktopCampaignWizardScreen
+            onNav={businessPortalNav}
+            onExit={() => setRoute('boost-hub')}
+            onDone={() => setRoute('boost-hub')}
+          />
+        );
+      return <BusinessCampaignWizardScreen onBack={() => setRoute('boost-hub')} onDone={() => setRoute('boost-hub')} />;
 
     case 'analytics-intelligence':
       if (isDesktop) return <DesktopBusinessIntelligenceScreen onNav={businessPortalNav} />;
