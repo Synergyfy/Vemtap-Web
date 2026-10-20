@@ -168,6 +168,8 @@ import { DesktopBusinessReviewsScreen } from './scripts/desktop/DesktopBusinessR
 import { BusinessDealLedgerScreen } from './scripts/BusinessDealLedgerScreen';
 import { DesktopBusinessDealLedgerScreen } from './scripts/desktop/DesktopBusinessDealLedgerScreen';
 import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
+import { BusinessCategoriesScreen } from './scripts/BusinessCategoriesScreen';
+import { DesktopBusinessCategoriesScreen } from './scripts/desktop/DesktopBusinessCategoriesScreen';
 import { BusinessPosReceiptScreen } from './scripts/BusinessPosReceiptScreen';
 import { DesktopPosTaxesScreen } from './scripts/desktop/DesktopPosTaxesScreen';
 import { DesktopPosReceiptScreen } from './scripts/desktop/DesktopPosReceiptScreen';
@@ -463,6 +465,7 @@ type Route =
   | 'business-reviews'
   | 'business-deal-ledger'
   | 'pos-taxes'
+  | 'business-categories'
   | 'pos-receipt'
   | 'store-ordering-dashboard'
   | 'store-ordering-qr'
@@ -636,6 +639,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-reviews': '/business/reviews',
   'business-deal-ledger': '/business/deals/ledger',
   'pos-taxes': '/pos/settings/taxes',
+  'business-categories': '/business/hub/catalog/categories',
   'pos-receipt': '/pos/settings/receipt',
   'cluster-onboarding': '/business/cluster/onboarding',
   'cluster-system': '/business/cluster',
@@ -1609,6 +1613,9 @@ function AppInner() {
         break;
       case 'pos-taxes':
         setRoute('pos-taxes');
+        break;
+      case 'business-categories':
+        setRoute('business-categories');
         break;
       case 'pos-receipt':
         setRoute('pos-receipt');
@@ -4669,6 +4676,10 @@ function AppInner() {
           />
         </div>
       );
+
+    case 'business-categories':
+      if (isDesktop) return <DesktopBusinessCategoriesScreen onNav={businessPortalNav} />;
+      return <BusinessCategoriesScreen onBack={() => setRoute('business-more')} />;
 
     case 'pos-taxes':
       if (isDesktop) return <DesktopPosTaxesScreen onNav={posTerminalNav} />;

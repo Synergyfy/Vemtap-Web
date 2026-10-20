@@ -58,6 +58,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     // Order mirrors the mobile Business menu — keep both lists in sync.
     items: [
       { key: 'business-catalog', label: 'Products & Services', icon: 'inventory_2' },
+      { key: 'business-categories', label: 'Categories', icon: 'category' },
       { key: 'business-deals', label: 'Deals', icon: 'local_offer' },
       { key: 'business-deal-ledger', label: 'Redemption Ledger', icon: 'receipt_long' },
       { key: 'business-customers', label: 'Customers', icon: 'group' },

@@ -119,6 +119,19 @@ export function BusinessMoreScreen({
       ],
     },
     {
+      key: 'catalogue',
+      label: 'Catalogue',
+      rows: [
+        {
+          key: 'categories',
+          icon: 'category',
+          title: 'Catalogue Categories',
+          sub: 'Group items & set your menu order',
+          onClick: () => onNavKey('business-categories'),
+        },
+      ],
+    },
+    {
       key: 'reputation',
       label: 'Reputation',
       rows: [
