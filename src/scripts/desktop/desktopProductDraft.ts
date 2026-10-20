@@ -50,3 +50,22 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   pricingMode: 'custom',
   prepWindow: '20 – 30 Mins',
 };
+
+/** Live catalogue starts from an empty product — the sample above is demo-only. */
+export const BLANK_PRODUCT_DRAFT: ProductDraft = {
+  ...INITIAL_PRODUCT_DRAFT,
+  title: '',
+  producer: '',
+  sku: '',
+  categoryId: undefined,
+  description: '',
+  basePrice: '',
+  comparePrice: '',
+  costPrice: '',
+  variantsEnabled: false,
+  variants: [],
+  skuCode: '',
+  lowStock: '',
+  branches: {},
+  pricingMode: 'uniform',
+};
