@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
@@ -332,6 +333,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
   const { search: searchContacts } = useContacts();
   const [activeTab, setActiveTab] = useState<FilterTab['key']>('all');
   const [query, setQuery] = useState('');
+  const [segment, setSegment] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [customPatrons, setCustomPatrons] = useState<PatronRow[]>([]);
   const [addView, setAddView] = useState<'methods' | 'manual' | null>(null);
@@ -397,7 +399,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
 
   // BUG-017: purchase-derived contacts first, deduped by name against seeds.
   const purchaseRows = searchContacts(query).map(contactToPatron);
-  const visibleRows = [
+  const unfilteredRows = [
     ...customPatrons,
     ...purchaseRows,
     ...PATRONS.filter((patron) => {
@@ -413,6 +415,19 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
       return matchesTab && matchesQuery;
     }),
   ];
+
+  // Every segment label is taken from the rows themselves, so this list can
+  // never drift from what the table actually holds.
+  const segmentChoices = [
+    { value: '', label: 'All segments' },
+    ...Array.from(new Set(unfilteredRows.map((row) => row.segment.label))).map((label) => ({
+      value: label,
+      label,
+    })),
+  ];
+
+  const visibleRows =
+    segment === '' ? unfilteredRows : unfilteredRows.filter((row) => row.segment.label === segment);
 
   const toggleRow = (name: string) => {
     setSelected((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
@@ -597,13 +612,17 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
                 </span>
                 <Icon name="expand_more" className="text-outline text-[16px]" />
               </button>
-              <button
-                type="button"
-                className="flex items-center gap-space-xs px-space-md h-10 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-primary font-label-md text-label-md transition-colors"
-              >
-                <Icon name="tune" className="text-[18px] text-primary" />
-                <span>Advanced Filters</span>
-              </button>
+              <FilterMenu
+                align="right"
+                buttonClassName="flex items-center gap-space-xs px-space-md h-10 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-primary font-label-md text-label-md transition-colors"
+                choices={segmentChoices}
+                icon="tune"
+                iconClassName="text-[18px] text-primary"
+                label="Advanced Filters"
+                onChange={setSegment}
+                title="Filter by segment"
+                value={segment}
+              />
             </div>
           </div>
         </div>

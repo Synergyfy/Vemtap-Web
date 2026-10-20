@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FilterMenu } from '../components/FilterMenu';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import {
@@ -201,14 +202,19 @@ function ServicesBody({
                 <Icon name="grid_view" className="text-[20px]" />
               </button>
             </div>
-            <button
-              aria-label="Filter catalogue"
-              type="button"
-              className="w-11 h-11 flex items-center justify-center rounded-xl bg-surface-subtle text-text-primary hover:bg-surface-container-low transition-colors shadow-sm relative"
-            >
-              <Icon name="tune" className="text-[20px]" />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
-            </button>
+            {/* Mirrors the category chips below so the toolbar control filters too. */}
+            <FilterMenu
+              align="right"
+              ariaLabel="Filter catalogue"
+              buttonClassName="w-11 h-11 flex items-center justify-center rounded-xl bg-surface-subtle text-text-primary hover:bg-surface-container-low transition-colors shadow-sm"
+              choices={chips.map((chip, idx) => ({ value: String(idx), label: chip }))}
+              icon="tune"
+              iconClassName="text-[20px]"
+              label={null}
+              onChange={(next) => onChip(Number(next))}
+              title="Filter catalogue"
+              value={String(activeChip)}
+            />
           </div>
         </section>
 

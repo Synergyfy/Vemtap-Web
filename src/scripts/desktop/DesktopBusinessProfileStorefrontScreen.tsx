@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { SocialChannelPicker } from '../../components/SocialChannelPicker';
+import { CreateWithAiButton } from '../../components/CreateWithAiButton';
 import {
   CHANNEL_PLATFORMS,
   CHANNEL_PLATFORM_BY_ID,
@@ -9,6 +10,7 @@ import {
 } from '../../utils/socialChannels';
 import { MerchantWorkspaceChrome } from './MerchantWorkspaceChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import type { AiPromptContext } from '../aiDesignAssistant';
 
 interface DesktopBusinessProfileStorefrontScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -21,6 +23,13 @@ interface Amenity {
 }
 
 const SUBDOMAIN_URL = 'https://urbangrill.vem.store';
+
+/** Brand facts displayed on this screen — also fed to the AI Design Assistant. */
+const BRAND_NAME = 'Urban Grill & Bistro';
+const BRAND_CATEGORY = 'Restaurant & Grill • Casual Dining';
+const BRAND_LOCATION = 'Apo District, Abuja';
+const BRAND_BIO =
+  'Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails.';
 
 const COVER_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC0PQQfxDTofHlI00FS1HC4wUJUDM9-BkN5GPpucSwBUy8oaMxd3zTf3-l-HYw0S4Mc1kt8O0B8zX7uBFLn9h7Vk8p9QUkJWCxG3_a7w9aeZH4C4fsMaRPg1EFEkynHCr6CLR2Nn-68aWL_7qpz6_bav5QcQ3L0AiFEM44UCdjOfCJjQc5FiVRt4caFVbGYuIPcAhxFHtZFH--JVs1K5Ssj8ctR9wGscl2yQ8JIhzvp6idjOfEx4qS9XQ';
@@ -147,6 +156,14 @@ export function DesktopBusinessProfileStorefrontScreen({
 }: DesktopBusinessProfileStorefrontScreenProps) {
   const [toastVisible, setToastVisible] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  /** Brand facts shown on this screen — reused by the contextual AI prompts. */
+  const aiProfileContext: AiPromptContext = {
+    businessName: BRAND_NAME,
+    category: BRAND_CATEGORY,
+    location: BRAND_LOCATION,
+    description: BRAND_BIO,
+  };
   const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
   const [channels, setChannels] = useState<StorefrontChannel[]>(STOREFRONT_CHANNELS);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -337,13 +354,13 @@ export function DesktopBusinessProfileStorefrontScreen({
                 <div className="flex flex-col pt-2 sm:pt-6">
                   <div className="flex items-center gap-2">
                     <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                      Urban Grill &amp; Bistro
+                      {BRAND_NAME}
                     </span>
                     <Icon name="verified" className="text-primary-container text-[20px]" filled />
                   </div>
                   <div className="flex items-center gap-space-xs font-caption text-caption text-text-secondary mt-0.5">
                     <span className="px-2 py-0.5 rounded-md bg-surface-container font-semibold text-text-primary">
-                      Apo District, Abuja
+                      {BRAND_LOCATION}
                     </span>
                     <span>•</span>
                     <span className="flex items-center gap-1 text-badge-discount-text font-medium">
@@ -353,6 +370,15 @@ export function DesktopBusinessProfileStorefrontScreen({
                   </div>
                 </div>
               </div>
+              <div className="flex flex-wrap items-center gap-x-space-md gap-y-1">
+                <CreateWithAiButton
+                  aspectRatio="16/9"
+                  assetType="banner"
+                  context={aiProfileContext}
+                  fileHint="16:9 Display Aspect • Rec. 1920×1080"
+                />
+                <CreateWithAiButton aspectRatio="square" assetType="logo" context={aiProfileContext} />
+              </div>
               {/* Profile Input Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md pt-space-xs">
                 <div className="flex flex-col gap-1.5">
@@ -361,7 +387,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] px-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="text"
-                      defaultValue="Urban Grill & Bistro"
+                      defaultValue={BRAND_NAME}
                     />
                     <Icon name="badge" className="absolute right-3 text-text-tertiary text-[18px]" />
                   </div>
@@ -374,7 +400,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] px-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="text"
-                      defaultValue="Restaurant & Grill • Casual Dining"
+                      defaultValue={BRAND_CATEGORY}
                     />
                     <Icon name="restaurant" className="absolute right-3 text-text-tertiary text-[18px]" />
                   </div>
@@ -389,7 +415,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                   <textarea
                     className="w-full p-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none resize-none transition-all"
                     rows={3}
-                    defaultValue="Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails."
+                    defaultValue={BRAND_BIO}
                   />
                   <p className="font-caption text-caption text-text-tertiary">
                     Visible at top of discovery feeds in Abuja &amp; Lagos consumer app searches.

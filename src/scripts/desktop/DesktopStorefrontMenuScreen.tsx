@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { MENU_PRODUCT_ID, naira, nairaToNumber, type CatalogueProduct } from '../catalogueData';
@@ -374,13 +375,19 @@ export function DesktopStorefrontMenuScreen({
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
-                <button
-                  aria-label="Filter"
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-text-secondary hover:text-primary transition-colors"
-                >
-                  <Icon name="tune" className="text-[20px]" />
-                </button>
+                {/* Mirrors the category chips below so the search-bar control filters too. */}
+                <FilterMenu
+                  align="right"
+                  ariaLabel="Filter by category"
+                  buttonClassName="absolute inset-y-0 right-0 pr-3 flex items-center text-text-secondary hover:text-primary transition-colors"
+                  choices={CHIPS.map((chip) => ({ value: chip.key, label: chip.label }))}
+                  icon="tune"
+                  iconClassName="text-[20px]"
+                  label={null}
+                  onChange={(next) => setActiveCategory(next as MenuCategory)}
+                  title="Filter by category"
+                  value={activeCategory}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">

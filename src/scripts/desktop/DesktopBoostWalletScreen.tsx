@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { BoostTabKey } from '../../components/BoostTabBar';
@@ -173,8 +174,6 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
   const [autoReload, setAutoReload] = useState(true);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [walletSummary, setWalletSummary] = useState<AdWalletSummary>(DEFAULT_WALLET_SUMMARY);
-  const [ledger, setLedger] = useState(LEDGER);
   const timers = useRef<number[]>([]);
 
   useEffect(() => {
@@ -690,18 +689,21 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                   <h2 className="font-heading-sm text-heading-sm text-text-primary">Billing &amp; Transaction History</h2>
                   <p className="font-caption text-caption text-text-secondary">Recent wallet activity &amp; allocations</p>
                 </div>
-                <button
-                  className="font-button-secondary text-button-secondary text-primary font-medium flex items-center gap-0.5 shrink-0"
-                  type="button"
-                  onClick={() => showToast('Ledger filters opened')}
-                >
-                  <span>Filter</span>
-                  <Icon className="text-[16px]" name="tune" />
-                </button>
+                <FilterMenu
+                  align="right"
+                  buttonClassName="font-button-secondary text-button-secondary text-primary font-medium flex items-center gap-0.5 shrink-0"
+                  choices={statusChoices}
+                  icon="tune"
+                  iconClassName="text-[16px]"
+                  label="Filter"
+                  onChange={setEntryStatus}
+                  title="Filter by entry status"
+                  value={entryStatus}
+                />
               </div>
 
               <div className="flex flex-col gap-space-2xs">
-                {ledger.map((entry) => (
+                {LEDGER.map((entry) => (
                   <div
                     className="p-space-sm rounded-xl bg-surface-container-lowest shadow-sm flex items-center justify-between gap-3"
                     key={entry.key}
@@ -731,6 +733,11 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                     </div>
                   </div>
                 ))}
+                {visibleLedger.length === 0 && (
+                  <div className="py-space-md text-center font-caption text-caption text-text-secondary">
+                    No {entryStatus.toLowerCase()} entries in this period.
+                  </div>
+                )}
               </div>
 
               <button

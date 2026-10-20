@@ -3,9 +3,12 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CustomerProfileDrawer, ChatOptionsSheet } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatGeneralScreenProps {
   onBack: () => void;
+  /** Customer or business the merchant is chatting with. */
+  contact?: BusinessChatContact;
 }
 
 interface ThreadMessage {
@@ -16,12 +19,12 @@ interface ThreadMessage {
   read?: 'done_all' | 'done';
 }
 
-const INITIAL_MESSAGES: ThreadMessage[] = [
+const buildInitialMessages = (firstName: string): ThreadMessage[] => [
   { id: 1, direction: 'in', text: 'Good morning! Do you cater for private corporate lunches for about 25 people?', time: '10:14 AM' },
   {
     id: 2,
     direction: 'out',
-    text: 'Good morning Tunde! Yes, we offer tailored corporate lunch catering packages with custom menus.',
+    text: `Good morning ${firstName}! Yes, we offer tailored corporate lunch catering packages with custom menus.`,
     time: '10:18 AM',
     read: 'done_all',
   },
@@ -50,8 +53,10 @@ const formatNow = () => {
   return `${hours % 12 || 12}:${minutes} ${ampm}`;
 };
 
-export function BusinessChatGeneralScreen({ onBack }: BusinessChatGeneralScreenProps) {
-  const [messages, setMessages] = useState<ThreadMessage[]>(INITIAL_MESSAGES);
+export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGeneralScreenProps) {
+  const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.general;
+  const firstName = contactFirstName(activeContact.name);
+  const [messages, setMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
   const [input, setInput] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -70,12 +75,15 @@ export function BusinessChatGeneralScreen({ onBack }: BusinessChatGeneralScreenP
     <AppScreen>
       <BusinessChatHeader
         onBack={onBack}
+        title={activeContact.name}
+        avatar={activeContact.avatar}
+        isBusiness={activeContact.isBusiness}
         subtitle="Active inquiry • Corporate Catering"
         onAvatar={() => setDrawerOpen(true)}
         onCall={() => (window.location.href = 'tel:+2348035551204')}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name="Tunde Bakare" phone="+234 803 555 1204" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 803 555 1204" />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
       <div className="flex flex-col w-full flex-1 relative">

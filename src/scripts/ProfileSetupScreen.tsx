@@ -2,6 +2,10 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { ReferralField } from '../components/referral/ReferralField';
+import { ReferralConfirmSheet } from '../components/referral/ReferralConfirmSheet';
+import { useReferralIdentity } from '../hooks/useReferralIdentity';
+import { useReferralStep } from '../hooks/useReferralStep';
 
 interface ProfileSetupScreenProps {
   onBack: () => void;
@@ -79,6 +83,9 @@ export function ProfileSetupScreen({ onBack, onComplete }: ProfileSetupScreenPro
   const [confirmFocused, setConfirmFocused] = useState(false);
   const [pinRevealed, setPinRevealed] = useState(false);
   const [status, setStatus] = useState<Status>('idle');
+  const referral = useReferralStep();
+
+  const ownIdentity = useReferralIdentity();
 
   const confirmInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -96,10 +103,19 @@ export function ProfileSetupScreen({ onBack, onComplete }: ProfileSetupScreenPro
     phone.replace(/\D/g, '').length >= 7 &&
     pinsMatch;
 
-  const handleComplete = () => {
-    if (!isValid || status !== 'idle') return;
+  const finishSetup = () => {
     setStatus('saving');
     window.setTimeout(onComplete, 900);
+  };
+
+  const handleComplete = () => {
+    if (!isValid || status !== 'idle') return;
+    // The referral code is checked on submit, not while it is being typed.
+    if (referral.needsConfirmation) {
+      referral.requestConfirmation();
+      return;
+    }
+    finishSetup();
   };
 
   return (
@@ -209,6 +225,14 @@ export function ProfileSetupScreen({ onBack, onComplete }: ProfileSetupScreenPro
               </div>
             </div>
           </div>
+
+          {/* Referral code — optional, checked on submit rather than on Apply */}
+          <ReferralField
+            compact
+            fromUrl={referral.fromUrl}
+            onChange={referral.changeCode}
+            value={referral.code}
+          />
 
           <div className="bg-surface-subtle rounded-xl p-space-md flex flex-col gap-space-md shadow-sm">
             <div className="flex flex-col gap-1">
@@ -355,6 +379,22 @@ export function ProfileSetupScreen({ onBack, onComplete }: ProfileSetupScreenPro
           </div>
         </div>
       </div>
+
+      {/* Submit-time referral check — bottom sheet on mobile, modal on desktop */}
+      <ReferralConfirmSheet
+        open={referral.promptOpen}
+        initialCode={referral.code}
+        ownCode={ownIdentity.code}
+        onCancel={referral.cancel}
+        onConfirm={() => {
+          referral.confirm();
+          finishSetup();
+        }}
+        onSkip={() => {
+          referral.skip();
+          finishSetup();
+        }}
+      />
     </AppScreen>
   );
 }

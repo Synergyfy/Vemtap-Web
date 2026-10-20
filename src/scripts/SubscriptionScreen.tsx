@@ -7,7 +7,7 @@ import { SubscriptionExpiredScreen } from './SubscriptionExpiredScreen';
 import { SubscriptionPaymentScreen } from './SubscriptionPaymentScreen';
 import { SubscriptionSuccessScreen } from './SubscriptionSuccessScreen';
 import { SubscriptionAddonsScreen } from './SubscriptionAddonsScreen';
-import { BusinessBoostScreen } from './BusinessBoostScreen';
+import { ClusterBoostFlow } from './ClusterBoostFlow';
 import { hasActiveTrial } from '../utils/trialState';
 
 export type SubscriptionStep =
@@ -125,12 +125,14 @@ export function SubscriptionScreen({
           <SubscriptionSuccessScreen onGoDashboard={() => goToBoost('success')} onExploreFeatures={() => setStep('addons')} />
         );
       case 'boost':
+        // The only purchasable placement today is the Cluster Campaign, so the
+        // onboarding "create campaign" step runs the same unified flow.
         return (
-          <BusinessBoostScreen
+          <ClusterBoostFlow
+            chrome="subscription"
             onBack={boostOnBack ?? (() => setStep(boostFrom))}
-            onDone={boostOnBack ? onExit : onExit}
-            growthActive={boostFrom === 'success'}
-            preselectedItem={boostItem ?? null}
+            onDone={onExit}
+            preselectedItemId={boostItem ?? null}
           />
         );
       case 'addons':

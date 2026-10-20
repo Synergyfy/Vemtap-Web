@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { contactFirstName, contactInitials } from './messagesContact';
 
 interface BusinessComposeScreenProps {
   onBack: () => void;
   onSent: () => void;
+  /** Name of the recipient the message is being composed for. */
+  recipientName?: string;
 }
 
 const RECIPIENT_IMG =
@@ -17,7 +20,7 @@ const HOST_ALT =
   'Modern upscale bistro interior featuring warm ambient Edison bulbs wooden tables neatly set with wine glasses and welcoming hospitality atmosphere';
 
 const DEFAULT_DRAFT =
-  'Good morning Dr. Chidi, regarding your reservation for Saturday evening, we have successfully merged Tables 08 & 09 for your party of 6. Would you also like us to prepare the wine list in advance?';
+  'Good morning {name}, regarding your reservation for Saturday evening, we have successfully merged Tables 08 & 09 for your party of 6. Would you also like us to prepare the wine list in advance?';
 
 const QUICK_ATTACHMENTS = [
   { icon: 'local_offer', iconClass: 'text-badge-discount-text', label: '20% Off Prime Lunch', snippet: '[Attached: 20% Off Prime Lunch Deal Voucher]' },
@@ -32,14 +35,14 @@ const TEMPLATES = [
     iconClass: 'text-primary',
     title: 'Booking Reminder',
     body: 'Party of 6 arrival notice & custom place cards note.',
-    text: 'Hi Dr. Chidi, this is a warm confirmation of your reservation for Saturday at 7:30 PM. We are delighted to host your party and have prepared custom celebratory place cards!',
+    text: 'Hi {name}, this is a warm confirmation of your reservation for Saturday at 7:30 PM. We are delighted to host your party and have prepared custom celebratory place cards!',
   },
   {
     icon: 'inventory_2',
     iconClass: 'text-badge-discount-text',
     title: 'Order / Items Ready',
     body: 'Wine pairings and curated dessert locked in.',
-    text: 'Hello Dr. Chidi, your requested pre-order wines and artisanal celebratory dessert are officially set aside for your party.',
+    text: 'Hello {name}, your requested pre-order wines and artisanal celebratory dessert are officially set aside for your party.',
   },
   {
     icon: 'loyalty',
@@ -57,8 +60,10 @@ const TEMPLATES = [
   },
 ];
 
-export function BusinessComposeScreen({ onBack, onSent }: BusinessComposeScreenProps) {
-  const [draft, setDraft] = useState(DEFAULT_DRAFT);
+export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chidi Okafor' }: BusinessComposeScreenProps) {
+  const firstName = contactFirstName(recipientName);
+  const isDefaultRecipient = recipientName === 'Dr. Chidi Okafor';
+  const [draft, setDraft] = useState(() => DEFAULT_DRAFT.split('{name}').join(firstName));
   const [contextVisible, setContextVisible] = useState(true);
   const [recipientVisible, setRecipientVisible] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
@@ -81,7 +86,7 @@ export function BusinessComposeScreen({ onBack, onSent }: BusinessComposeScreenP
 
   const handleSend = () => {
     if (!draft.trim()) return;
-    showToast('Message sent to Dr. Chidi Okafor!');
+    showToast(`Message sent to ${recipientName}!`);
     setDraft('');
     if (sendTimer.current !== null) window.clearTimeout(sendTimer.current);
     sendTimer.current = window.setTimeout(() => onSent(), 1500);
@@ -93,7 +98,7 @@ export function BusinessComposeScreen({ onBack, onSent }: BusinessComposeScreenP
   };
 
   const applyTemplate = (text: string) => {
-    setDraft(text);
+    setDraft(text.split('{name}').join(firstName));
     showToast('Template applied to draft');
   };
 
@@ -147,9 +152,15 @@ export function BusinessComposeScreen({ onBack, onSent }: BusinessComposeScreenP
             {recipientVisible ? (
               <div className="inline-flex items-center gap-space-2xs bg-surface-tint-blue py-1 pl-1.5 pr-space-xs rounded-full shadow-sm transition-all">
                 <div className="relative w-6 h-6 rounded-full overflow-hidden shrink-0">
-                  <img alt={RECIPIENT_ALT} className="w-full h-full object-cover" src={RECIPIENT_IMG} />
+                  {isDefaultRecipient ? (
+                    <img alt={RECIPIENT_ALT} className="w-full h-full object-cover" src={RECIPIENT_IMG} />
+                  ) : (
+                    <span className="w-full h-full flex items-center justify-center bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-bold">
+                      {contactInitials(recipientName)}
+                    </span>
+                  )}
                 </div>
-                <span className="font-label-md text-label-md text-primary font-semibold">Dr. Chidi Okafor</span>
+                <span className="font-label-md text-label-md text-primary font-semibold">{recipientName}</span>
                 <Icon name="verified" filled className="text-primary text-[14px]" />
                 <button
                   aria-label="Remove recipient"

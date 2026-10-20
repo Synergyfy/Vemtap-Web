@@ -45,11 +45,23 @@ import { DiscoverDealsScreen } from './scripts/DiscoverDealsScreen';
 import { StartVemtapScreen } from './scripts/StartVemtapScreen';
 import { AccountScreen } from './scripts/AccountScreen';
 import { SettingsScreen } from './scripts/SettingsScreen';
+import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
 import { SupportLegalScreen } from './scripts/SupportLegalScreen';
 import { EditProfileScreen } from './scripts/EditProfileScreen';
 import { RewardsScreen } from './scripts/RewardsScreen';
 import { SavingsScreen } from './scripts/SavingsScreen';
 import { SavedItemsScreen } from './scripts/SavedItemsScreen';
+import { CustomerReferralsScreen } from './scripts/CustomerReferralsScreen';
+import { BusinessReferralsScreen } from './scripts/BusinessReferralsScreen';
+import { OnboardingWelcomeScreen } from './scripts/OnboardingWelcomeScreen';
+import { GoogleProfileConfirmScreen, type GoogleConfirmDetails } from './scripts/GoogleProfileConfirmScreen';
+import {
+  clearProvisionalReferralCode,
+  getProvisionalReferralCode,
+  normaliseReferralCode,
+  readReferralCodeFromUrl,
+  setProvisionalReferralCode,
+} from './scripts/referralData';
 import { ActivityScreen } from './scripts/ActivityScreen';
 import { NotificationsScreen } from './scripts/NotificationsScreen';
 import { HelpCentreScreen } from './scripts/HelpCentreScreen';
@@ -82,6 +94,10 @@ import { DesktopManualLocationScreen } from './scripts/desktop/DesktopManualLoca
 import { DesktopConfirmLocationScreen } from './scripts/desktop/DesktopConfirmLocationScreen';
 import { DesktopAccountScreen } from './scripts/desktop/DesktopAccountScreen';
 import { DesktopSavedItemsScreen } from './scripts/desktop/DesktopSavedItemsScreen';
+import { DesktopCustomerReferralsScreen } from './scripts/desktop/DesktopCustomerReferralsScreen';
+import { DesktopBusinessReferralsScreen } from './scripts/desktop/DesktopBusinessReferralsScreen';
+import { DesktopOnboardingWelcomeScreen } from './scripts/desktop/DesktopOnboardingWelcomeScreen';
+import { DesktopGoogleProfileConfirmScreen } from './scripts/desktop/DesktopGoogleProfileConfirmScreen';
 import { DesktopBusinessHubScreen } from './scripts/desktop/DesktopBusinessHubScreen';
 import { DesktopBusinessMoreScreen } from './scripts/desktop/DesktopBusinessMoreScreen';
 import { DesktopBoostHubScreen } from './scripts/desktop/DesktopBoostHubScreen';
@@ -153,7 +169,6 @@ import {
 import { BusinessVerificationScreen } from './scripts/BusinessVerificationScreen';
 import { VerificationStatusCenterScreen } from './scripts/VerificationStatusCenterScreen';
 import { SubscriptionScreen } from './scripts/SubscriptionScreen';
-import { BusinessBoostScreen } from './scripts/BusinessBoostScreen';
 import { BusinessOrdersScreen } from './scripts/BusinessOrdersScreen';
 import { BusinessMessagesScreen } from './scripts/BusinessMessagesScreen';
 import { BusinessOverviewScreen } from './scripts/BusinessOverviewScreen';
@@ -340,11 +355,15 @@ import { ClusterOnboardingScreen } from './scripts/ClusterOnboardingScreen';
 import { DesktopClusterOnboardingScreen } from './scripts/desktop/DesktopClusterOnboardingScreen';
 import { ClusterSystemScreen } from './scripts/ClusterSystemScreen';
 import { DesktopClusterSystemScreen } from './scripts/desktop/DesktopClusterSystemScreen';
+import { ClusterBoostFlow } from './scripts/ClusterBoostFlow';
+import { ClusterBoostListScreen } from './scripts/ClusterBoostListScreen';
 
 type Route =
   | 'welcome'
   | 'cluster-onboarding'
   | 'cluster-system'
+  | 'cluster-boost'
+  | 'cluster-boost-new'
   | 'discover-deals'
   | 'start-vemtap'
   | 'auth-code'
@@ -361,6 +380,10 @@ type Route =
   | 'filters'
   | 'discover'
   | 'saved'
+  | 'referrals'
+  | 'business-referrals'
+  | 'google-confirm'
+  | 'onboarding-welcome'
   | 'account'
   | 'savings'
   | 'notifications'
@@ -507,7 +530,8 @@ type Route =
   | 'claim-gift'
   | 'claim-gift-confirm'
   | 'claimed-contact'
-  | 'claimed-terms';
+  | 'claimed-terms'
+  | 'admin-referral';
 
 const ROUTE_PATH: Record<Route, string> = {
   welcome: '/onboarding',
@@ -527,6 +551,10 @@ const ROUTE_PATH: Record<Route, string> = {
   filters: '/filters',
   discover: '/discover',
   saved: '/saved',
+  referrals: '/account/referrals',
+  'business-referrals': '/business/referrals',
+  'google-confirm': '/google-confirm',
+  'onboarding-welcome': '/onboarding/welcome',
   account: '/account',
   savings: '/account/savings',
   notifications: '/account/notifications',
@@ -619,6 +647,8 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-more': '/business/more',
   'cluster-onboarding': '/business/cluster/onboarding',
   'cluster-system': '/business/cluster',
+  'cluster-boost': '/business/cluster/boost',
+  'cluster-boost-new': '/business/cluster/boost/new',
   'store-ordering-dashboard': '/business/store-ordering',
   'store-ordering-qr': '/business/store-ordering/qr',
   'store-ordering-settings': '/business/store-ordering/settings',
@@ -678,6 +708,9 @@ const ROUTE_PATH: Record<Route, string> = {
   'claim-gift-confirm': '/claim/gift/confirm',
   'claimed-contact': '/my/claimed-deal/contact',
   'claimed-terms': '/my/claimed-deal/terms',
+  // Platform Admin — deliberately absent from every user nav; admins open it
+  // directly. Gating is the backend's job once auth exists.
+  'admin-referral': '/admin/referral',
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
@@ -738,6 +771,8 @@ const AUTH_ROUTES = new Set<Route>([
   'merchant-chat',
   'claimed-contact',
   'claimed-terms',
+  'referrals',
+  'business-referrals',
   ...CLAIM_STEP_ROUTES,
 ]);
 
@@ -851,6 +886,20 @@ function AppInner() {
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
   const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
   const [feedFrom, setFeedFrom] = useState<Route>('home');
+  /**
+   * Referral code captured from a referral URL (e.g. `?ref=CODE`) at mount,
+   * seeded into the provisional store below so `pushState` navigation can't
+   * lose it and onboarding can prefill from it. It is a provisional hint only —
+   * nothing verifies it against a server, and it is never persisted.
+   */
+  /** Whether onboarding finished, so the welcome screen knows which audience. */
+  const [welcomeAudience, setWelcomeAudience] = useState<'customer' | 'business'>('customer');
+  /** Business-setup progress captured at the moment onboarding completed. */
+  const [welcomeBusiness, setWelcomeBusiness] = useState<{
+    profileCompleted: boolean;
+    offeringsCompleted: boolean;
+    verificationState: 'not-started' | 'in-progress' | 'complete';
+  } | null>(null);
   const [dealFrom, setDealFrom] = useState<Route>('home');
   const [selectedDeal, setSelectedDeal] = useState<ClaimDealSummary | null>(null);
   const [bizFrom, setBizFrom] = useState<Route>('discover');
@@ -1093,6 +1142,19 @@ function AppInner() {
     if (base) setDetailProduct(base);
     else setRouteState('storefront-products');
   }, [route, detailProduct]);
+
+  /**
+   * Capture a referral code from the URL once, before the path-sync effect
+   * above replaces the URL (and drops the query string). This is a provisional
+   * hint for onboarding only — it is never persisted and never treated as
+   * secured attribution.
+   */
+  useEffect(() => {
+    const fromUrl = normaliseReferralCode(readReferralCodeFromUrl());
+    if (fromUrl && !getProvisionalReferralCode()) {
+      setProvisionalReferralCode(fromUrl, 'url');
+    }
+  }, []);
 
   useEffect(() => {
     if (route !== 'service-detail' || detailService) return;
@@ -1435,6 +1497,15 @@ function AppInner() {
     setRoute('boost-studio');
   };
 
+  // Cluster Boost Visibility — cluster-specific product, separate from the
+  // global Boost Studio. `itemId` preselects an eligible cluster pool item
+  // and skips the item-selection step.
+  const [clusterBoostItem, setClusterBoostItem] = useState<string | null>(null);
+  const openClusterBoost = (itemId?: string) => {
+    setClusterBoostItem(itemId ?? null);
+    setRoute('cluster-boost-new');
+  };
+
   const boostTab = (key: BoostTabKey) => {
     switch (key) {
       case 'overview':
@@ -1473,6 +1544,7 @@ function AppInner() {
       locations: 'hub-locations',
       staff: 'hub-staff',
       profile: 'hub-profile',
+      referrals: 'business-referrals',
     };
     setRoute(moduleRoute[module]);
   };
@@ -1550,6 +1622,9 @@ function AppInner() {
       case 'business-profile':
         setRoute('hub-profile');
         break;
+      case 'business-referrals':
+        setRoute('business-referrals');
+        break;
       case 'business-loyalty':
         setRoute('hub-loyalty');
         break;
@@ -1617,6 +1692,12 @@ function AppInner() {
         break;
       case 'cluster-onboarding':
         setRoute('cluster-onboarding');
+        break;
+      case 'cluster-boost':
+        setRoute('cluster-boost');
+        break;
+      case 'cluster-boost-new':
+        setRoute('cluster-boost-new');
         break;
       // More section
       case 'more':
@@ -1785,6 +1866,10 @@ function AppInner() {
         return (
           <DesktopAuthCodeScreen
             onContinue={() => setRoute('verify-email')}
+            onGoogle={() => {
+              signIn();
+              setRoute('google-confirm');
+            }}
             onSignIn={() => setRoute('sign-in')}
             onBusinessRegister={() => setRoute('business-onboarding')}
           />
@@ -1793,6 +1878,10 @@ function AppInner() {
         <AuthCodeScreen
           onBack={() => setRoute(authFrom)}
           onContinue={() => setRoute('verify-email')}
+          onGoogle={() => {
+            signIn();
+            setRoute('google-confirm');
+          }}
           onBusinessRegister={() => setRoute('business-onboarding')}
         />
       );
@@ -1805,10 +1894,8 @@ function AppInner() {
               await signIn({ identifier, password });
               setRoute('discovering');
             }}
-            onGoogleSignIn={async () => {
-              if (!hasApiConfig()) {
-                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
-              }
+            onGoogleSignIn={() => {
+              signIn();
               setRoute('discovering');
             }}
             onCreateAccount={() => {
@@ -1837,10 +1924,8 @@ function AppInner() {
             await signIn({ identifier, password });
             setRoute('discovering');
           }}
-          onGoogleSignIn={async () => {
-            if (!hasApiConfig()) {
-              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
-            }
+          onGoogleSignIn={() => {
+            signIn();
             setRoute('discovering');
           }}
           onCreateAccount={() => {
@@ -1959,8 +2044,42 @@ function AppInner() {
       );
 
     case 'discovering':
-      if (isDesktop) return <DesktopDiscoveringScreen onNav={nav('home')} onReady={() => setRoute('home')} />;
-      return <DiscoveringScreen onReady={() => setRoute('home')} />;
+      // `discovering` only ever runs on the customer path, so it always resets
+      // the welcome audience — otherwise a prior business onboarding would
+      // leave the welcome screen showing business copy.
+      if (welcomeAudience !== 'customer') setWelcomeAudience('customer');
+      if (isDesktop)
+        return (
+          <DesktopDiscoveringScreen onNav={nav('onboarding-welcome')} onReady={() => setRoute('onboarding-welcome')} />
+        );
+      return <DiscoveringScreen onReady={() => setRoute('onboarding-welcome')} />;
+
+    /**
+     * Post-onboarding welcome: a readiness checklist plus the "Refer Others &
+     * Earn Rewards" panel, shown immediately before the dashboard.
+     */
+    case 'onboarding-welcome': {
+      const enterDashboard = () => {
+        clearProvisionalReferralCode();
+        setWelcomeBusiness(null);
+        setRoute('home');
+      };
+      if (isDesktop)
+        return (
+          <DesktopOnboardingWelcomeScreen
+            audience={welcomeAudience}
+            business={welcomeBusiness ?? undefined}
+            onEnterDashboard={enterDashboard}
+          />
+        );
+      return (
+        <OnboardingWelcomeScreen
+          audience={welcomeAudience}
+          business={welcomeBusiness ?? undefined}
+          onEnterDashboard={enterDashboard}
+        />
+      );
+    }
 
     case 'home':
       if (isDesktop)
@@ -2972,6 +3091,43 @@ function AppInner() {
         />
       );
 
+    /** Customer "Referrals & Rewards" — immediately after Saved & Wishlist. */
+    case 'referrals':
+      if (isDesktop)
+        return <DesktopCustomerReferralsScreen onNav={feedNav} onBack={() => setRoute('account')} />;
+      return <CustomerReferralsScreen onBack={() => setRoute('account')} />;
+
+    /** Business → Referrals — immediately after Business Profile. */
+    case 'business-referrals':
+      if (isDesktop) return <DesktopBusinessReferralsScreen onNav={businessPortalNav} />;
+      return <BusinessReferralsScreen onBack={() => setRoute('business-hub')} />;
+
+    /**
+     * Platform Admin → Referral programme. Not reachable from user navigation;
+     * an admin opens `/admin/referral` directly to swap the explainer video.
+     */
+    case 'admin-referral':
+      return <AdminReferralScreen onBack={() => setRoute('business-referrals')} />;
+
+    /**
+     * Google profile confirmation — shown after the Google button and before
+     * the dashboard. Confirms the profile the frontend holds, asks for a phone
+     * number Google didn't share, and takes an optional referral code.
+     */
+    case 'google-confirm': {
+      const finishGoogleConfirm = (details: GoogleConfirmDetails) => {
+        if (details.referralCode) setProvisionalReferralCode(details.referralCode, 'manual');
+        profile.update({ phone: details.phone });
+        setWelcomeAudience('customer');
+        setRoute('discovering');
+      };
+      if (isDesktop)
+        return (
+          <DesktopGoogleProfileConfirmScreen onBack={() => setRoute('auth-code')} onContinue={finishGoogleConfirm} />
+        );
+      return <GoogleProfileConfirmScreen onBack={() => setRoute('auth-code')} onContinue={finishGoogleConfirm} />;
+    }
+
     case 'account':
       if (isDesktop)
         return (
@@ -3266,8 +3422,16 @@ function AppInner() {
       const backFromVerification = () => setRoute(setupSnapshot ? 'business-onboarding' : 'home');
       const finishVerification = () => {
         setBusinessSetupVerificationState('complete');
+        // Summarise the completed business onboarding on the welcome screen
+        // (readiness checklist + refer-others) before the dashboard.
+        setWelcomeBusiness({
+          profileCompleted: true,
+          offeringsCompleted: true,
+          verificationState: 'complete',
+        });
+        setWelcomeAudience('business');
         clearBusinessSetupSnapshot();
-        setRoute('home');
+        setRoute('onboarding-welcome');
       };
       const verificationNav: BusinessSetupNavValue | null = setupSnapshot
         ? {
@@ -3423,26 +3587,29 @@ function AppInner() {
 
     case 'boost-studio':
       // Boost Studio lives at /boost-hub/studio — inside the business dashboard
-      // with the side menu still on screen (not the onboarding shell).
+      // with the side menu still on screen (not the onboarding shell). The only
+      // purchasable placement today is the Cluster Campaign, so the studio runs
+      // the same unified campaign flow as /business/cluster/boost.
       if (isDesktop)
         return (
-          <BusinessBoostScreen
+          <ClusterBoostFlow
             chrome="portal"
             onNav={businessPortalNav}
+            desktopNav="more-marketing"
             onBack={() => setRoute(boostReturnRoute)}
-            onDone={() => setRoute(boostReturnRoute)}
-            growthActive={false}
-            preselectedItem={boostItem ?? null}
+            onDone={() => setRoute('boost-hub')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+            preselectedItemId={boostItem ?? null}
           />
         );
       return (
         <div className="biz-flow">
-          <BusinessBoostScreen
+          <ClusterBoostFlow
             chrome="portal"
             onBack={() => setRoute(boostReturnRoute)}
-            onDone={() => setRoute(boostReturnRoute)}
-            growthActive={false}
-            preselectedItem={boostItem ?? null}
+            onDone={() => setRoute('boost-hub')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+            preselectedItemId={boostItem ?? null}
           />
         </div>
       );
@@ -4800,6 +4967,8 @@ function AppInner() {
             onCreateDeal={() => setRoute('deal-studio')}
             onCreateProduct={() => setRoute('hub-catalog')}
             onCreateLocation={() => setRoute('deal-create-locations')}
+            onBoostItem={openClusterBoost}
+            onOpenBoosts={() => setRoute('cluster-boost')}
           />
         );
       return (
@@ -4810,6 +4979,27 @@ function AppInner() {
           onCreateDeal={() => setRoute('deal-studio')}
           onCreateProduct={() => setRoute('hub-catalog')}
           onCreateLocation={() => setRoute('deal-create-locations')}
+          onBoostItem={openClusterBoost}
+          onOpenBoosts={() => setRoute('cluster-boost')}
+        />
+      );
+
+    case 'cluster-boost':
+      return (
+        <ClusterBoostListScreen
+          onBack={() => setRoute('cluster-system')}
+          onBackToCluster={() => setRoute('cluster-system')}
+          onBoostItem={openClusterBoost}
+        />
+      );
+
+    case 'cluster-boost-new':
+      return (
+        <ClusterBoostFlow
+          onBack={() => setRoute('cluster-system')}
+          onDone={() => setRoute('cluster-boost')}
+          onOpenWallet={() => setRoute('boost-wallet')}
+          preselectedItemId={clusterBoostItem}
         />
       );
 

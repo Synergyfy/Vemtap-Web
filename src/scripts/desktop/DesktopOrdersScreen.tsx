@@ -41,6 +41,30 @@ const ROWS: OrderRow[] = [];
 
 export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBooking: _onOpenBooking }: DesktopOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState('active');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [merchant, setMerchant] = useState('all');
+
+  // Merchant options come from the rows themselves, so the menu can never
+  // offer a store the table has nothing to show for.
+  const merchantChoices = [
+    { value: 'all', label: 'All Partner Merchants' },
+    ...Array.from(new Set(ROWS.map((row) => row.merchant))).map((name) => ({
+      value: name,
+      label: name,
+    })),
+  ];
+
+  const query = searchQuery.trim().toLowerCase();
+
+  /** Merchant select and search both have to agree before a row shows. */
+  const visibleRows = ROWS.filter(
+    (row) =>
+      (merchant === 'all' || row.merchant === merchant) &&
+      (query === '' ||
+        row.merchant.toLowerCase().includes(query) ||
+        row.orderId.toLowerCase().includes(query) ||
+        row.specifics.toLowerCase().includes(query)),
+  );
 
   const downloadStatement = () => {
     downloadCsv(
@@ -192,8 +216,10 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                   <input
                     className="w-full h-11 pl-11 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas shadow-inner"
                     id="orderSearchInput"
+                    onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder="Search by Order ID (#UG-9021), store name, or item..."
                     type="text"
+                    value={searchQuery}
                   />
                 </div>
                 <div className="md:col-span-3">
@@ -220,12 +246,17 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                       name="storefront"
                       className="absolute left-3 text-[20px] text-text-tertiary pointer-events-none"
                     />
-                    <select className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer">
-                      <option>All Partner Merchants</option>
-                      <option>Urban Grill &amp; Bistro</option>
-                      <option>Cafe Neo Artisanal</option>
-                      <option>Velvet Stitch Couture</option>
-                      <option>Glow &amp; Serenity Spa</option>
+                    <select
+                      aria-label="Filter by partner merchant"
+                      className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer"
+                      onChange={(event) => setMerchant(event.target.value)}
+                      value={merchant}
+                    >
+                      {merchantChoices.map((choice) => (
+                        <option key={choice.value} value={choice.value}>
+                          {choice.label}
+                        </option>
+                      ))}
                     </select>
                     <Icon
                       name="expand_more"
@@ -236,7 +267,13 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                 <div className="md:col-span-1 flex items-center justify-end">
                   <button
                     aria-label="Reset filters"
-                    className="w-11 h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors"
+                    className="w-11 h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={merchant === 'all' && query === ''}
+                    onClick={() => {
+                      setMerchant('all');
+                      setSearchQuery('');
+                    }}
+                    title="Reset search and merchant filter"
                     type="button"
                   >
                     <Icon name="filter_alt_off" className="text-[20px]" />
@@ -252,6 +289,144 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                 <p className="font-body-md text-body-md text-text-secondary max-w-md mx-auto leading-relaxed">
                   Your real order history and appointments will appear here once the backend starts returning records.
                 </p>
+              <div className="overflow-x-auto mt-2">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="text-text-tertiary font-label-sm text-label-sm uppercase tracking-wider bg-surface-subtle/60 rounded-xl">
+                      <th className="py-3 px-4 font-medium rounded-l-xl" scope="col">
+                        Merchant &amp; Order
+                      </th>
+                      <th className="py-3 px-4 font-medium" scope="col">
+                        Type &amp; Specifics
+                      </th>
+                      <th className="py-3 px-4 font-medium" scope="col">
+                        Date &amp; Timestamp
+                      </th>
+                      <th className="py-3 px-4 font-medium" scope="col">
+                        Settlement &amp; Method
+                      </th>
+                      <th className="py-3 px-4 font-medium" scope="col">
+                        Status
+                      </th>
+                      <th className="py-3 px-4 font-medium text-right rounded-r-xl" scope="col">
+                        Receipt &amp; Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle font-body-md text-body-md">
+                    {visibleRows.map((row) => (
+                      <tr className="hover:bg-surface-subtle/50 transition-colors group" key={row.orderId}>
+                        <td className="py-4 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-surface-subtle">
+                              {row.image ? (
+                                <img alt={row.alt} className="w-full h-full object-cover" src={row.image} />
+                              ) : (
+                                <div className="w-full h-full bg-secondary/10 flex items-center justify-center text-secondary">
+                                  <Icon name="dry_cleaning" className="text-[26px]" />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <button
+                                onClick={() => onNav(row.merchantTarget)}
+                                className="font-heading-sm text-heading-sm text-text-primary group-hover:text-primary transition-colors font-semibold text-left"
+                                type="button"
+                              >
+                                {row.merchant}
+                              </button>
+                              <span className="block font-mono font-caption text-caption text-text-tertiary">
+                                {row.orderId}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-4">
+                          <div>
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-caption text-caption font-semibold mb-1 ${row.typeClass}`}
+                            >
+                              <Icon name={row.typeIcon} className="text-[13px]" />
+                              <span>{row.type}</span>
+                            </span>
+                            <p className="text-text-secondary text-caption line-clamp-1">{row.specifics}</p>
+                          </div>
+                        </td>
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          <span className="text-text-primary font-medium block">{row.date}</span>
+                          <span className="text-text-tertiary font-caption text-caption">{row.time}</span>
+                        </td>
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          <span className="font-heading-sm text-heading-sm text-text-primary font-bold block">
+                            {row.amount}
+                          </span>
+                          <span className="font-caption text-caption text-text-secondary flex items-center gap-1.5">
+                            <Icon name={row.methodIcon} className={`text-[14px] ${row.methodIconClass}`} />
+                            <span>{row.method}</span>
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
+                            <Icon name="check_circle" className="text-[14px]" />
+                            <span>{row.status}</span>
+                          </span>
+                        </td>
+                          <td className="py-4 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => onOpenOrder(row.orderId.split(' ')[0].replace(/^#/, '').trim())}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold transition-colors"
+                                type="button"
+                              >
+                                <Icon name={row.actions === 'details' ? 'visibility' : 'receipt'} className="text-[16px]" />
+                                <span>
+                                  {row.actions === 'reorder'
+                                    ? 'E-Receipt'
+                                    : row.actions === 'receipt'
+                                      ? 'View Receipt'
+                                      : 'View Details'}
+                                </span>
+                              </button>
+                              {row.actions === 'reorder' && (
+                                <button
+                                  onClick={() => onNav('storefront')}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold hover:opacity-90 transition-opacity"
+                                  type="button"
+                                >
+                                  <Icon name="refresh" className="text-[16px]" />
+                                  <span>Reorder</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {visibleRows.length === 0 && (
+                  <div className="flex flex-col items-center text-center py-space-lg px-space-md">
+                    <span className="w-14 h-14 rounded-full bg-surface-container-high text-text-tertiary flex items-center justify-center mb-space-sm">
+                      <Icon name="search_off" className="text-[26px]" />
+                    </span>
+                    <span className="font-label-md text-label-md text-text-primary font-semibold">
+                      No orders match these filters
+                    </span>
+                    <span className="font-caption text-caption text-text-secondary mt-1 max-w-xs leading-relaxed">
+                      {merchant !== 'all' ? `Nothing from ${merchant}` : 'Nothing matches your search'}
+                      {query !== '' ? ` for “${searchQuery.trim()}”` : ''}. Reset the filters to see every order.
+                    </span>
+                    <button
+                      className="mt-space-sm h-10 px-space-md rounded-xl bg-surface-container text-text-primary font-button-secondary text-button-secondary font-medium active:scale-95 transition-transform"
+                      onClick={() => {
+                        setMerchant('all');
+                        setSearchQuery('');
+                      }}
+                      type="button"
+                    >
+                      Reset filters
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 mt-4 border-t border-border-subtle">
