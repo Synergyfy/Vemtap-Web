@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
+import { InviteStaffForm } from '../components/business/TeamPanels';
+import { hasApiConfig } from '../services/api/client';
 import { Icon } from '../components/ui/Icon';
 import { URBAN_BUSINESS } from './businessData';
 
@@ -689,6 +692,15 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
 
   const isLast = step === STEPS.length - 1;
   const valid = stepValid(step);
+
+  // Live: sends a real invite; the designed form below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <BusinessSubScreen title="Invite staff" onBack={onBack} subtitle="They get an email to set up their sign-in.">
+        <InviteStaffForm onDone={onBack} onCancel={onBack} />
+      </BusinessSubScreen>
+    );
+  }
 
   return (
     <>
