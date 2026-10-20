@@ -72,7 +72,34 @@ export interface CreateOfferInput {
 
 const asList = <T>(res: T[] | { data: T[] }) => (Array.isArray(res) ? res : res.data ?? []);
 
+/** `GET /catalogue/offers/groups/:dealGroupId/stats`: one deal across its branches. */
+export interface DealGroupStats {
+  dealGroupId?: string | null;
+  name: string;
+  status: string;
+  views?: number | null;
+  likes?: number | null;
+  saves?: number | null;
+  claims?: number | null;
+  redeemed?: number | null;
+  expired?: number | null;
+  activeUnclaimed?: number | null;
+  /** 0–1. */
+  redemptionRate?: number | string | null;
+  revenue?: number | string | null;
+  discountGiven?: number | string | null;
+  quantity?: number | null;
+  remaining?: number | null;
+  daysLeft?: number | null;
+  series?: { date: string; claims?: number | null; redeemed?: number | null }[] | null;
+  byBranch?: { offerId: string; branchId: string; branchName?: string | null; status: string; claims?: number | null; redeemed?: number | null; revenue?: number | string | null }[] | null;
+}
+
 export const offersService = {
+  groupStats: (dealGroupId: string) => api.get<DealGroupStats>(`/catalogue/offers/groups/${dealGroupId}/stats`),
+  /** Applies the same edit to every branch of a deal. */
+  updateGroup: (dealGroupId: string, input: Partial<Omit<CreateOfferInput, 'branchId'>>) => api.patch<unknown>(`/catalogue/offers/groups/${dealGroupId}`, input),
+  setGroupStatus: (dealGroupId: string, status: 'active' | 'inactive') => api.patch<unknown>(`/catalogue/offers/groups/${dealGroupId}/status`, { status }),
   list: (branchId?: string) =>
     api.get<BusinessOffer[] | { data: BusinessOffer[] }>('/catalogue/offers/admin', { params: { branchId, limit: 100 } }).then(asList),
   summary: (branchId?: string) => api.get<OfferSummary>('/catalogue/offers/summary', { params: { branchId } }),

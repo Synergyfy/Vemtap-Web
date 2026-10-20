@@ -32,6 +32,7 @@ export function BusinessHubScreen({
   onOpenMessages,
   onPreviewStorefront,
   onOpenModule,
+  onOpenDealDetail,
   onViewCustomerProfile,
   initialCustomer,
   onBackCustomerProfile,
@@ -44,6 +45,8 @@ export function BusinessHubScreen({
   onOpenMessages: () => void;
   onPreviewStorefront: () => void;
   onOpenModule: (module: HubModuleKey) => void;
+  /** Live: opens the real performance page for a deal group. */
+  onOpenDealDetail?: (dealGroupId: string) => void;
   onViewCustomerProfile?: (name: string) => void;
   initialCustomer?: string;
   onBackCustomerProfile?: () => void;
@@ -94,7 +97,7 @@ export function BusinessHubScreen({
           <BusinessDealsScreen
             onTab={handleTab}
             onBoost={(itemName) => onBoost(itemName)}
-            onOpenDeal={() => setStep('dealDetail')}
+            onOpenDeal={(id) => (id && onOpenDealDetail ? onOpenDealDetail(id) : setStep('dealDetail'))}
             onCreateDeal={() => setStep('dealCreate')}
           />
         );

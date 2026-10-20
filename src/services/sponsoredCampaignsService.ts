@@ -51,6 +51,28 @@ export interface SaveBoostInput extends SavePromotionInput {
   branchId?: string;
 }
 
+/** `GET /boosts/:id/stats` (and `/promotions/:id/stats`). */
+export interface CampaignStats {
+  id: string;
+  status: PromotionStatus;
+  kpis: {
+    budget: number | string;
+    spent: number | string;
+    left: number | string;
+    percentConsumed: number;
+    redemptions: number;
+    grossRevenue: number | string;
+    reach: number;
+    returnOnSpend?: number | string | null;
+  };
+  funnel: { id: string; label: string; value: number }[];
+  rhythm: { hour: number; views?: number; claims: number }[];
+  byBranch: { branchId: string; name: string; claims: number }[];
+  series: { date: string; spend: number | string; claims: number }[];
+  previous?: { id: string; name: string; endDate?: string | null; reach: number; claims: number; redemptions: number; spent: number | string; costPerClaim?: number | string | null } | null;
+  benchmark?: { costPerClaim: number | string; campaigns: number } | null;
+}
+
 interface Page<T> {
   data: T[];
   total: number;
@@ -77,5 +99,6 @@ export const sponsoredCampaignsService = {
   pause: (kind: CampaignKind, id: string) => api.post<SponsoredCampaign>(`${BASE[kind]}/${id}/pause`),
   resume: (kind: CampaignKind, id: string) => api.post<SponsoredCampaign>(`${BASE[kind]}/${id}/resume`),
   end: (kind: CampaignKind, id: string) => api.post<SponsoredCampaign>(`${BASE[kind]}/${id}/end`),
+  stats: (kind: CampaignKind, id: string) => api.get<CampaignStats>(`${BASE[kind]}/${id}/stats`),
   addBudget: (kind: CampaignKind, id: string, amount: number) => api.post<SponsoredCampaign>(`${BASE[kind]}/${id}/budget`, { amount }),
 };

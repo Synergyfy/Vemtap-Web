@@ -11,7 +11,8 @@ interface DesktopDealsWorkspaceScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onCreateDeal?: () => void;
   onEditDeal?: () => void;
-  onOpenDealDetail?: () => void;
+  /** Live passes the deal group to open. */
+  onOpenDealDetail?: (dealGroupId?: string) => void;
   onOpenLogs?: () => void;
   onOpenPos?: () => void;
   /** Opens the Boost Studio; the deal's name pre-selects it in the campaign. */
@@ -259,7 +260,7 @@ export function DesktopDealsWorkspaceScreen({
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Deals</h1>
             <p className="font-body-md text-body-md text-text-secondary">Your live, paused and ended deals, and how they are doing.</p>
           </div>
-          <DealsPanel onCreate={() => onCreateDeal?.()} onBoost={(name) => onBoost?.(name)} onOpenLedger={onOpenLedger} />
+          <DealsPanel onCreate={() => onCreateDeal?.()} onBoost={(name) => onBoost?.(name)} onOpenLedger={onOpenLedger} onOpenDetail={(id) => onOpenDealDetail?.(id)} />
         </div>
       </MerchantPortalChrome>
     );
@@ -600,7 +601,7 @@ export function DesktopDealsWorkspaceScreen({
             primaryAction={
               <button
                 type="button"
-                onClick={onOpenDealDetail}
+                onClick={() => onOpenDealDetail?.()}
                 className="flex-1 h-11 px-3 rounded-xl bg-primary text-on-primary hover:bg-surface-tint font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(0,85,196,0.25)] transition-all"
               >
                 <Icon name="insights" className="text-[18px]" />

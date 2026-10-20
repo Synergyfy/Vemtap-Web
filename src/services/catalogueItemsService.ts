@@ -57,7 +57,35 @@ export type CatalogueItemUpdate = Partial<CatalogueItemInput> & { status?: strin
 
 const asList = (res: CatalogueItem[] | { data: CatalogueItem[] }) => (Array.isArray(res) ? res : res.data ?? []);
 
+/** One branch's row of `GET/PUT /catalogue/items/:id/branch-pricing`. */
+export interface BranchPricingRow {
+  branchId: string;
+  branchName: string;
+  isMainBranch: boolean;
+  isAvailable: boolean;
+  price: number | string;
+  compareAtPrice?: number | string | null;
+  stockQuantity?: number | null;
+  hasOverride?: boolean;
+}
+
+export interface ItemBranchPricing {
+  itemId: string;
+  pricingMode: 'uniform' | 'per_branch';
+  basePrice: number | string;
+  baseCompareAtPrice?: number | string | null;
+  branches: BranchPricingRow[];
+}
+
+export interface SetBranchPricingInput {
+  pricingMode: 'uniform' | 'per_branch';
+  branches: { branchId: string; isAvailable: boolean; price?: number | null; compareAtPrice?: number | null; stockQuantity?: number | null }[];
+}
+
 export const catalogueItemsService = {
+  /** Which branches carry an item and, when priced per branch, at what price. */
+  branchPricing: (id: string) => api.get<ItemBranchPricing>(`/catalogue/items/${id}/branch-pricing`),
+  setBranchPricing: (id: string, input: SetBranchPricingInput) => api.put<ItemBranchPricing>(`/catalogue/items/${id}/branch-pricing`, input),
   /** The API accepts `itemType` but does not apply it, so the type is also filtered here. */
   list: (query: { branchId?: string; itemType?: 'product' | 'service'; limit?: number } = {}) =>
     api

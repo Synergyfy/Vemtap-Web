@@ -36,7 +36,7 @@ const STATUS_TONE: Record<string, string> = {
   Ended: 'bg-surface-container text-text-tertiary',
 };
 
-function CampaignRow({ kind, campaign }: { kind: CampaignKind; campaign: SponsoredCampaign }) {
+function CampaignRow({ kind, campaign, onOpenMetrics }: { kind: CampaignKind; campaign: SponsoredCampaign; onOpenMetrics?: (kind: CampaignKind, id: string) => void }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState<'end' | 'delete' | null>(null);
   const action = useMutation({
@@ -101,6 +101,11 @@ function CampaignRow({ kind, campaign }: { kind: CampaignKind; campaign: Sponsor
             Resume
           </button>
         ) : null}
+        {onOpenMetrics && status !== 'Draft' ? (
+          <button type="button" onClick={() => onOpenMetrics(kind, campaign.id)} className={`${button} text-primary hover:bg-surface-tint-blue`}>
+            Metrics
+          </button>
+        ) : null}
         {confirm ? (
           <span className="ml-auto flex items-center gap-space-xs">
             <span className="font-caption text-caption text-text-secondary">{confirm === 'end' ? 'Unspent budget goes back to the wallet.' : 'Delete this draft?'}</span>
@@ -127,7 +132,17 @@ function CampaignRow({ kind, campaign }: { kind: CampaignKind; campaign: Sponsor
 }
 
 /** Live boosts and sponsored campaigns with their lifecycle actions. */
-export function CampaignsPanel({ onBoost, onCreateCampaign, onOpenWallet }: { onBoost: () => void; onCreateCampaign: () => void; onOpenWallet: () => void }) {
+export function CampaignsPanel({
+  onBoost,
+  onCreateCampaign,
+  onOpenWallet,
+  onOpenMetrics,
+}: {
+  onBoost: () => void;
+  onCreateCampaign: () => void;
+  onOpenWallet: () => void;
+  onOpenMetrics?: (kind: CampaignKind, id: string) => void;
+}) {
   const [kind, setKind] = useState<CampaignKind>('boost');
   const campaigns = useQuery({ queryKey: growthKeys.campaigns(kind), queryFn: () => sponsoredCampaignsService.list(kind) });
   const boostSummary = useQuery({ queryKey: growthKeys.summary('boost'), queryFn: () => sponsoredCampaignsService.summary('boost') });
@@ -186,7 +201,7 @@ export function CampaignsPanel({ onBoost, onCreateCampaign, onOpenWallet }: { on
       ) : (
         <ul className="flex flex-col gap-space-sm">
           {campaigns.data.map((campaign) => (
-            <CampaignRow key={campaign.id} kind={kind} campaign={campaign} />
+            <CampaignRow key={campaign.id} kind={kind} campaign={campaign} onOpenMetrics={onOpenMetrics} />
           ))}
         </ul>
       )}

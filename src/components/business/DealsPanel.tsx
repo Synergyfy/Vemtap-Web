@@ -11,7 +11,17 @@ type Filter = 'all' | 'active' | 'inactive' | 'ended';
 const isEnded = (offer: BusinessOffer) => Boolean(offer.endDate && new Date(offer.endDate).getTime() < Date.now());
 const shortDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }) : null);
 
-function DealRow({ offer, onBoost, onOpenLedger }: { offer: BusinessOffer; onBoost?: (name: string) => void; onOpenLedger?: () => void }) {
+function DealRow({
+  offer,
+  onBoost,
+  onOpenLedger,
+  onOpenDetail,
+}: {
+  offer: BusinessOffer;
+  onBoost?: (name: string) => void;
+  onOpenLedger?: () => void;
+  onOpenDetail?: (dealGroupId: string) => void;
+}) {
   const { setStatus, remove } = useOfferMutations();
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +91,15 @@ function DealRow({ offer, onBoost, onOpenLedger }: { offer: BusinessOffer; onBoo
             Boost
           </button>
         ) : null}
+        {onOpenDetail ? (
+          <button
+            type="button"
+            onClick={() => onOpenDetail(offer.dealGroupId ?? offer.id)}
+            className="h-9 px-space-sm rounded-lg text-primary font-label-md text-label-md hover:bg-surface-tint-blue"
+          >
+            Details
+          </button>
+        ) : null}
         {onOpenLedger ? (
           <button type="button" onClick={onOpenLedger} className="h-9 px-space-sm rounded-lg text-text-secondary font-label-md text-label-md hover:bg-surface-container">
             Claims
@@ -112,7 +131,17 @@ function DealRow({ offer, onBoost, onOpenLedger }: { offer: BusinessOffer; onBoo
 }
 
 /** Live deals at the active branch, with today's claim numbers. */
-export function DealsPanel({ onCreate, onBoost, onOpenLedger }: { onCreate: () => void; onBoost?: (name: string) => void; onOpenLedger?: () => void }) {
+export function DealsPanel({
+  onCreate,
+  onBoost,
+  onOpenLedger,
+  onOpenDetail,
+}: {
+  onCreate: () => void;
+  onBoost?: (name: string) => void;
+  onOpenLedger?: () => void;
+  onOpenDetail?: (dealGroupId: string) => void;
+}) {
   const offers = useOffers();
   const summary = useOfferSummary();
   const [filter, setFilter] = useState<Filter>('all');
@@ -160,7 +189,7 @@ export function DealsPanel({ onCreate, onBoost, onOpenLedger }: { onCreate: () =
       ) : (
         <ul className="grid grid-cols-1 xl:grid-cols-2 gap-space-md">
           {rows.map((offer) => (
-            <DealRow key={offer.id} offer={offer} onBoost={onBoost} onOpenLedger={onOpenLedger} />
+            <DealRow key={offer.id} offer={offer} onBoost={onBoost} onOpenLedger={onOpenLedger} onOpenDetail={onOpenDetail} />
           ))}
         </ul>
       )}

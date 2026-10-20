@@ -1,6 +1,8 @@
 import { BoostTabBar, type BoostTabKey } from '../components/BoostTabBar';
 import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { CampaignsPanel, QuickBoostPanel, WalletPanel } from '../components/business/GrowthPanels';
+import { CampaignMetricsPanel } from '../components/business/CampaignMetricsPanel';
+import type { CampaignKind } from '../services/sponsoredCampaignsService';
 import { LoyaltyPanel } from '../components/business/LoyaltyPanel';
 import { SegmentsPanel } from '../components/business/SegmentsPanel';
 import { DesktopBusinessPage } from './desktop/DesktopBusinessPage';
@@ -57,6 +59,7 @@ interface GrowthNav {
   onBoost: () => void;
   onCreateCampaign: () => void;
   onOpenWallet: () => void;
+  onOpenMetrics?: (kind: CampaignKind, id: string) => void;
 }
 
 /** Live boosts & campaigns — mobile. */
@@ -129,6 +132,33 @@ export function DesktopLiveWalletScreen({ onNav, onBack }: { onNav: (key: string
       subtitle="Prepaid balance for boosts and campaigns."
     >
       <WalletPanel />
+    </DesktopBusinessPage>
+  );
+}
+
+type MetricsTarget = { kind: CampaignKind; id: string } | null;
+
+/** Live boost & campaign results — mobile. */
+export function LiveCampaignMetricsScreen({ initial, onBack, onTab }: { initial: MetricsTarget; onBack: () => void; onTab: (tab: BoostTabKey) => void }) {
+  return (
+    <BusinessSubScreen title="Results" onBack={onBack}>
+      <CampaignMetricsPanel initial={initial} />
+      <BoostTabBar active="metrics" onTab={onTab} />
+    </BusinessSubScreen>
+  );
+}
+
+/** Live boost & campaign results — desktop. */
+export function DesktopLiveCampaignMetricsScreen({ initial, onNav, onBack }: { initial: MetricsTarget; onNav: (key: string) => void; onBack: () => void }) {
+  return (
+    <DesktopBusinessPage
+      activeNav="more-marketing"
+      onNav={onNav}
+      crumbs={[{ label: 'Growth', onClick: onBack }, { label: 'Results' }]}
+      title="Campaign results"
+      subtitle="Reach, claims and spend for each boost and campaign."
+    >
+      <CampaignMetricsPanel initial={initial} />
     </DesktopBusinessPage>
   );
 }

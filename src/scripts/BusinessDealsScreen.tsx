@@ -11,7 +11,8 @@ import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '.
 interface BusinessDealsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onBoost: (itemName?: string) => void;
-  onOpenDeal: () => void;
+  /** Live passes the deal group to open. */
+  onOpenDeal: (dealGroupId?: string) => void;
   onCreateDeal: () => void;
 }
 
@@ -146,7 +147,7 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
         <BusinessHubHeader />
         <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
           <h1 className="font-heading-md text-heading-md text-text-primary">Deals</h1>
-          <DealsPanel onCreate={onCreateDeal} onBoost={onBoost} />
+          <DealsPanel onCreate={onCreateDeal} onBoost={onBoost} onOpenDetail={(id) => onOpenDeal(id)} />
         </div>
         <BusinessTabBar active="business" onTab={onTab} />
       </AppScreen>

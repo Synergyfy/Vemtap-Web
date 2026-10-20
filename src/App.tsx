@@ -209,13 +209,21 @@ import { DesktopLiveAccountScreen, LiveAccountScreen, type AccountPage } from '.
 import { DesktopLiveMessagesScreen, LiveMessagesScreen } from './scripts/LiveMessagesScreens';
 import { DesktopLivePosScreen, LivePosScreen, type LivePosPage } from './scripts/LivePosScreens';
 import {
+  DesktopLiveBranchPricingScreen,
+  DesktopLiveDealDetailScreen,
+  LiveBranchPricingScreen,
+  LiveDealDetailScreen,
+} from './scripts/LiveCatalogueScreens';
+import {
   DesktopLiveBoostHubScreen,
   DesktopLiveBoostStudioScreen,
+  DesktopLiveCampaignMetricsScreen,
   DesktopLiveLoyaltyScreen,
   DesktopLiveSegmentsScreen,
   DesktopLiveWalletScreen,
   LiveBoostHubScreen,
   LiveBoostStudioScreen,
+  LiveCampaignMetricsScreen,
   LiveLoyaltyScreen,
   LiveSegmentsScreen,
   LiveWalletScreen,
@@ -1633,6 +1641,10 @@ function AppInner() {
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
   /** Inbox thread to open on the live Messages page (e.g. from a customer profile). */
   const [businessThreadId, setBusinessThreadId] = useState<string | null>(null);
+  /** Deal group shown on the live deal performance page. */
+  const [dealGroupId, setDealGroupId] = useState<string | null>(null);
+  /** Campaign preselected on the live results page. */
+  const [metricsTarget, setMetricsTarget] = useState<{ kind: 'boost' | 'promotion'; id: string } | null>(null);
 
   const openBoost = (item?: string) => {
     // The Boost Studio always opens inside the dashboard (side menu intact) —
@@ -3823,6 +3835,10 @@ function AppInner() {
           onBoost: () => openBoost(),
           onCreateCampaign: () => setRoute('campaign-create'),
           onOpenWallet: () => setRoute('boost-wallet'),
+          onOpenMetrics: (kind: 'boost' | 'promotion', id: string) => {
+            setMetricsTarget({ kind, id });
+            setRoute('boost-metrics');
+          },
         };
         return isDesktop ? (
           <DesktopLiveBoostHubScreen onNav={businessPortalNav} {...growthNav} />
@@ -3896,6 +3912,12 @@ function AppInner() {
       );
 
     case 'boost-metrics':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveCampaignMetricsScreen initial={metricsTarget} onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} />
+        ) : (
+          <LiveCampaignMetricsScreen initial={metricsTarget} onBack={() => setRoute('boost-hub')} onTab={boostTab} />
+        );
       if (isDesktop)
         return <DesktopBoostMetricsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
       return (
@@ -4148,6 +4170,12 @@ function AppInner() {
       );
 
     case 'business-branch-pricing':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBranchPricingScreen onNav={businessPortalNav} onBack={() => setRoute('hub-catalog')} />
+        ) : (
+          <LiveBranchPricingScreen onBack={() => setRoute('hub-catalog')} />
+        );
       if (isDesktop)
         return (
           <DesktopBusinessBranchPricingScreen
@@ -4231,14 +4259,30 @@ function AppInner() {
             onNav={businessPortalNav}
             onCreateDeal={() => setRoute('deal-studio')}
             onEditDeal={() => setRoute('deal-location-pricing')}
-            onOpenDealDetail={() => setRoute('hub-deal-detail')}
+            onOpenDealDetail={(id) => {
+              if (id) setDealGroupId(id);
+              setRoute('hub-deal-detail');
+            }}
             onOpenLogs={() => setRoute('analytics-deals')}
             onOpenPos={() => setRoute('business-pos-orders')}
             onBoost={(dealName) => openBoost(dealName)}
             onOpenLedger={() => setRoute('business-deal-ledger')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'deal-studio':
       if (isDesktop)
@@ -4318,6 +4362,18 @@ function AppInner() {
       return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'deal-location-pricing':
+      if (hasApiConfig()) {
+        const dealProps = {
+          dealGroupId,
+          onOpenLedger: () => setRoute('business-deal-ledger'),
+          onBoost: (name: string) => openBoost(name),
+        };
+        return isDesktop ? (
+          <DesktopLiveDealDetailScreen {...dealProps} onNav={businessPortalNav} onBack={() => setRoute('hub-deals')} />
+        ) : (
+          <LiveDealDetailScreen {...dealProps} onBack={() => setRoute('hub-deals')} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopDealLocationPricingScreen
@@ -4326,7 +4382,20 @@ function AppInner() {
             onSave={() => setRoute('hub-deals')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'deal-create-locations':
       if (isDesktop)
@@ -4337,7 +4406,20 @@ function AppInner() {
             onReview={() => setRoute('hub-deal-detail')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'business-profile-studio':
       if (isDesktop)
@@ -4350,6 +4432,18 @@ function AppInner() {
       return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-deal-detail':
+      if (hasApiConfig()) {
+        const dealProps = {
+          dealGroupId,
+          onOpenLedger: () => setRoute('business-deal-ledger'),
+          onBoost: (name: string) => openBoost(name),
+        };
+        return isDesktop ? (
+          <DesktopLiveDealDetailScreen {...dealProps} onNav={businessPortalNav} onBack={() => setRoute('hub-deals')} />
+        ) : (
+          <LiveDealDetailScreen {...dealProps} onBack={() => setRoute('hub-deals')} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopDealAnalyticsScreen
@@ -4361,7 +4455,20 @@ function AppInner() {
             onEditDeal={() => setRoute('deal-studio')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'hub-customer-profile':
       if (hasApiConfig()) {
