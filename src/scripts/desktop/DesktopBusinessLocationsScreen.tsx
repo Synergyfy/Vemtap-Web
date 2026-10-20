@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { BranchesPanel } from '../../components/business/BranchesPanel';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 
 interface DesktopBusinessLocationsScreenProps {
@@ -32,6 +34,32 @@ const SEED_BRANCHES: OnboardingBranch[] = [
 
 export function DesktopBusinessLocationsScreen({ onBack, onAddBranch, onNext, onSaveDraft }: DesktopBusinessLocationsScreenProps) {
   const [branches] = useState<OnboardingBranch[]>(SEED_BRANCHES);
+
+  // Live: branches are created on the backend; the seeded list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <div className="w-full max-w-4xl mx-auto px-8 py-10 flex flex-col gap-8">
+        <div className="flex flex-col gap-1">
+          <button type="button" onClick={onBack} className="inline-flex items-center gap-1 w-fit font-label-sm text-label-sm text-text-secondary hover:text-primary">
+            ← Back
+          </button>
+          <h1 className="font-heading-lg text-heading-lg text-text-primary">Your branch locations</h1>
+          <p className="font-body-md text-body-md text-text-secondary">
+            Your main branch was created with your account. Add any other locations now, or later from your dashboard.
+          </p>
+        </div>
+        <BranchesPanel />
+        <div className="flex gap-space-xs justify-end">
+          <button type="button" onClick={onSaveDraft} className="h-11 px-space-md rounded-xl bg-surface-container text-text-primary font-label-md text-label-md">
+            Save &amp; exit
+          </button>
+          <button type="button" onClick={onNext} className="h-11 px-space-lg rounded-xl bg-primary-container text-on-primary font-label-md text-label-md">
+            Continue
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 flex flex-col gap-8">

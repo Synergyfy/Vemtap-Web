@@ -936,6 +936,7 @@ function AppInner() {
   const isDesktop = useIsDesktop();
   const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
   const [selectedReferralId, setSelectedReferralId] = useState<string | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return match?.business ?? null;
@@ -3884,7 +3885,10 @@ function AppInner() {
           <DesktopBusinessLocationsHubScreen
             onNav={businessPortalNav}
             onAddBranch={() => setRoute('business-onboarding')}
-            onOpenBranch={() => setRoute('hub-branch-detail')}
+            onOpenBranch={(branchId) => {
+              setSelectedBranchId(branchId ?? null);
+              setRoute('hub-branch-detail');
+            }}
           />
         );
       return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -3895,6 +3899,7 @@ function AppInner() {
           <DesktopBranchDetailScreen
             onNav={businessPortalNav}
             onBackToLocations={() => setRoute('hub-locations')}
+            branchId={selectedBranchId}
           />
         );
       return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;

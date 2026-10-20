@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { BranchesPanel } from '../components/business/BranchesPanel';
+import { hasApiConfig } from '../services/api/client';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 
@@ -68,6 +70,34 @@ export function BusinessBranchesScreen({
   const [multiLocation, setMultiLocation] = useState(true);
 
   const branches = [...seedBranches, ...(extraBranches ?? [])];
+
+  // Live: branches are created on the backend; the seeded list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-md pb-space-2xl gap-space-lg">
+        <div className="flex flex-col gap-1">
+          <button type="button" onClick={onBack} className="inline-flex items-center gap-1 w-fit font-label-sm text-label-sm text-text-secondary hover:text-primary">
+            ← Back
+          </button>
+          <h1 className="font-heading-lg text-heading-lg text-text-primary">Your branch locations</h1>
+          <p className="font-body-md text-body-md text-text-secondary">
+            Your main branch was created with your account. Add any other locations now, or later from your dashboard.
+          </p>
+        </div>
+        <BranchesPanel />
+        <div className="flex gap-space-xs justify-end">
+          <button type="button" onClick={onSaveDraft} className="h-11 px-space-md rounded-xl bg-surface-container text-text-primary font-label-md text-label-md">
+            Save &amp; exit
+          </button>
+          <button type="button" onClick={onNext} className="h-11 px-space-lg rounded-xl bg-primary-container text-on-primary font-label-md text-label-md">
+            Continue
+          </button>
+        </div>
+      </div>
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>
