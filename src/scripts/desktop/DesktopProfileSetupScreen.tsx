@@ -1,5 +1,9 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { ReferralField } from '../../components/referral/ReferralField';
+import { ReferralConfirmSheet } from '../../components/referral/ReferralConfirmSheet';
+import { useReferralIdentity } from '../../hooks/useReferralIdentity';
+import { useReferralStep } from '../../hooks/useReferralStep';
 
 interface DesktopProfileSetupScreenProps {
   onBack: () => void;
@@ -97,9 +101,30 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup 
   const [pinRevealed, setPinRevealed] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<'idle' | 'saving' | 'verified'>('idle');
+  const referral = useReferralStep();
+  /** Which button opened the referral sheet, so it completes the same way. */
+  const [pendingAction, setPendingAction] = useState<'submit' | 'next' | null>(null);
+
+  const ownIdentity = useReferralIdentity();
 
   const passName = [firstName, lastName].filter(Boolean).join(' ') || 'First Last';
   const passPhone = `+234 ${phone.trim() || '800 000 0000'}`;
+
+  const finishSetup = () => {
+    setStatus('saving');
+    window.setTimeout(() => {
+      setStatus('verified');
+      window.setTimeout(onComplete, 700);
+    }, 900);
+  };
+
+  /** Runs whatever the user asked for once the referral step is resolved. */
+  const completePendingAction = () => {
+    const action = pendingAction;
+    setPendingAction(null);
+    if (action === 'next') onComplete();
+    else finishSetup();
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -117,11 +142,23 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup 
       return;
     }
     setError('');
-    setStatus('saving');
-    window.setTimeout(() => {
-      setStatus('verified');
-      window.setTimeout(onComplete, 700);
-    }, 900);
+    // The referral code is checked on submit, not while it is being typed.
+    if (referral.needsConfirmation) {
+      setPendingAction('submit');
+      referral.requestConfirmation();
+      return;
+    }
+    finishSetup();
+  };
+
+  /** The "skip ahead" link obeys the same referral check as the main button. */
+  const handleNext = () => {
+    if (referral.needsConfirmation) {
+      setPendingAction('next');
+      referral.requestConfirmation();
+      return;
+    }
+    onComplete();
   };
 
   return (
@@ -340,6 +377,13 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup 
                   </div>
                 </div>
 
+                {/* Referral code — optional, checked on submit rather than on Apply */}
+                <ReferralField
+                  fromUrl={referral.fromUrl}
+                  onChange={referral.changeCode}
+                  value={referral.code}
+                />
+
                 <div className="flex flex-col gap-space-md bg-surface-subtle p-space-md sm:p-space-lg rounded-xl">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -416,7 +460,7 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup 
                     <button
                       className="inline-flex items-center gap-1.5 font-label-md text-label-md text-primary hover:text-primary-container font-medium group transition-colors"
                       type="button"
-                      onClick={onComplete}
+                      onClick={handleNext}
                     >
                       <span>Next: Set up your location to discover deals near you</span>
                       <Icon name="arrow_forward" className="text-sm group-hover:translate-x-1 transition-transform" />
@@ -441,6 +485,25 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup 
           </div>
         </div>
       </main>
+
+      {/* Submit-time referral check — bottom sheet on mobile, modal on desktop */}
+      <ReferralConfirmSheet
+        open={referral.promptOpen}
+        initialCode={referral.code}
+        ownCode={ownIdentity.code}
+        onCancel={() => {
+          referral.cancel();
+          setPendingAction(null);
+        }}
+        onConfirm={() => {
+          referral.confirm();
+          completePendingAction();
+        }}
+        onSkip={() => {
+          referral.skip();
+          completePendingAction();
+        }}
+      />
     </div>
   );
 }

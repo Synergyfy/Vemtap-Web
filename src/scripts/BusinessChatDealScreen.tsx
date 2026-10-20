@@ -7,9 +7,12 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatDealScreenProps {
   onBack: () => void;
+  /** Customer or business the merchant is chatting with. */
+  contact?: BusinessChatContact;
 }
 
 interface ThreadMessage {
@@ -26,18 +29,18 @@ const DEAL_IMG =
 const DEAL_ALT =
   'Gourmet artisanal lunch burger with melted aged cheddar, crisp butter lettuce, sliced heirloom tomato, crispy hand-cut golden fries in a small matte ramekin, warm cafe natural backlight, professional food photography, shallow depth of field, vibrant colors';
 
-const INITIAL_MESSAGES: ThreadMessage[] = [
+const buildInitialMessages = (firstName: string): ThreadMessage[] => [
   {
     id: 1,
     direction: 'in',
     text: "Hello! We'd like to bring a team of 4 colleagues for lunch today. Can we all claim this 20% deal on our separate VEMTAP apps?",
     time: '10:35 AM',
-    showAuthor: 'Sarah',
+    showAuthor: firstName,
   },
   {
     id: 2,
     direction: 'out',
-    text: 'Hi Sarah! Yes, absolutely! Each colleague can simply claim the voucher on their VEMTAP app and show the QR code when ordering at Table or Counter.',
+    text: `Hi ${firstName}! Yes, absolutely! Each colleague can simply claim the voucher on their VEMTAP app and show the QR code when ordering at Table or Counter.`,
     time: '10:38 AM',
     readState: 'read',
   },
@@ -46,7 +49,7 @@ const INITIAL_MESSAGES: ThreadMessage[] = [
     direction: 'in',
     text: 'Awesome, we are heading over now. Can we settle with POS card swipe at the table?',
     time: '10:41 AM',
-    showAuthor: 'Sarah',
+    showAuthor: firstName,
   },
   {
     id: 4,
@@ -66,7 +69,7 @@ const QUICK_REPLIES = [
   {
     label: 'Confirm table',
     emoji: '🍽️',
-    text: 'Table for 4 is reserved for your party under the name Sarah! 🍽️',
+    text: 'Table for 4 is reserved for your party 🍽️',
   },
   {
     label: 'Send voucher link',
@@ -83,8 +86,10 @@ const formatNow = () => {
   return `${hours % 12 || 12}:${minutes} ${ampm}`;
 };
 
-export function BusinessChatDealScreen({ onBack }: BusinessChatDealScreenProps) {
-  const [messages, setMessages] = useState<ThreadMessage[]>(INITIAL_MESSAGES);
+export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScreenProps) {
+  const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.deal;
+  const firstName = contactFirstName(activeContact.name);
+  const [messages, setMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
   const [input, setInput] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -105,12 +110,15 @@ export function BusinessChatDealScreen({ onBack }: BusinessChatDealScreenProps) 
     <AppScreen>
       <BusinessChatHeader
         onBack={onBack}
+        title={activeContact.name}
+        avatar={activeContact.avatar}
+        isBusiness={activeContact.isBusiness}
         subtitle="Active inquiry • Deal #VT-48F261"
         onAvatar={() => setDrawerOpen(true)}
         onCall={() => (window.location.href = 'tel:+2348124430912')}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name="Sarah Adams" phone="+234 812 443 0912" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 812 443 0912" />
       <AttachmentSheet open={attachOpen} onClose={() => setAttachOpen(false)} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
@@ -233,7 +241,7 @@ export function BusinessChatDealScreen({ onBack }: BusinessChatDealScreenProps) 
               <input
                 autoComplete="off"
                 className="w-full h-[48px] pl-space-md pr-10 rounded-full bg-surface-container-lowest text-text-primary placeholder:text-text-tertiary font-body-md text-body-md focus:outline-none focus:bg-surface-canvas shadow-sm"
-                placeholder="Type a reply to Sarah..."
+                placeholder={`Type a reply to ${firstName}...`}
                 type="text"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}

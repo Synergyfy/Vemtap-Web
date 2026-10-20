@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { FilterMenu } from '../components/FilterMenu';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CartSheet } from '../components/sheets/CartSheet';
@@ -319,13 +320,19 @@ function MenuBody({
               value={searchQuery}
               onChange={(e) => onSearch(e.target.value)}
             />
-            <button
-              aria-label="Filter"
-              type="button"
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-text-secondary hover:text-primary transition-colors"
-            >
-              <Icon name="tune" className="text-[20px]" />
-            </button>
+            {/* Mirrors the category chips below so the search-bar control filters too. */}
+            <FilterMenu
+              align="right"
+              ariaLabel="Filter by category"
+              buttonClassName="absolute inset-y-0 right-0 pr-3 flex items-center text-text-secondary hover:text-primary transition-colors"
+              choices={chips.map((chip) => ({ value: chip.key, label: chip.label }))}
+              icon="tune"
+              iconClassName="text-[20px]"
+              label={null}
+              onChange={(next) => onCategory(next as MenuCategory)}
+              title="Filter by category"
+              value={activeCategory}
+            />
           </div>
         </div>
 

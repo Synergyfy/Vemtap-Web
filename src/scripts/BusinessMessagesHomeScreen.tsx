@@ -4,12 +4,13 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MessagesSubNav, type MessagesChannelKey } from '../components/campaigns/MessagesSubNav';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import type { BusinessChatContact } from './messagesContact';
 
 interface BusinessMessagesHomeScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onOpenSearch: () => void;
   onNewMessage: () => void;
-  onOpenConversation: (thread: 'deal' | 'order' | 'general' | 'booking') => void;
+  onOpenConversation: (thread: 'deal' | 'order' | 'general' | 'booking', contact: BusinessChatContact) => void;
   /** Sub-navigation between In-App Chat and the campaign channels. */
   onSelectChannel?: (key: MessagesChannelKey) => void;
 }
@@ -41,6 +42,8 @@ interface ConversationRow {
   showYouPrefix?: boolean;
   readIcon?: 'done_all' | null;
   thread: 'deal' | 'order' | 'general' | 'booking';
+  /** True when the thread is with a business rather than an individual customer. */
+  isBusiness?: boolean;
   tags: ('unread' | 'orders' | 'deals' | 'bookings')[];
 }
 
@@ -116,6 +119,7 @@ const CONVERSATIONS: ConversationRow[] = [
     chipClass: 'bg-surface-container text-on-secondary-container',
     message: 'Do you have the 100ml bottle available in your Wuse II store?',
     messagePrimary: true,
+    isBusiness: true,
     thread: 'general',
     tags: ['unread'],
   },
@@ -288,7 +292,9 @@ export function BusinessMessagesHomeScreen({
               }`}
               key={row.id}
               type="button"
-              onClick={() => onOpenConversation(row.thread)}
+              onClick={() =>
+                onOpenConversation(row.thread, { name: row.name, avatar: row.img, isBusiness: row.isBusiness })
+              }
             >
               <div className="relative shrink-0">
                 <img alt={row.alt} className="w-[50px] h-[50px] rounded-full object-cover shadow-inner" src={row.img} />

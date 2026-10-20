@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -20,11 +20,29 @@ import { classifyServiceFromBusiness } from '../serviceClassification';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 import {
   getCentralCategories,
+  getCategoryImageByName,
   addCentralCategory,
   updateCentralCategory,
   archiveCentralCategory,
   type CentralCategory,
 } from '../catalogueData';
+import { AddProductMethodsDialog } from '../../components/import/AddProductMethodsDialog';
+import { CategoryImageField } from '../../components/CategoryImageField';
+import { ProductImportWizard } from '../../components/import/ProductImportWizard';
+import { ImportedProductsReview } from '../../components/import/ImportedProductsReview';
+import { BulkActionsBar, type BulkAction } from '../../components/BulkActionsBar';
+import { ConfirmActionDialog } from '../../components/ConfirmActionDialog';
+import {
+  publishImportedProducts,
+  removeImportedProducts,
+  resolveProductDisplayImage,
+  setImportedLinkedDeal,
+  unpublishImportedProducts,
+  useImportedProducts,
+} from '../productImport/importedProductStore';
+import { summariseImport } from '../productImport/importSummary';
+import { naira } from '../catalogueData';
+import type { ImportedProduct } from '../productImport/importTypes';
 
 interface DesktopBusinessCatalogHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -68,6 +86,65 @@ interface CatalogRow {
   };
   sync: boolean;
   filters: CatalogChip[];
+}
+
+/* ------------------------------------------------------------------ *
+ * "More Filters" panel — narrow the list beyond the quick chips
+ * ------------------------------------------------------------------ */
+
+type AdvancedStatus = 'any' | 'published' | 'draft' | 'hidden';
+type AdvancedStock = 'any' | 'in' | 'out' | 'unset';
+type AdvancedDeal = 'any' | 'linked' | 'unlinked';
+type AdvancedSync = 'any' | 'synced' | 'unsynced';
+
+interface CatalogAdvancedFilters {
+  /** '' means every category — kept as one dropdown rather than a chip list. */
+  category: string;
+  status: AdvancedStatus;
+  stock: AdvancedStock;
+  deal: AdvancedDeal;
+  sync: AdvancedSync;
+}
+
+const EMPTY_ADVANCED_FILTERS: CatalogAdvancedFilters = {
+  category: '',
+  status: 'any',
+  stock: 'any',
+  deal: 'any',
+  sync: 'any',
+};
+
+function countActiveAdvancedFilters(advanced: CatalogAdvancedFilters): number {
+  return (
+    (advanced.category === '' ? 0 : 1) +
+    (advanced.status === 'any' ? 0 : 1) +
+    (advanced.stock === 'any' ? 0 : 1) +
+    (advanced.deal === 'any' ? 0 : 1) +
+    (advanced.sync === 'any' ? 0 : 1)
+  );
+}
+
+/**
+ * Applies the "More Filters" panel to one row. `isSynced` is injected because
+ * terminal sync lives in component state, not on the row model.
+ */
+function rowMatchesAdvancedFilters(
+  row: CatalogRow,
+  advanced: CatalogAdvancedFilters,
+  isSynced: boolean,
+): boolean {
+  if (advanced.category !== '' && row.category !== advanced.category) return false;
+  if (advanced.status === 'published' && !(row.filters.includes('published') && row.draft !== true)) return false;
+  if (advanced.status === 'draft' && row.draft !== true) return false;
+  if (advanced.status === 'hidden' && row.hidden !== true) return false;
+  if (advanced.stock === 'in' && row.stock.tone !== 'ok') return false;
+  if (advanced.stock === 'out' && row.stock.tone !== 'error') return false;
+  if (advanced.stock === 'unset' && row.stock.tone !== 'off') return false;
+  if (advanced.deal === 'linked' && !row.filters.includes('deals')) return false;
+  if (advanced.deal === 'unlinked' && row.filters.includes('deals')) return false;
+  if (advanced.sync === 'synced' && !isSynced) return false;
+  if (advanced.sync === 'unsynced' && isSynced) return false;
+  return true;
 }
 
 const ROWS: CatalogRow[] = [
@@ -360,11 +437,11 @@ const STATS = [
   },
 ];
 
-const CHIPS: Array<{ key: CatalogChip; label: string; icon?: string; tone?: 'green' | 'error' }> = [
-  { key: 'all', label: 'All (28)' },
-  { key: 'published', label: 'Active & Published (24)' },
-  { key: 'deals', label: 'Deal Linked (4)', icon: 'percent', tone: 'green' },
-  { key: 'low', label: 'Low Stock (3)', icon: 'priority_high', tone: 'error' },
+const CHIPS: Array<{ key: CatalogChip; label: string; icon?: string; tone?: 'green' | 'error'; counted?: boolean }> = [
+  { key: 'all', label: 'All', counted: true },
+  { key: 'published', label: 'Active & Published', counted: true },
+  { key: 'deals', label: 'Deal Linked', icon: 'percent', tone: 'green', counted: true },
+  { key: 'low', label: 'Low Stock', icon: 'priority_high', tone: 'error', counted: true },
   { key: 'dinein', label: 'Dine-In' },
   { key: 'takeaway', label: 'Takeaway' },
   { key: 'oos', label: 'Out of Stock' },
@@ -376,6 +453,100 @@ const BRANCH_DOT: Record<CatalogRow['branchDot'], string> = {
   tertiary: 'bg-text-tertiary',
 };
 
+/** Maps a bulk-imported product (store record) onto a catalogue list row. */
+function importedProductToRow(product: ImportedProduct): CatalogRow {
+  const onSale = product.salePrice !== null && product.price !== null && product.salePrice < product.price;
+  // Own image first; category image only as a fallback, resolved live so
+  // category edits propagate (never copied onto the product).
+  const image = resolveProductDisplayImage(product, getCategoryImageByName) ?? ROWS[0].image;
+  const baseFilters: CatalogChip[] = product.status === 'published' ? ['all', 'published'] : ['all'];
+  return {
+    id: product.id,
+    name: product.name || 'Untitled imported product',
+    image,
+    alt: product.description || product.name || 'Imported product',
+    draft: product.status === 'draft',
+    hidden: product.status === 'draft',
+    dimmed: product.needsReview,
+    sku: product.sku || '—',
+    sub: product.unit || 'Imported item',
+    category: product.category || 'General',
+    categoryIcon: 'storefront',
+    price: product.price !== null ? naira(onSale ? (product.salePrice as number) : product.price) : '—',
+    was: onSale && product.price !== null ? naira(product.price) : undefined,
+    priceNote: product.status === 'draft' ? 'Imported draft — publish when ready' : 'Imported product',
+    branchDot: 'ok',
+    branchLabel: 'All 3 Branches',
+    branchNote: product.status === 'draft' ? 'Draft until published' : 'Active in POS & Storefront',
+    stock:
+      product.stock !== null
+        ? {
+            tone: product.stock <= 0 ? 'error' : 'ok',
+            label: product.stock <= 0 ? 'Out of Stock' : 'In Stock',
+            units: `${product.stock} ${product.unit || 'units'}`,
+            unitsTone: product.stock <= 5 ? 'error' : 'default',
+          }
+        : { tone: 'off', label: 'Stock not set' },
+    sync: product.status === 'published',
+    filters: product.linkedDeal ? [...baseFilters, 'deals'] : baseFilters,
+    dealBadge: product.linkedDeal ? 'Deal Linked' : undefined,
+  };
+}
+
+/** Bulk-imported rows are backed by the imported-product store, not local row state. */
+const isImportedRow = (id: string) => id.startsWith('imp_');
+
+/**
+ * Flips a locally-held catalogue row between published and draft, mirroring the
+ * semantics bulk-imported products already have (a draft is unpublished and
+ * hidden; publishing makes it live again).
+ *
+ * Only copy that literally advertises itself as unpublished is repaired on the
+ * way back — real stock counts and branch notes are never overwritten or
+ * invented.
+ */
+function withPublishState(row: CatalogRow, publish: boolean): CatalogRow {
+  if (publish) {
+    const placeholderStock = row.stock.label === 'Unpublished / Draft';
+    const placeholderBranch = row.branchNote === 'Draft deployment ready';
+    return {
+      ...row,
+      draft: false,
+      hidden: false,
+      dimmed: false,
+      sync: true,
+      filters: row.filters.includes('published') ? row.filters : [...row.filters, 'published'],
+      stock: placeholderStock ? { tone: 'off', label: 'Stock not set' } : row.stock,
+      branchDot: placeholderBranch ? 'ok' : row.branchDot,
+      branchNote: placeholderBranch ? 'Active in POS & Storefront' : row.branchNote,
+    };
+  }
+  return {
+    ...row,
+    draft: true,
+    hidden: true,
+    dimmed: true,
+    sync: false,
+    filters: row.filters.filter((entry) => entry !== 'published'),
+  };
+}
+
+/**
+ * Links or unlinks a locally-held catalogue row to a deal. Deal terms are
+ * configured in the Deals workspace — this only records the link, which is
+ * what the "Deal Linked" chip filters on.
+ */
+function withDealLinked(row: CatalogRow, linked: boolean): CatalogRow {
+  const alreadyLinked = row.filters.includes('deals');
+  if (alreadyLinked === linked) return row;
+  return {
+    ...row,
+    filters: linked ? [...row.filters, 'deals'] : row.filters.filter((entry) => entry !== 'deals'),
+    // Keep an existing badge; only brand newly-linked rows with a neutral one.
+    dealBadge: linked ? (row.dealBadge ?? 'Deal Linked') : undefined,
+  };
+}
+
 export function DesktopBusinessCatalogHubScreen({
   onNav,
   onOpenBranchPricing,
@@ -384,6 +555,15 @@ export function DesktopBusinessCatalogHubScreen({
   const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
   const [productRows, setProductRows] = useState<CatalogRow[]>(ROWS);
   const [serviceRows, setServiceRows] = useState<CatalogRow[]>(SERVICES_ROWS);
+  const importedProducts = useImportedProducts();
+  const importedRows = useMemo(() => importedProducts.map(importedProductToRow), [importedProducts]);
+  /** Imported products still awaiting review/publish. */
+  const draftImportCount = useMemo(
+    () => importedProducts.filter((product) => product.status === 'draft').length,
+    [importedProducts],
+  );
+  /** Seed rows + bulk-imported products (imported ones render first). */
+  const allProductRows = useMemo(() => [...importedRows, ...productRows], [importedRows, productRows]);
   const [centralCategories, setCentralCategories] = useState<CentralCategory[]>(() => getCentralCategories());
   const [categoryTypeFilter, setCategoryTypeFilter] = useState<'all' | 'product' | 'service'>('all');
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
@@ -395,12 +575,15 @@ export function DesktopBusinessCatalogHubScreen({
   const [catFormType, setCatFormType] = useState<'product' | 'service'>('product');
   const [catFormDesc, setCatFormDesc] = useState('');
   const [catFormIcon, setCatFormIcon] = useState('restaurant');
+  /** Optional category image (data URL), same storage approach as ServiceImageUploader. */
+  const [catFormImage, setCatFormImage] = useState('');
 
   const handleOpenAddCategory = () => {
     setCatFormName('');
     setCatFormType('product');
     setCatFormDesc('');
     setCatFormIcon('restaurant');
+    setCatFormImage('');
     setCategoryModal({ mode: 'add' });
   };
 
@@ -409,6 +592,7 @@ export function DesktopBusinessCatalogHubScreen({
     setCatFormType(cat.type);
     setCatFormDesc(cat.description);
     setCatFormIcon(cat.icon);
+    setCatFormImage(cat.image ?? '');
     setCategoryModal({ mode: 'edit', category: cat });
   };
 
@@ -424,6 +608,7 @@ export function DesktopBusinessCatalogHubScreen({
         type: catFormType,
         description: catFormDesc.trim() || `${catFormName.trim()} selections`,
         icon: catFormIcon,
+        image: catFormImage || undefined,
         productCount: 0,
         activeBranches: ['all'],
         qrDestinationUrl: `/business/urban-grill-bistro-104/products?category=${slug}`,
@@ -436,6 +621,8 @@ export function DesktopBusinessCatalogHubScreen({
         type: catFormType,
         description: catFormDesc.trim(),
         icon: catFormIcon,
+        // Explicitly write the (possibly emptied) image so "Remove" persists.
+        image: catFormImage || undefined,
       });
       setCentralCategories(getCentralCategories());
       setToastMessage(`Category "${catFormName.trim()}" updated successfully.`);
@@ -468,12 +655,15 @@ export function DesktopBusinessCatalogHubScreen({
     | 'productReview'
     | 'productPricingConfig'
     | 'productPublished'
+    | 'importReview'
     | 'service1'
     | 'service2'
     | 'service3'
     | 'serviceReview'
     | 'servicePublished'
   >('none');
+  const [addMethodsOpen, setAddMethodsOpen] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
 
   const businessSnapshot = getBusinessSetupSnapshot();
   const businessDraft = businessSnapshot?.data.draft as BusinessProfileDraft | undefined;
@@ -502,6 +692,11 @@ export function DesktopBusinessCatalogHubScreen({
   const [chip, setChip] = useState<CatalogChip>('all');
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [selected, setSelected] = useState<string[]>([]);
+  /** Set while a bulk Delete is waiting for confirmation. */
+  const [bulkDelete, setBulkDelete] = useState<{ ids: string[]; count: number } | null>(null);
+  /** "More Filters" panel state — combined with the quick chips and search. */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [advanced, setAdvanced] = useState<CatalogAdvancedFilters>(EMPTY_ADVANCED_FILTERS);
   const [sync, setSync] = useState<Record<string, boolean>>(() =>
     Object.fromEntries([...ROWS, ...SERVICES_ROWS].map((row) => [row.id, row.sync])),
   );
@@ -597,7 +792,7 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handleExportCSV = () => {
-    const currentList = activeTab === 'products' ? productRows : serviceRows;
+    const currentList = activeTab === 'products' ? allProductRows : serviceRows;
     const headers = ['ID', 'SKU', 'Name', 'Category', 'Price', 'Was Price', 'Branches', 'Stock Status', 'Units', 'Terminal Sync'];
     const csvRows = [
       headers.join(','),
@@ -644,6 +839,11 @@ export function DesktopBusinessCatalogHubScreen({
   // so every component (basics, pricing, fulfillment, review) stays editable.
   const handleOpenEditItem = (row: CatalogRow) => {
     setActionMenuRowId(null);
+    // Bulk-imported products are edited in the dedicated import review panel.
+    if (row.id.startsWith('imp_')) {
+      setSubFlow('importReview');
+      return;
+    }
     setEditingRowId(row.id);
     if (row.id.startsWith('s')) {
       const durationMatch = row.sub.match(/(\d+)\s*min/i);
@@ -675,6 +875,12 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handleDuplicateItem = (row: CatalogRow) => {
+    setActionMenuRowId(null);
+    if (row.id.startsWith('imp_')) {
+      setToastMessage('Imported products are managed from the review panel.');
+      setSubFlow('importReview');
+      return;
+    }
     const newId = `${row.id}-copy-${Date.now()}`;
     const newSku = `${row.sku}-CP`;
     const duplicated: CatalogRow = {
@@ -690,13 +896,19 @@ export function DesktopBusinessCatalogHubScreen({
       setServiceRows((prev) => [duplicated, ...prev]);
     }
 
-    setActionMenuRowId(null);
     setToastMessage(`Duplicated "${row.name}" as "${duplicated.name}".`);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
   const handleToggleHideItem = (row: CatalogRow) => {
     const nextHidden = !row.hidden;
+    setActionMenuRowId(null);
+    if (row.id.startsWith('imp_')) {
+      setToastMessage(
+        nextHidden ? 'Imported product hidden — publish it from the review panel to show it.' : 'Imported product will show once published.',
+      );
+      return;
+    }
     const updater = (prev: CatalogRow[]) =>
       prev.map((item) => (item.id === row.id ? { ...item, hidden: nextHidden } : item));
 
@@ -712,13 +924,19 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handleDeleteItem = (row: CatalogRow) => {
+    setActionMenuRowId(null);
+    if (row.id.startsWith('imp_')) {
+      removeImportedProducts([row.id]);
+      setToastMessage(`"${row.name}" removed from imported products.`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
     if (activeTab === 'products') {
       setProductRows((prev) => prev.filter((item) => item.id !== row.id));
     } else {
       setServiceRows((prev) => prev.filter((item) => item.id !== row.id));
     }
 
-    setActionMenuRowId(null);
     setToastMessage(`"${row.name}" removed from catalog.`);
     setTimeout(() => setToastMessage(null), 3000);
   };
@@ -812,6 +1030,14 @@ export function DesktopBusinessCatalogHubScreen({
     );
   }
 
+  if (subFlow === 'importReview') {
+    return (
+      <MerchantShell activeNav="business-catalog" onNav={onNav}>
+        <ImportedProductsReview onBack={() => setSubFlow('none')} />
+      </MerchantShell>
+    );
+  }
+
   if (subFlow === 'service1') {
     return (
       <DesktopAddServiceStep1Screen
@@ -888,12 +1114,10 @@ export function DesktopBusinessCatalogHubScreen({
     );
   }
 
-  const currentDataset = activeTab === 'products' ? productRows : serviceRows;
+  const currentDataset = activeTab === 'products' ? allProductRows : serviceRows;
 
   const toggleRow = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
-
-  const toggleAll = () => setSelected(selected.length === currentDataset.length ? [] : currentDataset.map((row) => row.id));
 
   const visibleRows = currentDataset.filter((row) => {
     const matchesChip = chip === 'all' ? true : row.filters.includes(chip);
@@ -903,8 +1127,199 @@ export function DesktopBusinessCatalogHubScreen({
       row.name.toLowerCase().includes(needle) ||
       row.sku.toLowerCase().includes(needle) ||
       row.category.toLowerCase().includes(needle);
-    return matchesChip && matchesQuery;
+    return matchesChip && matchesQuery && rowMatchesAdvancedFilters(row, advanced, sync[row.id] === true);
   });
+
+  /** Everything the "More Filters" panel can offer, drawn from the live rows. */
+  const categoryOptions = Array.from(new Set(currentDataset.map((row) => row.category))).sort();
+  const activeAdvancedCount = countActiveAdvancedFilters(advanced);
+  /** Live chip counts — the seed labels were hard-coded and went stale. */
+  const chipCount = (key: CatalogChip) => currentDataset.filter((row) => row.filters.includes(key)).length;
+
+  const selectClass =
+    'h-9 w-full bg-surface-canvas rounded-lg px-space-xs font-label-sm text-label-sm text-text-primary outline-none focus:shadow-[0_0_0_2px_#066cf4]';
+  const groupLabelClass = 'font-caption text-caption text-text-secondary font-semibold';
+
+  /**
+   * Select-all is scoped to the *filtered* rows only. Rows hidden by a chip
+   * or the search box are never silently added to the selection.
+   */
+  const visibleIds = visibleRows.map((row) => row.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
+  const toggleAll = () =>
+    setSelected((prev) => {
+      const next = prev.filter((id) => !visibleIds.includes(id));
+      return allVisibleSelected ? next : [...next, ...visibleIds];
+    });
+
+  /**
+   * Bulk actions only ever touch rows that are both selected *and* on screen.
+   * Ids left over from another tab, chip or search are never acted on, so the
+   * "N selected" count always matches exactly what will change.
+   */
+  const visibleSelectedRows = visibleRows.filter((row) => selected.includes(row.id));
+  const bulkNoun = activeTab === 'products' ? 'products' : 'services';
+  const bulkSingular = activeTab === 'products' ? 'product' : 'service';
+
+  const bulkActions: BulkAction[] = [
+    {
+      value: 'publish',
+      label: 'Publish',
+      hint: 'Imported products missing a name or price are skipped and reported instead of published.',
+    },
+    { value: 'draft', label: 'Move to Draft' },
+    { value: 'hide', label: 'Hide from Storefront' },
+    { value: 'show', label: 'Show on Storefront' },
+    {
+      value: 'addToDeals',
+      label: 'Add to Deals',
+      hint: 'Marks these items as deal-linked in this catalogue. Deal terms and discounts are configured in the Deals workspace.',
+    },
+    { value: 'removeFromDeals', label: 'Remove from Deals' },
+    { value: 'delete', label: 'Delete' },
+  ];
+
+  const flash = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
+
+  /** Applies a change to the selected rows held in local catalogue state. */
+  const updateSeedRows = (ids: string[], updater: (row: CatalogRow) => CatalogRow) => {
+    const idSet = new Set(ids);
+    const map = (previous: CatalogRow[]) => previous.map((row) => (idSet.has(row.id) ? updater(row) : row));
+    if (activeTab === 'products') setProductRows(map);
+    else setServiceRows(map);
+  };
+
+  /** Keeps the Terminal Sync column in step with publish/draft changes. */
+  const setSeedSync = (ids: string[], value: boolean) =>
+    setSync((previous) => {
+      const next = { ...previous };
+      ids.forEach((id) => {
+        next[id] = value;
+      });
+      return next;
+    });
+
+  const applyBulkAction = (action: string) => {
+    const rows = visibleSelectedRows;
+    if (rows.length === 0) {
+      flash('Select at least one item first.');
+      return;
+    }
+
+    if (action === 'delete') {
+      setBulkDelete({ ids: rows.map((row) => row.id), count: rows.length });
+      return;
+    }
+
+    const importedRowsSelected = rows.filter((row) => isImportedRow(row.id));
+    const seedRowsSelected = rows.filter((row) => !isImportedRow(row.id));
+    const importedIds = importedRowsSelected.map((row) => row.id);
+    const seedIds = seedRowsSelected.map((row) => row.id);
+    const parts: string[] = [];
+
+    if (action === 'publish') {
+      let publishedCount = 0;
+      let blockedCount = 0;
+      if (importedIds.length > 0) {
+        const result = publishImportedProducts(importedIds);
+        publishedCount += result.published.length;
+        blockedCount += result.blocked.length;
+      }
+      if (seedIds.length > 0) {
+        updateSeedRows(seedIds, (row) => withPublishState(row, true));
+        setSeedSync(seedIds, true);
+        publishedCount += seedIds.length;
+      }
+      if (publishedCount > 0) parts.push(`published ${publishedCount} item${publishedCount === 1 ? '' : 's'}`);
+      if (blockedCount > 0)
+        parts.push(
+          `${blockedCount} couldn't publish yet (missing a name or price) — open Review to fix them`,
+        );
+    } else if (action === 'draft') {
+      const alreadyDraft = rows.filter((row) => row.draft === true).length;
+      if (importedIds.length > 0) unpublishImportedProducts(importedIds);
+      if (seedIds.length > 0) {
+        updateSeedRows(seedIds, (row) => withPublishState(row, false));
+        setSeedSync(seedIds, false);
+      }
+      const changed = rows.length - alreadyDraft;
+      if (changed > 0) parts.push(`moved ${changed} item${changed === 1 ? '' : 's'} back to draft`);
+      if (alreadyDraft > 0)
+        parts.push(`${alreadyDraft} ${alreadyDraft === 1 ? 'was' : 'were'} already ${alreadyDraft === 1 ? 'a draft' : 'drafts'}`);
+    } else if (action === 'hide' || action === 'show') {
+      const nextHidden = action === 'hide';
+      if (seedIds.length > 0) {
+        updateSeedRows(seedIds, (row) => (row.hidden === nextHidden ? row : { ...row, hidden: nextHidden }));
+        parts.push(
+          `${nextHidden ? 'hid' : 'showed'} ${seedIds.length} item${seedIds.length === 1 ? '' : 's'} ${
+            nextHidden ? 'from' : 'on'
+          } your storefront`,
+        );
+      }
+      if (importedIds.length > 0) {
+        parts.push(
+          importedIds.length === 1
+            ? '1 imported product is governed by its publish status — use Publish or Move to Draft instead'
+            : `${importedIds.length} imported products are governed by their publish status — use Publish or Move to Draft instead`,
+        );
+      }
+    } else if (action === 'addToDeals' || action === 'removeFromDeals') {
+      const linked = action === 'addToDeals';
+      const seedChanged = seedRowsSelected.filter((row) => row.filters.includes('deals') !== linked).length;
+      let changed = importedIds.length > 0 ? setImportedLinkedDeal(importedIds, linked) : 0;
+      if (seedIds.length > 0) {
+        updateSeedRows(seedIds, (row) => withDealLinked(row, linked));
+        changed += seedChanged;
+      }
+      if (changed > 0) {
+        parts.push(
+          `${linked ? 'linked' : 'unlinked'} ${changed} item${changed === 1 ? '' : 's'} ${linked ? 'to' : 'from'} a deal`,
+        );
+        parts.push('deal terms and discounts are still set up in the Deals workspace');
+      } else {
+        parts.push(`those items were already ${linked ? 'linked to' : 'unlinked from'} a deal`);
+      }
+    }
+
+    if (parts.length > 0) {
+      const message = parts.join('; ');
+      flash(message.charAt(0).toUpperCase() + message.slice(1) + '.');
+    } else {
+      flash('That action did not apply to the selected items.');
+    }
+    setSelected([]);
+  };
+
+  const confirmBulkDelete = () => {
+    if (!bulkDelete) return;
+    const idSet = new Set(bulkDelete.ids);
+    const importedIds = bulkDelete.ids.filter(isImportedRow);
+    const seedIds = bulkDelete.ids.filter((id) => !isImportedRow(id));
+    const removedImported = importedIds.length > 0 ? removeImportedProducts(importedIds) : 0;
+    if (seedIds.length > 0) {
+      if (activeTab === 'products') setProductRows((previous) => previous.filter((row) => !idSet.has(row.id)));
+      else setServiceRows((previous) => previous.filter((row) => !idSet.has(row.id)));
+    }
+    const total = removedImported + seedIds.length;
+    setBulkDelete(null);
+    setSelected([]);
+    flash(`Deleted ${total} item${total === 1 ? '' : 's'} from your catalogue.`);
+  };
+
+  /** A bulk selection can mix imported products with locally-held rows. */
+  const deleteIncludesImported = bulkDelete?.ids.some(isImportedRow) ?? false;
+  const deleteBullets = [
+    ...(deleteIncludesImported
+      ? [
+          'Bulk-imported products leave your imported store too — your original CSV or Excel file is untouched and can be re-imported later.',
+        ]
+      : []),
+    'Anything currently published disappears from your storefront immediately.',
+    'This cannot be undone from here.',
+  ];
 
   return (
     <MerchantShell activeNav="business-catalog" onNav={onNav}>
@@ -977,11 +1392,7 @@ export function DesktopBusinessCatalogHubScreen({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
-                  setEditingRowId(null);
-                  setSubFlow('addProduct1');
-                }}
+                onClick={() => setAddMethodsOpen(true)}
                 className="flex items-center gap-space-2xs px-space-lg py-space-sm rounded-xl bg-primary-container text-on-primary-container hover:bg-primary transition-all font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98]"
               >
                 <Icon name="add_circle" className="text-[20px]" />
@@ -1034,7 +1445,7 @@ export function DesktopBusinessCatalogHubScreen({
                     : 'bg-surface-container text-text-secondary'
                 }`}
               >
-                {productRows.length} active
+                {allProductRows.length} active
               </span>
             </button>
             <button
@@ -1103,6 +1514,26 @@ export function DesktopBusinessCatalogHubScreen({
                 <Icon name="grid_view" className="text-[20px]" />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setImportWizardOpen(true)}
+              className="flex items-center gap-space-2xs px-space-sm py-space-xs rounded-lg text-text-secondary hover:bg-surface-container hover:text-on-surface font-label-sm text-label-sm transition-colors active:scale-95"
+            >
+              <Icon name="upload_file" className="text-[18px]" />
+              <span>Import CSV</span>
+            </button>
+            {draftImportCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setSubFlow('importReview')}
+                className="flex items-center gap-space-2xs px-space-sm py-space-xs rounded-lg bg-surface-tint-blue text-primary hover:bg-primary hover:text-on-primary font-label-sm text-label-sm font-semibold transition-colors active:scale-95"
+              >
+                <Icon name="edit_note" className="text-[18px]" />
+                <span>
+                  Review {draftImportCount.toLocaleString()} draft{draftImportCount === 1 ? '' : 's'}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleExportCSV}
@@ -1189,9 +1620,17 @@ export function DesktopBusinessCatalogHubScreen({
                         <tr key={cat.id} className="hover:bg-surface-subtle/40 transition-colors">
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
-                                <Icon name={cat.icon || 'restaurant'} className="text-[20px]" />
-                              </div>
+                              {cat.image ? (
+                                <img
+                                  src={cat.image}
+                                  alt=""
+                                  className="w-10 h-10 rounded-xl object-cover shrink-0 bg-surface-container"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                                  <Icon name={cat.icon || 'restaurant'} className="text-[20px]" />
+                                </div>
+                              )}
                               <div>
                                 <span className="font-bold text-text-primary block">{cat.name}</span>
                                 <span className="text-[11px] font-mono text-text-tertiary">{cat.slug}</span>
@@ -1320,26 +1759,189 @@ export function DesktopBusinessCatalogHubScreen({
                 classes =
                   'flex items-center gap-space-2xs px-space-md py-space-2xs rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold whitespace-nowrap transition-colors';
               return (
-                <button key={entry.key} type="button" onClick={() => setChip(entry.key)} className={classes}>
+                <button
+                  key={entry.key}
+                  type="button"
+                  aria-current={active ? 'true' : undefined}
+                  onClick={() => setChip(entry.key)}
+                  className={classes}
+                >
                   {entry.icon && <Icon name={entry.icon} className="text-[16px]" />}
-                  <span>{entry.label}</span>
+                  <span>
+                    {entry.label}
+                    {entry.counted ? ` (${chipCount(entry.key).toLocaleString()})` : ''}
+                  </span>
                 </button>
               );
             })}
             <div className="ml-auto pl-space-sm flex items-center gap-space-2xs">
               <button
+                aria-expanded={filtersOpen}
                 type="button"
-                className="flex items-center gap-space-2xs text-text-secondary hover:text-primary font-caption text-caption font-semibold"
+                onClick={() => setFiltersOpen((open) => !open)}
+                className={`flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-lg font-caption text-caption font-semibold transition-colors ${
+                  filtersOpen || activeAdvancedCount > 0
+                    ? 'bg-surface-tint-blue text-primary'
+                    : 'text-text-secondary hover:text-primary'
+                }`}
               >
                 <Icon name="tune" className="text-[16px]" />
                 <span>More Filters</span>
+                {activeAdvancedCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-primary text-on-primary text-[11px] font-bold leading-none">
+                    {activeAdvancedCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
         </div>
 
+        {/* More Filters panel — narrow the list beyond the quick chips */}
+        {filtersOpen && (
+          <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md flex flex-col gap-space-sm">
+            <div className="flex items-center justify-between gap-space-sm">
+              <div className="flex items-center gap-space-2xs">
+                <Icon name="tune" className="text-[18px] text-primary" />
+                <span className="font-label-md text-label-md text-text-primary font-semibold">More filters</span>
+                {activeAdvancedCount > 0 && (
+                  <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                    {activeAdvancedCount} active
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={activeAdvancedCount === 0}
+                onClick={() => setAdvanced(EMPTY_ADVANCED_FILTERS)}
+                className="font-caption text-caption text-primary font-semibold hover:underline disabled:opacity-40 disabled:no-underline"
+              >
+                Clear all filters
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-space-sm">
+              {categoryOptions.length > 1 && (
+                <label className="flex flex-col gap-space-2xs">
+                  <span className={groupLabelClass}>Category</span>
+                  <select
+                    className={selectClass}
+                    value={advanced.category}
+                    onChange={(event) => setAdvanced((previous) => ({ ...previous, category: event.target.value }))}
+                  >
+                    <option value="">All categories</option>
+                    {categoryOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <label className="flex flex-col gap-space-2xs">
+                <span className={groupLabelClass}>Status</span>
+                <select
+                  className={selectClass}
+                  value={advanced.status}
+                  onChange={(event) =>
+                    setAdvanced((previous) => ({ ...previous, status: event.target.value as AdvancedStatus }))
+                  }
+                >
+                  <option value="any">Any status</option>
+                  <option value="published">Published</option>
+                  <option value="draft">Draft</option>
+                  <option value="hidden">Hidden from storefront</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-space-2xs">
+                <span className={groupLabelClass}>Stock</span>
+                <select
+                  className={selectClass}
+                  value={advanced.stock}
+                  onChange={(event) =>
+                    setAdvanced((previous) => ({ ...previous, stock: event.target.value as AdvancedStock }))
+                  }
+                >
+                  <option value="any">Any stock</option>
+                  <option value="in">In stock</option>
+                  <option value="out">Out of stock</option>
+                  <option value="unset">Stock not set</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-space-2xs">
+                <span className={groupLabelClass}>Deal link</span>
+                <select
+                  className={selectClass}
+                  value={advanced.deal}
+                  onChange={(event) =>
+                    setAdvanced((previous) => ({ ...previous, deal: event.target.value as AdvancedDeal }))
+                  }
+                >
+                  <option value="any">Any</option>
+                  <option value="linked">Linked to a deal</option>
+                  <option value="unlinked">Not linked</option>
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-space-2xs">
+                <span className={groupLabelClass}>Terminal sync</span>
+                <select
+                  className={selectClass}
+                  value={advanced.sync}
+                  onChange={(event) =>
+                    setAdvanced((previous) => ({ ...previous, sync: event.target.value as AdvancedSync }))
+                  }
+                >
+                  <option value="any">Any</option>
+                  <option value="synced">Synced to POS</option>
+                  <option value="unsynced">Not synced</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-space-sm pt-space-xs border-t border-border-subtle">
+              <span className="font-caption text-caption text-text-secondary">
+                {visibleRows.length.toLocaleString()} of {currentDataset.length.toLocaleString()} {bulkNoun} match
+                {activeAdvancedCount === 0 ? ' the current view' : ' these filters'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(false)}
+                className="px-space-sm py-space-2xs rounded-lg bg-surface-container-low text-text-secondary hover:bg-surface-container font-label-sm text-label-sm font-semibold transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Data Table / Grid Container */}
         <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
+          {/* Bulk actions stay out of the way until something is selected, then fade in */}
+          {currentDataset.length > 0 && visibleRows.length > 0 && (
+            <div
+              className={`transition-all duration-200 overflow-hidden ${
+                visibleSelectedRows.length > 0
+                  ? 'max-h-[400px] opacity-100 p-space-sm'
+                  : 'max-h-0 opacity-0 invisible pointer-events-none p-0'
+              }`}
+            >
+              <BulkActionsBar
+                selectedCount={visibleSelectedRows.length}
+                filteredCount={visibleRows.length}
+                totalCount={currentDataset.length}
+                scopeNoun={bulkNoun}
+                selectAllLabel={`${visibleRows.length.toLocaleString()} ${bulkNoun} in view`}
+                actions={bulkActions}
+                onApply={applyBulkAction}
+                onSelectAllFiltered={toggleAll}
+                onClearSelection={() => setSelected([])}
+              />
+            </div>
+          )}
           {visibleRows.length === 0 ? (
             <div className="p-space-xl text-center flex flex-col items-center justify-center py-16">
               <div className="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center text-text-secondary mb-space-sm">
@@ -1347,13 +1949,14 @@ export function DesktopBusinessCatalogHubScreen({
               </div>
               <h3 className="font-heading-sm font-bold text-on-surface">No {activeTab} match your criteria</h3>
               <p className="font-body-md text-text-secondary mt-1 max-w-sm">
-                Try clearing your search query or switching active filter chips to see more {activeTab}.
+                Try clearing your search query, the filter chips, or the More Filters panel to see more {activeTab}.
               </p>
               <button
                 type="button"
                 onClick={() => {
                   setChip('all');
                   setQuery('');
+                  setAdvanced(EMPTY_ADVANCED_FILTERS);
                 }}
                 className="mt-space-md inline-flex items-center gap-space-2xs text-primary font-semibold text-label-md hover:underline"
               >
@@ -1368,8 +1971,8 @@ export function DesktopBusinessCatalogHubScreen({
                   <tr className="bg-surface-container-low text-text-secondary font-label-sm text-label-sm">
                     <th className="py-space-sm px-space-md w-12 text-center" scope="col">
                       <input
-                        aria-label={`Select all ${activeTab}`}
-                        checked={selected.length === currentDataset.length && currentDataset.length > 0}
+                        aria-label={`Select all ${activeTab} in the current view`}
+                        checked={allVisibleSelected}
                         className="rounded text-primary cursor-pointer"
                         onChange={toggleAll}
                         type="checkbox"
@@ -2023,12 +2626,12 @@ export function DesktopBusinessCatalogHubScreen({
 
         {/* Category Add/Edit Modal */}
         {categoryModal && (
-          <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
             <div
               className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
               onClick={() => setCategoryModal(null)}
             />
-            <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 animate-in zoom-in-95 duration-150">
+            <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
                 <div className="flex items-center gap-2">
                   <div className="w-9 h-9 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center">
@@ -2107,6 +2710,8 @@ export function DesktopBusinessCatalogHubScreen({
                   />
                 </div>
 
+                <CategoryImageField value={catFormImage} onChange={setCatFormImage} />
+
                 <div className="space-y-1">
                   <label className="text-caption font-semibold text-text-primary">Material Icon</label>
                   <div className="grid grid-cols-6 gap-2">
@@ -2168,6 +2773,52 @@ export function DesktopBusinessCatalogHubScreen({
             <span className="font-label-md text-label-md font-semibold">{toastMessage}</span>
           </div>
         )}
+
+        {/* Bulk delete confirmation — desktop modal / mobile sheet from one body */}
+        <ConfirmActionDialog
+          open={bulkDelete !== null}
+          onClose={() => setBulkDelete(null)}
+          onConfirm={confirmBulkDelete}
+          tone="danger"
+          title={`Delete ${bulkDelete?.count ?? 0} ${bulkDelete?.count === 1 ? bulkSingular : bulkNoun}?`}
+          message={
+            bulkDelete?.count === 1
+              ? `This permanently removes this ${bulkSingular} from your catalogue.`
+              : `This permanently removes the ${bulkDelete?.count ?? 0} selected ${bulkNoun} from your catalogue.`
+          }
+          bullets={deleteBullets}
+          confirmLabel={`Delete ${bulkDelete?.count ?? 0} ${bulkDelete?.count === 1 ? bulkSingular : bulkNoun}`}
+        />
+
+        {/* Add Product: manual / bulk import / connect platform (coming soon) */}
+        <AddProductMethodsDialog
+          open={addMethodsOpen}
+          onClose={() => setAddMethodsOpen(false)}
+          onAddManually={() => {
+            setAddMethodsOpen(false);
+            setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+            setEditingRowId(null);
+            setSubFlow('addProduct1');
+          }}
+          onBulkImport={() => {
+            setAddMethodsOpen(false);
+            setImportWizardOpen(true);
+          }}
+        />
+
+        {/* Reusable Bulk Product Import wizard */}
+        <ProductImportWizard
+          open={importWizardOpen}
+          onClose={() => setImportWizardOpen(false)}
+          existingSkus={allProductRows.map((row) => row.sku)}
+          existingNames={allProductRows.map((row) => row.name)}
+          onImported={(importResult) => {
+            setToastMessage(summariseImport(importResult));
+            setTimeout(() => setToastMessage(null), 4000);
+            setActiveTab('products');
+          }}
+          onOpenReview={() => setSubFlow('importReview')}
+        />
       </div>
     </MerchantShell>
   );

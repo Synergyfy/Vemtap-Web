@@ -81,6 +81,30 @@ const ROWS = [
 
 export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: DesktopOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState('active');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [merchant, setMerchant] = useState('all');
+
+  // Merchant options come from the rows themselves, so the menu can never
+  // offer a store the table has nothing to show for.
+  const merchantChoices = [
+    { value: 'all', label: 'All Partner Merchants' },
+    ...Array.from(new Set(ROWS.map((row) => row.merchant))).map((name) => ({
+      value: name,
+      label: name,
+    })),
+  ];
+
+  const query = searchQuery.trim().toLowerCase();
+
+  /** Merchant select and search both have to agree before a row shows. */
+  const visibleRows = ROWS.filter(
+    (row) =>
+      (merchant === 'all' || row.merchant === merchant) &&
+      (query === '' ||
+        row.merchant.toLowerCase().includes(query) ||
+        row.orderId.toLowerCase().includes(query) ||
+        row.specifics.toLowerCase().includes(query)),
+  );
 
   const downloadStatement = () => {
     downloadCsv(
@@ -345,8 +369,10 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                   <input
                     className="w-full h-11 pl-11 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas shadow-inner"
                     id="orderSearchInput"
+                    onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder="Search by Order ID (#UG-9021), store name, or item..."
                     type="text"
+                    value={searchQuery}
                   />
                 </div>
                 <div className="md:col-span-3">
@@ -373,12 +399,17 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                       name="storefront"
                       className="absolute left-3 text-[20px] text-text-tertiary pointer-events-none"
                     />
-                    <select className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer">
-                      <option>All Partner Merchants</option>
-                      <option>Urban Grill &amp; Bistro</option>
-                      <option>Cafe Neo Artisanal</option>
-                      <option>Velvet Stitch Couture</option>
-                      <option>Glow &amp; Serenity Spa</option>
+                    <select
+                      aria-label="Filter by partner merchant"
+                      className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer"
+                      onChange={(event) => setMerchant(event.target.value)}
+                      value={merchant}
+                    >
+                      {merchantChoices.map((choice) => (
+                        <option key={choice.value} value={choice.value}>
+                          {choice.label}
+                        </option>
+                      ))}
                     </select>
                     <Icon
                       name="expand_more"
@@ -389,7 +420,13 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                 <div className="md:col-span-1 flex items-center justify-end">
                   <button
                     aria-label="Reset filters"
-                    className="w-11 h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors"
+                    className="w-11 h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={merchant === 'all' && query === ''}
+                    onClick={() => {
+                      setMerchant('all');
+                      setSearchQuery('');
+                    }}
+                    title="Reset search and merchant filter"
                     type="button"
                   >
                     <Icon name="filter_alt_off" className="text-[20px]" />
@@ -422,7 +459,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-subtle font-body-md text-body-md">
-                    {ROWS.map((row) => (
+                    {visibleRows.map((row) => (
                       <tr className="hover:bg-surface-subtle/50 transition-colors group" key={row.orderId}>
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
@@ -511,6 +548,30 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                     ))}
                   </tbody>
                 </table>
+                {visibleRows.length === 0 && (
+                  <div className="flex flex-col items-center text-center py-space-lg px-space-md">
+                    <span className="w-14 h-14 rounded-full bg-surface-container-high text-text-tertiary flex items-center justify-center mb-space-sm">
+                      <Icon name="search_off" className="text-[26px]" />
+                    </span>
+                    <span className="font-label-md text-label-md text-text-primary font-semibold">
+                      No orders match these filters
+                    </span>
+                    <span className="font-caption text-caption text-text-secondary mt-1 max-w-xs leading-relaxed">
+                      {merchant !== 'all' ? `Nothing from ${merchant}` : 'Nothing matches your search'}
+                      {query !== '' ? ` for “${searchQuery.trim()}”` : ''}. Reset the filters to see every order.
+                    </span>
+                    <button
+                      className="mt-space-sm h-10 px-space-md rounded-xl bg-surface-container text-text-primary font-button-secondary text-button-secondary font-medium active:scale-95 transition-transform"
+                      onClick={() => {
+                        setMerchant('all');
+                        setSearchQuery('');
+                      }}
+                      type="button"
+                    >
+                      Reset filters
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 mt-4 border-t border-border-subtle">

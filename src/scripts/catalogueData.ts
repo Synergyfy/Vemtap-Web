@@ -474,3 +474,18 @@ export function getCategoryById(id: string): CentralCategory | undefined {
 export function getCategoryBySlug(slug: string): CentralCategory | undefined {
   return memoryCategories.find((c) => c.slug === slug || c.id === slug);
 }
+
+/**
+ * Resolves a category's optional image by its display name or slug.
+ * Used by the "use category image when the product has none" import fallback —
+ * looked up live (never copied onto the product) so editing or removing the
+ * category image propagates to every product that falls back to it.
+ */
+export function getCategoryImageByName(nameOrSlug?: string): string | undefined {
+  const needle = (nameOrSlug ?? '').trim().toLowerCase();
+  if (!needle) return undefined;
+  const match = memoryCategories.find(
+    (c) => !c.isArchived && (c.name.toLowerCase() === needle || c.slug.toLowerCase() === needle || c.id.toLowerCase() === needle),
+  );
+  return match?.image || undefined;
+}

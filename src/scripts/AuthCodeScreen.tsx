@@ -6,6 +6,7 @@ import { Logo } from '../components/ui/Logo';
 interface AuthCodeScreenProps {
   onBack: () => void;
   onContinue: () => void;
+  onGoogle: () => void;
   onBusinessRegister: () => void;
 }
 
@@ -50,6 +51,7 @@ function Spinner() {
 export function AuthCodeScreen({
   onBack,
   onContinue,
+  onGoogle,
   onBusinessRegister,
 }: AuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
@@ -105,7 +107,7 @@ export function AuthCodeScreen({
         <div className="flex flex-col gap-3 w-full">
           <button
             type="button"
-            onClick={onContinue}
+            onClick={onGoogle}
             className="w-full h-[52px] bg-surface-container-lowest text-text-primary rounded-xl flex items-center justify-center gap-3 shadow-sm active:scale-[0.99] transition-all duration-150 relative"
           >
             <GoogleIcon />

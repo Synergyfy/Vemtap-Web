@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { CreateWithAiButton } from '../../components/CreateWithAiButton';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import type { AiPromptContext } from '../aiDesignAssistant';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 
 interface DesktopBusinessProfileBrandingScreenProps {
@@ -103,6 +105,14 @@ export function DesktopBusinessProfileBrandingScreen({
   };
 
   const removePhoto = (id: number) => setGallery((prev) => prev.filter((item) => item.id !== id));
+
+  /** Business facts already in the onboarding draft — feed the AI prompt. */
+  const aiBrandContext: AiPromptContext = {
+    businessName: draft.name,
+    category: draft.categories.join(', '),
+    subcategory: draft.tags.join(', '),
+    description: draft.description,
+  };
 
   return (
     <BusinessSetupChrome activeNav="profile">
@@ -253,6 +263,14 @@ export function DesktopBusinessProfileBrandingScreen({
                   </p>
                 </div>
               </div>
+              <div>
+                <CreateWithAiButton
+                  aspectRatio="square"
+                  assetType="logo"
+                  context={aiBrandContext}
+                  fileHint="Square 1:1 (PNG, JPG max 5MB)"
+                />
+              </div>
             </div>
 
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
@@ -301,6 +319,14 @@ export function DesktopBusinessProfileBrandingScreen({
               <div className="flex items-center justify-between text-text-secondary font-caption text-caption px-space-2xs">
                 <span>Minimum 1200 × 675px (16:9 aspect ratio)</span>
                 <span>JPG or WebP up to 10MB</span>
+              </div>
+              <div>
+                <CreateWithAiButton
+                  aspectRatio="16/9"
+                  assetType="banner"
+                  context={aiBrandContext}
+                  fileHint="JPG or WebP up to 10MB"
+                />
               </div>
             </div>
 

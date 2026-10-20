@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { MessagesAttachmentButton } from './MessagesAttachmentButton';
@@ -181,9 +182,21 @@ export function DesktopBusinessMessagesBookingScreen({ onNav, onView, onViewCust
                     placeholder="Search guests…"
                     className="w-full h-11 pl-10 pr-space-sm rounded-xl border border-border bg-surface-subtle font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none focus:border-primary"
                   />
-                  <button type="button" aria-label="Filter threads" className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle">
-                    <Icon name="tune" className="text-[16px]" />
-                  </button>
+                  {/* Mirrors the chip row below so the header control filters too. */}
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <FilterMenu
+                      align="right"
+                      ariaLabel="Filter threads"
+                      buttonClassName="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle"
+                      choices={FILTERS.map((f) => ({ value: f.key, label: f.label }))}
+                      icon="tune"
+                      iconClassName="text-[16px]"
+                      label={null}
+                      onChange={(next) => setFilter(next as ThreadFilter)}
+                      title="Filter threads"
+                      value={filter}
+                    />
+                  </span>
                 </div>
                 <div className="flex flex-wrap gap-space-2xs">
                   {FILTERS.map((f) => (

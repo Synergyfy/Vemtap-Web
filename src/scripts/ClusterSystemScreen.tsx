@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
@@ -9,6 +9,12 @@ import {
   type ClusterBusinessMember,
   type ShowcaseEntityType,
 } from './clusterData';
+import {
+  countLiveBoosts,
+  getFeaturedCampaignSlot,
+  hasActiveBoostForItem,
+  isItemBoostEligible,
+} from './clusterBoostData';
 import { ClusterQrCode } from '../components/ClusterQrCode';
 import { ClusterMemberProfileModal } from '../components/ClusterMemberProfileModal';
 import { ClusterMemberChatModal } from '../components/ClusterMemberChatModal';
@@ -21,6 +27,10 @@ interface ClusterSystemScreenProps {
   onCreateDeal?: () => void;
   onCreateProduct?: () => void;
   onCreateLocation?: () => void;
+  /** Open Cluster Boost Visibility, optionally preselecting an eligible item. */
+  onBoostItem?: (itemId?: string) => void;
+  /** Open the My Boosts campaign list. */
+  onOpenBoosts?: () => void;
 }
 
 export type ClusterTab = 'overview' | 'analytics' | 'businesses' | 'qr' | 'deals';
@@ -32,10 +42,17 @@ export function ClusterSystemScreen({
   onCreateDeal,
   onCreateProduct,
   onCreateLocation,
+  onBoostItem,
+  onOpenBoosts,
 }: ClusterSystemScreenProps) {
   const [activeTab, setActiveTab] = useState<ClusterTab>('overview');
   const [clusterState, setClusterState] = useState(getClusterState());
   const cluster = clusterState.currentCluster;
+
+  // One featured paid campaign at a time, rotating with other eligible
+  // campaigns via the existing rotator cadence. Computed once on mount so the
+  // page stays stable during this visit.
+  const featuredSlot = useMemo(() => getFeaturedCampaignSlot(), []);
 
   const handleCreateDeal = () => {
     if (onCreateDeal) onCreateDeal();
@@ -120,6 +137,7 @@ export function ClusterSystemScreen({
 
   const analytics = cluster.analytics;
   const myItems = clusterState.showcaseItems.filter((i) => i.businessId === '104');
+  const liveBoostCount = countLiveBoosts();
 
   return (
     <AppScreen surface="bg-surface-canvas">
@@ -340,6 +358,45 @@ export function ClusterSystemScreen({
                   className="py-2 px-3 rounded-xl bg-surface-canvas border border-border-subtle text-text-secondary text-xs font-medium hover:text-text-primary"
                 >
                   View Pool
+                </button>
+              </div>
+            </div>
+
+            {/* Boost Visibility Banner */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-primary-container to-[#0055c4] text-white space-y-3 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Icon name="rocket_launch" className="text-[18px]" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-xs">Boost Visibility</h3>
+                    <p className="text-[11px] text-white/80">
+                      Raise your item's featured priority in this cluster
+                    </p>
+                  </div>
+                </div>
+                {liveBoostCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-bold shrink-0">
+                    {liveBoostCount} live
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => onBoostItem?.()}
+                  className="flex-1 py-2 px-3 rounded-xl bg-white text-primary text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all"
+                >
+                  <Icon name="trending_up" className="text-[16px]" />
+                  <span>Boost an Item</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenBoosts?.()}
+                  className="py-2 px-3 rounded-xl bg-white/15 border border-white/25 text-white text-xs font-semibold hover:bg-white/20"
+                >
+                  My Boosts
                 </button>
               </div>
             </div>
@@ -679,6 +736,34 @@ export function ClusterSystemScreen({
         {/* ================= TAB 4: POOL ITEMS (DEALS / PRODUCTS / PROFILE) ================= */}
         {activeTab === 'deals' && (
           <div className="flex flex-col gap-3">
+            {/* Featured campaign slot — one at a time, ahead of organic listings */}
+            {featuredSlot && (
+              <div className="p-3.5 rounded-2xl border border-primary/30 bg-gradient-to-br from-surface-subtle to-surface-tint-blue/30 flex gap-3 items-center">
+                <img
+                  src={featuredSlot.item.image}
+                  alt={featuredSlot.item.title}
+                  className="w-16 h-16 rounded-xl object-cover border border-border-subtle shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <Icon name="star" className="text-[13px] text-primary" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-primary">
+                      Featured campaign
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-text-primary truncate mt-0.5">
+                    {featuredSlot.item.title}
+                  </p>
+                  <p className="text-[11px] text-text-secondary truncate">
+                    {featuredSlot.item.businessName}
+                  </p>
+                  <p className="text-[10px] text-text-tertiary mt-0.5">
+                    Rotates with other paid boosts — not shown on every visit
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Header with Feature Modal CTA */}
             <div className="flex items-center justify-between">
               <div>
@@ -815,6 +900,17 @@ export function ClusterSystemScreen({
                           >
                             {item.showInCluster ? 'Shown' : 'Hidden'}
                           </span>
+                          {item.businessId === '104' && hasActiveBoostForItem(item.id) && (
+                            <span
+                              className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
+                                item.entityType === 'profile'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-surface-tint-blue text-primary'
+                              }`}
+                            >
+                              {item.entityType === 'profile' ? 'Boosted · extendable' : 'Boosted'}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <h4 className="font-semibold text-xs text-text-primary line-clamp-1 mt-0.5">
@@ -839,19 +935,41 @@ export function ClusterSystemScreen({
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 border-t border-border-subtle/50 text-[10px] text-text-secondary">
+                    <div className="flex items-center justify-between pt-1 border-t border-border-subtle/50 text-[10px] text-text-secondary gap-2">
                       <span>
                         {item.impressions} Impr. &bull; {item.clicks} Clicks
                       </span>
-                      {item.businessId === '104' && (
-                        <button
-                          type="button"
-                          onClick={() => handleToggleShow(item.id)}
-                          className="font-bold text-primary hover:underline"
-                        >
-                          {item.showInCluster ? 'Hide from Rotator' : 'Show in Rotator'}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        {item.businessId === '104' && isItemBoostEligible(item).eligible && (
+                          <button
+                            type="button"
+                            disabled={hasActiveBoostForItem(item.id) && item.entityType !== 'profile'}
+                            onClick={() => onBoostItem?.(item.id)}
+                            className={`font-bold hover:underline ${
+                              hasActiveBoostForItem(item.id)
+                                ? item.entityType === 'profile'
+                                  ? 'text-primary'
+                                  : 'text-text-tertiary no-underline cursor-not-allowed'
+                                : 'text-primary'
+                            }`}
+                          >
+                            {hasActiveBoostForItem(item.id)
+                              ? item.entityType === 'profile'
+                                ? 'Extend Boost'
+                                : 'Boosted'
+                              : 'Boost Visibility'}
+                          </button>
+                        )}
+                        {item.businessId === '104' && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleShow(item.id)}
+                            className="font-bold text-text-secondary hover:underline"
+                          >
+                            {item.showInCluster ? 'Hide from Rotator' : 'Show in Rotator'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

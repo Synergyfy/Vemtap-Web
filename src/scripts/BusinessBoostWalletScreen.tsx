@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { FilterMenu } from '../components/FilterMenu';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BoostTabBar, type BoostTabKey } from '../components/BoostTabBar';
@@ -121,6 +122,20 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
   const [autoReload, setAutoReload] = useState(true);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [entryStatus, setEntryStatus] = useState('');
+
+  // Statuses are read from the ledger itself, so the menu can never offer an
+  // entry type the history does not actually hold.
+  const statusChoices = [
+    { value: '', label: 'All entries' },
+    ...Array.from(new Set(LEDGER.map((entry) => entry.status))).map((status) => ({
+      value: status,
+      label: status,
+    })),
+  ];
+
+  const visibleLedger =
+    entryStatus === '' ? LEDGER : LEDGER.filter((entry) => entry.status === entryStatus);
   const timers = useRef<number[]>([]);
 
   useEffect(() => {
@@ -496,17 +511,20 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
                 <h2 className="font-heading-sm text-heading-sm text-text-primary">Billing & Transaction History</h2>
                 <p className="font-caption text-caption text-text-secondary">Recent wallet activity & allocations</p>
               </div>
-              <button
-                className="font-button-secondary text-button-secondary text-primary font-medium flex items-center gap-0.5"
-                type="button"
-                onClick={() => showToast('Ledger filters opened')}
-              >
-                <span>Filter</span>
-                <Icon className="text-[16px]" name="tune" />
-              </button>
+              <FilterMenu
+                align="right"
+                buttonClassName="font-button-secondary text-button-secondary text-primary font-medium flex items-center gap-0.5"
+                choices={statusChoices}
+                icon="tune"
+                iconClassName="text-[16px]"
+                label="Filter"
+                onChange={setEntryStatus}
+                title="Filter by entry status"
+                value={entryStatus}
+              />
             </div>
             <div className="flex flex-col gap-2">
-              {LEDGER.map((entry) => (
+              {visibleLedger.map((entry) => (
                 <div
                   className="p-3.5 rounded-xl bg-surface-container-lowest shadow-sm flex items-center justify-between gap-3"
                   key={entry.key}
@@ -538,6 +556,11 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
                   </div>
                 </div>
               ))}
+              {visibleLedger.length === 0 && (
+                <div className="py-4 text-center font-caption text-caption text-text-secondary">
+                  No {entryStatus.toLowerCase()} entries in this period.
+                </div>
+              )}
             </div>
             <button
               className="w-full py-3 rounded-xl bg-surface-container-low text-secondary font-button-secondary text-button-secondary hover:bg-surface-container transition-colors text-center"

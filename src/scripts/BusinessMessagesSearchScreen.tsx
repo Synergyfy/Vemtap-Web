@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import type { BusinessChatContact } from './messagesContact';
 
 interface BusinessMessagesSearchScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onCancel: () => void;
-  onOpenConversation: (thread: 'order' | 'general') => void;
+  onOpenConversation: (thread: 'order' | 'general', contact: BusinessChatContact) => void;
 }
 
 type ResultChipKey = 'all' | 'orders' | 'customers' | 'deals';
@@ -258,7 +259,7 @@ export function BusinessMessagesSearchScreen({
                 }`}
                 key={row.id}
                 type="button"
-                onClick={() => onOpenConversation(row.thread)}
+                onClick={() => onOpenConversation(row.thread, { name: row.name, avatar: row.img })}
               >
                 {row.id === 'michael' && <div className="absolute top-0 left-0 w-1 h-full bg-primary rounded-l-xl" />}
                 <div className="flex items-start gap-space-sm pl-1">

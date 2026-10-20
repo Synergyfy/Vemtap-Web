@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { AnalyticsShell } from './AnalyticsShell';
@@ -16,6 +18,18 @@ const SHARE_LEGEND: Array<{ dot: string; name: string; amount: string; share: st
 ];
 
 export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocationsScreenProps) {
+  // Branch keys line up with the three scorecards in the Performance Matrix.
+  const [branchFilter, setBranchFilter] = useState('');
+
+  const branchChoices = [
+    { value: '', label: 'All branches' },
+    { value: 'wuse', label: 'Wuse II Flagship' },
+    { value: 'maitama', label: 'Maitama Heights' },
+    { value: 'garki', label: 'Garki Area 11' },
+  ];
+
+  const showBranch = (key: string) => branchFilter === '' || branchFilter === key;
+
   return (
     <AnalyticsShell activeNav="analytics" onNav={onNav}>
       {/* Sub-header Breadcrumb & Action Toolbar */}
@@ -53,13 +67,18 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
               <Icon name="expand_more" className="text-text-tertiary text-[16px]" />
             </div>
             {/* Branch Comparison Matrix Modal Button */}
-            <button
-              className="flex items-center gap-space-2xs px-space-sm py-2 rounded-xl bg-surface-container-lowest shadow-sm text-on-surface font-button-secondary text-button-secondary hover:bg-surface-tint-blue hover:text-primary transition-all"
-              type="button"
-            >
-              <Icon name="view_column" className="text-[18px]" />
-              <span>Matrix Filter</span>
-            </button>
+            {/* Filters the Performance Matrix scorecards below by branch. */}
+            <FilterMenu
+              align="right"
+              buttonClassName="flex items-center gap-space-2xs px-space-sm py-2 rounded-xl bg-surface-container-lowest shadow-sm text-on-surface font-button-secondary text-button-secondary hover:bg-surface-tint-blue hover:text-primary transition-all"
+              choices={branchChoices}
+              icon="view_column"
+              iconClassName="text-[18px]"
+              label="Matrix Filter"
+              onChange={setBranchFilter}
+              title="Show scorecard for"
+              value={branchFilter}
+            />
             {/* Manage Branch Pricing CTA */}
             <button
               className="flex items-center gap-space-2xs px-space-sm py-2 rounded-xl bg-surface-container text-primary font-button-secondary text-button-secondary hover:bg-primary-fixed transition-colors"
@@ -284,6 +303,7 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-space-lg">
             {/* Scorecard 1: Wuse II Flagship */}
+            {showBranch('wuse') && (
             <div className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
               <div>
                 {/* Card Head with Banner Tag */}
@@ -364,8 +384,10 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
                 </button>
               </div>
             </div>
+            )}
 
             {/* Scorecard 2: Maitama Heights */}
+            {showBranch('maitama') && (
             <div className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow relative">
               {/* Spotlight Accent Border-free highlight */}
               <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-primary to-primary-container" />
@@ -453,8 +475,10 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
                 </button>
               </div>
             </div>
+            )}
 
             {/* Scorecard 3: Garki Area 11 */}
+            {showBranch('garki') && (
             <div className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
               <div>
                 {/* Card Head */}
@@ -535,6 +559,7 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
                 </button>
               </div>
             </div>
+            )}
           </div>
         </section>
 

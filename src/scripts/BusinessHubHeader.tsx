@@ -1,6 +1,5 @@
 import { Icon } from '../components/ui/Icon';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
-import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 export function BusinessHubHeader() {
   return (
@@ -11,8 +10,6 @@ export function BusinessHubHeader() {
           <Icon name="verified" filled className="text-[18px] text-primary-container shrink-0" />
         </div>
         <div className="flex items-center gap-space-xs">
-          {/* Branch control — the location at the top header drives this page. */}
-          <BusinessBranchSelect iconOnly align="right" />
           <button
             aria-label="Quick Switch Business"
             className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-text-primary hover:bg-surface-container-low transition-colors"
@@ -20,6 +17,7 @@ export function BusinessHubHeader() {
           >
             <Icon name="swap_horiz" className="text-[22px]" />
           </button>
+          <MobileLocationMenu />
           <MobileNotificationBell />
           <MobileAccountMenu />
         </div>
