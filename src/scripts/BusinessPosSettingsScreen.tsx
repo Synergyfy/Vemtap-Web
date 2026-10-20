@@ -2,10 +2,13 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { PosOwnerHeader, PosToggle } from '../components/PosControls';
+import { MoreSettingsLink } from '../components/business/MoreSettingsLink';
 import { usePosSettings } from '../context/PosSettingsContext';
 
 interface BusinessPosSettingsScreenProps {
   onBack: () => void;
+  onOpenTaxes?: () => void;
+  onOpenReceipt?: () => void;
 }
 
 const SETTINGS_TABS = [
@@ -138,7 +141,7 @@ function Card({ children }: { children: ReactNode }) {
  * POS Settings — tabbed list of till controls. Edits are staged as a draft;
  * Save Changes applies them across the whole till.
  */
-export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenProps) {
+export function BusinessPosSettingsScreen({ onBack, onOpenTaxes, onOpenReceipt }: BusinessPosSettingsScreenProps) {
   const s = usePosSettings();
   const [tab, setTab] = useState<SettingsTabKey>('business');
   const [dirty, setDirty] = useState(false);
@@ -287,6 +290,30 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
         )}
 
 
+        {tab === 'receipt' && onOpenReceipt && (
+
+
+          <MoreSettingsLink
+
+
+            icon="tune"
+
+
+            title="Receipt & order customization"
+
+
+            body="Paper width, address, print triggers and a live preview"
+
+
+            onClick={onOpenReceipt}
+
+
+          />
+
+
+        )}
+
+
         {tab === 'receipt' && (
           <Card>
             <SettingFieldRow
@@ -318,6 +345,22 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
               onChange={() => update('showBusinessLogo', !draft.showBusinessLogo)}
             />
           </Card>
+        )}
+
+        {tab === 'tax' && onOpenTaxes && (
+
+          <MoreSettingsLink
+
+            icon="account_balance"
+
+            title="Taxes & surcharges"
+
+            body="Service charge, packaging fee, TIN and table QR rules"
+
+            onClick={onOpenTaxes}
+
+          />
+
         )}
 
         {tab === 'tax' && (

@@ -167,6 +167,10 @@ import { BusinessReviewsScreen } from './scripts/BusinessReviewsScreen';
 import { DesktopBusinessReviewsScreen } from './scripts/desktop/DesktopBusinessReviewsScreen';
 import { BusinessDealLedgerScreen } from './scripts/BusinessDealLedgerScreen';
 import { DesktopBusinessDealLedgerScreen } from './scripts/desktop/DesktopBusinessDealLedgerScreen';
+import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
+import { BusinessPosReceiptScreen } from './scripts/BusinessPosReceiptScreen';
+import { DesktopPosTaxesScreen } from './scripts/desktop/DesktopPosTaxesScreen';
+import { DesktopPosReceiptScreen } from './scripts/desktop/DesktopPosReceiptScreen';
 import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
 import { DesktopStaffDirectoryScreen } from './scripts/desktop/DesktopStaffDirectoryScreen';
 import { BusinessInviteStaffScreen } from './scripts/BusinessInviteStaffScreen';
@@ -458,6 +462,8 @@ type Route =
   | 'business-more'
   | 'business-reviews'
   | 'business-deal-ledger'
+  | 'pos-taxes'
+  | 'pos-receipt'
   | 'store-ordering-dashboard'
   | 'store-ordering-qr'
   | 'store-ordering-settings'
@@ -629,6 +635,8 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-more': '/business/more',
   'business-reviews': '/business/reviews',
   'business-deal-ledger': '/business/deals/ledger',
+  'pos-taxes': '/pos/settings/taxes',
+  'pos-receipt': '/pos/settings/receipt',
   'cluster-onboarding': '/business/cluster/onboarding',
   'cluster-system': '/business/cluster',
   'store-ordering-dashboard': '/business/store-ordering',
@@ -1598,6 +1606,12 @@ function AppInner() {
         break;
       case 'pos-settings':
         setRoute('pos-settings');
+        break;
+      case 'pos-taxes':
+        setRoute('pos-taxes');
+        break;
+      case 'pos-receipt':
+        setRoute('pos-receipt');
         break;
       case 'pos-sync':
         // BUG: /pos/sync is gone. Offline state and "Sync Online" now live on
@@ -4638,12 +4652,31 @@ function AppInner() {
       );
 
     case 'pos-settings':
-      if (isDesktop) return <DesktopPosGeneralSettingsScreen onNav={posTerminalNav} />;
+      if (isDesktop)
+        return (
+          <DesktopPosGeneralSettingsScreen
+            onNav={posTerminalNav}
+            onOpenTaxes={() => setRoute('pos-taxes')}
+            onOpenReceipt={() => setRoute('pos-receipt')}
+          />
+        );
       return (
         <div className="biz-flow">
-          <BusinessPosSettingsScreen onBack={goBackToPrevious} />
+          <BusinessPosSettingsScreen
+            onBack={goBackToPrevious}
+            onOpenTaxes={() => setRoute('pos-taxes')}
+            onOpenReceipt={() => setRoute('pos-receipt')}
+          />
         </div>
       );
+
+    case 'pos-taxes':
+      if (isDesktop) return <DesktopPosTaxesScreen onNav={posTerminalNav} />;
+      return <BusinessPosTaxesScreen onBack={() => setRoute('pos-settings')} />;
+
+    case 'pos-receipt':
+      if (isDesktop) return <DesktopPosReceiptScreen onNav={posTerminalNav} />;
+      return <BusinessPosReceiptScreen onBack={() => setRoute('pos-settings')} />;
 
     case 'business-more':
       if (isDesktop)

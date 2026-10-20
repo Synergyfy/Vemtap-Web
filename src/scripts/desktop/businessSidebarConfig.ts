@@ -84,6 +84,8 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
       { key: 'orders-bookings', label: 'Bookings', icon: 'calendar_month' },
       { key: 'pos-transactions', label: 'Transactions', icon: 'receipt' },
       { key: 'pos-settings', label: 'POS Settings', icon: 'settings' },
+      { key: 'pos-taxes', label: 'Taxes & Surcharges', icon: 'account_balance' },
+      { key: 'pos-receipt', label: 'Receipt Settings', icon: 'receipt' },
     ],
   },
   {
