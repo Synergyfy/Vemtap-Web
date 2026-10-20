@@ -130,6 +130,13 @@ export function BusinessMoreScreen({
           sub: 'Moderate deal reviews & reply to guests',
           onClick: () => onNavKey('more-reviews'),
         },
+        {
+          key: 'deal-ledger',
+          icon: 'receipt_long',
+          title: 'Deal Redemption Ledger',
+          sub: 'Every claim, redemption & discount given',
+          onClick: () => onNavKey('business-deal-ledger'),
+        },
       ],
     },
     {

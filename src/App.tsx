@@ -165,6 +165,8 @@ import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
 import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
 import { BusinessReviewsScreen } from './scripts/BusinessReviewsScreen';
 import { DesktopBusinessReviewsScreen } from './scripts/desktop/DesktopBusinessReviewsScreen';
+import { BusinessDealLedgerScreen } from './scripts/BusinessDealLedgerScreen';
+import { DesktopBusinessDealLedgerScreen } from './scripts/desktop/DesktopBusinessDealLedgerScreen';
 import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
 import { DesktopStaffDirectoryScreen } from './scripts/desktop/DesktopStaffDirectoryScreen';
 import { BusinessInviteStaffScreen } from './scripts/BusinessInviteStaffScreen';
@@ -455,6 +457,7 @@ type Route =
   | 'public-pos-tracking'
   | 'business-more'
   | 'business-reviews'
+  | 'business-deal-ledger'
   | 'store-ordering-dashboard'
   | 'store-ordering-qr'
   | 'store-ordering-settings'
@@ -625,6 +628,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'public-pos-tracking': '/public/pos/tracking',
   'business-more': '/business/more',
   'business-reviews': '/business/reviews',
+  'business-deal-ledger': '/business/deals/ledger',
   'cluster-onboarding': '/business/cluster/onboarding',
   'cluster-system': '/business/cluster',
   'store-ordering-dashboard': '/business/store-ordering',
@@ -1635,6 +1639,9 @@ function AppInner() {
         break;
       case 'more-reviews':
         setRoute('business-reviews');
+        break;
+      case 'business-deal-ledger':
+        setRoute('business-deal-ledger');
         break;
       case 'more-subscription':
         // Dashboard subscription & billing — designed for an existing account,
@@ -4689,6 +4696,10 @@ function AppInner() {
           }}
         />
       );
+
+    case 'business-deal-ledger':
+      if (isDesktop) return <DesktopBusinessDealLedgerScreen onNav={businessPortalNav} />;
+      return <BusinessDealLedgerScreen onBack={() => setRoute('business-more')} />;
 
     case 'business-reviews':
       if (isDesktop) return <DesktopBusinessReviewsScreen onNav={businessPortalNav} />;

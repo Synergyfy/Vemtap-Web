@@ -59,6 +59,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     items: [
       { key: 'business-catalog', label: 'Products & Services', icon: 'inventory_2' },
       { key: 'business-deals', label: 'Deals', icon: 'local_offer' },
+      { key: 'business-deal-ledger', label: 'Redemption Ledger', icon: 'receipt_long' },
       { key: 'business-customers', label: 'Customers', icon: 'group' },
       { key: 'business-loyalty', label: 'Loyalty & Rewards', icon: 'stars' },
       { key: 'business-staff', label: 'Staff & Permissions', icon: 'shield_person' },
