@@ -57,6 +57,7 @@ function CredentialModal({
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState({ current: false, next: false, confirm: false });
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -81,18 +82,34 @@ function CredentialModal({
   };
 
 
-  const field = (label: string, value: string, setter: (value: string) => void, hint?: string) => (
+  const field = (
+    label: string,
+    value: string,
+    setter: (value: string) => void,
+    key: keyof typeof revealed,
+    hint?: string,
+  ) => (
     <label className="flex flex-col gap-space-2xs">
       <span className="font-label-sm text-label-sm text-text-secondary font-semibold">{label}</span>
-      <input
-        type="password"
-        inputMode={isPin ? 'numeric' : undefined}
-        maxLength={isPin ? 4 : 64}
-        value={value}
-        onChange={(event) => setter(event.target.value)}
-        placeholder={isPin ? '••••' : '••••••••'}
-        className="h-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface tracking-widest outline-none focus:border-primary transition-colors"
-      />
+      <div className="relative">
+        <input
+          type={revealed[key] ? 'text' : 'password'}
+          inputMode={isPin ? 'numeric' : undefined}
+          maxLength={isPin ? 4 : 64}
+          value={value}
+          onChange={(event) => setter(event.target.value)}
+          placeholder={isPin ? '••••' : '••••••••'}
+          className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface tracking-widest outline-none focus:border-primary transition-colors"
+        />
+        <button
+          type="button"
+          aria-label={revealed[key] ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          onClick={() => setRevealed((current) => ({ ...current, [key]: !current[key] }))}
+          className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-text-tertiary hover:bg-surface-container hover:text-on-surface transition-colors"
+        >
+          <Icon name={revealed[key] ? 'visibility_off' : 'visibility'} className="text-[18px]" />
+        </button>
+      </div>
       {hint && <span className="font-caption text-caption text-text-tertiary">{hint}</span>}
     </label>
   );
@@ -130,9 +147,9 @@ function CredentialModal({
         </div>
 
         <div className="flex flex-col gap-space-sm">
-          {field(`Current ${isPin ? 'PIN' : 'password'}`, current, setCurrent)}
-          {field(`New ${isPin ? 'PIN' : 'password'}`, next, setNext, isPin ? 'Exactly 4 digits' : 'At least 8 characters')}
-          {field(`Confirm new ${isPin ? 'PIN' : 'password'}`, confirm, setConfirm)}
+          {field(`Current ${isPin ? 'PIN' : 'password'}`, current, setCurrent, 'current')}
+          {field(`New ${isPin ? 'PIN' : 'password'}`, next, setNext, 'next', isPin ? 'Exactly 4 digits' : 'At least 8 characters')}
+          {field(`Confirm new ${isPin ? 'PIN' : 'password'}`, confirm, setConfirm, 'confirm')}
         </div>
 
         {error && (

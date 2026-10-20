@@ -73,7 +73,6 @@ import { ConversationScreen } from './scripts/ConversationScreen';
 import { OrdersScreen } from './scripts/OrdersScreen';
 import { OrderDetailScreen } from './scripts/OrderDetailScreen';
 import { BookingDetailScreen } from './scripts/BookingDetailScreen';
-import { getMobileThread } from './scripts/messagesData';
 import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
 import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
@@ -670,22 +669,22 @@ const ROUTE_PATH: Record<Route, string> = {
   'claim-success': '/claim/success',
   'gift-sent': '/gift/sent',
   'claimed-deal': '/my/claimed-deal',
-  'merchant-chat': '/messages/urban-grill',
+  'merchant-chat': '/messages',
   'deal-terms': '/deal-terms',
-  storefront: '/business/urban-grill-bistro-104/deals',
-  'storefront-products': '/business/urban-grill-bistro-104/products',
-  'storefront-menu': '/business/urban-grill-bistro-104/menu',
-  'business-profile': '/business/urban-grill-bistro-104',
-  'spa-profile': '/business/glow-serenity-spa-219',
-  'spa-services': '/business/glow-serenity-spa-219/services',
-  'service-detail': '/business/glow-serenity-spa-219/services/deep-hydration-radiance-facial',
-  'product-detail': '/business/urban-grill-bistro-104/products/woodfire-ribeye-400g',
-  checkout: '/business/urban-grill-bistro-104/checkout',
-  'order-placed': '/business/urban-grill-bistro-104/order-placed',
-  'spa-storefront': '/business/glow-serenity-spa-219/shop',
-  'spa-booking': '/business/glow-serenity-spa-219/booking',
-  'spa-booking-checkout': '/business/glow-serenity-spa-219/booking/checkout',
-  'spa-booking-confirmed': '/business/glow-serenity-spa-219/booking/confirmed',
+  storefront: '/discover',
+  'storefront-products': '/discover',
+  'storefront-menu': '/discover',
+  'business-profile': '/discover',
+  'spa-profile': '/discover',
+  'spa-services': '/discover',
+  'service-detail': '/discover',
+  'product-detail': '/discover',
+  checkout: '/checkout',
+  'order-placed': '/orders',
+  'spa-storefront': '/discover',
+  'spa-booking': '/discover',
+  'spa-booking-checkout': '/discover',
+  'spa-booking-confirmed': '/discover',
   dashboard: '/dashboard',
   orders: '/orders',
   'order-detail': '/orders/order',
@@ -1024,23 +1023,23 @@ function AppInner() {
 
     switch (target) {
       case 'storefront':
-        return selectedBusiness ? businessSubPath(selectedBusiness, 'deals') : ROUTE_PATH.storefront;
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'deals') : '/discover';
       case 'storefront-products':
-        return selectedBusiness ? businessSubPath(selectedBusiness, 'products') : ROUTE_PATH['storefront-products'];
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'products') : '/discover';
       case 'storefront-menu':
-        return selectedBusiness ? businessSubPath(selectedBusiness, 'menu') : ROUTE_PATH['storefront-menu'];
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'menu') : '/discover';
       case 'business-profile':
-        return selectedBusiness ? businessPath(selectedBusiness) : ROUTE_PATH['business-profile'];
+        return selectedBusiness ? businessPath(selectedBusiness) : '/discover';
       case 'checkout':
-        return businessSubPath(activeUrbanBusiness, 'checkout');
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'checkout') : '/checkout';
       case 'order-placed':
-        return businessSubPath(activeUrbanBusiness, 'order-placed');
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'order-placed') : '/orders';
       case 'spa-profile':
-        return businessPath(activeSpaBusiness);
+        return selectedBusiness ? businessPath(selectedBusiness) : '/discover';
       case 'spa-storefront':
-        return businessSubPath(activeSpaBusiness, 'shop');
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'shop') : '/discover';
       case 'spa-services':
-        return businessSubPath(activeSpaBusiness, 'services');
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'services') : '/discover';
       case 'service-detail':
         return detailService ? servicePath(activeSpaBusiness.slug, detailService.slug) : ROUTE_PATH['service-detail'];
       case 'product-detail':
@@ -2960,7 +2959,7 @@ function AppInner() {
             setClaimedFrom('messages');
             setRoute('claimed-deal');
           }}
-          onSecondary={() => setRoute(getMobileThread(activeConversation).secondaryRoute)}
+          onSecondary={() => setRoute('dashboard')}
         />
       );
 

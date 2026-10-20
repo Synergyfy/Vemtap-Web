@@ -5,7 +5,132 @@ import { DeleteAccountSheet } from '../../components/DeleteAccountSheet';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../context/ProfileContext';
 import { hasApiConfig } from '../../lib/api';
-import { accountService } from '../../services';
+import { accountService, authService } from '../../services';
+
+function PasswordChangeModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [revealed, setRevealed] = useState({ current: false, next: false, confirm: false });
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const submit = async () => {
+    if (currentPassword.length < 8) {
+      setError('Current password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('New password confirmation does not match.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await authService.changePassword({ currentPassword, newPassword });
+      onSaved();
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (passwordError) {
+      console.error('Password change failed:', passwordError);
+      setError('Unable to update your password right now. Please try again later.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const field = (label: string, value: string, setter: (value: string) => void, key: 'current' | 'next' | 'confirm') => (
+    <label className="flex flex-col gap-space-2xs">
+      <span className="font-label-sm text-label-sm text-text-secondary font-semibold">{label}</span>
+      <div className="relative">
+        <input
+          type={revealed[key] ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => setter(event.target.value)}
+          className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface outline-none focus:border-primary transition-colors"
+        />
+        <button
+          type="button"
+          aria-label={revealed[key] ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          onClick={() => setRevealed((currentState) => ({ ...currentState, [key]: !currentState[key] }))}
+          className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-text-tertiary hover:bg-surface-container hover:text-on-surface transition-colors"
+        >
+          <Icon name={revealed[key] ? 'visibility_off' : 'visibility'} className="text-[18px]" />
+        </button>
+      </div>
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-inverse-surface/40 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="Change password" className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md">
+        <div className="flex items-start justify-between gap-space-sm">
+          <div className="flex items-center gap-space-sm">
+            <span className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+              <Icon name="lock" className="text-[20px]" />
+            </span>
+            <div className="flex flex-col">
+              <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Change password</h2>
+              <p className="font-caption text-caption text-text-secondary">Update your sign-in credentials securely</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} title="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-on-surface hover:bg-surface-subtle transition-colors">
+            <Icon name="close" className="text-[18px]" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-space-sm">
+          {field('Current password', currentPassword, setCurrentPassword, 'current')}
+          {field('New password', newPassword, setNewPassword, 'next')}
+          {field('Confirm new password', confirmPassword, setConfirmPassword, 'confirm')}
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-lg bg-error-container text-error font-label-sm text-label-sm">
+            <Icon name="error" className="text-[16px]" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-space-sm pt-space-2xs">
+          <button type="button" onClick={onClose} className="h-11 px-space-md rounded-xl bg-surface-container text-on-surface font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={() => void submit()} disabled={isSubmitting} className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform disabled:opacity-70">
+            <span>{isSubmitting ? 'Updating...' : 'Update password'}</span>
+            <Icon name="check" className="text-[18px]" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface DesktopAccountSettingsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -59,10 +184,139 @@ const TOGGLES = [
   },
 ];
 
+type CredentialMode = 'pin';
+
+function CredentialModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState({ current: false, next: false, confirm: false });
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  const submit = () => {
+    if (!/^\d{4}$/.test(current)) return setError('Your current PIN is 4 digits');
+    if (!/^\d{4}$/.test(next)) return setError('The new PIN must be 4 digits');
+    if (next === current) return setError('The new PIN must differ from the current one');
+    if (next !== confirm) return setError('Confirmation does not match');
+    setError(null);
+    onSaved();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-inverse-surface/40 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Change transaction PIN"
+        className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md"
+      >
+        <div className="flex items-start justify-between gap-space-sm">
+          <div className="flex items-center gap-space-sm">
+            <span className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+              <Icon name="dialpad" className="text-[20px]" />
+            </span>
+            <div className="flex flex-col">
+              <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Change transaction PIN</h2>
+              <p className="font-caption text-caption text-text-secondary">Used for voucher redemption and secure checkout</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-on-surface hover:bg-surface-subtle transition-colors"
+          >
+            <Icon name="close" className="text-[18px]" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-space-sm">
+          {(['current', 'next', 'confirm'] as const).map((fieldName) => {
+            const label =
+              fieldName === 'current' ? 'Current PIN' : fieldName === 'next' ? 'New PIN' : 'Confirm new PIN';
+            const value = fieldName === 'current' ? current : fieldName === 'next' ? next : confirm;
+            const setter = fieldName === 'current' ? setCurrent : fieldName === 'next' ? setNext : setConfirm;
+            const placeholder = '••••';
+            const inputType = revealed[fieldName] ? 'text' : 'password';
+            const sanitizedValue = value.replace(/\D/g, '').slice(0, 4);
+
+            return (
+              <label key={fieldName} className="flex flex-col gap-space-2xs">
+                <span className="font-label-sm text-label-sm text-text-secondary font-semibold">{label}</span>
+                <div className="relative">
+                  <input
+                    type={inputType}
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={value}
+                    onChange={(event) => setter(sanitizedValue !== event.target.value ? event.target.value.replace(/\D/g, '').slice(0, 4) : sanitizedValue)}
+                    placeholder={placeholder}
+                    className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface tracking-widest outline-none focus:border-primary transition-colors"
+                  />
+                  <button
+                    type="button"
+                    aria-label={revealed[fieldName] ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+                    onClick={() => setRevealed((currentState) => ({ ...currentState, [fieldName]: !currentState[fieldName] }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-text-tertiary hover:bg-surface-container hover:text-on-surface transition-colors"
+                  >
+                    <Icon name={revealed[fieldName] ? 'visibility_off' : 'visibility'} className="text-[18px]" />
+                  </button>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-lg bg-error-container text-error font-label-sm text-label-sm">
+            <Icon name="error" className="text-[16px]" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-space-sm pt-space-2xs">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 px-space-md rounded-xl bg-surface-container text-on-surface font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform"
+          >
+            <span>Update PIN</span>
+            <Icon name="check" className="text-[18px]" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsScreenProps) {
   const [activeTab, setActiveTab] = useState('personal-profile');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [credential, setCredential] = useState<CredentialMode | null>(null);
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const { signOut } = useAuth();
   const profile = useProfile();
   const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
@@ -98,6 +352,15 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
   }, []);
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2600);
+  };
+
+  const handlePasswordReset = () => {
+    setShowPasswordChangeModal(true);
+  };
 
   const goToSection = (id: string) => {
     setActiveTab(id);
@@ -518,6 +781,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                     <button
                       className="h-[44px] px-6 bg-surface-container-lowest hover:bg-surface text-on-surface font-label-md text-label-md rounded-lg shadow-sm transition-all shrink-0"
                       type="button"
+                      onClick={() => setCredential('pin')}
                     >
                       Change PIN
                     </button>
@@ -525,126 +789,73 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
 
                   <div className="space-y-3">
                     <h3 className="font-label-md text-label-md text-on-surface font-semibold">
-                      Federated Authentication Providers
+                      Account security controls
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-sm">
-                            <svg className="w-5 h-5" viewBox="0 0 24 24">
-                              <path
-                                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                fill="#4285F4"
-                              />
-                              <path
-                                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                fill="#34A853"
-                              />
-                              <path
-                                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                                fill="#FBBC05"
-                              />
-                              <path
-                                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                                fill="#EA4335"
-                              />
-                            </svg>
+                      <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-sm shrink-0">
+                            <Icon name="mail" className="text-[20px] text-primary" />
                           </div>
-                          <div>
-                            <p className="font-label-md text-label-md text-on-surface font-semibold">Google Account</p>
-                            <p className="font-caption text-caption text-on-surface-variant truncate max-w-[150px]">
-                              zainab.a@gmail.com
+                          <div className="min-w-0">
+                            <p className="font-label-md text-label-md text-on-surface font-semibold">Email verification</p>
+                            <p className="font-caption text-caption text-on-surface-variant truncate">
+                              {profile.email || 'No email on file'}
                             </p>
                           </div>
                         </div>
-                        <span className="inline-flex items-center gap-1.5 text-badge-discount-text font-caption text-caption font-semibold">
+                        <span className="inline-flex items-center gap-1.5 text-badge-discount-text font-caption text-caption font-semibold shrink-0">
                           <Icon name="check_circle" className="text-[14px]" />
-                          <span>Connected</span>
+                          <span>{profile.email ? 'Verified' : 'Pending'}</span>
                         </span>
                       </div>
-                      <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-surface-container-lowest flex items-center justify-center text-on-surface shadow-sm">
-                            <Icon name="phone_iphone" className="text-[22px]" />
+
+                      <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-sm shrink-0">
+                            <Icon name="lock" className="text-[20px] text-primary" />
                           </div>
-                          <div>
-                            <p className="font-label-md text-label-md text-on-surface font-semibold">Apple ID</p>
-                            <p className="font-caption text-caption text-outline">Passkey and iCloud sign-in</p>
+                          <div className="min-w-0">
+                            <p className="font-label-md text-label-md text-on-surface font-semibold">Sign-in password</p>
+                            <p className="font-caption text-caption text-on-surface-variant">Managed through the auth flow</p>
                           </div>
                         </div>
                         <button
-                          className="text-primary hover:text-on-primary-fixed-variant font-label-sm text-label-sm font-semibold"
+                          className="text-primary hover:text-on-primary-fixed-variant font-label-sm text-label-sm font-semibold shrink-0"
                           type="button"
+                          onClick={() => void handlePasswordReset()}
                         >
-                          Connect
+                          Reset password
                         </button>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-3 pt-1">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-label-md text-label-md text-on-surface font-semibold">
-                          Active Authorized Sessions
-                        </h3>
-                        <p className="font-caption text-caption text-on-surface-variant">
-                          Real-time device authorizations linked to your Apo consumer token.
-                        </p>
-                      </div>
-                      <button
-                        className="text-error hover:bg-error-container/20 px-3 py-1 rounded-lg font-label-sm text-label-sm font-semibold transition-colors"
-                        type="button"
-                      >
-                        Log out all other devices
-                      </button>
+                    <div>
+                      <h3 className="font-label-md text-label-md text-on-surface font-semibold">
+                        Trusted device policy
+                      </h3>
+                      <p className="font-caption text-caption text-on-surface-variant mt-1">
+                        Active sessions are controlled by JWT auth and token expiry. New devices can sign in normally,
+                        while older sessions are invalidated when a token expires or the user signs out.
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <div className="p-4 bg-surface-tint-blue rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-4">
+
+                    <div className="p-4 bg-surface-container-low rounded-xl">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-surface-container-lowest text-primary flex items-center justify-center shadow-sm">
-                            <Icon name="laptop_mac" className="text-[20px]" />
+                            <Icon name="devices" className="text-[20px]" />
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-label-md text-label-md text-on-surface font-semibold">
-                                Current Browser (Chrome on macOS)
-                              </p>
-                              <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                              <span className="font-caption text-caption text-badge-discount-text font-bold">
-                                Active now
-                              </span>
-                            </div>
+                            <p className="font-label-md text-label-md text-on-surface font-semibold">Current session</p>
                             <p className="font-caption text-caption text-on-surface-variant">
-                              Abuja, Nigeria • IP: 102.89.44.18 (MTN Fixed Fiber)
+                              Standard secure browser session with JWT authentication
                             </p>
                           </div>
                         </div>
-                        <span className="font-caption text-caption text-outline">This Device</span>
-                      </div>
-                      <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-surface-container-lowest text-on-surface-variant flex items-center justify-center shadow-sm">
-                            <Icon name="smartphone" className="text-[20px]" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-label-md text-label-md text-on-surface font-semibold">
-                                Mobile App (iPhone 15 Pro)
-                              </p>
-                              <span className="font-caption text-caption text-outline">VEMTAP iOS v2.4</span>
-                            </div>
-                            <p className="font-caption text-caption text-on-surface-variant">
-                              Apo Quarters, Abuja • Last active 28 mins ago
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          className="text-on-surface-variant hover:text-error font-caption text-caption font-medium"
-                          type="button"
-                        >
-                          Revoke
-                        </button>
+                        <span className="font-caption text-caption text-badge-discount-text font-semibold">Active</span>
                       </div>
                     </div>
                   </div>
@@ -732,21 +943,20 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                     </span>
                   </div>
                 </div>
-                <div className="p-6 bg-surface-tint-blue rounded-xl mb-6 flex items-start gap-4">
-                  <Icon name="verified_user" className="text-primary text-[28px] shrink-0" />
+                <div className="p-6 bg-surface-container-low rounded-xl mb-6 flex items-start gap-4">
+                  <Icon name="info" className="text-primary text-[28px] shrink-0" />
                   <div className="space-y-1.5">
                     <p className="font-heading-sm text-heading-sm text-on-surface font-semibold">
-                      Data Sovereignty &amp; Protection Assurances
+                      Privacy controls are coming soon
                     </p>
                     <p className="font-body-md text-body-md text-on-surface-variant">
-                      Your transaction telemetry and neighborhood habits are strictly governed under the Nigeria Data
-                      Protection Regulation (NDPR). VEMTAP never sells personal consumer identifiers or geofenced
-                      movement patterns to third-party ad brokers.
+                      This area is intentionally limited until the backend exposes the privacy, export, and consent APIs.
+                      The app currently supports identity, auth, and secure PIN flows, but not a live NDPR data-rights service.
                     </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center pt-1">
-                  <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between gap-3">
+                  <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between gap-3 opacity-80">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-surface-container-lowest text-primary flex items-center justify-center shadow-sm shrink-0">
                         <Icon name="download" className="text-[20px]" />
@@ -754,18 +964,19 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       <div>
                         <p className="font-label-md text-label-md text-on-surface font-semibold">Portability Archive</p>
                         <p className="font-caption text-caption text-on-surface-variant">
-                          Download all activity and orders (.JSON)
+                          Backend endpoint pending
                         </p>
                       </div>
                     </div>
                     <button
-                      className="px-4 py-1 bg-surface-container-lowest hover:bg-surface text-on-surface font-label-sm text-label-sm font-semibold rounded-lg shadow-sm transition-colors shrink-0"
+                      className="px-4 py-1 bg-surface-container-lowest text-on-surface font-label-sm text-label-sm font-semibold rounded-lg shadow-sm transition-colors shrink-0 cursor-not-allowed opacity-60"
                       type="button"
+                      disabled
                     >
-                      Request Archive
+                      Unavailable
                     </button>
                   </div>
-                  <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between gap-3">
+                  <div className="p-4 bg-surface-container-low rounded-xl flex items-center justify-between gap-3 opacity-80">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-surface-container-lowest text-error flex items-center justify-center shadow-sm shrink-0">
                         <Icon name="delete_forever" className="text-[20px]" />
@@ -773,7 +984,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       <div>
                         <p className="font-label-md text-label-md text-error font-semibold">Account Erasure</p>
                         <p className="font-caption text-caption text-on-surface-variant">
-                          Right to be Forgotten under NDPR
+                          Requires legal/data-retention API support
                         </p>
                       </div>
                     </div>
@@ -782,17 +993,14 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       className="text-error hover:text-on-error-container text-xs font-semibold px-2 py-1 rounded hover:bg-error-container/20 transition-colors shrink-0"
                       type="button"
                     >
-                      Delete Account &amp; Purge Vouchers
+                      Delete Account
                     </button>
                   </div>
                 </div>
                 <div className="mt-6 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-outline font-caption text-caption">
                   <span>
-                    Direct regulatory inquiries: dpo@vemtap.ng (Nigeria Data Protection Commission Registered)
+                    Privacy APIs are not yet wired to the app. This section will be enabled once the backend exposes them.
                   </span>
-                  <button className="text-primary hover:underline" type="button">
-                    View Consent Ledger ID: #NGA-7702-ABJ
-                  </button>
                 </div>
               </section>
 
@@ -805,10 +1013,10 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                 </div>
                 <h2 className="font-heading-lg text-heading-lg text-on-surface">Saved Payment &amp; Settlement</h2>
                 <p className="font-body-md text-body-md text-on-surface-variant mt-2">
-                  VEMTAP never stores card numbers. Settlement preferences only guide which in-store payment method
-                  your receipt vault highlights at participating Abuja merchants.
+                  Payment methods and settlement preferences are not yet exposed by the current backend contract.
+                  This section is intentionally disabled until the payment API is available.
                 </p>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-5 p-4 bg-surface-container-low rounded-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-5 p-4 bg-surface-container-low rounded-xl opacity-80">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-surface-container-lowest text-primary flex items-center justify-center shadow-sm">
                       <Icon name="credit_card" className="text-[20px]" />
@@ -818,15 +1026,16 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         Preferred Settlement Method
                       </p>
                       <p className="font-caption text-caption text-on-surface-variant">
-                        POS Card •••• 4417 (Verve) — Default at checkout counters
+                        Not available yet — backend contract pending
                       </p>
                     </div>
                   </div>
                   <button
-                    className="px-4 py-2 bg-surface-container-lowest hover:bg-surface text-on-surface font-label-sm text-label-sm font-semibold rounded-lg shadow-sm transition-colors shrink-0"
+                    className="px-4 py-2 bg-surface-container-lowest text-on-surface font-label-sm text-label-sm font-semibold rounded-lg shadow-sm transition-colors shrink-0 cursor-not-allowed opacity-60"
                     type="button"
+                    disabled
                   >
-                    Update Preference
+                    Coming soon
                   </button>
                 </div>
               </section>
@@ -867,6 +1076,33 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
         </div>
       </div>
       </DesktopPage>
+      {showPasswordChangeModal && (
+        <PasswordChangeModal
+          open={showPasswordChangeModal}
+          onClose={() => setShowPasswordChangeModal(false)}
+          onSaved={() => {
+            setShowPasswordChangeModal(false);
+            showToast('Password updated successfully');
+          }}
+        />
+      )}
+      {credential && (
+        <CredentialModal
+          onClose={() => setCredential(null)}
+          onSaved={() => {
+            setCredential(null);
+            showToast('Transaction PIN updated successfully');
+          }}
+        />
+      )}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] pointer-events-none px-margin">
+          <div className="bg-inverse-surface text-inverse-on-surface px-space-md py-2.5 rounded-full font-label-sm text-label-sm shadow-xl flex items-center gap-space-2xs max-w-[90vw]">
+            <Icon name="check_circle" className="text-badge-discount-text text-[16px]" filled />
+            <span className="truncate">{toast}</span>
+          </div>
+        </div>
+      )}
       <DeleteAccountSheet
         open={showDeleteAccount}
         onClose={() => setShowDeleteAccount(false)}

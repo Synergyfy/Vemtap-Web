@@ -1,6 +1,7 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { clearAuthTokens, getAccessToken, hasApiConfig } from '../lib/api';
 import { authService } from '../services';
+import { socketService } from '../services/socketService';
 
 interface AuthCredentials {
   identifier?: string;
@@ -107,6 +108,21 @@ const AuthContext = createContext<AuthContextValue>(DEFAULT_VALUE);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(() => readFlag(AUTHED_KEY) || Boolean(getAccessToken()));
   const [claimed, setClaimed] = useState(() => readFlag(CLAIMED_KEY));
+
+  useEffect(() => {
+    if (authed) {
+      socketService.connect('/messaging');
+      socketService.connect('/notifications');
+      return () => {
+        socketService.disconnect('/messaging');
+        socketService.disconnect('/notifications');
+      };
+    }
+
+    socketService.disconnect('/messaging');
+    socketService.disconnect('/notifications');
+    return undefined;
+  }, [authed]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

@@ -71,6 +71,18 @@ export const authService = {
     return response;
   },
 
+  requestPasswordReset: async (payload: { email: string }) => {
+    return api.post('/password-reset/request', payload);
+  },
+
+  changePassword: async (payload: { currentPassword: string; newPassword: string }) => {
+    return api.post('/auth/change-password', payload);
+  },
+
+  resetPassword: async (payload: { email: string; otp: string; newPassword: string }) => {
+    return api.post('/password-reset/reset', payload);
+  },
+
   refresh: async () => {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
