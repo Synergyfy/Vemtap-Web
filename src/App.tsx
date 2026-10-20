@@ -64,6 +64,8 @@ import { BookingDetailScreen } from './scripts/BookingDetailScreen';
 import { getMobileThread } from './scripts/messagesData';
 import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
+import { ForgotPinScreen } from './scripts/ForgotPinScreen';
+import { DesktopForgotPinScreen } from './scripts/desktop/DesktopForgotPinScreen';
 import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
 import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
 import { LocationPermissionScreen } from './scripts/LocationPermissionScreen';
@@ -349,6 +351,7 @@ type Route =
   | 'start-vemtap'
   | 'auth-code'
   | 'sign-in'
+  | 'forgot-pin'
   | 'verify-email'
   | 'profile-setup'
   | 'location-permission'
@@ -515,6 +518,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'start-vemtap': '/start-vemtap',
   'auth-code': '/auth-code',
   'sign-in': '/sign-in',
+  'forgot-pin': '/forgot-pin',
   'verify-email': '/verify-email',
   'profile-setup': '/profile-setup',
   'location-permission': '/location-permission',
@@ -1816,6 +1820,7 @@ function AppInner() {
               setRoute('auth-code');
             }}
             onBusinessRegister={() => setRoute('business-onboarding')}
+            onForgotPin={() => setRoute('forgot-pin')}
             onCustomerSignIn={async () => {
               if (!hasApiConfig()) {
                 await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
@@ -1848,6 +1853,7 @@ function AppInner() {
             setRoute('auth-code');
           }}
           onBusinessRegister={() => setRoute('business-onboarding')}
+          onForgotPin={() => setRoute('forgot-pin')}
           onCustomerSignIn={async () => {
             if (!hasApiConfig()) {
               await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
@@ -1862,6 +1868,10 @@ function AppInner() {
           }}
         />
       );
+
+    case 'forgot-pin':
+      if (isDesktop) return <DesktopForgotPinScreen onBack={() => setRoute('sign-in')} />;
+      return <ForgotPinScreen onBack={() => setRoute('sign-in')} />;
 
     case 'verify-email':
       if (isDesktop)

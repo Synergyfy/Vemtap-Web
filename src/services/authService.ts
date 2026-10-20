@@ -90,6 +90,12 @@ export const authService = {
     return response;
   },
 
+  requestPinReset: (payload: { email: string }) =>
+    api.post<{ message: string }>('/auth/customer/pin/forgot', payload),
+
+  resetPin: (payload: { email: string; otp: string; newPin: string }) =>
+    api.post<{ message: string }>('/auth/customer/pin/reset', payload),
+
   logout: async () => {
     const refreshToken = getRefreshToken();
 

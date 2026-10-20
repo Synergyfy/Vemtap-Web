@@ -7,6 +7,7 @@ interface DesktopSignInScreenProps {
   onGoogleSignIn: () => void;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
+  onForgotPin: () => void;
   onCustomerSignIn: () => void;
   onBusinessSignIn: () => void;
 }
@@ -68,6 +69,7 @@ export function DesktopSignInScreen({
   onGoogleSignIn,
   onCreateAccount,
   onBusinessRegister,
+  onForgotPin,
   onCustomerSignIn,
   onBusinessSignIn,
 }: DesktopSignInScreenProps) {
@@ -285,13 +287,13 @@ export function DesktopSignInScreen({
                     <label className="font-label-md text-label-md text-text-primary" htmlFor="password">
                       PIN or Password
                     </label>
-                    <a
+                    <button
+                      type="button"
                       className="font-label-sm text-label-sm text-primary-container hover:underline font-medium"
-                      href="#forgot-password"
-                      onClick={(event) => event.preventDefault()}
+                      onClick={onForgotPin}
                     >
                       Forgot?
-                    </a>
+                    </button>
                   </div>
                   <div className="relative flex items-center">
                     <Icon
