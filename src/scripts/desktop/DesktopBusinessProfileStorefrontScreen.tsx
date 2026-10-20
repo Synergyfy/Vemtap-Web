@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { useBusinessProfileForm, type BusinessProfileForm } from '../../hooks/business/useBusinessProfileForm';
 import { Icon } from '../../components/ui/Icon';
 import { SocialChannelPicker } from '../../components/SocialChannelPicker';
 import {
   CHANNEL_PLATFORMS,
   CHANNEL_PLATFORM_BY_ID,
+  isChannelPlatform,
   normalizeChannel,
   type ChannelPlatformId,
 } from '../../utils/socialChannels';
@@ -145,10 +147,28 @@ export function DesktopBusinessProfileStorefrontScreen({
   onNav,
   onDiscard,
 }: DesktopBusinessProfileStorefrontScreenProps) {
+  const profile = useBusinessProfileForm();
   const [toastVisible, setToastVisible] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
   const [channels, setChannels] = useState<StorefrontChannel[]>(STOREFRONT_CHANNELS);
+
+  // Seed channels and amenities from the loaded profile (live business or demo).
+  const seededFrom = useRef<BusinessProfileForm | null>(null);
+  useEffect(() => {
+    if (profile.isLoading || seededFrom.current === profile.form) return;
+    seededFrom.current = profile.form;
+    const fromSocials = Object.entries(profile.form.socials)
+      .filter(([platform, value]) => value && isChannelPlatform(platform) && platform !== 'whatsapp')
+      .map(([platform, value]) => ({ id: platform, platform: platform as ChannelPlatformId, value, touched: false }));
+    if (profile.form.whatsappNumber) {
+      fromSocials.push({ id: 'whatsapp', platform: 'whatsapp', value: profile.form.whatsappNumber, touched: false });
+    }
+    setChannels(fromSocials);
+    setActiveAmenities(profile.form.amenities);
+    // Re-seed only after a load or save replaces the profile object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.isLoading, profile.form.socials, profile.form.amenities, profile.form.whatsappNumber]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const channelSeq = useRef(0);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -184,6 +204,21 @@ export function DesktopBusinessProfileStorefrontScreen({
     setActiveAmenities((prev) => (prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]));
 
   const handleSave = () => {
+    const socials: Record<string, string> = {};
+    let whatsappNumber = '';
+    channels.forEach((channel) => {
+      const value = channel.value.trim();
+      if (!value) return;
+      if (channel.platform === 'whatsapp') whatsappNumber = value;
+      else socials[channel.platform] = value;
+    });
+    profile.save.mutate(
+      { ...profile.form, socials, whatsappNumber, amenities: activeAmenities },
+      { onSuccess: showSavedToast },
+    );
+  };
+
+  const showSavedToast = () => {
     setToastVisible(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -255,10 +290,11 @@ export function DesktopBusinessProfileStorefrontScreen({
             <button
               type="button"
               onClick={handleSave}
-              className="flex items-center gap-2 px-space-lg py-2.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_20px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-all"
+              disabled={profile.save.isPending || profile.isLoading}
+              className="flex items-center gap-2 px-space-lg py-2.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_20px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-all disabled:opacity-60"
             >
               <Icon name="check" className="text-[18px]" />
-              <span>Save Changes</span>
+              <span>{profile.save.isPending ? 'Saving…' : 'Save Changes'}</span>
             </button>
           </div>
         </div>
@@ -272,7 +308,7 @@ export function DesktopBusinessProfileStorefrontScreen({
           <div className="flex items-center gap-space-sm">
             <Icon name="verified" className="text-[20px]" />
             <span className="font-label-md text-label-md font-medium">
-              Merchant credentials and live public storefront successfully synchronized across Abuja cluster nodes.
+              Your business profile and public storefront are updated.
             </span>
           </div>
           <button
@@ -284,6 +320,14 @@ export function DesktopBusinessProfileStorefrontScreen({
             <Icon name="close" className="text-[18px]" />
           </button>
         </div>
+
+        {profile.save.isError || profile.loadError ? (
+          <div role="alert" className="w-full p-space-md rounded-xl bg-error-container text-on-error-container font-label-md text-label-md">
+            {profile.save.isError
+              ? `Could not save your profile: ${(profile.save.error as Error).message}`
+              : `Could not load your business profile: ${(profile.loadError as Error).message}`}
+          </div>
+        ) : null}
 
         {/* Main 2-Column Responsive Layout (12 cols: 7 Left, 5 Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
@@ -337,7 +381,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                 <div className="flex flex-col pt-2 sm:pt-6">
                   <div className="flex items-center gap-2">
                     <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                      Urban Grill &amp; Bistro
+                      {profile.form.name || 'Your business'}
                     </span>
                     <Icon name="verified" className="text-primary-container text-[20px]" filled />
                   </div>
@@ -361,7 +405,9 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] px-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="text"
-                      defaultValue="Urban Grill & Bistro"
+                      aria-label="Public brand name"
+                      value={profile.form.name}
+                      onChange={(event) => profile.set('name', event.target.value)}
                     />
                     <Icon name="badge" className="absolute right-3 text-text-tertiary text-[18px]" />
                   </div>
@@ -374,7 +420,10 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] px-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="text"
-                      defaultValue="Restaurant & Grill • Casual Dining"
+                      aria-label="Category"
+                      readOnly
+                      title="Change your category from Business setup"
+                      value={profile.category}
                     />
                     <Icon name="restaurant" className="absolute right-3 text-text-tertiary text-[18px]" />
                   </div>
@@ -384,12 +433,15 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <label className="font-label-sm text-label-sm font-semibold text-text-primary">
                       Storefront Public Bio
                     </label>
-                    <span className="font-caption text-caption text-text-tertiary">142 / 240 chars</span>
+                    <span className="font-caption text-caption text-text-tertiary">{profile.form.description.length} / 240 chars</span>
                   </div>
                   <textarea
                     className="w-full p-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none resize-none transition-all"
                     rows={3}
-                    defaultValue="Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails."
+                    maxLength={240}
+                    aria-label="Storefront public bio"
+                    value={profile.form.description}
+                    onChange={(event) => profile.set('description', event.target.value)}
                   />
                   <p className="font-caption text-caption text-text-tertiary">
                     Visible at top of discovery feeds in Abuja &amp; Lagos consumer app searches.
@@ -475,8 +527,10 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <Icon name="call" className="absolute left-3 text-text-tertiary text-[18px]" />
                     <input
                       className="w-full h-[48px] pl-10 pr-24 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
-                      type="text"
-                      defaultValue="+234 803 900 2210"
+                      type="tel"
+                      aria-label="Customer booking hotline"
+                      value={profile.form.phone}
+                      onChange={(event) => profile.set('phone', event.target.value)}
                     />
                     <span className="absolute right-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1">
                       <Icon name="check_circle" className="text-[12px]" /> Verified
@@ -493,7 +547,9 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] pl-10 pr-3 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="email"
-                      defaultValue="contact@urbangrill.ng"
+                      aria-label="Support email"
+                      value={profile.form.officialEmail}
+                      onChange={(event) => profile.set('officialEmail', event.target.value)}
                     />
                   </div>
                 </div>
