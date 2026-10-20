@@ -218,11 +218,13 @@ function WizardBody({ options, onExit, onDone }: { options: SponsoredCampaignOpt
   const [result, setResult] = useState<{ kind: 'live' | 'scheduled' | 'draft' | 'checkout'; launched?: LaunchedPromotion } | null>(null);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((current) => ({ ...current, [key]: value }));
 
+  // Start on the server's middle budget tier so a tier chip is selected.
   useEffect(() => {
-    if (draft.amount < options.minBudget) set('amount', Math.max(options.minBudget, options.budgetTiers[1]?.amount ?? options.minBudget));
-    // Only on first load of the options.
+    const preset = options.budgetTiers[1]?.amount ?? options.budgetTiers[0]?.amount;
+    set('amount', Math.max(options.minBudget, preset ?? draft.amount));
+    // Only when the options first load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.minBudget]);
+  }, [options]);
 
   const assets = useQuery({ queryKey: ['promotion-eligible-assets'], queryFn: promotionCampaignsService.eligibleAssets });
   const segments = useQuery({

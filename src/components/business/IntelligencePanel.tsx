@@ -77,6 +77,11 @@ function Panel({ title, subtitle, children }: { title: string; subtitle?: string
 function Insights({ items }: { items: Insight[] }) {
   return (
     <Panel title="Vemtap Intelligence" subtitle="What stands out in this period">
+      {!items.length ? (
+        <p className="font-caption text-caption text-text-secondary">
+          Not enough activity in this period yet. Insights appear once customers start claiming, ordering and visiting.
+        </p>
+      ) : null}
       <ul className="flex flex-col gap-space-xs">
         {items.map((item) => (
           <li key={item.title} className="flex items-start gap-space-sm rounded-lg bg-surface-subtle p-space-sm">
@@ -102,7 +107,14 @@ function Insights({ items }: { items: Insight[] }) {
   );
 }
 
-function RankedList({ rows }: { rows: { key: string; label: string; value: string; share: number; sub?: string }[] }) {
+function RankedList({
+  rows,
+  empty = 'Nothing to show for this period yet.',
+}: {
+  rows: { key: string; label: string; value: string; share: number; sub?: string }[];
+  empty?: string;
+}) {
+  if (!rows.length) return <p className="font-caption text-caption text-text-secondary">{empty}</p>;
   return (
     <ul className="flex flex-col gap-space-sm">
       {rows.map((row) => (
@@ -131,12 +143,13 @@ const kpiGrid = 'grid grid-cols-2 lg:grid-cols-4 gap-space-sm';
 // ---------------------------------------------------------------------------
 
 function BusinessView({ data }: { data: OverviewAnalytics }) {
-  const peak = [...data.hourly].sort((a, b) => b.orders - a.orders)[0];
-  const bestDay = [...data.weekdays].sort((a, b) => b.revenue - a.revenue)[0];
+  // Peaks only mean something once there is activity to rank.
+  const peak = [...data.hourly].sort((a, b) => b.orders - a.orders).find((h) => h.orders > 0);
+  const bestDay = [...data.weekdays].sort((a, b) => b.revenue - a.revenue).find((d) => d.revenue > 0);
   const revenueChange = change(data.revenue);
   const days = data.series.length;
   const insights: Insight[] = [
-    {
+    (data.revenue.current > 0 || data.revenue.previous > 0) && {
       icon: revenueChange >= 0 ? 'trending_up' : 'trending_down',
       tone: revenueChange >= 0 ? 'good' : 'warn',
       title: `Revenue ${revenueChange >= 0 ? 'up' : 'down'} ${pct(Math.abs(revenueChange))}`,
@@ -152,7 +165,7 @@ function BusinessView({ data }: { data: OverviewAnalytics }) {
       title: `${WEEKDAYS[bestDay.dow]}s earn the most`,
       body: `${formatNaira(bestDay.revenue)} across the period. A deal on your quietest day can even out the week.`,
     },
-    data.topDeal && {
+    data.topDeal && data.topDeal.claims > 0 && {
       icon: 'local_offer',
       title: `${data.topDeal.name} drives ${pct(data.topDeal.share)} of claims`,
       body: `${num(data.topDeal.claims)} claims${data.topDeal.branchName ? ` at ${data.topDeal.branchName}` : ''}. Consider boosting it.`,
@@ -196,6 +209,7 @@ function BusinessView({ data }: { data: OverviewAnalytics }) {
           <Insights items={insights} />
           <Panel title="Top items">
             <RankedList
+              empty="No items sold in this period yet."
               rows={data.topItems.map((item) => ({
                 key: item.name,
                 label: item.name,
@@ -214,19 +228,19 @@ function BusinessView({ data }: { data: OverviewAnalytics }) {
 function CustomersView({ data }: { data: CustomersAnalytics }) {
   const repeatDelta = data.repeatRate.current - data.repeatRate.previous;
   const insights: Insight[] = [
-    {
+    data.active.current > 0 && {
       icon: 'autorenew',
       tone: repeatDelta >= 0 ? 'good' : 'warn',
       title: `Repeat rate ${pct(data.repeatRate.current)}`,
       body: `${repeatDelta >= 0 ? 'Up' : 'Down'} ${Math.abs(Math.round(repeatDelta * 100))} points on the previous period.`,
     },
-    {
+    data.segments.lapsed.count > 0 && {
       icon: 'person_off',
       tone: 'warn',
       title: `${num(data.segments.lapsed.count)} customers have lapsed`,
       body: 'No visit in 90+ days. A win-back segment with a time-limited deal is the cheapest growth you have.',
     },
-    data.topCustomers[0] && {
+    data.topCustomers[0] && data.topCustomers[0].spend > 0 && {
       icon: 'workspace_premium',
       title: `${data.topCustomers[0].name} is your top customer`,
       body: `${formatNaira(data.topCustomers[0].spend)} across ${data.topCustomers[0].visits} visits this period.`,
@@ -274,6 +288,7 @@ function CustomersView({ data }: { data: CustomersAnalytics }) {
           <Insights items={insights} />
           <Panel title="Top customers">
             <RankedList
+              empty="No customer spend in this period yet."
               rows={data.topCustomers.map((c) => ({
                 key: c.userId,
                 label: c.name,
@@ -290,7 +305,7 @@ function CustomersView({ data }: { data: CustomersAnalytics }) {
 }
 
 function DealsView({ data }: { data: DealsAnalytics }) {
-  const best = [...data.deals].sort((a, b) => b.claimRate - a.claimRate)[0];
+  const best = [...data.deals].sort((a, b) => b.claimRate - a.claimRate).find((d) => d.claims > 0);
   const slipping = data.deals.find((d) => d.claims < d.previousClaims);
   const redeemRate = data.funnel.claims ? data.funnel.redeemed / data.funnel.claims : 0;
   const insights: Insight[] = [
@@ -301,7 +316,7 @@ function DealsView({ data }: { data: DealsAnalytics }) {
       title: `${slipping.name} is slowing`,
       body: `${num(slipping.claims)} claims, down from ${num(slipping.previousClaims)}. Refresh the image or terms, or boost it.`,
     },
-    {
+    data.funnel.claims > 0 && {
       icon: 'task_alt',
       title: `${pct(redeemRate)} of claims are redeemed`,
       body: 'Unredeemed claims are customers who meant to come — a reminder push can recover some.',
@@ -348,6 +363,13 @@ function DealsView({ data }: { data: DealsAnalytics }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {!data.deals.length ? (
+                    <tr>
+                      <td colSpan={5} className="py-space-sm font-caption text-caption text-text-secondary">
+                        No deal activity in this period yet.
+                      </td>
+                    </tr>
+                  ) : null}
                   {data.deals.map((deal) => (
                     <tr key={deal.id} className="border-t border-border-subtle">
                       <td className="py-space-xs pr-space-sm text-text-primary">{deal.name}</td>
@@ -370,9 +392,9 @@ function DealsView({ data }: { data: DealsAnalytics }) {
 
 function LocationsView({ data }: { data: LocationsAnalytics }) {
   const [best, ...rest] = data.branches;
-  const laggard = rest.sort((a, b) => a.percentOfBest - b.percentOfBest)[0];
+  const laggard = best && best.revenue.current > 0 ? rest.sort((a, b) => a.percentOfBest - b.percentOfBest)[0] : undefined;
   const insights: Insight[] = [
-    best && { icon: 'emoji_events', tone: 'good', title: `${best.name} leads`, body: `${pct(best.revenueShare)} of revenue, ${formatNaira(best.averageOrderValue)} average order.` },
+    best && best.revenue.current > 0 && { icon: 'emoji_events', tone: 'good', title: `${best.name} leads`, body: `${pct(best.revenueShare)} of revenue, ${formatNaira(best.averageOrderValue)} average order.` },
     laggard && {
       icon: 'insights',
       tone: 'warn',
@@ -408,11 +430,11 @@ function LocationsView({ data }: { data: LocationsAnalytics }) {
 }
 
 function PosView({ data }: { data: PosAnalytics }) {
-  const topTender = [...data.tenders].sort((a, b) => b.share - a.share)[0];
-  const peak = [...data.hourly].sort((a, b) => b.sales - a.sales)[0];
+  const topTender = [...data.tenders].sort((a, b) => b.share - a.share).find((t) => t.amount > 0);
+  const peak = [...data.hourly].sort((a, b) => b.sales - a.sales).find((h) => h.sales > 0);
   const insights: Insight[] = [
     topTender && { icon: 'payments', title: `${topTender.method} is the top tender`, body: `${pct(topTender.share)} of sales value.` },
-    {
+    data.tickets.current > 0 && {
       icon: 'undo',
       tone: data.refunds.rate > 0.02 ? 'warn' : 'good',
       title: `Refund rate ${(data.refunds.rate * 100).toFixed(1)}%`,

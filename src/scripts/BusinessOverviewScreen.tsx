@@ -120,7 +120,7 @@ export function BusinessOverviewScreen({
           <div className="px-margin pt-space-sm flex items-center justify-between gap-space-sm">
             <div className="flex flex-col min-w-0">
               <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-                {todayLabel()} • {branch.area}
+                {[todayLabel(), branch.area].filter(Boolean).join(' • ')}
               </span>
               <h2 className="font-heading-md text-heading-md text-text-primary truncate">{greeting()}, {overview.businessName}</h2>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">

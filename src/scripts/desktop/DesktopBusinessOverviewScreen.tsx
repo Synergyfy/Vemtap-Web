@@ -114,7 +114,7 @@ export function DesktopBusinessOverviewScreen({
           <section className="flex items-center justify-between gap-space-md">
             <div className="flex flex-col min-w-0">
               <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-                {todayLabel()} • {branch.area}
+                {[todayLabel(), branch.area].filter(Boolean).join(' • ')}
               </span>
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight truncate">
                 {greeting()}, {overview.businessName}
