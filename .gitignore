@@ -1,5 +1,5 @@
 # Vite cache
-node_modules/.vite/
+node_modules/
 dist/
 .env
 api-integration.md
