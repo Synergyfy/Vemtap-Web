@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { URBAN_BUSINESS } from '../businessData';
+import { useSwitchToCustomer } from '../../components/business/SwitchToCustomerDialog';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 
@@ -64,6 +66,7 @@ export function DesktopBusinessMoreScreen({
   onSignOut,
   onOpenStoreOrdering,
 }: DesktopBusinessMoreScreenProps) {
+  const switchToCustomer = useSwitchToCustomer(onSwitchConsumer, URBAN_BUSINESS.name);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -430,7 +433,7 @@ export function DesktopBusinessMoreScreen({
             </div>
             <button
               type="button"
-              onClick={onSwitchConsumer}
+              onClick={switchToCustomer.request}
               className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-2 shadow-md hover:opacity-90 transition-opacity"
             >
               <span>Open Consumer Experience</span>
@@ -484,6 +487,7 @@ export function DesktopBusinessMoreScreen({
           </div>
         </div>
       )}
+      {switchToCustomer.dialog}
     </BusinessPortalChrome>
   );
 }

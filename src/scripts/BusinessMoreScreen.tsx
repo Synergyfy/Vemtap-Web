@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSwitchToCustomer } from '../components/business/SwitchToCustomerDialog';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
@@ -68,6 +69,7 @@ export function BusinessMoreScreen({
   onSignOut,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
+  const switchToCustomer = useSwitchToCustomer(onSwitchConsumer, URBAN_BUSINESS.name);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -437,7 +439,7 @@ export function BusinessMoreScreen({
               <button
                 className="w-full h-11 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-2 shadow-md active:scale-95 transition-transform"
                 type="button"
-                onClick={onSwitchConsumer}
+                onClick={switchToCustomer.request}
               >
                 <span>Open Consumer Experience</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
@@ -478,6 +480,7 @@ export function BusinessMoreScreen({
 
         <BusinessTabBar active="more" onTab={onTab} />
       </AppScreen>
+      {switchToCustomer.dialog}
     </div>
   );
 }
