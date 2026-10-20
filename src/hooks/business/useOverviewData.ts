@@ -5,6 +5,8 @@ import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { useMyBusiness } from './useMyBusiness';
 import { formatNaira } from '../../utils/format';
 import { URBAN_BUSINESS } from '../../scripts/businessData';
+import { useBusinessOrders } from './useBusinessOrders';
+import { toPrice } from '../../services/catalogueItemsService';
 
 export interface OverviewView {
   businessName: string;
@@ -13,6 +15,8 @@ export interface OverviewView {
   planBadge: string | null;
   stats: { orders: string; revenue: string; revenueDelta: string; bookings: string; unread: string };
   insights: { id: string; title: string; message: string }[];
+  /** Latest orders (live only), in the overview card's row shape. */
+  recentOrders: { id: string; customer: string; amount: string; status: string; statusClass: string }[];
   isLive: boolean;
   isLoading: boolean;
 }
@@ -38,6 +42,7 @@ export function useOverviewData(): OverviewView {
   const { branch, activeBranchId } = useBusinessBranch();
   const live = hasApiConfig() && Boolean(activeBranchId);
   const myBusiness = useMyBusiness();
+  const orders = useBusinessOrders();
 
   const dashboard = useQuery({
     queryKey: ['business-dashboard', activeBranchId],
@@ -65,6 +70,7 @@ export function useOverviewData(): OverviewView {
       planBadge: 'Growth Trial · 23 days left',
       stats: branch.stats,
       insights: [],
+      recentOrders: [],
       isLive: false,
       isLoading: false,
     };
@@ -86,6 +92,17 @@ export function useOverviewData(): OverviewView {
     insights: (dashboard.data?.insights ?? [])
       .filter((i) => i.title || i.message)
       .map((i, index) => ({ id: i.id ?? String(index), title: i.title ?? '', message: i.message ?? '' })),
+    recentOrders: (orders.data ?? []).slice(0, 3).map((order) => {
+      const total = toPrice(order.totalAmount ?? undefined);
+      const status = order.status ?? 'new';
+      return {
+        id: `#${order.id.slice(0, 8).toUpperCase()}`,
+        customer: [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(' ') || 'Walk-in guest',
+        amount: total !== undefined ? formatNaira(total) : '—',
+        status: status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' '),
+        statusClass: status === 'new' ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-secondary',
+      };
+    }),
     isLive: true,
     isLoading: dashboard.isLoading || pos.isLoading,
   };

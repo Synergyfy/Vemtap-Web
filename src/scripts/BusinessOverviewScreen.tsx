@@ -49,8 +49,8 @@ export function BusinessOverviewScreen({
 
   const overview = useOverviewData();
   const stats = overview.stats;
-  // Sample rows are demo-only; live lists arrive with the orders and inbox integrations.
-  const recentOrders = overview.isLive ? [] : RECENT_ORDERS;
+  // Sample rows are demo-only; live messages arrive with the inbox integration.
+  const recentOrders = overview.isLive ? overview.recentOrders : RECENT_ORDERS;
   const recentMessages = overview.isLive ? [] : RECENT_MESSAGES;
 
   const todayStats = [
@@ -264,7 +264,7 @@ export function BusinessOverviewScreen({
               </div>
               <div className="flex flex-col gap-1.5">
                 {!recentOrders.length ? (
-                  <p className="font-caption text-caption text-text-secondary px-1 py-2">Open Orders to see today's tickets.</p>
+                  <p className="font-caption text-caption text-text-secondary px-1 py-2">No orders yet today.</p>
                 ) : null}
                 {recentOrders.map((order) => (
                   <button
