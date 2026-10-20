@@ -67,10 +67,10 @@ export function RecipientVerificationSheet({
         </div>
 
         <div className="mb-5">
-          <h1 className="text-[26px] leading-tight font-bold text-text-primary tracking-tight mb-2">
+          <h1 className="text-heading-lg font-bold text-text-primary tracking-tight mb-2">
             Verify recipient's contact
           </h1>
-          <p className="text-[14px] leading-relaxed text-text-secondary font-normal">
+          <p className="text-body-md leading-relaxed text-text-secondary font-normal">
             We sent a 6-digit verification code to{' '}
             <span className="font-semibold text-text-primary">{maskedTarget}</span> to confirm their identity for this
             claim voucher.

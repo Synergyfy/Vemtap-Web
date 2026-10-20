@@ -186,6 +186,7 @@ export interface HomeScreenProps {
   onOpenFeatured: () => void;
   onOpenDeals: () => void;
   onOpenDeal: () => void;
+  onOpenBusiness: () => void;
   onOpenNotifications: () => void;
   onEnroll: () => void;
   onAccount: () => void;
@@ -374,7 +375,13 @@ function TrendingSection({ onSeeAll, onOpenDeal }: { onSeeAll: () => void; onOpe
   );
 }
 
-function BusinessesSection({ onSeeAll }: { onSeeAll: () => void }) {
+function BusinessesSection({
+  onSeeAll,
+  onOpenBusiness,
+}: {
+  onSeeAll: () => void;
+  onOpenBusiness: () => void;
+}) {
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -391,7 +398,8 @@ function BusinessesSection({ onSeeAll }: { onSeeAll: () => void }) {
         {BUSINESSES.map((business) => (
           <div
             key={business.id}
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow"
+            {...dealCardProps(onOpenBusiness)}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow cursor-pointer"
           >
             <div className="flex items-center gap-3.5 min-w-0">
               <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center shrink-0 overflow-hidden">
@@ -520,6 +528,7 @@ export function HomeScreen({
   onOpenFeatured,
   onOpenDeals,
   onOpenDeal,
+  onOpenBusiness,
   onOpenNotifications,
   onEnroll,
   onAccount,
@@ -1119,7 +1128,7 @@ export function HomeScreen({
           </section>
 
           <TrendingSection onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
-          <BusinessesSection onSeeAll={onOpenDeals} />
+          <BusinessesSection onSeeAll={() => onTab('discover')} onOpenBusiness={onOpenBusiness} />
           <PopularSection onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
           <EnrollmentPrompt onEnroll={onEnroll} />
         </div>
