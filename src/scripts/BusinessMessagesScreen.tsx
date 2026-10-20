@@ -9,6 +9,7 @@ import { BusinessChatGeneralScreen } from './BusinessChatGeneralScreen';
 import { BusinessChatDealScreen } from './BusinessChatDealScreen';
 import { BusinessChatBookingScreen } from './BusinessChatBookingScreen';
 import { BusinessChatOrderScreen } from './BusinessChatOrderScreen';
+import { DEFAULT_CHAT_CONTACTS, type BusinessChatContact } from './messagesContact';
 
 export type BusinessMessagesStep =
   | 'home'
@@ -30,6 +31,12 @@ export function BusinessMessagesScreen({
   onSelectChannel?: (key: MessagesChannelKey) => void;
 }) {
   const [step, setStep] = useState<BusinessMessagesStep>(initialStep);
+  const [contact, setContact] = useState<BusinessChatContact>(DEFAULT_CHAT_CONTACTS.general);
+
+  const openConversation = (thread: 'deal' | 'order' | 'general' | 'booking', next?: BusinessChatContact) => {
+    setContact(next ?? DEFAULT_CHAT_CONTACTS[thread]);
+    setStep(`chat${thread.charAt(0).toUpperCase()}${thread.slice(1)}` as BusinessMessagesStep);
+  };
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -57,11 +64,7 @@ export function BusinessMessagesScreen({
             onSelectChannel={onSelectChannel}
             onOpenSearch={() => setStep('search')}
             onNewMessage={() => setStep('select')}
-            onOpenConversation={(thread) =>
-              setStep(
-                thread === 'deal' ? 'chatDeal' : thread === 'order' ? 'chatOrder' : thread === 'booking' ? 'chatBooking' : 'chatGeneral',
-              )
-            }
+            onOpenConversation={(thread, next) => openConversation(thread, next)}
           />
         );
       case 'search':
@@ -69,26 +72,35 @@ export function BusinessMessagesScreen({
           <BusinessMessagesSearchScreen
             onTab={handleTab}
             onCancel={() => setStep('home')}
-            onOpenConversation={(thread) => setStep(thread === 'order' ? 'chatOrder' : 'chatGeneral')}
+            onOpenConversation={(thread, next) => openConversation(thread, next)}
           />
         );
       case 'select':
         return (
           <BusinessNewMessageScreen
             onBack={() => setStep('home')}
-            onRecipientSelected={() => setStep('compose')}
+            onRecipientSelected={(name) => {
+              setContact({ name });
+              setStep('compose');
+            }}
           />
         );
       case 'compose':
-        return <BusinessComposeScreen onBack={() => setStep('select')} onSent={() => setStep('chatBooking')} />;
+        return (
+          <BusinessComposeScreen
+            recipientName={contact.name}
+            onBack={() => setStep('select')}
+            onSent={() => setStep('chatBooking')}
+          />
+        );
       case 'chatGeneral':
-        return <BusinessChatGeneralScreen onBack={() => setStep('home')} />;
+        return <BusinessChatGeneralScreen contact={contact} onBack={() => setStep('home')} />;
       case 'chatDeal':
-        return <BusinessChatDealScreen onBack={() => setStep('home')} />;
+        return <BusinessChatDealScreen contact={contact} onBack={() => setStep('home')} />;
       case 'chatBooking':
-        return <BusinessChatBookingScreen onBack={() => setStep('home')} />;
+        return <BusinessChatBookingScreen contact={contact} onBack={() => setStep('home')} />;
       case 'chatOrder':
-        return <BusinessChatOrderScreen onBack={() => setStep('home')} />;
+        return <BusinessChatOrderScreen contact={contact} onBack={() => setStep('home')} />;
     }
   };
 

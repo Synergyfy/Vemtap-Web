@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BusinessBoostScreen } from '../BusinessBoostScreen';
+import { ClusterBoostFlow } from '../ClusterBoostFlow';
 import { DesktopSubscriptionOverviewScreen } from './DesktopSubscriptionOverviewScreen';
 import { DesktopSubscriptionTrialConfirmScreen } from './DesktopSubscriptionTrialConfirmScreen';
 import { DesktopSubscriptionTrialActiveScreen } from './DesktopSubscriptionTrialActiveScreen';
@@ -129,12 +129,14 @@ export function DesktopSubscriptionScreen({
         />
       );
     case 'boost':
+      // The only purchasable placement today is the Cluster Campaign, so the
+      // onboarding "create campaign" step runs the same unified flow.
       return (
-        <BusinessBoostScreen
+        <ClusterBoostFlow
+          chrome="subscription"
           onBack={boostOnBack ?? (() => setStep(boostFrom))}
-          onDone={boostOnBack ? onExit : onExit}
-          growthActive={boostFrom === 'success'}
-          preselectedItem={boostItem ?? null}
+          onDone={onExit}
+          preselectedItemId={boostItem ?? null}
         />
       );
     case 'addons':

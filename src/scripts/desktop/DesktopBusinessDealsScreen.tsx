@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
@@ -127,24 +128,42 @@ const DEALS: DealCard[] = [
 ];
 
 const TABS: Array<{ key: DealStatus; label: string }> = [
-  { key: 'active', label: 'Active (3)' },
-  { key: 'scheduled', label: 'Scheduled (1)' },
-  { key: 'expired', label: 'Expired (8)' },
-  { key: 'all', label: 'All Campaigns (12)' },
+  { key: 'active', label: 'Active' },
+  { key: 'scheduled', label: 'Scheduled' },
+  { key: 'expired', label: 'Expired' },
+  { key: 'all', label: 'All Campaigns' },
 ];
 
 export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDeal }: DesktopBusinessDealsScreenProps) {
   const [tab, setTab] = useState<DealStatus>('active');
   const [search, setSearch] = useState('');
+  const [type, setType] = useState('');
   const [boosted, setBoosted] = useState<Record<string, boolean>>({});
   const [paused, setPaused] = useState<Record<string, boolean>>({});
   const [quotaCap, setQuotaCap] = useState(18);
 
+  const query = search.trim().toLowerCase();
+
+  /** Tab, deal-type filter and search all have to agree before a card shows. */
   const filtered = DEALS.filter((d) => {
-    if (tab === 'scheduled' || tab === 'expired') return false;
-    if (search && !d.title.toLowerCase().includes(search.toLowerCase()) && !d.sku.toLowerCase().includes(search.toLowerCase())) return false;
+    if (tab !== 'all' && d.bucket !== tab) return false;
+    if (type !== '' && d.typeLabel !== type) return false;
+    if (
+      query !== '' &&
+      ![d.title, d.sku, d.participating, d.typeLabel].some((field) => field.toLowerCase().includes(query))
+    ) {
+      return false;
+    }
     return true;
   });
+
+  const tabCount = (key: DealStatus) =>
+    key === 'all' ? DEALS.length : DEALS.filter((deal) => deal.bucket === key).length;
+
+  const typeChoices = [
+    { value: '', label: 'All deal types' },
+    ...Array.from(new Set(DEALS.map((deal) => deal.typeLabel))).map((label) => ({ value: label, label })),
+  ];
 
   return (
     <BusinessPortalChrome activeNav="business-deals" onNav={onNav}>
@@ -286,7 +305,7 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
                   tab === t.key ? 'bg-primary-container text-on-primary font-semibold shadow-sm' : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle font-medium'
                 }`}
               >
-                {t.label}
+                {t.label} ({tabCount(t.key)})
               </button>
             ))}
           </div>
@@ -301,10 +320,17 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
                 className="pl-9 pr-3 py-2 bg-surface-canvas rounded-xl font-label-sm text-label-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
               />
             </div>
-            <button type="button" className="px-3 py-2 bg-surface-canvas rounded-xl shadow-sm text-text-secondary hover:text-text-primary font-label-sm text-label-sm flex items-center gap-1.5">
-              <Icon name="filter_list" className="text-[16px]" />
-              <span>Filter</span>
-            </button>
+            <FilterMenu
+              align="right"
+              buttonClassName="px-3 py-2 bg-surface-canvas rounded-xl shadow-sm text-text-secondary hover:text-text-primary font-label-sm text-label-sm flex items-center gap-1.5"
+              choices={typeChoices}
+              icon="filter_list"
+              iconClassName="text-[16px]"
+              label="Filter"
+              onChange={setType}
+              title="Filter by deal type"
+              value={type}
+            />
           </div>
         </div>
 
@@ -407,7 +433,11 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
             <div className="col-span-full py-space-2xl text-center">
               <Icon name="local_offer" className="text-[40px] text-text-tertiary" />
               <p className="mt-space-sm font-heading-sm text-heading-sm text-text-primary">No campaigns in this view</p>
-              <p className="font-body-md text-body-md text-text-secondary">Switch tabs or create a new deal to get started.</p>
+              <p className="font-body-md text-body-md text-text-secondary">
+                {type !== '' || query !== ''
+                  ? 'Clear the filters or switch tabs to see more campaigns.'
+                  : 'Switch tabs or create a new deal to get started.'}
+              </p>
             </div>
           )}
         </div>

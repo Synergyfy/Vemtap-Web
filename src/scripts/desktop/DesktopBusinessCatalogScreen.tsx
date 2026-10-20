@@ -1,4 +1,10 @@
+import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { AddProductMethodsDialog } from '../../components/import/AddProductMethodsDialog';
+import { ProductImportWizard } from '../../components/import/ProductImportWizard';
+import { useImportedProducts } from '../productImport/importedProductStore';
+import { summariseImport } from '../productImport/importSummary';
+import { naira } from '../catalogueData';
 
 interface DesktopBusinessCatalogScreenProps {
   onBack: () => void;
@@ -24,6 +30,20 @@ const SEED_ENTRIES: CatalogEntry[] = [
 ];
 
 export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAddProduct, onAddService }: DesktopBusinessCatalogScreenProps) {
+  const [methodsOpen, setMethodsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const importedProducts = useImportedProducts();
+
+  const importedEntries: CatalogEntry[] = importedProducts.map((product) => ({
+    id: product.id,
+    name: product.name || 'Untitled imported product',
+    type: 'Product',
+    price: product.price !== null ? naira(product.price) : '—',
+    category: `${product.category || 'General'}${product.status === 'draft' ? ' • Draft' : ''}`,
+  }));
+  const entries = [...importedEntries, ...SEED_ENTRIES];
+
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 flex flex-col gap-8">
       <div className="flex flex-col gap-2">
@@ -34,11 +54,11 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
           <span className="font-label-sm text-caption text-primary font-semibold uppercase tracking-wider">Step 5 of 8</span>
         </div>
         <h1 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight">Products &amp; Services</h1>
-        <p className="font-body-md text-body-md text-text-secondary">Seed your catalogue with a few items. You can bulk-import or refine everything later in the Central Catalogue.</p>
+        <p className="font-body-md text-body-md text-text-secondary">Add items one at a time, or bulk-import a CSV/Excel file. Everything can be refined later in the Central Catalogue.</p>
       </div>
 
       <div className="flex flex-col gap-3">
-        {SEED_ENTRIES.map((e) => (
+        {entries.map((e) => (
           <div key={e.id} className="bg-surface-canvas rounded-xl p-4 shadow-sm border border-surface-container flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${e.type === 'Product' ? 'bg-surface-tint-blue text-primary' : 'bg-tertiary-fixed text-on-tertiary-fixed'}`}>
@@ -57,7 +77,7 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
       <div className="grid grid-cols-2 gap-4">
         <button
           type="button"
-          onClick={onAddProduct}
+          onClick={() => setMethodsOpen(true)}
           className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
         >
           <Icon name="add" className="text-[20px]" />
@@ -72,6 +92,43 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
           <span>Add Service</span>
         </button>
       </div>
+
+      {/* Add Product: manual / bulk import / connect platform (coming soon) */}
+      <AddProductMethodsDialog
+        open={methodsOpen}
+        onClose={() => setMethodsOpen(false)}
+        onAddManually={() => {
+          setMethodsOpen(false);
+          onAddProduct();
+        }}
+        onBulkImport={() => {
+          setMethodsOpen(false);
+          setImportOpen(true);
+        }}
+      />
+
+      {/* Reusable Bulk Product Import wizard */}
+      <ProductImportWizard
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        existingSkus={entries.map((entry) => entry.name)}
+        existingNames={entries.map((entry) => entry.name)}
+        onImported={(importResult) => {
+          const drafts = importResult.imported - importResult.published;
+          setToast(
+            `${summariseImport(importResult)}${
+              drafts > 0 ? ' You can review and publish the drafts in the Central Catalogue.' : ''
+            }`,
+          );
+          window.setTimeout(() => setToast(null), 5000);
+        }}
+      />
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
+          {toast}
+        </div>
+      )}
 
       <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">

@@ -2,6 +2,12 @@ import { Icon } from '../components/ui/Icon';
 
 interface BusinessChatHeaderProps {
   onBack: () => void;
+  /** Name of the customer or business being chatted with. */
+  title?: string;
+  /** Profile image of the contact, when available. */
+  avatar?: string;
+  /** Renders the storefront identity icon instead of the customer icon. */
+  isBusiness?: boolean;
   subtitle?: string;
   onAvatar?: () => void;
   onCall?: () => void;
@@ -10,6 +16,9 @@ interface BusinessChatHeaderProps {
 
 export function BusinessChatHeader({
   onBack,
+  title = 'Business Chat',
+  avatar,
+  isBusiness = false,
   subtitle = 'Active inquiry • Order #8491',
   onAvatar,
   onCall,
@@ -28,24 +37,32 @@ export function BusinessChatHeader({
             <Icon name="arrow_back" className="text-[24px]" />
           </button>
           <button
-            aria-label="View customer profile"
+            aria-label={`View ${title} profile`}
             className="relative flex-shrink-0 rounded-full active:scale-95 transition-transform"
             type="button"
             onClick={onAvatar}
           >
-            <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
-              <Icon name="account_circle" className="text-[20px]" />
-            </div>
+            {avatar ? (
+              <img
+                alt={title}
+                className="w-10 h-10 rounded-full object-cover shadow-sm"
+                src={avatar}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
+                <Icon name={isBusiness ? 'storefront' : 'account_circle'} className="text-[20px]" />
+              </div>
+            )}
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-badge-discount-text ring-2 ring-surface" />
           </button>
           <div className="flex flex-col min-w-0 flex-1">
-            <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">Business Chat</h1>
+            <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">{title}</h1>
             <span className="font-caption text-caption text-text-secondary truncate">{subtitle}</span>
           </div>
         </div>
         <div className="flex items-center gap-space-2xs">
           <button
-            aria-label="Call customer"
+            aria-label={`Call ${title}`}
             className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-primary transition-colors"
             type="button"
             onClick={onCall}

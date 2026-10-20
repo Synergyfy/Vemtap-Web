@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -176,8 +177,40 @@ export function DesktopDealsWorkspaceScreen({
 }: DesktopDealsWorkspaceScreenProps) {
   const [statusTab, setStatusTab] = useState<'active' | 'scheduled' | 'expired'>('active');
   const [pausedDeals, setPausedDeals] = useState<Record<string, boolean>>({});
+  const [search, setSearch] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
 
   const togglePause = (key: string) => setPausedDeals((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  /**
+   * The deal cards further down are composed inline rather than mapped from a
+   * list, so the searchable metadata for each one is declared here and the
+   * command-deck controls filter against it. A future deals API would replace
+   * both this table and the cards with a single mapped source.
+   */
+  const WORKSPACE_DEALS: Array<{ id: string; branch: string; haystack: string }> = [
+    { id: 'wuse', branch: 'all', haystack: 'weekend prime lunch combo all 3 active branches' },
+    { id: 'smash', branch: 'wuse', haystack: '2-for-1 smash burger thursday wuse ii branch only' },
+    { id: 'chill', branch: 'wuse-maitama', haystack: 'after-work chill pass maitama wuse ii' },
+  ];
+
+  const branchChoices = [
+    { value: '', label: 'All branches' },
+    { value: 'all', label: 'Runs on every branch' },
+    { value: 'wuse', label: 'Wuse II only' },
+    { value: 'wuse-maitama', label: 'Wuse II & Maitama' },
+  ];
+
+  const query = search.trim().toLowerCase();
+
+  const matchesDeal = (id: string) => {
+    const deal = WORKSPACE_DEALS.find((entry) => entry.id === id);
+    if (!deal) return true;
+    if (branchFilter !== '' && deal.branch !== branchFilter) return false;
+    return query === '' || deal.haystack.includes(query);
+  };
+
+  const visibleDealCount = WORKSPACE_DEALS.filter((deal) => matchesDeal(deal.id)).length;
 
   const tabs: Array<{ key: 'active' | 'scheduled' | 'expired'; label: string; count: string }> = [
     { key: 'active', label: 'Active', count: '6' },
@@ -265,19 +298,30 @@ export function DesktopDealsWorkspaceScreen({
               <input
                 className="w-full h-[48px] pl-11 pr-4 bg-surface-subtle hover:bg-surface-container-low focus:bg-surface-canvas rounded-xl font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none transition-colors"
                 id="deal-search"
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search deals, SKU, promo codes or branches..."
                 type="search"
+                value={search}
               />
             </div>
 
-            <button
-              type="button"
-              className="h-[48px] px-space-md bg-surface-subtle hover:bg-surface-container-low rounded-xl flex items-center justify-center gap-space-xs text-text-primary font-label-md text-label-md transition-colors"
-            >
-              <Icon name="tune" className="text-[20px] text-text-secondary" />
-              <span>Filters</span>
-              <span className="w-5 h-5 rounded-full bg-primary text-on-primary font-caption text-caption flex items-center justify-center font-bold">2</span>
-            </button>
+            {/* The badge count is derived from the deck controls, never hard-coded. */}
+            <FilterMenu
+              align="right"
+              buttonClassName="h-[48px] px-space-md bg-surface-subtle hover:bg-surface-container-low rounded-xl flex items-center justify-center gap-space-xs text-text-primary font-label-md text-label-md transition-colors"
+              choices={branchChoices}
+              icon="tune"
+              iconClassName="text-[20px] text-text-secondary"
+              label="Filters"
+              onChange={setBranchFilter}
+              title="Filter by branch"
+              value={branchFilter}
+            />
+            {branchFilter !== '' && (
+              <span className="w-5 h-5 rounded-full bg-primary text-on-primary font-caption text-caption flex items-center justify-center font-bold">
+                1
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-space-sm justify-end">
@@ -403,6 +447,7 @@ export function DesktopDealsWorkspaceScreen({
 
         {/* Main Expansive Deals Grid */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-space-lg items-stretch">
+          {matchesDeal('wuse') && (
           <DealCard
             paused={!!pausedDeals.wuse}
             onPause={() => togglePause('wuse')}
@@ -469,7 +514,9 @@ export function DesktopDealsWorkspaceScreen({
               </button>
             }
           />
+          )}
 
+          {matchesDeal('smash') && (
           <DealCard
             paused={!!pausedDeals.smash}
             onPause={() => togglePause('smash')}
@@ -541,7 +588,9 @@ export function DesktopDealsWorkspaceScreen({
               </button>
             }
           />
+          )}
 
+          {matchesDeal('chill') && (
           <DealCard
             paused={!!pausedDeals.chill}
             onPause={() => togglePause('chill')}
@@ -608,6 +657,36 @@ export function DesktopDealsWorkspaceScreen({
               </button>
             }
           />
+          )}
+
+          {visibleDealCount === 0 && (
+            <div className="bg-surface-canvas rounded-2xl p-space-lg shadow-[0_4px_20px_-2px_rgba(13,37,76,0.04)] flex flex-col items-center text-center">
+              <span className="w-14 h-14 rounded-full bg-surface-container-high text-text-tertiary flex items-center justify-center mb-space-sm">
+                <Icon name="search_off" className="text-[26px]" />
+              </span>
+              <span className="font-label-md text-label-md text-text-primary font-semibold">
+                No deals match these filters
+              </span>
+              <span className="font-caption text-caption text-text-secondary mt-1 max-w-xs leading-relaxed">
+                {branchFilter !== ''
+                  ? `Nothing running on ${branchChoices.find((choice) => choice.value === branchFilter)?.label ?? 'that branch'}`
+                  : 'Nothing matches your search'}
+                {query !== '' ? ` for “${search.trim()}”` : ''}. Clear the filters to see every campaign.
+              </span>
+              {(branchFilter !== '' || query !== '') && (
+                <button
+                  className="mt-space-sm h-10 px-space-md rounded-xl bg-surface-container-low text-text-primary font-button-secondary text-button-secondary font-medium active:scale-95 transition-transform"
+                  onClick={() => {
+                    setBranchFilter('');
+                    setSearch('');
+                  }}
+                  type="button"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Branch Distribution & Real-Time Capacity */}

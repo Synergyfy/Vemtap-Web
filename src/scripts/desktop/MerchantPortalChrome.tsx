@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 import { BusinessSidebarRail } from './BusinessSidebarRail';
@@ -49,17 +50,17 @@ export function MerchantPortalChrome({
               </button>
             </div>
             <div className="h-5 w-[1px] bg-border-subtle mx-space-md hidden lg:block" />
-            <button
-              type="button"
-              className="relative flex items-center gap-space-xs bg-surface-subtle hover:bg-surface-container-low px-space-sm py-1.5 rounded-xl cursor-pointer transition-colors"
-            >
-              <Icon name="storefront" className="text-primary text-[18px]" />
-              <span className="flex flex-col text-left">
-                <span className="font-label-sm text-label-sm text-text-primary font-medium leading-tight">Wuse II Branch</span>
-                <span className="font-caption text-caption text-text-tertiary leading-tight">Abuja, FCT</span>
-              </span>
-              <Icon name="expand_more" className="text-text-tertiary text-[18px] ml-space-xs" />
-            </button>
+            {/* Branch control — the header location drives every page below it. */}
+            <div className="hidden lg:block">
+              <BusinessBranchSelect
+                align="left"
+                triggerClassName="inline-flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-container transition-colors text-text-secondary hover:text-on-surface max-w-[240px]"
+                nameClassName="font-label-md text-label-md text-on-surface"
+              />
+            </div>
+            <div className="lg:hidden">
+              <BusinessBranchSelect iconOnly align="left" />
+            </div>
           </div>
 
           <div className="flex items-center gap-space-md">

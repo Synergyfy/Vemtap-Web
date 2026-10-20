@@ -8,6 +8,7 @@ export type AccountTarget =
   | 'orders'
   | 'savings'
   | 'saved'
+  | 'referrals'
   | 'settings'
   | 'support-legal'
   | 'notifications'

@@ -5,6 +5,9 @@ import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 import { getCentralCategories, addCentralCategory, type CentralCategory } from '../catalogueData';
+import { CategoryImageField } from '../../components/CategoryImageField';
+import { CreateWithAiButton } from '../../components/CreateWithAiButton';
+import type { AiPromptContext } from '../aiDesignAssistant';
 
 interface DesktopAddProductStep1ScreenProps {
   draft: ProductDraft;
@@ -98,6 +101,16 @@ export function DesktopAddProductStep1Screen({
   const [newCatName, setNewCatName] = useState('');
   const [newCatDescription, setNewCatDescription] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('restaurant');
+  /** Optional category image (data URL) — categories never require an image. */
+  const [newCatImage, setNewCatImage] = useState('');
+
+  /** Product facts from the draft — business facts come from setup state. */
+  const aiProductContext: AiPromptContext = {
+    itemName: draft.title,
+    itemDescription: draft.description,
+    category: draft.primaryCategory,
+    subcategory: draft.subCategory,
+  };
 
   const handleCreateCategoryInline = (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +123,7 @@ export function DesktopAddProductStep1Screen({
       type: 'product',
       description: newCatDescription.trim() || `${newCatName.trim()} selections`,
       icon: newCatIcon,
+      image: newCatImage || undefined,
       productCount: 1,
       activeBranches: ['all'],
       qrDestinationUrl: `/business/urban-grill-bistro-104/products?category=${slug}`,
@@ -122,6 +136,7 @@ export function DesktopAddProductStep1Screen({
     });
     setNewCatName('');
     setNewCatDescription('');
+    setNewCatImage('');
     setShowInlineCategoryModal(false);
     showToast(`Category "${created.name}" created and selected!`);
   };
@@ -251,6 +266,15 @@ export function DesktopAddProductStep1Screen({
                 <span className="font-label-sm text-label-sm text-primary font-semibold bg-surface-tint-blue px-space-xs py-space-2xs rounded-lg">
                   4 of 8 Photos Added
                 </span>
+              </div>
+
+              <div className="mb-space-sm">
+                <CreateWithAiButton
+                  aspectRatio="16/9"
+                  assetType="product"
+                  context={aiProductContext}
+                  fileHint="Aspect 16:9"
+                />
               </div>
 
               <div className="relative w-full h-80 rounded-xl overflow-hidden bg-surface-container-high group shadow-sm mb-space-md">
@@ -426,7 +450,10 @@ export function DesktopAddProductStep1Screen({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowInlineCategoryModal(true)}
+                  onClick={() => {
+                    setNewCatImage('');
+                    setShowInlineCategoryModal(true);
+                  }}
                   className="px-space-md py-1.5 rounded-xl bg-surface-tint-blue hover:bg-surface-tint-blue/80 text-primary font-label-sm text-label-sm font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
                 >
                   <Icon name="add" className="text-[16px]" />
@@ -493,12 +520,12 @@ export function DesktopAddProductStep1Screen({
 
             {/* Inline Category Creation Modal */}
             {showInlineCategoryModal && (
-              <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
+              <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
                 <div
                   className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
                   onClick={() => setShowInlineCategoryModal(false)}
                 />
-                <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 animate-in zoom-in-95 duration-150">
+                <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl p-space-xl border border-border-subtle z-10 animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
                   <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
@@ -563,6 +590,8 @@ export function DesktopAddProductStep1Screen({
                         ))}
                       </div>
                     </div>
+
+                    <CategoryImageField value={newCatImage} onChange={setNewCatImage} />
 
                     <p className="text-[11px] text-text-tertiary">
                       The category will be created immediately in your central catalogue and selected for this product. Your draft changes will not be lost.

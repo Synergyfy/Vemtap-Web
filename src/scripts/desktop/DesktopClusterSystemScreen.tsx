@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 import {
@@ -7,6 +7,7 @@ import {
   setClusterScenario,
   type ClusterBusinessMember,
 } from '../clusterData';
+import { countLiveBoosts, getFeaturedCampaignSlot, hasActiveBoostForItem, isItemBoostEligible } from '../clusterBoostData';
 import { ClusterQrCode } from '../../components/ClusterQrCode';
 import { ClusterMemberProfileModal } from '../../components/ClusterMemberProfileModal';
 import { ClusterMemberChatModal } from '../../components/ClusterMemberChatModal';
@@ -18,6 +19,10 @@ interface DesktopClusterSystemScreenProps {
   onCreateDeal?: () => void;
   onCreateProduct?: () => void;
   onCreateLocation?: () => void;
+  /** Open Cluster Boost Visibility, optionally preselecting an eligible item. */
+  onBoostItem?: (itemId?: string) => void;
+  /** Open the My Boosts campaign list. */
+  onOpenBoosts?: () => void;
 }
 
 export type DesktopClusterTab = 'overview' | 'analytics' | 'businesses' | 'deals' | 'qr';
@@ -28,6 +33,8 @@ export function DesktopClusterSystemScreen({
   onCreateDeal,
   onCreateProduct,
   onCreateLocation,
+  onBoostItem,
+  onOpenBoosts,
 }: DesktopClusterSystemScreenProps) {
   const handleCreateDeal = () => {
     if (onCreateDeal) onCreateDeal();
@@ -41,10 +48,22 @@ export function DesktopClusterSystemScreen({
     if (onCreateLocation) onCreateLocation();
     else onNav('business-locations');
   };
+  const handleBoostItem = (itemId?: string) => {
+    if (onBoostItem) onBoostItem(itemId);
+    else onNav('cluster-boost-new');
+  };
+  const handleOpenBoosts = () => {
+    if (onOpenBoosts) onOpenBoosts();
+    else onNav('cluster-boost');
+  };
 
   const [activeTab, setActiveTab] = useState<DesktopClusterTab>('overview');
   const [clusterState, setClusterState] = useState(getClusterState());
   const cluster = clusterState.currentCluster;
+
+  // One featured paid campaign at a time; rotates between windows using the
+  // cluster's own rotator cadence. Computed once per visit.
+  const featuredSlot = useMemo(() => getFeaturedCampaignSlot(), []);
 
   // Search & Filters
   const [bizSearch, setBizSearch] = useState('');
@@ -113,6 +132,7 @@ export function DesktopClusterSystemScreen({
 
   const analytics = cluster.analytics;
   const myItems = clusterState.showcaseItems.filter((i) => i.businessId === '104');
+  const liveBoostCount = countLiveBoosts();
 
   return (
     <BusinessPortalChrome activeNav="cluster-system" onNav={onNav}>
@@ -302,6 +322,46 @@ export function DesktopClusterSystemScreen({
               </div>
             </div>
 
+            {/* Boost Visibility Banner */}
+            <div className="p-5 rounded-3xl bg-gradient-to-br from-primary-container to-[#0055c4] text-white flex flex-wrap items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
+                  <Icon name="rocket_launch" className="text-[22px]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base">Boost Visibility</h3>
+                    {liveBoostCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-bold">
+                        {liveBoostCount} live
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/80">
+                    Pay to raise your own item's featured-selection priority in {cluster.name} —
+                    separate from global Boost campaigns.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleBoostItem()}
+                  className="px-4 py-2 rounded-xl bg-white text-primary text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:opacity-95 transition-all"
+                >
+                  <Icon name="trending_up" className="text-[16px]" />
+                  <span>Boost an Item</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenBoosts}
+                  className="px-4 py-2 rounded-xl bg-white/15 border border-white/25 text-white text-xs font-semibold hover:bg-white/20 transition-colors"
+                >
+                  My Boosts
+                </button>
+              </div>
+            </div>
+
             {/* Rotator Card & Business Performance Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               {/* Deal Rotator Card */}
@@ -336,6 +396,29 @@ export function DesktopClusterSystemScreen({
                   <h4 className="text-xs font-bold uppercase tracking-wider text-text-tertiary">
                     Currently Featured in Rotator:
                   </h4>
+                  {featuredSlot && (
+                    <div className="p-3 rounded-2xl border border-primary/30 bg-gradient-to-br from-surface-canvas to-surface-tint-blue/30 flex items-center gap-2.5">
+                      <img
+                        src={featuredSlot.item.image}
+                        alt={featuredSlot.item.title}
+                        className="w-10 h-10 rounded-lg object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <Icon name="star" className="text-[12px] text-primary" />
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-primary">
+                            Featured campaign &bull; rotates with other paid boosts
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-text-primary truncate">
+                          {featuredSlot.item.title}
+                        </p>
+                        <p className="text-[11px] text-text-secondary">
+                          {featuredSlot.item.businessName}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {clusterState.showcaseItems
                       .filter((d) => d.showInCluster)
@@ -786,6 +869,17 @@ export function DesktopClusterSystemScreen({
                         >
                           {item.showInCluster ? 'Shown' : 'Hidden'}
                         </span>
+                        {item.businessId === '104' && hasActiveBoostForItem(item.id) && (
+                          <span
+                            className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full backdrop-blur-md ${
+                              item.entityType === 'profile'
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white text-primary'
+                            }`}
+                          >
+                            {item.entityType === 'profile' ? 'Boosted · extendable' : 'Boosted'}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -813,20 +907,42 @@ export function DesktopClusterSystemScreen({
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-border-subtle text-xs text-text-secondary">
+                  <div className="flex items-center justify-between pt-3 border-t border-border-subtle text-xs text-text-secondary gap-2">
                     <span>
                       {item.impressions} Impr. &bull; {item.clicks} Clicks
                     </span>
 
-                    {item.businessId === '104' && (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleShow(item.id)}
-                        className="font-bold text-primary hover:underline text-xs"
-                      >
-                        {item.showInCluster ? 'Hide from Rotator' : 'Show in Rotator'}
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3 shrink-0">
+                      {item.businessId === '104' && isItemBoostEligible(item).eligible && (
+                        <button
+                          type="button"
+                          disabled={hasActiveBoostForItem(item.id) && item.entityType !== 'profile'}
+                          onClick={() => handleBoostItem(item.id)}
+                          className={`font-bold hover:underline text-xs ${
+                            hasActiveBoostForItem(item.id)
+                              ? item.entityType === 'profile'
+                                ? 'text-primary'
+                                : 'text-text-tertiary no-underline cursor-not-allowed'
+                              : 'text-primary'
+                          }`}
+                        >
+                          {hasActiveBoostForItem(item.id)
+                            ? item.entityType === 'profile'
+                              ? 'Extend Boost'
+                              : 'Boosted'
+                            : 'Boost Visibility'}
+                        </button>
+                      )}
+                      {item.businessId === '104' && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleShow(item.id)}
+                          className="font-bold text-text-secondary hover:underline text-xs"
+                        >
+                          {item.showInCluster ? 'Hide from Rotator' : 'Show in Rotator'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

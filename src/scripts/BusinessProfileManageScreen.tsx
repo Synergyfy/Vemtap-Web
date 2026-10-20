@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { CreateWithAiButton } from '../components/CreateWithAiButton';
+import type { AiPromptContext } from './aiDesignAssistant';
 
 interface BusinessProfileManageScreenProps {
   onBack: () => void;
@@ -15,6 +17,12 @@ const LOGO_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDQTOcBbqm-ewMAwKsOwDYezk7UGHK4W0l3XS2IEWoQ9z6y1vCvMTl4ex_eMJzJgKuTqxlsNGT-eMQ247dHsUnlj59wV__QeG9jYwUXezMoiVW9RJ6L9l-hWh5XGWdmklSs5a6F-LXxUTR2j3HeaUdwZ9xMrXQmS52OL6-_AiSsa6uzUSLL9uxEKgHN-ut3nycLGOujLm3ZMPCatyV2eBY2yId7qpmtBO_cX2z2c49Nec3nX01Xej1KqA';
 const LOGO_ALT =
   'Modern geometric emblem logo for Urban Grill & Bistro featuring a stylized flame and fork silhouette in deep royal blue and warm amber gold, vector graphic on crisp white circular badge.';
+
+/** Brand facts displayed on this screen — also fed to the AI Design Assistant. */
+const BRAND_NAME = 'Urban Grill & Bistro';
+const BRAND_CATEGORY = 'Restaurant & Grill • Casual Dining';
+const BRAND_BIO =
+  'Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails.';
 
 const AMENITIES = [
   { key: 'dine-in', icon: 'restaurant', label: 'Dine-In' },
@@ -50,6 +58,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
   };
 
   const activeCount = AMENITIES.filter((amenity) => amenityState[amenity.key]).length;
+
+  /** Brand facts shown above — reused by the contextual AI prompts. */
+  const aiProfileContext: AiPromptContext = {
+    businessName: BRAND_NAME,
+    category: BRAND_CATEGORY,
+    description: BRAND_BIO,
+  };
 
   const handleSave = () => {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -145,23 +160,26 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               </div>
             </div>
           </div>
+          <div className="mt-space-xs flex flex-wrap items-center gap-x-space-md gap-y-1">
+            <CreateWithAiButton assetType="banner" context={aiProfileContext} aspectRatio="16/9" />
+            <CreateWithAiButton assetType="logo" context={aiProfileContext} aspectRatio="square" />
+          </div>
         </div>
 
         {/* Bio */}
         <div className="px-margin flex flex-col gap-space-xs mb-space-lg">
           <div className="flex items-center gap-space-2xs flex-wrap">
             <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold tracking-tight">
-              Urban Grill & Bistro
+              {BRAND_NAME}
             </h2>
             <Icon name="verified" filled className="text-primary text-[20px]" />
           </div>
           <div className="inline-flex items-center gap-1.5 self-start px-2.5 py-0.5 rounded-full bg-surface-container text-secondary font-label-sm text-label-sm">
             <Icon name="restaurant" className="text-[14px]" />
-            <span>Restaurant & Grill • Casual Dining</span>
+            <span>{BRAND_CATEGORY}</span>
           </div>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
-            Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan
-            burgers, and handcrafted mocktails.
+            {BRAND_BIO}
           </p>
           <div className="grid grid-cols-2 gap-space-sm mt-space-sm">
             <button
