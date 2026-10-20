@@ -111,7 +111,7 @@ export function MerchantDealsScreen({
 }: MerchantDealsScreenProps) {
   const [claimed, setClaimed] = useState<Record<number, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
-  const businessName = business?.name?.trim() || 'Selected business';
+  const businessName = business?.name?.trim() || 'Business storefront';
 
   const showToast = (message: string) => {
     setToast(message);

@@ -2681,7 +2681,16 @@ function AppInner() {
       );
 
     case 'business-profile':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} activeNav="discover" onClaim={openClaimPopup} onCheckout={startCheckout} />;
+      if (isDesktop)
+        return (
+          <DesktopUrbanGrillStorefrontScreen
+            business={selectedBusiness}
+            onNav={feedNav}
+            activeNav="discover"
+            onClaim={openClaimPopup}
+            onCheckout={startCheckout}
+          />
+        );
       return (
         <BusinessProfileScreen
           venue="urban"
@@ -3011,7 +3020,7 @@ function AppInner() {
               const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
               const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
 
-              const businessName = business.name?.trim() || 'Selected business';
+              const businessName = business.name?.trim() || 'Business storefront';
               const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
               const businessRef: BusinessProfileRef = {
                 slug: slugBase,
@@ -3048,7 +3057,7 @@ function AppInner() {
             const normalized = (business.name ?? '').toLowerCase();
             const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
             const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
-            const businessName = business.name?.trim() || 'Selected business';
+            const businessName = business.name?.trim() || 'Business storefront';
             const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
             const businessRef: BusinessProfileRef = {
               slug: slugBase,

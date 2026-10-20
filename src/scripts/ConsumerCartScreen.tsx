@@ -57,9 +57,7 @@ export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenSt
             <div className="flex flex-col min-w-0">
               <h1 className="text-heading-sm font-heading-sm text-text-primary tracking-tight truncate">Your Cart</h1>
               <span className="text-caption font-caption text-text-secondary truncate">
-                {cart.count === 0
-                  ? 'No items yet'
-                  : cart.count + ' item' + (cart.count === 1 ? '' : 's') + ' \u00b7 Urban Grill & Bistro'}
+                {cart.count === 0 ? 'No items yet' : cart.count + ' item' + (cart.count === 1 ? '' : 's')}
               </span>
             </div>
           </div>
@@ -103,7 +101,7 @@ export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenSt
             onClick={onOpenStorefront}
           >
             <Icon name="storefront" className="text-[18px]" />
-            <span>View Urban Grill Menu</span>
+            <span>Browse More Items</span>
           </button>
         </div>
       ) : (

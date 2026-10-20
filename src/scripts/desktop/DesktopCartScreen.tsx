@@ -47,8 +47,8 @@ export function DesktopCartScreen({ onNav, onCheckout }: DesktopCartScreenProps)
             <div>
               <h1 className="font-heading-lg text-heading-lg text-text-primary font-bold">Your Order</h1>
               <p className="font-body-md text-body-md text-text-secondary">
-                Review items and quantities, then submit to receive your collection code. No online payment is taken —
-                settle directly with the cashier.
+                Review items and quantities, then submit to receive your order reference. Payment is handled at the
+                counter when you collect your order.
               </p>
             </div>
             {cart.count > 0 && (
