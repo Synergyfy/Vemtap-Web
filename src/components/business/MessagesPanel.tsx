@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../ui/Icon';
 import { EmptyState, ErrorState, FilterChips, LoadingRows } from './QueryStates';
-import { useInboxMutations, useInboxThreads, useThreadMessages } from '../../hooks/business/useInbox';
+import { useInboxMutations, useInboxRealtime, useInboxThreads, useThreadMessages, useThreadRealtime } from '../../hooks/business/useInbox';
 import { personName, type InboxChannel, type InboxThread } from '../../services/businessMessagingService';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { formatRelativeTime } from '../../utils/format';
@@ -93,6 +93,7 @@ function Conversation({
   onDeleted: () => void;
 }) {
   const messages = useThreadMessages(thread.id);
+  const { customerTyping, sendTyping } = useThreadRealtime(thread.id);
   const { reply, markRead, removeThread } = useInboxMutations();
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -108,11 +109,12 @@ function Conversation({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [thread.id, count]);
+  }, [thread.id, count, customerTyping]);
 
   const send = () => {
     const content = draft.trim();
     if (!content || reply.isPending) return;
+    sendTyping(false);
     reply.mutate({ threadId: thread.id, content }, { onSuccess: () => setDraft('') });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -194,6 +196,11 @@ function Conversation({
             );
           })
         )}
+        {customerTyping ? (
+          <span className="self-start rounded-2xl rounded-bl-md bg-surface-container px-space-sm py-space-xs font-caption text-caption text-text-secondary">
+            {personName(thread.customer).split(' ')[0]} is typing…
+          </span>
+        ) : null}
         <div ref={endRef} />
       </div>
 
@@ -203,7 +210,11 @@ function Conversation({
           <textarea
             aria-label="Message"
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              sendTyping(e.target.value.trim().length > 0);
+            }}
+            onBlur={() => sendTyping(false)}
             onKeyDown={onKeyDown}
             rows={1}
             placeholder="Write a reply…"
@@ -239,6 +250,7 @@ export function MessagesPanel({
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(initialThreadId ?? null);
   const threads = useInboxThreads(channel);
+  const live = useInboxRealtime();
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -258,6 +270,10 @@ export function MessagesPanel({
         }}
         options={CHANNELS.map((c) => ({ ...c, count: c.key === channel && unread ? unread : undefined }))}
       />
+      <span className={`inline-flex items-center gap-1 font-caption text-[11px] ${live ? 'text-badge-discount-text' : 'text-text-tertiary'}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-badge-discount-text' : 'bg-text-tertiary'}`} />
+        {live ? 'Live' : 'Refreshing every few seconds'}
+      </span>
       <label className="relative">
         <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-tertiary" />
         <input
