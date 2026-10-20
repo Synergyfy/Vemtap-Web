@@ -1,19 +1,21 @@
 import { api } from './api/client';
 import { API_ENDPOINTS } from './api/endpoints';
-import type { SegmentCriteria, SegmentSummary } from './types';
+import type { SegmentCriteria, SegmentReach, SegmentSummary } from './types';
 
 export const segmentsService = {
   list: async (params?: Record<string, string | number | boolean | undefined>) =>
     api.get<Array<SegmentSummary>>(API_ENDPOINTS.segments.root, { params }),
 
-  create: async (payload: { name: string; type?: 'static' | 'dynamic'; criteria?: SegmentCriteria }) =>
+  create: async (payload: { name: string; description?: string; branchId?: string; type?: 'static' | 'dynamic'; criteria?: SegmentCriteria }) =>
     api.post<SegmentSummary>(API_ENDPOINTS.segments.root, payload),
 
   update: async (id: string, payload: Partial<{ name: string; type?: 'static' | 'dynamic'; criteria?: SegmentCriteria }>) =>
     api.patch<SegmentSummary>(API_ENDPOINTS.segments.byId(id), payload),
 
+  remove: async (id: string, branchId?: string) => api.del<unknown>(API_ENDPOINTS.segments.byId(id), { params: { branchId } }),
+
   preview: async (body: { criteria: SegmentCriteria; branchId?: string }) =>
-    api.post<{ size: number; reachableByPush?: number; reachableBySms?: number }>(API_ENDPOINTS.segments.preview, body),
+    api.post<SegmentReach>(API_ENDPOINTS.segments.preview, body),
 
   getCriteriaOptions: async () =>
     api.get<Record<string, unknown>>(API_ENDPOINTS.segments.criteriaOptions),

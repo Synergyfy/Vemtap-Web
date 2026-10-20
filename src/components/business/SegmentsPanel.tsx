@@ -4,7 +4,8 @@ import { Icon } from '../ui/Icon';
 import { EmptyState, ErrorState, LoadingRows } from './QueryStates';
 import { TextField } from './FormPrimitives';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
-import { liveSegmentsService, type SegmentCriteria } from '../../services/liveSegmentsService';
+import { segmentsService } from '../../services/segmentsService';
+import type { SegmentCriteria } from '../../services/types';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 
@@ -51,10 +52,10 @@ function CreateSegmentForm({ onDone }: { onDone: () => void }) {
     const id = window.setTimeout(() => setDebouncedKey(criteriaKey), 400);
     return () => window.clearTimeout(id);
   }, [criteriaKey]);
-  const reach = useQuery({ queryKey: ['segment-preview', debouncedKey], queryFn: () => liveSegmentsService.preview(JSON.parse(debouncedKey)) });
+  const reach = useQuery({ queryKey: ['segment-preview', debouncedKey], queryFn: () => segmentsService.preview({ criteria: JSON.parse(debouncedKey) }) });
 
   const create = useMutation({
-    mutationFn: () => liveSegmentsService.create({ name: name.trim(), branchId: activeBranchId, type: 'dynamic', criteria }),
+    mutationFn: () => segmentsService.create({ name: name.trim(), branchId: activeBranchId, type: 'dynamic', criteria }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: segmentKeys.all });
       onDone();
@@ -92,7 +93,7 @@ function CreateSegmentForm({ onDone }: { onDone: () => void }) {
         </span>
         {reach.data ? (
           <span className="text-text-secondary">
-            Push {reach.data.reachableByPush} · SMS {reach.data.reachableBySms} · Email {reach.data.reachableByEmail}
+            Push {reach.data.reachableByPush ?? 0} · SMS {reach.data.reachableBySms ?? 0} · Email {reach.data.reachableByEmail ?? 0}
           </span>
         ) : null}
       </div>
@@ -112,9 +113,9 @@ function CreateSegmentForm({ onDone }: { onDone: () => void }) {
 export function SegmentsPanel() {
   const { activeBranchId } = useBusinessBranch();
   const queryClient = useQueryClient();
-  const segments = useQuery({ queryKey: [...segmentKeys.all, activeBranchId ?? 'all'], queryFn: () => liveSegmentsService.list(activeBranchId) });
+  const segments = useQuery({ queryKey: [...segmentKeys.all, activeBranchId ?? 'all'], queryFn: () => segmentsService.list({ branchId: activeBranchId }) });
   const remove = useMutation({
-    mutationFn: (id: string) => liveSegmentsService.remove(id, activeBranchId),
+    mutationFn: (id: string) => segmentsService.remove(id, activeBranchId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: segmentKeys.all }),
   });
   const [creating, setCreating] = useState(false);

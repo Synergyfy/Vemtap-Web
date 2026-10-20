@@ -101,6 +101,9 @@ export interface SegmentCriteria {
     minTotal?: number;
     minAverageTicket?: number;
   };
+  loyalty?: {
+    minPoints: number;
+  };
 }
 
 export interface SegmentSummary {
@@ -108,8 +111,17 @@ export interface SegmentSummary {
   name: string;
   type: 'static' | 'dynamic';
   size?: number;
+  description?: string | null;
+  branchId?: string | null;
   criteria?: SegmentCriteria;
   lastComputedAt?: string;
+}
+
+export interface SegmentReach {
+  size: number;
+  reachableByPush?: number;
+  reachableBySms?: number;
+  reachableByEmail?: number;
 }
 
 export interface PromotionAudience {
