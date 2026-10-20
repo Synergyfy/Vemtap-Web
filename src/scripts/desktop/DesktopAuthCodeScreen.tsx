@@ -4,6 +4,7 @@ import { Logo } from '../../components/ui/Logo';
 
 interface DesktopAuthCodeScreenProps {
   onContinue: () => void;
+  onGoogle: () => void;
   onSignIn: () => void;
   onBusinessRegister: () => void;
 }
@@ -54,7 +55,7 @@ const FEATURES = [
   },
 ];
 
-export function DesktopAuthCodeScreen({ onContinue, onSignIn, onBusinessRegister }: DesktopAuthCodeScreenProps) {
+export function DesktopAuthCodeScreen({ onContinue, onGoogle, onSignIn, onBusinessRegister }: DesktopAuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -169,7 +170,7 @@ export function DesktopAuthCodeScreen({ onContinue, onSignIn, onBusinessRegister
                   <button
                     className="w-full h-12 px-space-md rounded-xl bg-surface-subtle hover:bg-surface-container transition-all flex items-center justify-center space-x-space-sm text-text-primary shadow-sm active:scale-[0.99]"
                     type="button"
-                    onClick={onContinue}
+                    onClick={onGoogle}
                   >
                     <GoogleIcon />
                     <span className="font-button-secondary text-button-secondary font-medium">Continue with Google</span>

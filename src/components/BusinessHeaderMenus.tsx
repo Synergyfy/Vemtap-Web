@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { Icon } from './ui/Icon';
 import { MOBILE_ACCOUNT_NAV_EVENT, SIGN_OUT_EVENT, type MobileAccountNavKey } from '../utils/appEvents';
 import { NOTIFICATION_FEED } from '../utils/notificationFeed';
@@ -20,6 +21,124 @@ import { NOTIFICATION_FEED } from '../utils/notificationFeed';
 
 function dispatchNav(key: MobileAccountNavKey) {
   window.dispatchEvent(new CustomEvent(MOBILE_ACCOUNT_NAV_EVENT, { detail: key }));
+}
+
+interface MobileLocationMenuProps {
+  /** Override the trigger's sizing classes (defaults match mobile headers). */
+  className?: string;
+}
+
+/**
+ * Persistent location switcher for the mobile dashboard header.
+ *
+ * Sits beside the notification bell so the active branch is reachable from any
+ * business screen without repeating a dropdown on every page. Picking a branch
+ * fires `switchTo`, which plays the shared rotation overlay and re-scopes the
+ * whole dashboard. Staff without multi-site access get a read-only card that
+ * only names the branch they are operating in.
+ */
+export function MobileLocationMenu({ className }: MobileLocationMenuProps) {
+  const { branch, branches, canSwitchLocations, switchTo } = useBusinessBranch();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open]);
+
+  return (
+    <div>
+      {open && <div className="fixed inset-0 z-[45]" onClick={() => setOpen(false)} />}
+      <button
+        aria-expanded={open}
+        aria-haspopup={canSwitchLocations ? 'listbox' : 'dialog'}
+        aria-label={
+          canSwitchLocations
+            ? `Location: ${branch.name}. Switch location`
+            : `Operating location: ${branch.name}`
+        }
+        title={`Location: ${branch.name}`}
+        className={
+          className ??
+          'w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors'
+        }
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Icon name="location_on" className="text-[22px] text-primary" />
+      </button>
+      {open && (
+        <div
+          className="absolute right-6 top-full mt-2 z-50 w-[min(280px,calc(100vw-3rem))] rounded-2xl bg-surface-canvas border border-border-subtle shadow-xl overflow-hidden flex flex-col max-h-[min(420px,calc(100dvh-12.5rem))]"
+          role={canSwitchLocations ? 'listbox' : 'dialog'}
+        >
+          <div className="flex items-center justify-between gap-space-sm px-space-md py-space-sm border-b border-border-subtle bg-surface-subtle/60 shrink-0">
+            <span className="font-label-md text-label-md text-on-surface font-semibold">Location</span>
+            {!canSwitchLocations && (
+              <span className="px-space-2xs py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-caption font-semibold">
+                Locked
+              </span>
+            )}
+          </div>
+
+          {canSwitchLocations ? (
+            <div className="p-space-2xs flex flex-col overflow-y-auto overscroll-contain min-h-0 grow">
+              {branches.map((option) => (
+                <button
+                  aria-selected={option.key === branch.key}
+                  className={`w-full px-space-sm py-space-xs flex items-center justify-between gap-space-xs rounded-xl text-left transition-colors ${
+                    option.key === branch.key
+                      ? 'bg-surface-tint-blue text-primary'
+                      : 'text-on-surface active:bg-surface-subtle'
+                  }`}
+                  key={option.key}
+                  role="option"
+                  type="button"
+                  onClick={() => {
+                    switchTo(option.key);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="flex flex-col min-w-0">
+                    <span className="font-label-sm text-label-sm font-semibold truncate">{option.name}</span>
+                    <span
+                      className={`font-caption text-caption truncate ${
+                        option.key === branch.key ? 'text-primary/80' : 'text-text-secondary'
+                      }`}
+                    >
+                      {option.area}
+                    </span>
+                  </span>
+                  {option.key === branch.key && <Icon name="check" className="text-[18px] shrink-0" />}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="px-space-md py-space-sm flex items-start gap-space-sm shrink-0">
+              <span className="w-9 h-9 rounded-lg bg-surface-tint-blue flex items-center justify-center shrink-0">
+                <Icon name="location_on" className="text-primary text-[18px]" />
+              </span>
+              <span className="flex flex-col min-w-0">
+                <span className="font-label-sm text-label-sm text-on-surface font-semibold truncate">
+                  {branch.name}
+                </span>
+                <span className="font-caption text-caption text-text-secondary leading-snug mt-0.5">
+                  {branch.area}
+                </span>
+                <span className="font-caption text-caption text-text-tertiary leading-snug mt-space-2xs">
+                  Your account operates in this location only.
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface MobileNotificationBellProps {
@@ -60,7 +179,7 @@ export function MobileNotificationBell({
   };
 
   return (
-    <div className="relative">
+    <div>
       {open && <div className="fixed inset-0 z-[45]" onClick={() => setOpen(false)} />}
       <button
         aria-expanded={open}
@@ -82,10 +201,10 @@ export function MobileNotificationBell({
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full mt-2 z-50 w-[min(360px,calc(100vw-2rem))] rounded-2xl bg-surface-canvas border border-border-subtle shadow-xl overflow-hidden"
+          className="absolute right-6 top-full mt-2 z-50 w-[min(360px,calc(100vw-3rem))] rounded-2xl bg-surface-canvas border border-border-subtle shadow-xl overflow-hidden flex flex-col max-h-[min(420px,calc(100dvh-12.5rem))]"
           role="menu"
         >
-          <div className="flex items-center justify-between gap-space-sm px-space-md py-space-sm border-b border-border-subtle bg-surface-subtle/60">
+          <div className="flex items-center justify-between gap-space-sm px-space-md py-space-sm border-b border-border-subtle bg-surface-subtle/60 shrink-0">
             <div className="flex items-center gap-space-2xs">
               <span className="font-label-md text-label-md text-on-surface font-semibold">Notifications</span>
               {unreadCount > 0 && (
@@ -104,7 +223,7 @@ export function MobileNotificationBell({
             </button>
           </div>
 
-          <div className="max-h-[320px] overflow-y-auto divide-y divide-border-subtle">
+          <div className="overflow-y-auto overscroll-contain divide-y divide-border-subtle min-h-0 grow">
             {NOTIFICATION_FEED.map((item) => {
               const unread = !readIds.has(item.id);
               return (
@@ -137,7 +256,7 @@ export function MobileNotificationBell({
           </div>
 
           <button
-            className="w-full px-space-md py-space-sm border-t border-border-subtle bg-surface-subtle/60 active:bg-surface-subtle text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs transition-colors"
+            className="w-full px-space-md py-space-sm border-t border-border-subtle bg-surface-subtle/60 active:bg-surface-subtle text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs transition-colors shrink-0"
             type="button"
             onClick={openAll}
           >

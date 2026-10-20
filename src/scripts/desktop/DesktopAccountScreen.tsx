@@ -51,6 +51,13 @@ const ACTIVITY_ROWS: AccountRow[] = [
     trail: '12 items',
     target: 'saved',
   },
+  {
+    icon: 'group_add',
+    iconClass: 'bg-badge-discount-bg text-badge-discount-text',
+    label: 'Referrals & Rewards',
+    sub: 'Invite businesses & friends to VEMTAP',
+    target: 'referrals',
+  },
 ];
 
 const UTILITY_ROWS: AccountRow[] = [

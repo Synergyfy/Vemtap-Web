@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
@@ -106,6 +107,20 @@ function Barcode({ value }: { value: string }) {
 
 export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerScreenProps) {
   const [range, setRange] = useState<'shift' | 'today' | 'week'>('shift');
+  const [statusFilter, setStatusFilter] = useState<TxnStatus | ''>('');
+
+  // Statuses are pulled from the metadata table, so the menu can never offer a
+  // status the ledger does not actually render.
+  const statusChoices = [
+    { value: '', label: 'All statuses' },
+    ...(Object.keys(STATUS_META) as TxnStatus[]).map((key) => ({
+      value: key,
+      label: STATUS_META[key].label,
+    })),
+  ];
+
+  const visibleTxns =
+    statusFilter === '' ? TXNS : TXNS.filter((txn) => txn.status === statusFilter);
 
   const rangeLabel = RANGES.find((item) => item.key === range)?.label ?? 'Current Shift';
 
@@ -363,17 +378,21 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
               <Icon name="history" className="text-primary text-[20px]" />
               <h2 className="font-heading-sm text-heading-sm text-text-primary">Shift Transactions</h2>
               <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-text-secondary font-caption text-caption font-semibold">
-                {TXNS.length} shown
+                {visibleTxns.length} shown
               </span>
             </div>
             <div className="flex items-center gap-space-xs">
-              <button
-                type="button"
-                className="px-space-sm py-2 rounded-lg bg-surface hover:bg-surface-container-high text-text-secondary font-caption text-caption font-semibold transition-colors flex items-center gap-1.5"
-              >
-                <Icon name="filter_list" className="text-[16px]" />
-                Filter
-              </button>
+              <FilterMenu
+                align="right"
+                buttonClassName="px-space-sm py-2 rounded-lg bg-surface hover:bg-surface-container-high text-text-secondary font-caption text-caption font-semibold transition-colors flex items-center gap-1.5"
+                choices={statusChoices}
+                icon="filter_list"
+                iconClassName="text-[16px]"
+                label="Filter"
+                onChange={(next) => setStatusFilter(next as TxnStatus | '')}
+                title="Filter by payment status"
+                value={statusFilter}
+              />
               <button
                 type="button"
                 className="px-space-sm py-2 rounded-lg bg-surface hover:bg-surface-container-high text-text-secondary font-caption text-caption font-semibold transition-colors flex items-center gap-1.5"
@@ -400,7 +419,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
                 </tr>
               </thead>
               <tbody>
-                {TXNS.map((txn) => {
+                {visibleTxns.map((txn) => {
                   const status = STATUS_META[txn.status];
                   const tender = TENDER_META[txn.tender];
                   return (

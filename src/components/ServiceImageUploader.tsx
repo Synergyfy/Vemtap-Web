@@ -1,5 +1,7 @@
 import { useRef } from 'react';
 import { Icon } from './ui/Icon';
+import { CreateWithAiButton } from './CreateWithAiButton';
+import type { AiPromptContext } from '../scripts/aiDesignAssistant';
 
 export const SERVICE_PRESET_GALLERY = [
   {
@@ -33,12 +35,19 @@ interface ServiceImageUploaderProps {
   currentImage: string;
   onImageChange: (imageUrl: string) => void;
   aspectRatio?: '4/3' | '16/9' | 'square';
+  /**
+   * Service facts for the contextual "Create with AI" prompt (title,
+   * description, classification). Business-level facts are resolved by the
+   * prompt builder itself; omit this to fall back to whatever is available.
+   */
+  aiContext?: AiPromptContext;
 }
 
 export function ServiceImageUploader({
   currentImage,
   onImageChange,
   aspectRatio = '4/3',
+  aiContext,
 }: ServiceImageUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,6 +122,16 @@ export function ServiceImageUploader({
             <span>{currentImage ? 'Replace Photo' : 'Upload Photo'}</span>
           </button>
         </div>
+      </div>
+
+      {/* Contextual AI option — the upload action above stays unchanged */}
+      <div>
+        <CreateWithAiButton
+          aspectRatio={aspectRatio}
+          assetType="service"
+          context={aiContext}
+          fileHint="Image files (JPG, PNG, WEBP)"
+        />
       </div>
 
       {/* Preset Gallery Selector */}

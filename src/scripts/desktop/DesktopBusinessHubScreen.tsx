@@ -85,6 +85,14 @@ const HUB_MODULES: HubModule[] = [
     desc: 'Manage how your business appears to customers',
     chips: [{ label: 'Verified', chipClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' }],
   },
+  {
+    key: 'referrals',
+    icon: 'group_add',
+    iconBox: 'bg-surface-tint-blue text-primary',
+    title: 'Referrals',
+    desc: 'Invite other businesses and earn referral rewards',
+    chips: [{ label: 'Programme preview', chipClass: 'bg-surface-container-low text-text-secondary font-medium' }],
+  },
 ];
 
 const HUB_BRANCHES = [

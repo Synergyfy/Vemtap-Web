@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
-import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { URBAN_BUSINESS } from './businessData';
 
@@ -286,10 +285,10 @@ export function BusinessMoreScreen({
           <div className="h-16 px-margin flex items-center justify-between gap-space-sm">
             <div className="flex items-center gap-space-sm min-w-0 flex-1">
               <h1 className="font-heading-sm text-heading-sm text-on-surface tracking-tight truncate">More</h1>
-              {/* Branch control — the location at the top header drives this page. */}
-              <BusinessBranchSelect iconOnly align="right" />
             </div>
             <div className="flex items-center gap-space-xs shrink-0">
+              {/* Persistent location switcher — sits right by the notification bell. */}
+              <MobileLocationMenu />
               <MobileNotificationBell />
               <MobileAccountMenu />
             </div>

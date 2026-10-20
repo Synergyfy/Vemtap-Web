@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
+import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 
@@ -603,13 +604,22 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
           </div>
           <div className="flex flex-wrap items-center gap-space-md font-label-sm text-label-sm text-on-surface-variant">
             <span>Avg response: ~5 min</span>
-            <button
-              type="button"
-              aria-label="Message filters"
-              className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle transition-colors"
-            >
-              <Icon name="tune" className="text-[18px]" />
-            </button>
+            {/* Mirrors the unread state so the header control filters the inbox too. */}
+            <FilterMenu
+              align="right"
+              ariaLabel="Message filters"
+              buttonClassName="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle transition-colors"
+              choices={[
+                { value: 'all', label: 'All messages' },
+                { value: 'unread', label: 'Unread only' },
+              ]}
+              icon="tune"
+              iconClassName="text-[18px]"
+              label={null}
+              onChange={(next) => setFilter(next as 'all' | 'unread')}
+              title="Filter messages"
+              value={filter}
+            />
             <button
               type="button"
               onClick={() => onNav('discover')}

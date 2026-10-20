@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FilterMenu } from '../components/FilterMenu';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CartSheet } from '../components/sheets/CartSheet';
@@ -170,6 +171,7 @@ function initialCategorySlug(): string {
 export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onCheckout }: ProductsCatalogueScreenProps) {
   const [categorySlug, setCategorySlug] = useState<string>(initialCategorySlug);
   const [searchQuery, setSearchQuery] = useState('');
+  const [minRating, setMinRating] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const cart = useCart();
@@ -179,9 +181,17 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
     window.setTimeout(() => setToast(null), 2400);
   };
 
+  const ratingChoices = [
+    { value: '', label: 'All ratings' },
+    { value: '4.5', label: '4.5 & up' },
+    { value: '4.0', label: '4.0 & up' },
+  ];
+
+  /** Category, search and minimum rating all have to agree before a card shows. */
   const filteredProducts = PRODUCTS.filter((p) => {
     if (categorySlug !== 'all' && p.category !== categorySlug) return false;
     if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (minRating !== '' && Number(p.rating) < Number(minRating)) return false;
     return true;
   });
 
@@ -281,10 +291,17 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
             </div>
             <div className="flex items-center justify-between gap-space-xs pt-1">
               <div className="flex items-center gap-space-2xs shrink-0">
-                <button type="button" onClick={() => showToast('Filters drawer coming soon')} className="h-8 px-3 rounded-full bg-surface-subtle hover:bg-surface-container flex items-center gap-1.5 text-text-primary transition-all">
-                  <Icon name="tune" className="text-[16px] text-text-secondary" />
-                  <span className="font-label-sm text-label-sm font-semibold">Filters</span>
-                </button>
+                <FilterMenu
+                  align="left"
+                  buttonClassName="h-8 px-3 rounded-full bg-surface-subtle hover:bg-surface-container flex items-center gap-1.5 text-text-primary transition-all"
+                  choices={ratingChoices}
+                  icon="tune"
+                  iconClassName="text-[16px] text-text-secondary"
+                  label="Filters"
+                  onChange={setMinRating}
+                  title="Filter by rating"
+                  value={minRating}
+                />
                 <button type="button" onClick={() => showToast('Sort: Popular, Newest, Price')} className="h-8 px-3 rounded-full bg-surface-subtle hover:bg-surface-container flex items-center gap-1 text-text-primary transition-all">
                   <span className="font-label-sm text-label-sm">Popular</span>
                   <Icon name="keyboard_arrow_down" className="text-[16px] text-text-secondary" />
@@ -292,7 +309,8 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <span className="font-caption text-caption text-text-secondary font-medium">
-                  Showing <strong className="text-text-primary font-semibold">8</strong> deals
+                  Showing{' '}
+                  <strong className="text-text-primary font-semibold">{filteredProducts.length}</strong> deals
                 </span>
                 <div className="flex items-center p-0.5 rounded-lg bg-surface-subtle ml-1">
                   <button

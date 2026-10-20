@@ -7,9 +7,12 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatBookingScreenProps {
   onBack: () => void;
+  /** Customer or business the merchant is chatting with. */
+  contact?: BusinessChatContact;
 }
 
 interface ThreadMessage {
@@ -28,19 +31,19 @@ const WINE_IMG =
 const WINE_ALT =
   'Close up studio photograph of a premium vintage red wine bottle with an artisanal parchment label, warm rustic mahogany cellar backdrop, subtle amber rim lighting, luxury lifestyle product photography in rich deep tones.';
 
-const INITIAL_MESSAGES: ThreadMessage[] = [
+const buildInitialMessages = (contactName: string, firstName: string): ThreadMessage[] => [
   {
     id: 1,
     direction: 'in',
     text: 'Do you have the 2018 vintage available for this weekend?',
     time: 'Oct 10, 4:18 PM',
-    meta: 'Dr. Chidi',
+    meta: firstName,
     bubbleClass: 'bg-surface-canvas text-text-primary',
   },
   {
     id: 2,
     direction: 'out',
-    text: 'Yes Dr. Chidi, we have 3 bottles reserved in our cellar.',
+    text: `Yes ${firstName}, we have 3 bottles reserved in our cellar.`,
     time: 'Oct 10, 4:21 PM',
     bubbleClass: 'bg-surface-tint-blue text-on-surface',
     status: 'read',
@@ -50,13 +53,13 @@ const INITIAL_MESSAGES: ThreadMessage[] = [
     direction: 'in',
     text: 'Good morning. We have 2 additional guests joining us for our anniversary dinner on Saturday. Can we expand our Table 08 reservation to 6 seats?',
     time: '11:05 AM',
-    author: 'Dr. Chidi Okafor',
+    author: contactName,
     bubbleClass: 'bg-surface-canvas text-text-primary',
   },
   {
     id: 4,
     direction: 'out',
-    text: 'Good morning Dr. Chidi! Yes, we have merged Table 08 & 09 to comfortably seat party of 6. We look forward to celebrating with you!',
+    text: `Good morning ${firstName}! Yes, we have merged Table 08 & 09 to comfortably seat party of 6. We look forward to celebrating with you!`,
     time: '11:08 AM',
     bubbleClass: 'bg-primary-container text-on-primary',
     status: 'read',
@@ -79,8 +82,12 @@ const formatNow = () => {
   return `${hours % 12 || 12}:${minutes} ${ampm}`;
 };
 
-export function BusinessChatBookingScreen({ onBack }: BusinessChatBookingScreenProps) {
-  const [messages, setMessages] = useState<ThreadMessage[]>(INITIAL_MESSAGES);
+export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBookingScreenProps) {
+  const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.booking;
+  const firstName = contactFirstName(activeContact.name);
+  const [messages, setMessages] = useState<ThreadMessage[]>(() =>
+    buildInitialMessages(activeContact.name, firstName),
+  );
   const [input, setInput] = useState('Looking forward to seeing you!');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -101,12 +108,15 @@ export function BusinessChatBookingScreen({ onBack }: BusinessChatBookingScreenP
     <AppScreen>
       <BusinessChatHeader
         onBack={onBack}
+        title={activeContact.name}
+        avatar={activeContact.avatar}
+        isBusiness={activeContact.isBusiness}
         subtitle="Active inquiry • Booking #BK-77402"
         onAvatar={() => setDrawerOpen(true)}
         onCall={() => (window.location.href = 'tel:+2348027719044')}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name="Dr. Chidi Okafor" phone="+234 802 771 9044" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 802 771 9044" />
       <AttachmentSheet open={attachOpen} onClose={() => setAttachOpen(false)} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
@@ -294,7 +304,7 @@ export function BusinessChatBookingScreen({ onBack }: BusinessChatBookingScreenP
             <div className="flex-1 relative flex items-center">
               <input
                 className="w-full h-11 pl-space-md pr-10 rounded-full bg-surface-subtle text-text-primary font-body-md text-body-md focus:outline-none shadow-inner"
-                placeholder="Reply to Dr. Chidi..."
+                placeholder={`Reply to ${firstName}...`}
                 type="text"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}

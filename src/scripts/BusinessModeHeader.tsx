@@ -1,5 +1,4 @@
-import { BusinessBranchSelect } from '../components/BusinessBranchSelect';
-import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 export function BusinessModeHeader({ title }: { title: string }) {
   return (
@@ -17,8 +16,8 @@ export function BusinessModeHeader({ title }: { title: string }) {
           </div>
         </div>
         <div className="flex items-center gap-space-xs">
-          {/* Branch control — the location at the top header drives this page. */}
-          <BusinessBranchSelect iconOnly align="right" />
+          {/* Persistent location switcher — sits right by the notification bell. */}
+          <MobileLocationMenu />
           <MobileNotificationBell />
           <MobileAccountMenu />
         </div>

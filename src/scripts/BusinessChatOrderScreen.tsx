@@ -7,9 +7,12 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { DEFAULT_CHAT_CONTACTS, contactFirstName, contactInitials, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatOrderScreenProps {
   onBack: () => void;
+  /** Customer or business the merchant is chatting with. */
+  contact?: BusinessChatContact;
 }
 
 const MICHAEL_IMG =
@@ -82,7 +85,10 @@ const ORDER_HISTORY = [
   },
 ];
 
-export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps) {
+export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderScreenProps) {
+  const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.order;
+  const firstName = contactFirstName(activeContact.name);
+  const initials = contactInitials(activeContact.name);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -100,11 +106,11 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
     const value = input.trim();
     if (!value) return;
     setInput('');
-    window.alert(`Message sent to Michael: "${value}"`);
+    window.alert(`Message sent to ${firstName}: "${value}"`);
   };
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText('Michael James | +2348032198831 | michael.j@example.com').catch(() => {});
+    navigator.clipboard?.writeText(`${activeContact.name} | +2348032198831 | michael.j@example.com`).catch(() => {});
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   };
@@ -113,12 +119,15 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
     <AppScreen>
       <BusinessChatHeader
         onBack={onBack}
+        title={activeContact.name}
+        avatar={activeContact.avatar}
+        isBusiness={activeContact.isBusiness}
         subtitle="Active inquiry â€¢ Order #VG-94021"
         onAvatar={() => setCustOpen(true)}
         onCall={() => (window.location.href = 'tel:+2348032198831')}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={custOpen} onClose={() => setCustOpen(false)} name="Michael James" phone="+234 803 219 8831" />
+      <CustomerProfileDrawer open={custOpen} onClose={() => setCustOpen(false)} name={activeContact.name} phone="+234 803 219 8831" />
       <AttachmentSheet open={attachOpen} onClose={() => setAttachOpen(false)} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
@@ -166,7 +175,7 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
           {/* Customer Incoming */}
           <div className="flex items-end gap-space-xs max-w-[85%]">
             <div className="w-7 h-7 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-label-sm text-label-sm flex-shrink-0 font-medium">
-              MJ
+              {initials}
             </div>
             <div className="bg-surface-container-lowest rounded-2xl rounded-bl-xs p-space-sm shadow-sm flex flex-col gap-1">
               <p className="font-body-md text-body-md text-text-primary">
@@ -182,7 +191,7 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
             </div>
             <div className="bg-primary text-on-primary rounded-2xl rounded-br-xs p-space-sm shadow-sm flex flex-col gap-1">
               <p className="font-body-md text-body-md text-on-primary">
-                Hi Michael, chef just plated your ribeyes. Packing them securely in thermo-craft boxes now!
+                Hi {firstName}, chef just plated your ribeyes. Packing them securely in thermo-craft boxes now!
               </p>
               <span className="font-caption text-caption text-surface-tint-blue self-end flex items-center gap-1">
                 11:31 AM <Icon name="done_all" className="text-[13px]" />
@@ -194,7 +203,7 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
             <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
             <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
             <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-            <span>Michael is typing...</span>
+            <span>{firstName} is typing...</span>
           </div>
         </div>
 
@@ -246,7 +255,7 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
                     <Icon name="verified" className="text-[16px]" />
                   </div>
                 </div>
-                <h2 className="font-heading-md text-heading-md text-text-primary font-bold">Michael James</h2>
+                <h2 className="font-heading-md text-heading-md text-text-primary font-bold">{activeContact.name}</h2>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="bg-surface-tint-blue text-primary font-label-sm text-label-sm px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1">
                     <Icon name="star" className="text-[14px]" /> Loyal Tier VIP
@@ -307,7 +316,7 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
                 <div className="flex flex-col">
                   <span className="font-label-sm text-label-sm text-primary font-semibold">Active Conversation Intent</span>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Order #VG-94021 is undergoing counter packing. Michael prefers extra cutlery & chimichurri.
+                    Order #VG-94021 is undergoing counter packing. {firstName} prefers extra cutlery & chimichurri.
                   </p>
                 </div>
               </div>
@@ -368,9 +377,9 @@ export function BusinessChatOrderScreen({ onBack }: BusinessChatOrderScreenProps
           </button>
           <div className="flex-1 relative">
             <input
-              aria-label="Reply to Michael"
+              aria-label={`Reply to ${firstName}`}
               className="w-full h-10 rounded-full bg-surface-subtle px-4 pr-10 text-text-primary font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none"
-              placeholder="Reply to Michael..."
+              placeholder={`Reply to ${firstName}...`}
               type="text"
               value={input}
               onChange={(event) => setInput(event.target.value)}
