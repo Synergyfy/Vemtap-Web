@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { notificationService, type NotificationItem } from '../../services/notificationService';
 
 interface DesktopNotificationsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -32,201 +33,6 @@ interface FeedItem {
   action: ItemAction;
 }
 
-const URBAN_GRILL_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDHKVPsXGSKQzTHPV1aIyWPclujpy2Zr3QbpAJIoYuTWil5GC2bb5tcW-4vSQ1baWlrQlZLmQietjI9ZFjv7wrjW2GKdaXKn-CegdzG_Zilegj-A5rOyFVFH_8v97OX0PJaq0FC0Z0Xqp_4_1fu7TDGJYZIvw6nNmA60U81Mp8bTCxH8uTeSVSs8zyLIEzsRslMmcSbKhfMMcPfsEagNDCkgEeE5fUTiZlPCpkuFBH2_VK0jRPWfwsu_w';
-const URBAN_GRILL_ALT =
-  'Close-up gourmet burger with crisp lettuce, melted cheddar, and smoked brioche bun in a warm ambient dining setting at Urban Grill restaurant.';
-const SPA_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBxT_2alTl_vSlWPJiyXlqUWOVg9X823Rzuf08NvaCiUeCBkmPZkuuhkkZnpfvC1Wa1A6p7uaLW7xbQ8VVEaIIfhfrgcu5oITEyLPL_U6pmtRYNkPr7HFhElX9sHYb4WXLxXfk6nY5wRZcLgE_P4WoYEE4Ojo4m9ygMETuHpQIZEIvQLznNCwI6n4LuEZ2hHrRQkbD1r562EM6AQSswN7RVC0KCXY_1KhkUDtd0hCoXIaNp8ZE-RanEfQ';
-const SPA_ALT =
-  'Serene wellness spa treatment room with bamboo elements, folded clean white towels, warm scented candles, and smooth river massage stones.';
-const GIFT_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuA61Izv9pEZ9O6CpWwLkcC3OzLM_I2hGQNAVPIMF2ldbvZjDCj-a82gLSEEewaN4q06L8qcgfdhLge7SJLn8RLDwxOoAx8RZPs46n1PVJg1z78p8jNUul4OOsB_5W-w6cbWQe2M9PuArOuXWWccT8waQ1M0O8c1cX9IKaN2T1AC9FrbwXAnBTR5iKQAs_qEbTij7Nxy3m1A2F297csjUFLmUzcLSX7VXKw8MKFnuOOV9_CXyJLWAQZoGw';
-const GIFT_ALT =
-  'Artisanal iced coffee cold brew served in a sleek glass with condensed milk swirl and fresh mint leaf on a polished marble cafe table.';
-
-const FEED: FeedItem[] = [
-  {
-    id: 'n1',
-    category: 'deals',
-    section: 'today',
-    icon: 'hourglass_top',
-    iconClass: 'bg-tertiary-fixed text-tertiary',
-    badge: { icon: 'priority_high', className: 'bg-tertiary text-on-tertiary' },
-    title: 'Deal Expiring Soon! ⏳',
-    time: '2h ago',
-    body: (
-      <>
-        Your claimed <span className="font-label-md text-text-primary">20% Off Lunch</span> voucher at Urban Grill
-        expires tomorrow at 11:59 PM. Show your pass at the counter.
-      </>
-    ),
-    note: (
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 mt-0.5 bg-surface-subtle/70 rounded-lg p-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <img
-            className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
-            src={URBAN_GRILL_IMG}
-            data-alt={URBAN_GRILL_ALT}
-            alt={URBAN_GRILL_ALT}
-          />
-          <div className="flex flex-col min-w-0">
-            <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">
-              Urban Grill Apo
-            </span>
-            <span className="font-caption text-caption text-badge-discount-text font-medium">
-              Valid until tomorrow
-            </span>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-primary text-on-primary font-button-secondary text-button-secondary shadow-sm hover:bg-primary-container active:scale-95 transition-all"
-        >
-          Pass VT-48F261
-        </button>
-      </div>
-    ),
-    unread: true,
-    action: 'pass',
-  },
-  {
-    id: 'n2',
-    category: 'bookings',
-    section: 'today',
-    icon: 'spa',
-    iconClass: 'bg-primary-fixed text-primary',
-    title: 'Appointment Confirmed',
-    time: '5h ago',
-    body: (
-      <>
-        Glow &amp; Serenity Spa has reserved your 1:15 PM slot with Amara K. Valet parking is available at Maitama
-        Heights.
-      </>
-    ),
-    note: (
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 mt-0.5 bg-surface-container-low rounded-lg p-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <img
-            className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
-            src={SPA_IMG}
-            data-alt={SPA_ALT}
-            alt={SPA_ALT}
-          />
-          <div className="flex flex-col min-w-0">
-            <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">
-              Thu, 1:15 PM • Amara K.
-            </span>
-            <span className="font-caption text-caption text-text-secondary truncate">Maitama Heights, Abuja</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-surface-container-highest text-text-primary font-button-secondary text-button-secondary hover:bg-outline-variant/50 active:scale-95 transition-all"
-        >
-          View Booking
-        </button>
-      </div>
-    ),
-    unread: true,
-    action: 'booking',
-  },
-  {
-    id: 'n3',
-    category: 'deals',
-    section: 'earlier',
-    icon: 'featured_seasonal_and_gifts',
-    iconClass: 'bg-secondary-fixed text-on-secondary-fixed-variant',
-    badge: { icon: '', className: 'bg-primary', ping: true },
-    title: 'Samuel sent you a Gift! 🎁',
-    time: 'Oct 14',
-    body: (
-      <>
-        You received a free <span className="font-label-md text-text-primary">Artisan Cold Brew</span> voucher from
-        Cafe Neo. Tap to claim and add to your passes.
-      </>
-    ),
-    note: (
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 mt-0.5 bg-badge-discount-bg rounded-lg p-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <img
-            className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
-            src={GIFT_IMG}
-            data-alt={GIFT_ALT}
-            alt={GIFT_ALT}
-          />
-          <div className="flex flex-col min-w-0">
-            <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">
-              Free Voucher from Samuel
-            </span>
-            <span className="font-caption text-caption text-badge-discount-text">
-              Cafe Neo • Valid for 7 days
-            </span>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="flex-shrink-0 px-3.5 py-1.5 rounded-lg bg-badge-discount-text text-on-primary font-button-secondary text-button-secondary shadow-sm active:scale-95 transition-all"
-        >
-          Claim Gift
-        </button>
-      </div>
-    ),
-    unread: true,
-    action: 'gift',
-  },
-  {
-    id: 'n4',
-    category: 'rewards',
-    section: 'earlier',
-    icon: 'stars',
-    iconClass: 'bg-badge-discount-bg text-badge-discount-text',
-    title: '+150 VEM Points Earned 🎉',
-    time: 'Oct 13',
-    body: (
-      <>
-        Your points for order <span className="font-mono text-label-sm text-text-primary">#VT-ORD-88219</span> have
-        been credited to your rewards wallet. You are 350 pts away from Platinum!
-      </>
-    ),
-    note: (
-      <div className="mt-1 flex flex-col gap-1.5 bg-surface-canvas p-2.5 rounded-lg">
-        <div className="flex justify-between items-center text-caption font-caption text-text-secondary">
-          <span>Tier Progress: Gold Member</span>
-          <span className="font-semibold text-primary">650 / 1000 pts</span>
-        </div>
-        <div className="w-full bg-surface-container-highest rounded-full h-1.5 overflow-hidden">
-          <div className="bg-primary h-1.5 rounded-full" style={{ width: '65%' }} />
-        </div>
-      </div>
-    ),
-    unread: false,
-    action: 'rewards',
-  },
-  {
-    id: 'n5',
-    category: 'system',
-    section: 'earlier',
-    icon: 'campaign',
-    iconClass: 'bg-surface-container-highest text-secondary',
-    title: 'New Weekend Flash Deals in Apo',
-    time: 'Oct 11',
-    body: (
-      <>
-        Discover 12 newly listed dining, bakery, and wellness deals around Apo District this weekend. Tap to browse
-        curated map pins.
-      </>
-    ),
-    note: (
-      <div className="flex items-center gap-1.5 text-secondary font-label-sm text-label-sm pt-1 px-1">
-        <Icon name="near_me" className="text-[16px] text-primary" />
-        <span>Apo Legislative Quarters &amp; District</span>
-      </div>
-    ),
-    unread: false,
-    action: 'deals',
-  },
-];
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: 'today', label: 'Today' },
@@ -251,9 +57,49 @@ export function DesktopNotificationsScreen({
   onBrowseDeals,
   onOpenPreferences,
 }: DesktopNotificationsScreenProps) {
-  const [items, setItems] = useState<FeedItem[]>(FEED);
+  const [items, setItems] = useState<FeedItem[]>([]);
   const [filter, setFilter] = useState<NotificationCategory | 'all'>('all');
   const [toast, setToast] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadNotifications = async () => {
+      try {
+        const response = await notificationService.list();
+        if (ignore) return;
+
+        const mapped: FeedItem[] = response.map((item: NotificationItem) => ({
+          id: String(item.id),
+          category: (item.category ?? 'system') as NotificationCategory,
+          section: item.unread ? 'today' : 'earlier',
+          icon: item.type === 'reward' ? 'stars' : item.type === 'booking' ? 'calendar_month' : 'campaign',
+          iconClass:
+            item.type === 'reward'
+              ? 'bg-badge-discount-bg text-badge-discount-text'
+              : item.type === 'booking'
+                ? 'bg-primary-fixed text-primary'
+                : 'bg-surface-container-highest text-secondary',
+          title: item.title,
+          time: item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Recently',
+          body: item.message || item.body || 'You have a new update.',
+          unread: Boolean(item.unread),
+          action: item.type === 'reward' ? 'rewards' : item.type === 'booking' ? 'booking' : 'deals',
+        }));
+
+        setItems(mapped);
+      } catch (error) {
+        console.warn('Unable to load notifications inbox:', error);
+        if (!ignore) setItems([]);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
+
+    void loadNotifications();
+    return () => { ignore = true; };
+  }, []);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -269,6 +115,7 @@ export function DesktopNotificationsScreen({
 
   const openItem = (item: FeedItem) => {
     setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, unread: false } : entry)));
+    void notificationService.markAsRead(item.id).catch(() => undefined);
     if (item.action === 'pass') onOpenPass();
     else if (item.action === 'booking') onOpenBooking();
     else if (item.action === 'gift') onOpenGift();
@@ -280,6 +127,7 @@ export function DesktopNotificationsScreen({
   const markAllRead = () => {
     if (unreadCount === 0) return;
     setItems((current) => current.map((item) => ({ ...item, unread: false })));
+    void notificationService.markAllRead().catch(() => undefined);
     showToast('All notifications marked as read');
   };
 
@@ -383,7 +231,17 @@ export function DesktopNotificationsScreen({
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
             <div className="w-full">
-              {visible.length === 0 ? (
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-surface-container-lowest rounded-xl shadow-sm">
+                  <div className="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center text-text-secondary mb-3">
+                    <Icon name="notifications_active" className="text-[32px]" />
+                  </div>
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary mb-1">Loading your inbox…</h3>
+                  <p className="font-body-md text-body-md text-text-secondary max-w-xs">
+                    Fetching the latest deals, bookings, and account updates.
+                  </p>
+                </div>
+              ) : visible.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-surface-container-lowest rounded-xl shadow-sm">
                   <div className="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center text-text-secondary mb-3">
                     <Icon name="notifications_paused" className="text-[32px]" />
@@ -428,19 +286,6 @@ export function DesktopNotificationsScreen({
                                   className={`w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center shadow-sm relative ${item.iconClass}`}
                                 >
                                   <Icon name={item.icon} className="text-[24px]" />
-                                  {item.badge &&
-                                    (item.badge.ping ? (
-                                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
-                                      </span>
-                                    ) : (
-                                      <span
-                                        className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center ${item.badge.className}`}
-                                      >
-                                        <Icon name={item.badge.icon} className="text-[10px] text-on-tertiary" />
-                                      </span>
-                                    ))}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -461,7 +306,6 @@ export function DesktopNotificationsScreen({
                                   </p>
                                 </div>
                               </div>
-                              {item.note}
                             </div>
                           ))}
                         </div>

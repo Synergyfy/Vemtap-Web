@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
+import { useProfile } from '../context/ProfileContext';
+import { hasApiConfig } from '../lib/api';
+import { accountService } from '../services';
 
 interface AccountSettingsScreenProps {
   onBack: () => void;
@@ -45,6 +48,7 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 }
 
 export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSignOut }: AccountSettingsScreenProps) {
+  const profile = useProfile();
   const [toggles, setToggles] = useState<ToggleState>({
     biometrics: true,
     sms: true,
@@ -54,6 +58,33 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
+
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+
+    let cancelled = false;
+    const fetchSecurity = async () => {
+      try {
+        const response = await accountService.getSecurity();
+        if (!cancelled) {
+          const nextSecurityState =
+            response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object'
+              ? (response.data as Record<string, unknown>)
+              : (response && typeof response === 'object' ? (response as Record<string, unknown>) : {});
+
+          setSecurityState(nextSecurityState);
+        }
+      } catch (error) {
+        console.warn('Unable to load account security settings:', error);
+      }
+    };
+
+    fetchSecurity();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -76,6 +107,13 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   const rowTitle = 'font-heading-sm text-heading-sm text-text-primary text-[15px]';
   const rowHint = 'font-caption text-caption text-text-secondary truncate';
   const chevron = <Icon name="chevron_right" className="text-outline-variant text-[20px] shrink-0" />;
+  const displayName = profile.fullName || 'User';
+  const emailAddress = profile.email || 'No email';
+  const phoneNumber = profile.phone || 'No phone number';
+  const securityLabel =
+    typeof securityState?.status === 'string' && securityState.status.trim()
+      ? securityState.status
+      : 'Protected';
 
   return (
     <AppScreen>
@@ -112,7 +150,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               </div>
               <div>
                 <span className="inline-flex items-center px-space-xs py-0.5 rounded-full bg-badge-discount-bg font-caption text-caption text-badge-discount-text font-semibold">
-                  Security Status: Protected
+                  Security Status: {securityLabel}
                 </span>
               </div>
             </div>
@@ -124,7 +162,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           <div className="pt-space-2xs flex items-center gap-space-xs text-text-tertiary">
             <Icon name="account_circle" className="text-[16px] text-primary" />
             <span className="font-caption text-caption text-text-secondary truncate">
-              Zainab Ahmed • +234 803 555 0192 •{' '}
+              {displayName} • {phoneNumber} •{' '}
               <span className="text-badge-discount-text font-medium">Verified</span>
             </span>
           </div>
@@ -265,7 +303,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Email Notices</span>
                   <p className="font-caption text-caption text-text-secondary line-clamp-1">
-                    Sent to zainab.ahmed@example.com
+                    Sent to {emailAddress}
                   </p>
                 </div>
               </div>

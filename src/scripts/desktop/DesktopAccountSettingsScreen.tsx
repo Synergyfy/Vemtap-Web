@@ -3,6 +3,9 @@ import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DeleteAccountSheet } from '../../components/DeleteAccountSheet';
 import { useAuth } from '../../context/AuthContext';
+import { useProfile } from '../../context/ProfileContext';
+import { hasApiConfig } from '../../lib/api';
+import { accountService } from '../../services';
 
 interface DesktopAccountSettingsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -61,10 +64,38 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const { signOut } = useAuth();
+  const profile = useProfile();
+  const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
   const [toggles, setToggles] = useState<Record<string, boolean>>(
     Object.fromEntries(TOGGLES.map((toggle) => [toggle.id, toggle.defaultChecked])),
   );
   const timers = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+
+    let cancelled = false;
+    const loadSecurity = async () => {
+      try {
+        const response = await accountService.getSecurity();
+        if (!cancelled) {
+          const nextSecurityState =
+            response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object'
+              ? (response.data as Record<string, unknown>)
+              : (response && typeof response === 'object' ? (response as Record<string, unknown>) : {});
+
+          setSecurityState(nextSecurityState);
+        }
+      } catch (error) {
+        console.warn('Unable to load security settings:', error);
+      }
+    };
+
+    loadSecurity();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
@@ -73,6 +104,17 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
     const target = document.getElementById(id);
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  const fullName = profile.fullName || 'User';
+  const emailAddress = profile.email || 'No email';
+  const phoneNumber = profile.phone || 'No phone number';
+  const memberTenureLabel = (() => {
+    if (!profile.createdAt) return 'New member';
+    const date = new Date(profile.createdAt);
+    if (Number.isNaN(date.getTime())) return 'New member';
+    return `Joined ${new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date)}`;
+  })();
+  const securityLabel = typeof securityState?.status === 'string' && securityState.status.trim() ? securityState.status : 'Protected';
 
   const saveProfile = () => {
     if (saveState !== 'idle') return;
@@ -104,7 +146,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
             </nav>
             <div className="flex items-center gap-2 bg-badge-discount-bg text-badge-discount-text px-3 py-1 rounded-full">
               <Icon name="verified" className="text-[16px]" />
-              <span className="font-caption text-caption font-semibold">NDPR Consumer Data Vault Level 1 Verified</span>
+              <span className="font-caption text-caption font-semibold">{securityLabel} • NDPR Consumer Data Vault Level 1 Verified</span>
             </div>
           </div>
 
@@ -153,13 +195,13 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate">
-                        Zainab Ahmed
+                        {fullName}
                       </h3>
                       <span title="Identity Verified">
                         <Icon name="verified" className="text-primary text-[16px]" />
                       </span>
                     </div>
-                    <p className="font-caption text-caption text-on-surface-variant truncate">Apo District, Abuja</p>
+                    <p className="font-caption text-caption text-on-surface-variant truncate">{profile.email ? 'Account verified' : 'Profile pending completion'}</p>
                     <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-surface-container text-primary font-caption text-caption font-medium">
                       Consumer Tier
                     </span>
@@ -168,11 +210,11 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                 <div className="space-y-1.5 text-on-surface-variant font-caption text-caption pt-2 border-t-0 bg-surface-container-low p-2 rounded-lg">
                   <div className="flex items-center gap-2 truncate">
                     <Icon name="mail" className="text-[14px] text-outline" />
-                    <span className="truncate text-on-surface">zainab.ahmed@example.com</span>
+                    <span className="truncate text-on-surface">{emailAddress}</span>
                   </div>
                   <div className="flex items-center justify-between text-outline pt-0.5">
                     <span>Member Tenure</span>
-                    <span className="text-on-surface font-medium">Joined Oct 2024</span>
+                    <span className="text-on-surface font-medium">{memberTenureLabel}</span>
                   </div>
                 </div>
                 <div className="mt-4 pt-2 flex items-center justify-between text-on-surface-variant">
@@ -292,7 +334,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         className="w-full h-[52px] px-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                         id="full-name"
                         type="text"
-                        defaultValue="Zainab Ahmed"
+                        defaultValue={fullName}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -307,7 +349,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         className="w-full h-[52px] px-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                         id="display-name"
                         type="text"
-                        defaultValue="Zainab A."
+                        defaultValue={fullName.split(' ')[0] || 'User'}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -329,7 +371,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                           className="w-full h-[52px] pl-12 pr-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                           id="email"
                           type="email"
-                          defaultValue="zainab.ahmed@example.com"
+                          defaultValue={emailAddress}
                         />
                       </div>
                     </div>
@@ -349,7 +391,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                           className="w-full h-[52px] pl-12 pr-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                           id="phone"
                           type="tel"
-                          defaultValue="+234 803 555 0192"
+                          defaultValue={phoneNumber}
                         />
                       </div>
                     </div>

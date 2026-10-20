@@ -1330,6 +1330,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'notifications':
+        setRoute('notifications');
+        break;
       case 'account-settings':
         setRoute('account-settings');
         break;
@@ -1403,6 +1406,9 @@ function AppInner() {
         break;
       case 'cart':
         setRoute('cart');
+        break;
+      case 'notifications':
+        setRoute('notifications');
         break;
       case 'account-settings':
         setRoute('account-settings');

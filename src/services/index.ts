@@ -2,6 +2,8 @@ export * from './api/client';
 export * from './api/endpoints';
 export * from './types';
 export { authService } from './authService';
+export { accountService } from './accountService';
+export { notificationService } from './notificationService';
 export { catalogueService } from './catalogueService';
 export { ordersService } from './ordersService';
 export { bookingService } from './bookingService';
