@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
 import { BusinessAddBranchScreen } from './BusinessAddBranchScreen';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
@@ -63,7 +66,23 @@ export interface BusinessProfileDraft {
  * merchant recognises it immediately; it stays editable where account and
  * verification rules allow. WhatsApp is seeded as a phone number, never a link.
  */
-const createInitialDraft = (accountEmail: string): BusinessProfileDraft => ({
+const createInitialDraft = (accountEmail: string): BusinessProfileDraft =>
+  hasApiConfig()
+    ? {
+        // Live setup starts empty so nothing sample-only reaches the business record.
+        name: '',
+        categories: [],
+        tags: [],
+        description: '',
+        phone: '',
+        email: accountEmail,
+        website: '',
+        instagram: '',
+        whatsapp: '',
+        x: '',
+        prefs: { inApp: true, whatsapp: true },
+      }
+    : ({
   name: 'Urban Grill & Bistro',
   categories: ['restaurant'],
   tags: ['Grill & Steakhouse', 'Bistro & Cafe'],
@@ -238,6 +257,15 @@ export function BusinessOnboardingScreen({
     );
   }, [draft.categories, draft.tags]);
 
+  const sync = useOnboardingSync();
+  const myBusiness = useMyBusiness();
+
+  // Live: start from the name given at sign-up.
+  useEffect(() => {
+    const name = myBusiness.data?.name;
+    if (name) setDraft((prev) => (prev.name ? prev : { ...prev, name }));
+  }, [myBusiness.data?.name]);
+
   const updateDraft = (patch: Partial<BusinessProfileDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   };
@@ -286,7 +314,7 @@ export function BusinessOnboardingScreen({
           draft={draft}
           onBack={initialStep === 'basic' ? onBack : () => setStepIndex(0)}
           onChange={updateDraft}
-          onNext={() => setStepIndex(2)}
+          onNext={() => sync.saveBasic(draft, () => setStepIndex(2))}
           onSaveDraft={onBack}
         />
       );
@@ -305,7 +333,7 @@ export function BusinessOnboardingScreen({
           draft={draft}
           onBack={() => setStepIndex(2)}
           onChange={updateDraft}
-          onNext={() => setStepIndex(4)}
+          onNext={() => sync.saveContact(draft, () => setStepIndex(4))}
           onSaveDraft={onBack}
         />
       );
@@ -314,7 +342,7 @@ export function BusinessOnboardingScreen({
         <BusinessLocationScreen
           draft={draft}
           onBack={() => setStepIndex(3)}
-          onNext={() => setStepIndex(5)}
+          onNext={(location) => sync.saveLocation(location, () => setStepIndex(5))}
           onSaveDraft={onBack}
         />
       );
@@ -541,6 +569,14 @@ export function BusinessOnboardingScreen({
           <BusinessSetupProgress {...progressSnapshot} variant="mobile" onSelectSection={handleSelectSection} />
         </div>
       )}
+      {sync.error ? (
+        <div role="alert" className="fixed top-4 left-1/2 -translate-x-1/2 z-[90] w-[min(92vw,560px)] rounded-xl bg-error-container text-on-error-container px-space-md py-space-sm shadow-lg flex items-start gap-space-xs">
+          <span className="flex-1 font-label-md text-label-md">{sync.error}</span>
+          <button type="button" onClick={sync.clearError} className="font-label-md text-label-md underline">
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       {renderStep()}
     </div>
   );

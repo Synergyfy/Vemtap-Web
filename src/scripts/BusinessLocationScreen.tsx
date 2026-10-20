@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import type { BusinessLocationResult } from './desktop/DesktopBusinessLocationScreen';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
@@ -6,7 +8,8 @@ import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
 interface BusinessLocationScreenProps {
   draft: BusinessProfileDraft;
   onBack: () => void;
-  onNext: () => void;
+  /** Receives the confirmed address, with GPS coordinates when the owner shared them. */
+  onNext: (location: BusinessLocationResult) => void;
   onSaveDraft: () => void;
 }
 
@@ -14,10 +17,13 @@ const MAP_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBmjVs8gDO3WsmZCR-YYN3Ek1V99E50oudSc3E8Oal2Tb49hl9cua5JrOor0bUZsDZJin5lRlCjVQTbPSm5Mv_iyuC1ZXDPYOrYuXGshhsNkgDmGs5y-S-lUWx1uB3VcnGINvQKUlkyfHFLb3Y9RuqVEChaJZ-TZMxe3VF4wkOCJSaXT9ShXegpGnOwkG9mjoOuSV8E99aIIvwmM9eNCnxuWd2LJszconq7Hk75oQ00ooDesuzYQ2d1hA';
 
 export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: BusinessLocationScreenProps) {
-  const [search, setSearch] = useState('Plot 1428, Adetokunbo Ademola Crescent, Wuse 2');
+  // Live setup starts empty; the sample address is demo-only.
+  const live = hasApiConfig();
+  const [search, setSearch] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent, Wuse 2');
   const [locating, setLocating] = useState(false);
-  const [street, setStreet] = useState('Plot 1428, Adetokunbo Ademola Crescent, Wuse 2, Abuja');
-  const [landmark, setLandmark] = useState('Opposite Cubana Suites, Ground Floor (Suite G-02)');
+  const [street, setStreet] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent, Wuse 2, Abuja');
+  const [landmark, setLandmark] = useState(live ? '' : 'Opposite Cubana Suites, Ground Floor (Suite G-02)');
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -35,12 +41,28 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
 
   const handleUseLocation = () => {
     if (locating) return;
+    if (!live || !navigator.geolocation) {
+      setLocating(true);
+      setSearch('Locating current GPS coordinates...');
+      window.setTimeout(() => {
+        setSearch('Adetokunbo Ademola Cres, Wuse 2, Abuja 904101');
+        setLocating(false);
+      }, 600);
+      return;
+    }
     setLocating(true);
-    setSearch('Locating current GPS coordinates...');
-    window.setTimeout(() => {
-      setSearch('Adetokunbo Ademola Cres, Wuse 2, Abuja 904101');
-      setLocating(false);
-    }, 600);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+        showToast('Location pinned. Add your street address below.');
+        setLocating(false);
+      },
+      () => {
+        showToast('Could not get your location.');
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15_000 },
+    );
   };
 
   return (
@@ -296,7 +318,12 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
           <button
             className="w-full h-11 rounded-2xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             type="button"
-            onClick={onNext}
+            onClick={() =>
+              onNext({
+                address: [street.trim() || search.trim(), landmark.trim()].filter(Boolean).join(' — '),
+                ...(coords ?? {}),
+              })
+            }
           >
             <span>Continue to Branch Details</span>
             <Icon name="arrow_forward" className="text-[20px]" />

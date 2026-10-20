@@ -84,7 +84,11 @@ export function BusinessProfileContactScreen({
   const handleComplete = () => {
     if (status !== 'idle') return;
     setStatus('saving');
-    window.setTimeout(onNext, 900);
+    // The parent saves and moves on; reset so a failed save can be retried.
+    window.setTimeout(() => {
+      onNext();
+      setStatus('idle');
+    }, 900);
   };
 
   return (

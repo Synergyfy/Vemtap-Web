@@ -101,7 +101,9 @@ export function DesktopBusinessProfileContactScreen({
     setStatus('saving');
     timers.current.push(
       window.setTimeout(() => {
+        // The parent saves and moves on; reset so a failed save can be retried.
         onNext();
+        setStatus('idle');
       }, 900),
     );
   };
