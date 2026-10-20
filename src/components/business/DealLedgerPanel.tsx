@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../ui/Icon';
 import { EmptyState, ErrorState, FilterChips, LoadingRows } from './QueryStates';
 import { useDealLedger } from '../../hooks/business/useDealLedger';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { toAmount, type DealLedgerRow, type DealLedgerStatus } from '../../services/dealLedgerService';
 import { formatNaira, formatRelativeTime } from '../../utils/format';
 import { downloadCsv } from '../../utils/exportCsv';
@@ -71,7 +72,8 @@ interface DealLedgerPanelProps {
 export function DealLedgerPanel({ dealGroupId }: DealLedgerPanelProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
-  const ledger = useDealLedger({ dealGroupId, status: filter === 'all' ? undefined : filter, limit: 50 });
+  const { activeBranchId } = useBusinessBranch();
+  const ledger = useDealLedger({ dealGroupId, branchId: activeBranchId, status: filter === 'all' ? undefined : filter, limit: 50 });
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();

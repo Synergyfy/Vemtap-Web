@@ -3,6 +3,7 @@ import { ErrorState, LoadingRows } from '../QueryStates';
 import { SwitchRow } from '../FormPrimitives';
 import { Card, ProgressBar } from './NetworkShared';
 import { useDiscoveryPresence, useUpdateDiscoverySettings } from '../../../hooks/business/useBusinessNetwork';
+import { useBusinessBranch } from '../../../context/BusinessBranchContext';
 import type { DiscoveryPresence, DiscoverySettings } from '../../../services/businessNetworkService';
 import { formatNaira } from '../../../utils/format';
 
@@ -63,8 +64,9 @@ function FeedCardPreview({ card }: { card: DiscoveryPresence['card'] }) {
 
 /** How the business appears in consumer discovery, and the switches that control it. */
 export function DiscoveryPresencePanel() {
-  const presence = useDiscoveryPresence();
-  const update = useUpdateDiscoverySettings(presence.data?.branch.id);
+  const { activeBranchId } = useBusinessBranch();
+  const presence = useDiscoveryPresence(activeBranchId);
+  const update = useUpdateDiscoverySettings(activeBranchId);
 
   if (presence.isLoading) return <LoadingRows rows={4} label="Loading discovery presence" />;
   if (presence.isError || !presence.data)

@@ -1,8 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui/Icon';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import type { ProfileBranch } from '../services/businessService';
 
 export interface BusinessBranchData {
   key: string;
+  /** Backend branch UUID — only set for live branches, never for the demo ones. */
+  id?: string;
+  isMainBranch?: boolean;
   name: string;
   shortName: string;
   area: string;
@@ -70,12 +75,55 @@ interface BusinessBranchContextValue {
   branches: BusinessBranchData[];
   switching: boolean;
   switchTo: (key: string) => void;
+  /** UUID of the active live branch, for branch-scoped API calls; undefined in demo mode. */
+  activeBranchId?: string;
+  /** True when the branches came from `GET /businesses/my-business`. */
+  isLive: boolean;
 }
+
+const BRANCH_KEY = 'vemtap_active_branch';
+const EMPTY_STATS: BusinessBranchData['stats'] = {
+  orders: '—',
+  revenue: '—',
+  revenueDelta: '',
+  bookings: '—',
+  unread: '—',
+  customers: '—',
+  newCustomers: '—',
+};
+
+const readStoredBranch = () => {
+  try {
+    return window.localStorage.getItem(BRANCH_KEY);
+  } catch {
+    return null;
+  }
+};
+
+const toBranchData = (branch: ProfileBranch): BusinessBranchData => ({
+  key: branch.id,
+  id: branch.id,
+  isMainBranch: branch.isMainBranch === true,
+  name: branch.name,
+  shortName: branch.name.replace(/\s+branch$/i, ''),
+  area: [branch.address, branch.city].filter(Boolean).join(', ') || branch.state || '',
+  // Per-branch figures come from the dashboard query, not the branch list.
+  stats: EMPTY_STATS,
+});
 
 const BusinessBranchContext = createContext<BusinessBranchContextValue | null>(null);
 
 export function BusinessBranchProvider({ children }: { children: ReactNode }) {
-  const [branchKey, setBranchKey] = useState('wuse-ii');
+  const myBusiness = useMyBusiness();
+  const liveBranches = useMemo(
+    () => (myBusiness.data?.branches ?? []).filter((b) => b.id && b.isActive !== false).map(toBranchData),
+    [myBusiness.data],
+  );
+  const isLive = liveBranches.length > 0;
+  // Never mix sample branches into a live business: their keys would reach branch-scoped APIs.
+  const branches = isLive ? liveBranches : BUSINESS_BRANCHES;
+
+  const [branchKey, setBranchKey] = useState<string>(() => readStoredBranch() ?? 'wuse-ii');
   const [switching, setSwitching] = useState(false);
 
   const switchTo = useCallback(
@@ -84,16 +132,22 @@ export function BusinessBranchProvider({ children }: { children: ReactNode }) {
       setSwitching(true);
       window.setTimeout(() => {
         setBranchKey(key);
+        try {
+          window.localStorage.setItem(BRANCH_KEY, key);
+        } catch {
+          // storage unavailable — selection lasts for this session only
+        }
         setSwitching(false);
       }, 900);
     },
     [branchKey],
   );
 
-  const branch = BUSINESS_BRANCHES.find((option) => option.key === branchKey) ?? BUSINESS_BRANCHES[0];
+  const branch =
+    branches.find((option) => option.key === branchKey) ?? branches.find((option) => option.isMainBranch) ?? branches[0];
 
   return (
-    <BusinessBranchContext.Provider value={{ branch, branches: BUSINESS_BRANCHES, switching, switchTo }}>
+    <BusinessBranchContext.Provider value={{ branch, branches, switching, switchTo, activeBranchId: branch.id, isLive }}>
       {children}
     </BusinessBranchContext.Provider>
   );
@@ -103,7 +157,7 @@ export function useBusinessBranch(): BusinessBranchContextValue {
   const context = useContext(BusinessBranchContext);
   if (!context) {
     const branch = BUSINESS_BRANCHES[0];
-    return { branch, branches: BUSINESS_BRANCHES, switching: false, switchTo: () => {} };
+    return { branch, branches: BUSINESS_BRANCHES, switching: false, switchTo: () => {}, isLive: false };
   }
   return context;
 }

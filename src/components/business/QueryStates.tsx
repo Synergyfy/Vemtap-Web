@@ -1,4 +1,6 @@
 import { Icon } from '../ui/Icon';
+import { planErrorMessage } from '../../services/planErrors';
+import { BUSINESS_NAV_EVENT } from '../../utils/appEvents';
 
 export function LoadingRows({ rows = 3, label = 'Loading…' }: { rows?: number; label?: string }) {
   return (
@@ -23,6 +25,8 @@ export function EmptyState({ icon, title, body }: { icon: string; title: string;
 }
 
 export function ErrorState({ title, error, onRetry }: { title: string; error?: unknown; onRetry?: () => void }) {
+  const planMessage = planErrorMessage(error);
+  if (planMessage) return <PlanRequiredState message={planMessage} />;
   const detail = error instanceof Error && error.message ? error.message : 'Please try again in a moment.';
   return (
     <div role="alert" className="flex flex-col items-center text-center gap-space-xs py-space-2xl px-space-md">
@@ -81,6 +85,26 @@ export function FilterChips<T extends string>({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** A plan refusal (403 with a plan slug or guard message): explain it and offer the plans page. */
+export function PlanRequiredState({ message }: { message: string }) {
+  return (
+    <div role="alert" className="flex flex-col items-center text-center gap-space-xs py-space-2xl px-space-md">
+      <span className="w-12 h-12 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant flex items-center justify-center">
+        <Icon name="workspace_premium" className="text-[24px]" />
+      </span>
+      <p className="font-heading-sm text-heading-sm text-text-primary">Upgrade to continue</p>
+      <p className="font-body-md text-body-md text-text-secondary max-w-sm">{message}</p>
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent(BUSINESS_NAV_EVENT, { detail: 'more-subscription' }))}
+        className="mt-space-xs px-space-md h-9 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md"
+      >
+        View plans
+      </button>
     </div>
   );
 }

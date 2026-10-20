@@ -14,7 +14,16 @@ export class ApiError extends Error {
     this.status = status;
     this.payload = payload;
   }
+
+  /** Machine-readable slug from the error body's `error` field, e.g. `PLAN_LIMIT_REACHED`. */
+  get code(): string | undefined {
+    const value = this.payload && typeof this.payload === 'object' ? (this.payload as { error?: unknown }).error : undefined;
+    return typeof value === 'string' ? value : undefined;
+  }
 }
+
+/** Fired on `window` when the API answers 401 (no or expired token), so the app can sign in again. */
+export const SESSION_EXPIRED_EVENT = 'vemtap:session-expired';
 
 const normalizeApiBaseUrl = (value: string) => {
   const base = value.trim().replace(/\/+$/, '');
@@ -181,10 +190,14 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
 
     if (response.status === 401 && !isAuthAttempt) {
       clearAuthTokens();
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
 
+    // Validation failures send `message` as an array of field errors.
+    const rawMessage = payload && typeof payload === 'object' ? (payload as { message?: unknown }).message : undefined;
     const messageText =
-      (payload && typeof payload === 'object' && 'message' in payload && typeof (payload as { message?: unknown }).message === 'string' && (payload as { message: string }).message)
+      (Array.isArray(rawMessage) && rawMessage.filter((m) => typeof m === 'string').join('. '))
+      || (typeof rawMessage === 'string' && rawMessage)
         || (payload && typeof payload === 'object' && 'error' in payload && typeof (payload as { error?: unknown }).error === 'string' && (payload as { error: string }).error)
         || (typeof payload === 'string' && payload.trim())
         || `Request failed with status ${response.status}`;

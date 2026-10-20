@@ -5,6 +5,8 @@ import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { isBusinessRole } from './services/sessionService';
+import { SESSION_EXPIRED_EVENT } from './services/api/client';
 import { hasApiConfig } from './lib/api';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
@@ -797,6 +799,33 @@ const AUTH_ROUTES = new Set<Route>([
   ...CLAIM_STEP_ROUTES,
 ]);
 
+/** Public storefront pages that live under /business/<slug> — never the merchant portal. */
+const STOREFRONT_ROUTES = new Set<Route>([
+  'storefront',
+  'storefront-products',
+  'storefront-menu',
+  'business-profile',
+  'spa-profile',
+  'spa-services',
+  'service-detail',
+  'product-detail',
+  'checkout',
+  'order-placed',
+  'spa-storefront',
+  'spa-booking',
+  'spa-booking-checkout',
+  'spa-booking-confirmed',
+]);
+
+const PORTAL_PREFIXES = ['/business/', '/pos/', '/analytics/', '/boost-hub', '/segments'];
+
+/** Merchant portal pages: they need a signed-in business user once the API is configured. */
+function isPortalRoute(route: Route) {
+  if (STOREFRONT_ROUTES.has(route)) return false;
+  const path = ROUTE_PATH[route];
+  return PORTAL_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
 ]);
@@ -1108,6 +1137,23 @@ function AppInner() {
     window.addEventListener(SIGN_OUT_EVENT, handleSignOut);
     return () => window.removeEventListener(SIGN_OUT_EVENT, handleSignOut);
   }, []);
+
+  // A 401 from the API: if the user is in the merchant portal, send them to
+  // sign in again (public pages keep working for guests).
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  useEffect(() => {
+    const handleExpired = () => {
+      if (isPortalRoute(routeRef.current)) setRouteState('sign-in');
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+  }, []);
+
+  // Opening a portal page signed out (with the API configured) goes to sign in.
+  useEffect(() => {
+    if (hasApiConfig() && !authed && isPortalRoute(route)) setRouteState('sign-in');
+  }, [authed, route]);
 
   useEffect(() => {
     const expected =
@@ -1889,8 +1935,8 @@ function AppInner() {
         return (
           <DesktopSignInScreen
             onSignIn={async ({ identifier, password }) => {
-              await signIn({ identifier, password });
-              setRoute('discovering');
+              const user = await signIn({ identifier, password });
+              setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
             }}
             onGoogleSignIn={async () => {
               if (!hasApiConfig()) {
@@ -1922,8 +1968,8 @@ function AppInner() {
         <SignInScreen
           onBack={() => setRoute('welcome')}
           onSignIn={async ({ identifier, password }) => {
-            await signIn({ identifier, password });
-            setRoute('discovering');
+            const user = await signIn({ identifier, password });
+            setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
           }}
           onGoogleSignIn={async () => {
             if (!hasApiConfig()) {

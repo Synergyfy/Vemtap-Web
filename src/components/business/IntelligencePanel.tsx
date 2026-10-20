@@ -3,6 +3,7 @@ import { Icon } from '../ui/Icon';
 import { BarChart } from './BarChart';
 import { ErrorState, FilterChips, LoadingRows } from './QueryStates';
 import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import type {
   Comparison,
   CustomersAnalytics,
@@ -468,7 +469,9 @@ const MODULE_FOR_TAB = {
 } as const;
 
 function TabBody({ tab, days }: { tab: IntelligenceTab; days: number }) {
-  const query = useBusinessAnalytics(MODULE_FOR_TAB[tab], days);
+  const { activeBranchId } = useBusinessBranch();
+  // Locations compares branches, so it is always business-wide.
+  const query = useBusinessAnalytics(MODULE_FOR_TAB[tab], days, tab === 'locations' ? undefined : activeBranchId);
   if (query.isLoading) return <LoadingRows rows={4} label="Loading analytics" />;
   if (query.isError || !query.data)
     return <ErrorState title="Could not load analytics" error={query.error} onRetry={() => query.refetch()} />;

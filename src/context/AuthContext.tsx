@@ -1,6 +1,9 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { clearAuthTokens, getAccessToken, hasApiConfig } from '../lib/api';
 import { authService } from '../services';
+import { SESSION_EXPIRED_EVENT } from '../services/api/client';
+import { queryClient } from '../services/queryClient';
+import type { SessionUser } from '../services/sessionService';
 
 interface AuthCredentials {
   identifier?: string;
@@ -12,7 +15,8 @@ interface AuthCredentials {
 interface AuthContextValue {
   authed: boolean;
   claimed: boolean;
-  signIn: (credentials?: AuthCredentials) => Promise<void>;
+  /** Resolves with the signed-in user when the API is configured (undefined in demo mode). */
+  signIn: (credentials?: AuthCredentials) => Promise<SessionUser | undefined>;
   signOut: () => Promise<void>;
   markClaimed: () => void;
   resetClaim: () => void;
@@ -108,6 +112,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(() => readFlag(AUTHED_KEY) || Boolean(getAccessToken()));
   const [claimed, setClaimed] = useState(() => readFlag(CLAIMED_KEY));
 
+  // The API rejected the token (expired or revoked): drop the local session.
+  useEffect(() => {
+    const handleExpired = () => {
+      if (!readFlag(AUTHED_KEY)) return;
+      clearStoredProfile();
+      queryClient.clear();
+      writeFlag(AUTHED_KEY, false);
+      setAuthed(false);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       authed,
@@ -127,9 +144,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               password: password.trim(),
             });
             persistProfileFromUser(response);
+            const user = (response as { user?: SessionUser }).user;
+            if (user) queryClient.setQueryData(['session', 'profile'], user);
             writeFlag(AUTHED_KEY, true);
             setAuthed(true);
-            return;
+            return user;
           } catch (error) {
             console.error('Login failed:', error);
             clearStoredProfile();
@@ -142,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         writeFlag(AUTHED_KEY, true);
         clearAuthTokens();
         setAuthed(true);
+        return undefined;
       },
       signOut: async () => {
         if (hasApiConfig()) {
@@ -153,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } finally {
             clearStoredProfile();
             clearAuthTokens();
+            queryClient.clear();
             writeFlag(AUTHED_KEY, false);
             writeFlag(CLAIMED_KEY, false);
             setAuthed(false);
