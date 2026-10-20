@@ -169,6 +169,20 @@ import { BusinessDealLedgerScreen } from './scripts/BusinessDealLedgerScreen';
 import { DesktopBusinessDealLedgerScreen } from './scripts/desktop/DesktopBusinessDealLedgerScreen';
 import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
 import { BusinessCategoriesScreen } from './scripts/BusinessCategoriesScreen';
+import {
+  BusinessDiscoveryPresenceScreen,
+  BusinessNetworkDashboardScreen,
+  BusinessNetworkMilestonesScreen,
+  BusinessReferralDetailScreen,
+  BusinessReferralsScreen,
+} from './scripts/BusinessNetworkScreens';
+import {
+  DesktopBusinessDiscoveryPresenceScreen,
+  DesktopBusinessNetworkDashboardScreen,
+  DesktopBusinessNetworkMilestonesScreen,
+  DesktopBusinessReferralDetailScreen,
+  DesktopBusinessReferralsScreen,
+} from './scripts/desktop/DesktopBusinessNetworkScreens';
 import { DesktopBusinessCategoriesScreen } from './scripts/desktop/DesktopBusinessCategoriesScreen';
 import { BusinessPosReceiptScreen } from './scripts/BusinessPosReceiptScreen';
 import { DesktopPosTaxesScreen } from './scripts/desktop/DesktopPosTaxesScreen';
@@ -466,6 +480,11 @@ type Route =
   | 'business-deal-ledger'
   | 'pos-taxes'
   | 'business-categories'
+  | 'network-dashboard'
+  | 'network-milestones'
+  | 'network-referrals'
+  | 'network-referral-detail'
+  | 'network-discovery'
   | 'pos-receipt'
   | 'store-ordering-dashboard'
   | 'store-ordering-qr'
@@ -640,6 +659,11 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-deal-ledger': '/business/deals/ledger',
   'pos-taxes': '/pos/settings/taxes',
   'business-categories': '/business/hub/catalog/categories',
+  'network-dashboard': '/business/network',
+  'network-milestones': '/business/network/milestones',
+  'network-referrals': '/business/network/referrals',
+  'network-referral-detail': '/business/network/referrals/detail',
+  'network-discovery': '/business/network/discovery',
   'pos-receipt': '/pos/settings/receipt',
   'cluster-onboarding': '/business/cluster/onboarding',
   'cluster-system': '/business/cluster',
@@ -868,6 +892,7 @@ function AppInner() {
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
   const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const [selectedReferralId, setSelectedReferralId] = useState<string | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return match?.business ?? null;
@@ -1529,6 +1554,11 @@ function AppInner() {
     }
   };
 
+  const openReferral = (id: string) => {
+    setSelectedReferralId(id);
+    setRoute('network-referral-detail');
+  };
+
   const businessPortalNav = (key: string) => {
     switch (key) {
       // Legacy BusinessPortalNavKey aliases
@@ -1616,6 +1646,13 @@ function AppInner() {
         break;
       case 'business-categories':
         setRoute('business-categories');
+        break;
+      case 'network':
+      case 'network-dashboard':
+      case 'network-milestones':
+      case 'network-referrals':
+      case 'network-discovery':
+        setRoute(key === 'network' ? 'network-dashboard' : (key as Route));
         break;
       case 'pos-receipt':
         setRoute('pos-receipt');
@@ -4676,6 +4713,38 @@ function AppInner() {
           />
         </div>
       );
+
+    case 'network-dashboard': {
+      const networkNav = {
+        onOpenReferrals: () => setRoute('network-referrals'),
+        onOpenReferral: openReferral,
+        onOpenMilestones: () => setRoute('network-milestones'),
+        onOpenDiscovery: () => setRoute('network-discovery'),
+      };
+      if (isDesktop) return <DesktopBusinessNetworkDashboardScreen onNav={businessPortalNav} nav={networkNav} />;
+      return <BusinessNetworkDashboardScreen onBack={() => setRoute('business-more')} nav={networkNav} />;
+    }
+
+    case 'network-milestones':
+      if (isDesktop) return <DesktopBusinessNetworkMilestonesScreen onNav={businessPortalNav} />;
+      return <BusinessNetworkMilestonesScreen onBack={() => setRoute('network-dashboard')} />;
+
+    case 'network-referrals':
+      if (isDesktop) return <DesktopBusinessReferralsScreen onNav={businessPortalNav} onOpenReferral={openReferral} />;
+      return <BusinessReferralsScreen onBack={() => setRoute('network-dashboard')} onOpenReferral={openReferral} />;
+
+    case 'network-referral-detail':
+      // A deep link has no referral in memory — fall back to the list.
+      if (!selectedReferralId) {
+        if (isDesktop) return <DesktopBusinessReferralsScreen onNav={businessPortalNav} onOpenReferral={openReferral} />;
+        return <BusinessReferralsScreen onBack={() => setRoute('network-dashboard')} onOpenReferral={openReferral} />;
+      }
+      if (isDesktop) return <DesktopBusinessReferralDetailScreen onNav={businessPortalNav} referralId={selectedReferralId} />;
+      return <BusinessReferralDetailScreen onBack={() => setRoute('network-referrals')} referralId={selectedReferralId} />;
+
+    case 'network-discovery':
+      if (isDesktop) return <DesktopBusinessDiscoveryPresenceScreen onNav={businessPortalNav} />;
+      return <BusinessDiscoveryPresenceScreen onBack={() => setRoute('network-dashboard')} />;
 
     case 'business-categories':
       if (isDesktop) return <DesktopBusinessCategoriesScreen onNav={businessPortalNav} />;

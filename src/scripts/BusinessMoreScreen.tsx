@@ -119,6 +119,33 @@ export function BusinessMoreScreen({
       ],
     },
     {
+      key: 'network',
+      label: 'Business Network',
+      rows: [
+        {
+          key: 'network-dashboard',
+          icon: 'diversity_3',
+          title: 'Business Network',
+          sub: 'Invite businesses & climb the milestone ladder',
+          onClick: () => onNavKey('network-dashboard'),
+        },
+        {
+          key: 'network-referrals',
+          icon: 'group_add',
+          title: 'My Referrals',
+          sub: 'Businesses that joined with your code',
+          onClick: () => onNavKey('network-referrals'),
+        },
+        {
+          key: 'network-discovery',
+          icon: 'travel_explore',
+          title: 'Discovery Presence',
+          sub: 'How customers find you nearby',
+          onClick: () => onNavKey('network-discovery'),
+        },
+      ],
+    },
+    {
       key: 'catalogue',
       label: 'Catalogue',
       rows: [

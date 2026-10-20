@@ -113,6 +113,18 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     link: true,
   },
   {
+    key: 'network',
+    label: 'Business Network',
+    icon: 'diversity_3',
+    defaultKey: 'network-dashboard',
+    items: [
+      { key: 'network-dashboard', label: 'Network Dashboard', icon: 'hub' },
+      { key: 'network-referrals', label: 'My Referrals', icon: 'group_add' },
+      { key: 'network-milestones', label: 'Milestones', icon: 'military_tech' },
+      { key: 'network-discovery', label: 'Discovery Presence', icon: 'travel_explore' },
+    ],
+  },
+  {
     key: 'more',
     label: 'More',
     icon: 'more_horiz',
