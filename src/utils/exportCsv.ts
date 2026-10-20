@@ -21,3 +21,16 @@ export function downloadCsv(filename: string, headers: string[], rows: Array<Arr
   URL.revokeObjectURL(url);
   return rows.length;
 }
+
+/** Saves a file the API returned base64-encoded (analytics and customer exports). */
+export function downloadBase64(filename: string, mimeType: string, base64: string) {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

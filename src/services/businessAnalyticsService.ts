@@ -281,7 +281,26 @@ function mockAnalytics<M extends AnalyticsModule>(module: M, query: AnalyticsQue
   return data[module];
 }
 
+export type ExportModule = 'overview' | 'customers' | 'deals' | 'locations' | 'pos' | 'audit';
+
+export interface AnalyticsExportInput extends AnalyticsQuery {
+  format?: 'csv' | 'pdf';
+  /** Sections to include; the API defaults to all of them. */
+  modules?: ExportModule[];
+}
+
+export interface AnalyticsExportFile {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
+  sizeBytes?: number;
+  records?: number;
+}
+
 export const businessAnalyticsService = {
+  /** `POST /business-analytics/export` — the report comes back base64-encoded. */
+  export: (input: AnalyticsExportInput) => api.post<AnalyticsExportFile>('/business-analytics/export', input),
+
   get: <M extends AnalyticsModule>(module: M, query: AnalyticsQuery) =>
     withMock(
       () => api.get<AnalyticsByModule[M]>(`/business-analytics/${module}`, { params: { ...query } }),

@@ -7,6 +7,7 @@ import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { businessCustomersService, type CustomerSegment, type CustomerSort } from '../../services/businessCustomersService';
 import { toPrice } from '../../services/catalogueItemsService';
 import { apiErrorMessage } from '../../services/errorMessages';
+import { downloadBase64 } from '../../utils/exportCsv';
 import { formatNaira, formatRelativeTime } from '../../utils/format';
 
 const SEGMENT_TONE: Record<string, string> = {
@@ -18,16 +19,6 @@ const SEGMENT_TONE: Record<string, string> = {
 };
 
 const money = (value: number | string | null | undefined) => formatNaira(toPrice(value ?? undefined) ?? 0);
-
-function downloadBase64(filename: string, mimeType: string, base64: string) {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Live customer directory (`/business-customers`) for the active branch. */
 export function CustomersPanel({ onOpenCustomer }: { onOpenCustomer: (userId: string) => void }) {

@@ -185,6 +185,13 @@ import {
   LiveCustomersScreen,
 } from './scripts/LiveCustomersScreens';
 import {
+  DesktopLiveAnalyticsExportScreen,
+  DesktopLiveAnalyticsScreen,
+  LiveAnalyticsExportScreen,
+  LiveAnalyticsScreen,
+} from './scripts/LiveAnalyticsScreens';
+import type { IntelligenceTab } from './components/business/IntelligencePanel';
+import {
   DesktopLiveBoostHubScreen,
   DesktopLiveBoostStudioScreen,
   DesktopLiveLoyaltyScreen,
@@ -1612,6 +1619,14 @@ function AppInner() {
       setRoute('business-overview');
     }
   };
+
+  /** Live analytics: one page per area; its chips switch area and period. */
+  const liveAnalytics = (tab: IntelligenceTab) =>
+    isDesktop ? (
+      <DesktopLiveAnalyticsScreen tab={tab} onNav={businessPortalNav} onExport={() => setRoute('analytics-export')} />
+    ) : (
+      <LiveAnalyticsScreen tab={tab} onBack={() => setRoute('business-hub')} onExport={() => setRoute('analytics-export')} />
+    );
 
   const businessTab = (key: BusinessTabKey) => {
     switch (key) {
@@ -4196,6 +4211,7 @@ function AppInner() {
       return <BusinessLoyaltyRewardsScreen onBack={() => setRoute('hub-loyalty')} />;
 
     case 'analytics-overview':
+      if (hasApiConfig()) return liveAnalytics('business');
       if (isDesktop) return <DesktopAnalyticsBusinessScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4208,6 +4224,7 @@ function AppInner() {
       );
 
     case 'analytics-audience':
+      if (hasApiConfig()) return liveAnalytics('customers');
       if (isDesktop) return <DesktopAnalyticsCustomersScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4220,6 +4237,7 @@ function AppInner() {
       );
 
     case 'analytics-branches':
+      if (hasApiConfig()) return liveAnalytics('locations');
       if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4228,6 +4246,7 @@ function AppInner() {
       );
 
     case 'analytics-business':
+      if (hasApiConfig()) return liveAnalytics('business');
       if (isDesktop) return <DesktopAnalyticsBusinessScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4241,6 +4260,7 @@ function AppInner() {
       );
 
     case 'analytics-customers':
+      if (hasApiConfig()) return liveAnalytics('customers');
       if (isDesktop) return <DesktopAnalyticsCustomersScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4254,6 +4274,7 @@ function AppInner() {
       );
 
     case 'analytics-deals':
+      if (hasApiConfig()) return liveAnalytics('deals');
       if (isDesktop)
         return (
           <DesktopAnalyticsDealsScreen
@@ -4277,6 +4298,7 @@ function AppInner() {
       );
 
     case 'analytics-locations':
+      if (hasApiConfig()) return liveAnalytics('locations');
       if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4291,6 +4313,7 @@ function AppInner() {
       );
 
     case 'analytics-pos':
+      if (hasApiConfig()) return liveAnalytics('pos');
       if (isDesktop)
         return (
           <DesktopAnalyticsPosScreen
@@ -4316,6 +4339,12 @@ function AppInner() {
       );
 
     case 'analytics-export':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveAnalyticsExportScreen onNav={businessPortalNav} onBack={goBackToPrevious} />
+        ) : (
+          <LiveAnalyticsExportScreen onBack={goBackToPrevious} />
+        );
       if (isDesktop) return <DesktopAnalyticsExportScreen onNav={businessPortalNav} onBack={goBackToPrevious} />;
       return (
         <div className="biz-flow">
@@ -4324,6 +4353,7 @@ function AppInner() {
       );
 
     case 'analytics-filter':
+      if (hasApiConfig()) return liveAnalytics('business');
       if (isDesktop) return <DesktopAnalyticsFilterScreen onNav={businessPortalNav} onBack={goBackToPrevious} />;
       return (
         <div className="biz-flow">

@@ -512,7 +512,7 @@ function TabBody({ tab, days }: { tab: IntelligenceTab; days: number }) {
 }
 
 /** Vemtap Intelligence: live analytics per area with period comparison and derived insights. */
-export function IntelligencePanel({ initialTab = 'business' }: { initialTab?: IntelligenceTab }) {
+export function IntelligencePanel({ initialTab = 'business', onExport }: { initialTab?: IntelligenceTab; onExport?: () => void }) {
   const [tab, setTab] = useState<IntelligenceTab>(initialTab);
   const [range, setRange] = useState<(typeof RANGES)[number]['key']>('30');
 
@@ -530,6 +530,7 @@ export function IntelligencePanel({ initialTab = 'business' }: { initialTab?: In
             { key: 'pos', label: 'POS' },
           ]}
         />
+        <div className="flex items-center gap-space-xs">
         <div className="flex gap-1 p-1 rounded-lg bg-surface-container-low w-fit" role="radiogroup" aria-label="Date range">
           {RANGES.map((option) => (
             <button
@@ -545,6 +546,12 @@ export function IntelligencePanel({ initialTab = 'business' }: { initialTab?: In
               {option.label}
             </button>
           ))}
+        </div>
+        {onExport ? (
+          <button type="button" onClick={onExport} className="h-10 px-space-sm rounded-lg bg-surface-container font-label-md text-label-md inline-flex items-center gap-1">
+            <Icon name="download" className="text-[18px]" /> Export
+          </button>
+        ) : null}
         </div>
       </div>
       <TabBody tab={tab} days={Number(range)} />
