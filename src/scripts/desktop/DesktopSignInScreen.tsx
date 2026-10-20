@@ -257,14 +257,14 @@ export function DesktopSignInScreen({
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <label className="font-label-md text-label-md text-text-primary" htmlFor="password">
-                      PIN or Password
+                      PIN
                     </label>
                     <a
                       className="font-label-sm text-label-sm text-primary-container hover:underline font-medium"
                       href="#forgot-password"
                       onClick={(event) => event.preventDefault()}
                     >
-                      Forgot?
+                      Forgot PIN?
                     </a>
                   </div>
                   <div className="relative flex items-center">
@@ -280,7 +280,7 @@ export function DesktopSignInScreen({
                       id="password"
                       name="password"
                       maxLength={32}
-                      placeholder="Enter 6-digit PIN or password"
+                      placeholder="Enter 6-digit PIN"
                       required
                       type={showPassword ? 'text' : 'password'}
                     />

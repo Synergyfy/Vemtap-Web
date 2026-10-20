@@ -1336,6 +1336,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'referrals':
+        setRoute('referrals');
+        break;
       case 'account-settings':
         setRoute('account-settings');
         break;
@@ -1409,6 +1412,9 @@ function AppInner() {
         break;
       case 'cart':
         setRoute('cart');
+        break;
+      case 'referrals':
+        setRoute('referrals');
         break;
       case 'account-settings':
         setRoute('account-settings');
@@ -1840,7 +1846,13 @@ function AppInner() {
               setAuthFrom('sign-in');
               setRoute('auth-code');
             }}
-            onBusinessRegister={() => setRoute('business-onboarding')}
+            // BUG: this visitor has not authenticated yet (no email/PIN
+            // entered), so the Merchant Portal entry must collect credentials
+            // first — same gate as "Create an account".
+            onBusinessRegister={() => {
+              setAuthFrom('sign-in');
+              setRoute('auth-code');
+            }}
             onCustomerSignIn={() => {
               signIn();
               setRoute('dashboard');
@@ -1866,7 +1878,12 @@ function AppInner() {
             setAuthFrom('sign-in');
             setRoute('auth-code');
           }}
-          onBusinessRegister={() => setRoute('business-onboarding')}
+          // BUG: unauthenticated visitor — route the business-registration
+          // entry through auth first instead of opening business onboarding.
+          onBusinessRegister={() => {
+            setAuthFrom('sign-in');
+            setRoute('auth-code');
+          }}
           onCustomerSignIn={() => {
             signIn();
             setRoute('dashboard');
@@ -2030,6 +2047,10 @@ function AppInner() {
           onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
           onOpenDeals={() => setRoute('deals')}
           onOpenDeal={() => openDeal('home')}
+          onOpenBusiness={() => {
+            setProfileFrom('home');
+            setRoute('business-profile');
+          }}
           onOpenNotifications={() => setRoute('notifications')}
           onEnroll={() => setRoute('business-onboarding')}
           onAccount={() => setRoute('account')}
@@ -3236,7 +3257,7 @@ function AppInner() {
         // BUG-028: normal registration flow with a fresh Google / email
         // identity — never silently linked to the existing consumer account.
         setBusinessSetupSkipIntro(false);
-        setRoute('sign-in');
+        setRoute('auth-code');
       };
 
       if (showAccountChoice) {
