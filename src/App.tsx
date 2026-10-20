@@ -163,6 +163,8 @@ import { BusinessPosMenuScreen } from './scripts/BusinessPosMenuScreen';
 import { BusinessHubScreen } from './scripts/BusinessHubScreen';
 import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
 import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
+import { BusinessReviewsScreen } from './scripts/BusinessReviewsScreen';
+import { DesktopBusinessReviewsScreen } from './scripts/desktop/DesktopBusinessReviewsScreen';
 import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
 import { DesktopStaffDirectoryScreen } from './scripts/desktop/DesktopStaffDirectoryScreen';
 import { BusinessInviteStaffScreen } from './scripts/BusinessInviteStaffScreen';
@@ -452,6 +454,7 @@ type Route =
   | 'public-pos-cart'
   | 'public-pos-tracking'
   | 'business-more'
+  | 'business-reviews'
   | 'store-ordering-dashboard'
   | 'store-ordering-qr'
   | 'store-ordering-settings'
@@ -621,6 +624,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'public-pos-cart': '/public/pos/cart',
   'public-pos-tracking': '/public/pos/tracking',
   'business-more': '/business/more',
+  'business-reviews': '/business/reviews',
   'cluster-onboarding': '/business/cluster/onboarding',
   'cluster-system': '/business/cluster',
   'store-ordering-dashboard': '/business/store-ordering',
@@ -1628,6 +1632,9 @@ function AppInner() {
         break;
       case 'more-marketing':
         setRoute('boost-hub');
+        break;
+      case 'more-reviews':
+        setRoute('business-reviews');
         break;
       case 'more-subscription':
         // Dashboard subscription & billing — designed for an existing account,
@@ -4674,6 +4681,7 @@ function AppInner() {
           onOpenSupport={() => setRoute('business-support')}
           onOpenSettings={() => setRoute('business-settings')}
           onOpenCluster={() => setRoute('cluster-system')}
+          onNavKey={businessPortalNav}
           onSwitchConsumer={() => setRoute('home')}
           onSignOut={() => {
             signOut();
@@ -4681,6 +4689,10 @@ function AppInner() {
           }}
         />
       );
+
+    case 'business-reviews':
+      if (isDesktop) return <DesktopBusinessReviewsScreen onNav={businessPortalNav} />;
+      return <BusinessReviewsScreen onBack={() => setRoute('business-more')} />;
 
     case 'business-orders':
       if (isDesktop) return <DesktopBusinessOrdersScreen onNav={businessPortalNav} initialView="orders" />;

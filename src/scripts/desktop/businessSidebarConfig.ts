@@ -115,6 +115,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'more-marketing',
     items: [
       { key: 'more-marketing', label: 'Marketing & Growth', icon: 'campaign' },
+      { key: 'more-reviews', label: 'Reviews & Reputation', icon: 'reviews' },
       { key: 'more-analytics', label: 'Analytics', icon: 'query_stats' },
       { key: 'more-subscription', label: 'Subscription & Billing', icon: 'credit_card' },
       { key: 'more-addons', label: 'Add-ons & Credits', icon: 'extension' },

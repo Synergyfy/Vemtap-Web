@@ -18,6 +18,8 @@ interface BusinessMoreScreenProps {
   onOpenSupport: () => void;
   onOpenSettings: () => void;
   onOpenCluster?: () => void;
+  /** Opens a page by its business nav key (same keys as the desktop sidebar). */
+  onNavKey: (key: string) => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
 }
@@ -61,6 +63,7 @@ export function BusinessMoreScreen({
   onOpenSupport,
   onOpenSettings,
   onOpenCluster,
+  onNavKey,
   onSwitchConsumer,
   onSignOut,
 }: BusinessMoreScreenProps) {
@@ -112,6 +115,20 @@ export function BusinessMoreScreen({
           tag: 'HOT',
           tagClass: 'bg-error-container text-on-error-container',
           onClick: onOpenMarketing,
+        },
+      ],
+    },
+    {
+      key: 'reputation',
+      label: 'Reputation',
+      rows: [
+        {
+          key: 'reviews',
+          icon: 'reviews',
+          iconClass: 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
+          title: 'Reviews & Reputation',
+          sub: 'Moderate deal reviews & reply to guests',
+          onClick: () => onNavKey('more-reviews'),
         },
       ],
     },
