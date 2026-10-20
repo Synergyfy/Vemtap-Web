@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useSidebarSections } from '../../hooks/business/useSidebarSections';
 import {
-  BUSINESS_SIDEBAR_SECTIONS,
   resolveSidebarActive,
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
@@ -26,9 +26,11 @@ export function BusinessSidebarRail({
   active = 'overview',
   onSelect,
   headerHeight = '16',
-  sections = BUSINESS_SIDEBAR_SECTIONS,
+  sections: sectionsProp,
   collapsed = false,
 }: BusinessSidebarRailProps) {
+  const liveSections = useSidebarSections();
+  const sections = sectionsProp ?? liveSections;
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
 
   // Sections hidden from the main rail (e.g. Store Front, which moved inside POS).

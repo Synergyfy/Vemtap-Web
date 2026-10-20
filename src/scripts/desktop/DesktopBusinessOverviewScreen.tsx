@@ -44,9 +44,9 @@ export function DesktopBusinessOverviewScreen({
 
   const overview = useOverviewData();
   const stats = overview.stats;
-  // Sample rows are demo-only; live messages arrive with the inbox integration.
+  // Sample rows are demo-only; live mode shows the branch's latest orders and chats.
   const recentOrders = overview.isLive ? overview.recentOrders : RECENT_ORDERS;
-  const recentMessages = overview.isLive ? [] : RECENT_MESSAGES;
+  const recentMessages = overview.isLive ? overview.recentMessages : RECENT_MESSAGES;
 
   const todayStats = [
     {
@@ -290,12 +290,12 @@ export function DesktopBusinessOverviewScreen({
                   </div>
                   <div className="flex flex-col gap-1.5">
                     {!recentMessages.length ? (
-                      <p className="font-caption text-caption text-text-secondary px-1 py-2">Open Messages to see your inbox.</p>
+                      <p className="font-caption text-caption text-text-secondary px-1 py-2">No conversations yet.</p>
                     ) : null}
                     {recentMessages.map((message) => (
                       <button
                         className="flex items-center justify-between gap-2 bg-surface-subtle rounded-lg px-3 py-2 text-left hover:scale-[0.99] active:scale-[0.99] transition-transform"
-                        key={message.name}
+                        key={`${message.name}-${message.time}`}
                         type="button"
                         onClick={onOpenMessages ?? (() => onNav('messages'))}
                       >

@@ -7,6 +7,8 @@ import { formatNaira } from '../../utils/format';
 import { URBAN_BUSINESS } from '../../scripts/businessData';
 import { useBusinessOrders } from './useBusinessOrders';
 import { toPrice } from '../../services/catalogueItemsService';
+import { useInboxThreads } from './useInbox';
+import { personName } from '../../services/businessMessagingService';
 
 export interface OverviewView {
   businessName: string;
@@ -17,6 +19,8 @@ export interface OverviewView {
   insights: { id: string; title: string; message: string }[];
   /** Latest orders (live only), in the overview card's row shape. */
   recentOrders: { id: string; customer: string; amount: string; status: string; statusClass: string }[];
+  /** Latest in-app conversations (live only), in the overview card's row shape. */
+  recentMessages: { id: string; name: string; preview: string; time: string; unread: boolean }[];
   isLive: boolean;
   isLoading: boolean;
 }
@@ -43,6 +47,7 @@ export function useOverviewData(): OverviewView {
   const live = hasApiConfig() && Boolean(activeBranchId);
   const myBusiness = useMyBusiness();
   const orders = useBusinessOrders();
+  const inbox = useInboxThreads('IN_HOUSE');
 
   const dashboard = useQuery({
     queryKey: ['business-dashboard', activeBranchId],
@@ -71,6 +76,7 @@ export function useOverviewData(): OverviewView {
       stats: branch.stats,
       insights: [],
       recentOrders: [],
+      recentMessages: [],
       isLive: false,
       isLoading: false,
     };
@@ -103,6 +109,15 @@ export function useOverviewData(): OverviewView {
         statusClass: status === 'new' ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-secondary',
       };
     }),
+    recentMessages: (inbox.data ?? []).slice(0, 3).map((thread) => ({
+      id: thread.id,
+      name: personName(thread.customer),
+      preview: thread.lastMessageContent || 'New conversation',
+      time: thread.lastActivityAt
+        ? new Date(thread.lastActivityAt).toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' })
+        : '',
+      unread: (thread.branchUnreadCount ?? 0) > 0,
+    })),
     isLive: true,
     isLoading: dashboard.isLoading || pos.isLoading,
   };

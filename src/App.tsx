@@ -192,6 +192,7 @@ import {
 } from './scripts/LiveAnalyticsScreens';
 import type { IntelligenceTab } from './components/business/IntelligencePanel';
 import { DesktopLiveAccountScreen, LiveAccountScreen, type AccountPage } from './scripts/LiveAccountScreens';
+import { DesktopLiveMessagesScreen, LiveMessagesScreen } from './scripts/LiveMessagesScreens';
 import {
   DesktopLiveBoostHubScreen,
   DesktopLiveBoostStudioScreen,
@@ -1562,6 +1563,8 @@ function AppInner() {
   const [boostReturnRoute, setBoostReturnRoute] = useState<Route>('business-overview');
   const [boostItem, setBoostItem] = useState<string | null>(null);
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
+  /** Inbox thread to open on the live Messages page (e.g. from a customer profile). */
+  const [businessThreadId, setBusinessThreadId] = useState<string | null>(null);
 
   const openBoost = (item?: string) => {
     // The Boost Studio always opens inside the dashboard (side menu intact) —
@@ -4153,6 +4156,10 @@ function AppInner() {
 
     case 'hub-customer-profile':
       if (hasApiConfig()) {
+        const openThread = (threadId: string) => {
+          setBusinessThreadId(threadId);
+          setRoute('business-messages');
+        };
         // Only a real customer id opens a dossier; anything else falls back to the directory.
         if (!/^[0-9a-f-]{36}$/i.test(hubCustomerName)) {
           const openCustomer = (userId: string) => setHubCustomerName(userId);
@@ -4163,9 +4170,9 @@ function AppInner() {
           );
         }
         return isDesktop ? (
-          <DesktopLiveCustomerProfileScreen userId={hubCustomerName} onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} />
+          <DesktopLiveCustomerProfileScreen userId={hubCustomerName} onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} onMessage={openThread} />
         ) : (
-          <LiveCustomerProfileScreen userId={hubCustomerName} onBack={() => setRoute('hub-customers')} />
+          <LiveCustomerProfileScreen userId={hubCustomerName} onBack={() => setRoute('hub-customers')} onMessage={openThread} />
         );
       }
       if (isDesktop)
@@ -5096,6 +5103,17 @@ function AppInner() {
       );
 
     case 'business-messages':
+      if (hasApiConfig()) {
+        const openCustomer = (customerId: string) => {
+          setHubCustomerName(customerId);
+          setRoute('hub-customer-profile');
+        };
+        return isDesktop ? (
+          <DesktopLiveMessagesScreen onNav={businessPortalNav} initialThreadId={businessThreadId} onOpenCustomer={openCustomer} />
+        ) : (
+          <LiveMessagesScreen onBack={() => setRoute('business-overview')} initialThreadId={businessThreadId} onOpenCustomer={openCustomer} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopBusinessMessagesWorkspaceScreen

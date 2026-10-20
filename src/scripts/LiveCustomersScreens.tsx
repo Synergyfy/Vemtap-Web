@@ -20,10 +20,10 @@ export function LiveCustomersScreen({ onTab, onOpenCustomer }: { onTab: (tab: Bu
 }
 
 /** Live customer dossier — mobile. */
-export function LiveCustomerProfileScreen({ userId, onBack }: { userId: string; onBack: () => void }) {
+export function LiveCustomerProfileScreen({ userId, onBack, onMessage }: { userId: string; onBack: () => void; onMessage?: (threadId: string) => void }) {
   return (
     <BusinessSubScreen title="Customer" onBack={onBack}>
-      <CustomerDossierPanel userId={userId} />
+      <CustomerDossierPanel userId={userId} onMessage={onMessage} />
     </BusinessSubScreen>
   );
 }
@@ -44,10 +44,20 @@ export function DesktopLiveCustomersScreen({ onNav, onOpenCustomer }: { onNav: (
 }
 
 /** Live customer dossier — desktop. */
-export function DesktopLiveCustomerProfileScreen({ userId, onNav, onBack }: { userId: string; onNav: (key: string) => void; onBack: () => void }) {
+export function DesktopLiveCustomerProfileScreen({
+  userId,
+  onNav,
+  onBack,
+  onMessage,
+}: {
+  userId: string;
+  onNav: (key: string) => void;
+  onBack: () => void;
+  onMessage?: (threadId: string) => void;
+}) {
   return (
     <DesktopBusinessPage activeNav="business-customers" onNav={onNav} crumbs={[{ label: 'Customers', onClick: onBack }, { label: 'Customer' }]} title="Customer profile">
-      <CustomerDossierPanel userId={userId} />
+      <CustomerDossierPanel userId={userId} onMessage={onMessage} />
     </DesktopBusinessPage>
   );
 }

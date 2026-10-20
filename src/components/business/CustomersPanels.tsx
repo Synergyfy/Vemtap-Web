@@ -8,6 +8,7 @@ import { businessCustomersService, type CustomerSegment, type CustomerSort } fro
 import { toPrice } from '../../services/catalogueItemsService';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { downloadBase64 } from '../../utils/exportCsv';
+import { useInboxMutations } from '../../hooks/business/useInbox';
 import { formatNaira, formatRelativeTime } from '../../utils/format';
 
 const SEGMENT_TONE: Record<string, string> = {
@@ -207,7 +208,25 @@ function NoteEditor({ userId, note, tags }: { userId: string; note: string; tags
 }
 
 /** One customer's history with this business and the team's private note. */
-export function CustomerDossierPanel({ userId }: { userId: string }) {
+/** Opens (or reuses) the in-app thread with this customer, then hands its id on. */
+function MessageButton({ userId, onMessage }: { userId: string; onMessage: (threadId: string) => void }) {
+  const { startThread } = useInboxMutations();
+  return (
+    <span className="flex flex-col items-end gap-1 shrink-0">
+      <button
+        type="button"
+        disabled={startThread.isPending}
+        onClick={() => startThread.mutate(userId, { onSuccess: (thread) => onMessage(thread.id) })}
+        className="h-9 px-space-sm rounded-lg bg-primary-container text-on-primary font-label-md text-label-md inline-flex items-center gap-1 disabled:opacity-50"
+      >
+        <Icon name="chat" className="text-[18px]" /> Message
+      </button>
+      {startThread.isError ? <span className="font-caption text-caption text-red-600">{apiErrorMessage(startThread.error)}</span> : null}
+    </span>
+  );
+}
+
+export function CustomerDossierPanel({ userId, onMessage }: { userId: string; onMessage?: (threadId: string) => void }) {
   const dossier = useCustomerDossier(userId);
   if (dossier.isLoading) return <LoadingRows rows={4} label="Loading customer" />;
   if (dossier.isError || !dossier.data) return <ErrorState title="Could not load this customer" error={dossier.error} onRetry={() => dossier.refetch()} />;
@@ -229,6 +248,7 @@ export function CustomerDossierPanel({ userId }: { userId: string }) {
             </span>
           </div>
           <span className={`px-2 py-0.5 rounded-full font-label-sm text-[11px] font-semibold capitalize ${SEGMENT_TONE[c.segment] ?? SEGMENT_TONE.occasional}`}>{c.segment}</span>
+          {onMessage ? <MessageButton userId={userId} onMessage={onMessage} /> : null}
         </section>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-space-sm">
