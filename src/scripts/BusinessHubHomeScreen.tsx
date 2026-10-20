@@ -94,7 +94,8 @@ const MENU_CARDS: {
 
 export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
-  const { branch, branches, switchTo } = useBusinessBranch();
+  // Branch switching lives only in the header's MobileLocationMenu.
+  const { branch } = useBusinessBranch();
 
   const showToast = (message: string) => {
     setToast(message);
@@ -145,31 +146,6 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
               Manage your business, locations, catalogue and customers.
             </p>
-          </div>
-        </div>
-
-        {/* Branch Pill Carousel */}
-        <div className="w-full my-space-sm">
-          <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-1">
-            {branches.map((pillBranch) => {
-              const active = pillBranch.key === branch.key;
-              return (
-                <button
-                  className={`shrink-0 flex items-center gap-space-2xs px-space-md h-9 rounded-full font-label-md text-label-md transition-all active:scale-95 ${
-                    active
-                      ? 'bg-surface-tint-blue text-primary-container font-semibold shadow-sm'
-                      : 'bg-surface-container-low text-text-secondary hover:bg-surface-container'
-                  }`}
-                  key={pillBranch.key}
-                  type="button"
-                  onClick={() => switchTo(pillBranch.key)}
-                >
-                  {active && <Icon name="location_on" filled className="text-[16px]" />}
-                  <span>{pillBranch.shortName} Branch</span>
-                  {active && <Icon name="expand_more" className="text-[14px]" />}
-                </button>
-              );
-            })}
           </div>
         </div>
 

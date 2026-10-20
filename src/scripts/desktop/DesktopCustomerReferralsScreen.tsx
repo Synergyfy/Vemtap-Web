@@ -15,7 +15,7 @@ interface DesktopCustomerReferralsScreenProps {
  */
 export function DesktopCustomerReferralsScreen({ onNav, onBack }: DesktopCustomerReferralsScreenProps) {
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
+    <DesktopPage withHeader withFooter onNav={onNav} activeNav="referrals" withCustomerRail>
       <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-8">
           <nav className="flex flex-wrap items-center gap-2 mb-6 font-label-sm text-label-sm text-text-tertiary">

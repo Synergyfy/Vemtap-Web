@@ -369,7 +369,7 @@ function DealGridCards({ onOpen, onClaim }: { onOpen: () => void; onClaim?: (onC
               Bespoke Tailoring &amp; Custom Fitting
             </h2>
             <div className="flex items-baseline gap-1.5 mb-1">
-              <span className="font-label-md text-[16px] text-text-primary font-bold">₦32,000</span>
+              <span className="font-label-md text-heading-sm text-text-primary font-bold">₦32,000</span>
               <span className="font-caption text-[12px] text-text-tertiary line-through">₦49,000</span>
             </div>
             <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold w-fit mb-2">
@@ -426,7 +426,7 @@ function DealGridCards({ onOpen, onClaim }: { onOpen: () => void; onClaim?: (onC
               Monthly Pass + Personal Trainer
             </h2>
             <div className="flex items-baseline gap-1.5 mb-1">
-              <span className="font-label-md text-[16px] text-text-primary font-bold">₦15,000</span>
+              <span className="font-label-md text-heading-sm text-text-primary font-bold">₦15,000</span>
               <span className="font-caption text-[12px] text-text-tertiary line-through">₦25,000</span>
             </div>
             <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold w-fit mb-2">
@@ -593,7 +593,7 @@ export function DealsScreen({
                   </h2>
                   <div className="flex items-baseline justify-between mb-2.5">
                     <div className="flex items-baseline gap-2">
-                      <span className="font-heading-md text-[22px] text-text-primary font-bold">₦22,500</span>
+                      <span className="font-heading-md text-heading-md text-text-primary font-bold">₦22,500</span>
                       <span className="font-body-md text-body-md text-text-tertiary line-through">₦45,000</span>
                       <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
                         Save ₦22,500
