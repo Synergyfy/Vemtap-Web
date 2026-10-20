@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBusinessProfileForm, type BusinessProfileForm } from '../../hooks/business/useBusinessProfileForm';
+import { apiErrorMessage } from '../../services/errorMessages';
 import { Icon } from '../../components/ui/Icon';
 import { SocialChannelPicker } from '../../components/SocialChannelPicker';
 import {
@@ -324,7 +325,7 @@ export function DesktopBusinessProfileStorefrontScreen({
         {profile.save.isError || profile.loadError ? (
           <div role="alert" className="w-full p-space-md rounded-xl bg-error-container text-on-error-container font-label-md text-label-md">
             {profile.save.isError
-              ? `Could not save your profile: ${(profile.save.error as Error).message}`
+              ? `Could not save your profile: ${apiErrorMessage(profile.save.error)}`
               : `Could not load your business profile: ${(profile.loadError as Error).message}`}
           </div>
         ) : null}

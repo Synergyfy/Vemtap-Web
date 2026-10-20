@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { useBusinessProfileForm } from '../hooks/business/useBusinessProfileForm';
 import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
 
 interface BusinessProfileManageScreenProps {
   onBack: () => void;
@@ -71,7 +72,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
       { ...profile.form, amenities },
       {
         onSuccess: () => showToast('Profile & amenities updated successfully!'),
-        onError: (error) => showToast(`Could not save: ${(error as Error).message}`),
+        onError: (error) => showToast(`Could not save: ${apiErrorMessage(error)}`),
       },
     );
   };

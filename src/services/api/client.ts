@@ -222,3 +222,27 @@ export const api = {
 
 export const getApiBaseUrl = () => API_BASE_URL;
 export const hasApiConfig = () => Boolean(API_BASE_URL);
+
+/**
+ * Multipart upload (`field` defaults to `file`). Same auth and error handling
+ * as `request`, but the browser sets the multipart boundary header itself.
+ */
+export async function uploadFile<TResponse>(path: string, file: File, field = 'file'): Promise<TResponse> {
+  if (!API_BASE_URL) throw new Error('API is not configured. Set VITE_API_BASE_URL in your environment.');
+  const form = new FormData();
+  form.append(field, file, file.name);
+  const headers: Record<string, string> = {};
+  const accessToken = getAccessToken();
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(buildUrl(path), { method: 'POST', headers, body: form });
+  const payload = response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthTokens();
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
+    const message = payload && typeof payload === 'object' ? (payload as { message?: unknown }).message : payload;
+    throw new ApiError(Array.isArray(message) ? message.join('. ') : String(message || `Upload failed with status ${response.status}`), response.status, payload);
+  }
+  return payload as TResponse;
+}

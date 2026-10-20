@@ -271,7 +271,7 @@ export function DesktopBusinessOnboardingScreen({
         <DesktopBusinessProfileBrandingScreen
           draft={draft}
           onBack={() => setStep('basic')}
-          onNext={() => setStep('contact')}
+          onNext={(branding) => sync.saveBranding(branding, () => setStep('contact'))}
           onSaveDraft={onBack}
         />
       );

@@ -5,6 +5,7 @@ import { businessService, type MyBusiness } from '../../services/businessService
 import { useBusinessCategoryOptions } from './useBusinessCategoryOptions';
 import { myBusinessKeys } from './useMyBusiness';
 import { BUSINESS_CATEGORIES } from '../../scripts/businessOnboardingSeed';
+import { apiErrorMessage } from '../../services/errorMessages';
 
 /** The setup draft fields both onboarding screens share. */
 export interface OnboardingProfileDraft {
@@ -46,7 +47,7 @@ export function useOnboardingSync() {
     setError(null);
     save()
       .then(next)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not save this step. Please try again.'))
+      .catch((e: unknown) => setError(apiErrorMessage(e, 'Could not save this step. Please try again.')))
       .finally(() => setSaving(false));
   };
 
@@ -80,6 +81,16 @@ export function useOnboardingSync() {
     clearError: () => setError(null),
     saveBasic: (draft: OnboardingProfileDraft, next: () => void) => saveThen(() => patch(basicUpdate(draft)), next),
     saveContact: (draft: OnboardingProfileDraft, next: () => void) => saveThen(() => patch(contactUpdate(draft)), next),
+    saveBranding: (branding: { logoUrl?: string; coverImage?: string; gallery: string[] }, next: () => void) =>
+      saveThen(
+        () =>
+          patch({
+            ...(branding.logoUrl ? { logoUrl: branding.logoUrl } : {}),
+            ...(branding.coverImage ? { coverImage: branding.coverImage } : {}),
+            ...(branding.gallery.length ? { gallery: branding.gallery } : {}),
+          }),
+        next,
+      ),
     saveLocation: (location: { address?: string; city?: string; state?: string; latitude?: number; longitude?: number }, next: () => void) =>
       saveThen(() => patch(location), next),
   };

@@ -323,7 +323,7 @@ export function BusinessOnboardingScreen({
         <BusinessProfileBrandingScreen
           draft={draft}
           onBack={() => setStepIndex(1)}
-          onNext={() => setStepIndex(3)}
+          onNext={(branding) => sync.saveBranding(branding, () => setStepIndex(3))}
           onSaveDraft={onBack}
         />
       );
