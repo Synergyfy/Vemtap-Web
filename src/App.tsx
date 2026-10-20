@@ -3236,7 +3236,7 @@ function AppInner() {
         // BUG-028: normal registration flow with a fresh Google / email
         // identity — never silently linked to the existing consumer account.
         setBusinessSetupSkipIntro(false);
-        setRoute('sign-in');
+        setRoute('auth-code');
       };
 
       if (showAccountChoice) {
