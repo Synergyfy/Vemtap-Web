@@ -169,6 +169,8 @@ import { BusinessDealLedgerScreen } from './scripts/BusinessDealLedgerScreen';
 import { DesktopBusinessDealLedgerScreen } from './scripts/desktop/DesktopBusinessDealLedgerScreen';
 import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
 import { BusinessCategoriesScreen } from './scripts/BusinessCategoriesScreen';
+import { BusinessIntelligenceScreen } from './scripts/BusinessIntelligenceScreen';
+import { DesktopBusinessIntelligenceScreen } from './scripts/desktop/DesktopBusinessIntelligenceScreen';
 import {
   BusinessDiscoveryPresenceScreen,
   BusinessNetworkDashboardScreen,
@@ -480,6 +482,7 @@ type Route =
   | 'business-deal-ledger'
   | 'pos-taxes'
   | 'business-categories'
+  | 'analytics-intelligence'
   | 'network-dashboard'
   | 'network-milestones'
   | 'network-referrals'
@@ -659,6 +662,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-deal-ledger': '/business/deals/ledger',
   'pos-taxes': '/pos/settings/taxes',
   'business-categories': '/business/hub/catalog/categories',
+  'analytics-intelligence': '/business/analytics/intelligence',
   'network-dashboard': '/business/network',
   'network-milestones': '/business/network/milestones',
   'network-referrals': '/business/network/referrals',
@@ -1646,6 +1650,9 @@ function AppInner() {
         break;
       case 'business-categories':
         setRoute('business-categories');
+        break;
+      case 'more-intelligence':
+        setRoute('analytics-intelligence');
         break;
       case 'network':
       case 'network-dashboard':
@@ -4745,6 +4752,10 @@ function AppInner() {
     case 'network-discovery':
       if (isDesktop) return <DesktopBusinessDiscoveryPresenceScreen onNav={businessPortalNav} />;
       return <BusinessDiscoveryPresenceScreen onBack={() => setRoute('network-dashboard')} />;
+
+    case 'analytics-intelligence':
+      if (isDesktop) return <DesktopBusinessIntelligenceScreen onNav={businessPortalNav} />;
+      return <BusinessIntelligenceScreen onBack={() => setRoute('business-more')} />;
 
     case 'business-categories':
       if (isDesktop) return <DesktopBusinessCategoriesScreen onNav={businessPortalNav} />;

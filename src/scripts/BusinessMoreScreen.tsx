@@ -190,6 +190,13 @@ export function BusinessMoreScreen({
           sub: 'Revenue, sales reports & customer metrics',
           onClick: onOpenAnalytics,
         },
+        {
+          key: 'intelligence',
+          icon: 'auto_awesome',
+          title: 'Vemtap Intelligence',
+          sub: 'Live trends, comparisons & what to act on',
+          onClick: () => onNavKey('more-intelligence'),
+        },
       ],
     },
     {
