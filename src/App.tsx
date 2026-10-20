@@ -179,6 +179,12 @@ import { BusinessCampaignWizardScreen } from './scripts/BusinessCampaignWizardSc
 import { DesktopCampaignWizardScreen } from './scripts/desktop/DesktopCampaignWizardScreen';
 import { DesktopBusinessIntelligenceScreen } from './scripts/desktop/DesktopBusinessIntelligenceScreen';
 import {
+  DesktopLiveCustomerProfileScreen,
+  DesktopLiveCustomersScreen,
+  LiveCustomerProfileScreen,
+  LiveCustomersScreen,
+} from './scripts/LiveCustomersScreens';
+import {
   BusinessDiscoveryPresenceScreen,
   BusinessNetworkDashboardScreen,
   BusinessNetworkMilestonesScreen,
@@ -3955,6 +3961,18 @@ function AppInner() {
       );
 
     case 'hub-customers':
+      // Live: the real directory; the selected customer's id rides in hubCustomerName.
+      if (hasApiConfig()) {
+        const openCustomer = (userId: string) => {
+          setHubCustomerName(userId);
+          setRoute('hub-customer-profile');
+        };
+        return isDesktop ? (
+          <DesktopLiveCustomersScreen onNav={businessPortalNav} onOpenCustomer={openCustomer} />
+        ) : (
+          <LiveCustomersScreen onTab={businessTab} onOpenCustomer={openCustomer} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopBusinessCustomersScreen
@@ -4053,6 +4071,22 @@ function AppInner() {
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-customer-profile':
+      if (hasApiConfig()) {
+        // Only a real customer id opens a dossier; anything else falls back to the directory.
+        if (!/^[0-9a-f-]{36}$/i.test(hubCustomerName)) {
+          const openCustomer = (userId: string) => setHubCustomerName(userId);
+          return isDesktop ? (
+            <DesktopLiveCustomersScreen onNav={businessPortalNav} onOpenCustomer={openCustomer} />
+          ) : (
+            <LiveCustomersScreen onTab={businessTab} onOpenCustomer={openCustomer} />
+          );
+        }
+        return isDesktop ? (
+          <DesktopLiveCustomerProfileScreen userId={hubCustomerName} onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} />
+        ) : (
+          <LiveCustomerProfileScreen userId={hubCustomerName} onBack={() => setRoute('hub-customers')} />
+        );
+      }
       if (isDesktop)
         return <DesktopCustomerProfileScreen onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} />;
       return (
