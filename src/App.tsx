@@ -184,7 +184,18 @@ import {
   LiveCustomerProfileScreen,
   LiveCustomersScreen,
 } from './scripts/LiveCustomersScreens';
-import { DesktopLiveLoyaltyScreen, DesktopLiveSegmentsScreen, LiveLoyaltyScreen, LiveSegmentsScreen } from './scripts/LiveGrowthScreens';
+import {
+  DesktopLiveBoostHubScreen,
+  DesktopLiveBoostStudioScreen,
+  DesktopLiveLoyaltyScreen,
+  DesktopLiveSegmentsScreen,
+  DesktopLiveWalletScreen,
+  LiveBoostHubScreen,
+  LiveBoostStudioScreen,
+  LiveLoyaltyScreen,
+  LiveSegmentsScreen,
+  LiveWalletScreen,
+} from './scripts/LiveGrowthScreens';
 import {
   BusinessDiscoveryPresenceScreen,
   BusinessNetworkDashboardScreen,
@@ -3568,6 +3579,18 @@ function AppInner() {
       );
 
     case 'boost-hub':
+      if (hasApiConfig()) {
+        const growthNav = {
+          onBoost: () => openBoost(),
+          onCreateCampaign: () => setRoute('campaign-create'),
+          onOpenWallet: () => setRoute('boost-wallet'),
+        };
+        return isDesktop ? (
+          <DesktopLiveBoostHubScreen onNav={businessPortalNav} {...growthNav} />
+        ) : (
+          <LiveBoostHubScreen onBack={() => setRoute('business-more')} onTab={boostTab} {...growthNav} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopBoostHubScreen
@@ -3596,6 +3619,17 @@ function AppInner() {
     case 'boost-studio':
       // Boost Studio lives at /boost-hub/studio — inside the business dashboard
       // with the side menu still on screen (not the onboarding shell).
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBoostStudioScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute('boost-hub')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+          />
+        ) : (
+          <LiveBoostStudioScreen onBack={() => setRoute(boostReturnRoute)} onDone={() => setRoute('boost-hub')} onOpenWallet={() => setRoute('boost-wallet')} />
+        );
       if (isDesktop)
         return (
           <BusinessBoostScreen
@@ -3629,6 +3663,12 @@ function AppInner() {
       );
 
     case 'boost-wallet':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveWalletScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} />
+        ) : (
+          <LiveWalletScreen onBack={() => setRoute('boost-hub')} onTab={boostTab} />
+        );
       if (isDesktop)
         return <DesktopBoostWalletScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
       return (

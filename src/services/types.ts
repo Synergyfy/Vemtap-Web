@@ -164,8 +164,12 @@ export interface BoostGoalOption {
 export interface AdWalletTransaction {
   id: string;
   type: string;
-  amount: number;
-  status: string;
+  amount: number | string;
+  direction?: 'credit' | 'debit' | 'adjustment';
+  description?: string | null;
+  reference?: string | null;
+  /** Older mock rows only; the API has no per-row status. */
+  status?: string;
   createdAt: string;
 }
 
@@ -174,10 +178,36 @@ export interface AdWalletSummary {
   reserved: number;
   spendable: number;
   walletRef?: string;
+  currency?: string;
+  card?: { brand?: string | null; last4?: string | null; bank?: string | null } | null;
+  autoReload?: { enabled: boolean; threshold: number | string; amount: number | string; lastError?: string | null } | null;
   virtualAccount?: {
     bank: string;
     number: string;
   };
+}
+
+export interface AdWalletPrepack {
+  id: string;
+  amount: number | string;
+  bonus: number | string;
+  label: string;
+  tier?: string | null;
+}
+
+export interface AdWalletInvoice {
+  id: string;
+  invoiceNo?: string | null;
+  amount: number | string;
+  status: string;
+  date: string;
+  campaign?: { id: string; name?: string | null; kind: string } | null;
+}
+
+export interface AdWalletPage<T> {
+  data: T[];
+  total: number;
+  hasNextPage: boolean;
 }
 
 export interface ApiListResponse<T> {
