@@ -134,7 +134,28 @@ const readNumericCount = (payload: unknown): number => {
   return 0;
 };
 
+/** One row of the venue-wide feed (`GET /notifications/business`). */
+export interface BusinessNotification {
+  id: string;
+  title: string;
+  message: string;
+  type?: string | null;
+  isRead?: boolean | null;
+  createdAt?: string | null;
+  actionUrl?: string | null;
+}
+
+export interface BusinessNotificationPage {
+  data: BusinessNotification[];
+  total?: number | null;
+  unreadCount?: number | null;
+}
+
 export const notificationService = {
+  /** Everything that happened at the business, whoever it was addressed to. */
+  businessFeed: async (params?: { page?: number; limit?: number }) =>
+    api.get<BusinessNotificationPage>('/notifications/business', { params }),
+
   list: async (params?: Record<string, string | number | boolean | undefined>) => {
     const response = await api.get<unknown>('/notifications', { params });
     return normalizeNotificationList(response);

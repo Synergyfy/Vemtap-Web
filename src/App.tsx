@@ -191,6 +191,7 @@ import {
   LiveAnalyticsScreen,
 } from './scripts/LiveAnalyticsScreens';
 import type { IntelligenceTab } from './components/business/IntelligencePanel';
+import { DesktopLiveAccountScreen, LiveAccountScreen, type AccountPage } from './scripts/LiveAccountScreens';
 import {
   DesktopLiveBoostHubScreen,
   DesktopLiveBoostStudioScreen,
@@ -1627,6 +1628,20 @@ function AppInner() {
     ) : (
       <LiveAnalyticsScreen tab={tab} onBack={() => setRoute('business-hub')} onExport={() => setRoute('analytics-export')} />
     );
+
+  /** Live subscription, add-ons, notifications and support pages. */
+  const liveAccount = (page: AccountPage) => {
+    const openLink = (actionUrl: string) => {
+      if (actionUrl.startsWith('/orders')) setRoute('business-orders');
+      else if (actionUrl.startsWith('/bookings')) setRoute('business-bookings');
+      else if (actionUrl.includes('review')) setRoute('business-reviews');
+    };
+    return isDesktop ? (
+      <DesktopLiveAccountScreen page={page} onNav={businessPortalNav} onOpenLink={openLink} />
+    ) : (
+      <LiveAccountScreen page={page} onBack={() => setRoute('business-more')} onOpenLink={openLink} />
+    );
+  };
 
   const businessTab = (key: BusinessTabKey) => {
     switch (key) {
@@ -3789,6 +3804,7 @@ function AppInner() {
       // Dashboard add-ons & credits — for an existing account, inside the business
       // portal chrome. The onboarding add-ons flow (route 'subscription', step
       // 'addons') remains for the setup journey only.
+      if (hasApiConfig()) return liveAccount('addons');
       if (isDesktop) return <DesktopMoreAddOnsScreen onNav={businessPortalNav} />;
       return (
         <SubscriptionScreen
@@ -3802,6 +3818,7 @@ function AppInner() {
     case 'business-notifications':
       // Dashboard notifications — account-holder feed inside the business
       // portal (the consumer route 'notifications' keeps its own chrome).
+      if (hasApiConfig()) return liveAccount('notifications');
       if (isDesktop) return <DesktopBusinessNotificationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -3826,6 +3843,7 @@ function AppInner() {
     case 'business-support':
       // Dashboard Help & Support — merchant help inside the portal, not the
       // public consumer help centre (routes 'help' / 'support').
+      if (hasApiConfig()) return liveAccount('support');
       if (isDesktop) return <DesktopBusinessHelpSupportScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -3868,6 +3886,7 @@ function AppInner() {
     case 'business-subscription':
       // Dashboard subscription & billing — for an existing account, inside the
       // business portal chrome (not the onboarding SubscriptionChrome).
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop) return <DesktopMoreSubscriptionScreen onNav={businessPortalNav} />;
       return (
         <SubscriptionScreen
