@@ -39,7 +39,7 @@ type OrderRow = {
 
 const ROWS: OrderRow[] = [];
 
-export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBooking: _onOpenBooking }: DesktopOrdersScreenProps) {
+export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpenBooking }: DesktopOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [merchant, setMerchant] = useState('all');
@@ -289,6 +289,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                 <p className="font-body-md text-body-md text-text-secondary max-w-md mx-auto leading-relaxed">
                   Your real order history and appointments will appear here once the backend starts returning records.
                 </p>
+              </div>
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -374,7 +375,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder: _onOpenOrder, onOpenBo
                           <td className="py-4 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={() => onOpenOrder(row.orderId.split(' ')[0].replace(/^#/, '').trim())}
+                                onClick={() => onOpenOrder?.(row.orderId.split(' ')[0].replace(/^#/, '').trim())}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold transition-colors"
                                 type="button"
                               >

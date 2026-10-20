@@ -174,7 +174,20 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
   const [autoReload, setAutoReload] = useState(true);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [walletSummary, setWalletSummary] = useState<AdWalletSummary>(DEFAULT_WALLET_SUMMARY);
+  const [ledger, setLedger] = useState(LEDGER);
+  const [entryStatus, setEntryStatus] = useState('');
   const timers = useRef<number[]>([]);
+
+  const statusChoices = [
+    { value: '', label: 'All entries' },
+    ...Array.from(new Set(ledger.map((entry) => entry.status))).map((status) => ({
+      value: status,
+      label: status,
+    })),
+  ];
+
+  const visibleLedger = entryStatus === '' ? ledger : ledger.filter((entry) => entry.status === entryStatus);
 
   useEffect(() => {
     if (!hasApiConfig()) return;

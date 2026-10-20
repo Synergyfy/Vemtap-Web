@@ -174,14 +174,14 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
   // entry type the history does not actually hold.
   const statusChoices = [
     { value: '', label: 'All entries' },
-    ...Array.from(new Set(LEDGER.map((entry) => entry.status))).map((status) => ({
+    ...Array.from(new Set(ledger.map((entry) => entry.status))).map((status) => ({
       value: status,
       label: status,
     })),
   ];
 
   const visibleLedger =
-    entryStatus === '' ? LEDGER : LEDGER.filter((entry) => entry.status === entryStatus);
+    entryStatus === '' ? ledger : ledger.filter((entry) => entry.status === entryStatus);
   const timers = useRef<number[]>([]);
 
   useEffect(() => {
@@ -607,7 +607,6 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
               />
             </div>
             <div className="flex flex-col gap-2">
-              {ledger.map((entry) => (
               {visibleLedger.map((entry) => (
                 <div
                   className="p-3.5 rounded-xl bg-surface-container-lowest shadow-sm flex items-center justify-between gap-3"
