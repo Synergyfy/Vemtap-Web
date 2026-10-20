@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { DealsPanel } from '../components/business/DealsPanel';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessHubHeader } from './BusinessHubHeader';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MobileAccountMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
@@ -111,6 +114,20 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
   const visibleDeals = DEALS.filter(
     (deal) => search.trim() === '' || deal.name.toLowerCase().includes(search.trim().toLowerCase()),
   );
+
+  // Live: real deals at the active branch; the designed list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <BusinessHubHeader />
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
+          <h1 className="font-heading-md text-heading-md text-text-primary">Deals</h1>
+          <DealsPanel onCreate={onCreateDeal} onBoost={onBoost} />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>

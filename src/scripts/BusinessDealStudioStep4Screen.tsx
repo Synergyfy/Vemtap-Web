@@ -25,6 +25,8 @@ interface BusinessDealStudioStep4ScreenProps {
   onEditRules: () => void;
   onEditLocations: () => void;
   onPublish: () => void;
+  /** Live: publishes for real and resolves with the outcome the modal shows. */
+  livePublish?: () => Promise<DealPublicationResult>;
   onSaveDraft: () => void;
 }
 
@@ -68,6 +70,7 @@ export function BusinessDealStudioStep4Screen({
   onEditRules,
   onEditLocations,
   onPublish,
+  livePublish,
   onSaveDraft,
 }: BusinessDealStudioStep4ScreenProps) {
   const [publication, setPublication] = useState<DealPublicationResult | null>(null);
@@ -117,8 +120,21 @@ export function BusinessDealStudioStep4Screen({
   ];
   const canPublish = readinessErrors.length === 0;
 
+  const [publishing, setPublishing] = useState(false);
   const handlePublish = () => {
-    if (!canPublish || publication) return;
+    if (!canPublish || publication || publishing) return;
+    if (livePublish) {
+      // Live: the modal shows what the API actually did; failures surface in the flow's banner.
+      setPublishing(true);
+      livePublish()
+        .then((result) => {
+          setPublication(result);
+          setShowResult(true);
+        })
+        .catch(() => undefined)
+        .finally(() => setPublishing(false));
+      return;
+    }
     // Render the status the service actually returns — never assume "live".
     const result = publishDeal({ dealTitle: draft.title, studio });
     setPublication(result);

@@ -30,6 +30,8 @@ interface DesktopDealStudioStep4ScreenProps {
   onEditRules: () => void;
   onEditLocations: () => void;
   onPublish: () => void;
+  /** Live: publishes for real and resolves with the outcome the modal shows. */
+  livePublish?: () => Promise<DealPublicationResult>;
   onAnalytics: () => void;
   onSaveDraft: () => void;
   onNav?: (key: string) => void;
@@ -80,6 +82,7 @@ export function DesktopDealStudioStep4Screen({
   onEditRules,
   onEditLocations,
   onPublish,
+  livePublish,
   onAnalytics,
   onSaveDraft,
   onNav,
@@ -114,8 +117,21 @@ export function DesktopDealStudioStep4Screen({
   ];
   const canPublish = readinessErrors.length === 0;
 
+  const [publishing, setPublishing] = useState(false);
   const handlePublish = () => {
-    if (!canPublish) return;
+    if (!canPublish || publishing) return;
+    if (livePublish) {
+      // Live: the modal shows what the API actually did; failures surface in the flow's banner.
+      setPublishing(true);
+      livePublish()
+        .then((result) => {
+          setPublication(result);
+          setShowModal(true);
+        })
+        .catch(() => undefined)
+        .finally(() => setPublishing(false));
+      return;
+    }
     // The status here is whatever the service returns — not an assumption.
     setPublication(publishDeal({ dealTitle: draft.title, studio }));
     setShowModal(true);

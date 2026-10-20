@@ -3936,6 +3936,7 @@ function AppInner() {
             onOpenLogs={() => setRoute('analytics-deals')}
             onOpenPos={() => setRoute('business-pos-orders')}
             onBoost={(dealName) => openBoost(dealName)}
+            onOpenLedger={() => setRoute('business-deal-ledger')}
           />
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
