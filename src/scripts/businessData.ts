@@ -52,7 +52,7 @@ export function resolveBusinessPath(path: string): {
   const business = findBusinessBySlug(slug) ?? {
     slug,
     id: slug,
-    name: 'Selected business',
+    name: 'Business storefront',
     venue: 'urban',
   };
 

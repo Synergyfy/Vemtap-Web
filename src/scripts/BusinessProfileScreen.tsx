@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { hasApiConfig } from '../services/api/client';
 import { catalogueService } from '../services/catalogueService';
+import { findBusinessBySlug } from './businessData';
 import { URBAN_PRODUCTS, naira } from './catalogueData';
 
 export interface BusinessProfileScreenProps {
@@ -49,8 +50,8 @@ const getOfferImage = (offer: Record<string, unknown>): string => {
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
-  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Selected business';
-  return typeof value === 'string' && value.trim() ? value : 'Selected business';
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Business storefront';
+  return typeof value === 'string' && value.trim() ? value : 'Business storefront';
 };
 
 const getOfferTitle = (offer: Record<string, unknown>): string => {
@@ -1089,7 +1090,33 @@ export function BusinessProfileScreen({
     window.setTimeout(() => setLinkCopied(false), 1800);
   };
 
-  const businessName = business?.name?.trim() || (venue === 'spa' ? 'Selected spa business' : 'Selected business');
+  const businessName = business?.name?.trim() || (venue === 'spa' ? 'Spa storefront' : 'Business storefront');
+  const isKnownBusiness = !!business?.slug && !!findBusinessBySlug(business.slug);
+
+  if (business && !isKnownBusiness) {
+    return (
+      <AppScreen>
+        <div className="flex min-h-screen items-center justify-center bg-surface px-margin py-10">
+          <div className="w-full max-w-[420px] rounded-3xl bg-surface-canvas p-6 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-subtle text-primary">
+              <Icon name="storefront" className="text-[32px]" />
+            </div>
+            <h1 className="font-heading-lg text-heading-lg text-text-primary">Storefront unavailable</h1>
+            <p className="mt-3 font-body-md text-body-md text-text-secondary leading-relaxed">
+              This business profile is not available yet. Browse nearby businesses or return to the discover feed.
+            </p>
+            <button
+              type="button"
+              onClick={onBack}
+              className="mt-6 h-11 w-full rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-md active:scale-[0.98] transition-transform"
+            >
+              Back to Discover
+            </button>
+          </div>
+        </div>
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>
