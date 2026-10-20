@@ -67,6 +67,7 @@ import { getMobileThread } from './scripts/messagesData';
 import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
 import { ForgotPinScreen } from './scripts/ForgotPinScreen';
+import { LivenessDoneScreen } from './scripts/LivenessDoneScreen';
 import { DesktopForgotPinScreen } from './scripts/desktop/DesktopForgotPinScreen';
 import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
 import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
@@ -382,6 +383,7 @@ type Route =
   | 'auth-code'
   | 'sign-in'
   | 'forgot-pin'
+  | 'liveness-done'
   | 'verify-email'
   | 'profile-setup'
   | 'location-permission'
@@ -561,6 +563,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'auth-code': '/auth-code',
   'sign-in': '/sign-in',
   'forgot-pin': '/forgot-pin',
+  'liveness-done': '/verification/liveness-done',
   'verify-email': '/verify-email',
   'profile-setup': '/profile-setup',
   'location-permission': '/location-permission',
@@ -1997,6 +2000,9 @@ function AppInner() {
           }}
         />
       );
+
+    case 'liveness-done':
+      return <LivenessDoneScreen />;
 
     case 'forgot-pin':
       if (isDesktop) return <DesktopForgotPinScreen onBack={() => setRoute('sign-in')} />;

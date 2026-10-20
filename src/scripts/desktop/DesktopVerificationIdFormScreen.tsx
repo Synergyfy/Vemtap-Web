@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { useVerificationActions } from '../../hooks/business/useVerification';
 import { Icon } from '../../components/ui/Icon';
-import { ID_TYPE_CONFIG, isFailedVerificationAttempt, type VerificationDraft } from '../verificationDraft';
+import { ID_TYPE_CONFIG, type VerificationDraft } from '../verificationDraft';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
 
 interface DesktopVerificationIdFormScreenProps {
@@ -20,6 +21,9 @@ export function DesktopVerificationIdFormScreen({
 }: DesktopVerificationIdFormScreenProps) {
   const config = ID_TYPE_CONFIG[draft.idType];
   const [submitting, setSubmitting] = useState(false);
+  const [stage, setStage] = useState<'selfie' | 'checking' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const verification = useVerificationActions();
   const [uploaded, setUploaded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const timer = useRef<number | null>(null);
@@ -43,10 +47,19 @@ export function DesktopVerificationIdFormScreen({
   const handleSubmit = () => {
     if (submitting) return;
     setSubmitting(true);
-    timer.current = window.setTimeout(() => {
-      setSubmitting(false);
-      onResult(isFailedVerificationAttempt(raw) ? 'review' : 'success');
-    }, 1600);
+    setError(null);
+    // Called straight from the click so the selfie tab is not popup-blocked.
+    verification
+      .verifyIdentity(
+        { idType: draft.idType, idNumber: raw, legalName: draft.legalName, dateOfBirth: draft.dateOfBirth },
+        setStage,
+      )
+      .then((outcome) => onResult(outcome.result))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Verification failed. Please try again.'))
+      .finally(() => {
+        setSubmitting(false);
+        setStage(null);
+      });
   };
 
   return (
@@ -276,7 +289,7 @@ export function DesktopVerificationIdFormScreen({
                 {submitting ? (
                   <>
                     <Icon name="progress_activity" className="animate-spin text-[20px]" />
-                    <span>{config.loadingLabel}</span>
+                    <span>{stage === 'selfie' ? 'Finish the selfie check in the new tab…' : config.loadingLabel}</span>
                   </>
                 ) : (
                   <>
@@ -286,6 +299,11 @@ export function DesktopVerificationIdFormScreen({
                 )}
               </button>
             </div>
+            {error ? (
+              <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
+                {error}
+              </p>
+            ) : null}
             <div className="flex items-center justify-center gap-space-2xs text-text-tertiary font-caption text-caption pt-space-2xs">
               <Icon name="speed" className="text-[16px] text-badge-discount-text" />
               <span>Instant verification usually takes under 15 seconds.</span>

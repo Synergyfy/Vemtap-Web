@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useVerificationActions } from '../../hooks/business/useVerification';
 import { Icon } from '../../components/ui/Icon';
 import type { CacEntityType, VerificationDraft } from '../verificationDraft';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
@@ -8,6 +9,8 @@ interface DesktopVerificationCacFormScreenProps {
   draft: VerificationDraft;
   onDraftChange: (patch: Partial<VerificationDraft>) => void;
   onVerified: () => void;
+  /** The registry check needs a person to review it; receives readable reasons. */
+  onNeedsReview?: (reasons: string[]) => void;
   onNotIncorporated?: () => void;
   onBrand?: () => void;
 }
@@ -50,10 +53,13 @@ export function DesktopVerificationCacFormScreen({
   draft,
   onDraftChange,
   onVerified,
+  onNeedsReview,
   onNotIncorporated,
   onBrand,
 }: DesktopVerificationCacFormScreenProps) {
   const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const verification = useVerificationActions();
   const [verified, setVerified] = useState(false);
   const [fileName, setFileName] = useState<string | null>('CAC_BN_Certificate.pdf');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -73,13 +79,20 @@ export function DesktopVerificationCacFormScreen({
   const handleVerify = () => {
     if (verifying || verified || !canVerify) return;
     setVerifying(true);
-    timers.current.push(
-      window.setTimeout(() => {
-        setVerifying(false);
+    setError(null);
+    verification
+      .verifyBusiness(draft.entity, draft.cacNumber)
+      .then((outcome) => {
+        if (outcome.result === 'review') {
+          onNeedsReview?.(outcome.reasons);
+          if (!onNeedsReview) setError(outcome.reasons[0] ?? 'Our team needs to review this registration.');
+          return;
+        }
         setVerified(true);
         timers.current.push(window.setTimeout(() => onVerified(), 1000));
-      }, 1400),
-    );
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Verification failed. Please try again.'))
+      .finally(() => setVerifying(false));
   };
 
   return (
@@ -311,6 +324,11 @@ export function DesktopVerificationCacFormScreen({
                 </div>
               </div>
 
+              {error ? (
+                <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
+                  {error}
+                </p>
+              ) : null}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-space-md pt-space-xs">
                 <button
                   className="w-full sm:w-auto px-space-lg py-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-all flex items-center justify-center gap-space-2xs"
