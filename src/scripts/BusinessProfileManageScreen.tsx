@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useBusinessProfileForm } from '../hooks/business/useBusinessProfileForm';
+import { hasApiConfig } from '../services/api/client';
 
 interface BusinessProfileManageScreenProps {
   onBack: () => void;
@@ -35,6 +37,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
   );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const profile = useBusinessProfileForm();
+
+  // Reflect the saved amenities once the profile loads (or after a save).
+  useEffect(() => {
+    if (profile.isLoading || !hasApiConfig()) return;
+    setAmenityState(Object.fromEntries(AMENITIES.map((amenity) => [amenity.key, profile.form.amenities.includes(amenity.label)])));
+  }, [profile.isLoading, profile.form.amenities]);
 
   useEffect(
     () => () => {
@@ -52,9 +61,19 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
   const activeCount = AMENITIES.filter((amenity) => amenityState[amenity.key]).length;
 
   const handleSave = () => {
-    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    setToast('Profile & amenities updated successfully!');
-    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+    // Keep amenities this screen doesn't list (e.g. set on desktop) untouched.
+    const listed = AMENITIES.map((amenity) => amenity.label);
+    const amenities = [
+      ...profile.form.amenities.filter((label) => !listed.includes(label)),
+      ...AMENITIES.filter((amenity) => amenityState[amenity.key]).map((amenity) => amenity.label),
+    ];
+    profile.save.mutate(
+      { ...profile.form, amenities },
+      {
+        onSuccess: () => showToast('Profile & amenities updated successfully!'),
+        onError: (error) => showToast(`Could not save: ${(error as Error).message}`),
+      },
+    );
   };
 
   return (
@@ -151,7 +170,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
         <div className="px-margin flex flex-col gap-space-xs mb-space-lg">
           <div className="flex items-center gap-space-2xs flex-wrap">
             <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold tracking-tight">
-              Urban Grill & Bistro
+              {profile.form.name || 'Your business'}
             </h2>
             <Icon name="verified" filled className="text-primary text-[20px]" />
           </div>
@@ -360,9 +379,10 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
           className="flex-1 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center gap-2 font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:bg-primary-container active:scale-[0.98] transition-all"
           type="button"
           onClick={handleSave}
+          disabled={profile.save.isPending || profile.isLoading}
         >
           <Icon name="check" className="text-[20px]" />
-          <span>Save Changes</span>
+          <span>{profile.save.isPending ? 'Saving…' : 'Save Changes'}</span>
         </button>
       </div>
 
