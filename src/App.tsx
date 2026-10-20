@@ -184,6 +184,7 @@ import {
   LiveCustomerProfileScreen,
   LiveCustomersScreen,
 } from './scripts/LiveCustomersScreens';
+import { DesktopLiveLoyaltyScreen, DesktopLiveSegmentsScreen, LiveLoyaltyScreen, LiveSegmentsScreen } from './scripts/LiveGrowthScreens';
 import {
   BusinessDiscoveryPresenceScreen,
   BusinessNetworkDashboardScreen,
@@ -3637,6 +3638,12 @@ function AppInner() {
       );
 
     case 'segments-hub':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} />
+        ) : (
+          <LiveSegmentsScreen onBack={() => setRoute('boost-hub')} />
+        );
       if (isDesktop)
         return (
           <DesktopSegmentsHubScreen
@@ -4125,6 +4132,8 @@ function AppInner() {
       );
 
     case 'hub-loyalty':
+      if (hasApiConfig())
+        return isDesktop ? <DesktopLiveLoyaltyScreen onNav={businessPortalNav} /> : <LiveLoyaltyScreen onBack={() => businessTab('business')} />;
       if (isDesktop)
         return (
           <DesktopLoyaltyProgrammeScreen
@@ -4135,6 +4144,8 @@ function AppInner() {
       return <BusinessLoyaltyScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />;
 
     case 'hub-loyalty-rewards':
+      if (hasApiConfig())
+        return isDesktop ? <DesktopLiveLoyaltyScreen onNav={businessPortalNav} /> : <LiveLoyaltyScreen onBack={() => businessTab('business')} />;
       if (isDesktop)
         return (
           <DesktopLoyaltyRewardsScreen
