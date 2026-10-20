@@ -1,11 +1,11 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { messageService, type MessageThread } from '../../services/messageService';
 
 interface DesktopMessagesScreenProps {
   onNav: (key: DesktopNavKey) => void;
-  /** BUG-026: open straight into this conversation (e.g. 'glow' for the spa receptionist). */
   initialThread?: string;
 }
 
@@ -78,399 +78,62 @@ interface ChatMessage {
   delivered?: boolean;
 }
 
-const THREADS: Thread[] = [
-  {
-    id: 'urban',
-    name: 'Urban Grill & Bistro',
-    verified: true,
-    time: '10:42 AM',
-    tag: 'Order #UG-9021 • Prime Ribeye',
-    tagClass: 'bg-secondary-fixed text-on-secondary-fixed font-semibold',
-    tagIcon: 'restaurant',
-    preview: 'Hi Zainab! Chef Ibrahim here. We have noted your request for steak sauce on the side...',
-    avatar:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAI--zdhCQDqNIaUAFQUyyScD32B6PaFE8PYNPlwAAEUS3hvyURD_3XYhNE2ZssLu5cp1F51uX9_OJd2-F9zXtPPzyZDGx3PLSijXXJR7o0RYbFx2EPQ0JLA4pWSRlyejuc-I0MP3ps0FVbccbgwEQcsn5vt1_UUrHiJLzrXe_y0tOjDFe9tI_nByQxsEhv4gjxkXD-FKJyK57YQinUWWstMkdrx27HK_zhRFkspQSI',
-    alt: 'Woodfire dining grill interior with warm incandescent lighting and artisanal tables at Urban Grill and Bistro Apo Abuja',
-    unread: true,
-    target: 'storefront',
-    location: 'Plot 14 Apo Boulevard (0.8 km)',
-    replies: '~5 mins',
-    status: 'Kitchen Active • Open until 10:30 PM',
-    statusTone: 'bg-badge-discount-bg text-badge-discount-text font-semibold',
-    callLabel: 'Call Bistro',
-    phone: '+234 803 920 4491',
-    whatsapp: '2348039204491',
-    voucher: 'VT-48F2G1',
-    booking: 'Table #07 • Today 1:00 PM',
-    notice: 'Deal Pass VT-48F2G1 claimed today at 10:30 AM (20% OFF Prime Lunch Combo)',
-    strip: {
-      icon: 'receipt_long',
-      title: 'Order #UG-9021',
-      chip: 'In-Store Dining (Table #07)',
-      price: '₦19,000',
-      items: '1x Woodfire Aged Ribeye Steak, 1x Truffle Parmesan Fries, 1x House Craft Peach Iced Tea',
-      cta: 'View Order Details',
-      nav: 'orders',
-    },
-    dossier: {
-      category: 'Fine Dining & Woodfire Bistro',
-      email: 'reservations@urbangrillapo.com',
-      engagement: {
-        visits: '14',
-        orders: '11',
-        deals: '4',
-        points: '2,450',
-      },
-      telemetry: {
-        avgReply: '1.4 min',
-        hours: '11:00 AM – 10:30 PM',
-        dealRedemption: '100% active',
-        tier: 'Gold Patron',
-        progress: 88,
-      },
-      popularItems: ['Truffle Fries', 'Woodfire Ribeye', 'Peach Iced Tea', 'Charred Salmon'],
-      notes: [
-        { icon: 'table_restaurant', label: 'Preferred Seating', value: 'Patio Table #07' },
-        { icon: 'restaurant_menu', label: 'Dietary', value: 'Steak jus on the side' },
-        { icon: 'local_parking', label: 'Valet', value: 'Complimentary on Apo Blvd' },
-      ],
-    },
-  },
-  {
-    id: 'glow',
-    name: 'Glow & Serenity Spa',
-    verified: true,
-    time: 'Yesterday',
-    tag: 'Upcoming Booking Tomorrow 1:15 PM',
-    tagClass: 'bg-surface-container text-on-surface-variant font-medium',
-    tagIcon: 'event_available',
-    preview: 'Your appointment with Amara K. is confirmed. Complimentary valet parking is available...',
-    avatar:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCvPDiI1HY_kmgTwi-eVu0GLT8lvuFgOzG95QeQsUfatbuVmwj7kwKYeDUbbtr4EETbCZ_ejNMg6uBgyFxG_cn1uFJdwfCGTLAbCrZmd_GUlKdL8a97NwwfSIniiMVcdGRdWhM-IaPabMr2rOnyZ2RBo-cuPE43VbYg3vbAj21b0Y3a8_2y8n0mHkISpOptF2Uwtd6MA-LOZ_IaShQ2R67xbK2Cpn-xuuNmgk7LHQwT',
-    alt: 'Modern organic wellness spa interior with neutral stone textures bamboo accents and calming amber lighting in Apo',
-    unread: true,
-    target: 'spa-storefront',
-    location: '12 Aminu Kano Crescent, Maitama (1.4 km)',
-    replies: '~15 mins',
-    status: 'Spa Desk Active • Open until 8:00 PM',
-    statusTone: 'bg-secondary-container text-on-secondary-container font-semibold',
-    callLabel: 'Call Spa',
-    phone: '+234 803 555 0192',
-    whatsapp: '2348035550192',
-    booking: 'GS-4829 • Tomorrow 1:15 PM',
-    notice: 'Booking confirmed today at 9:15 AM (Weekend Glow Facial & Sauna Detox)',
-    strip: {
-      icon: 'event_available',
-      title: 'Booking GS-4829',
-      chip: 'Tomorrow 1:15 PM • Amara K.',
-      price: '₦12,000',
-      items: '1x Weekend Glow Facial & Sauna Detox Session • Complimentary valet parking',
-      cta: 'View Booking Details',
-      nav: 'orders',
-    },
-    dossier: {
-      category: 'Luxury Wellness & Aesthetics',
-      email: 'concierge@glowserenity.ng',
-      engagement: {
-        visits: '6',
-        orders: '4',
-        deals: '2',
-        points: '1,200',
-      },
-      telemetry: {
-        avgReply: '2.5 min',
-        hours: '9:00 AM – 8:00 PM',
-        dealRedemption: 'Verified',
-        tier: 'Silver Patron',
-        progress: 65,
-      },
-      popularItems: ['Detox Sauna', 'Aromatherapy Facial', 'HydraGlow Peel'],
-      notes: [
-        { icon: 'person', label: 'Primary Therapist', value: 'Amara K.' },
-        { icon: 'schedule', label: 'Check-in', value: 'Arrive 10 mins early' },
-      ],
-    },
-  },
-  {
-    id: 'daily',
-    name: 'The Daily Knead',
-    verified: false,
-    time: 'Oct 09',
-    tag: 'Pickup Order #DK-3312',
-    tagClass: 'bg-secondary-fixed text-on-secondary-fixed font-semibold',
-    tagIcon: 'shopping_bag',
-    preview: 'Your pickup order #DK-3312 is boxed and ready — see you at 4:30 PM!',
-    avatar: '',
-    alt: 'Artisan bakery counter with fresh sourdough loaves and pastries in Abuja',
-    unread: false,
-    location: '5 Adetokunbo Ademola Crescent, Wuse II (1.9 km)',
-    replies: '~20 mins',
-    status: 'Bakery Open • Open until 7:30 PM',
-    statusTone: 'bg-surface-container text-on-surface-variant font-medium',
-    callLabel: 'Call Bakery',
-    phone: '+234 806 555 0166',
-    whatsapp: '2348065550166',
-    notice: 'Pickup order #DK-3312 confirmed today (Sourdough Loaf, Sausage Rolls & Cinnamon Buns)',
-    dossier: {
-      category: 'Artisanal Bakery & Patisserie',
-      email: 'hello@dailyknead.ng',
-      engagement: {
-        visits: '9',
-        orders: '8',
-        deals: '3',
-        points: '890',
-      },
-      telemetry: {
-        avgReply: '4.2 min',
-        hours: '7:30 AM – 7:30 PM',
-        dealRedemption: 'Verified',
-        tier: 'Member',
-        progress: 42,
-      },
-      popularItems: ['Sourdough Loaf', 'Butter Croissants', 'Cinnamon Rolls'],
-      notes: [{ icon: 'inventory', label: 'Packaging', value: 'Eco Kraft paper boxes' }],
-    },
-  },
-  {
-    id: 'cafe',
-    name: 'Cafe Neo Artisanal',
-    verified: false,
-    time: 'Oct 11',
-    tag: 'Cold Brew Voucher VT-8821',
-    tagClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold',
-    tagIcon: 'confirmation_number',
-    preview: 'Thanks for claiming our deal! See you soon.',
-    avatar:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCLSUdPB0S9q1mjfhwPgtg4379_cbmhTQFg9g9abp3Y6hG2OBaihf6eVIs9WhFWXmj7sBanzoKcIFtE35a10aZRZvTx_tIoYqKR8d6Q6dSwhC8hxyOlZ6lwrKmYFLaBP2xXaAOYf7DeQK0IqKpVu86oJpq1DUY9P3n6T5IypYxfPcPVqPnGoZHq64bl3oshzZ1EoLK8o0SGh3WHjBkhAX7vy434_GLxzZPGzF0D-HzL',
-    alt: 'Minimalist specialty coffee roastery bar with pour over equipment and warm timber shelves in Abuja Nigeria',
-    unread: false,
-    location: '5 Adetokunbo Ademola Crescent, Apo (0.5 km)',
-    replies: '~20 mins',
-    status: 'Counter Open • Open until 9:00 PM',
-    statusTone: 'bg-badge-discount-bg text-badge-discount-text font-semibold',
-    callLabel: 'Call Cafe',
-    phone: '+234 806 555 0147',
-    whatsapp: '2348065550147',
-    voucher: 'VT-8821',
-    notice: 'Voucher VT-8821 claimed today at 8:40 AM (BOGO Cold Brew & Warm Almond Pastry)',
-    strip: {
-      icon: 'confirmation_number',
-      title: 'Voucher VT-8821',
-      chip: 'Cold Brew BOGO Free',
-      price: '₦4,500',
-      items: '1x Buy One Get One Cold Brew & Warm Almond Pastry Box',
-      cta: 'View Voucher',
-      nav: 'my-deals',
-    },
-    dossier: {
-      category: 'Specialty Coffee Roasters',
-      email: 'apo@cafeneo.ng',
-      engagement: {
-        visits: '18',
-        orders: '16',
-        deals: '5',
-        points: '3,120',
-      },
-      telemetry: {
-        avgReply: '2.1 min',
-        hours: '7:00 AM – 9:00 PM',
-        dealRedemption: 'Active',
-        tier: 'Platinum Patron',
-        progress: 94,
-      },
-      popularItems: ['Cold Brew', 'Almond Croissant', 'Spanish Latte'],
-      notes: [{ icon: 'coffee', label: 'Roast Preference', value: 'Medium roast Ethiopian beans' }],
-    },
-  },
-  {
-    id: 'sole',
-    name: 'Sole District Boutique',
-    verified: false,
-    time: 'Oct 08',
-    tag: 'Product Inquiry',
-    tagClass: 'bg-surface-container text-on-surface-variant font-medium',
-    tagIcon: 'help',
-    preview: 'Yes, the size 43 in white/navy is currently in stock at our showroom.',
-    avatar:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBe4nIvAQc3cWN_ywPl8fOO7cJuF8r-Xq1ONAi6-sbFDoBeCt4ilOj5FH4wmOoJflcYU3jq42etvP7BKCvIukWqjlc1By9jrNvX11RYDkE8WI-6dQAX2Bn0DZUOBKA3oZwlqR6aKvdGiAJT7-RusyOD4S-vliZBCJvzqT9-DQA9LxeMyVd58kC9gAftk8RdPZHLRjO4eLA4piDL-FbyclUQEqZNLWYzycTt5DCvSGC5',
-    alt: 'Contemporary streetwear boutique showing luxury sneakers illuminated on floating acrylic shelves in Abuja',
-    unread: false,
-    location: '14 Adetokunbo Ademola Crescent, Garki (1.2 km)',
-    replies: '~30 mins',
-    status: 'Showroom Open • Open until 9:00 PM',
-    statusTone: 'bg-surface-container text-on-surface-variant font-medium',
-    callLabel: 'Call Store',
-    phone: '+234 807 555 0193',
-    whatsapp: '2348075550193',
-    dossier: {
-      category: 'Designer Footwear & Streetwear',
-      email: 'sales@soledistrict.ng',
-      engagement: {
-        visits: '4',
-        orders: '2',
-        deals: '1',
-        points: '750',
-      },
-      telemetry: {
-        avgReply: '6.0 min',
-        hours: '10:00 AM – 9:00 PM',
-        dealRedemption: 'Active',
-        tier: 'Member',
-        progress: 35,
-      },
-      popularItems: ['Runner Low Sneaker', 'Cargo Pants', 'Street Hoodie'],
-      notes: [{ icon: 'checkroom', label: 'Size Record', value: 'EU 43 / US 9.5' }],
-    },
-  },
-];
+const SMART_REPLIES = ['Yes, please!', 'On my way now', 'Can I change my time?', 'Table for 2 confirmed'];
 
-const INITIAL_MESSAGES: Record<string, ChatMessage[]> = {
-  urban: [
-    {
-      id: 1,
-      sender: 'merchant',
-      author: 'Urban Grill Front Desk',
-      time: '10:35 AM',
-      body: 'Hello Zainab! Thank you for reserving your lunch combo with us today. Table #07 in our patio garden is prepped for your arrival.',
-      avatar: THREADS[0].avatar,
-      avatarAlt: THREADS[0].alt,
-    },
-    {
-      id: 2,
-      sender: 'you',
-      author: 'You',
-      time: '10:38 AM',
-      body: 'Hi! Thank you. Could we please have the green peppercorn jus served in a separate sauce dish rather than over the ribeye?',
-      delivered: true,
-    },
-    {
-      id: 3,
-      sender: 'merchant',
-      author: 'Chef Ibrahim',
-      time: '10:42 AM',
-      badge: 'Kitchen Lead',
-      body: "Absolutely! We've updated the kitchen ticket notes for Table #07. Our hardwood embers are ready. Let us know when you step into Apo Boulevard!",
-      avatar:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuCB-Xjt2yU9KoW80OqiT5QTHaJF_VRXqkLOMz6gTp2nbol94ih89z50F6yQaAogksU1ejODmqd9RLuHgfJSYliJpthg2Wz5IQNBkzlNe-PIPHaNvlkEgz4V-uu9bQ30CjyqOQHlKR_b3EWXf-MEuLkDv43_3mXLjeMx9ABjik0st2w8NDP0QKiY2K-MCdNAPguYBjF9PjTvdyjEnhRwBE8mgF239kTIlXgKwUES6Zk3',
-      avatarAlt: 'Head Chef Ibrahim wearing spotless white executive chef jacket and apron smiling in restaurant kitchen',
-    },
-  ],
-  glow: [
-    {
-      id: 1,
-      sender: 'merchant',
-      author: 'Glow & Serenity Front Desk',
-      time: '9:02 AM',
-      body: 'Good morning Zainab! Your appointment with Amara K. is confirmed for tomorrow at 1:15 PM. Complimentary valet parking is available at the lobby.',
-      avatar: THREADS[1].avatar,
-      avatarAlt: THREADS[1].alt,
-    },
-    {
-      id: 2,
-      sender: 'you',
-      author: 'You',
-      time: '9:10 AM',
-      body: 'Thank you! Should I arrive 10 minutes early for the skin consultation?',
-      delivered: true,
-    },
-    {
-      id: 3,
-      sender: 'merchant',
-      author: 'Amara K.',
-      time: '9:15 AM',
-      badge: 'Lead Therapist',
-      body: 'Yes, please arrive by 1:00 PM so we can review your skin profile before the session begins. See you tomorrow!',
-      avatar: THREADS[1].avatar,
-      avatarAlt: THREADS[1].alt,
-    },
-  ],
-  daily: [
-    {
-      id: 1,
-      sender: 'merchant',
-      author: 'The Daily Knead',
-      time: '3:40 PM',
-      body: 'Hi Zainab! Your sourdough loaf, sausage rolls, and cinnamon buns are boxed and ready for pickup at our Wuse II bakery.',
-    },
-    {
-      id: 2,
-      sender: 'you',
-      author: 'You',
-      time: '3:46 PM',
-      body: "Great, I'll be there around 4:15 PM. Can you add a pack of butter croissants too?",
-      delivered: true,
-    },
-    {
-      id: 3,
-      sender: 'merchant',
-      author: 'The Daily Knead',
-      time: '3:48 PM',
-      body: 'Done — one pack of butter croissants added. Order #DK-3312 now comes to ₦6,200. See you soon!',
-    },
-  ],
-  cafe: [
-    {
-      id: 1,
-      sender: 'merchant',
-      author: 'Cafe Neo Artisanal',
-      time: '8:40 AM',
-      body: 'Thanks for claiming our deal! See you soon.',
-      avatar: THREADS[3].avatar,
-      avatarAlt: THREADS[3].alt,
-    },
-    {
-      id: 2,
-      sender: 'you',
-      author: 'You',
-      time: '8:44 AM',
-      body: 'Perfect — can I redeem the cold brew voucher tomorrow morning?',
-      delivered: true,
-    },
-    {
-      id: 3,
-      sender: 'merchant',
-      author: 'Cafe Neo Artisanal',
-      time: '8:47 AM',
-      body: 'Absolutely. Just show code VT-8821 at the counter and the second brew is on us. We open at 7:30 AM.',
-      avatar: THREADS[3].avatar,
-      avatarAlt: THREADS[3].alt,
-    },
-  ],
-  sole: [
-    {
-      id: 1,
-      sender: 'you',
-      author: 'You',
-      time: '4:12 PM',
-      body: 'Hi! Do you have the Runner Low in white/navy, size 43?',
-      delivered: true,
-    },
-    {
-      id: 2,
-      sender: 'merchant',
-      author: 'Sole District Boutique',
-      time: '4:35 PM',
-      body: 'Yes, the size 43 in white/navy is currently in stock at our showroom.',
-      avatar: THREADS[4].avatar,
-      avatarAlt: THREADS[4].alt,
-    },
-    {
-      id: 3,
-      sender: 'you',
-      author: 'You',
-      time: '4:38 PM',
-      body: 'Great, I will stop by Saturday afternoon. Can you hold a pair until then?',
-      delivered: true,
-    },
-  ],
-};
+const emptyDossier = (): MerchantDossierData => ({
+  category: 'Business messaging',
+  email: 'support@vemtap.com',
+  engagement: { visits: '0', orders: '0', deals: '0', points: '0' },
+  telemetry: { avgReply: '—', hours: '—', dealRedemption: 'Pending API sync', tier: 'Member', progress: 0 },
+  popularItems: ['No data yet'],
+  notes: [{ icon: 'info', label: 'Status', value: 'Waiting for backend thread data' }],
+});
 
-const SMART_REPLIES = [
-  'Yes, please!',
-  'On my way now',
-  'Can I change my time?',
-  'Table for 2 confirmed',
-];
+const mapThreadToDesktopThread = (thread: MessageThread): Thread => ({
+  id: thread.id,
+  name: thread.name,
+  verified: thread.verified,
+  time: thread.time,
+  tag: thread.tag,
+  tagClass: thread.tagClass,
+  tagIcon: thread.tagIcon,
+  preview: thread.preview,
+  avatar: thread.avatar ?? '',
+  alt: thread.alt ?? thread.name,
+  unread: thread.unread,
+  location: thread.location ?? 'Location pending',
+  replies: '—',
+  status: thread.status ?? 'Active',
+  statusTone: 'bg-surface-container text-on-surface-variant font-medium',
+  callLabel: 'Call',
+  phone: thread.phone ?? '+0000000000',
+  whatsapp: thread.phone ?? '+0000000000',
+  dossier: emptyDossier(),
+  strip: thread.deal
+    ? {
+        icon: 'local_offer',
+        title: thread.deal.title,
+        chip: `Code ${thread.deal.code}`,
+        price: '—',
+        items: thread.deal.title,
+        cta: 'View deal',
+        nav: 'my-deals',
+      }
+    : undefined,
+});
+
+const mapMessages = (thread: MessageThread): ChatMessage[] =>
+  (thread.messages ?? []).map((message, index) => ({
+    id: message.id ?? `msg-${index}`,
+    sender: message.sender === 'you' ? 'you' : 'merchant',
+    author: message.author,
+    time: message.time,
+    body: message.body,
+    badge: message.badge,
+    avatar: message.avatar,
+    avatarAlt: message.avatarAlt,
+    delivered: message.delivered ?? message.sender === 'you',
+  }));
 
 function nowTime(): string {
   const now = new Date();
@@ -491,44 +154,113 @@ function threadInitials(name: string): string {
 }
 
 export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesScreenProps) {
-  const [selectedId, setSelectedId] = useState(
-    () => (initialThread && THREADS.some((thread) => thread.id === initialThread) ? initialThread : 'urban'),
-  );
-  // Consumer only needs 'all' and 'unread' per requirements
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [selectedId, setSelectedId] = useState(initialThread ?? '');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
-  const [typing, setTyping] = useState(true);
+  const [typing, setTyping] = useState(false);
   const [readIds, setReadIds] = useState<string[]>([]);
   const streamRef = useRef<HTMLDivElement>(null);
 
-  const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>(() => {
-    if (initialThread && INITIAL_MESSAGES[initialThread]?.length) return INITIAL_MESSAGES;
-    if (initialThread && INITIAL_MESSAGES[initialThread] === undefined && THREADS.some((t) => t.id === initialThread)) {
-      const thread = THREADS.find((t) => t.id === initialThread);
-      return {
-        ...INITIAL_MESSAGES,
-        [initialThread]: [
-          {
-            id: 'm1',
-            sender: 'merchant',
-            author: thread?.name ?? 'Reception',
-            time: 'Now',
-            body: 'Hello! This is the front desk. How can we help you today?',
-          },
-        ],
-      };
-    }
-    return INITIAL_MESSAGES;
-  });
+  useEffect(() => {
+    let isMounted = true;
 
-  const selected = THREADS.find((thread) => thread.id === selectedId) ?? THREADS[0];
-  const messages = messageStore[selectedId] ?? [];
+    const loadThreads = async () => {
+      try {
+        const nextThreads = await messageService.listThreads();
+        if (!isMounted) return;
+
+        const mapped = nextThreads.map((thread) => mapThreadToDesktopThread(thread));
+        setThreads(mapped);
+        if (mapped.length > 0) {
+          const fallbackId = initialThread && mapped.some((thread) => thread.id === initialThread)
+            ? initialThread
+            : mapped[0].id;
+          setSelectedId(fallbackId);
+        }
+      } catch {
+        if (isMounted) {
+          setThreads([]);
+          setSelectedId('');
+        }
+      }
+    };
+
+    loadThreads();
+    return () => {
+      isMounted = false;
+    };
+  }, [initialThread]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+
+    let isMounted = true;
+
+    const loadSelectedThread = async () => {
+      try {
+        const nextThread = await messageService.getThread(selectedId);
+        if (!isMounted || !nextThread) return;
+        setThreads((current) => {
+          const next = current.length > 0 ? current : [mapThreadToDesktopThread(nextThread)];
+          const exists = next.some((thread) => thread.id === selectedId);
+          if (exists) {
+            return next.map((thread) => (thread.id === selectedId ? mapThreadToDesktopThread(nextThread) : thread));
+          }
+          return [...next, mapThreadToDesktopThread(nextThread)];
+        });
+        setTyping(false);
+      } catch {
+        if (isMounted) setTyping(false);
+      }
+    };
+
+    loadSelectedThread();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedId]);
+
+  const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>({});
+
+  useEffect(() => {
+    if (!selectedId) return;
+
+    let isMounted = true;
+
+    const loadSelectedMessages = async () => {
+      try {
+        const nextThread = await messageService.getThread(selectedId);
+        if (!isMounted) return;
+
+        setMessageStore((current) => ({
+          ...current,
+          [selectedId]: nextThread ? mapMessages(nextThread) : current[selectedId] ?? [],
+        }));
+      } catch {
+        if (isMounted) {
+          setMessageStore((current) => ({
+            ...current,
+            [selectedId]: current[selectedId] ?? [],
+          }));
+        }
+      }
+    };
+
+    loadSelectedMessages();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedId]);
+
+  const selected = threads.find((thread) => thread.id === selectedId) ?? null;
+  const messages = selectedId ? (messageStore[selectedId] ?? []) : [];
 
   const isUnread = (t: Thread) => t.unread && !readIds.includes(t.id);
-  const unreadCount = THREADS.filter(isUnread).length;
+  const unreadCount = threads.filter(isUnread).length;
 
-  const filteredThreads = THREADS.filter((t) => {
+  const filteredThreads = threads.filter((t) => {
     if (filter === 'unread' && !isUnread(t)) return false;
     if (search && !t.name.toLowerCase().includes(search.toLowerCase()) && !t.preview.toLowerCase().includes(search.toLowerCase())) {
       return false;
@@ -538,16 +270,17 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
   const handleSelectThread = (id: string) => {
     setSelectedId(id);
-    setTyping(id === 'urban' || id === 'glow');
+    setTyping(false);
     if (!readIds.includes(id)) {
       setReadIds((prev) => [...prev, id]);
     }
     setDraft('');
   };
 
-  const sendMessage = (text: string) => {
+  const sendMessage = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || !selectedId) return;
+
     const msg: ChatMessage = {
       id: `m${Date.now()}`,
       sender: 'you',
@@ -556,39 +289,58 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
       body: trimmed,
       delivered: true,
     };
+
     setMessageStore((prev) => ({
       ...prev,
       [selectedId]: [...(prev[selectedId] ?? []), msg],
     }));
     setDraft('');
     setTyping(false);
+
+    try {
+      await messageService.sendReply(selectedId, trimmed);
+    } catch {
+      setMessageStore((prev) => ({
+        ...prev,
+        [selectedId]: [...(prev[selectedId] ?? []), { ...msg, id: `m${Date.now()}-retry`, body: `${msg.body} (pending sync)` }],
+      }));
+    }
+
     window.setTimeout(() => streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }), 50);
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    sendMessage(draft);
+    void sendMessage(draft);
   };
 
   const quickAttach = (kind: 'voucher' | 'booking' | 'location') => {
     if (kind === 'voucher') {
-      sendMessage(
-        selected.voucher
-          ? `Attached Deal Pass ${selected.voucher} for this order.`
-          : 'Attached active deal voucher for redemption.',
-      );
+      void sendMessage(selected?.voucher ? `Attached Deal Pass ${selected.voucher} for this order.` : 'Attached active deal voucher for redemption.');
       return;
     }
     if (kind === 'booking') {
-      sendMessage(
-        selected.booking
-          ? `Booking reference ${selected.booking} shared with you.`
-          : 'I would like to reference my upcoming reservation.',
-      );
+      void sendMessage(selected?.booking ? `Booking reference ${selected.booking} shared with you.` : 'I would like to reference my upcoming reservation.');
       return;
     }
-    sendMessage('Location pin shared: Apo, Abuja (Within 2 km).');
+    void sendMessage('Location pin shared: Apo, Abuja (Within 2 km).');
   };
+
+  if (!selected) {
+    return (
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="messages" withCustomerRail>
+        <div className="w-full bg-background p-space-xl">
+          <div className="mx-auto max-w-xl rounded-2xl border border-border bg-surface p-space-lg text-center shadow-sm">
+            <Icon name="forum" className="mx-auto mb-space-sm text-[42px] text-text-tertiary" />
+            <h1 className="font-heading-lg text-heading-lg text-on-surface">No live conversations</h1>
+            <p className="mt-space-sm font-body-md text-body-md text-on-surface-variant">
+              The inbox is empty until the backend returns customer threads.
+            </p>
+          </div>
+        </div>
+      </DesktopPage>
+    );
+  }
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="messages" withCustomerRail>
@@ -649,7 +401,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-sm text-heading-sm text-on-surface">Conversations</h2>
                   <span className="px-space-2xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    {THREADS.length} Live
+                    {threads.length} Live
                   </span>
                 </div>
                 <div className="relative">
@@ -674,7 +426,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                         : 'bg-surface border-border text-on-surface-variant hover:bg-surface-subtle'
                     }`}
                   >
-                    All ({THREADS.length})
+                    All ({threads.length})
                   </button>
                   <button
                     type="button"

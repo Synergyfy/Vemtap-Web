@@ -5,6 +5,7 @@ import { storeAuthResponse } from '../services/authService';
 import { SESSION_EXPIRED_EVENT } from '../services/api/client';
 import { queryClient } from '../services/queryClient';
 import type { SessionUser } from '../services/sessionService';
+import { socketService } from '../services/socketService';
 
 interface AuthCredentials {
   identifier?: string;
@@ -128,6 +129,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
   }, []);
+  useEffect(() => {
+    if (authed) {
+      socketService.connect('/messaging');
+      socketService.connect('/notifications');
+      return () => {
+        socketService.disconnect('/messaging');
+        socketService.disconnect('/notifications');
+      };
+    }
+
+    socketService.disconnect('/messaging');
+    socketService.disconnect('/notifications');
+    return undefined;
+  }, [authed]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

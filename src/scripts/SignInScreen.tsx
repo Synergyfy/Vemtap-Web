@@ -225,10 +225,10 @@ export function SignInScreen({
             <div className="flex flex-col gap-space-2xs">
               <div className="flex items-center justify-between">
                 <label className="font-label-md text-label-md text-text-primary" htmlFor="security-credential">
-                  PIN
+                  PIN or Password
                 </label>
                 <button type="button" className="font-label-sm text-label-sm text-primary hover:underline" onClick={onForgotPin}>
-                  Forgot PIN?
+                  Forgot?
                 </button>
               </div>
               <div className="relative flex items-center">
@@ -245,7 +245,7 @@ export function SignInScreen({
                   autoComplete="current-password"
                 />
                 <button
-                  aria-label={showPassword ? 'Hide PIN' : 'Show PIN'}
+                  aria-label={showPassword ? 'Hide PIN or password' : 'Show PIN or password'}
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-0 top-0 bottom-0 px-space-md flex items-center justify-center text-outline hover:text-text-primary transition-colors"

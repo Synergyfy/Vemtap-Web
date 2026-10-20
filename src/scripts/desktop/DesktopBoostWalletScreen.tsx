@@ -179,9 +179,8 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
   const [walletSummary, setWalletSummary] = useState<AdWalletSummary>(DEFAULT_WALLET_SUMMARY);
   const [ledger, setLedger] = useState(LEDGER);
   const [entryStatus, setEntryStatus] = useState('');
+  const timers = useRef<number[]>([]);
 
-  // Statuses are read from the ledger itself, so the menu can never offer an
-  // entry type the history does not actually hold.
   const statusChoices = [
     { value: '', label: 'All entries' },
     ...Array.from(new Set(ledger.map((entry) => entry.status))).map((status) => ({
@@ -192,7 +191,6 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
 
   const visibleLedger =
     entryStatus === '' ? ledger : ledger.filter((entry) => entry.status === entryStatus);
-  const timers = useRef<number[]>([]);
 
   useEffect(() => {
     if (!hasApiConfig()) return;

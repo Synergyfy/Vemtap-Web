@@ -207,7 +207,7 @@ const STOREFRONT_DEALS: StorefrontDeal[] = [
 export function DesktopUrbanGrillStorefrontScreen({ business, onNav, activeNav = 'businesses', onClaim, onCheckout: _onCheckout }: DesktopUrbanGrillStorefrontScreenProps) {
   const isKnownBusiness = !!business?.slug && !!findBusinessBySlug(business.slug);
 
-  if (business && !isKnownBusiness) {
+  if (!business || !isKnownBusiness) {
     return (
       <DesktopPage withHeader withFooter onNav={onNav} activeNav={activeNav} withCustomerRail>
         <div className="w-full min-h-[calc(100vh-80px)] bg-surface px-6 py-16">
@@ -215,9 +215,9 @@ export function DesktopUrbanGrillStorefrontScreen({ business, onNav, activeNav =
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-subtle text-primary">
               <Icon name="storefront" className="text-[32px]" />
             </div>
-            <h1 className="font-heading-lg text-heading-lg text-text-primary">Storefront unavailable</h1>
+            <h1 className="font-heading-lg text-heading-lg text-text-primary">Storefront not available</h1>
             <p className="mt-3 max-w-md font-body-md text-body-md text-text-secondary leading-relaxed">
-              This business profile is not available in the current view. Return to discover and choose an active storefront.
+              There is no live storefront selected yet. Choose a business from discover or wait for the storefront data to load from the backend.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <button

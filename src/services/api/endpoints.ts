@@ -62,4 +62,11 @@ export const API_ENDPOINTS = {
     root: '/claims',
     byId: (id: string) => `/claims/${id}`,
   },
+  messaging: {
+    threads: '/customer/messaging/threads',
+    threadById: (id: string) => `/customer/messaging/threads/${id}`,
+    threadReply: (id: string) => `/customer/messaging/threads/${id}/reply`,
+    threadRead: (id: string) => `/customer/messaging/threads/${id}/read`,
+    threadStart: '/customer/messaging/threads/start',
+  },
 };

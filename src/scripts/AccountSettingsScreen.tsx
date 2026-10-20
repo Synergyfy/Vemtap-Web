@@ -4,7 +4,139 @@ import { Icon } from '../components/ui/Icon';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { useProfile } from '../context/ProfileContext';
 import { hasApiConfig } from '../lib/api';
-import { accountService } from '../services';
+import { accountService, authService } from '../services';
+
+function PasswordChangeModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [revealed, setRevealed] = useState({ current: false, next: false, confirm: false });
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const submit = async () => {
+    if (currentPassword.length < 8) {
+      setError('Current password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('New password confirmation does not match.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await authService.changePassword({ currentPassword, newPassword });
+      onSaved();
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (changePasswordError) {
+      console.error('Password change failed:', changePasswordError);
+      setError('Unable to update your password right now. Please try again later.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const field = (
+    label: string,
+    value: string,
+    setter: (value: string) => void,
+    fieldKey: 'current' | 'next' | 'confirm',
+  ) => (
+    <label className="flex flex-col gap-space-2xs">
+      <span className="font-label-sm text-label-sm text-text-secondary font-semibold">{label}</span>
+      <div className="relative">
+        <input
+          type={revealed[fieldKey] ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => setter(event.target.value)}
+          className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface outline-none focus:border-primary transition-colors"
+        />
+        <button
+          type="button"
+          aria-label={revealed[fieldKey] ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          onClick={() => setRevealed((currentState) => ({ ...currentState, [fieldKey]: !currentState[fieldKey] }))}
+          className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-text-tertiary hover:bg-surface-container hover:text-on-surface transition-colors"
+        >
+          <Icon name={revealed[fieldKey] ? 'visibility_off' : 'visibility'} className="text-[18px]" />
+        </button>
+      </div>
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-inverse-surface/40 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="Change password" className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md">
+        <div className="flex items-start justify-between gap-space-sm">
+          <div className="flex items-center gap-space-sm">
+            <span className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+              <Icon name="lock" className="text-[20px]" />
+            </span>
+            <div className="flex flex-col">
+              <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Change password</h2>
+              <p className="font-caption text-caption text-text-secondary">Update your sign-in credentials securely</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} title="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-on-surface hover:bg-surface-subtle transition-colors">
+            <Icon name="close" className="text-[18px]" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-space-sm">
+          {field('Current password', currentPassword, setCurrentPassword, 'current')}
+          {field('New password', newPassword, setNewPassword, 'next')}
+          {field('Confirm new password', confirmPassword, setConfirmPassword, 'confirm')}
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-lg bg-error-container text-error font-label-sm text-label-sm">
+            <Icon name="error" className="text-[16px]" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-space-sm pt-space-2xs">
+          <button type="button" onClick={onClose} className="h-11 px-space-md rounded-xl bg-surface-container text-on-surface font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={() => void submit()} disabled={isSubmitting} className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform disabled:opacity-70">
+            <span>{isSubmitting ? 'Updating...' : 'Update password'}</span>
+            <Icon name="check" className="text-[18px]" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface AccountSettingsScreenProps {
   onBack: () => void;
@@ -57,6 +189,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   });
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
 
@@ -97,6 +230,10 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
       showToast(`${label} turned ${next ? 'on' : 'off'}`);
       return { ...current, [key]: next };
     });
+  };
+
+  const handlePasswordReset = () => {
+    setShowPasswordChangeModal(true);
   };
 
   const sectionTitle =
@@ -215,7 +352,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
 
             <button
               type="button"
-              onClick={() => showToast('Password reset link sent to your email')}
+              onClick={() => void handlePasswordReset()}
               className={`${rowButton} hover:bg-surface-subtle`}
             >
               <div className="flex items-center gap-space-sm min-w-0">
@@ -469,6 +606,14 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
         </div>
       )}
 
+      <PasswordChangeModal
+        open={showPasswordChangeModal}
+        onClose={() => setShowPasswordChangeModal(false)}
+        onSaved={() => {
+          setShowPasswordChangeModal(false);
+          showToast('Password updated successfully');
+        }}
+      />
       <DeleteAccountSheet
         open={showDeleteAccount}
         onClose={() => setShowDeleteAccount(false)}

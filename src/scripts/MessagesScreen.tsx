@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { MOBILE_THREADS, type MessageFilter, type MobileThread } from './messagesData';
+import { messageService, type MessageThread, type MessageThreadFilter } from '../services/messageService';
 
 interface MessagesScreenProps {
   onTab: (tab: MobileTabKey) => void;
@@ -18,16 +18,40 @@ const INBOX_CHIPS: { key: InboxChipKey; label: string; icon?: string; pulse?: bo
   { key: 'bookings', label: 'Bookings & Orders', icon: 'receipt_long' },
 ];
 
-function matchesFilter(thread: MobileThread, filter: InboxChipKey): boolean {
+function matchesFilter(thread: MessageThread, filter: InboxChipKey): boolean {
   if (filter === 'all') return true;
   if (filter === 'unread') return thread.unread;
-  return thread.filters.includes(filter as MessageFilter);
+  return thread.filters.includes(filter as MessageThreadFilter);
 }
 
 export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
   const [chip, setChip] = useState<InboxChipKey>('all');
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [threads, setThreads] = useState<MessageThread[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadThreads = async () => {
+      try {
+        const response = await messageService.listThreads();
+        if (isMounted) {
+          setThreads(response);
+        }
+      } catch {
+        if (isMounted) setThreads([]);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadThreads();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -35,12 +59,12 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
   };
 
   const countFor = (key: InboxChipKey) => {
-    const total = MOBILE_THREADS.filter((t) => matchesFilter(t, key)).length;
+    const total = threads.filter((t) => matchesFilter(t, key)).length;
     return `(${total})`;
   };
 
   const trimmed = query.trim().toLowerCase();
-  const visibleConversations = MOBILE_THREADS.filter((thread) => {
+  const visibleConversations = threads.filter((thread) => {
     if (!matchesFilter(thread, chip)) return false;
     if (trimmed) {
       const haystack = `${thread.name} ${thread.tag} ${thread.preview}`.toLowerCase();
@@ -164,7 +188,12 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
 
         {/* Conversation List */}
         <div className="flex flex-col px-space-xs mt-space-2xs space-y-1">
-          {visibleConversations.length === 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center text-center gap-space-xs py-space-xl">
+              <Icon name="forum" className="text-[36px] text-outline-variant" />
+              <p className="font-label-md text-label-md text-text-secondary">Loading conversations…</p>
+            </div>
+          ) : visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center text-center gap-space-xs py-space-xl">
               <Icon name="forum" className="text-[36px] text-outline-variant" />
               <p className="font-label-md text-label-md text-text-secondary">No conversations match your filter.</p>
