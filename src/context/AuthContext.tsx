@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { clearAuthTokens, getAccessToken, hasApiConfig } from '../lib/api';
 import { authService } from '../services';
+import { storeAuthResponse } from '../services/authService';
 import { SESSION_EXPIRED_EVENT } from '../services/api/client';
 import { queryClient } from '../services/queryClient';
 import type { SessionUser } from '../services/sessionService';
@@ -18,6 +19,8 @@ interface AuthContextValue {
   /** Resolves with the signed-in user when the API is configured (undefined in demo mode). */
   signIn: (credentials?: AuthCredentials) => Promise<SessionUser | undefined>;
   signOut: () => Promise<void>;
+  /** Signs in with a session issued by registration or a role upgrade (`{ access_token, user }`). */
+  adoptSession: (response: { access_token?: string; user?: SessionUser }) => SessionUser | undefined;
   markClaimed: () => void;
   resetClaim: () => void;
 }
@@ -27,6 +30,7 @@ const DEFAULT_VALUE: AuthContextValue = {
   claimed: false,
   signIn: async () => undefined,
   signOut: async () => undefined,
+  adoptSession: () => undefined,
   markClaimed: () => undefined,
   resetClaim: () => undefined,
 };
@@ -188,6 +192,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         writeFlag(CLAIMED_KEY, false);
         setAuthed(false);
         setClaimed(false);
+      },
+      adoptSession: (response) => {
+        storeAuthResponse(response);
+        persistProfileFromUser(response);
+        if (response.user) queryClient.setQueryData(['session', 'profile'], response.user);
+        writeFlag(AUTHED_KEY, true);
+        setAuthed(true);
+        return response.user;
       },
       markClaimed: () => {
         writeFlag(CLAIMED_KEY, true);

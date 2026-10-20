@@ -55,6 +55,13 @@ const readTokenValue = (payload: unknown, keys: string[]) => {
   return visit(payload);
 };
 
+/** Stores the tokens from any auth response (login, registration, role switch). */
+export const storeAuthResponse = (response: unknown) => {
+  const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
+  if (!accessToken) throw new Error('The response did not include an access token.');
+  setAuthTokens(accessToken, readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']));
+};
+
 export const authService = {
   login: async (payload: { identifier: string; password?: string }) => {
     const response = await api.post<AuthTokensResponse>('/auth/login', payload);

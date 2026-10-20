@@ -6,6 +6,8 @@ import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { isBusinessRole } from './services/sessionService';
+import { useSessionUser } from './hooks/useSessionUser';
+import { OwnerAccountStep } from './components/business/OwnerAccountStep';
 import { SESSION_EXPIRED_EVENT } from './services/api/client';
 import { hasApiConfig } from './lib/api';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
@@ -925,6 +927,7 @@ export default function App() {
 
 function AppInner() {
   const { authed, claimed, signIn, signOut, markClaimed, resetClaim } = useAuth();
+  const sessionUser = useSessionUser().data;
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -3353,6 +3356,20 @@ function AppInner() {
         setBusinessSetupSkipIntro(false);
         setRoute('sign-in');
       };
+
+      // Live: setup saves to the API, so it needs an owner account first —
+      // register one when signed out, or upgrade a signed-in customer.
+      const needsOwnerAccount =
+        hasApiConfig() && !showAccountChoice && (!authed || (sessionUser !== undefined && !isBusinessRole(sessionUser.role)));
+      if (needsOwnerAccount) {
+        return (
+          <OwnerAccountStep
+            mode={authed ? 'upgrade' : 'register'}
+            onBack={leaveOnboarding}
+            onDone={() => setBusinessSetupSkipIntro(true)}
+          />
+        );
+      }
 
       if (showAccountChoice) {
         return isDesktop ? (
