@@ -59,3 +59,16 @@ export function formatRelativeTime(iso?: string | null): string {
   if (days < 7) return `${days}d ago`;
   return new Date(time).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
 }
+
+/** "Good morning" / "Good afternoon" / "Good evening" for the local time. */
+export function greeting(date = new Date()): string {
+  const hour = date.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/** "Friday, Oct 18" for today. */
+export function todayLabel(date = new Date()): string {
+  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
