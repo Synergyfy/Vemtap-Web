@@ -2,6 +2,8 @@ export interface ProductDraft {
   title: string;
   /** Uploaded photo URL (live). */
   mainImage?: string;
+  /** Live: the business's catalogue category. */
+  categoryId?: string;
   producer: string;
   unbranded: boolean;
   primaryCategory: string;

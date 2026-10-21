@@ -438,7 +438,7 @@ export function BusinessProfileContactScreen({
             <div className="min-w-0">
               <h4 className="font-label-sm text-label-sm text-text-primary font-semibold">Almost Ready to Launch!</h4>
               <p className="font-caption text-caption text-text-secondary">
-                Urban Grill Lagos will be visible to 1,420+ food lovers within 3 km.
+                {draft.name.trim() || 'Your business'} will be visible to customers near you once setup is done.
               </p>
             </div>
           </div>

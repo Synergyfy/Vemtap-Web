@@ -1,4 +1,6 @@
 import { AppScreen } from '../components/ui/AppScreen';
+import { useState } from 'react';
+import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
 import { Icon } from '../components/ui/Icon';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
@@ -55,6 +57,27 @@ export function BusinessAddProductStep1Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddProductStep1ScreenProps) {
+  // Live: real photo upload and the business's own categories.
+  const editor = useLiveItemEditor('product');
+  const [newCategory, setNewCategory] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const changePhoto = async () => {
+    const url = await editor.uploadPhoto();
+    if (url) onDraftChange({ mainImage: url });
+  };
+  const addCategory = () => {
+    const name = newCategory.trim();
+    if (!name) return;
+    setCreatingCategory(true);
+    editor
+      .createCategory(name)
+      .then((created) => {
+        onDraftChange({ categoryId: created.id, subCategory: created.name });
+        setNewCategory('');
+      })
+      .catch(() => undefined)
+      .finally(() => setCreatingCategory(false));
+  };
   const categoryLevels = [
     { caption: 'Primary Category', value: draft.primaryCategory, icon: 'restaurant', active: true },
     { caption: 'Sub-Category', value: draft.subCategory, icon: 'outdoor_grill', active: false },
@@ -146,6 +169,32 @@ export function BusinessAddProductStep1Screen({
                 Guidelines
               </span>
             </div>
+            {editor.live ? (
+              <div className="flex flex-col gap-space-xs">
+                <button
+                  type="button"
+                  onClick={changePhoto}
+                  disabled={editor.uploading}
+                  className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low flex flex-col items-center justify-center gap-space-xs text-text-secondary"
+                >
+                  {draft.mainImage ? (
+                    <img alt={draft.title || 'Product photo'} className="absolute inset-0 w-full h-full object-cover" src={draft.mainImage} />
+                  ) : (
+                    <>
+                      <Icon name="add_a_photo" className="text-[40px] text-primary" />
+                      <span className="font-label-md text-label-md font-semibold">{editor.uploading ? 'Uploading…' : 'Add a product photo'}</span>
+                    </>
+                  )}
+                  {draft.mainImage ? (
+                    <span className="absolute bottom-3 right-3 bg-surface-container-lowest/95 text-text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md font-label-sm text-label-sm font-semibold">
+                      <Icon name="add_a_photo" className="text-[16px] text-primary" /> {editor.uploading ? 'Uploading…' : 'Change'}
+                    </span>
+                  ) : null}
+                </button>
+                {editor.uploadError ? <span className="font-caption text-caption text-red-600">{editor.uploadError}</span> : null}
+              </div>
+            ) : (
+              <>
             <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low group shadow-inner">
               <img
                 alt={PRODUCT_IMAGES[0].alt}
@@ -198,6 +247,8 @@ export function BusinessAddProductStep1Screen({
                 <Icon name="photo_camera" className="text-[18px]" />
               </div>
             </div>
+              </>
+            )}
             <div className="flex items-start gap-space-xs p-space-sm bg-surface-tint-blue rounded-xl text-primary">
               <Icon className="text-[20px] text-primary-container shrink-0 mt-0.5" filled name="lightbulb" />
               <p className="font-caption text-caption text-on-secondary-container leading-relaxed">
@@ -270,7 +321,7 @@ export function BusinessAddProductStep1Screen({
                   onChange={(event) =>
                     onDraftChange({
                       unbranded: event.target.checked,
-                      producer: event.target.checked ? 'Unbranded / Homemade' : 'Urban Grill Kitchen',
+                      producer: event.target.checked ? 'Unbranded / Homemade' : editor.live ? '' : 'Urban Grill Kitchen',
                     })
                   }
                 />
@@ -291,6 +342,43 @@ export function BusinessAddProductStep1Screen({
               </div>
               <Icon name="category" className="text-primary text-[22px]" />
             </div>
+            {editor.live ? (
+              <div className="flex flex-col gap-space-xs">
+                <select
+                  aria-label="Category"
+                  value={draft.categoryId ?? ''}
+                  onChange={(event) => {
+                    const found = editor.categories.find((c) => c.id === event.target.value);
+                    onDraftChange({ categoryId: event.target.value || undefined, subCategory: found?.name ?? draft.subCategory });
+                  }}
+                  className="h-11 rounded-xl bg-surface-subtle px-space-sm font-body-md text-body-md"
+                >
+                  <option value="">{editor.categories.length ? 'Choose a category' : 'No categories yet'}</option>
+                  {editor.categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-space-xs">
+                  <input
+                    aria-label="New category name"
+                    value={newCategory}
+                    onChange={(event) => setNewCategory(event.target.value)}
+                    placeholder="New category, e.g. Soups & Swallow"
+                    className="flex-1 h-10 rounded-xl bg-surface-subtle px-space-sm font-body-md text-body-md"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCategory}
+                    disabled={!newCategory.trim() || creatingCategory}
+                    className="h-10 px-space-sm rounded-xl bg-surface-tint-blue text-primary font-label-md text-label-md disabled:opacity-50"
+                  >
+                    {creatingCategory ? 'Adding…' : 'Add'}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="bg-surface-subtle rounded-xl p-space-sm flex flex-col gap-space-xs">
               {categoryLevels.map((level, index) => (
                 <div key={level.caption} className="contents">
@@ -323,6 +411,7 @@ export function BusinessAddProductStep1Screen({
                 </div>
               ))}
             </div>
+            )}
           </div>
 
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-2xs">

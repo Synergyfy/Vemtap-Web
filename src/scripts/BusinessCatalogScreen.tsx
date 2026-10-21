@@ -289,8 +289,14 @@ export function BusinessCatalogScreen({
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary mt-1 leading-relaxed">
-                Synced across <span className="font-semibold text-text-primary">2 active locations</span> (Wuse &amp;
-                Garki branches). You can set custom regional prices per store.
+                {live ? (
+                  <>Items you add here go live at your branch. You can set different prices per branch later.</>
+                ) : (
+                  <>
+                    Synced across <span className="font-semibold text-text-primary">2 active locations</span> (Wuse &amp;
+                    Garki branches). You can set custom regional prices per store.
+                  </>
+                )}
               </p>
             </div>
           </div>

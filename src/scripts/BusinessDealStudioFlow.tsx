@@ -54,6 +54,12 @@ export function BusinessDealStudioFlow({
             description: item.description ?? '',
             basePrice: String(toPrice(item.price ?? undefined) ?? ''),
             comparePrice: String(toPrice(item.compareAtPrice ?? undefined) ?? ''),
+      // The draft starts from the sample product: drop its variants and photo.
+      variantsEnabled: false,
+      variants: [],
+      mainImage: item.mainImage ?? undefined,
+      sku: item.sku ?? '',
+      skuCode: item.sku ?? '',
           }));
         }}
       />

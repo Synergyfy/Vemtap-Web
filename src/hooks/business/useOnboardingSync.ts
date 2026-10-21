@@ -91,12 +91,20 @@ export function useOnboardingSync() {
     };
   };
 
+  /** Both setup screens save the same shape: `+234 8031234567`. */
+  const nigerianPhone = (value: string) => {
+    const digits = value.replace(/[^0-9]/g, '');
+    if (!digits) return undefined;
+    const local = digits.startsWith('234') ? digits.slice(3) : digits.replace(/^0/, '');
+    return `+234 ${local}`;
+  };
+
   const contactUpdate = (draft: OnboardingProfileDraft) => {
     const socials: Record<string, string> = {};
     if (handle(draft.instagram)) socials.instagram = handle(draft.instagram);
     if (handle(draft.x)) socials.x = handle(draft.x);
     return {
-      phone: draft.phone.trim() || undefined,
+      phone: nigerianPhone(draft.phone),
       officialEmail: draft.email.trim() || undefined,
       website: draft.website.trim() || undefined,
       whatsappNumber: draft.whatsapp.trim() || undefined,
