@@ -3,6 +3,8 @@ import { SaveBar, SettingsSection, SwitchRow, TextField } from './FormPrimitives
 import { usePosSettingsDraft, usePosSettingsQuery, useUpdatePosSettings } from '../../hooks/business/usePosSettingsApi';
 import type { PosSettings } from '../../services/posSettingsService';
 import { formatNaira } from '../../utils/format';
+import { hasApiConfig } from '../../services/api/client';
+import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 
 const PAPER_WIDTHS = [58, 80] as const;
 
@@ -18,8 +20,22 @@ const SAMPLE_LINES = [
   { name: 'Chapman', qty: 2, price: 1800 },
 ];
 
+const PREVIEW_QTYS = [1, 2, 1];
+
+/** Preview lines: the branch's first priced products in live mode, sample lines in the demo. */
+function usePreviewLines() {
+  const items = useCatalogueItems('product');
+  if (!hasApiConfig()) return SAMPLE_LINES;
+  const priced = (items.data ?? [])
+    .filter((item) => item.status === 'active' && Number(item.price) > 0)
+    .slice(0, 3)
+    .map((item, index) => ({ name: item.name, qty: PREVIEW_QTYS[index], price: Number(item.price) }));
+  return priced.length ? priced : [{ name: 'Your product', qty: 1, price: 5000 }];
+}
+
 function ReceiptPreview({ settings }: { settings: PosSettings }) {
-  const subtotal = SAMPLE_LINES.reduce((sum, line) => sum + line.qty * line.price, 0);
+  const lines = usePreviewLines();
+  const subtotal = lines.reduce((sum, line) => sum + line.qty * line.price, 0);
   const rate = settings.taxEnabled ? settings.taxRate ?? 0 : 0;
   const tax = settings.pricesIncludeTax ? 0 : Math.round((subtotal * rate) / 100);
   const narrow = settings.receiptWidth === 58;
@@ -42,7 +58,7 @@ function ReceiptPreview({ settings }: { settings: PosSettings }) {
         {settings.receiptPhone ? <p className="text-center text-neutral-600">{settings.receiptPhone}</p> : null}
         {settings.tin ? <p className="text-center text-neutral-600">TIN {settings.tin}</p> : null}
         <div className="border-t border-dashed border-neutral-400 my-2" />
-        {SAMPLE_LINES.map((line) => (
+        {lines.map((line) => (
           <div key={line.name} className="flex justify-between gap-2">
             <span className="truncate">
               {line.qty}× {line.name}

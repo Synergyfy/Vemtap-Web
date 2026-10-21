@@ -3,6 +3,7 @@ import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { hubCardChips, useHubModuleCounts } from '../../hooks/business/useHubModuleCounts';
+import { useOffers } from '../../hooks/business/useOffers';
 import { hasApiConfig } from '../../services/api/client';
 import type { HubModuleKey } from '../BusinessHubHomeScreen';
 
@@ -109,6 +110,11 @@ export function DesktopBusinessHubScreen({
   const { branch, branches, switchTo } = useBusinessBranch();
   const hubCounts = useHubModuleCounts();
   const live = hasApiConfig();
+  const offers = useOffers();
+  // Live: promote the branch's first active deal; none → the card invites creating one.
+  const boostItem = live
+    ? (offers.data ?? []).find((offer) => offer.status === 'active')?.name ?? null
+    : BOOST_ITEM;
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -275,18 +281,24 @@ export function DesktopBusinessHubScreen({
                 {live ? 'Reach nearby customers in one tap' : 'Reach 3,500 nearby customers in one tap'}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                Push <strong className="font-semibold text-text-primary">{BOOST_ITEM}</strong> to shoppers inside your
-                Wuse II geofence before the weekend lunch rush.
+                {boostItem ? (
+                  <>
+                    Push <strong className="font-semibold text-text-primary">{boostItem}</strong> to shoppers inside
+                    your {live ? `${branch.name} geofence` : 'Wuse II geofence before the weekend lunch rush'}.
+                  </>
+                ) : (
+                  'Publish a deal first, then boost it to shoppers around your branch.'
+                )}
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => onBoost('Weekend Prime Lunch Combo')}
+            onClick={() => (boostItem ? onBoost(boostItem) : onOpenModule('deals'))}
             className="shrink-0 flex items-center justify-center gap-space-xs px-space-lg h-[46px] rounded-xl bg-primary-container text-on-primary hover:opacity-90 transition-opacity font-button-primary text-button-primary shadow-md"
           >
             <Icon name="trending_up" className="text-[20px]" />
-            <span>Boost {BOOST_ITEM}</span>
+            <span>{boostItem ? `Boost ${boostItem}` : 'Create a deal'}</span>
           </button>
         </section>
 

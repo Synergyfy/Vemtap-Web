@@ -6,6 +6,7 @@ import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBa
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { URBAN_BUSINESS } from './businessData';
+import { useMoreSummary } from '../hooks/business/useMoreSummary';
 
 interface BusinessMoreScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -68,7 +69,29 @@ export function BusinessMoreScreen({
   onSignOut,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
-  const switchToCustomer = useSwitchToCustomer(onSwitchConsumer, URBAN_BUSINESS.name);
+  const more = useMoreSummary();
+  const card = more.live
+    ? {
+        name: more.name ?? 'Your business',
+        code: more.code,
+        plan: more.planName,
+        location: more.location,
+        logo: more.logoUrl,
+        verified: more.verified,
+        status: `${more.branchName} · Online`,
+        synced: 'Live data',
+      }
+    : {
+        name: URBAN_BUSINESS.name,
+        code: '#VG-80492',
+        plan: 'Growth Plan',
+        location: branch.area,
+        logo: LOGO_SRC,
+        verified: true,
+        status: 'Terminal 01 Online',
+        synced: 'Synced 2m ago',
+      };
+  const switchToCustomer = useSwitchToCustomer(onSwitchConsumer, card.name);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -98,7 +121,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-tint-blue text-primary',
           title: 'Cluster System',
           sub: 'Mall network, shared QR & deal rotator pool',
-          badge: 'Amaka Mall',
+          badge: more.live ? more.clusterName ?? undefined : 'Amaka Mall',
           badgeClass: GREEN_BADGE,
           onClick: onOpenCluster || (() => {}),
         },
@@ -209,7 +232,7 @@ export function BusinessMoreScreen({
           icon: 'credit_card',
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Subscription & Billing',
-          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
+          sub: more.live ? more.planLine ?? 'View your plan & billing' : 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
           onClick: onOpenSubscription,
         },
         {
@@ -232,7 +255,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Notifications Center',
           sub: 'Till alerts, payout updates & staff clock-ins',
-          badge: '4 unread',
+          badge: more.live ? (more.unread ? `${more.unread} unread` : undefined) : '4 unread',
           badgeClass: ERROR_BADGE,
           onClick: onOpenNotifications,
         },
@@ -247,8 +270,8 @@ export function BusinessMoreScreen({
           icon: 'verified_user',
           iconClass: GREEN_BADGE,
           title: 'Business Verification',
-          sub: 'CAC, Director ID & Bank Settlement Approved',
-          badge: 'Tier 3',
+          sub: !more.live || more.verified ? 'CAC, Director ID & Bank Settlement Approved' : 'Verify your business to earn the badge',
+          badge: more.live ? (more.verified ? 'Verified' : 'Not verified') : 'Tier 3',
           badgeClass: GREEN_BADGE,
           onClick: onOpenVerification,
         },
@@ -376,23 +399,29 @@ export function BusinessMoreScreen({
               <div className="flex items-start justify-between gap-space-sm">
                 <div className="flex items-center gap-space-sm min-w-0">
                   <div className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-surface-container-high shadow-inner">
-                    <img alt={`${URBAN_BUSINESS.name} logo`} className="w-full h-full object-cover" src={LOGO_SRC} />
+                    {card.logo ? (
+                      <img alt={`${card.name} logo`} className="w-full h-full object-cover" src={card.logo} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-heading-sm text-heading-sm text-primary">
+                        {card.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate">
-                        {URBAN_BUSINESS.name}
+                        {card.name}
                       </span>
-                      <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />
+                      {card.verified && <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-caption text-caption text-text-tertiary">#VG-80492</span>
-                      <span className="w-1 h-1 rounded-full bg-outline-variant" />
-                      <span className="font-caption text-caption text-primary font-medium">Growth Plan</span>
+                      {card.code && <span className="font-caption text-caption text-text-tertiary">{card.code}</span>}
+                      {card.code && card.plan && <span className="w-1 h-1 rounded-full bg-outline-variant" />}
+                      {card.plan && <span className="font-caption text-caption text-primary font-medium">{card.plan}</span>}
                     </div>
                     <div className="mt-1 flex items-center gap-1 text-text-secondary min-w-0">
                       <Icon name="location_on" className="text-[15px] text-text-tertiary shrink-0" />
-                      <span className="font-label-sm text-label-sm truncate">{branch.area}</span>
+                      <span className="font-label-sm text-label-sm truncate">{card.location ?? 'Add your address'}</span>
                     </div>
                   </div>
                 </div>
@@ -410,12 +439,12 @@ export function BusinessMoreScreen({
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />
                   <span className="font-caption text-caption text-text-primary font-medium truncate">
-                    Terminal 01 Online
+                    {card.status}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 text-text-tertiary">
                   <Icon name="cloud_done" className="text-[14px]" />
-                  <span className="font-caption text-caption">Synced 2m ago</span>
+                  <span className="font-caption text-caption">{card.synced}</span>
                 </div>
               </div>
             </section>

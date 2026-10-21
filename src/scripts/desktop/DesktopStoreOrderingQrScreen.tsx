@@ -64,10 +64,10 @@ function VemtapQrSvg({ size = 180 }: { size?: number }) {
 export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrScreenProps) {
   const { addQrCode, qrCodes, toggleQrActive, lastError, clearLastError } = useStoreOrdering();
   const live = hasApiConfig();
-  const { branch: activeBranch, branches } = useBusinessBranch();
+  const { branch: activeBranch, branches, isLive: branchesLoaded } = useBusinessBranch();
   // Live: real branches (keyed by id); demo: the storefront's sample branches.
   const branchOptions = live
-    ? branches.map((b) => ({ value: b.id ?? b.key, label: b.name }))
+    ? (branchesLoaded ? branches : []).map((b) => ({ value: b.id ?? b.key, label: b.name }))
     : [
         { value: 'wuse-2', label: 'Wuse II Flagship' },
         { value: 'maitama', label: 'Maitama Heights' },

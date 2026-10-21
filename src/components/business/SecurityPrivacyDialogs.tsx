@@ -171,7 +171,7 @@ export function RectificationDialog({
   );
 }
 
-interface LinkedDevice {
+export interface LinkedDevice {
   id: string;
   deviceName: string;
   platform: string;

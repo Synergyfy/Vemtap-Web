@@ -1531,7 +1531,7 @@ export function DesktopBusinessCatalogHubScreen({
           <div className="flex items-center gap-space-sm self-start sm:self-auto">
             <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-              <span>Live in POS Mesh • 28ms latency</span>
+              <span>{live ? 'Live in POS' : 'Live in POS Mesh • 28ms latency'}</span>
             </div>
             <div className="hidden md:flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-lg bg-surface-tint-blue text-primary font-caption text-caption">
               <Icon name="cloud_sync" className="text-[16px]" />
@@ -2786,8 +2786,11 @@ export function DesktopBusinessCatalogHubScreen({
                 Multi-Location Pricing Rules
               </h2>
               <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-                Victoria Island (Lagos) branch has a default 7.5% regional logistics markup applied on all imported
-                meats and cellar items.
+                {live
+                  ? branches.length > 1
+                    ? `Set a different price per branch for any item across your ${branches.length} branches.`
+                    : 'Add another branch to price items differently per location.'
+                  : 'Victoria Island (Lagos) branch has a default 7.5% regional logistics markup applied on all imported meats and cellar items.'}
               </p>
               <button
                 type="button"
@@ -2805,17 +2808,24 @@ export function DesktopBusinessCatalogHubScreen({
             </div>
             <div>
               <h2 className="font-heading-sm text-heading-sm font-bold text-on-surface">
-                Low-Stock Automated Reorders
+                {live ? 'Low-Stock Alerts' : 'Low-Stock Automated Reorders'}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-                Items dropping below 5 units generate instant procurement tickets dispatched to centralized warehouse
-                suppliers.
+                {live
+                  ? (() => {
+                      const lowCount = allLiveRows.filter((row) => row.filters.includes('low')).length;
+                      return lowCount
+                        ? `${lowCount} ${lowCount === 1 ? 'item is' : 'items are'} at or below the minimum stock you set. Restock or raise the level in each item.`
+                        : 'No items are below their minimum stock. Set a minimum on each item to get low-stock alerts.';
+                    })()
+                  : 'Items dropping below 5 units generate instant procurement tickets dispatched to centralized warehouse suppliers.'}
               </p>
               <button
                 type="button"
+                onClick={live ? () => setChip('low') : undefined}
                 className="inline-flex items-center gap-space-2xs text-primary font-label-sm text-label-sm font-semibold mt-space-xs hover:underline"
               >
-                <span>Edit automated replenishment triggers</span>
+                <span>{live ? 'View low-stock items' : 'Edit automated replenishment triggers'}</span>
                 <Icon name="arrow_forward" className="text-[16px]" />
               </button>
             </div>

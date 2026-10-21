@@ -80,6 +80,11 @@ interface StoreOrderingContextValue {
 }
 
 const StoreOrderingContext = createContext<StoreOrderingContextValue | null>(null);
+/**
+ * Mounted screens that need the live orders/QR/settings data register here, so
+ * the provider (which wraps the whole app) only fetches and polls while one is open.
+ */
+const StoreOrderingDemandContext = createContext<() => () => void>(() => () => undefined);
 
 const STORAGE_ORDERS_KEY = 'vemtap_store_orders_v1';
 
@@ -558,13 +563,19 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
   // fires the request, then refetches; a server refusal lands in lastError.
   const live = hasApiConfig();
   const queryClient = useQueryClient();
+  const [consumers, setConsumers] = useState(0);
+  const subscribe = useCallback(() => {
+    setConsumers((count) => count + 1);
+    return () => setConsumers((count) => count - 1);
+  }, []);
+  const fetchLive = live && consumers > 0;
   const [lastError, setLastError] = useState<string | null>(null);
   const clearLastError = useCallback(() => setLastError(null), []);
-  const liveOrders = useQuery({ queryKey: liveKeys.orders, queryFn: storeOrderingService.orders, enabled: live, refetchInterval: 30_000 });
-  const liveSummary = useQuery({ queryKey: liveKeys.summary, queryFn: storeOrderingService.summary, enabled: live, refetchInterval: 30_000 });
-  const liveQr = useQuery({ queryKey: liveKeys.qr, queryFn: storeOrderingService.qrCodes, enabled: live });
-  const liveSettings = useQuery({ queryKey: liveKeys.settings, queryFn: storeOrderingService.settings, enabled: live });
-  const team = useQuery({ queryKey: ['store-ordering', 'team'], queryFn: () => teamService.list({ allBranches: true }), enabled: live, staleTime: 5 * 60_000 });
+  const liveOrders = useQuery({ queryKey: liveKeys.orders, queryFn: storeOrderingService.orders, enabled: fetchLive, refetchInterval: 30_000 });
+  const liveSummary = useQuery({ queryKey: liveKeys.summary, queryFn: storeOrderingService.summary, enabled: fetchLive, refetchInterval: 30_000 });
+  const liveQr = useQuery({ queryKey: liveKeys.qr, queryFn: storeOrderingService.qrCodes, enabled: fetchLive });
+  const liveSettings = useQuery({ queryKey: liveKeys.settings, queryFn: storeOrderingService.settings, enabled: fetchLive });
+  const team = useQuery({ queryKey: ['store-ordering', 'team'], queryFn: () => teamService.list({ allBranches: true }), enabled: fetchLive, staleTime: 5 * 60_000 });
 
   const run = useCallback(
     (request: () => Promise<unknown>, keys: ReadonlyArray<readonly string[]> = [liveKeys.orders, liveKeys.summary]) => {
@@ -759,10 +770,20 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  return <StoreOrderingContext.Provider value={liveValue ?? value}>{children}</StoreOrderingContext.Provider>;
+  return (
+    <StoreOrderingDemandContext.Provider value={subscribe}>
+      <StoreOrderingContext.Provider value={liveValue ?? value}>{children}</StoreOrderingContext.Provider>
+    </StoreOrderingDemandContext.Provider>
+  );
 }
 
-export function useStoreOrdering() {
+/**
+ * Store-ordering state and actions. Pass `{ withData: false }` from screens that
+ * only submit orders (the customer storefront), so they don't load the owner's data.
+ */
+export function useStoreOrdering({ withData = true }: { withData?: boolean } = {}) {
+  const subscribe = useContext(StoreOrderingDemandContext);
+  useEffect(() => (withData ? subscribe() : undefined), [withData, subscribe]);
   const ctx = useContext(StoreOrderingContext);
   if (!ctx) {
     throw new Error('useStoreOrdering must be used within a StoreOrderingProvider');

@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import type { StoreOrderingSettings } from '../storeOrderingData';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { useQuery } from '@tanstack/react-query';
+import { hasApiConfig } from '../../services/api/client';
+import { teamService } from '../../services/teamService';
 
 interface DesktopStoreOrderingSettingsScreenProps {
   onNav: (key: string) => void;
@@ -27,6 +32,55 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Live settings arrive after mount (and change after a save): re-seed the form from them.
+  useEffect(() => {
+    const apply = (s: StoreOrderingSettings) => {
+      setEnabled(s.enabled);
+      setUsePosForCompletion(s.usePosForCompletion);
+      setActiveBranches(s.activeBranches);
+      setImmediatePickup(s.immediatePickup);
+      setScheduledPreOrder(s.scheduledPreOrder);
+      setDefaultPrepMinutes(s.defaultPrepMinutes);
+      setPickupInstructions(s.pickupInstructions);
+      setGuestOrderingAllowed(s.guestOrderingAllowed);
+      setAcceptOrdersOutsideHours(s.acceptOrdersOutsideHours);
+      setAllowSubstitutions(s.allowSubstitutions);
+      setAutoNotifyCustomerSms(s.autoNotifyCustomerSms);
+      setAutoNotifyCustomerWhatsApp(s.autoNotifyCustomerWhatsApp);
+      setNotifiedStaff(s.notifiedStaff);
+    };
+    apply(settings);
+  }, [settings]);
+
+  const live = hasApiConfig();
+  const { branches, isLive: branchesLoaded } = useBusinessBranch();
+  // Live: real branches keyed by id, open unless switched off (the API's rule);
+  // demo: the sample branches, off unless listed.
+  const branchCards = live
+    ? (branchesLoaded ? branches : []).map((b) => ({ key: b.id ?? b.key, name: b.name, address: b.area }))
+    : [
+        { key: 'wuse-2', name: 'Wuse II Flagship', address: 'Plot 1428 Adetokunbo Ademola Cres, Abuja' },
+        { key: 'maitama', name: 'Maitama Heights', address: 'Plot 14 Amazon Street, Maitama, Abuja' },
+        { key: 'garki', name: 'Garki Branch', address: 'Area 11 Commercial District, Abuja' },
+      ];
+  // Live: the business's real team (saved by member id); demo: sample staff names.
+  const team = useQuery({
+    queryKey: ['store-ordering', 'team'],
+    queryFn: () => teamService.list({ allBranches: true }),
+    enabled: live,
+    staleTime: 5 * 60_000,
+  });
+  const staffOptions = live
+    ? (team.data ?? []).map((member) => {
+        const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email || 'Team member';
+        const role = member.roleTag || member.jobTitle || member.role;
+        return { key: member.id, label: role ? `${name} (${role})` : name };
+      })
+    : ['Chef Adebayo (Head Chef)', 'Musa Danladi (Store Manager)', 'Grace Udoh (Front Desk)', 'Ibrahim Bello (Kitchen Lead)'].map(
+        (label) => ({ key: label, label }),
+      );
+  const isBranchActive = (key: string) => (live ? activeBranches[key] !== false : Boolean(activeBranches[key]));
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     window.setTimeout(() => setToastMessage(null), 3000);
@@ -41,7 +95,7 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
   const handleBranchToggle = (branchKey: string) => {
     setActiveBranches((prev) => ({
       ...prev,
-      [branchKey]: !prev[branchKey],
+      [branchKey]: !isBranchActive(branchKey),
     }));
   };
 
@@ -215,12 +269,8 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md pt-2">
-            {[
-              { key: 'wuse-2', name: 'Wuse II Flagship', address: 'Plot 1428 Adetokunbo Ademola Cres, Abuja' },
-              { key: 'maitama', name: 'Maitama Heights', address: 'Plot 14 Amazon Street, Maitama, Abuja' },
-              { key: 'garki', name: 'Garki Branch', address: 'Area 11 Commercial District, Abuja' },
-            ].map((branch) => {
-              const isChecked = Boolean(activeBranches[branch.key]);
+            {branchCards.map((branch) => {
+              const isChecked = isBranchActive(branch.key);
               return (
                 <div
                   key={branch.key}
@@ -239,6 +289,7 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
                     type="checkbox"
                     checked={isChecked}
                     onChange={() => handleBranchToggle(branch.key)}
+                    onClick={(event) => event.stopPropagation()}
                     className="w-5 h-5 text-primary rounded-md border-border shrink-0 mt-0.5 cursor-pointer"
                   />
                 </div>
@@ -385,23 +436,21 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
               <span className="font-label-md text-label-md font-semibold text-text-primary block">
                 Staff Order Alert Recipients
               </span>
-              {[
-                'Chef Adebayo (Head Chef)',
-                'Musa Danladi (Store Manager)',
-                'Grace Udoh (Front Desk)',
-                'Ibrahim Bello (Kitchen Lead)',
-              ].map((staff) => {
-                const isSelected = notifiedStaff.includes(staff);
+              {live && team.isSuccess && staffOptions.length === 0 && (
+                <p className="text-caption text-text-secondary">Invite staff from Team &amp; Access to choose alert recipients.</p>
+              )}
+              {staffOptions.map((staff) => {
+                const isSelected = notifiedStaff.includes(staff.key);
                 return (
                   <label
-                    key={staff}
+                    key={staff.key}
                     className="flex items-center justify-between p-3 rounded-xl border border-border-subtle bg-surface-subtle hover:bg-surface-container transition-colors cursor-pointer"
                   >
-                    <span className="text-body-sm font-medium text-text-primary">{staff}</span>
+                    <span className="text-body-sm font-medium text-text-primary">{staff.label}</span>
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => handleStaffToggle(staff)}
+                      onChange={() => handleStaffToggle(staff.key)}
                       className="w-4 h-4 text-primary rounded-md border-border cursor-pointer"
                     />
                   </label>

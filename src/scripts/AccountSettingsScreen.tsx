@@ -5,6 +5,21 @@ import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { useProfile } from '../context/ProfileContext';
 import { hasApiConfig } from '../lib/api';
 import { accountService, authService } from '../services';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../services/api/client';
+import { DevicesDialog, type LinkedDevice } from '../components/business/SecurityPrivacyDialogs';
+
+const deviceIcon = (device: LinkedDevice) =>
+  /ipad|tablet/i.test(`${device.deviceName} ${device.userAgent ?? ''}`)
+    ? 'tablet_mac'
+    : /iphone|android|mobile|ios/i.test(`${device.platform} ${device.userAgent ?? ''}`)
+      ? 'smartphone'
+      : 'computer';
+
+const lastActive = (iso: string) => {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  return days <= 0 ? 'Active today' : days === 1 ? 'Last active yesterday' : `Last active ${days} days ago`;
+};
 
 function PasswordChangeModal({
   open,
@@ -191,6 +206,17 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showDevices, setShowDevices] = useState(false);
+  const live = hasApiConfig();
+  // Same cache key as the Devices dialog, so signing a device out refreshes this list too.
+  const devices = useQuery({
+    queryKey: ['business-settings', 'linked-devices'],
+    queryFn: () => api.get<LinkedDevice[]>('/users/linked-devices'),
+    enabled: live,
+  });
+  const activeDevices = (devices.data ?? [])
+    .filter((device) => !device.revokedAt)
+    .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.lastActiveAt.localeCompare(a.lastActiveAt));
   const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
@@ -361,7 +387,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Change Password</span>
-                  <p className={rowHint}>Last updated on Oct 4, 2024</p>
+                  <p className={rowHint}>{live ? 'Change the password you sign in with' : 'Last updated on Oct 4, 2024'}</p>
                 </div>
               </div>
               {chevron}
@@ -371,6 +397,44 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
 
         <section className="space-y-space-xs">
           <h2 className={sectionTitle}>Devices &amp; Sessions</h2>
+          {live ? (
+            <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-md">
+              {devices.isLoading && <p className={rowHint}>Loading devices…</p>}
+              {devices.isError && <p className={rowHint}>Couldn&apos;t load your devices.</p>}
+              {devices.isSuccess && activeDevices.length === 0 && <p className={rowHint}>No signed-in devices.</p>}
+              {activeDevices.slice(0, 2).map((device, index) => (
+                <div key={device.id}>
+                  {index > 0 && <div className="h-[1px] bg-surface-container w-full mb-space-md" />}
+                  <div className="flex items-start gap-space-sm min-w-0">
+                    <div className={`${device.isCurrent ? iconTile : 'w-10 h-10 rounded-xl bg-surface-subtle flex items-center justify-center shrink-0'} mt-0.5`}>
+                      <Icon name={deviceIcon(device)} className={`${device.isCurrent ? 'text-primary' : 'text-secondary'} text-[22px]`} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-space-2xs flex-wrap">
+                        <span className={rowTitle}>{device.deviceName || device.platform}</span>
+                        {device.isCurrent && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-badge-discount-bg font-caption text-[11px] text-badge-discount-text font-semibold">
+                            This device
+                          </span>
+                        )}
+                      </div>
+                      <p className={rowHint}>
+                        {device.platform} • {device.isCurrent ? 'Active now' : lastActive(device.lastActiveAt)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setShowDevices(true)}
+                className="w-full text-left pt-space-2xs flex items-center justify-between text-primary font-label-md text-label-md font-semibold active:opacity-75 transition-opacity"
+              >
+                <span>Manage All Devices ({activeDevices.length}) &amp; Log Out Others</span>
+                <Icon name="arrow_forward" className="text-[18px]" />
+              </button>
+            </div>
+          ) : (
           <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-md">
             <div className="flex items-start justify-between gap-space-xs">
               <div className="flex items-start gap-space-sm min-w-0">
@@ -412,6 +476,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               <Icon name="arrow_forward" className="text-[18px]" />
             </button>
           </div>
+          )}
         </section>
 
         <section className="space-y-space-xs">
@@ -425,7 +490,11 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>SMS Alerts</span>
                   <p className="font-caption text-caption text-text-secondary line-clamp-1">
-                    Codes for sign-ins to +234 803 555 0192
+                    {live
+                      ? profile.phone
+                        ? `Codes for sign-ins to ${profile.phone}`
+                        : 'Add a phone number to get sign-in codes'
+                      : 'Codes for sign-ins to +234 803 555 0192'}
                   </p>
                 </div>
               </div>
@@ -476,7 +545,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Location Precision</span>
-                  <p className={rowHint}>Deals within 5km in Apo &amp; Maitama</p>
+                  <p className={rowHint}>{live ? 'How precisely VEMTAP uses your location' : 'Deals within 5km in Apo & Maitama'}</p>
                 </div>
               </div>
               <div className="flex items-center gap-space-2xs shrink-0">
@@ -622,6 +691,8 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           onSignOut();
         }}
       />
+
+      {showDevices && <DevicesDialog onClose={() => setShowDevices(false)} />}
 
       {toast && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-space-md py-2.5 rounded-full shadow-lg font-label-md text-label-md flex items-center gap-2 transition-all duration-300">

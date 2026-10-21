@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -408,13 +409,18 @@ export function DesktopBusinessProfileBasicScreen({
                     : 'Provide a brief summary of what you offer to let neighbors explore your craft.'}
                 </p>
                 <div className="pt-space-xs flex items-center justify-between text-on-surface">
-                  <div className="flex items-center gap-space-xs">
-                    <div className="flex items-center text-tertiary-container">
-                      <Icon name="star" filled className="text-[18px]" />
-                      <span className="font-label-md text-label-md font-bold ml-1">4.9</span>
+                  {hasApiConfig() ? (
+                    // A business still onboarding has no reviews yet.
+                    <span className="font-caption text-caption text-text-secondary">New on VEMTAP</span>
+                  ) : (
+                    <div className="flex items-center gap-space-xs">
+                      <div className="flex items-center text-tertiary-container">
+                        <Icon name="star" filled className="text-[18px]" />
+                        <span className="font-label-md text-label-md font-bold ml-1">4.9</span>
+                      </div>
+                      <span className="font-caption text-caption text-text-secondary">(120+ local patrons)</span>
                     </div>
-                    <span className="font-caption text-caption text-text-secondary">(120+ local patrons)</span>
-                  </div>
+                  )}
                   <div className="flex items-center gap-space-2xs text-badge-discount-text font-label-sm text-caption font-medium bg-badge-discount-bg px-space-xs py-space-2xs rounded-md">
                     <Icon name="bolt" className="text-[14px]" />
                     <span>Instant Tap Perks</span>
