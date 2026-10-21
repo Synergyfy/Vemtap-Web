@@ -17,6 +17,7 @@ export interface MyBusiness {
   isVerified?: boolean | null;
   logoUrl?: string | null;
   coverImage?: string | null;
+  gallery?: string[] | null;
   city?: string | null;
   state?: string | null;
   address?: string | null;
@@ -38,4 +39,6 @@ export interface MyBusiness {
 export const businessService = {
   myBusiness: () => api.get<MyBusiness>('/businesses/my-business'),
   updateMyBusiness: (updates: Partial<MyBusiness>) => api.patch<MyBusiness>('/businesses/my-business', updates),
+  /** Background job that resolves lat/lng from the saved address. */
+  enqueueGeocode: () => api.post<{ queued: boolean }>('/businesses/my-business/enqueue-geocode'),
 };

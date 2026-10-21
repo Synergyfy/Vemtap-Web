@@ -32,5 +32,6 @@ export function downloadBase64(filename: string, mimeType: string, base64: strin
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  // Revoking straight away can cancel the download in Chrome; give it a moment.
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }

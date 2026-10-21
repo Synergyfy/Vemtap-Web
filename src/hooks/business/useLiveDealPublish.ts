@@ -13,11 +13,12 @@ import type { DealPublicationResult } from '../../scripts/deals/dealPublication'
  * Live Deal Studio: the deal is built on a real catalogue item (picked first)
  * and published with `POST /catalogue/offers`. Demo mode keeps the sample flow.
  */
-export function useLiveDealPublish(onComplete: () => void) {
+/** `initialSource` restores an item picked before a reload (onboarding keeps it with setup progress). */
+export function useLiveDealPublish(onComplete: () => void, initialSource: CatalogueItem | null = null) {
   const live = hasApiConfig();
   const { activeBranchId } = useBusinessBranch();
   const { create } = useOfferMutations();
-  const [source, setSource] = useState<CatalogueItem | null>(null);
+  const [source, setSource] = useState<CatalogueItem | null>(initialSource);
   const [error, setError] = useState<string | null>(null);
 
   const publish = (studio: DealStudioDraft) => {

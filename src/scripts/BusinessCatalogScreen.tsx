@@ -8,6 +8,9 @@ import { useImportedProducts, resolveProductDisplayImage } from './productImport
 import { summariseImport } from './productImport/importSummary';
 import { getCategoryImageByName, naira } from './catalogueData';
 import type { ImportedProduct } from './productImport/importTypes';
+import { hasApiConfig } from '../services/api/client';
+import { useCatalogueItemMutations, useCatalogueItems } from '../hooks/business/useCatalogueItems';
+import { toPrice, type CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
 
 interface BusinessCatalogScreenProps {
   onBack: () => void;
@@ -117,6 +120,26 @@ function importedToCatalogItem(product: ImportedProduct): CatalogItem {
   };
 }
 
+/** A published catalogue item (live) in the setup list's row shape. */
+function liveToCatalogItem(item: LiveCatalogueItem): CatalogItem {
+  const service = item.itemType === 'service';
+  const live = item.status === 'active' || item.status === 'published';
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category?.name || (service ? 'Service' : 'Product'),
+    categoryTone: 'muted',
+    image: item.mainImage ? { src: item.mainImage, alt: item.name } : undefined,
+    icon: service ? 'spa' : 'inventory_2',
+    tileCaption: live ? 'Live' : 'Hidden',
+    priceParts: [{ amount: naira(toPrice(item.price ?? undefined) ?? 0) }],
+    footerIcon: live ? 'check_circle' : 'edit_note',
+    footerText: live ? 'Visible on your storefront' : 'Hidden from customers',
+    footerTone: live ? 'green' : 'secondary',
+    meta: service ? item.duration || 'Bookable service' : item.stockQuantity !== null && item.stockQuantity !== undefined ? `Inventory: ${item.stockQuantity} units` : 'Stock not tracked',
+  };
+}
+
 export function BusinessCatalogScreen({
   onBack,
   onNext,
@@ -131,8 +154,15 @@ export function BusinessCatalogScreen({
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Live: what this business has actually published; demo keeps the samples.
+  const live = hasApiConfig();
+  const products = useCatalogueItems('product');
+  const services = useCatalogueItems('service');
+  const { remove } = useCatalogueItemMutations();
+  const liveItems = [...(products.data ?? []), ...(services.data ?? [])].map(liveToCatalogItem);
+
   const importedProducts = useImportedProducts();
-  const allItems = [...importedProducts.map(importedToCatalogItem), ...items];
+  const allItems = [...importedProducts.map(importedToCatalogItem), ...(live ? liveItems : items)];
 
   const query = search.trim().toLowerCase();
 
@@ -154,6 +184,7 @@ export function BusinessCatalogScreen({
   );
 
   const handleRemove = (id: string) => {
+    if (live) return id.startsWith('imp_') ? undefined : remove.mutate(id);
     setItems((current) => current.filter((item) => item.id !== id));
   };
 

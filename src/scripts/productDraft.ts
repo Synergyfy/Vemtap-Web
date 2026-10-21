@@ -1,5 +1,7 @@
 export interface ProductDraft {
   title: string;
+  /** Uploaded photo URL (live). */
+  mainImage?: string;
   producer: string;
   unbranded: boolean;
   primaryCategory: string;

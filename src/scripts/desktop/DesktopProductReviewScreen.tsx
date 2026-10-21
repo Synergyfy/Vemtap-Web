@@ -1,3 +1,5 @@
+import { LiveReviewStep } from '../../components/business/LiveItemSteps';
+import { hasApiConfig } from '../../services/api/client';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { isVariantProduct, getActiveVariants } from '../productVariants';
@@ -39,7 +41,7 @@ const toNumber = (value: string) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-export function DesktopProductReviewScreen({
+function DemoDesktopProductReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -787,6 +789,37 @@ export function DesktopProductReviewScreen({
             </button>
           </div>
         </div>
+      </div>
+    </Shell>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function DesktopProductReviewScreen(props: DesktopProductReviewScreenProps) {
+  if (!hasApiConfig()) return <DemoDesktopProductReviewScreen {...props} />;
+  const Shell = props.onNav ? MerchantShell : BusinessSetupChrome;
+  return (
+    <Shell activeNav="catalog" onNav={props.onNav}>
+      <div className="max-w-4xl mx-auto w-full px-6 py-space-xl">
+      <LiveReviewStep
+        item={{
+    kind: 'product',
+    title: props.draft.title,
+    image: props.draft.mainImage,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: props.draft.lowStock ? [['Low-stock alert', `${props.draft.lowStock} units`]] : [],
+  }}
+        branchIds={Object.keys(props.draft.branches ?? {}).filter((id) => props.draft.branches[id])}
+        onBack={props.onBack}
+        onEditBasics={props.onEditBasics}
+        onEditPricing={props.onEditPricing}
+        onEditBranches={props.onEditBranches}
+        onPublish={props.onPublish}
+        onSaveDraft={props.onSaveDraft}
+      />
       </div>
     </Shell>
   );

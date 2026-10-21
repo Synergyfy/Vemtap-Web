@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { hasApiConfig } from '../services/api/client';
 import { pickAndUploadImage } from '../services/uploadService';
+import { useLiveBranding } from '../hooks/business/useLiveBranding';
 import type { BrandingResult } from './desktop/DesktopBusinessProfileBrandingScreen';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -59,6 +60,17 @@ export function BusinessProfileBrandingScreen({
   const [gallery, setGallery] = useState<GalleryPhoto[]>(live ? [] : GALLERY_POOL.slice(0, 2));
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const branding = useLiveBranding((saved) => {
+    if (saved.logoUrl) {
+      setLogoUrl(saved.logoUrl);
+      setHasLogo(true);
+    }
+    if (saved.coverImage) setCover(saved.coverImage);
+    if (saved.gallery.length) setGallery(saved.gallery.map((src) => ({ src, alt: 'Business photo' })));
+  });
+  /** Saves straight away so the image survives a reload; failures surface like upload errors. */
+  const persist = (patch: Parameters<typeof branding.save>[0]) =>
+    branding.save(patch).catch(() => setUploadError('Uploaded, but saving it to your profile failed. Continue will try again.'));
 
   const remainingPhotos = GALLERY_POOL.filter(
     (photo) => !gallery.some((entry) => entry.src === photo.src),
@@ -92,6 +104,7 @@ export function BusinessProfileBrandingScreen({
     if (url) {
       setLogoUrl(url);
       setHasLogo(true);
+      void persist({ logoUrl: url });
     }
   };
   const previewTitle = draft.name.trim() || 'Your Store Name';
@@ -99,18 +112,27 @@ export function BusinessProfileBrandingScreen({
   const handleReplaceCover = async () => {
     if (!live) return setCover((current) => (current === COVER_IMG ? FEED_IMG : COVER_IMG));
     const url = await upload();
-    if (url) setCover(url);
+    if (url) {
+      setCover(url);
+      void persist({ coverImage: url });
+    }
   };
 
   const handleAddPhoto = async () => {
     if (!canAddPhoto) return;
     if (!live) return setGallery((current) => [...current, remainingPhotos[0]]);
     const url = await upload();
-    if (url) setGallery((current) => [...current, { src: url, alt: 'Business photo' }]);
+    if (url) {
+      const next = [...gallery, { src: url, alt: 'Business photo' }];
+      setGallery(next);
+      void persist({ gallery: next.map((entry) => entry.src) });
+    }
   };
 
   const handleRemovePhoto = (src: string) => {
-    setGallery((current) => current.filter((entry) => entry.src !== src));
+    const next = gallery.filter((entry) => entry.src !== src);
+    setGallery(next);
+    if (live) void persist({ gallery: next.map((entry) => entry.src) });
   };
 
   return (

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveDealBranch } from '../../hooks/business/useLiveDealBranch';
 import { Icon } from '../../components/ui/Icon';
 import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -146,7 +147,10 @@ export function DesktopDealStudioStep4Screen({
         : studio.strategy === 'combo'
           ? (comboRules[0] ?? 'Combo & Bundle Deal')
           : `Percentage Discount (${discount}% Off)`;
-  const activeBranches = BRANCH_ROWS.filter((branch) => studio.branches[branch.key]);
+  const liveBranch = useLiveDealBranch();
+  const activeBranches = liveBranch.live
+    ? [{ key: 'wuseII' as const, label: liveBranch.name }]
+    : BRANCH_ROWS.filter((branch) => studio.branches[branch.key]);
   const activeDays = DAY_ORDER.filter((day) => studio.days[day.key]);
   const dayIndices = activeDays.map((day) => DAY_ORDER.findIndex((entry) => entry.key === day.key));
   const contiguous =
@@ -263,7 +267,9 @@ export function DesktopDealStudioStep4Screen({
                         ? `Validity: ${formatFlashValidity(studio.flash)} • ${studio.flash.days}, ${studio.flash.window}`
                         : studio.strategy === 'combo'
                           ? (comboRules[1] ?? comboRules[0] ?? '')
-                          : `${strategyDetail} — Prime 45-day dry-aged Black Angus cut served with truffle chimichurri and flame-roasted bone marrow mash.`}
+                          : liveBranch.live
+                            ? `${strategyDetail}${draft.description ? ` — ${draft.description}` : ''}`
+                            : `${strategyDetail} — Prime 45-day dry-aged Black Angus cut served with truffle chimichurri and flame-roasted bone marrow mash.`}
                     </p>
                   </div>
                   <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-wrap items-baseline justify-between gap-space-xs">
@@ -540,7 +546,7 @@ export function DesktopDealStudioStep4Screen({
               <div className="flex flex-col gap-space-xs">
                 <div className="flex items-center justify-between font-caption text-caption text-on-surface-variant">
                   <span>Geo-Targeting Coverage (3.5 km Radar)</span>
-                  <span className="font-semibold text-primary">Wuse II + Garki II</span>
+                  <span className="font-semibold text-primary">{liveBranch.live ? liveBranch.name : 'Wuse II + Garki II'}</span>
                 </div>
                 <div className="relative w-full h-44 rounded-xl overflow-hidden bg-surface-container">
                   <div

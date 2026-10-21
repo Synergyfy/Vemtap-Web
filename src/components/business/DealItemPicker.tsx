@@ -6,7 +6,18 @@ import { toPrice, type CatalogueItem } from '../../services/catalogueItemsServic
 import { formatNaira } from '../../utils/format';
 
 /** First step of a live deal: choose the catalogue item the deal discounts. */
-export function DealItemPicker({ onPick, onExit }: { onPick: (item: CatalogueItem) => void; onExit: () => void }) {
+export function DealItemPicker({
+  onPick,
+  onExit,
+  exitLabel = 'Back to deals',
+  onSkip,
+}: {
+  onPick: (item: CatalogueItem) => void;
+  onExit: () => void;
+  exitLabel?: string;
+  /** Onboarding: lets the owner move on without creating a deal. */
+  onSkip?: () => void;
+}) {
   const [kind, setKind] = useState<'product' | 'service'>('product');
   const items = useCatalogueItems(kind);
   const rows = (items.data ?? []).filter((item) => item.status === 'active');
@@ -15,7 +26,7 @@ export function DealItemPicker({ onPick, onExit }: { onPick: (item: CatalogueIte
     <div className="w-full min-h-screen bg-surface flex justify-center p-space-md sm:p-space-xl">
       <div className="w-full max-w-2xl flex flex-col gap-space-md">
         <button type="button" onClick={onExit} className="inline-flex items-center gap-1 w-fit font-label-md text-label-md text-text-secondary hover:text-primary">
-          <Icon name="arrow_back" className="text-[18px]" /> Back to deals
+          <Icon name="arrow_back" className="text-[18px]" /> {exitLabel}
         </button>
         <div className="flex flex-col gap-1">
           <h1 className="font-heading-lg text-heading-lg text-text-primary">What is this deal for?</h1>
@@ -62,6 +73,11 @@ export function DealItemPicker({ onPick, onExit }: { onPick: (item: CatalogueIte
             })}
           </ul>
         )}
+        {onSkip ? (
+          <button type="button" onClick={onSkip} className="self-center h-10 px-space-md rounded-lg font-label-md text-label-md text-text-secondary hover:text-primary">
+            Skip deals for now
+          </button>
+        ) : null}
       </div>
     </div>
   );

@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useLiveDealPublish } from '../../hooks/business/useLiveDealPublish';
+import { DealItemPicker } from '../../components/business/DealItemPicker';
+import { DealPublishError } from '../../components/business/DealPublishError';
+import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
 import { useOnboardingSync } from '../../hooks/business/useOnboardingSync';
 import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { hasApiConfig } from '../../services/api/client';
@@ -205,9 +209,6 @@ export function DesktopBusinessOnboardingScreen({
     window.scrollTo(0, 0);
   }, [step]);
 
-  useEffect(() => {
-    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio });
-  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio]);
 
   useEffect(() => {
     setBusinessSetupVerificationState(verificationState);
@@ -229,6 +230,23 @@ export function DesktopBusinessOnboardingScreen({
 
   const sync = useOnboardingSync();
   const myBusiness = useMyBusiness();
+  // Live: deals are built on a real catalogue item and published to the API.
+  const liveDeal = useLiveDealPublish(() => setStep('businessQr'), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
+  // Saved after the deal hook so the picked item survives a reload too.
+  useEffect(() => {
+    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, dealSource: liveDeal.source });
+  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, liveDeal.source]);
+
+  const startLiveDeal = (item: CatalogueItem) => {
+    liveDeal.pick(item);
+    setDealDraft((prev) => ({
+      ...prev,
+      title: item.name,
+      description: item.description ?? '',
+      basePrice: String(toPrice(item.price ?? undefined) ?? ''),
+      comparePrice: String(toPrice(item.compareAtPrice ?? undefined) ?? ''),
+    }));
+  };
 
   // Live: start from the name given at sign-up.
   useEffect(() => {
@@ -253,6 +271,19 @@ export function DesktopBusinessOnboardingScreen({
   };
 
   const renderStep = () => {
+    // Live deals need a real item; resuming mid-studio without one asks again.
+    if (liveDeal.needsSource && (['dealStudio1', 'dealStudio2', 'dealStudio3', 'dealStudio4'] as BusinessOnboardingStep[]).includes(step))
+      return (
+        <DealItemPicker
+          exitLabel="Back to catalogue"
+          onExit={() => setStep('catalog')}
+          onPick={(item) => {
+            startLiveDeal(item);
+            setStep('dealStudio1');
+          }}
+          onSkip={() => setStep('businessQr')}
+        />
+      );
     switch (step) {
     case 'intro':
       return <DesktopBusinessIntroScreen onStart={() => setStep('basic')} onExit={onBack} />;
@@ -366,6 +397,7 @@ export function DesktopBusinessOnboardingScreen({
           draft={productDraft}
           onMakeDeal={() => {
             setDealDraft(productDraft);
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStep('productDeal');
           }}
           onViewCatalog={() => setStep('catalog')}
@@ -441,6 +473,7 @@ export function DesktopBusinessOnboardingScreen({
           draft={serviceDraft}
           onMakeDeal={() => {
             setDealDraft(serviceToDealDraft(serviceDraft));
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStep('productDeal');
           }}
           onViewCatalog={() => setStep('catalog')}
@@ -482,6 +515,8 @@ export function DesktopBusinessOnboardingScreen({
       );
     case 'dealStudio4':
       return (
+        <>
+        <DealPublishError message={liveDeal.error} onDismiss={liveDeal.clearError} />
         <DesktopDealStudioStep4Screen
           draft={dealDraft}
           studio={dealStudio}
@@ -490,9 +525,11 @@ export function DesktopBusinessOnboardingScreen({
           onEditRules={() => setStep('dealStudio2')}
           onEditLocations={() => setStep('dealStudio3')}
           onPublish={() => setStep('businessQr')}
+          livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
           onAnalytics={onComplete}
           onSaveDraft={() => setStep('catalog')}
         />
+        </>
       );
     case 'dealAutoImport':
       return (

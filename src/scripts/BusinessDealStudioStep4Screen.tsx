@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveDealBranch } from '../hooks/business/useLiveDealBranch';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
@@ -98,7 +99,10 @@ export function BusinessDealStudioStep4Screen({
         : studio.strategy === 'combo'
           ? (comboRules[0] ?? 'Combo & Bundle Deal')
           : `Percentage Discount (${pct}% Off)`;
-  const activeBranches = BRANCH_DETAILS.filter((branch) => studio.branches[branch.key]);
+  const liveBranch = useLiveDealBranch();
+  const activeBranches = liveBranch.live
+    ? [{ key: 'wuseII' as const, name: liveBranch.name, address: liveBranch.area }]
+    : BRANCH_DETAILS.filter((branch) => studio.branches[branch.key]);
   const activeDayKeys = DAY_ORDER.filter((key) => studio.days[key]);
   const weekdayCount = (['mon', 'tue', 'wed', 'thu', 'fri'] as Array<keyof DealStudioDraft['days']>).filter(
     (key) => studio.days[key],
@@ -243,7 +247,7 @@ export function BusinessDealStudioStep4Screen({
                 {studio.strategy === 'percentage' ? `${pct}% Off ${draft.title}` : `${strategyTitle}: ${draft.title}`}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary line-clamp-1 mt-0.5">
-                Signature dry-aged prime beef cut with truffle glaze.
+                {liveBranch.live ? draft.description || draft.title : 'Signature dry-aged prime beef cut with truffle glaze.'}
               </p>
             </div>
           </div>

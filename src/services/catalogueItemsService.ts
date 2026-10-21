@@ -126,7 +126,14 @@ export interface ProductDraftLike {
   unbranded?: boolean;
   variants?: Array<{ inventory: string }>;
   variantsEnabled?: boolean;
+  /** Uploaded photo URL (live). */
+  mainImage?: string;
+  /** Only real (UUID) category ids are sent; demo slugs are ignored. */
+  categoryId?: string;
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const apiCategoryId = (id?: string) => (id && UUID.test(id) ? id : undefined);
 
 export function productDraftToInput(draft: ProductDraftLike, branchId: string, extra: { mainImage?: string; categoryId?: string } = {}): CatalogueItemInput {
   const stock = draft.variantsEnabled && draft.variants?.length
@@ -145,8 +152,8 @@ export function productDraftToInput(draft: ProductDraftLike, branchId: string, e
     minStock: toPrice(draft.lowStock),
     allowBackOrder: draft.backorder,
     brand: draft.unbranded ? undefined : draft.producer?.trim() || undefined,
-    mainImage: extra.mainImage,
-    categoryId: extra.categoryId,
+    mainImage: extra.mainImage ?? draft.mainImage,
+    categoryId: extra.categoryId ?? apiCategoryId(draft.categoryId),
     branchId,
   });
 }
@@ -161,6 +168,7 @@ export interface ServiceDraftLike {
   deliveryFormat: 'in-salon' | 'mobile' | 'both';
   skuCode?: string;
   image?: string;
+  categoryId?: string;
 }
 
 const SERVICE_MODE: Record<ServiceDraftLike['deliveryFormat'], CatalogueItemInput['serviceMode']> = {
@@ -183,7 +191,7 @@ export function serviceDraftToInput(draft: ServiceDraftLike, branchId: string, e
     isBookable: true,
     bookingMethod: 'vemtap' as const,
     mainImage: image,
-    categoryId: extra.categoryId,
+    categoryId: extra.categoryId ?? apiCategoryId(draft.categoryId),
     branchId,
   });
 }

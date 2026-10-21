@@ -110,7 +110,29 @@ export interface BusinessSetupSnapshot {
   data: Record<string, unknown>;
 }
 
-let snapshot: BusinessSetupSnapshot | null = null;
+// Mirrored to localStorage so a reload, or coming back later, resumes setup
+// at the same step with the same drafts (cleared once setup is finished).
+const STORAGE_KEY = 'vemtap_business_setup';
+
+const readStored = (): BusinessSetupSnapshot | null => {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as BusinessSetupSnapshot) : null;
+  } catch {
+    return null;
+  }
+};
+
+let snapshot: BusinessSetupSnapshot | null = typeof window === 'undefined' ? null : readStored();
+
+const persist = () => {
+  try {
+    if (snapshot) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    else window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage unavailable: progress still lives for this page view.
+  }
+};
 
 export function getBusinessSetupSnapshot(): BusinessSetupSnapshot | null {
   return snapshot;
@@ -126,15 +148,18 @@ export function saveBusinessSetupSnapshot(step: string, data: Record<string, unk
     verificationState: snapshot?.verificationState ?? 'not-started',
     data,
   };
+  persist();
 }
 
 export function setBusinessSetupVerificationState(state: VerificationSectionState): void {
   snapshot = snapshot
     ? { ...snapshot, verificationState: state }
     : { step: 'basic', verificationState: state, data: {} };
+  persist();
 }
 
 /** Called only once setup is genuinely finished, so a new run starts clean. */
 export function clearBusinessSetupSnapshot(): void {
   snapshot = null;
+  persist();
 }

@@ -3593,7 +3593,9 @@ function AppInner() {
       // reuse the existing (intact) consumer account or register a fresh,
       // separate business identity. Reusing skips the marketing intro and
       // lands directly on "Tell us about your business".
-      const showAccountChoice = authed && !businessSetupSkipIntro && !hasBusinessSetupSnapshot();
+      // Live owners already have their business identity — the choice is only for customers.
+      const isOwnerSession = hasApiConfig() && sessionUser !== undefined && sessionUser !== null && isBusinessRole(sessionUser.role);
+      const showAccountChoice = authed && !isOwnerSession && !businessSetupSkipIntro && !hasBusinessSetupSnapshot();
       const leaveOnboarding = () => {
         setBusinessSetupSkipIntro(false);
         const destination = authed
@@ -3653,7 +3655,7 @@ function AppInner() {
         <>
           {isDesktop ? (
             <DesktopBusinessOnboardingScreen
-              initialStep={businessSetupSkipIntro ? 'basic' : 'intro'}
+              initialStep={businessSetupSkipIntro || isOwnerSession ? 'basic' : 'intro'}
               onBack={() => {
                 if (businessSetupSkipIntro) {
                   setBusinessSetupSkipIntro(false);
@@ -3666,7 +3668,7 @@ function AppInner() {
             />
           ) : (
             <BusinessOnboardingScreen
-              initialStep={businessSetupSkipIntro ? 'basic' : 'intro'}
+              initialStep={businessSetupSkipIntro || isOwnerSession ? 'basic' : 'intro'}
               onBack={() => {
                 if (businessSetupSkipIntro) {
                   setBusinessSetupSkipIntro(false);

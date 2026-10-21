@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLiveItemEditor } from '../../hooks/business/useLiveItemEditor';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -88,15 +89,24 @@ export function DesktopAddProductStep1Screen({
   onNav,
 }: DesktopAddProductStep1ScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  // Live: real categories, real photo uploads and no sample tags.
+  const editor = useLiveItemEditor('product');
   const [activeChips, setActiveChips] = useState<string[]>(
-    DIETARY_CHIPS.filter((chip) => chip.active).map((chip) => chip.label),
+    editor.live ? [] : DIETARY_CHIPS.filter((chip) => chip.active).map((chip) => chip.label),
   );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const timers = useRef<number[]>([]);
 
   // Category management & inline category creation
-  const [categories, setCategories] = useState<CentralCategory[]>(() => getCentralCategories('product'));
+  const [demoCategories, setCategories] = useState<CentralCategory[]>(() => getCentralCategories('product'));
+  const categories = editor.live ? editor.categories : demoCategories;
+  const defaultCategoryId = editor.live ? '' : 'grills';
+  const changePhoto = async () => {
+    if (!editor.live) return;
+    const url = await editor.uploadPhoto();
+    if (url) onDraftChange({ mainImage: url });
+  };
   const [showInlineCategoryModal, setShowInlineCategoryModal] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatDescription, setNewCatDescription] = useState('');
@@ -115,6 +125,20 @@ export function DesktopAddProductStep1Screen({
   const handleCreateCategoryInline = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
+    if (editor.live) {
+      editor
+        .createCategory(newCatName.trim())
+        .then((created) => {
+          onDraftChange({ categoryId: created.id, subCategory: created.name });
+          setNewCatName('');
+          setNewCatDescription('');
+          setNewCatImage('');
+          setShowInlineCategoryModal(false);
+          showToast(`Category "${created.name}" created and selected!`);
+        })
+        .catch(() => showToast('Could not create the category. Try again.'));
+      return;
+    }
     const slug = newCatName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const created = addCentralCategory({
       id: slug,
@@ -278,11 +302,23 @@ export function DesktopAddProductStep1Screen({
               </div>
 
               <div className="relative w-full h-80 rounded-xl overflow-hidden bg-surface-container-high group shadow-sm mb-space-md">
+                {editor.live && !draft.mainImage ? (
+                  <button
+                    type="button"
+                    onClick={changePhoto}
+                    className="w-full h-full flex flex-col items-center justify-center gap-space-xs text-text-secondary hover:text-primary"
+                  >
+                    <Icon name="add_photo_alternate" className="text-[40px]" />
+                    <span className="font-label-md text-label-md font-semibold">{editor.uploading ? 'Uploading…' : 'Add a product photo'}</span>
+                    <span className="font-caption text-caption">JPG or PNG, landscape works best</span>
+                  </button>
+                ) : (
                 <img
-                  alt={COVER_ALT}
+                  alt={editor.live ? draft.title || 'Product photo' : COVER_ALT}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  src={COVER_IMAGE}
+                  src={editor.live ? draft.mainImage : COVER_IMAGE}
                 />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-on-background/80 via-transparent to-transparent pointer-events-none" />
                 <div className="absolute top-space-md left-space-md flex items-center gap-space-xs">
                   <span className="bg-primary text-on-primary font-label-sm text-label-sm font-semibold px-space-sm py-1 rounded-full shadow-sm flex items-center gap-1">
@@ -304,16 +340,18 @@ export function DesktopAddProductStep1Screen({
                 </div>
                 <div className="absolute bottom-space-md left-space-md right-space-md flex items-center justify-between text-on-primary">
                   <div>
-                    <p className="font-label-md text-label-md font-semibold text-on-primary">woodfire_lamb_chops_master.jpg</p>
-                    <p className="font-caption text-caption text-on-primary/80">3840 × 2160 • 2.4 MB • High Resolution SRGB</p>
+                    <p className="font-label-md text-label-md font-semibold text-on-primary">{editor.live ? 'Your product photo' : 'woodfire_lamb_chops_master.jpg'}</p>
+                    <p className="font-caption text-caption text-on-primary/80">{editor.live ? (editor.uploadError ?? 'Shown on your storefront and POS') : '3840 × 2160 • 2.4 MB • High Resolution SRGB'}</p>
                   </div>
                   <div className="flex items-center gap-space-xs">
                     <button
                       type="button"
-                      className="px-space-md py-space-xs rounded-xl bg-surface-canvas text-text-primary font-label-md text-label-md font-semibold shadow hover:bg-surface-tint-blue transition-colors flex items-center gap-1"
+                      onClick={changePhoto}
+                      disabled={editor.uploading}
+                      className="px-space-md py-space-xs rounded-xl bg-surface-canvas text-text-primary font-label-md text-label-md font-semibold shadow hover:bg-surface-tint-blue transition-colors flex items-center gap-1 disabled:opacity-60"
                     >
                       <Icon name="cached" className="text-[18px] text-primary" />
-                      <span>Change Photo</span>
+                      <span>{editor.uploading ? 'Uploading…' : 'Change Photo'}</span>
                     </button>
                   </div>
                 </div>
@@ -329,7 +367,7 @@ export function DesktopAddProductStep1Screen({
                   </span>
                 </div>
                 <div className="grid grid-cols-5 gap-space-sm">
-                  {GALLERY_THUMBNAILS.map((thumb) => (
+                  {(editor.live ? [] : GALLERY_THUMBNAILS).map((thumb) => (
                     <div
                       key={thumb.order}
                       className="relative aspect-square rounded-xl overflow-hidden bg-surface-container group cursor-grab shadow-sm"
@@ -469,7 +507,7 @@ export function DesktopAddProductStep1Screen({
                     <span className="text-caption text-text-tertiary">{categories.length} Central Categories Available</span>
                   </label>
                   <select
-                    value={draft.categoryId || 'grills'}
+                    value={draft.categoryId || defaultCategoryId}
                     onChange={(e) => {
                       const selectedId = e.target.value;
                       const found = categories.find((c) => c.id === selectedId);
@@ -481,9 +519,14 @@ export function DesktopAddProductStep1Screen({
                     }}
                     className="w-full px-4 py-3 rounded-xl bg-surface-subtle border border-border text-body-md font-medium text-text-primary focus:outline-hidden focus:border-primary"
                   >
+                    {editor.live ? (
+                      <option value="" disabled>
+                        {categories.length ? 'Choose a category' : 'No categories yet — create one'}
+                      </option>
+                    ) : null}
                     {categories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
-                        {cat.name} ({cat.productCount} items)
+                        {editor.live ? cat.name : `${cat.name} (${cat.productCount} items)`}
                       </option>
                     ))}
                   </select>
@@ -491,7 +534,7 @@ export function DesktopAddProductStep1Screen({
 
                 {/* Selected Category Preview Info Card */}
                 {(() => {
-                  const activeCat = categories.find((c) => c.id === (draft.categoryId || 'grills')) || categories[0];
+                  const activeCat = categories.find((c) => c.id === (draft.categoryId || defaultCategoryId)) || (editor.live ? undefined : categories[0]);
                   if (!activeCat) return null;
                   return (
                     <div className="p-space-md rounded-xl bg-surface-subtle/80 border border-border-subtle flex items-start gap-space-sm">

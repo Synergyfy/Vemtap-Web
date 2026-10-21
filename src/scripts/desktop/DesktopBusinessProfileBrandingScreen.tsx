@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { pickAndUploadImage } from '../../services/uploadService';
+import { useLiveBranding } from '../../hooks/business/useLiveBranding';
 import { Icon } from '../../components/ui/Icon';
 import { CreateWithAiButton } from '../../components/CreateWithAiButton';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -106,6 +107,20 @@ export function DesktopBusinessProfileBrandingScreen({
   const [gallery, setGallery] = useState<GalleryItem[]>(live ? [] : INITIAL_GALLERY);
   const [nextGalleryId, setNextGalleryId] = useState(3);
   const [poolCursor, setPoolCursor] = useState(0);
+  const branding = useLiveBranding((saved) => {
+    if (saved.logoUrl) {
+      setLogoUrl(saved.logoUrl);
+      setHasLogo(true);
+    }
+    if (saved.coverImage) setCoverUrl(saved.coverImage);
+    if (saved.gallery.length) {
+      setGallery(saved.gallery.map((src, i) => ({ id: 100 + i, src, alt: 'Business photo', label: `Photo ${i + 1}` })));
+      setNextGalleryId(100 + saved.gallery.length);
+    }
+  });
+  /** Saves straight away so the image survives a reload; failures surface like upload errors. */
+  const persist = (patch: Parameters<typeof branding.save>[0]) =>
+    branding.save(patch).catch(() => setUploadError('Uploaded, but saving it to your profile failed. Continue will try again.'));
 
   const displayName = draft.name.trim().length > 0 ? draft.name.trim() : 'Your Business Name';
   const nameWords = displayName.split(/\s+/).filter((word) => word !== '&');
@@ -135,13 +150,17 @@ export function DesktopBusinessProfileBrandingScreen({
     if (url) {
       setLogoUrl(url);
       setHasLogo(true);
+      void persist({ logoUrl: url });
     }
   };
 
   const replaceCover = async () => {
     if (!live) return setCoverIndex((index) => (index + 1) % COVER_OPTIONS.length);
     const url = await upload('cover');
-    if (url) setCoverUrl(url);
+    if (url) {
+      setCoverUrl(url);
+      void persist({ coverImage: url });
+    }
   };
 
   const addPhoto = async () => {
@@ -149,8 +168,10 @@ export function DesktopBusinessProfileBrandingScreen({
     if (live) {
       const url = await upload('gallery');
       if (url) {
-        setGallery((prev) => [...prev, { id: nextGalleryId, src: url, alt: 'Business photo', label: `Photo ${prev.length + 1}` }]);
+        const next = [...gallery, { id: nextGalleryId, src: url, alt: 'Business photo', label: `Photo ${gallery.length + 1}` }];
+        setGallery(next);
         setNextGalleryId((id) => id + 1);
+        void persist({ gallery: next.map((item) => item.src) });
       }
       return;
     }
@@ -160,7 +181,11 @@ export function DesktopBusinessProfileBrandingScreen({
     setPoolCursor((cursor) => cursor + 1);
   };
 
-  const removePhoto = (id: number) => setGallery((prev) => prev.filter((item) => item.id !== id));
+  const removePhoto = (id: number) => {
+    const next = gallery.filter((item) => item.id !== id);
+    setGallery(next);
+    if (live) void persist({ gallery: next.map((item) => item.src) });
+  };
 
   /** Business facts already in the onboarding draft — feed the AI prompt. */
   const aiBrandContext: AiPromptContext = {

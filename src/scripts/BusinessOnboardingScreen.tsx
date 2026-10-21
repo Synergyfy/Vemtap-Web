@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
+import { useLiveDealPublish } from '../hooks/business/useLiveDealPublish';
+import { DealItemPicker } from '../components/business/DealItemPicker';
+import { DealPublishError } from '../components/business/DealPublishError';
+import { toPrice, type CatalogueItem } from '../services/catalogueItemsService';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
@@ -225,16 +229,6 @@ export function BusinessOnboardingScreen({
     window.scrollTo(0, 0);
   }, [stepIndex]);
 
-  useEffect(() => {
-    saveBusinessSetupSnapshot(STEPS[stepIndex], {
-      draft,
-      extraBranches,
-      productDraft,
-      dealDraft,
-      serviceDraft,
-      dealStudio,
-    });
-  }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio]);
 
   useEffect(() => {
     setBusinessSetupVerificationState(verificationState);
@@ -258,6 +252,31 @@ export function BusinessOnboardingScreen({
   }, [draft.categories, draft.tags]);
 
   const sync = useOnboardingSync();
+  // Live: deals are built on a real catalogue item and published to the API.
+  const liveDeal = useLiveDealPublish(() => setStepIndex(24), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
+  // Saved after the deal hook so the picked item survives a reload too.
+  useEffect(() => {
+    saveBusinessSetupSnapshot(STEPS[stepIndex], {
+      draft,
+      extraBranches,
+      productDraft,
+      dealDraft,
+      serviceDraft,
+      dealStudio,
+      dealSource: liveDeal.source,
+    });
+  }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio, liveDeal.source]);
+
+  const startLiveDeal = (item: CatalogueItem) => {
+    liveDeal.pick(item);
+    setDealDraft((prev) => ({
+      ...prev,
+      title: item.name,
+      description: item.description ?? '',
+      basePrice: String(toPrice(item.price ?? undefined) ?? ''),
+      comparePrice: String(toPrice(item.compareAtPrice ?? undefined) ?? ''),
+    }));
+  };
   const myBusiness = useMyBusiness();
 
   // Live: start from the name given at sign-up.
@@ -305,6 +324,19 @@ export function BusinessOnboardingScreen({
   };
 
   const renderStep = () => {
+    // Live deals need a real item; resuming mid-studio without one asks again.
+    if (liveDeal.needsSource && ['dealStudio1', 'dealStudio2', 'dealStudio3', 'dealStudio4'].includes(step))
+      return (
+        <DealItemPicker
+          exitLabel="Back to catalogue"
+          onExit={() => setStepIndex(7)}
+          onPick={(item) => {
+            startLiveDeal(item);
+            setStepIndex(19);
+          }}
+          onSkip={() => setStepIndex(24)}
+        />
+      );
     switch (step) {
     case 'intro':
       return <BusinessIntroScreen onBack={onBack} onNext={() => setStepIndex(1)} />;
@@ -428,6 +460,7 @@ export function BusinessOnboardingScreen({
           draft={productDraft}
           onMakeDeal={() => {
             setDealDraft(productDraft);
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStepIndex(13);
           }}
           onViewCatalog={() => setStepIndex(7)}
@@ -493,6 +526,7 @@ export function BusinessOnboardingScreen({
           draft={serviceDraft}
           onMakeDeal={() => {
             setDealDraft(serviceToDealDraft(serviceDraft));
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStepIndex(13);
           }}
           onViewCatalog={() => setStepIndex(7)}
@@ -534,16 +568,20 @@ export function BusinessOnboardingScreen({
       );
     case 'dealStudio4':
       return (
-        <BusinessDealStudioStep4Screen
-          draft={dealDraft}
-          studio={dealStudio}
-          onBack={() => setStepIndex(21)}
-          onEditOffer={() => setStepIndex(19)}
-          onEditRules={() => setStepIndex(20)}
-          onEditLocations={() => setStepIndex(21)}
-          onPublish={() => setStepIndex(24)}
-          onSaveDraft={() => setStepIndex(7)}
-        />
+        <>
+          <DealPublishError message={liveDeal.error} onDismiss={liveDeal.clearError} />
+          <BusinessDealStudioStep4Screen
+            draft={dealDraft}
+            studio={dealStudio}
+            onBack={() => setStepIndex(21)}
+            onEditOffer={() => setStepIndex(19)}
+            onEditRules={() => setStepIndex(20)}
+            onEditLocations={() => setStepIndex(21)}
+            onPublish={() => setStepIndex(24)}
+            livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
+            onSaveDraft={() => setStepIndex(7)}
+          />
+        </>
       );
     case 'dealAutoImport':
       return (

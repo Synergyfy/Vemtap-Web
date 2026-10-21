@@ -234,7 +234,7 @@ export function BusinessProductDealScreen({
             <Icon name="tips_and_updates" className="text-primary text-[18px] mt-0.5 flex-shrink-0" />
             <p className="font-caption text-caption text-on-secondary-container leading-relaxed">
               <strong>Merchant Pro Tip:</strong> You do not have to discount everything. Pick signature
-              dishes like this Ribeye Steak as magnet offers to pull first-time diners through your doors!
+              dishes like {draft.title || 'this one'} as magnet offers to pull first-time diners through your doors!
             </p>
           </div>
         </div>
@@ -316,7 +316,7 @@ export function BusinessProductDealScreen({
                 <span className="font-caption text-caption text-primary font-bold uppercase tracking-wider">
                   Instant Deal Auto-Sync
                 </span>
-                <h3 className="font-heading-md text-heading-md text-on-surface">Quick Setup: Woodfire Ribeye</h3>
+                <h3 className="font-heading-md text-heading-md text-on-surface">Quick Setup: {draft.title || 'Your item'}</h3>
               </div>
               <button
                 aria-label="Close"

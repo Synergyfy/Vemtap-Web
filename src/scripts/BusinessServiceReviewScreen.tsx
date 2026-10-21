@@ -1,3 +1,6 @@
+import { LiveReviewStep } from '../components/business/LiveItemSteps';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -41,7 +44,7 @@ const parseAmount = (value: string) => Number(value.replace(/[^0-9]/g, '')) || 0
 
 const formatAmount = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-export function BusinessServiceReviewScreen({
+function DemoBusinessServiceReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -477,5 +480,33 @@ export function BusinessServiceReviewScreen({
         </div>
       </div>
     </AppScreen>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function BusinessServiceReviewScreen(props: BusinessServiceReviewScreenProps) {
+  if (!hasApiConfig()) return <DemoBusinessServiceReviewScreen {...props} />;
+  return (
+    <BusinessSubScreen title="Review & publish" onBack={props.onBack}>
+      <LiveReviewStep
+        item={{
+    kind: 'service',
+    title: props.draft.title,
+    image: /^https?:\/\//.test(props.draft.image) ? props.draft.image : undefined,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.standardPrice || props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: [['Duration', `${props.draft.durationMins} mins`]],
+  }}
+        branchIds={props.draft.locations ?? []}
+        onBack={props.onBack}
+        onEditBasics={props.onEditBasics}
+        onEditPricing={props.onEditPricing}
+        onEditBranches={props.onEditBranches}
+        onPublish={props.onPublish}
+        onSaveDraft={props.onSaveDraft}
+      />
+    </BusinessSubScreen>
   );
 }

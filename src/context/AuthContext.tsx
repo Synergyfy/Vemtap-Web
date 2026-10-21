@@ -6,6 +6,7 @@ import { SESSION_EXPIRED_EVENT } from '../services/api/client';
 import { queryClient } from '../services/queryClient';
 import type { SessionUser } from '../services/sessionService';
 import { socketService } from '../services/socketService';
+import { clearBusinessSetupSnapshot } from '../scripts/businessSetup';
 
 interface AuthCredentials {
   identifier?: string;
@@ -191,6 +192,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             throw error;
           } finally {
             clearStoredProfile();
+            // Setup progress belongs to this owner; the next person starts clean.
+            clearBusinessSetupSnapshot();
             clearAuthTokens();
             queryClient.clear();
             writeFlag(AUTHED_KEY, false);

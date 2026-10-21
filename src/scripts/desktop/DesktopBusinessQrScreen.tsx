@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { useBusinessQr } from '../../hooks/business/useBusinessQr';
 
 interface DesktopBusinessQrScreenProps {
   onContinue: () => void;
@@ -19,6 +20,14 @@ const BUSINESS_URL = 'https://vemtap.com/biz/urban-grill';
 export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenProps) {
   const [copied, setCopied] = useState(false);
   const [presenting, setPresenting] = useState(false);
+  // Live: this business's own link, QR and details; demo keeps the sample.
+  const qr = useBusinessQr();
+  const businessLink = qr.link ?? BUSINESS_LINK;
+  const businessUrl = qr.url ?? BUSINESS_URL;
+  const businessName = qr.live ? qr.name ?? 'Your business' : 'Urban Grill & Bistro';
+  const businessTagline = qr.live ? qr.category ?? 'Your storefront on VEMTAP' : 'Artisan Smokehouse & Grill';
+  const businessArea = qr.live ? qr.area ?? 'Your branch' : 'Maitama / Wuse II, Abuja • Counter Pass #01';
+  const coverImage = qr.live && qr.cover ? { src: qr.cover, alt: `${businessName} storefront` } : STOREFRONT_IMAGES[0];
   const timers = useRef<number[]>([]);
 
   useEffect(
@@ -29,7 +38,7 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
   );
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(BUSINESS_URL).catch(() => undefined);
+    navigator.clipboard?.writeText(businessUrl).catch(() => undefined);
     setCopied(true);
     timers.current.push(window.setTimeout(() => setCopied(false), 2000));
   };
@@ -90,6 +99,9 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                   <div className="flex flex-col sm:flex-row items-center gap-space-xl bg-surface-subtle p-space-lg rounded-2xl">
                     <div className="relative p-space-md bg-surface-container-lowest rounded-2xl shadow-md flex items-center justify-center shrink-0">
                       <div className="relative w-52 h-52 flex items-center justify-center bg-surface-canvas p-space-xs rounded-xl">
+                        {qr.qrImage ? (
+                          <img src={qr.qrImage} alt={`QR code for ${businessName}`} className="w-full h-full" style={{ imageRendering: 'pixelated' }} />
+                        ) : (
                         <svg className="w-full h-full text-on-background fill-current" viewBox="0 0 160 160">
                           <rect height="46" rx="8" width="46" x="0" y="0" />
                           <rect fill="white" height="30" rx="4" width="30" x="8" y="8" />
@@ -121,6 +133,7 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                           <rect height="10" rx="2" width="10" x="124" y="138" />
                           <rect height="10" rx="2" width="28" x="56" y="142" />
                         </svg>
+                        )}
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center shadow-lg transform rotate-3">
                             <Icon name="bolt" className="text-on-primary text-[24px]" />
@@ -133,13 +146,11 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                         <Icon name="verified" className="text-[18px]" />
                         <span>Verified Merchant Profile</span>
                       </div>
-                      <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-                        Urban Grill &amp; Bistro
-                      </h2>
-                      <p className="font-body-md text-body-md text-text-secondary">Artisan Smokehouse &amp; Grill</p>
+                      <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{businessName}</h2>
+                      <p className="font-body-md text-body-md text-text-secondary">{businessTagline}</p>
                       <div className="flex items-center justify-center sm:justify-start gap-space-2xs text-text-secondary font-caption text-caption pt-space-xs">
                         <Icon name="location_on" className="text-[16px] text-tertiary" />
-                        <span>Maitama / Wuse II, Abuja • Counter Pass #01</span>
+                        <span>{businessArea}</span>
                       </div>
                       <div className="pt-space-sm flex items-center justify-center sm:justify-start gap-space-xs">
                         <span className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded bg-surface-container text-on-surface-variant font-caption text-caption">
@@ -154,7 +165,7 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                   <div className="flex items-center justify-between gap-space-sm p-space-xs pl-space-md rounded-xl bg-surface-container-low shadow-sm">
                     <div className="flex items-center gap-space-xs truncate">
                       <Icon name="link" className="text-primary text-[20px]" />
-                      <span className="font-label-md text-label-md text-text-primary truncate">{BUSINESS_LINK}</span>
+                      <span className="font-label-md text-label-md text-text-primary truncate">{businessLink}</span>
                     </div>
                     <button
                       type="button"
@@ -178,10 +189,12 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                 </button>
                 <button
                   type="button"
-                  className="h-14 px-space-md rounded-2xl bg-surface-tint-blue hover:bg-secondary-fixed text-primary font-button-primary text-button-primary shadow-sm hover:shadow transition-all flex items-center justify-center gap-space-xs"
+                  onClick={qr.live ? qr.downloadKit : undefined}
+                  disabled={qr.downloading}
+                  className="h-14 px-space-md rounded-2xl bg-surface-tint-blue hover:bg-secondary-fixed text-primary font-button-primary text-button-primary shadow-sm hover:shadow transition-all flex items-center justify-center gap-space-xs disabled:opacity-60"
                 >
                   <Icon name="download" className="text-primary text-[22px]" />
-                  <span>Download Kit (PDF / PNG)</span>
+                  <span>{qr.downloading ? 'Preparing your kit…' : qr.kitError ? 'Download failed — try again' : 'Download Kit (PDF)'}</span>
                 </button>
               </div>
 
@@ -243,13 +256,13 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                     </div>
                     <div className="px-space-md py-space-2xs bg-surface-subtle flex items-center gap-space-xs text-text-tertiary">
                       <Icon name="lock" className="text-[14px]" />
-                      <span className="font-caption text-caption truncate text-text-secondary">{BUSINESS_LINK}</span>
+                      <span className="font-caption text-caption truncate text-text-secondary">{businessLink}</span>
                     </div>
                     <div className="relative h-36 w-full overflow-hidden">
                       <img
                         className="w-full h-full object-cover"
-                        alt={STOREFRONT_IMAGES[0].alt}
-                        src={STOREFRONT_IMAGES[0].src}
+                        alt={coverImage.alt}
+                        src={coverImage.src}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-on-background/80 via-on-background/20 to-transparent" />
                       <div className="absolute top-space-xs left-space-xs px-space-xs py-space-2xs rounded-full bg-surface-canvas/90 backdrop-blur-sm flex items-center gap-space-2xs shadow-sm">
@@ -260,12 +273,8 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                         <span className="font-caption text-caption tracking-wider uppercase opacity-90">
                           Instant Store Pass
                         </span>
-                        <h3 className="font-heading-sm text-heading-sm font-bold text-on-primary leading-tight">
-                          Urban Grill &amp; Bistro
-                        </h3>
-                        <p className="font-caption text-caption text-on-primary opacity-80">
-                          Wuse II, Abuja • 0.1 mi away
-                        </p>
+                        <h3 className="font-heading-sm text-heading-sm font-bold text-on-primary leading-tight">{businessName}</h3>
+                        <p className="font-caption text-caption text-on-primary opacity-80">{qr.live ? businessArea : 'Wuse II, Abuja • 0.1 mi away'}</p>
                       </div>
                     </div>
                     <div className="p-space-md flex flex-col gap-space-md bg-surface">
@@ -276,7 +285,7 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                           </div>
                           <div className="flex flex-col">
                             <span className="font-label-sm text-label-sm font-bold text-badge-discount-text">
-                              20% Off Prime Lunch Combo
+                              {qr.live ? 'Your live deals' : '20% Off Prime Lunch Combo'}
                             </span>
                             <span className="font-caption text-caption text-text-secondary">
                               One-tap redemption at checkout
