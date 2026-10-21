@@ -332,10 +332,17 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
         <div className="w-full bg-background p-space-xl">
           <div className="mx-auto max-w-xl rounded-2xl border border-border bg-surface p-space-lg text-center shadow-sm">
             <Icon name="forum" className="mx-auto mb-space-sm text-[42px] text-text-tertiary" />
-            <h1 className="font-heading-lg text-heading-lg text-on-surface">No live conversations</h1>
+            <h1 className="font-heading-lg text-heading-lg text-on-surface">No messages yet</h1>
             <p className="mt-space-sm font-body-md text-body-md text-on-surface-variant">
-              The inbox is empty until the backend returns customer threads.
+              Start a chat from any business profile and your conversations will appear here.
             </p>
+            <button
+              type="button"
+              onClick={() => onNav('discover')}
+              className="mt-space-md inline-flex items-center justify-center rounded-full bg-primary px-space-md py-2.5 text-label-md font-semibold text-on-primary shadow-sm transition-opacity hover:opacity-90"
+            >
+              Browse businesses
+            </button>
           </div>
         </div>
       </DesktopPage>

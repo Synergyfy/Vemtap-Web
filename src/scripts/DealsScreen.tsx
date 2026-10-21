@@ -613,6 +613,95 @@ export function DealsScreen({
                   <p className="mt-1 font-body-md text-body-md text-text-secondary">Local offers will appear here once the catalogue is active.</p>
                 </div>
               )}
+              <div
+                {...dealCardProps(onOpenDeal)}
+                className="w-full text-left bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden flex flex-col hover:shadow-md transition-all cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Icon name="local_fire_department" className="text-primary text-[18px]" filled />
+                    <span className="font-label-sm text-[12px] font-bold uppercase tracking-wider text-text-secondary">
+                      FEATURED DEAL OF THE DAY
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
+                    50% OFF
+                  </span>
+                </div>
+                <div className="relative w-full aspect-[16/9] bg-surface-container overflow-hidden">
+                  <img
+                    alt="Chef's 5-Course Sunset Tasting Menu"
+                    className="w-full h-full object-cover"
+                    src={IMAGES.tasting}
+                  />
+                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                    <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-[11px] font-bold shadow-xs flex items-center gap-1">
+                      <Icon name="star" className="text-[13px]" filled />Top Pick
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium">
+                      Special Promo
+                    </span>
+                  </div>
+                  <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium flex items-center gap-1">
+                    <Icon name="hourglass_top" className="text-[13px] text-tertiary-fixed" />
+                    Ends in 8h
+                  </div>
+                </div>
+                <div className="p-space-md flex flex-col">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="font-caption text-[12px] text-text-secondary font-medium truncate">
+                        The Sky Lounge &amp; Grill • Apo Legacy Tower
+                      </span>
+                      <Icon name="verified" className="text-primary text-[14px] shrink-0" filled />
+                    </div>
+                    <div className="flex items-center gap-0.5 text-text-secondary font-caption text-[11px] shrink-0">
+                      <Icon name="location_on" className="text-[13px]" />
+                      <span>1.1 km</span>
+                    </div>
+                  </div>
+                  <h2 className="font-heading-sm text-[17px] text-text-primary font-bold leading-snug mb-2">
+                    Chef&apos;s 5-Course Sunset Tasting Menu &amp; Wine Pairing
+                  </h2>
+                  <div className="flex items-baseline justify-between mb-2.5">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-heading-md text-heading-md text-text-primary font-bold">₦22,500</span>
+                      <span className="font-body-md text-body-md text-text-tertiary line-through">₦45,000</span>
+                      <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
+                        Save ₦22,500
+                      </span>
+                    </div>
+                    <span className="font-caption text-[11px] text-error font-medium">
+                      Limited to 30 vouchers
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2.5 border-t border-border-subtle">
+                    <div className="flex items-center gap-3 text-text-secondary font-caption text-[12px]">
+                      <span className="flex items-center gap-1">
+                        <Icon name="favorite" className="text-[15px] text-error" filled />148
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Icon name="chat_bubble" className="text-[15px]" />32
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onClaim?.(() => {});
+                      }}
+                      className={`h-9 px-4 rounded-xl font-label-md text-label-md font-semibold active:scale-95 transition-all shadow-xs flex items-center gap-1.5 ${
+                        claimed
+                          ? 'bg-badge-discount-bg text-badge-discount-text'
+                          : 'bg-primary text-on-primary hover:bg-surface-tint'
+                      }`}
+                    >
+                      {claimed ? 'Claimed' : 'Claim Deal'}
+                      <Icon name="arrow_forward" className="text-[16px]" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="px-margin mb-space-sm flex items-center justify-between">

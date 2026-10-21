@@ -13,8 +13,8 @@ interface BusinessMessagesSearchScreenProps {
 type ResultChipKey = 'all' | 'orders' | 'customers' | 'deals';
 
 const RESULT_CHIPS: { key: ResultChipKey; label: string; icon: string }[] = [
-  { key: 'all', label: 'All results (3)', icon: 'all_inbox' },
-  { key: 'orders', label: 'Orders (3)', icon: 'receipt_long' },
+  { key: 'all', label: 'All results (0)', icon: 'all_inbox' },
+  { key: 'orders', label: 'Orders (0)', icon: 'receipt_long' },
   { key: 'customers', label: 'Customers (0)', icon: 'person' },
   { key: 'deals', label: 'Deals (0)', icon: 'local_offer' },
 ];
@@ -43,80 +43,16 @@ interface SearchResultRow {
   thread: 'order' | 'general';
 }
 
-const RESULTS: SearchResultRow[] = [
-  {
-    id: 'michael',
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAbwy9pUUnmEj5DQgTmMhDt9khd_Hk9OleTH2y3qkc5UP91HY_WI-0GSVKacRUCotNxe8DKYFfl-4EYzqOFM_1VtIjydpEqcU8GEC4jmlGUKt-0NmlWhyYoHDmERv6jHKIqEAtg66N03DHtHOHvFKYOTbQDC_v-lNp2VF9jQOZky1TRlgR1pKSL51JFzt95ruKc9HuhibiVkk_uKEFDIvXNoHmR81Z-vBnMaM5tcR9tgXtag83dq7tsXQ',
-    alt: 'Editorial portrait of a friendly young African male merchant customer named Michael James smiling warmly in natural daylight, wearing a tailored navy linen shirt, clean studio background with soft warm bokeh.',
-    name: 'Michael James',
-    time: '9:24 AM',
-    timePrimary: true,
-    online: true,
-    chipIcon: 'receipt_long',
-    chipClass: 'bg-surface-tint-blue text-primary',
-    orderRef: 'Order #VG',
-    orderSuffix: '-94021 · ₦34,500',
-    messagePrefix: 'You:',
-    message: 'Your order ',
-    messageHighlight: '#VG-94021',
-    messageSuffix: ' is packed and ready for pickup...',
-    metaIcon: 'check_circle',
-    metaIconClass: 'text-badge-discount-text',
-    metaLabel: 'Paid via Card',
-    metaItem: 'Ribeye Steak (x2)',
-    thread: 'order',
-  },
-  {
-    id: 'amina',
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCc63p9Dj9XaaZgVb9GTsLHuzSAlx1RBbaeIqJRQUSFb8hhPliQxQfRgnm_-j7p5enDtUBYrUI424KFcXVNGy0Vyf-d_yV6YDdZ7LfOM9NDRrgAvhxL8xhucZ-R4uedFnl3DMalmlSKc8OoPekQIvsivW5tgtI5GuhU622w5t8EffNXcA4xodXBPcfU2QFl-vDmFAzDhHolNtxplVn1KJSTNja2jB51HPY64-_6n9DVmOBTO8mqlS2dfQ',
-    alt: 'Close up photography of an African business professional woman named Amina Bello with braided hairstyle wearing a soft cream knit collar, warm sunlit interior background, smiling gently and approachable.',
-    name: 'Amina Bello',
-    time: 'Oct 16',
-    avatarBadge: '1',
-    chipIcon: 'shopping_bag',
-    chipClass: 'bg-surface-container-low text-text-secondary',
-    orderRef: 'Order #VG',
-    orderSuffix: '-94019 · ₦18,200',
-    messagePrefix: 'Amina:',
-    message: 'Can I pay with POS terminal when picking up ',
-    messageHighlight: '#VG-94019',
-    messageSuffix: '?',
-    metaIcon: 'schedule',
-    metaIconClass: 'text-tertiary-container',
-    metaLabel: 'Awaiting Pickup',
-    metaItem: 'Fresh Herb Bundle',
-    thread: 'general',
-  },
-  {
-    id: 'ibrahim',
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD2cgaPmOhQU3JM8He6ivLgELRl3UBoiBxnUX1V3AzAcCpTv7mL2vh_NclyunSqCi4Lx-xr30_cBorKEyPNdg2tghSuaNzdrUKVirkp2CyHl9iic-ctlz75QzGr8RiYuhwDWgm7-vrNFXRgIKNwteEgMi-qJ0pwoB2DWE-Udhm1m_fRpS0Vi4lMdl9EDronyamRonQuTUMgCPWD4Am_nIdW5OtLkvuBU3DTydKxg1oHIwKB4Dw22u9Q6Q',
-    alt: 'Portrait photo of Ibrahim Garba, a middle aged African gentleman with distinguished glasses and subtle smile outdoors in Lagos island urban terrace, warm atmospheric evening lighting.',
-    name: 'Ibrahim Garba',
-    time: 'Oct 12',
-    chipIcon: 'task_alt',
-    chipClass: 'bg-surface-container-low text-text-secondary',
-    orderRef: 'Order #VG',
-    orderSuffix: '-93880 · ₦9,600',
-    messagePrefix: 'You:',
-    message: 'Order ',
-    messageHighlight: '#VG-94019',
-    messageSuffix: ' has been collected. Thank you!',
-    metaIcon: 'done_all',
-    metaIconClass: 'text-badge-discount-text',
-    metaLabel: 'Completed',
-    metaItem: 'Artisan Sourdough Loaf',
-    thread: 'general',
-  },
-];
+const RESULTS: SearchResultRow[] = [];
 
 export function BusinessMessagesSearchScreen({
   onTab,
   onCancel,
   onOpenConversation,
 }: BusinessMessagesSearchScreenProps) {
-  const [query, setQuery] = useState('Order #VG');
+  const [query, setQuery] = useState('');
   const [chip, setChip] = useState<ResultChipKey>('all');
-  const [showEmpty, setShowEmpty] = useState(false);
+  const hasResults = RESULTS.length > 0;
 
   return (
     <AppScreen>
@@ -206,72 +142,58 @@ export function BusinessMessagesSearchScreen({
         {/* Results Meta Row */}
         <div className="px-margin pt-space-xs pb-space-2xs flex items-center justify-between">
           <p className="font-label-sm text-label-sm text-text-secondary">
-            {showEmpty ? (
-              <>Found <span className="font-semibold text-on-surface">0 conversations</span> matching <span className="text-primary font-semibold">"xyz123"</span></>
+            {query.trim() ? (
+              <>
+                Found <span className="font-semibold text-on-surface">0 conversations</span> matching{' '}
+                <span className="text-primary font-semibold">"{query.trim()}"</span>
+              </>
             ) : (
               <>
-                Found <span className="font-semibold text-on-surface">3 conversations</span> matching{' '}
-                <span className="text-primary font-semibold">"Order #VG"</span>
+                No live conversations yet
               </>
             )}
           </p>
           <button
             className="text-text-tertiary hover:text-on-surface transition-colors flex items-center gap-1 font-caption text-caption"
             type="button"
+            onClick={() => setQuery('')}
           >
-            <Icon name="sort" className="text-[14px]" />
-            Recent
+            <Icon name="refresh" className="text-[14px]" />
+            Reset
           </button>
         </div>
 
         {/* Results or Empty State */}
-        {showEmpty ? (
+        {!hasResults ? (
           <div className="px-margin mt-space-xs">
             <div className="w-full bg-surface-container-low rounded-xl p-space-lg text-center relative overflow-hidden shadow-sm">
               <div className="w-16 h-16 mx-auto mb-space-sm rounded-full bg-surface-tint-blue flex items-center justify-center relative">
                 <Icon name="manage_search" className="text-primary text-[32px]" />
-                <span className="w-3 h-3 rounded-full bg-secondary-fixed-dim absolute top-2 right-2 animate-ping" />
               </div>
               <h4 className="font-heading-sm text-heading-sm text-on-surface mb-1">
-                No conversations found for <span className="text-tertiary-container font-semibold">'xyz123'</span>
+                {query.trim() ? `No conversations found for “${query.trim()}”` : 'No live conversations yet'}
               </h4>
               <p className="font-body-md text-body-md text-text-secondary max-w-xs mx-auto mb-space-md">
-                Try searching by customer name, deal name, product item, or order booking code.
+                {query.trim()
+                  ? 'Try searching by customer name, order code, or deal reference that has actually been created.'
+                  : 'Customer threads, booking questions, and deal chats will appear here once the backend syncs live customer activity.'}
               </p>
-              <div className="flex flex-wrap items-center justify-center gap-1.5">
-                {['E.g. "Ribeye"', '"Amina"', '"#VG-94021"'].map((example) => (
-                  <span
-                    className="px-2.5 py-1 rounded-full bg-surface-canvas text-text-secondary font-caption text-caption shadow-sm"
-                    key={example}
-                  >
-                    {example}
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
         ) : (
           <div className="px-margin flex flex-col gap-space-sm mt-space-xs">
             {RESULTS.map((row) => (
               <button
-                className={`w-full bg-surface-canvas rounded-xl p-space-md shadow-sm active:scale-[0.99] transition-transform cursor-pointer relative overflow-hidden text-left ${
-                  row.id === 'michael' ? '' : ''
-                }`}
+                className="w-full bg-surface-canvas rounded-xl p-space-md shadow-sm active:scale-[0.99] transition-transform cursor-pointer relative overflow-hidden text-left"
                 key={row.id}
                 type="button"
                 onClick={() => onOpenConversation(row.thread, { name: row.name, avatar: row.img })}
               >
-                {row.id === 'michael' && <div className="absolute top-0 left-0 w-1 h-full bg-primary rounded-l-xl" />}
                 <div className="flex items-start gap-space-sm pl-1">
                   <div className="relative shrink-0">
                     <img alt={row.alt} className="w-12 h-12 rounded-full object-cover shadow-sm" src={row.img} />
                     {row.online && (
                       <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-badge-discount-text ring-2 ring-surface-canvas" />
-                    )}
-                    {row.avatarBadge && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center text-on-primary font-caption text-caption font-bold">
-                        {row.avatarBadge}
-                      </span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -286,22 +208,16 @@ export function BusinessMessagesSearchScreen({
                     <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1 ${row.chipClass}`}>
                       <Icon name={row.chipIcon} className="text-[14px]" />
                       <span className="font-caption text-caption font-semibold">
-                        <mark className="bg-primary/20 text-primary px-0.5 rounded">{row.orderRef}</mark>
+                        {row.orderRef}
                         {row.orderSuffix}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-secondary truncate mt-0.5">
                       <span className="font-medium text-on-surface">{row.messagePrefix}</span>{' '}
                       {row.message}
-                      {row.id !== 'ibrahim' ? (
-                        <mark className="bg-primary-fixed text-on-primary-fixed-variant font-medium px-1 rounded">
-                          {row.messageHighlight}
-                        </mark>
-                      ) : (
-                        <mark className="bg-primary-fixed text-on-primary-fixed-variant font-medium px-1 rounded">
-                          #VG-93880
-                        </mark>
-                      )}
+                      <mark className="bg-primary-fixed text-on-primary-fixed-variant font-medium px-1 rounded">
+                        {row.messageHighlight}
+                      </mark>
                       {row.messageSuffix}
                     </p>
                     <div className="flex items-center gap-space-xs mt-2 text-text-tertiary font-caption text-caption">
@@ -318,22 +234,6 @@ export function BusinessMessagesSearchScreen({
             ))}
           </div>
         )}
-
-        {/* Zero State Preview Toggle */}
-        <div className="px-margin mt-space-md pt-space-xs pb-space-lg">
-          <div className="flex items-center justify-between mb-space-xs px-1">
-            <span className="font-caption text-caption font-semibold tracking-wider uppercase text-text-tertiary">
-              Zero State Preview Mode
-            </span>
-            <button
-              className="font-caption text-caption text-primary hover:underline"
-              type="button"
-              onClick={() => setShowEmpty((current) => !current)}
-            >
-              {showEmpty ? 'Back to Results' : 'Simulate No Results'}
-            </button>
-          </div>
-        </div>
       </div>
 
       <BusinessTabBar active="messages" onTab={onTab} />

@@ -5,6 +5,7 @@ export { authService } from './authService';
 export { accountService } from './accountService';
 export { notificationService } from './notificationService';
 export { messageService } from './messageService';
+export { messagingSocket, getMessagingSocket, disposeMessagingSocket, setActiveThread, getActiveThread, joinThread, leaveThread, emitTyping, markRead, markDelivered } from './messagingSocket';
 export { socketService } from './socketService';
 export { catalogueService } from './catalogueService';
 export { ordersService } from './ordersService';

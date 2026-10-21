@@ -28,8 +28,6 @@ import { AccountDeletionProvider } from './context/AccountDeletionContext';
 import type { SubmittedOrder } from './context/OrdersContext';
 import { useCart } from './context/CartContext';
 import {
-  URBAN_BUSINESS,
-  SPA_BUSINESS,
   businessPath,
   businessSubPath,
   resolveBusinessPath,
@@ -74,6 +72,7 @@ import { DashboardScreen } from './scripts/DashboardScreen';
 import { MyDealsScreen } from './scripts/MyDealsScreen';
 import { MessagesScreen } from './scripts/MessagesScreen';
 import { ConversationScreen } from './scripts/ConversationScreen';
+import { useCustomerMessagingRealtime, useCustomerThreadBinding } from './hooks/useCustomerMessagingRealtime';
 import { OrdersScreen } from './scripts/OrdersScreen';
 import { OrderDetailScreen } from './scripts/OrderDetailScreen';
 import { BookingDetailScreen } from './scripts/BookingDetailScreen';
@@ -1052,6 +1051,8 @@ function AppInner() {
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
   const [activeConversation, setActiveConversation] = useState('urban');
+  useCustomerMessagingRealtime(authed);
+  useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
   const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
@@ -1147,8 +1148,8 @@ function AppInner() {
   };
 
   const resolveRoutePath = useCallback((target: Route) => {
-    const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : URBAN_BUSINESS;
-    const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : SPA_BUSINESS;
+    const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : null;
+    const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : null;
 
     switch (target) {
       case 'storefront':
@@ -1170,9 +1171,9 @@ function AppInner() {
       case 'spa-services':
         return selectedBusiness ? businessSubPath(selectedBusiness, 'services') : '/discover';
       case 'service-detail':
-        return detailService ? servicePath(activeSpaBusiness.slug, detailService.slug) : ROUTE_PATH['service-detail'];
+        return detailService && activeSpaBusiness ? servicePath(activeSpaBusiness.slug, detailService.slug) : '/discover';
       case 'product-detail':
-        return detailProduct ? productPath(activeUrbanBusiness.slug, detailProduct.id) : ROUTE_PATH['product-detail'];
+        return detailProduct && activeUrbanBusiness ? productPath(activeUrbanBusiness.slug, detailProduct.id) : '/discover';
       default:
         return ROUTE_PATH[target];
     }
@@ -1188,10 +1189,10 @@ function AppInner() {
   const openProduct = (id: string, display?: Partial<CatalogueProduct>, from?: Route) => {
     const base = findProduct(id);
     if (!base) return;
+    if (!selectedBusiness || selectedBusiness.venue !== 'urban') return;
     setDetailProduct({ ...base, ...display, id: base.id });
     if (from) setDetailFrom(from);
-    const businessRef = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : URBAN_BUSINESS;
-    const target = productPath(businessRef.slug, base.id);
+    const target = productPath(selectedBusiness.slug, base.id);
     if (window.location.pathname !== target) window.history.pushState(null, '', target);
     setRouteState('product-detail');
   };
@@ -1204,10 +1205,10 @@ function AppInner() {
   const openService = (key: string, from?: Route) => {
     const base = findSpaService(key);
     if (!base) return;
+    if (!selectedBusiness || selectedBusiness.venue !== 'spa') return;
     setDetailService(base);
     if (from) setServiceFrom(from);
-    const businessRef = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : SPA_BUSINESS;
-    const target = servicePath(businessRef.slug, base.slug);
+    const target = servicePath(selectedBusiness.slug, base.slug);
     if (window.location.pathname !== target) window.history.pushState(null, '', target);
     setRouteState('service-detail');
   };
@@ -1256,8 +1257,10 @@ function AppInner() {
     }
 
     const pathMatch = resolveBusinessPath(window.location.pathname);
-    if (pathMatch && (!selectedBusiness || selectedBusiness.slug !== pathMatch.business.slug)) {
-      setSelectedBusiness(pathMatch.business);
+    if (pathMatch) {
+      setSelectedBusiness((prev) => (prev && prev.slug === pathMatch.business.slug ? prev : pathMatch.business));
+    } else {
+      setSelectedBusiness(null);
     }
 
     const onPopState = () => {
@@ -2129,13 +2132,7 @@ function AppInner() {
               setAuthFrom('sign-in');
               setRoute('auth-code');
             }}
-            // Live: business onboarding opens with the owner-account step, which
-            // collects credentials. Demo: authenticate first via the code screen.
-            onBusinessRegister={() => {
-              if (hasApiConfig()) return setRoute('business-onboarding');
-              setAuthFrom('sign-in');
-              setRoute('auth-code');
-            }}
+            onBusinessRegister={() => setRoute('business-onboarding')}
             onForgotPin={() => setRoute('forgot-pin')}
             onCustomerSignIn={async () => {
               if (!hasApiConfig()) {
@@ -2168,13 +2165,7 @@ function AppInner() {
             setAuthFrom('sign-in');
             setRoute('auth-code');
           }}
-          // Live: business onboarding opens with the owner-account step, which
-          // collects credentials. Demo: authenticate first via the code screen.
-          onBusinessRegister={() => {
-            if (hasApiConfig()) return setRoute('business-onboarding');
-            setAuthFrom('sign-in');
-            setRoute('auth-code');
-          }}
+          onBusinessRegister={() => setRoute('business-onboarding')}
           onForgotPin={() => setRoute('forgot-pin')}
           onCustomerSignIn={async () => {
             if (!hasApiConfig()) {

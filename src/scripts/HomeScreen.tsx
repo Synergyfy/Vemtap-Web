@@ -377,7 +377,7 @@ function BusinessesSection({
 }: {
   items: DealSummary[];
   onSeeAll: () => void;
-  onOpenBusiness: () => void;
+  onOpenBusiness?: () => void;
 }) {
   return (
     <section className="flex flex-col space-y-3.5">
@@ -393,31 +393,34 @@ function BusinessesSection({
             Businesses will appear here once they publish live offers.
           </div>
         ) : (
-          items.map((business) => (
-            <div
-              key={business.id}
-              {...dealCardProps(onOpenBusiness)}
-              className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center shrink-0 overflow-hidden">
-                  <img className="w-full h-full object-cover" alt={business.imageAlt} src={business.image} />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <h3 className="font-label-md text-label-md text-text-primary font-semibold truncate">{business.business}</h3>
-                  <span className="font-caption text-caption text-text-secondary">{business.meta ?? business.distance}</span>
-                  <div className="flex items-center gap-1 pt-0.5">
-                    <Icon name="star" className="text-amber-500 text-[14px]" filled />
-                    <span className="font-caption text-caption text-text-primary font-semibold">{business.rating ?? '4.8'}</span>
-                    <span className="font-caption text-caption text-text-tertiary">{business.reviews ?? '(24)'}</span>
+          items.map((business) => {
+            const cardProps = onOpenBusiness ? dealCardProps(onOpenBusiness) : {};
+            return (
+              <div
+                key={business.id}
+                {...cardProps}
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center shrink-0 overflow-hidden">
+                    <img className="w-full h-full object-cover" alt={business.imageAlt} src={business.image} />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <h3 className="font-label-md text-label-md text-text-primary font-semibold truncate">{business.business}</h3>
+                    <span className="font-caption text-caption text-text-secondary">{business.meta ?? business.distance}</span>
+                    <div className="flex items-center gap-1 pt-0.5">
+                      <Icon name="star" className="text-amber-500 text-[14px]" filled />
+                      <span className="font-caption text-caption text-text-primary font-semibold">{business.rating ?? '4.8'}</span>
+                      <span className="font-caption text-caption text-text-tertiary">{business.reviews ?? '(24)'}</span>
+                    </div>
                   </div>
                 </div>
+                <span className="shrink-0 px-2.5 py-1 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                  {business.deals ?? 'Live Offer'}
+                </span>
               </div>
-              <span className="shrink-0 px-2.5 py-1 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                {business.deals ?? 'Live Offer'}
-              </span>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </section>
@@ -793,7 +796,7 @@ export function HomeScreen({
           </section>
 
           <TrendingSection items={liveDeals.slice(0, 3)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
-          <BusinessesSection items={liveDeals} onSeeAll={() => onTab('discover')} onOpenBusiness={onOpenBusiness} />
+          <BusinessesSection items={liveDeals} onSeeAll={onOpenDeals} onOpenBusiness={onOpenBusiness} />
           <PopularSection items={liveDeals.slice(0, 2)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
           <EnrollmentPrompt onEnroll={onEnroll} />
         </div>
