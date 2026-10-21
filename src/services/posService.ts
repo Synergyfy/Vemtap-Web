@@ -186,6 +186,80 @@ export interface PosCustomer {
   totalVisits?: number | null;
   pointsBalance?: number | null;
   tier?: string | null;
+  firstVisitAt?: string | null;
+  lastVisitAt?: string | null;
+  segments?: PosCustomerSegment[];
+}
+
+export type PosCustomerSegment = 'vip' | 'new' | 'lapsed';
+
+export interface PosCustomerPage {
+  data: PosCustomer[];
+  segmentCounts: Record<'all' | PosCustomerSegment, number>;
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** `GET /pos/customers/:id` — stats and the last ten purchases at this business. */
+export interface PosCustomerDetail extends PosCustomer {
+  createdAt?: string | null;
+  averageOrderValue?: Money | null;
+  recentPurchases: {
+    id: string;
+    date: string;
+    total: number;
+    items: number;
+    itemNames: string[];
+    paymentMethod?: string | null;
+    receipt?: string | null;
+  }[];
+}
+
+export interface PosCustomerRewards {
+  pointsBalance: number;
+  tier?: string | null;
+  data: {
+    id: string;
+    name: string;
+    description?: string | null;
+    pointsRequired: number;
+    affordable: boolean;
+    pointsShort: number;
+  }[];
+}
+
+/** The ticket a till shows on its customer display (priced by the server). */
+export interface PosDisplayTicket {
+  reference: string | null;
+  tableNumber: string | null;
+  customerName: string | null;
+  orderType: PosOrderType;
+  lines: { name: string; quantity: number; unitPrice: number; lineTotal: number }[];
+  itemCount: number;
+  subtotal: number;
+  discountAmount: number;
+  tax: number;
+  serviceCharge: number;
+  packagingFee: number;
+  total: number;
+  updatedAt: string;
+}
+
+export interface PosTipOption {
+  percent: number;
+  amount: number;
+}
+
+/** `GET /pos/display/:tillId` — everything a customer display paints. */
+export interface PosDisplayState {
+  till: { id: string; name: string; code?: string | null };
+  venue: { name: string | null; logo: string | null; branchName: string | null };
+  taxLabel: string;
+  paymentMethods: { cash: boolean; card: boolean; transfer: boolean; oneTap: boolean };
+  transfer: { bankName: string | null; accountNumber: string | null; accountName: string | null } | null;
+  ticket: PosDisplayTicket | null;
+  tipOptions: PosTipOption[];
 }
 
 export interface KitchenOrder {
@@ -270,6 +344,26 @@ export const posService = {
 
   customers: (query: { search?: string; branchId?: string; limit?: number }) =>
     api.get<{ data: PosCustomer[] }>('/pos/customers', { params: { limit: 10, ...query } }).then((res) => res.data ?? []),
+  customerPage: (query: { search?: string; segment?: PosCustomerSegment; branchId?: string; page?: number; limit?: number }) =>
+    api.get<PosCustomerPage>('/pos/customers', { params: { limit: 20, ...query } }),
+  customer: (id: string) => api.get<PosCustomerDetail>(`/pos/customers/${id}`),
+  customerRewards: (id: string, branchId?: string | null) => api.get<PosCustomerRewards>(`/pos/customers/${id}/rewards`, scope(branchId)),
+
+  display: (tillId: string) => api.get<PosDisplayState>(`/pos/display/${tillId}`),
+  showOnDisplay: (
+    tillId: string,
+    body: {
+      lines: { name: string; quantity: number; unitPrice: number }[];
+      discountAmount?: number;
+      orderType?: PosOrderType;
+      customerName?: string;
+    },
+  ) => api.put<PosDisplayTicket>(`/pos/display/${tillId}/ticket`, body),
+  /** With `saleId`, the display moves on to the tip and rating screen for that sale. */
+  clearDisplay: (tillId: string, saleId?: string) =>
+    api.del<{ cleared: boolean }>(`/pos/display/${tillId}/ticket`, { params: saleId ? { saleId } : {} }),
+  displayTipRating: (tillId: string, body: { saleId?: string; tipAmount: number; rating?: number }) =>
+    api.post<unknown>(`/pos/display/${tillId}/tip-rating`, body),
 
   kitchen: (branchId?: string | null) => api.get<KitchenStream>('/pos/kitchen/orders', scope(branchId)),
   setKitchenStatus: (id: string, status: KitchenStatus) => api.patch<unknown>(`/pos/kitchen/orders/${id}/status`, { status }),

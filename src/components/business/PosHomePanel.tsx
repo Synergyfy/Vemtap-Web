@@ -274,7 +274,9 @@ function OfflineQueue() {
 }
 
 /** Live POS home: today at this branch, the register shift, held tickets and offline sync. */
-export function PosHomePanel({ onNewSale, onOpen }: { onNewSale: () => void; onOpen: (target: 'ledger' | 'kitchen' | 'stock') => void }) {
+export type PosHomeTarget = 'ledger' | 'kitchen' | 'stock' | 'customers' | 'display' | 'switch';
+
+export function PosHomePanel({ onNewSale, onOpen }: { onNewSale: () => void; onOpen: (target: PosHomeTarget) => void }) {
   const { activeBranchId } = useBusinessBranch();
   const summary = usePosBranchSummary();
   const today = summary.data?.find((b) => b.branchId === activeBranchId);
@@ -303,6 +305,9 @@ export function PosHomePanel({ onNewSale, onOpen }: { onNewSale: () => void; onO
             { key: 'ledger', label: 'Sales ledger', icon: 'receipt_long' },
             { key: 'kitchen', label: 'Kitchen', icon: 'skillet' },
             { key: 'stock', label: 'Stock', icon: 'inventory_2' },
+            { key: 'customers', label: 'Customers', icon: 'group' },
+            { key: 'display', label: 'Customer display', icon: 'connected_tv' },
+            { key: 'switch', label: 'Switch cashier', icon: 'switch_account' },
           ] as const
         ).map((link) => (
           <button

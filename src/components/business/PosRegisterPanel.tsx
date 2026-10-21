@@ -6,6 +6,7 @@ import { PosReceipt, printSaleReceipt } from './PosReceipt';
 import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 import { usePosCustomers, usePosMutations, useRegisterStatus } from '../../hooks/business/usePos';
 import { ticketCount, ticketStore, ticketSubtotal, usePosTicket, type Ticket } from '../../hooks/business/usePosTicket';
+import { usePosDisplayMirror } from '../../hooks/business/usePosDisplay';
 import { usePosOffline } from '../../context/PosOfflineContext';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
@@ -526,6 +527,8 @@ export function PosRegisterPanel({ onOpenHome }: { onOpenHome: () => void }) {
   const services = useCatalogueItems('service');
   const register = useRegisterStatus();
   const quote = useTicketQuote(ticket);
+  // The till's customer display follows this ticket (when the register is open on a till).
+  const display = usePosDisplayMirror(ticket, register.data?.session?.tillId);
   const [step, setStep] = useState<'sell' | 'pay' | 'done'>('sell');
   const [sale, setSale] = useState<PosSale | null>(null);
   const [mobileTicket, setMobileTicket] = useState(false);
@@ -546,6 +549,7 @@ export function PosRegisterPanel({ onOpenHome }: { onOpenHome: () => void }) {
         onBack={() => setStep('sell')}
         onDone={(done) => {
           setSale(done);
+          display.settle(done?.id ?? null);
           ticketStore.clear();
           setStep('done');
         }}

@@ -206,7 +206,8 @@ import {
 import type { IntelligenceTab } from './components/business/IntelligencePanel';
 import { DesktopLiveAccountScreen, LiveAccountScreen, type AccountPage } from './scripts/LiveAccountScreens';
 import { DesktopLiveMessagesScreen, LiveMessagesScreen } from './scripts/LiveMessagesScreens';
-import { DesktopLivePosScreen, LivePosScreen, type LivePosPage } from './scripts/LivePosScreens';
+import { DesktopLivePosScreen, LivePosDisplayScreen, LivePosScreen, type LivePosPage } from './scripts/LivePosScreens';
+import type { PosHomeTarget } from './components/business/PosHomePanel';
 import {
   DesktopLiveBranchPricingScreen,
   DesktopLiveDealDetailScreen,
@@ -1743,10 +1744,26 @@ function AppInner() {
   const livePos = (page: LivePosPage) => {
     const nav = {
       onNewSale: () => setRoute('pos-register'),
-      onOpen: (target: 'ledger' | 'kitchen' | 'stock') => setRoute(target === 'ledger' ? 'pos-ledger' : target === 'kitchen' ? 'pos-kitchen' : 'pos-stock'),
+      onOpen: (target: PosHomeTarget) =>
+        setRoute(
+          (
+            {
+              ledger: 'pos-ledger',
+              kitchen: 'pos-kitchen',
+              stock: 'pos-stock',
+              customers: 'pos-customers-lookup',
+              display: 'pos-display-order',
+              switch: 'pos-switch',
+            } as const
+          )[target],
+        ),
       onOpenHome: () => setRoute('pos-home'),
       onOpenTaxes: () => setRoute('pos-taxes'),
       onOpenReceipt: () => setRoute('pos-receipt'),
+      onSwitchCashier: () => {
+        signOut();
+        setRoute('sign-in');
+      },
     };
     return isDesktop ? (
       <DesktopLivePosScreen page={page} nav={nav} onNav={posTerminalNav} />
@@ -4697,6 +4714,7 @@ function AppInner() {
       );
 
     case 'pos-display-order':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop) return <DesktopPosDisplayOrderScreen />;
       return (
         <div className="biz-flow">
@@ -4709,6 +4727,7 @@ function AppInner() {
       );
 
     case 'pos-display-tip':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop)
         return <DesktopPosDisplayTipScreen onProceed={() => setRoute('pos-display-pay')} />;
       return (
@@ -4718,6 +4737,7 @@ function AppInner() {
       );
 
     case 'pos-display-pay':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop) return <DesktopPosDisplayPayScreen onSplit={() => setRoute('pos-split-bill')} />;
       return (
         <div className="biz-flow">
@@ -4730,6 +4750,7 @@ function AppInner() {
       );
 
     case 'pos-split-bill':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopSplitBillScreen
@@ -4745,6 +4766,7 @@ function AppInner() {
       );
 
     case 'pos-display-receipt':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop) return <DesktopPosDisplayReceiptScreen onDone={() => setRoute('pos-order-lookup')} />;
       return (
         <div className="biz-flow">
@@ -4889,6 +4911,7 @@ function AppInner() {
       );
 
     case 'pos-switch':
+      if (hasApiConfig()) return livePos('switch');
       if (isDesktop)
         return (
           <DesktopPosSwitchScreen onNav={posTerminalNav} onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
@@ -4900,6 +4923,7 @@ function AppInner() {
       );
 
     case 'pos-customer':
+      if (hasApiConfig()) return livePos('customers');
       if (isDesktop)
         return (
           <DesktopPosCustomerScreen
@@ -5075,6 +5099,7 @@ function AppInner() {
       );
 
     case 'pos-customers-lookup':
+      if (hasApiConfig()) return livePos('customers');
       if (isDesktop)
         return (
           <DesktopPosCustomerLookupScreen
@@ -5118,6 +5143,7 @@ function AppInner() {
       );
 
     case 'pos-dossier':
+      if (hasApiConfig()) return livePos('customers');
       if (isDesktop)
         return (
           <DesktopPosCustomerDossierScreen
@@ -5166,6 +5192,7 @@ function AppInner() {
       );
 
     case 'pos-buffer':
+      if (hasApiConfig()) return livePos('home');
       if (isDesktop)
         return <DesktopPosBufferScreen onNav={posTerminalNav} onReturnToRegister={() => setRoute('pos-offline')} />;
       return (

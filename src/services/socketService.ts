@@ -1,11 +1,11 @@
 import { io, type Socket } from 'socket.io-client';
 import { getAccessToken } from './api/client';
 
-export type SocketNamespace = '/' | '/messaging' | '/support' | '/notifications';
+export type SocketNamespace = '/' | '/messaging' | '/support' | '/notifications' | '/pos';
 
 type SocketEventHandler = (...args: any[]) => void;
 
-const SOCKET_NAMESPACES: SocketNamespace[] = ['/', '/messaging', '/support', '/notifications'];
+const SOCKET_NAMESPACES: SocketNamespace[] = ['/', '/messaging', '/support', '/notifications', '/pos'];
 const sockets = new Map<SocketNamespace, Socket>();
 
 const normalizeBaseUrl = (value: string): string => {
