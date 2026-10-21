@@ -18,6 +18,7 @@ export interface BusinessOrder {
   branchId?: string | null;
   branch?: { id?: string; name?: string | null } | null;
   customer?: Person | null;
+  trackingToken?: string | null;
   status?: OrderStatus | string | null;
   notes?: string | null;
   tableNumber?: string | null;
@@ -47,6 +48,7 @@ const asList = <T>(res: T[] | { data: T[] }) => (Array.isArray(res) ? res : res.
 export const businessOrdersService = {
   orders: (query: { branchId?: string; status?: string; type?: 'order' | 'booking'; limit?: number } = {}) =>
     api.get<BusinessOrder[] | { data: BusinessOrder[] }>('/catalogue/orders', { params: { ...query } }).then(asList),
+  order: (id: string) => api.get<BusinessOrder>(`/catalogue/orders/${id}`),
   setOrderStatus: (id: string, status: OrderStatus) => api.patch<BusinessOrder>(`/catalogue/orders/${id}/status`, { status }),
   bookings: (query: { branchId?: string; status?: string; from?: string; to?: string; limit?: number } = {}) =>
     api.get<BusinessBooking[] | { data: BusinessBooking[] }>('/bookings', { params: { ...query } }).then(asList),

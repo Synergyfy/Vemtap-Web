@@ -5108,6 +5108,7 @@ function AppInner() {
       );
 
     case 'pos-order-lookup':
+      if (hasApiConfig()) return livePos('orders');
       if (isDesktop)
         return <DesktopPosOrderLookupScreen onNav={posTerminalNav} onBack={() => setRoute('pos-home')} />;
       return (

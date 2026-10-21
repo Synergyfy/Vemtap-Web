@@ -3,10 +3,11 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { PosHomePanel } from '../components/business/PosHomePanel';
 import { PosRegisterPanel } from '../components/business/PosRegisterPanel';
+import { PosOrderLookupPanel } from '../components/business/PosOrderLookupPanel';
 import { PosKitchenPanel, PosLedgerPanel, PosStaffPinsPanel, PosStockPanel } from '../components/business/PosOpsPanels';
 import { PosTerminalChrome, type PosTerminalNavKey } from './desktop/PosTerminalChrome';
 
-export type LivePosPage = 'home' | 'register' | 'ledger' | 'kitchen' | 'stock' | 'settings';
+export type LivePosPage = 'home' | 'register' | 'ledger' | 'kitchen' | 'stock' | 'settings' | 'orders';
 
 export interface LivePosNav {
   onNewSale: () => void;
@@ -23,6 +24,7 @@ const META: Record<LivePosPage, { title: string; nav: PosTerminalNavKey; rail?: 
   kitchen: { title: 'Kitchen', nav: 'orders', rail: 'pos-kitchen' },
   stock: { title: 'Stock', nav: 'products' },
   settings: { title: 'POS settings', nav: 'settings' },
+  orders: { title: 'Find customer order', nav: 'orders' },
 };
 
 function SettingsLinks({ nav }: { nav: LivePosNav }) {
@@ -63,6 +65,8 @@ function Body({ page, nav, saleId }: { page: LivePosPage; nav: LivePosNav; saleI
       return <PosStockPanel />;
     case 'settings':
       return <SettingsLinks nav={nav} />;
+    case 'orders':
+      return <PosOrderLookupPanel />;
   }
 }
 

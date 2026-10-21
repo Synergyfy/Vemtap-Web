@@ -83,7 +83,7 @@ function ActionButtons<S extends string>({
   );
 }
 
-function OrderRow({ order }: { order: BusinessOrder }) {
+export function OrderRow({ order }: { order: BusinessOrder }) {
   const { order: mutate } = useOrderStatusMutations();
   const [error, setError] = useState<string | null>(null);
   const status = order.status ?? 'new';
