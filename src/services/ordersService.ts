@@ -193,25 +193,13 @@ const extractArray = (payload: unknown): OrderApiRecord[] => {
 
 export const ordersService = {
   getMyOrders: async (params?: Record<string, string | number | boolean | undefined>) => {
-    try {
-      const response = await api.get<unknown>('/catalogue/orders/my-orders', { params });
-      return extractArray(response).map((item) => normalizeOrderRecord(item)).filter(Boolean);
-    } catch (error) {
-      const fallback = await api.get<unknown>('/orders/my', { params }).catch(() => null);
-      if (!fallback) throw error;
-      return extractArray(fallback).map((item) => normalizeOrderRecord(item)).filter(Boolean);
-    }
+    const response = await api.get<unknown>('/catalogue/orders/my-orders', { params });
+    return extractArray(response).map((item) => normalizeOrderRecord(item)).filter(Boolean);
   },
 
   createOrder: async (payload: Record<string, unknown>) => {
-    try {
-      const response = await api.post<OrderApiRecord>('/catalogue/orders', payload);
-      return normalizeOrderRecord(response);
-    } catch (error) {
-      const fallback = await api.post<OrderApiRecord>('/orders', payload).catch(() => null);
-      if (!fallback) throw error;
-      return normalizeOrderRecord(fallback);
-    }
+    const response = await api.post<OrderApiRecord>('/catalogue/orders', payload);
+    return normalizeOrderRecord(response);
   },
 
   updateStatus: async (id: string, payload: { status: string; reason?: string; refundItems?: unknown[] }) =>

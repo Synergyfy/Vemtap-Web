@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
@@ -8,7 +8,7 @@ interface DesktopStoreOrderingSettingsScreenProps {
 }
 
 export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderingSettingsScreenProps) {
-  const { settings, updateSettings } = useStoreOrdering();
+  const { settings, updateSettings, lastError, clearLastError } = useStoreOrdering();
 
   // Local form state
   const [enabled, setEnabled] = useState(settings.enabled);
@@ -31,6 +31,12 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
     setToastMessage(msg);
     window.setTimeout(() => setToastMessage(null), 3000);
   };
+
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
 
   const handleBranchToggle = (branchKey: string) => {
     setActiveBranches((prev) => ({

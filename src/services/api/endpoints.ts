@@ -9,7 +9,6 @@ export const API_ENDPOINTS = {
     itemBranchPricing: (id: string) => `/catalogue/items/${id}/branch-pricing`,
     offers: '/catalogue/offers',
     offerById: (id: string) => `/catalogue/offers/${id}`,
-    offerBranchPricing: (id: string) => `/catalogue/offers/${id}/branch-pricing`,
     offerStats: (id: string) => `/catalogue/offers/${id}/stats`,
     offerSummary: '/catalogue/offers/summary',
     adminOffers: '/catalogue/offers/admin',
@@ -51,16 +50,6 @@ export const API_ENDPOINTS = {
     prepacks: '/ad-wallet/prepacks',
     topUp: '/ad-wallet/top-up',
     invoice: (id: string) => `/ad-wallet/invoices/${id}`,
-  },
-  orders: {
-    root: '/orders',
-    byId: (id: string) => `/orders/${id}`,
-    status: (id: string) => `/orders/${id}/status`,
-    payment: (id: string) => `/orders/${id}/payment`,
-  },
-  claims: {
-    root: '/claims',
-    byId: (id: string) => `/claims/${id}`,
   },
   messaging: {
     threads: '/customer/messaging/threads',

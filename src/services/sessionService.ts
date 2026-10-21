@@ -18,6 +18,7 @@ export interface SessionUser {
   branchId?: string | null;
   business?: { id: string; name?: string | null; uniqueCode?: string | null } | null;
   emailVerified?: boolean;
+  twoFactorEnabled?: boolean;
 }
 
 const BUSINESS_ROLES: UserRole[] = ['Owner', 'Manager', 'Staff'];

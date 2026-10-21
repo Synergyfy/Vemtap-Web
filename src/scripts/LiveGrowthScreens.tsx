@@ -4,20 +4,72 @@ import { CampaignsPanel, QuickBoostPanel, WalletPanel } from '../components/busi
 import { CampaignMetricsPanel } from '../components/business/CampaignMetricsPanel';
 import type { CampaignKind } from '../services/sponsoredCampaignsService';
 import { LoyaltyPanel } from '../components/business/LoyaltyPanel';
-import { SegmentsPanel } from '../components/business/SegmentsPanel';
+import { SegmentDetailPanel, SegmentsPanel, type SegmentActions } from '../components/business/SegmentsPanel';
 import { DesktopBusinessPage } from './desktop/DesktopBusinessPage';
 
 /** Live segments — mobile. */
-export function LiveSegmentsScreen({ onBack }: { onBack: () => void }) {
+export function LiveSegmentsScreen({
+  onBack,
+  onOpen,
+  startCreating,
+}: {
+  onBack: () => void;
+  onOpen?: (id: string) => void;
+  startCreating?: boolean;
+}) {
   return (
     <BusinessSubScreen title="Segments" onBack={onBack}>
-      <SegmentsPanel />
+      <SegmentsPanel onOpen={onOpen} startCreating={startCreating} />
     </BusinessSubScreen>
   );
 }
 
+/** Live segment detail — mobile. */
+export function LiveSegmentDetailScreen({ segmentId, onBack, actions }: { segmentId: string; onBack: () => void; actions?: SegmentActions }) {
+  return (
+    <BusinessSubScreen title="Segment" onBack={onBack}>
+      <SegmentDetailPanel segmentId={segmentId} actions={actions} />
+    </BusinessSubScreen>
+  );
+}
+
+/** Live segment detail — desktop. */
+export function DesktopLiveSegmentDetailScreen({
+  segmentId,
+  onNav,
+  onBack,
+  actions,
+}: {
+  segmentId: string;
+  onNav: (key: string) => void;
+  onBack: () => void;
+  actions?: SegmentActions;
+}) {
+  return (
+    <DesktopBusinessPage
+      activeNav="business-customers"
+      onNav={onNav}
+      crumbs={[{ label: 'Segments', onClick: onBack }, { label: 'Segment' }]}
+      title="Segment"
+      subtitle="Who is in it, what they spend and what to do next."
+    >
+      <SegmentDetailPanel segmentId={segmentId} actions={actions} />
+    </DesktopBusinessPage>
+  );
+}
+
 /** Live segments — desktop. */
-export function DesktopLiveSegmentsScreen({ onNav, onBack }: { onNav: (key: string) => void; onBack: () => void }) {
+export function DesktopLiveSegmentsScreen({
+  onNav,
+  onBack,
+  onOpen,
+  startCreating,
+}: {
+  onNav: (key: string) => void;
+  onBack: () => void;
+  onOpen?: (id: string) => void;
+  startCreating?: boolean;
+}) {
   return (
     <DesktopBusinessPage
       activeNav="business-customers"
@@ -26,7 +78,7 @@ export function DesktopLiveSegmentsScreen({ onNav, onBack }: { onNav: (key: stri
       title="Segments"
       subtitle="Build audiences from visits, spend and loyalty."
     >
-      <SegmentsPanel />
+      <SegmentsPanel onOpen={onOpen} startCreating={startCreating} />
     </DesktopBusinessPage>
   );
 }

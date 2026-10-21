@@ -65,11 +65,15 @@ export const accountService = {
     }
   },
 
-  deleteAccount: async () => {
-    try {
-      return await api.del<Record<string, unknown>>('/users/profile');
-    } catch (error) {
-      return ignoreMissingAccountEndpoint(error, {} as Record<string, unknown>);
-    }
-  },
+  /** `POST /users/me/deletion-request` — anonymises and closes the account; every token stops working. */
+  deleteAccount: (payload: { reasonId?: string; feedback?: string }) =>
+    api.post<AccountDeletionResponse>('/users/me/deletion-request', payload),
 };
+
+export interface AccountDeletionResponse {
+  id: string;
+  status: 'completed';
+  submittedAt: string;
+  completedAt: string;
+  retainedNote: string;
+}

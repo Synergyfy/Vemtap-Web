@@ -6,6 +6,7 @@ import { TextField } from './FormPrimitives';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { segmentsService } from '../../services/segmentsService';
 import type { SegmentCriteria } from '../../services/types';
+import { formatNaira } from '../../utils/format';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 
@@ -110,7 +111,7 @@ function CreateSegmentForm({ onDone }: { onDone: () => void }) {
 }
 
 /** Live customer segments with a rule builder and reach preview. */
-export function SegmentsPanel() {
+export function SegmentsPanel({ onOpen, startCreating = false }: { onOpen?: (id: string) => void; startCreating?: boolean } = {}) {
   const { activeBranchId } = useBusinessBranch();
   const queryClient = useQueryClient();
   const segments = useQuery({ queryKey: [...segmentKeys.all, activeBranchId ?? 'all'], queryFn: () => segmentsService.list({ branchId: activeBranchId }) });
@@ -118,7 +119,7 @@ export function SegmentsPanel() {
     mutationFn: (id: string) => segmentsService.remove(id, activeBranchId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: segmentKeys.all }),
   });
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(startCreating);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   return (
@@ -145,10 +146,15 @@ export function SegmentsPanel() {
               <span className="w-10 h-10 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
                 <Icon name="groups" className="text-[20px]" />
               </span>
-              <span className="flex flex-col flex-1 min-w-0">
+              <button
+                type="button"
+                disabled={!onOpen}
+                onClick={() => onOpen?.(segment.id)}
+                className="flex flex-col flex-1 min-w-0 text-left disabled:cursor-default"
+              >
                 <span className="font-label-md text-label-md text-text-primary font-semibold truncate">{segment.name}</span>
                 <span className="font-caption text-caption text-text-secondary truncate">{describe(segment.criteria)}</span>
-              </span>
+              </button>
               <span className="font-label-md text-label-md text-text-primary font-semibold shrink-0">{segment.size ?? 0}</span>
               {confirmId === segment.id ? (
                 <>
@@ -169,6 +175,138 @@ export function SegmentsPanel() {
         </ul>
       )}
       {remove.isError ? <span className="font-caption text-caption text-red-600">{apiErrorMessage(remove.error)}</span> : null}
+    </div>
+  );
+}
+
+export interface SegmentActions {
+  onMessage?: () => void;
+  onCreateDeal?: () => void;
+  onBoost?: () => void;
+  onOpenCustomer?: (userId: string) => void;
+}
+
+const pct = (value: number | null) => (value === null ? '—' : `${value >= 0 ? '+' : ''}${Math.round(value * 100)}%`);
+
+/** One segment: reach by channel, spend and frequency, branch mix, favourites, sample patrons and next actions. */
+export function SegmentDetailPanel({ segmentId, actions }: { segmentId: string; actions?: SegmentActions }) {
+  const { activeBranchId } = useBusinessBranch();
+  const insights = useQuery({
+    queryKey: [...segmentKeys.all, 'insights', segmentId, activeBranchId ?? 'all'],
+    queryFn: () => segmentsService.getInsights(segmentId, activeBranchId),
+  });
+
+  if (insights.isLoading) return <LoadingRows rows={4} label="Loading segment" />;
+  if (insights.isError || !insights.data)
+    return <ErrorState title="Could not load this segment" error={insights.error} onRetry={() => insights.refetch()} />;
+
+  const data = insights.data;
+  const stats: Array<{ label: string; value: string; hint?: string }> = [
+    { label: 'Members', value: String(data.size) },
+    { label: 'Total spend', value: formatNaira(data.totalSpend), hint: `${pct(data.spendDelta)} vs prior 30 days` },
+    { label: 'Avg order', value: formatNaira(data.avgOrderValue), hint: `${pct(data.aovDelta)} vs prior 30 days` },
+    { label: 'Visits per member', value: data.visitFrequency.toFixed(1) },
+  ];
+  const reach: Array<{ icon: string; label: string; value: number | undefined }> = [
+    { icon: 'notifications', label: 'Push', value: data.reachableByPush },
+    { icon: 'sms', label: 'SMS', value: data.reachableBySms },
+    { icon: 'mail', label: 'Email', value: data.reachableByEmail },
+  ];
+  const buttons = [
+    { icon: 'campaign', label: 'Message these customers', onClick: actions?.onMessage },
+    { icon: 'sell', label: 'Create a deal for them', onClick: actions?.onCreateDeal },
+    { icon: 'rocket_launch', label: 'Boost to this audience', onClick: actions?.onBoost },
+  ].filter((button) => button.onClick);
+
+  return (
+    <div className="flex flex-col gap-space-md max-w-4xl">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
+        {stats.map((stat) => (
+          <div key={stat.label} className="rounded-xl bg-surface-canvas border border-border-subtle p-space-sm flex flex-col gap-1">
+            <span className="font-caption text-caption text-text-secondary">{stat.label}</span>
+            <span className="font-heading-sm text-heading-sm text-text-primary">{stat.value}</span>
+            {stat.hint ? <span className="font-caption text-caption text-text-tertiary">{stat.hint}</span> : null}
+          </div>
+        ))}
+      </div>
+
+      <section className="rounded-xl bg-surface-canvas border border-border-subtle p-space-sm flex flex-col gap-space-xs">
+        <h3 className="font-label-md text-label-md text-text-primary font-semibold">Reachable by channel</h3>
+        <div className="flex flex-wrap gap-space-sm">
+          {reach.map((channel) => (
+            <span key={channel.label} className="inline-flex items-center gap-1 font-body-md text-body-md text-text-secondary">
+              <Icon name={channel.icon} className="text-[18px] text-primary" /> {channel.label}: {channel.value ?? 0}
+            </span>
+          ))}
+          {data.excludedFromPromotions ? (
+            <span className="font-caption text-caption text-text-tertiary">{data.excludedFromPromotions} opted out of promotions</span>
+          ) : null}
+        </div>
+      </section>
+
+      {buttons.length ? (
+        <div className="flex flex-wrap gap-space-xs">
+          {buttons.map((button) => (
+            <button
+              key={button.label}
+              type="button"
+              onClick={button.onClick}
+              className="h-10 px-space-md rounded-lg bg-primary-container text-on-primary font-label-md text-label-md inline-flex items-center gap-1"
+            >
+              <Icon name={button.icon} className="text-[18px]" /> {button.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-space-sm">
+        <section className="rounded-xl bg-surface-canvas border border-border-subtle p-space-sm flex flex-col gap-space-xs">
+          <h3 className="font-label-md text-label-md text-text-primary font-semibold">Branch mix</h3>
+          {data.branchSplit.length ? (
+            data.branchSplit.map((branch) => (
+              <div key={branch.branchId} className="flex items-center justify-between font-body-md text-body-md">
+                <span className="text-text-secondary truncate">{branch.name}</span>
+                <span className="text-text-primary font-semibold">{Math.round(branch.percent)}%</span>
+              </div>
+            ))
+          ) : (
+            <span className="font-caption text-caption text-text-tertiary">No activity yet.</span>
+          )}
+        </section>
+        <section className="rounded-xl bg-surface-canvas border border-border-subtle p-space-sm flex flex-col gap-space-xs">
+          <h3 className="font-label-md text-label-md text-text-primary font-semibold">Favourites</h3>
+          {data.favourites.length ? (
+            data.favourites.map((item) => (
+              <div key={item.itemId} className="flex items-center justify-between font-body-md text-body-md">
+                <span className="text-text-secondary truncate">{item.name}</span>
+                <span className="text-text-primary font-semibold">{item.orders} orders</span>
+              </div>
+            ))
+          ) : (
+            <span className="font-caption text-caption text-text-tertiary">No orders yet.</span>
+          )}
+        </section>
+      </div>
+
+      <section className="rounded-xl bg-surface-canvas border border-border-subtle p-space-sm flex flex-col gap-space-xs">
+        <h3 className="font-label-md text-label-md text-text-primary font-semibold">Sample patrons</h3>
+        {data.samplePatrons.length ? (
+          data.samplePatrons.map((patron) => (
+            <button
+              key={patron.userId}
+              type="button"
+              disabled={!actions?.onOpenCustomer}
+              onClick={() => actions?.onOpenCustomer?.(patron.userId)}
+              className="flex items-center justify-between gap-space-sm text-left font-body-md text-body-md disabled:cursor-default"
+            >
+              <span className="text-text-primary truncate">{patron.name}</span>
+              <span className="text-text-secondary shrink-0">{formatNaira(patron.spend)}</span>
+            </button>
+          ))
+        ) : (
+          <span className="font-caption text-caption text-text-tertiary">This segment has no members yet.</span>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
@@ -24,6 +24,8 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
     completeCollection,
     settings,
     setActivePosHandoffOrderId,
+    lastError,
+    clearLastError,
   } = useStoreOrdering();
 
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('all');
@@ -60,6 +62,12 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
     setToastMessage(msg);
     window.setTimeout(() => setToastMessage(null), 3000);
   };
+
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
 
   const filteredOrders = useMemo(() => {
     return orders

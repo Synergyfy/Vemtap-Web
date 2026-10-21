@@ -30,6 +30,11 @@ export interface PosSettings {
   selfOrderingEnabled?: boolean | null;
   maxQrOrderValue?: number | null;
   rushPause?: boolean | null;
+  voidRequiresPin?: boolean | null;
+  refundRequiresPin?: boolean | null;
+  reprintRequiresPin?: boolean | null;
+  drawerOpenRequiresPin?: boolean | null;
+  discountOverrideRequiresPin?: boolean | null;
 }
 
 /** Partial update body; the server merges field by field. */

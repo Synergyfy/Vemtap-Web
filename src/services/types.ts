@@ -124,6 +124,22 @@ export interface SegmentReach {
   reachableByEmail?: number;
 }
 
+/** `GET /segments/:id/insights` — spend, frequency, branch mix, favourites and sample patrons. */
+export interface SegmentInsights extends SegmentReach {
+  segmentId: string;
+  name: string;
+  type: 'static' | 'dynamic';
+  excludedFromPromotions?: number;
+  totalSpend: number;
+  avgOrderValue: number;
+  visitFrequency: number;
+  spendDelta: number | null;
+  aovDelta: number | null;
+  branchSplit: { branchId: string; name: string; percent: number }[];
+  favourites: { itemId: string; name: string; orders: number }[];
+  samplePatrons: { userId: string; name: string; avatarUrl: string | null; lastVisit: string | null; spend: number }[];
+}
+
 export interface PromotionAudience {
   strategy: 'nearby' | 'segments';
   segmentIds?: string[];

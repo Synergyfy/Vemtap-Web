@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { hasApiConfig } from '../../services/api/client';
+import { formatNaira } from '../../utils/format';
 import { getCentralCategories, URBAN_PRODUCTS } from '../catalogueData';
 
 interface DesktopStoreOrderingQrScreenProps {
@@ -59,7 +62,17 @@ function VemtapQrSvg({ size = 180 }: { size?: number }) {
 }
 
 export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrScreenProps) {
-  const { addQrCode } = useStoreOrdering();
+  const { addQrCode, qrCodes, toggleQrActive, lastError, clearLastError } = useStoreOrdering();
+  const live = hasApiConfig();
+  const { branch: activeBranch, branches } = useBusinessBranch();
+  // Live: real branches (keyed by id); demo: the storefront's sample branches.
+  const branchOptions = live
+    ? branches.map((b) => ({ value: b.id ?? b.key, label: b.name }))
+    : [
+        { value: 'wuse-2', label: 'Wuse II Flagship' },
+        { value: 'maitama', label: 'Maitama Heights' },
+        { value: 'garki', label: 'Garki Branch' },
+      ];
   const categories = getCentralCategories('product');
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -70,7 +83,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
   // New QR form state
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<'store' | 'section' | 'product' | 'custom'>('store');
-  const [newBranch, setNewBranch] = useState('wuse-2');
+  const [newBranch, setNewBranch] = useState(live ? (activeBranch.id ?? activeBranch.key) : 'wuse-2');
   const [newDestination, setNewDestination] = useState('');
   const [newTargetLabel, setNewTargetLabel] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -80,16 +93,24 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
     window.setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // The branch list loads after first render: keep the picked branch one of the real options.
+  useEffect(() => {
+    if (live && !branchOptions.some((option) => option.value === newBranch)) {
+      setNewBranch(activeBranch.id ?? branchOptions[0]?.value ?? newBranch);
+    }
+  }, [live, branchOptions, newBranch, activeBranch.id]);
+
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
+
   const handleCreateQr = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
 
-    const branchName =
-      newBranch === 'wuse-2'
-        ? 'Wuse II Flagship'
-        : newBranch === 'maitama'
-          ? 'Maitama Heights'
-          : 'Garki Branch';
+    const branchName = branchOptions.find((option) => option.value === newBranch)?.label ?? 'Branch';
 
     // QR destinations open the storefront directly: store & custom codes land on
     // the full catalogue page, product codes land on the product detail page.
@@ -167,7 +188,8 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
           </div>
         </div>
 
-        {/* Primary QR Destinations — Store, Category, Product */}
+        {/* Primary QR Destinations — Store, Category, Product (demo storefront only; live QR codes are listed below) */}
+        {!live && (
         <div className="bg-surface-canvas border border-border-subtle rounded-2xl shadow-xs overflow-hidden">
           <div className="px-space-xl pt-space-xl pb-space-md">
             <div className="flex items-center gap-2 mb-1">
@@ -362,8 +384,61 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
             )}
           </div>
         </div>
+        )}
 
         {/* Modal: Create New QR Code */}
+        {/* Every placement QR with its scans, orders and paid revenue */}
+        <section className="rounded-2xl bg-surface-canvas border border-border-subtle shadow-sm p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-heading-sm text-heading-sm text-on-surface">Your ordering QR codes</h2>
+            <span className="text-caption text-text-secondary">{qrCodes.filter((qr) => qr.active).length} active</span>
+          </div>
+          {qrCodes.length === 0 ? (
+            <p className="text-body-md text-text-secondary">No QR codes yet. Create one for a table, section or product.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-body-md">
+                <thead className="text-caption text-text-secondary">
+                  <tr>
+                    <th className="py-2 pr-4 font-medium">Name</th>
+                    <th className="py-2 pr-4 font-medium">Branch</th>
+                    <th className="py-2 pr-4 font-medium">Scans</th>
+                    <th className="py-2 pr-4 font-medium">Orders</th>
+                    <th className="py-2 pr-4 font-medium">Revenue</th>
+                    <th className="py-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qrCodes.map((qr) => (
+                    <tr key={qr.id} className="border-t border-border-subtle">
+                      <td className="py-2 pr-4">
+                        <span className="font-semibold text-on-surface">{qr.name}</span>
+                        <span className="block text-caption text-text-tertiary truncate max-w-[260px]">{qr.destinationUrl}</span>
+                      </td>
+                      <td className="py-2 pr-4 text-text-secondary">{qr.branchName}</td>
+                      <td className="py-2 pr-4">{qr.scansCount}</td>
+                      <td className="py-2 pr-4">{qr.ordersCount}</td>
+                      <td className="py-2 pr-4">{formatNaira(qr.revenueGenerated)}</td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleQrActive(qr.id)}
+                          disabled={qr.id.startsWith('pending-')}
+                          className={`px-3 py-1 rounded-full text-caption font-semibold ${
+                            qr.active ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-subtle text-text-secondary'
+                          }`}
+                        >
+                          {qr.active ? 'Active' : 'Paused'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         {createModalOpen && (
           <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
             <div
@@ -440,9 +515,11 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                   onChange={(e) => setNewBranch(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
                 >
-                  <option value="wuse-2">Wuse II Flagship</option>
-                  <option value="maitama">Maitama Heights</option>
-                  <option value="garki">Garki Branch</option>
+                  {branchOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

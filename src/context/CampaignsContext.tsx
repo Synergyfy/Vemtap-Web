@@ -10,13 +10,12 @@ import {
 } from '../scripts/campaigns/campaignsData';
 
 /**
- * Local store for SMS and Email campaigns (drafts, scheduled, queued, sent).
+ * Store for SMS and Email campaigns (drafts, scheduled, queued, sent).
  *
- * Frontend-only: everything lives in React state and mirrors into
- * localStorage so a draft survives navigation and reloads.
- * BACKEND GAP — persistence, scheduling execution, sending and delivery events
- * must move to the server; the shape of CampaignRecord is designed so an API
- * can replace this context without the screens changing.
+ * Demo build: everything lives in React state and mirrors into localStorage
+ * so a draft survives navigation and reloads. With an API configured,
+ * `LiveCampaignsProvider` below keeps campaigns on `/campaigns` (sending,
+ * scheduling, delivery stats and tracked clicks are server-side).
  */
 
 const STORAGE_KEY = 'vemtap_campaigns_v1';

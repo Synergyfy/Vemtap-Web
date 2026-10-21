@@ -1,6 +1,6 @@
 import { api } from './api/client';
 import { API_ENDPOINTS } from './api/endpoints';
-import type { SegmentCriteria, SegmentReach, SegmentSummary } from './types';
+import type { SegmentCriteria, SegmentInsights, SegmentReach, SegmentSummary } from './types';
 
 export const segmentsService = {
   list: async (params?: Record<string, string | number | boolean | undefined>) =>
@@ -20,6 +20,6 @@ export const segmentsService = {
   getCriteriaOptions: async () =>
     api.get<Record<string, unknown>>(API_ENDPOINTS.segments.criteriaOptions),
 
-  getInsights: async (id: string) =>
-    api.get<Record<string, unknown>>(API_ENDPOINTS.segments.insights(id)),
+  getInsights: async (id: string, branchId?: string) =>
+    api.get<SegmentInsights>(API_ENDPOINTS.segments.insights(id), { params: { branchId } }),
 };

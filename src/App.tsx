@@ -219,15 +219,18 @@ import {
   DesktopLiveBoostStudioScreen,
   DesktopLiveCampaignMetricsScreen,
   DesktopLiveLoyaltyScreen,
+  DesktopLiveSegmentDetailScreen,
   DesktopLiveSegmentsScreen,
   DesktopLiveWalletScreen,
   LiveBoostHubScreen,
   LiveBoostStudioScreen,
   LiveCampaignMetricsScreen,
   LiveLoyaltyScreen,
+  LiveSegmentDetailScreen,
   LiveSegmentsScreen,
   LiveWalletScreen,
 } from './scripts/LiveGrowthScreens';
+import { DesktopLiveClusterScreen, LiveClusterScreen } from './scripts/LiveClusterScreens';
 import {
   BusinessDiscoveryPresenceScreen,
   BusinessNetworkDashboardScreen,
@@ -1690,6 +1693,40 @@ function AppInner() {
     meta: '68.2% repeat interaction rate',
     desc: 'Interacted or placed 2+ orders at Urban Grill & Bistro in the trailing 90 days.',
   });
+
+  // Live segments: the hub opens one by id; detail and actions share the live detail view.
+  const [liveSegmentId, setLiveSegmentId] = useState<string | null>(null);
+  const openLiveSegment = (id: string) => {
+    setLiveSegmentId(id);
+    setRoute('segment-detail');
+  };
+  const liveSegmentDetail = () => {
+    if (!liveSegmentId)
+      return isDesktop ? (
+        <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
+      ) : (
+        <LiveSegmentsScreen onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
+      );
+    const actions = {
+      onMessage: () => setRoute('business-messages-sms'),
+      onCreateDeal: () => setRoute('deal-studio'),
+      onBoost: () => openBoost(),
+      onOpenCustomer: (userId: string) => {
+        setHubCustomerName(userId);
+        setRoute('hub-customer-profile');
+      },
+    };
+    return isDesktop ? (
+      <DesktopLiveSegmentDetailScreen
+        segmentId={liveSegmentId}
+        onNav={businessPortalNav}
+        onBack={() => setRoute('segments-hub')}
+        actions={actions}
+      />
+    ) : (
+      <LiveSegmentDetailScreen segmentId={liveSegmentId} onBack={() => setRoute('segments-hub')} actions={actions} />
+    );
+  };
 
   const useSegment = (segment: SegmentRef) => {
     setActiveSegment(segment);
@@ -3760,6 +3797,8 @@ function AppInner() {
       );
 
     case 'subscription':
+      // Live: the dashboard subscription panel reads the real plan, trial and billing state.
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3779,6 +3818,8 @@ function AppInner() {
       );
 
     case 'subscription-ending':
+      // Live: the dashboard subscription panel reads the real plan, trial and billing state.
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3798,6 +3839,8 @@ function AppInner() {
       );
 
     case 'subscription-expired':
+      // Live: the dashboard subscription panel reads the real plan, trial and billing state.
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3817,6 +3860,17 @@ function AppInner() {
       );
 
     case 'boost':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBoostStudioScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute('boost-hub')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+          />
+        ) : (
+          <LiveBoostStudioScreen onBack={() => setRoute(boostReturnRoute)} onDone={() => setRoute('boost-hub')} onOpenWallet={() => setRoute('boost-wallet')} />
+        );
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3954,9 +4008,9 @@ function AppInner() {
     case 'segments-hub':
       if (hasApiConfig())
         return isDesktop ? (
-          <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} />
+          <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
         ) : (
-          <LiveSegmentsScreen onBack={() => setRoute('boost-hub')} />
+          <LiveSegmentsScreen onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
         );
       if (isDesktop)
         return (
@@ -3984,6 +4038,7 @@ function AppInner() {
       );
 
     case 'segment-actions':
+      if (hasApiConfig()) return liveSegmentDetail();
       if (isDesktop)
         return (
           <DesktopSegmentActionsScreen
@@ -4010,6 +4065,12 @@ function AppInner() {
       );
 
     case 'segment-create':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('segments-hub')} onOpen={openLiveSegment} startCreating />
+        ) : (
+          <LiveSegmentsScreen onBack={() => setRoute('segments-hub')} onOpen={openLiveSegment} startCreating />
+        );
       if (isDesktop)
         return (
           <DesktopSegmentCreateScreen
@@ -4025,6 +4086,7 @@ function AppInner() {
       );
 
     case 'segment-detail':
+      if (hasApiConfig()) return liveSegmentDetail();
       if (isDesktop)
         return (
           <DesktopSegmentDetailScreen
@@ -4253,6 +4315,8 @@ function AppInner() {
       return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-services':
+      // Live desktop: the real service categories manager (mobile runs the live hub).
+      if (hasApiConfig() && isDesktop) return <DesktopBusinessCategoriesScreen onNav={businessPortalNav} />;
       if (isDesktop)
         return (
           <DesktopServicesCategoriesScreen
@@ -4362,6 +4426,8 @@ function AppInner() {
     }
 
     case 'hub-profile':
+      if (hasApiConfig() && isDesktop)
+        return <DesktopBusinessProfileStorefrontScreen onNav={businessPortalNav} onDiscard={() => setRoute('business-overview')} />;
       if (isDesktop)
         return (
           <DesktopBusinessProfilePreviewStudioScreen
@@ -4408,6 +4474,9 @@ function AppInner() {
       );
 
     case 'deal-create-locations':
+      // Live desktop: deals are created (with their locations) in the live deal studio.
+      if (hasApiConfig() && isDesktop)
+        return <DesktopDealStudioFlow onComplete={() => setRoute('hub-deals')} onExit={() => setRoute('hub-deals')} onNav={businessPortalNav} />;
       if (isDesktop)
         return (
           <DesktopDealCreateLocationsScreen
@@ -5442,6 +5511,7 @@ function AppInner() {
       );
 
     case 'business-pos-orders':
+      if (hasApiConfig() && isDesktop) return livePos('orders');
       if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} activeNav={posActiveNav} />;
       return (
         <BusinessOrdersScreen
@@ -5522,6 +5592,13 @@ function AppInner() {
         />
       );
     case 'cluster-onboarding':
+      // Live: one panel covers detection/joining/proposing and the cluster itself.
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveClusterScreen onNav={businessPortalNav} onCreateDeal={() => setRoute('deal-studio')} />
+        ) : (
+          <LiveClusterScreen onBack={() => setRoute('business-overview')} onCreateDeal={() => setRoute('deal-studio')} />
+        );
       if (isDesktop)
         return (
           <DesktopClusterOnboardingScreen
@@ -5543,6 +5620,13 @@ function AppInner() {
       );
 
     case 'cluster-system':
+      // Live: one panel covers detection/joining/proposing and the cluster itself.
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveClusterScreen onNav={businessPortalNav} onCreateDeal={() => setRoute('deal-studio')} />
+        ) : (
+          <LiveClusterScreen onBack={() => setRoute('business-overview')} onCreateDeal={() => setRoute('deal-studio')} />
+        );
       if (isDesktop)
         return (
           <DesktopClusterSystemScreen
@@ -5569,6 +5653,23 @@ function AppInner() {
       );
 
     case 'cluster-boost':
+      // Live: cluster campaigns are boosts with the cluster placement — the live boost hub lists them.
+      if (hasApiConfig()) {
+        const growthNav = {
+          onBoost: () => openBoost(),
+          onCreateCampaign: () => setRoute('campaign-create'),
+          onOpenWallet: () => setRoute('boost-wallet'),
+          onOpenMetrics: (kind: 'boost' | 'promotion', id: string) => {
+            setMetricsTarget({ kind, id });
+            setRoute('boost-metrics');
+          },
+        };
+        return isDesktop ? (
+          <DesktopLiveBoostHubScreen onNav={businessPortalNav} {...growthNav} />
+        ) : (
+          <LiveBoostHubScreen onBack={() => setRoute('cluster-system')} onTab={boostTab} {...growthNav} />
+        );
+      }
       return (
         <ClusterBoostListScreen
           onBack={() => setRoute('cluster-system')}
@@ -5578,6 +5679,17 @@ function AppInner() {
       );
 
     case 'cluster-boost-new':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBoostStudioScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('cluster-system')}
+            onDone={() => setRoute('cluster-boost')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+          />
+        ) : (
+          <LiveBoostStudioScreen onBack={() => setRoute('cluster-system')} onDone={() => setRoute('cluster-boost')} onOpenWallet={() => setRoute('boost-wallet')} />
+        );
       return (
         <ClusterBoostFlow
           onBack={() => setRoute('cluster-system')}

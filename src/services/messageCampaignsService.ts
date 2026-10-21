@@ -13,9 +13,11 @@ import type {
  * `POST /campaigns/:id/send` delivers it through the messaging engine (now, or
  * when a scheduled campaign falls due).
  *
- * `message` holds the readable body. Everything else the web builder needs
- * (audience selection, recipient counts, email subject/sender, link, history)
- * has no column, so it travels as JSON in the free-text `audience` field.
+ * `message` holds the readable body; `link` (counted through a tracked
+ * `/c/:id` URL), `senderName` and `replyTo` (the builder's sender email) have
+ * their own columns. The rest of what the web builder needs (audience
+ * selection, recipient counts, preheader, history) travels as JSON in the
+ * free-text `audience` field.
  */
 type ApiStatus = 'Active' | 'Scheduled' | 'Recurring' | 'Draft' | 'Completed';
 type ApiType = 'WhatsApp' | 'SMS' | 'Email';
@@ -29,6 +31,9 @@ export interface ApiCampaign {
   scheduledFor?: string | null;
   status: ApiStatus;
   subject?: string | null;
+  link?: string | null;
+  senderName?: string | null;
+  replyTo?: string | null;
   sent?: number;
   delivered?: string;
   clicks?: number;
@@ -87,12 +92,12 @@ export function campaignFromApi(row: ApiCampaign): CampaignRecord | null {
     excludedCount: meta?.excludedCount ?? 0,
     exclusionBreakdown: meta?.exclusionBreakdown ?? [],
     smsBody: channel === 'sms' ? row.message : undefined,
-    smsLink: meta?.smsLink ?? '',
+    smsLink: row.link ?? meta?.smsLink ?? '',
     emailSubject: row.subject ?? meta?.emailSubject ?? '',
     emailPreheader: meta?.emailPreheader ?? '',
     emailBody: channel === 'email' ? row.message : undefined,
-    senderName: meta?.senderName ?? '',
-    senderEmail: meta?.senderEmail ?? '',
+    senderName: row.senderName ?? meta?.senderName ?? '',
+    senderEmail: row.replyTo ?? meta?.senderEmail ?? '',
     createdAt,
     updatedAt: new Date(row.updatedAt).getTime(),
     scheduledAt: status === 'scheduled' && row.scheduledFor ? new Date(row.scheduledFor).getTime() : undefined,
@@ -125,6 +130,10 @@ function campaignToApi(record: CampaignRecord) {
     // The backend requires a message; an empty draft saves a single space.
     message: (record.channel === 'sms' ? record.smsBody : record.emailBody) || ' ',
     ...(record.channel === 'email' && record.emailSubject ? { subject: record.emailSubject.slice(0, 200) } : {}),
+    // Only values the API accepts (an http(s) link, a valid reply-to email); null clears a field.
+    link: /^https?:\/\/\S+$/i.test(record.smsLink?.trim() ?? '') ? record.smsLink!.trim().slice(0, 500) : null,
+    senderName: record.senderName?.trim() ? record.senderName.trim().slice(0, 80) : null,
+    replyTo: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.senderEmail?.trim() ?? '') ? record.senderEmail!.trim() : null,
     status: toApiStatus(record.status),
     ...(record.status === 'scheduled' && record.scheduledAt ? { scheduledFor: new Date(record.scheduledAt).toISOString() } : {}),
   };
@@ -145,4 +154,20 @@ export const messageCampaignsService = {
     api
       .post<ApiCampaign>(`/campaigns/${id}/send`, { customerIds, ...(subject ? { subject: subject.slice(0, 200) } : {}) })
       .then(campaignFromApi),
+  /** `GET /campaigns/:id/stats` — delivery counts by status plus tracked-link clicks. */
+  stats: (id: string) => api.get<ApiCampaignStats>(`/campaigns/${id}/stats`),
+  /** `POST /campaigns/:id/test` — sends it, prefixed [TEST], to the caller's own email or phone (1 credit). */
+  sendTest: (id: string) => api.post<{ to: string; channel: ApiType; status: string }>(`/campaigns/${id}/test`),
 };
+
+export interface ApiCampaignStats {
+  recipients: number;
+  queued: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  clicks: number;
+  deliveredRate: number;
+  clickRate: number;
+}

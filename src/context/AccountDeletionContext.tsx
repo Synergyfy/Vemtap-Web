@@ -1,4 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { hasApiConfig } from '../lib/api';
+import { accountService } from '../services/accountService';
+import { apiErrorMessage } from '../services/errorMessages';
 
 const REQUEST_KEY = 'vemtap_account_deletion_request';
 
@@ -33,7 +36,7 @@ export interface AccountDeletionContextValue {
   /** The most recent request, if any. */
   request: DeletionRequest | null;
   /**
-   * Submit the deletion request to the backend (simulated).
+   * Submit the deletion request to the backend (simulated without an API).
    * Resolves with the final request — `status` is only `completed`
    * when the backend confirms the purge; failures surface as `failed`.
    */
@@ -84,7 +87,31 @@ export function AccountDeletionProvider({ children }: { children: ReactNode }) {
     };
     setRequest(submitted);
 
-    // BACKEND GAP: POST /account/deletion-request followed by the purge job.
+    if (hasApiConfig()) {
+      try {
+        const response = await accountService.deleteAccount(input);
+        const completed: DeletionRequest = {
+          ...submitted,
+          id: response.id,
+          status: 'completed',
+          submittedAt: Date.parse(response.submittedAt),
+          completedAt: Date.parse(response.completedAt),
+          retainedNote: response.retainedNote,
+        };
+        setRequest(completed);
+        return { ok: true, request: completed } as SubmitDeletionResult;
+      } catch (error) {
+        const failed: DeletionRequest = {
+          ...submitted,
+          status: 'failed',
+          error: apiErrorMessage(error, 'The deletion request could not be processed. Please try again or contact support.'),
+        };
+        setRequest(failed);
+        return { ok: false, error: failed.error ?? 'Request failed.' } as SubmitDeletionResult;
+      }
+    }
+
+    // Demo build (no API): simulate the request.
     await delay(900);
 
     const processing: DeletionRequest = { ...submitted, status: 'processing' };

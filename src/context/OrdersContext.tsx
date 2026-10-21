@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { apiPatch, hasApiConfig } from '../lib/api';
+import { hasApiConfig } from '../lib/api';
 import { ordersService } from '../services/ordersService';
 import {
   estimateReadyBy,
@@ -311,10 +311,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       return found ? next : current;
     });
 
-    if (hasApiConfig()) {
-      void apiPatch(`/orders/${encodeURIComponent(ref)}/status`, { status }).catch(() => undefined);
-    }
-
     return found;
   }, []);
 
@@ -333,11 +329,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
       return found ? next : current;
     });
-
-    if (hasApiConfig()) {
-      const resolvedPaymentRef = paymentRef?.trim() || `TXN-${Math.floor(1000000 + Math.random() * 8999999)}`;
-      void apiPatch(`/orders/${encodeURIComponent(ref)}/payment`, { paymentRef: resolvedPaymentRef, status: 'paid' }).catch(() => undefined);
-    }
 
     return found;
   }, []);

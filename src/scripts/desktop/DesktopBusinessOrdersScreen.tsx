@@ -53,8 +53,8 @@ export function DesktopBusinessOrdersScreen({
     window.setTimeout(() => setToast(null), 3000);
   };
 
-  // If viewing bookings
-  if (view === 'bookings') {
+  // If viewing bookings (demo board; live mode uses OrdersPanel's bookings view below)
+  if (view === 'bookings' && !hasApiConfig()) {
     return (
       <DesktopBusinessBookingsScreen
         onNav={onNav}
