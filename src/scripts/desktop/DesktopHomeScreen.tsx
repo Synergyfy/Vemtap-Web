@@ -167,13 +167,27 @@ const toTrendingDeal = (offer: Record<string, unknown>) => {
   };
 };
 
-const toBusinessSummary = (offer: Record<string, unknown>) => ({
-  initials: (getApiBusinessName(offer).split(' ').slice(0, 2).map((part) => part[0] ?? '').join('') || 'LB').slice(0, 2).toUpperCase(),
-  name: getApiBusinessName(offer),
-  rating: '4.9 (live)',
-  area: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
-  deals: 'Live Offer',
-});
+const toBusinessSummary = (offer: Record<string, unknown>, index: number) => {
+  const businessName = getApiBusinessName(offer);
+  const distance = typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby';
+  const idCandidate =
+    offer.id ??
+    offer.businessId ??
+    offer.branchId ??
+    offer.slug ??
+    offer._id ??
+    (offer.business && typeof offer.business === 'object' ? ((offer.business as Record<string, unknown>).id ?? (offer.business as Record<string, unknown>).businessId ?? (offer.business as Record<string, unknown>).branchId) : undefined) ??
+    `${businessName}-${distance}-${index}`;
+
+  return {
+    id: String(idCandidate),
+    initials: (businessName.split(' ').slice(0, 2).map((part) => part[0] ?? '').join('') || 'LB').slice(0, 2).toUpperCase(),
+    name: businessName,
+    rating: '4.9 (live)',
+    area: distance,
+    deals: 'Live Offer',
+  };
+};
 
 const toProductSummary = (offer: Record<string, unknown>) => ({
   image: getNestedImage(offer),
@@ -271,7 +285,7 @@ export function DesktopHomeScreen({
   const spotlightDeals = useMemo(() => publicOffers.slice(0, 3).map(toSpotlightSlide), [publicOffers]);
   const listDeals = useMemo(() => publicOffers.slice(0, 4).map(toListDeal), [publicOffers]);
   const trendingDeals = useMemo(() => publicOffers.slice(0, 3).map(toTrendingDeal), [publicOffers]);
-  const businesses = useMemo(() => publicOffers.slice(0, 3).map(toBusinessSummary), [publicOffers]);
+  const businesses = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toBusinessSummary(offer, index)), [publicOffers]);
   const products = useMemo(() => publicOffers.slice(0, 2).map(toProductSummary), [publicOffers]);
   const spotlightIndex = spotlightDeals.length ? spotlight % spotlightDeals.length : 0;
   const spotlightData = spotlightDeals.length ? spotlightDeals : [];
@@ -799,7 +813,7 @@ export function DesktopHomeScreen({
                     </div>
                   ) : businesses.map((business) => (
                     <div
-                      key={business.name}
+                      key={business.id}
                       className="p-space-md bg-surface-canvas rounded-xl shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-space-md group cursor-pointer"
                     >
                       <div className="flex items-center gap-space-sm min-w-0">
@@ -1301,7 +1315,7 @@ export function DesktopHomeScreen({
                   </div>
                 ) : businesses.map((business) => (
                   <div
-                    key={business.name}
+                    key={business.id}
                     className="bg-surface-canvas rounded-2xl p-space-md flex items-center justify-between gap-space-md shadow-sm hover:shadow-md transition-all"
                   >
                     <div className="flex items-center gap-space-md">
