@@ -9,8 +9,9 @@ import type {
 
 /**
  * SMS and Email campaigns (`/campaigns`). The backend stores a campaign as
- * name, channel, audience, message, schedule and status — it does not deliver
- * anything yet, so `sent`/`delivered`/`clicks` stay at zero.
+ * name, channel, audience, message, subject, schedule and status, and
+ * `POST /campaigns/:id/send` delivers it through the messaging engine (now, or
+ * when a scheduled campaign falls due).
  *
  * `message` holds the readable body. Everything else the web builder needs
  * (audience selection, recipient counts, email subject/sender, link, history)
@@ -27,6 +28,7 @@ export interface ApiCampaign {
   message: string;
   scheduledFor?: string | null;
   status: ApiStatus;
+  subject?: string | null;
   sent?: number;
   delivered?: string;
   clicks?: number;
@@ -86,7 +88,7 @@ export function campaignFromApi(row: ApiCampaign): CampaignRecord | null {
     exclusionBreakdown: meta?.exclusionBreakdown ?? [],
     smsBody: channel === 'sms' ? row.message : undefined,
     smsLink: meta?.smsLink ?? '',
-    emailSubject: meta?.emailSubject ?? '',
+    emailSubject: row.subject ?? meta?.emailSubject ?? '',
     emailPreheader: meta?.emailPreheader ?? '',
     emailBody: channel === 'email' ? row.message : undefined,
     senderName: meta?.senderName ?? '',
@@ -95,10 +97,8 @@ export function campaignFromApi(row: ApiCampaign): CampaignRecord | null {
     updatedAt: new Date(row.updatedAt).getTime(),
     scheduledAt: status === 'scheduled' && row.scheduledFor ? new Date(row.scheduledFor).getTime() : undefined,
     sentAt: meta?.sentAt,
-    stats: status === 'sending' || status === 'sent' ? { queued: meta?.recipientCount ?? 0, sent: row.sent || undefined, clicked: row.clicks || undefined } : undefined,
+    stats: status === 'sending' || status === 'sent' ? { queued: row.sent || meta?.recipientCount || 0, sent: row.sent || undefined, clicked: row.clicks || undefined } : undefined,
     history: meta?.history ?? [{ at: createdAt, kind: 'created', label: 'Campaign created' }],
-    // Nothing is delivered by the server yet.
-    simulatedSend: status === 'sending',
   };
 }
 
@@ -124,6 +124,7 @@ function campaignToApi(record: CampaignRecord) {
     audience: JSON.stringify(meta),
     // The backend requires a message; an empty draft saves a single space.
     message: (record.channel === 'sms' ? record.smsBody : record.emailBody) || ' ',
+    ...(record.channel === 'email' && record.emailSubject ? { subject: record.emailSubject.slice(0, 200) } : {}),
     status: toApiStatus(record.status),
     ...(record.status === 'scheduled' && record.scheduledAt ? { scheduledFor: new Date(record.scheduledAt).toISOString() } : {}),
   };
@@ -135,4 +136,13 @@ export const messageCampaignsService = {
     api.post<ApiCampaign>('/campaigns', { ...campaignToApi(record), branchId }, { params: { branchId } }),
   update: (id: string, record: CampaignRecord) => api.patch<ApiCampaign>(`/campaigns/${id}`, campaignToApi(record)),
   remove: (id: string) => api.del<unknown>(`/campaigns/${id}`),
+  /**
+   * Sends now, or — when the campaign's schedule is in the future — keeps it
+   * scheduled and lets the server send it when due. Customers who are not the
+   * business's, or who opted out of the channel, are skipped by the server.
+   */
+  send: (id: string, customerIds: string[], subject?: string) =>
+    api
+      .post<ApiCampaign>(`/campaigns/${id}/send`, { customerIds, ...(subject ? { subject: subject.slice(0, 200) } : {}) })
+      .then(campaignFromApi),
 };

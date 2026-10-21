@@ -56,7 +56,16 @@ export interface CampaignsContextValue {
   cancelScheduledCampaign: (id: string) => void;
   resetCampaigns: () => void;
   /** Set by the live store: load state and the last save error. */
-  live?: { isLoading: boolean; error: string | null; retry: () => void };
+  live?: {
+    isLoading: boolean;
+    error: string | null;
+    retry: () => void;
+    /**
+     * Saves the campaign (as a draft, or scheduled) and asks the server to send
+     * it to these customers. Resolves with the campaign as the server now has it.
+     */
+    send: (campaign: CampaignRecord, customerIds: string[]) => Promise<CampaignRecord>;
+  };
 }
 
 const CampaignsContext = createContext<CampaignsContextValue | null>(null);
@@ -190,6 +199,22 @@ export function LiveCampaignsProvider({ branchId, children }: { branchId?: strin
     return run;
   }, []);
 
+  /** Saves `record` as given, creating it on first save; returns the server id. */
+  const save = useCallback(
+    async (localId: string, record: CampaignRecord) => {
+      const id = canonical(localId);
+      if (UUID.test(id)) {
+        await messageCampaignsService.update(id, { ...record, id });
+        return id;
+      }
+      if (!branchId) throw new Error('Choose a branch before saving a campaign.');
+      const created = await messageCampaignsService.create({ ...record, id }, branchId);
+      aliases.current.set(localId, created.id);
+      return created.id;
+    },
+    [branchId, canonical],
+  );
+
   const upsertCampaign = useCallback(
     (campaign: CampaignRecord) => {
       const localId = campaign.id;
@@ -197,25 +222,49 @@ export function LiveCampaignsProvider({ branchId, children }: { branchId?: strin
       setPending((current) => ({ ...current, [shown.id]: shown }));
       setError(null);
       void enqueue(localId, async () => {
-        const id = canonical(localId);
-        const record = { ...campaign, id };
-        if (UUID.test(id)) {
-          await messageCampaignsService.update(id, record);
-          settle(id);
-          return;
-        }
-        if (!branchId) throw new Error('Choose a branch before saving a campaign.');
-        const created = await messageCampaignsService.create(record, branchId);
-        aliases.current.set(localId, created.id);
-        setPending((current) => {
-          const next = { ...current, [created.id]: { ...record, id: created.id } };
-          delete next[localId];
-          return next;
-        });
-        settle(created.id);
+        const id = await save(localId, campaign);
+        if (id !== shown.id)
+          setPending((current) => {
+            const next = { ...current, [id]: { ...campaign, id } };
+            delete next[shown.id];
+            return next;
+          });
+        settle(id);
       }).catch((e: unknown) => setError(apiErrorMessage(e, 'Could not save the campaign.')));
     },
-    [branchId, canonical, enqueue, settle],
+    [canonical, enqueue, save, settle],
+  );
+
+  const send = useCallback(
+    (campaign: CampaignRecord, customerIds: string[]) => {
+      const localId = campaign.id;
+      // The server only sends a draft or scheduled campaign, so save it as one.
+      const saved: CampaignRecord = { ...campaign, status: campaign.status === 'scheduled' ? 'scheduled' : 'draft' };
+      setError(null);
+      return enqueue(localId, async () => {
+        const id = await save(localId, saved);
+        const result = await messageCampaignsService.send(id, customerIds, campaign.channel === 'email' ? campaign.emailSubject : undefined);
+        // Keep the builder's audience details and history; take status and counts from the server.
+        const merged: CampaignRecord = { ...campaign, ...(result ?? {}), id, audience: campaign.audience, history: campaign.history };
+        setPending((current) => {
+          const next = { ...current, [id]: merged };
+          if (id !== localId) delete next[localId];
+          return next;
+        });
+        settle(id);
+        return merged;
+      }).catch((e: unknown) => {
+        setPending((current) => {
+          const next = { ...current };
+          delete next[localId];
+          delete next[canonical(localId)];
+          return next;
+        });
+        void queryClient.invalidateQueries({ queryKey: liveKeys.list });
+        throw e;
+      }) as Promise<CampaignRecord>;
+    },
+    [canonical, enqueue, queryClient, save, settle],
   );
 
   const deleteCampaign = useCallback(
@@ -282,9 +331,10 @@ export function LiveCampaignsProvider({ branchId, children }: { branchId?: strin
           setError(null);
           void list.refetch();
         },
+        send,
       },
     }),
-    [campaigns, listForChannel, findCampaign, upsertCampaign, deleteCampaign, duplicateCampaignById, cancelScheduledCampaign, list, error],
+    [campaigns, listForChannel, findCampaign, upsertCampaign, deleteCampaign, duplicateCampaignById, cancelScheduledCampaign, list, error, send],
   );
 
   return <CampaignsContext.Provider value={value}>{children}</CampaignsContext.Provider>;

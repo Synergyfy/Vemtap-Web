@@ -152,7 +152,7 @@ export function CampaignsDashboardScreen({
         <p className="flex items-start gap-space-2xs rounded-xl bg-surface-tint-blue px-space-md py-space-sm font-caption text-caption text-text-secondary leading-relaxed">
           <Icon name={live ? 'info' : 'science'} className="text-primary text-[16px] shrink-0 mt-0.5" />
           {live
-            ? 'Campaigns are saved to your business account. VEMTAP does not deliver SMS or email campaigns yet, so queued and scheduled campaigns are not sent and no delivery reports come in.'
+            ? 'Campaigns are saved to your business account and sent through VEMTAP using your SMS and email credits; scheduled ones go out automatically. Sent counts show once a campaign goes out — delivery and click reports are not available yet.'
             : 'Campaigns are stored in this browser. A connected SMS or email provider is required for real sending, scheduling and delivery reports.'}
         </p>
 

@@ -103,7 +103,7 @@ function ChannelScreenBody({ channel, onNav, onTab }: CampaignsChannelScreenProp
       campaign.status === 'scheduled' && campaign.scheduledAt
         ? `Campaign scheduled for ${formatDateTime(campaign.scheduledAt)}.`
         : hasApiConfig()
-          ? 'Campaign saved and queued. VEMTAP does not deliver SMS or email campaigns yet, so nothing has been sent.'
+          ? `Campaign sent — ${(campaign.stats?.queued ?? campaign.recipientCount).toLocaleString()} messages queued for delivery.`
           : 'Campaign queued for sending (demonstration only — no provider is connected).',
     );
     setView('detail');

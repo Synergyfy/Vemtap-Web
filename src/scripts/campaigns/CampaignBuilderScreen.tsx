@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
 import { Icon } from '../../components/ui/Icon';
 import { AudienceSelector } from '../../components/campaigns/AudienceSelector';
 import { CampaignShell } from './CampaignShell';
@@ -60,7 +61,7 @@ export function CampaignBuilderScreen({
   onExit,
   onCompleted,
 }: CampaignBuilderScreenProps) {
-  const { upsertCampaign } = useCampaigns();
+  const { upsertCampaign, live } = useCampaigns();
   const { pool } = useCampaignAudience();
   const myBusiness = useMyBusiness();
 
@@ -202,8 +203,8 @@ export function CampaignBuilderScreen({
     else onExit();
   };
 
-  /** Shared save used by "Save draft" and by the final send/schedule flow. */
-  const persist = (status: CampaignRecord['status'], extra: Partial<CampaignRecord> = {}): CampaignRecord => {
+  /** The record as it stands, with a history entry for this step. */
+  const buildRecord = (status: CampaignRecord['status'], extra: Partial<CampaignRecord> = {}): CampaignRecord => {
     const now = Date.now();
     const history = [...draft.history];
     if (status === 'scheduled') {
@@ -213,14 +214,14 @@ export function CampaignBuilderScreen({
         at: now,
         kind: 'queued',
         label: hasApiConfig()
-          ? `Queued for ${formatNumber(outcome.eligible.length)} recipients (delivery not yet available)`
+          ? `Sent to ${formatNumber(outcome.eligible.length)} recipients`
           : `Queued in demonstration mode for ${formatNumber(outcome.eligible.length)} recipients`,
       });
     } else {
       history.push({ at: now, kind: 'saved', label: 'Draft saved' });
     }
 
-    const record: CampaignRecord = {
+    return {
       ...draft,
       ...extra,
       status,
@@ -231,6 +232,11 @@ export function CampaignBuilderScreen({
       updatedAt: now,
       history,
     };
+  };
+
+  /** Shared save used by "Save draft" and by the demo send/schedule flow. */
+  const persist = (status: CampaignRecord['status'], extra: Partial<CampaignRecord> = {}): CampaignRecord => {
+    const record = buildRecord(status, extra);
     upsertCampaign(record);
     setDraft(record);
     return record;
@@ -269,9 +275,35 @@ export function CampaignBuilderScreen({
     setConfirmOpen(true);
   };
 
+  /** Live: the server sends now, or keeps it scheduled and sends it when due. */
+  const confirmLiveSend = async (send: NonNullable<typeof live>['send']) => {
+    const scheduled = sendMode === 'schedule';
+    const record = buildRecord(scheduled ? 'scheduled' : 'sending', {
+      scheduledAt: scheduled ? scheduledTimestamp : undefined,
+      sentAt: scheduled ? undefined : Date.now(),
+    });
+    try {
+      const result = await send(
+        record,
+        outcome.eligible.map((contact) => contact.key),
+      );
+      setDraft(result);
+      setConfirmOpen(false);
+      onCompleted(result);
+    } catch (error) {
+      showToast(apiErrorMessage(error, 'Could not send the campaign.'), 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const confirmSend = () => {
     if (submitting) return;
     setSubmitting(true);
+    if (live) {
+      void confirmLiveSend(live.send);
+      return;
+    }
     window.setTimeout(() => {
       const record = persist(sendMode === 'schedule' ? 'scheduled' : 'sending', {
         scheduledAt: sendMode === 'schedule' ? scheduledTimestamp : undefined,
@@ -446,7 +478,7 @@ export function CampaignBuilderScreen({
                     sendMode === 'schedule' && scheduledTimestamp
                       ? `${formatDateTime(scheduledTimestamp)} · ${CAMPAIGN_TIMEZONE.long}`
                       : hasApiConfig()
-                        ? 'Queued after confirmation (delivery not yet available)'
+                        ? 'Immediately after confirmation'
                         : 'Immediately after confirmation (queued locally)'
                   }
                   icon={sendMode === 'schedule' ? 'schedule' : 'bolt'}
@@ -497,7 +529,7 @@ export function CampaignBuilderScreen({
                   I confirm these customers opted in to {channel === 'sms' ? 'SMS' : 'email'} marketing, that excluded
                   contacts will not be contacted
                   {hasApiConfig()
-                    ? ', and that nothing is delivered until VEMTAP switches on campaign sending.'
+                    ? `, and that sending uses this business’s ${channel === 'sms' ? 'SMS' : 'email'} credits.`
                     : ', and that this is a demonstration send until a provider is connected.'}
                 </span>
               </label>
