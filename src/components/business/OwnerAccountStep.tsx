@@ -4,6 +4,7 @@ import { Logo } from '../ui/Logo';
 import { TextField } from './FormPrimitives';
 import { useAuth } from '../../context/AuthContext';
 import { ownerAuthService, OTP_GATE_MESSAGE } from '../../services/ownerAuthService';
+import { getProvisionalReferralCode } from '../../scripts/referralData';
 
 type Phase = 'email' | 'code' | 'details';
 
@@ -74,6 +75,8 @@ export function OwnerAccountStep({ mode, onDone, onBack }: OwnerAccountStepProps
     if (!businessName.trim()) return setError('Enter your business name.');
     if (mode === 'register' && !PASSWORD_RULE.test(password))
       return setError('Use at least 8 characters with upper and lower case letters, a number and a symbol.');
+    // A `?ref=` code from the invite link credits the referring business.
+    const referralCode = getProvisionalReferralCode() || undefined;
     void run(async () => {
       try {
         const session =
@@ -84,8 +87,9 @@ export function OwnerAccountStep({ mode, onDone, onBack }: OwnerAccountStepProps
                 firstName: firstName.trim(),
                 lastName: lastName.trim(),
                 businessName: businessName.trim(),
+                referralCode,
               })
-            : await ownerAuthService.upgrade({ businessName: businessName.trim(), password: password || undefined });
+            : await ownerAuthService.upgrade({ businessName: businessName.trim(), password: password || undefined, referralCode });
         adoptSession(session);
         onDone();
       } catch (e) {
