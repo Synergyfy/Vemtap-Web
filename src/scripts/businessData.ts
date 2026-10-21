@@ -7,18 +7,23 @@ export interface BusinessProfileRef {
   venue: BusinessVenue;
 }
 
-export const BUSINESSES: BusinessProfileRef[] = [
-  { slug: 'urban-grill-bistro-104', id: '104', name: 'Urban Grill & Bistro', venue: 'urban' },
-  { slug: 'glow-serenity-spa-219', id: '219', name: 'Glow & Serenity Spa', venue: 'spa' },
-];
+export const BUSINESSES: BusinessProfileRef[] = [];
 
-export const URBAN_BUSINESS = BUSINESSES[0];
-export const SPA_BUSINESS = BUSINESSES[1];
-
-export const LEGACY_BUSINESS_PATHS: Record<string, string> = {
-  '/business/urban-grill': URBAN_BUSINESS.slug,
-  '/business/glow-serenity': SPA_BUSINESS.slug,
+export const URBAN_BUSINESS: BusinessProfileRef = {
+  slug: '',
+  id: '',
+  name: 'Your business',
+  venue: 'urban',
 };
+
+export const SPA_BUSINESS: BusinessProfileRef = {
+  slug: '',
+  id: '',
+  name: 'Your spa',
+  venue: 'spa',
+};
+
+export const LEGACY_BUSINESS_PATHS: Record<string, string> = {};
 
 export const businessPath = (business: BusinessProfileRef) => `/business/${business.slug}`;
 
@@ -48,13 +53,9 @@ export function resolveBusinessPath(path: string): {
   if (parts.length === 0) return null;
 
   const rawSlug = decodeURIComponent(parts[0]);
-  const slug = LEGACY_BUSINESS_PATHS[`/business/${rawSlug}`]?.replace('/business/', '') ?? rawSlug;
-  const business = findBusinessBySlug(slug) ?? {
-    slug,
-    id: slug,
-    name: 'Business storefront',
-    venue: 'urban',
-  };
+  const migratedSlug = LEGACY_BUSINESS_PATHS[`/business/${rawSlug}`]?.replace('/business/', '');
+  const business = findBusinessBySlug(migratedSlug ?? rawSlug);
+  if (!business) return null;
 
   const section = parts[1] ?? '';
   if (section === 'products' && parts[2]) {

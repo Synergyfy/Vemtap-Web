@@ -194,19 +194,31 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
               <p className="font-label-md text-label-md text-text-secondary">Loading conversations…</p>
             </div>
           ) : visibleConversations.length === 0 ? (
-            <div className="flex flex-col items-center text-center gap-space-xs py-space-xl">
+            <div className="flex flex-col items-center text-center gap-space-xs py-space-xl px-space-md">
               <Icon name="forum" className="text-[36px] text-outline-variant" />
-              <p className="font-label-md text-label-md text-text-secondary">No conversations match your filter.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setChip('all');
-                  setQuery('');
-                }}
-                className="text-primary font-label-sm text-label-sm font-semibold hover:underline"
-              >
-                Reset filters
-              </button>
+              <p className="font-heading-sm text-heading-sm text-on-surface">No messages yet</p>
+              <p className="font-body-md text-body-md text-text-secondary max-w-[280px]">
+                Start a chat from any business profile and your conversations will appear here.
+              </p>
+              <div className="flex items-center gap-space-sm pt-space-2xs">
+                <button
+                  type="button"
+                  onClick={() => onTab('discover')}
+                  className="bg-primary text-on-primary px-space-md py-2.5 rounded-full font-label-sm text-label-sm font-semibold shadow-sm"
+                >
+                  Browse businesses
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChip('all');
+                    setQuery('');
+                  }}
+                  className="text-primary font-label-sm text-label-sm font-semibold hover:underline"
+                >
+                  Reset filters
+                </button>
+              </div>
             </div>
           ) : (
             visibleConversations.map((thread) => (
@@ -285,13 +297,13 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
       {/* New Message FAB — matches BusinessMessagesHomeScreen */}
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-40 flex justify-end pointer-events-none">
         <button
-          aria-label="New message"
+          aria-label="Start a new message"
           className="flex items-center gap-2 px-space-md py-3 rounded-full bg-primary text-on-primary shadow-lg shadow-primary/30 active:scale-95 transition-transform pointer-events-auto"
           type="button"
-          onClick={() => showToast('Select a business to start a new chat.')}
+          onClick={() => onTab('discover')}
         >
           <Icon name="add_comment" className="text-[20px]" />
-          <span className="font-button-primary text-button-primary">New Message</span>
+          <span className="font-button-primary text-button-primary">Start a chat</span>
         </button>
       </div>
 
