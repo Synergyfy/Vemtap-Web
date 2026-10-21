@@ -1,4 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { messageCampaignsService } from '../services/messageCampaignsService';
+import { apiErrorMessage } from '../services/errorMessages';
 import {
   buildSeedCampaigns,
   duplicateCampaign,
@@ -52,6 +55,8 @@ export interface CampaignsContextValue {
   /** Cancelling a scheduled campaign returns it to drafts. */
   cancelScheduledCampaign: (id: string) => void;
   resetCampaigns: () => void;
+  /** Set by the live store: load state and the last save error. */
+  live?: { isLoading: boolean; error: string | null; retry: () => void };
 }
 
 const CampaignsContext = createContext<CampaignsContextValue | null>(null);
@@ -137,4 +142,150 @@ export function useCampaigns(): CampaignsContextValue {
   const ctx = useContext(CampaignsContext);
   if (!ctx) throw new Error('useCampaigns must be used within a CampaignsProvider');
   return ctx;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const liveKeys = { list: ['message-campaigns'] as const };
+
+/**
+ * Live store: campaigns are saved to `/campaigns`. The builder works with a
+ * local id until the first save returns the server id; `aliases` maps one to
+ * the other so the builder and detail screens keep working mid-flight, and
+ * saves for one campaign run in order.
+ */
+export function LiveCampaignsProvider({ branchId, children }: { branchId?: string; children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const list = useQuery({ queryKey: liveKeys.list, queryFn: messageCampaignsService.list });
+  const [pending, setPending] = useState<Record<string, CampaignRecord>>({});
+  const aliases = useRef(new Map<string, string>());
+  const chains = useRef(new Map<string, Promise<unknown>>());
+  const [error, setError] = useState<string | null>(null);
+
+  const canonical = useCallback((id: string) => aliases.current.get(id) ?? id, []);
+
+  const campaigns = useMemo(() => {
+    const server = list.data ?? [];
+    const merged = server.map((entry) => pending[entry.id] ?? entry);
+    const unsaved = Object.values(pending).filter((entry) => !server.some((s) => s.id === entry.id));
+    return [...unsaved, ...merged].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [list.data, pending]);
+
+  const settle = useCallback(
+    (id: string) => {
+      void queryClient.invalidateQueries({ queryKey: liveKeys.list }).then(() =>
+        setPending((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        }),
+      );
+    },
+    [queryClient],
+  );
+
+  /** Runs saves for one campaign one after another. */
+  const enqueue = useCallback((key: string, task: () => Promise<unknown>) => {
+    const run = (chains.current.get(key) ?? Promise.resolve()).then(task, task);
+    chains.current.set(key, run.catch(() => undefined));
+    return run;
+  }, []);
+
+  const upsertCampaign = useCallback(
+    (campaign: CampaignRecord) => {
+      const localId = campaign.id;
+      const shown = { ...campaign, id: canonical(localId) };
+      setPending((current) => ({ ...current, [shown.id]: shown }));
+      setError(null);
+      void enqueue(localId, async () => {
+        const id = canonical(localId);
+        const record = { ...campaign, id };
+        if (UUID.test(id)) {
+          await messageCampaignsService.update(id, record);
+          settle(id);
+          return;
+        }
+        if (!branchId) throw new Error('Choose a branch before saving a campaign.');
+        const created = await messageCampaignsService.create(record, branchId);
+        aliases.current.set(localId, created.id);
+        setPending((current) => {
+          const next = { ...current, [created.id]: { ...record, id: created.id } };
+          delete next[localId];
+          return next;
+        });
+        settle(created.id);
+      }).catch((e: unknown) => setError(apiErrorMessage(e, 'Could not save the campaign.')));
+    },
+    [branchId, canonical, enqueue, settle],
+  );
+
+  const deleteCampaign = useCallback(
+    (id: string) => {
+      const target = canonical(id);
+      queryClient.setQueryData<CampaignRecord[]>(liveKeys.list, (rows) => rows?.filter((row) => row.id !== target));
+      setPending((current) => {
+        const next = { ...current };
+        delete next[target];
+        return next;
+      });
+      if (UUID.test(target))
+        void enqueue(id, () => messageCampaignsService.remove(target))
+          .catch((e: unknown) => setError(apiErrorMessage(e, 'Could not delete the campaign.')))
+          .finally(() => void queryClient.invalidateQueries({ queryKey: liveKeys.list }));
+    },
+    [canonical, enqueue, queryClient],
+  );
+
+  const findCampaign = useCallback((id: string) => campaigns.find((entry) => entry.id === canonical(id)), [campaigns, canonical]);
+
+  const duplicateCampaignById = useCallback(
+    (id: string) => {
+      const source = findCampaign(id);
+      if (!source) return undefined;
+      const copy = duplicateCampaign(source);
+      upsertCampaign(copy);
+      return copy;
+    },
+    [findCampaign, upsertCampaign],
+  );
+
+  const cancelScheduledCampaign = useCallback(
+    (id: string) => {
+      const entry = findCampaign(id);
+      if (!entry || entry.status !== 'scheduled') return;
+      upsertCampaign({
+        ...entry,
+        status: 'draft',
+        scheduledAt: undefined,
+        updatedAt: Date.now(),
+        history: [...entry.history, { at: Date.now(), kind: 'cancelled', label: 'Schedule cancelled — returned to drafts' }],
+      });
+    },
+    [findCampaign, upsertCampaign],
+  );
+
+  const listForChannel = useCallback((channel: CampaignChannel) => campaigns.filter((entry) => entry.channel === channel), [campaigns]);
+
+  const value = useMemo<CampaignsContextValue>(
+    () => ({
+      campaigns,
+      listForChannel,
+      findCampaign,
+      upsertCampaign,
+      deleteCampaign,
+      duplicateCampaignById,
+      cancelScheduledCampaign,
+      resetCampaigns: () => undefined,
+      live: {
+        isLoading: list.isLoading,
+        error: error ?? (list.isError ? apiErrorMessage(list.error, 'Could not load campaigns.') : null),
+        retry: () => {
+          setError(null);
+          void list.refetch();
+        },
+      },
+    }),
+    [campaigns, listForChannel, findCampaign, upsertCampaign, deleteCampaign, duplicateCampaignById, cancelScheduledCampaign, list, error],
+  );
+
+  return <CampaignsContext.Provider value={value}>{children}</CampaignsContext.Provider>;
 }

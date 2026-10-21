@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useIsDesktop } from '../../hooks/useIsDesktop';
-import { useCampaigns } from '../../context/CampaignsContext';
+import { LiveCampaignsProvider, useCampaigns } from '../../context/CampaignsContext';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { hasApiConfig } from '../../services/api/client';
 import type { BusinessTabKey } from '../../components/BusinessTabBar';
 import { CampaignsDashboardScreen } from './CampaignsDashboardScreen';
 import { CampaignBuilderScreen } from './CampaignBuilderScreen';
@@ -21,7 +23,17 @@ type ChannelView = 'dashboard' | 'builder' | 'detail';
  * Keeps the three campaign screens (dashboard, builder, results) inside the
  * channel route, exactly as the guidance asks: few screens, no extra routing.
  */
-export function CampaignsChannelScreen({ channel, onNav, onTab }: CampaignsChannelScreenProps) {
+export function CampaignsChannelScreen(props: CampaignsChannelScreenProps) {
+  const { activeBranchId } = useBusinessBranch();
+  if (!hasApiConfig()) return <ChannelScreenBody {...props} />;
+  return (
+    <LiveCampaignsProvider branchId={activeBranchId}>
+      <ChannelScreenBody {...props} />
+    </LiveCampaignsProvider>
+  );
+}
+
+function ChannelScreenBody({ channel, onNav, onTab }: CampaignsChannelScreenProps) {
   const isDesktop = useIsDesktop();
   const { findCampaign, deleteCampaign, duplicateCampaignById, cancelScheduledCampaign } = useCampaigns();
 
@@ -90,7 +102,9 @@ export function CampaignsChannelScreen({ channel, onNav, onTab }: CampaignsChann
     setBanner(
       campaign.status === 'scheduled' && campaign.scheduledAt
         ? `Campaign scheduled for ${formatDateTime(campaign.scheduledAt)}.`
-        : 'Campaign queued for sending (demonstration only — no provider is connected).',
+        : hasApiConfig()
+          ? 'Campaign saved and queued. VEMTAP does not deliver SMS or email campaigns yet, so nothing has been sent.'
+          : 'Campaign queued for sending (demonstration only — no provider is connected).',
     );
     setView('detail');
     window.scrollTo({ top: 0 });

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import { AudienceSelector } from '../../components/campaigns/AudienceSelector';
 import { CampaignShell } from './CampaignShell';
@@ -6,14 +7,14 @@ import { CampaignStepper, type CampaignStepKey } from '../../components/campaign
 import { CampaignConfirmDialog } from '../../components/campaigns/CampaignConfirmDialog';
 import { ScheduleControls, type SendMode } from '../../components/campaigns/ScheduleControls';
 import { useCampaigns } from '../../context/CampaignsContext';
-import { useContacts } from '../../context/ContactsContext';
+import { useCampaignAudience } from '../../hooks/business/useCampaignAudience';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { SmsComposer } from './SmsComposer';
 import { EmailComposer } from './EmailComposer';
 import type { BusinessTabKey } from '../../components/BusinessTabBar';
 import {
   CAMPAIGN_TIMEZONE,
   BUSINESS_NAME,
-  buildAudiencePool,
   defaultScheduleValue,
   describeAudience,
   emptyDraft,
@@ -60,10 +61,15 @@ export function CampaignBuilderScreen({
   onCompleted,
 }: CampaignBuilderScreenProps) {
   const { upsertCampaign } = useCampaigns();
-  const { contacts } = useContacts();
-  const pool = useMemo(() => buildAudiencePool(contacts), [contacts]);
+  const { pool } = useCampaignAudience();
+  const myBusiness = useMyBusiness();
 
   const [draft, setDraft] = useState<CampaignRecord>(() => (initial ? { ...initial } : emptyDraft(channel)));
+  // Live: the placeholder sender name becomes the real business name.
+  const liveName = myBusiness.data?.name;
+  useEffect(() => {
+    if (liveName) setDraft((d) => (!d.senderName || d.senderName === BUSINESS_NAME ? { ...d, senderName: liveName } : d));
+  }, [liveName]);
   const [step, setStep] = useState<CampaignStepKey>('audience');
   const [completed, setCompleted] = useState<CampaignStepKey[]>([]);
   const [templateKey, setTemplateKey] = useState<string | undefined>(undefined);
@@ -206,7 +212,9 @@ export function CampaignBuilderScreen({
       history.push({
         at: now,
         kind: 'queued',
-        label: `Queued in demonstration mode for ${formatNumber(outcome.eligible.length)} recipients`,
+        label: hasApiConfig()
+          ? `Queued for ${formatNumber(outcome.eligible.length)} recipients (delivery not yet available)`
+          : `Queued in demonstration mode for ${formatNumber(outcome.eligible.length)} recipients`,
       });
     } else {
       history.push({ at: now, kind: 'saved', label: 'Draft saved' });
@@ -437,7 +445,9 @@ export function CampaignBuilderScreen({
                   value={
                     sendMode === 'schedule' && scheduledTimestamp
                       ? `${formatDateTime(scheduledTimestamp)} · ${CAMPAIGN_TIMEZONE.long}`
-                      : 'Immediately after confirmation (queued locally)'
+                      : hasApiConfig()
+                        ? 'Queued after confirmation (delivery not yet available)'
+                        : 'Immediately after confirmation (queued locally)'
                   }
                   icon={sendMode === 'schedule' ? 'schedule' : 'bolt'}
                 />
@@ -485,7 +495,10 @@ export function CampaignBuilderScreen({
                 />
                 <span className="font-label-sm text-label-sm text-text-secondary">
                   I confirm these customers opted in to {channel === 'sms' ? 'SMS' : 'email'} marketing, that excluded
-                  contacts will not be contacted, and that this is a demonstration send until a provider is connected.
+                  contacts will not be contacted
+                  {hasApiConfig()
+                    ? ', and that nothing is delivered until VEMTAP switches on campaign sending.'
+                    : ', and that this is a demonstration send until a provider is connected.'}
                 </span>
               </label>
               {attempted('review') && !consentConfirmed && (

@@ -1,4 +1,5 @@
 import { Icon } from '../../components/ui/Icon';
+import { hasApiConfig } from '../../services/api/client';
 import { CampaignStatusBadge } from '../../components/campaigns/CampaignStatusBadge';
 import { CampaignShell } from './CampaignShell';
 import type { BusinessTabKey } from '../../components/BusinessTabBar';
@@ -135,8 +136,9 @@ export function CampaignDetailScreen({
         {campaign.simulatedSend && (
           <p className="flex items-start gap-space-2xs rounded-xl bg-surface-tint-blue px-space-md py-space-sm font-caption text-caption text-text-secondary leading-relaxed">
             <Icon name="info" className="text-primary text-[16px] shrink-0 mt-0.5" />
-            This campaign was queued locally for demonstration. Nothing left your device, and sent, delivered, opened or
-            clicked numbers will only appear once an SMS or email provider reports them.
+            {hasApiConfig()
+              ? 'This campaign is saved and queued, but VEMTAP does not deliver SMS or email campaigns yet, so nothing has been sent. Sent, delivered, opened and clicked numbers appear once delivery is switched on.'
+              : 'This campaign was queued locally for demonstration. Nothing left your device, and sent, delivered, opened or clicked numbers will only appear once an SMS or email provider reports them.'}
           </p>
         )}
 
