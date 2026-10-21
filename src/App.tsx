@@ -1397,6 +1397,9 @@ function AppInner() {
       case 'notifications':
         setRoute('notifications');
         break;
+      case 'referrals':
+        setRoute('referrals');
+        break;
       case 'account-settings':
         setRoute('account-settings');
         break;
@@ -1473,6 +1476,9 @@ function AppInner() {
         break;
       case 'notifications':
         setRoute('notifications');
+        break;
+      case 'referrals':
+        setRoute('referrals');
         break;
       case 'account-settings':
         setRoute('account-settings');
@@ -2102,6 +2108,10 @@ function AppInner() {
           onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
           onOpenDeals={() => setRoute('deals')}
           onOpenDeal={() => openDeal('home')}
+          onOpenBusiness={() => {
+            setProfileFrom('home');
+            setRoute('business-profile');
+          }}
           onOpenNotifications={() => setRoute('notifications')}
           onEnroll={() => setRoute('business-onboarding')}
           onAccount={() => setRoute('account')}
@@ -3364,7 +3374,7 @@ function AppInner() {
         // BUG-028: normal registration flow with a fresh Google / email
         // identity — never silently linked to the existing consumer account.
         setBusinessSetupSkipIntro(false);
-        setRoute('sign-in');
+        setRoute('auth-code');
       };
 
       if (showAccountChoice) {
