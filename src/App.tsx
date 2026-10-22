@@ -774,6 +774,9 @@ const DESKTOP_ONLY_ROUTES = new Set<Route>([
 
 const ONBOARDED_KEY = 'vemtap_onboarded';
 
+/** Which sign-up journey ("customer" / "business") a verification belongs to. */
+const AUTH_INTENT_KEY = 'vemtap_auth_intent';
+
 const hasOnboarded = () => window.localStorage.getItem(ONBOARDED_KEY) === '1';
 
 function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
@@ -879,7 +882,20 @@ function AppInner() {
    * those screens need to know where "continue" must land: the consumer
    * profile setup, or the Business Profile page for a merchant.
    */
-  const [authIntent, setAuthIntent] = useState<'customer' | 'business'>('customer');
+  const [authIntent, setAuthIntentState] = useState<'customer' | 'business'>(
+    // Restored on load so a hard refresh mid-flow (e.g. on /verify-email)
+    // still completes into the right journey instead of dropping merchants
+    // into the customer one.
+    () => (window.localStorage.getItem(AUTH_INTENT_KEY) === 'business' ? 'business' : 'customer'),
+  );
+  const setAuthIntent = (intent: 'customer' | 'business') => {
+    setAuthIntentState(intent);
+    try {
+      window.localStorage.setItem(AUTH_INTENT_KEY, intent);
+    } catch {
+      // Storage unavailable — the in-memory value still works this session.
+    }
+  };
   /** Sign In is reachable from several sign-ups — remember where it was opened from. */
   const [signInFrom, setSignInFrom] = useState<Route>('welcome');
   const [feedFrom, setFeedFrom] = useState<Route>('home');
