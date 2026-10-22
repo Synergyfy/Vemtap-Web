@@ -6,6 +6,8 @@ interface VerifyEmailScreenProps {
   onBack: () => void;
   onContinue: () => void;
   onEditEmail: () => void;
+  /** "Set up your business on VEMTAP" shortcut (desktop parity). */
+  onBusinessSetup?: () => void;
 }
 
 const CODE_LENGTH = 6;
@@ -13,7 +15,7 @@ const RESEND_SECONDS = 45;
 
 type Status = 'idle' | 'verifying';
 
-export function VerifyEmailScreen({ onBack, onContinue, onEditEmail }: VerifyEmailScreenProps) {
+export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, onBusinessSetup }: VerifyEmailScreenProps) {
   const [digits, setDigits] = useState<string[]>(() => Array(CODE_LENGTH).fill(''));
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState<Status>('idle');
@@ -160,12 +162,12 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail }: VerifyEma
                   onChange={(event) => handleChange(index, event.target.value)}
                   onKeyDown={(event) => handleKeyDown(index, event)}
                   onPaste={handlePaste}
-                  className={`w-[48px] h-[56px] rounded-xl text-center font-heading-md text-heading-md font-semibold select-none shadow-sm outline-none transition-all duration-150 ${
+                  className={`w-[48px] h-[56px] rounded-xl border-2 text-center font-heading-md text-heading-md font-semibold select-none shadow-sm outline-none transition-all duration-150 caret-primary-container ${
                     digit
-                      ? 'bg-surface-subtle text-text-primary'
+                      ? 'bg-surface-canvas text-text-primary border-primary-container shadow-sm'
                       : isActive
-                        ? 'bg-surface-canvas text-primary-container shadow-md'
-                        : 'bg-surface-container-low text-text-tertiary'
+                        ? 'bg-surface-canvas text-text-primary border-primary-container ring-4 ring-primary-container/15 shadow-md'
+                        : 'bg-surface-canvas text-text-tertiary border-outline-variant'
                   }`}
                 />
               );
@@ -235,6 +237,23 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail }: VerifyEma
             </button>
           </div>
         </div>
+
+        {onBusinessSetup && (
+          <div className="mt-space-lg w-full bg-surface-subtle rounded-xl p-space-sm px-space-md flex items-center justify-between gap-space-sm">
+            <span className="font-caption text-caption text-text-secondary flex items-center gap-1.5 min-w-0">
+              <span className="material-symbols-outlined text-primary text-[18px]">storefront</span>
+              <span className="truncate">Own a local business or storefront?</span>
+            </span>
+            <button
+              className="font-label-sm text-label-sm font-semibold text-primary hover:underline active:scale-95 transition-all inline-flex items-center gap-1 shrink-0"
+              type="button"
+              onClick={onBusinessSetup}
+            >
+              <span>Set up your business on VEMTAP</span>
+              <span className="material-symbols-outlined text-[15px]">arrow_forward</span>
+            </button>
+          </div>
+        )}
       </div>
     </AppScreen>
   );

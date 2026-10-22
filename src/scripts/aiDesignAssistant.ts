@@ -39,6 +39,8 @@ export interface AiPromptContext {
   brandColours?: string;
   /** Product/service title (product and service prompts only). */
   itemName?: string;
+  /** Product/service brand or producer name (product and service prompts only). */
+  brand?: string;
   /** Product/service description (product and service prompts only). */
   itemDescription?: string;
 }
@@ -167,6 +169,7 @@ function resolveContext(context: AiPromptContext): AiPromptContext {
     description: clean(context.description),
     brandColours: clean(context.brandColours),
     itemName: clean(context.itemName),
+    brand: clean(context.brand),
     itemDescription: clean(context.itemDescription),
   } as const;
   (Object.keys(fields) as Array<keyof AiPromptContext>).forEach((key) => {
@@ -246,6 +249,7 @@ function buildItemPrompt(
   const noun = assetType === 'product' ? 'product' : 'service';
   const facts: string[] = [];
   if (context.itemName) facts.push(`Item name: ${context.itemName}`);
+  if (context.brand) facts.push(`Brand: ${context.brand}`);
   if (context.itemDescription) facts.push(`Item description: "${context.itemDescription}"`);
   facts.push(...businessFactLines(context));
 

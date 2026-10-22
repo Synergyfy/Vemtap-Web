@@ -2115,7 +2115,7 @@ export function BusinessBoostScreen({
                         </span>
                         <input
                           aria-label="Payment OTP"
-                          className="w-full h-12 px-4 bg-surface-subtle rounded-xl font-heading-sm text-heading-sm tracking-[0.4em] text-text-primary text-center focus:outline-none focus:bg-surface-canvas shadow-inner"
+                          className="w-full h-12 px-4 bg-surface-canvas border-2 border-outline-variant rounded-xl font-heading-sm text-heading-sm tracking-[0.4em] text-text-primary text-center focus:outline-none focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 transition-all caret-primary shadow-sm"
                           inputMode="numeric"
                           maxLength={6}
                           placeholder="••••••"

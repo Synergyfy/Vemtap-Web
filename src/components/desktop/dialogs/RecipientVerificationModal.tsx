@@ -98,8 +98,10 @@ export function RecipientVerificationModal({
               onKeyDown={(event) => handleKeyDown(index, event)}
               className={
                 focusedIndex === index
-                  ? 'h-14 sm:h-16 w-full text-center rounded-xl bg-surface-tint-blue text-on-surface font-heading-lg text-heading-lg font-bold shadow-[0_0_0_2px_#066cf4] focus:outline-none caret-primary'
-                  : 'h-14 sm:h-16 w-full text-center rounded-xl bg-surface-subtle text-on-surface font-heading-lg text-heading-lg font-bold shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] focus:bg-surface-tint-blue focus:outline-none'
+                  ? 'h-14 sm:h-16 w-full text-center rounded-xl bg-surface-canvas text-on-surface font-heading-lg text-heading-lg font-bold border-2 border-primary-container ring-4 ring-primary-container/15 focus:outline-none caret-primary transition-all'
+                  : `h-14 sm:h-16 w-full text-center rounded-xl bg-surface-canvas font-heading-lg text-heading-lg font-bold border-2 focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 focus:outline-none transition-all shadow-sm ${
+                      digit ? 'text-on-surface border-primary-container' : 'text-text-tertiary border-outline-variant'
+                    }`
               }
             />
           ))}

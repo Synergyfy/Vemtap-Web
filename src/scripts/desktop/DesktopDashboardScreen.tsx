@@ -7,6 +7,8 @@ import type { AnnouncementDestination } from '../../scripts/announcementsData';
 
 interface DesktopDashboardScreenProps {
   onNav: (key: DesktopNavKey) => void;
+  /** Opens the business account-choice flow ("Continue with this account" / "Use a new account"). */
+  onStartBusinessSignup: () => void;
 }
 
 const STATS = [
@@ -134,7 +136,7 @@ const ACTIVE_DEALS = [
   },
 ];
 
-export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
+export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: DesktopDashboardScreenProps) {
   const { fullName } = useProfile();
   const { district, city } = useLocation();
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
@@ -592,14 +594,17 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
 
                 <div className="px-4 py-3 text-center">
                   <p className="font-caption text-caption text-text-tertiary">
-                    Own a retail outlet or restaurant in Abuja?
+                    Own a Business in {district}, {city}?
+                  </p>
+                  <p className="mt-1.5 font-label-md text-label-md text-text-secondary">
+                    Switch to a business account.
                   </p>
                   <button
-                    onClick={() => onNav('for-merchants')}
-                    className="font-label-md text-label-md text-primary font-semibold hover:underline mt-1 inline-flex items-center gap-1.5"
+                    onClick={onStartBusinessSignup}
+                    className="mt-1 font-label-md text-label-md text-primary font-semibold hover:underline inline-flex items-center gap-1.5"
                     type="button"
                   >
-                    <span>Set up your business on VEMTAP</span>
+                    <span>Get Started</span>
                     <Icon name="arrow_forward" className="text-[16px]" />
                   </button>
                 </div>

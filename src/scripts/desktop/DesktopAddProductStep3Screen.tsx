@@ -101,7 +101,7 @@ export function DesktopAddProductStep3Screen({
           <div>
             <div className="flex items-center gap-space-xs mb-space-2xs">
               <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue font-caption text-caption text-primary font-semibold">
-                Step 3 of 4
+                Step 4 of 5
               </span>
               <span className="text-text-tertiary text-caption font-caption">Offerings &amp; Catalog Setup</span>
             </div>
@@ -114,14 +114,14 @@ export function DesktopAddProductStep3Screen({
           </div>
           <div className="flex flex-col md:items-end gap-space-2xs min-w-[260px]">
             <div className="flex items-center gap-space-xs text-caption font-caption text-text-secondary">
-              <span className="font-semibold text-primary">75% Completed</span>
+              <span className="font-semibold text-primary">80% Completed</span>
               <span>•</span>
               <span>Next: Review &amp; Launch</span>
             </div>
             <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden flex">
               <div
                 className="h-full bg-primary rounded-full transition-all duration-500"
-                style={{ width: '75%' }}
+                style={{ width: '80%' }}
               />
             </div>
           </div>
@@ -594,7 +594,7 @@ export function DesktopAddProductStep3Screen({
               className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
             >
               <Icon name="arrow_back" className="text-[18px]" />
-              <span>Back to Step 2 (Pricing &amp; SKUs)</span>
+              <span>Back to Step 3 (Product Image)</span>
             </button>
           </div>
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">

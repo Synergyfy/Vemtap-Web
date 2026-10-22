@@ -661,7 +661,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     </label>
                     <input
                       autoComplete="new-password"
-                      className="w-full h-[52px] px-space-md rounded-xl bg-surface-subtle focus:bg-surface-canvas text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-full h-[52px] px-space-md rounded-xl bg-surface-canvas border-2 border-outline-variant text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 shadow-sm"
                       id="staff-pin"
                       inputMode="numeric"
                       maxLength={6}
@@ -677,8 +677,10 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     </label>
                     <input
                       autoComplete="new-password"
-                      className={`w-full h-[52px] px-space-md rounded-xl bg-surface-subtle focus:bg-surface-canvas text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none focus:ring-2 ${
-                        confirmPin.length === 6 && !pinOk ? 'focus:ring-error/40 ring-2 ring-error/40' : 'focus:ring-primary/20'
+                      className={`w-full h-[52px] px-space-md rounded-xl bg-surface-canvas border-2 text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none shadow-sm ${
+                        confirmPin.length === 6 && !pinOk
+                          ? 'border-error focus:border-error focus:ring-4 focus:ring-error/15'
+                          : 'border-outline-variant focus:border-primary-container focus:ring-4 focus:ring-primary-container/15'
                       }`}
                       id="staff-pin-confirm"
                       inputMode="numeric"

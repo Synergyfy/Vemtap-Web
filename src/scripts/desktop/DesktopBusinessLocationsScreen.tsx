@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 
 interface DesktopBusinessLocationsScreenProps {
@@ -6,9 +5,11 @@ interface DesktopBusinessLocationsScreenProps {
   onAddBranch: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  /** Branches added during this setup run — kept in the shared snapshot so they survive navigation. */
+  extraBranches?: OnboardingBranch[];
 }
 
-interface OnboardingBranch {
+export interface OnboardingBranch {
   id: string;
   name: string;
   city: string;
@@ -30,8 +31,14 @@ const SEED_BRANCHES: OnboardingBranch[] = [
   },
 ];
 
-export function DesktopBusinessLocationsScreen({ onBack, onAddBranch, onNext, onSaveDraft }: DesktopBusinessLocationsScreenProps) {
-  const [branches] = useState<OnboardingBranch[]>(SEED_BRANCHES);
+export function DesktopBusinessLocationsScreen({
+  onBack,
+  onAddBranch,
+  onNext,
+  onSaveDraft,
+  extraBranches,
+}: DesktopBusinessLocationsScreenProps) {
+  const branches = [...SEED_BRANCHES, ...(extraBranches ?? [])];
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 flex flex-col gap-8">

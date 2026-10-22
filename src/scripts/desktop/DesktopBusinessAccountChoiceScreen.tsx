@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { useProfile } from '../../context/ProfileContext';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -8,6 +8,11 @@ interface DesktopBusinessAccountChoiceScreenProps {
   onContinueWithAccount: () => void;
   onUseNewAccount: () => void;
 }
+
+const OTP_LENGTH = 6;
+const RESEND_SECONDS = 45;
+/** Simulated delivery latency for the frontend-only OTP step. */
+const SEND_DELAY_MS = 900;
 
 const maskEmail = (email: string) => {
   const at = email.indexOf('@');
@@ -36,6 +41,72 @@ export function DesktopBusinessAccountChoiceScreen({
 }: DesktopBusinessAccountChoiceScreenProps) {
   const profile = useProfile();
   const [confirming, setConfirming] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [otpDigits, setOtpDigits] = useState<string[]>(() => Array(OTP_LENGTH).fill(''));
+  const [otpActiveIndex, setOtpActiveIndex] = useState(0);
+  const [otpSending, setOtpSending] = useState(true);
+  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const otpInputs = useRef<Array<HTMLInputElement | null>>([]);
+
+  // Frontend stub: "send" the OTP when the step opens, then run the resend
+  // window. The real dispatch/verification hooks up to the backend later.
+  useEffect(() => {
+    if (!verifying) return undefined;
+    setOtpSending(true);
+    setSecondsLeft(RESEND_SECONDS);
+    const sendTimer = window.setTimeout(() => setOtpSending(false), SEND_DELAY_MS);
+    const interval = window.setInterval(() => {
+      setSecondsLeft((value) => (value <= 1 ? 0 : value - 1));
+    }, 1000);
+    return () => {
+      window.clearTimeout(sendTimer);
+      window.clearInterval(interval);
+    };
+  }, [verifying]);
+
+  const handleResend = () => {
+    if (secondsLeft > 0 || otpSending) return;
+    setOtpDigits(Array(OTP_LENGTH).fill(''));
+    setOtpSending(true);
+    setSecondsLeft(RESEND_SECONDS);
+    window.setTimeout(() => setOtpSending(false), SEND_DELAY_MS);
+    otpInputs.current[0]?.focus();
+  };
+
+  const handleOtpChange = (index: number, value: string) => {
+    const chars = value.replace(/\D/g, '');
+    const next = [...otpDigits];
+    if (!chars) {
+      next[index] = '';
+      setOtpDigits(next);
+      return;
+    }
+    chars.split('').forEach((char, offset) => {
+      if (index + offset < OTP_LENGTH) next[index + offset] = char;
+    });
+    setOtpDigits(next);
+    otpInputs.current[Math.min(index + chars.length, OTP_LENGTH - 1)]?.focus();
+  };
+
+  const handleOtpKeyDown = (index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      event.preventDefault();
+      const next = [...otpDigits];
+      next[index - 1] = '';
+      setOtpDigits(next);
+      otpInputs.current[index - 1]?.focus();
+    }
+    if (event.key === 'ArrowLeft' && index > 0) {
+      event.preventDefault();
+      otpInputs.current[index - 1]?.focus();
+    }
+    if (event.key === 'ArrowRight' && index < OTP_LENGTH - 1) {
+      event.preventDefault();
+      otpInputs.current[index + 1]?.focus();
+    }
+  };
+
+  const otpComplete = otpDigits.every((digit) => digit !== '');
 
   return (
     <BusinessSetupChrome activeNav="profile" onBrand={onBack}>
@@ -98,6 +169,101 @@ export function DesktopBusinessAccountChoiceScreen({
                 </button>
               </div>
             </>
+          ) : verifying ? (
+            <div className="flex flex-col items-center text-center gap-6">
+              <div className="relative flex items-center justify-center w-24 h-24 rounded-full bg-surface-container-low shadow-sm">
+                <div className="w-16 h-16 rounded-full bg-surface-canvas flex items-center justify-center text-primary shadow-sm">
+                  <Icon name="mark_email_read" className="text-[34px]" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary shadow-md">
+                  <Icon name="verified_user" className="text-[18px]" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold">Verify your email</h1>
+                <p className="font-body-md text-body-md text-text-secondary max-w-md">
+                  To protect your business account, we sent a 6-digit verification code to
+                </p>
+                <span className="font-label-lg text-label-lg text-text-primary font-semibold">
+                  {profile.email ? maskEmail(profile.email) : 'your registered email'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 w-full max-w-md">
+                {otpDigits.map((digit, index) => {
+                  const isActive = otpActiveIndex === index && digit === '';
+                  return (
+                    <input
+                      key={index}
+                      ref={(element) => {
+                        otpInputs.current[index] = element;
+                      }}
+                      aria-label={`Verification digit ${index + 1}`}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={OTP_LENGTH}
+                      value={digit}
+                      onFocus={() => setOtpActiveIndex(index)}
+                      onChange={(event) => handleOtpChange(index, event.target.value)}
+                      onKeyDown={(event) => handleOtpKeyDown(index, event)}
+                      className={`w-[52px] h-[60px] rounded-xl border-2 text-center font-heading-md text-heading-md font-semibold select-none shadow-sm outline-none transition-all duration-150 caret-primary ${
+                        digit
+                          ? 'bg-surface-canvas text-text-primary border-primary shadow-sm'
+                          : isActive
+                            ? 'bg-surface-canvas text-text-primary border-primary ring-4 ring-primary/15 shadow-md'
+                            : 'bg-surface-canvas text-text-tertiary border-outline-variant'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+
+              <p className="font-caption text-caption text-text-secondary -mt-3">
+                {otpSending ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon name="pending" className="text-[14px]" />
+                    Sending code…
+                  </span>
+                ) : (
+                  <>
+                    Didn’t get it?{' '}
+                    <button
+                      className={`font-semibold ${
+                        secondsLeft > 0 ? 'text-text-tertiary' : 'text-primary hover:underline'
+                      }`}
+                      disabled={secondsLeft > 0}
+                      type="button"
+                      onClick={handleResend}
+                    >
+                      Resend code{secondsLeft > 0 && ` (0:${secondsLeft < 10 ? `0${secondsLeft}` : secondsLeft})`}
+                    </button>
+                  </>
+                )}
+              </p>
+
+              <div className="w-full max-w-md flex flex-col gap-3">
+                <button
+                  type="button"
+                  disabled={!otpComplete || otpSending}
+                  onClick={onContinueWithAccount}
+                  className="w-full h-14 rounded-2xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100"
+                >
+                  <span>Verify &amp; Continue</span>
+                  <Icon name="arrow_forward" className="text-[20px]" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVerifying(false)}
+                  className="w-full h-14 rounded-2xl bg-surface-subtle text-text-secondary font-button-secondary text-button-secondary flex items-center justify-center"
+                >
+                  Back to account confirmation
+                </button>
+              </div>
+
+              <p className="font-caption text-caption text-text-tertiary max-w-sm">
+                Demo mode: any 6-digit code is accepted until the OTP service is connected.
+              </p>
+            </div>
           ) : (
 <div className="flex flex-col items-center text-center gap-6">
               <div className="w-24 h-24 rounded-full bg-primary/10 text-primary flex items-center justify-center">
@@ -137,7 +303,7 @@ export function DesktopBusinessAccountChoiceScreen({
               <div className="w-full max-w-md flex flex-col gap-3">
                 <button
                   type="button"
-                  onClick={onContinueWithAccount}
+                  onClick={() => setVerifying(true)}
                   className="w-full h-14 rounded-2xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform"
                 >
                   <span>Confirm &amp; Continue</span>
