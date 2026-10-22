@@ -15,9 +15,6 @@ interface DesktopClaimSuccessScreenProps {
 const STOREFRONT_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDQ42MXT84QJaLlfP9_IaLBtFvS_KxFLadi_pt_Kn7tawuErwsolNnrbdFRbee-S47CYzKYI-okvg53pKGQAl7Y3ndalFK_DOmS5STdMFh8yQhSP4dM6jg2UiZvn_qu3FkF3laEXkyrj9ncW-xBSTqLg_xtDqBoNEOxATQgrc5DXVM7TqBv2zrlI2Ky4OFfpyZcrN4JoPlmrqvdtOoUaBPIMAdT43_oFjVtgAg9DvKcBYVlykA1iWVGEg';
 
-const STOREFRONT_ALT =
-  'Warm modern bistro interior with contemporary wooden tables, soft ambient warm ceiling pendant lamps, indoor plants, and a bustling artisan open kitchen, commercial photography style, crisp clean lighting';
-
 export function DesktopClaimSuccessScreen({
   onNav,
   onBack,
@@ -33,6 +30,13 @@ export function DesktopClaimSuccessScreen({
   const claimRef = claim?.ref ?? 'VT-48291';
   const isSomeoneElseClaim = claim?.kind === 'someone-else' && Boolean(claim.recipient);
   const dealTitle = claim?.dealTitle ?? 'Featured Local Deal';
+  const dealBusiness = claim?.dealBusiness ?? 'Local dining partner';
+  const dealLocation = claim?.dealLocation ?? 'Your area';
+  const dealImage = claim?.dealImage ?? STOREFRONT_IMAGE;
+  const dealPrice = claim?.dealPrice ?? 9600;
+  const dealOldPrice = claim?.dealOldPrice ?? 12000;
+  const dealSavings = dealOldPrice > dealPrice ? dealOldPrice - dealPrice : 0;
+  const dealSavingsLabel = claim?.discountLabel ?? (dealSavings > 0 ? `Save ₦${dealSavings.toLocaleString('en-NG')}` : 'Special offer');
 
   const copyClaimCode = () => {
     navigator.clipboard?.writeText(claimRef).catch(() => undefined);
@@ -119,7 +123,7 @@ export function DesktopClaimSuccessScreen({
                 </div>
 
                 <p className="font-heading-md text-heading-md text-text-primary text-center">
-                  Your {claim?.dealBusiness ?? 'local dining partner'} {dealTitle} is reserved.
+                  Your {dealBusiness} {dealTitle} is reserved.
                 </p>
                 <p className="font-body-md text-body-md text-text-secondary text-center mt-space-2xs max-w-md">
                   {isSomeoneElseClaim
@@ -167,14 +171,14 @@ export function DesktopClaimSuccessScreen({
                     </div>
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                        {claim?.dealBusiness ?? 'Local dining partner'}
+                        {dealBusiness}
                       </span>
                       <h2 className="font-heading-sm text-heading-sm text-primary font-bold tracking-tight line-clamp-1">
                         {dealTitle}
                       </h2>
                       <div className="flex items-center gap-1 mt-0.5 text-text-secondary">
                         <Icon name="location_on" filled className="text-sm shrink-0" />
-                        <span className="font-caption text-caption truncate">Your area (nearby)</span>
+                        <span className="font-caption text-caption truncate">{dealLocation}</span>
                       </div>
                     </div>
                   </div>
@@ -193,10 +197,12 @@ export function DesktopClaimSuccessScreen({
                     <div className="flex flex-col">
                       <span className="font-caption text-caption text-text-tertiary">Deal Price</span>
                       <div className="flex items-baseline gap-1 mt-0.5">
-                        <span className="font-heading-md text-heading-md font-bold text-text-primary">₦9,600</span>
+                        <span className="font-heading-md text-heading-md font-bold text-text-primary">
+                          {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)}
+                        </span>
                       </div>
                       <span className="font-caption text-caption text-badge-discount-text font-medium">
-                        Save ₦2,400
+                        {dealSavingsLabel}
                       </span>
                     </div>
                     <div className="flex flex-col text-right">
@@ -209,7 +215,7 @@ export function DesktopClaimSuccessScreen({
                   </div>
 
                   <div className="relative w-full h-32 rounded-xl overflow-hidden mt-space-2xs">
-                    <img className="w-full h-full object-cover" alt={STOREFRONT_ALT} src={STOREFRONT_IMAGE} />
+                    <img className="w-full h-full object-cover" alt={dealTitle} src={dealImage || STOREFRONT_IMAGE} />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-space-xs">
                       <div className="flex items-center gap-1.5 text-on-primary">
                         <Icon name="storefront" className="text-xs" />

@@ -15,6 +15,7 @@ import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { LocationProvider } from './context/LocationContext';
 import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
+import { parsePrice } from './utils/format';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
 import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
 import { ProductDetailScreen } from './scripts/ProductDetailScreen';
@@ -1280,6 +1281,13 @@ function AppInner() {
   const completeClaim = () => {
     const record = claims.recordClaim({
       kind: claimRecipient ? 'someone-else' : 'self',
+      dealTitle: selectedDeal?.title ?? 'Featured local deal',
+      dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+      dealImage: selectedDeal?.image,
+      dealLocation: selectedDeal?.location,
+      dealPrice: parsePrice(selectedDeal?.price),
+      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+      discountLabel: selectedDeal?.discountLabel,
       sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
       recipient: claimRecipient ?? undefined,
     });
@@ -1292,6 +1300,13 @@ function AppInner() {
   const completeGift = () => {
     const record = claims.recordClaim({
       kind: 'gift',
+      dealTitle: selectedDeal?.title ?? 'Featured local deal',
+      dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+      dealImage: selectedDeal?.image,
+      dealLocation: selectedDeal?.location,
+      dealPrice: parsePrice(selectedDeal?.price),
+      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+      discountLabel: selectedDeal?.discountLabel,
       sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
       recipient: giftRecipient
         ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
@@ -1333,6 +1348,13 @@ function AppInner() {
     onClaimed?.();
     const record = claims.recordClaim({
       kind: 'self',
+      dealTitle: selectedDeal?.title ?? 'Featured local deal',
+      dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+      dealImage: selectedDeal?.image,
+      dealLocation: selectedDeal?.location,
+      dealPrice: parsePrice(selectedDeal?.price),
+      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+      discountLabel: selectedDeal?.discountLabel,
       sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
     });
     setActiveClaim(record);

@@ -28,6 +28,10 @@ export interface ClaimRecord {
   dealTitle: string;
   dealBusiness: string;
   dealImage?: string;
+  dealLocation?: string;
+  dealPrice?: number;
+  dealOldPrice?: number;
+  discountLabel?: string;
   /** Voucher / redemption code shown to whoever redeems the deal. */
   code: string;
   /** `gift-sent` for gifts (not yet redeemed); `claimed` for redeemable passes. */
@@ -52,6 +56,10 @@ export interface ClaimInput {
   dealTitle?: string;
   dealBusiness?: string;
   dealImage?: string;
+  dealLocation?: string;
+  dealPrice?: number;
+  dealOldPrice?: number;
+  discountLabel?: string;
   recipient?: ClaimParty;
   sender?: ClaimParty;
   firstName?: string;
@@ -270,6 +278,10 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         dealTitle: input.dealTitle ?? 'Live claim',
         dealBusiness: input.dealBusiness ?? 'Partner merchant',
         dealImage: input.dealImage,
+        dealLocation: input.dealLocation,
+        dealPrice: input.dealPrice,
+        dealOldPrice: input.dealOldPrice,
+        discountLabel: input.discountLabel,
         terms: input.terms,
         code: input.code ?? newCode(claims),
         status: input.kind === 'gift' ? 'gift-sent' : 'claimed',
