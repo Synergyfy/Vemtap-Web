@@ -31,9 +31,9 @@ export interface DealIdentity {
  * keeps rendering this one deal's copy.
  */
 export const DEFAULT_DEAL: DealIdentity = {
-  id: 'lunch-combo-20-off',
-  title: 'Lunch Combo — 20% Off',
-  business: 'Urban Grill & Bistro',
+  id: 'featured-local-deal',
+  title: 'Featured Local Deal',
+  business: 'Local dining partner',
   image:
     'https://lh3.googleusercontent.com/aida-public/AB6AXuDHNsQYzlQAh9oju3O9Pp7b2OqE4Q1w9NTs0_fLXsac8VzxG06oD2NcwkkT8F3q8guxDTRfKEplRfmk3C-S9j62uAZ-X3SG4rkR3dDcngRx8sOpiwe5UeKWYk-lyy81904uUukw2Do3wMAOVj0Vg_7dv90NC6KTvhmoR0HFL6aPR56jOI4gZrX7w67mzbdQcgA44gm5lNRoAe6oGg6V1rNX8nBhjhfYCCBlRIssV7QqZImEOkPqpYnQDw',
 };

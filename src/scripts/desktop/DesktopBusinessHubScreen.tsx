@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { hubCardChips, useHubModuleCounts } from '../../hooks/business/useHubModuleCounts';
+import { useOffers } from '../../hooks/business/useOffers';
+import { hasApiConfig } from '../../services/api/client';
 import type { HubModuleKey } from '../BusinessHubHomeScreen';
 
 interface DesktopBusinessHubScreenProps {
@@ -95,12 +99,6 @@ const HUB_MODULES: HubModule[] = [
   },
 ];
 
-const HUB_BRANCHES = [
-  { key: 'wuse-ii', shortName: 'Wuse II' },
-  { key: 'maitama', shortName: 'Maitama' },
-  { key: 'victoria-island', shortName: 'Victoria Island' },
-];
-
 const BOOST_ITEM = 'Weekend Prime Lunch Combo';
 
 export function DesktopBusinessHubScreen({
@@ -109,7 +107,14 @@ export function DesktopBusinessHubScreen({
   onPreviewStorefront,
   onOpenModule,
 }: DesktopBusinessHubScreenProps) {
-  const [branchKey, setBranchKey] = useState('wuse-ii');
+  const { branch, branches, switchTo } = useBusinessBranch();
+  const hubCounts = useHubModuleCounts();
+  const live = hasApiConfig();
+  const offers = useOffers();
+  // Live: promote the branch's first active deal; none → the card invites creating one.
+  const boostItem = live
+    ? (offers.data ?? []).find((offer) => offer.status === 'active')?.name ?? null
+    : BOOST_ITEM;
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -127,7 +132,9 @@ export function DesktopBusinessHubScreen({
               <span className="flex items-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-sm py-1 rounded-full shadow-sm">
                 <Icon name="verified" filled className="text-[15px]" />
                 <span className="font-caption text-caption font-semibold tracking-tight">
-                  Verified Business • 3 Branches Active
+                  {live
+                    ? `${hubCounts.verification === 'Not verified' ? 'Business' : 'Verified Business'} • ${branches.length} ${branches.length === 1 ? 'Branch' : 'Branches'}`
+                    : 'Verified Business • 3 Branches Active'}
                 </span>
               </span>
               <button
@@ -158,13 +165,13 @@ export function DesktopBusinessHubScreen({
 
         {/* Branch pill carousel */}
         <div className="w-full flex items-center gap-space-xs overflow-x-auto pb-space-2xs">
-          {HUB_BRANCHES.map((pillBranch) => {
-            const active = pillBranch.key === branchKey;
+          {branches.map((pillBranch) => {
+            const active = pillBranch.key === branch.key;
             return (
               <button
                 key={pillBranch.key}
                 type="button"
-                onClick={() => setBranchKey(pillBranch.key)}
+                onClick={() => switchTo(pillBranch.key)}
                 className={`shrink-0 flex items-center gap-space-2xs px-space-md h-9 rounded-full font-label-md text-label-md transition-all ${
                   active
                     ? 'bg-surface-tint-blue text-primary font-semibold shadow-sm'
@@ -189,7 +196,7 @@ export function DesktopBusinessHubScreen({
               <span className="font-caption text-caption text-text-secondary truncate">Sync Status</span>
               <span className="font-label-md text-label-md font-semibold text-text-primary flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                Live to 3 Sites
+                Live to {branches.length} {branches.length === 1 ? 'Site' : 'Sites'}
               </span>
             </div>
           </div>
@@ -200,7 +207,7 @@ export function DesktopBusinessHubScreen({
             <div className="flex flex-col min-w-0">
               <span className="font-caption text-caption text-text-secondary truncate">Catalogue Hub</span>
               <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                50 Live Entities
+                {live ? (hubCounts.catalog ?? '—') : '50 Live Entities'}
               </span>
             </div>
           </div>
@@ -213,7 +220,7 @@ export function DesktopBusinessHubScreen({
               <Icon name="grid_view" className="text-primary text-[20px]" />
               <h2 className="font-heading-md text-heading-md text-text-primary">Management Modules</h2>
             </div>
-            <span className="font-caption text-caption text-text-tertiary">7 modules • 3 branches synchronized</span>
+            <span className="font-caption text-caption text-text-tertiary">{live ? `${branches.length} ${branches.length === 1 ? 'branch' : 'branches'} synchronized` : '7 modules • 3 branches synchronized'}</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-md">
@@ -232,7 +239,7 @@ export function DesktopBusinessHubScreen({
                       <Icon name={card.icon} filled={card.filled} className="text-[24px]" />
                     </div>
                     <div className="flex items-center justify-end gap-1 flex-wrap">
-                      {card.chips.map((chip) => (
+                      {hubCardChips(card.key, card.chips, hubCounts).map((chip) => (
                         <span
                           className={`px-space-xs py-0.5 rounded-full font-caption text-caption ${chip.chipClass}`}
                           key={chip.label}
@@ -271,21 +278,27 @@ export function DesktopBusinessHubScreen({
                 Boost Campaign
               </span>
               <h2 className="font-heading-md text-heading-md text-text-primary">
-                Reach 3,500 nearby customers in one tap
+                {live ? 'Reach nearby customers in one tap' : 'Reach 3,500 nearby customers in one tap'}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                Push <strong className="font-semibold text-text-primary">{BOOST_ITEM}</strong> to shoppers inside your
-                Wuse II geofence before the weekend lunch rush.
+                {boostItem ? (
+                  <>
+                    Push <strong className="font-semibold text-text-primary">{boostItem}</strong> to shoppers inside
+                    your {live ? `${branch.name} geofence` : 'Wuse II geofence before the weekend lunch rush'}.
+                  </>
+                ) : (
+                  'Publish a deal first, then boost it to shoppers around your branch.'
+                )}
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => onBoost('Weekend Prime Lunch Combo')}
+            onClick={() => (boostItem ? onBoost(boostItem) : onOpenModule('deals'))}
             className="shrink-0 flex items-center justify-center gap-space-xs px-space-lg h-[46px] rounded-xl bg-primary-container text-on-primary hover:opacity-90 transition-opacity font-button-primary text-button-primary shadow-md"
           >
             <Icon name="trending_up" className="text-[20px]" />
-            <span>Boost {BOOST_ITEM}</span>
+            <span>{boostItem ? `Boost ${boostItem}` : 'Create a deal'}</span>
           </button>
         </section>
 

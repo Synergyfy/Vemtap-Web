@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useVerificationActions } from '../hooks/business/useVerification';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -10,6 +11,8 @@ interface VerificationCacFormScreenProps {
   draft: VerificationDraft;
   onDraftChange: (patch: Partial<VerificationDraft>) => void;
   onVerified: () => void;
+  /** The registry check needs a person to review it; receives readable reasons. */
+  onNeedsReview?: (reasons: string[]) => void;
 }
 
 const ENTITY_TYPES: { key: CacEntityType; icon: string; label: string; description: string }[] = [
@@ -18,8 +21,10 @@ const ENTITY_TYPES: { key: CacEntityType; icon: string; label: string; descripti
   { key: 'IT', icon: 'account_balance', label: 'Incorporated Trustee', description: 'Incorporated trustees (IT)' },
 ];
 
-export function VerificationCacFormScreen({ onBack, draft, onDraftChange, onVerified }: VerificationCacFormScreenProps) {
+export function VerificationCacFormScreen({ onBack, draft, onDraftChange, onVerified, onNeedsReview }: VerificationCacFormScreenProps) {
   const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const verification = useVerificationActions();
   const [verified, setVerified] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -36,15 +41,22 @@ export function VerificationCacFormScreen({ onBack, draft, onDraftChange, onVeri
   const canVerify = draft.entity !== '' && formatValid && draft.businessName.trim().length > 0;
 
   const handleVerify = () => {
-    if (verifying || verified) return;
+    if (verifying || verified || !canVerify) return;
     setVerifying(true);
-    timers.current.push(
-      window.setTimeout(() => {
-        setVerifying(false);
+    setError(null);
+    verification
+      .verifyBusiness(draft.entity, draft.cacNumber)
+      .then((outcome) => {
+        if (outcome.result === 'review') {
+          onNeedsReview?.(outcome.reasons);
+          if (!onNeedsReview) setError(outcome.reasons[0] ?? 'Our team needs to review this registration.');
+          return;
+        }
         setVerified(true);
-        timers.current.push(window.setTimeout(() => onVerified(), 1200));
-      }, 1200),
-    );
+        timers.current.push(window.setTimeout(() => onVerified(), 1000));
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Verification failed. Please try again.'))
+      .finally(() => setVerifying(false));
   };
 
   const handleFileSelected = (file: File | null) => {
@@ -252,6 +264,11 @@ export function VerificationCacFormScreen({ onBack, draft, onDraftChange, onVeri
 
           {/* Action Decks */}
           <div className="mt-auto pt-space-xs space-y-3">
+            {error ? (
+              <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
+                {error}
+              </p>
+            ) : null}
             <button
               className={`w-full h-11 rounded-xl text-on-primary font-button-primary text-button-primary font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all ${
                 verified

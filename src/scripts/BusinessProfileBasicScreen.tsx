@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MultiSelectDropdown } from '../components/ui/MultiSelectDropdown';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
+import { useBusinessCategoryOptions } from '../hooks/business/useBusinessCategoryOptions';
 import {
   BUSINESS_CATEGORIES,
   MAX_CATEGORY_SELECTIONS,
@@ -21,18 +22,7 @@ interface BusinessProfileBasicScreenProps {
   onSaveDraft: () => void;
 }
 
-const CATEGORY_OPTIONS = BUSINESS_CATEGORIES.map((category) => ({
-  value: category.value,
-  label: category.label,
-}));
 
-/** Subcategories available for a given set of parent categories (order preserved, deduped). */
-const availableSubcategories = (categoryValues: string[]): string[] => {
-  const subcategories = BUSINESS_CATEGORIES.filter((category) => categoryValues.includes(category.value)).flatMap(
-    (category) => category.subcategories,
-  );
-  return subcategories.filter((subcategory, index) => subcategories.indexOf(subcategory) === index);
-};
 
 export function BusinessProfileBasicScreen({
   draft,
@@ -42,6 +32,15 @@ export function BusinessProfileBasicScreen({
   onSaveDraft,
 }: BusinessProfileBasicScreenProps) {
   const [showErrors, setShowErrors] = useState(false);
+  const categoryData = useBusinessCategoryOptions(BUSINESS_CATEGORIES);
+  const CATEGORY_OPTIONS = categoryData.options.map((category) => ({ value: category.value, label: category.label }));
+  /** Subcategories available for a given set of parent categories (order preserved, deduped). */
+  const availableSubcategories = (selected: string[]): string[] => {
+    const subcategories = categoryData.options
+      .filter((category) => selected.includes(category.value))
+      .flatMap((category) => category.subcategories);
+    return subcategories.filter((subcategory, index) => subcategories.indexOf(subcategory) === index);
+  };
 
   const descriptionCount =
     draft.description === SEED_DESCRIPTION ? MOCKUP_SEED_CHAR_COUNT : draft.description.length;

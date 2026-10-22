@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useBusinessProfileForm } from '../hooks/business/useBusinessProfileForm';
+import { hasApiConfig } from '../services/api/client';
+import { useStorefrontPreview } from '../hooks/business/useStorefrontPreview';
+import { CHANNEL_PLATFORM_BY_ID, isChannelPlatform } from '../utils/socialChannels';
+import { apiErrorMessage } from '../services/errorMessages';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
 
@@ -43,6 +48,35 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
   );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const profile = useBusinessProfileForm();
+  const preview = useStorefrontPreview();
+  const live = preview.live;
+  const brandName = profile.form.name || (live ? 'Your business' : BRAND_NAME);
+  const brandCategory = live ? profile.category || 'Add a category' : BRAND_CATEGORY;
+  const brandBio = live ? profile.form.description || 'Add a short description so shoppers know what you offer.' : BRAND_BIO;
+  const coverImg = live ? preview.coverImage : COVER_IMG;
+  const logoImg = live ? preview.logoUrl : LOGO_IMG;
+  const verified = live ? preview.verified : true;
+  const storeCode = live ? preview.storeCode : '4082';
+  const publicUrl = live ? preview.publicUrl : 'https://urbangrill.vem.store';
+  const socialChips = live
+    ? Object.entries(profile.form.socials)
+        .filter(([platform, handle]) => handle && isChannelPlatform(platform))
+        .map(([platform, handle]) => ({
+          key: platform,
+          icon: isChannelPlatform(platform) ? CHANNEL_PLATFORM_BY_ID[platform].icon : 'link',
+          label: handle.startsWith('@') || handle.includes('/') ? handle : `@${handle}`,
+        }))
+    : [
+        { key: 'instagram', icon: 'photo_camera', label: '@urbangrillbistro' },
+        { key: 'x', icon: 'tag', label: '@urbangrill_ng' },
+      ];
+
+  // Reflect the saved amenities once the profile loads (or after a save).
+  useEffect(() => {
+    if (profile.isLoading || !hasApiConfig()) return;
+    setAmenityState(Object.fromEntries(AMENITIES.map((amenity) => [amenity.key, profile.form.amenities.includes(amenity.label)])));
+  }, [profile.isLoading, profile.form.amenities]);
 
   useEffect(
     () => () => {
@@ -61,15 +95,25 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
 
   /** Brand facts shown above — reused by the contextual AI prompts. */
   const aiProfileContext: AiPromptContext = {
-    businessName: BRAND_NAME,
-    category: BRAND_CATEGORY,
-    description: BRAND_BIO,
+    businessName: live ? profile.form.name : BRAND_NAME,
+    category: live ? profile.category : BRAND_CATEGORY,
+    description: live ? profile.form.description : BRAND_BIO,
   };
 
   const handleSave = () => {
-    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    setToast('Profile & amenities updated successfully!');
-    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+    // Keep amenities this screen doesn't list (e.g. set on desktop) untouched.
+    const listed = AMENITIES.map((amenity) => amenity.label);
+    const amenities = [
+      ...profile.form.amenities.filter((label) => !listed.includes(label)),
+      ...AMENITIES.filter((amenity) => amenityState[amenity.key]).map((amenity) => amenity.label),
+    ];
+    profile.save.mutate(
+      { ...profile.form, amenities },
+      {
+        onSuccess: () => showToast('Profile & amenities updated successfully!'),
+        onError: (error) => showToast(`Could not save: ${apiErrorMessage(error)}`),
+      },
+    );
   };
 
   return (
@@ -123,7 +167,11 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
         {/* Cover & Avatar */}
         <div className="relative w-full px-margin mb-space-lg">
           <div className="relative w-full h-44 rounded-xl overflow-hidden shadow-sm">
-            <img alt={COVER_ALT} className="w-full h-full object-cover" src={COVER_IMG} />
+            {coverImg ? (
+              <img alt={live ? `${brandName} cover` : COVER_ALT} className="w-full h-full object-cover" src={coverImg} />
+            ) : (
+              <div className="w-full h-full bg-surface-container" />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-on-background/70 via-on-background/20 to-transparent" />
             <button
               className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-inverse-surface/85 backdrop-blur-md text-on-primary font-label-sm text-label-sm active:scale-95 transition-all shadow-md"
@@ -133,16 +181,24 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               <Icon name="photo_camera" className="text-[16px]" />
               <span>Change Cover</span>
             </button>
-            <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md shadow-sm">
-              <Icon name="storefront" className="text-[14px] text-badge-discount-text" />
-              <span className="font-label-sm text-label-sm text-text-primary">Store #4082</span>
-            </div>
+            {storeCode && (
+              <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md shadow-sm">
+                <Icon name="storefront" className="text-[14px] text-badge-discount-text" />
+                <span className="font-label-sm text-label-sm text-text-primary">Store #{storeCode}</span>
+              </div>
+            )}
           </div>
           <div className="relative -mt-11 ml-3 flex items-end justify-between">
             <div className="relative">
               <div className="w-20 h-20 rounded-full bg-surface-canvas p-1 shadow-md">
                 <div className="w-full h-full rounded-full overflow-hidden relative">
-                  <img alt={LOGO_ALT} className="w-full h-full object-cover" src={LOGO_IMG} />
+                  {logoImg ? (
+                    <img alt={live ? `${brandName} logo` : LOGO_ALT} className="w-full h-full object-cover" src={logoImg} />
+                  ) : (
+                    <div className="w-full h-full bg-surface-tint-blue text-primary flex items-center justify-center font-heading-md text-heading-md">
+                      {brandName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
               </div>
               <button
@@ -154,9 +210,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               </button>
             </div>
             <div className="flex items-center gap-1.5 pb-1">
-              <div className="flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text px-2.5 py-1 rounded-full">
-                <Icon name="verified" filled className="text-[14px]" />
-                <span className="font-label-sm text-label-sm">Active & Verified</span>
+              <div
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full ${
+                  verified ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'
+                }`}
+              >
+                <Icon name={verified ? 'verified' : 'storefront'} filled className="text-[14px]" />
+                <span className="font-label-sm text-label-sm">{verified ? 'Active & Verified' : 'Active'}</span>
               </div>
             </div>
           </div>
@@ -170,16 +230,16 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
         <div className="px-margin flex flex-col gap-space-xs mb-space-lg">
           <div className="flex items-center gap-space-2xs flex-wrap">
             <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold tracking-tight">
-              {BRAND_NAME}
+              {brandName}
             </h2>
-            <Icon name="verified" filled className="text-primary text-[20px]" />
+            {verified && <Icon name="verified" filled className="text-primary text-[20px]" />}
           </div>
           <div className="inline-flex items-center gap-1.5 self-start px-2.5 py-0.5 rounded-full bg-surface-container text-secondary font-label-sm text-label-sm">
             <Icon name="restaurant" className="text-[14px]" />
-            <span>{BRAND_CATEGORY}</span>
+            <span>{brandCategory}</span>
           </div>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
-            {BRAND_BIO}
+            {brandBio}
           </p>
           <div className="grid grid-cols-2 gap-space-sm mt-space-sm">
             <button
@@ -212,28 +272,50 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               </div>
               <div className="flex flex-col gap-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-heading-sm text-heading-sm text-text-primary">Business Verified</h3>
-                  <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption">
-                    Tier 3
-                  </span>
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary">
+                    {live ? preview.verificationLabel ?? 'Verification' : 'Business Verified'}
+                  </h3>
+                  {!live && (
+                    <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption">
+                      Tier 3
+                    </span>
+                  )}
                 </div>
                 <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                  Your CAC registration (RC-1849204), government ID, and operating tax identity have been verified by
-                  VEMTAP Trust & Safety.
+                  {!live
+                    ? 'Your CAC registration (RC-1849204), government ID, and operating tax identity have been verified by VEMTAP Trust & Safety.'
+                    : verified
+                      ? 'Your business has been verified by VEMTAP Trust & Safety.'
+                      : 'Verify your business to earn the blue badge and rank higher in local discovery.'}
                 </p>
                 <div className="flex items-center gap-4 mt-2 pt-2 text-text-tertiary font-caption text-caption flex-wrap">
-                  <span className="flex items-center gap-1 text-badge-discount-text font-medium">
-                    <Icon name="format_image_left" className="text-[14px]" />
-                    ID Confirmed
-                  </span>
-                  <span className="flex items-center gap-1 text-badge-discount-text font-medium">
-                    <Icon name="task_alt" className="text-[14px]" />
-                    Tax Verified
-                  </span>
-                  <span className="flex items-center gap-1 text-badge-discount-text font-medium">
-                    <Icon name="domain_verification" className="text-[14px]" />
-                    CAC Active
-                  </span>
+                  {live ? (
+                    <>
+                      <span className={`flex items-center gap-1 font-medium ${preview.identityCheckOk ? 'text-badge-discount-text' : ''}`}>
+                        <Icon name="format_image_left" className="text-[14px]" />
+                        ID: {preview.identityCheck ?? '…'}
+                      </span>
+                      <span className={`flex items-center gap-1 font-medium ${preview.businessCheckOk ? 'text-badge-discount-text' : ''}`}>
+                        <Icon name="domain_verification" className="text-[14px]" />
+                        CAC: {preview.businessCheck ?? '…'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex items-center gap-1 text-badge-discount-text font-medium">
+                        <Icon name="format_image_left" className="text-[14px]" />
+                        ID Confirmed
+                      </span>
+                      <span className="flex items-center gap-1 text-badge-discount-text font-medium">
+                        <Icon name="task_alt" className="text-[14px]" />
+                        Tax Verified
+                      </span>
+                      <span className="flex items-center gap-1 text-badge-discount-text font-medium">
+                        <Icon name="domain_verification" className="text-[14px]" />
+                        CAC Active
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -257,14 +339,16 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 <div className="flex flex-col min-w-0">
                   <span className="font-caption text-caption text-text-tertiary">Official Phone</span>
                   <span className="font-body-md text-body-md text-text-primary font-medium truncate">
-                    +234 803 900 2210
+                    {live ? profile.form.phone || 'Add a phone number' : '+234 803 900 2210'}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-1 text-badge-discount-text bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-                <Icon name="check_circle" className="text-[13px]" />
-                <span className="font-caption text-caption font-medium">Verified</span>
-              </div>
+              {!live && (
+                <div className="flex items-center gap-1 text-badge-discount-text bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
+                  <Icon name="check_circle" className="text-[13px]" />
+                  <span className="font-caption text-caption font-medium">Verified</span>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-between p-space-xs rounded-lg hover:bg-surface-container-low transition-colors">
               <div className="flex items-center gap-space-sm min-w-0">
@@ -274,7 +358,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 <div className="flex flex-col min-w-0">
                   <span className="font-caption text-caption text-text-tertiary">Customer Desk</span>
                   <span className="font-body-md text-body-md text-text-primary font-medium truncate">
-                    contact@urbangrill.ng
+                    {live ? profile.form.officialEmail || 'Add a contact email' : 'contact@urbangrill.ng'}
                   </span>
                 </div>
               </div>
@@ -286,9 +370,9 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   <Icon name="language" className="text-[18px]" />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="font-caption text-caption text-text-tertiary">VEMTAP Subdomain</span>
+                  <span className="font-caption text-caption text-text-tertiary">{live ? 'Public Link' : 'VEMTAP Subdomain'}</span>
                   <span className="font-body-md text-body-md text-primary font-medium truncate">
-                    urbangrill.vem.store
+                    {publicUrl ? publicUrl.replace(/^https?:\/\//, '') : 'Loading…'}
                   </span>
                 </div>
               </div>
@@ -296,27 +380,28 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 className="p-1 text-text-secondary hover:text-primary active:scale-95"
                 title="Copy link"
                 type="button"
-                onClick={() => navigator.clipboard?.writeText('https://urbangrill.vem.store').catch(() => {})}
+                onClick={() => {
+                  if (publicUrl) navigator.clipboard?.writeText(publicUrl).catch(() => {});
+                }}
               >
                 <Icon name="content_copy" className="text-[18px]" />
               </button>
             </div>
             <div className="mt-space-xs pt-space-xs flex items-center justify-between gap-2 px-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors"
-                  type="button"
-                >
-                  <Icon name="photo_camera" className="text-[16px] text-tertiary" />
-                  <span className="font-caption text-caption font-medium">@urbangrillbistro</span>
-                </button>
-                <button
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors"
-                  type="button"
-                >
-                  <Icon name="tag" className="text-[16px] text-primary" />
-                  <span className="font-caption text-caption font-medium">@urbangrill_ng</span>
-                </button>
+                {socialChips.length === 0 && (
+                  <span className="font-caption text-caption text-text-tertiary">No social handles yet</span>
+                )}
+                {socialChips.map((chip) => (
+                  <button
+                    key={chip.key}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors"
+                    type="button"
+                  >
+                    <Icon name={chip.icon} className="text-[16px] text-primary" />
+                    <span className="font-caption text-caption font-medium">{chip.label}</span>
+                  </button>
+                ))}
               </div>
               <button
                 className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-text-secondary hover:text-primary"
@@ -378,9 +463,10 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
           className="flex-1 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center gap-2 font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:bg-primary-container active:scale-[0.98] transition-all"
           type="button"
           onClick={handleSave}
+          disabled={profile.save.isPending || profile.isLoading}
         >
           <Icon name="check" className="text-[20px]" />
-          <span>Save Changes</span>
+          <span>{profile.save.isPending ? 'Saving…' : 'Save Changes'}</span>
         </button>
       </div>
 

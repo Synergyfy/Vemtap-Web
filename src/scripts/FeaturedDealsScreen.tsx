@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useLocation } from '../context/LocationContext';
+import { hasApiConfig } from '../services/api/client';
+import { catalogueService } from '../services/catalogueService';
 
 interface FeaturedDeal {
   img: string;
@@ -21,98 +24,102 @@ interface FeaturedDeal {
   save: string;
 }
 
-const DEALS: FeaturedDeal[] = [
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAlWSBpyzahSuoexRCi945DXbk25G3sOolUkU-bTSrPFP2K_8an0qvPDjWE1YWz__udUS6v9e77f3-bh0PRMzHX1fYw0T1Uqnh4rVw0vz3qZyyhDbn11JKiGBd4cDU8yvmm3f_lzZM3mDLss2dgr6AIbXJqjRLqE13vozGcqwvL6UE3JJBuhhU2FZWotpFN6sceKIS4cMrBWh9JNj_tlopO8seHPwpOpcb2byLhpTkFDKexqEbXkbbP9Q',
-    alt: 'A mouthwatering gourmet burger platter served on warm rustic dark slate with seasoned potato wedges, craft pale ale beer with condensation, and vibrant artisanal dipping sauces in a trendy modern restaurant interior with warm ambient hanging pendant lights and soft background blur in Apo Abuja Nigeria',
-    discount: '20% OFF',
+const formatCurrency = (value: number | string | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
+
+const getOfferImage = (offer: Record<string, unknown>): string => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+  return typeof image === 'string' && image.trim() ? image : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>): string => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Nearby business';
+  return typeof value === 'string' && value.trim() ? value : 'Nearby business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>): string => {
+  const value = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
+  return typeof value === 'string' && value.trim() ? value : 'Local offer';
+};
+
+const getOfferDescription = (offer: Record<string, unknown>): string => {
+  const value = offer.description ?? offer.summary ?? offer.copy ?? 'Fresh local offer from nearby vendors.';
+  return typeof value === 'string' && value.trim() ? value : 'Fresh local offer from nearby vendors.';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.amount, offer.salePrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const getOfferComparePrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.compareAtPrice, offer.originalPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, item?.compareAtPrice, item?.originalPrice, item?.listPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return getOfferPrice(offer);
+};
+
+const isUsableOffer = (offer: Record<string, unknown>): boolean => {
+  const business =
+    getOfferBusinessName(offer) !== 'Nearby business'
+      ? getOfferBusinessName(offer)
+      : '';
+  const title = getOfferTitle(offer) !== 'Local offer' ? getOfferTitle(offer) : '';
+  const price = getOfferPrice(offer);
+  const comparePrice = getOfferComparePrice(offer);
+
+  return Boolean(business && title && (price > 0 || comparePrice > 0));
+};
+
+const toFeaturedDeal = (offer: Record<string, unknown>): FeaturedDeal => {
+  const title = getOfferTitle(offer);
+  const price = getOfferPrice(offer);
+  const comparePrice = getOfferComparePrice(offer);
+  const business = getOfferBusinessName(offer);
+  const discountValue = Math.max(comparePrice - price, 0);
+
+  return {
+    img: getOfferImage(offer),
+    alt: `${title} by ${business}`,
+    discount: price > 0 ? 'Live Deal' : 'Offer',
     promo: 'Promoted',
-    distance: '0.4 km',
-    area: 'Apo Boulevard',
+    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    area: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
     urgencyIcon: 'schedule',
-    urgencyText: 'Expires in 4h',
+    urgencyText: 'Live now',
     urgencyClass: 'bg-error-container/90 text-on-error-container',
-    merchant: 'Urban Grill & Bistro',
+    merchant: business,
     rating: '4.9',
-    title: '20% Off Prime Lunch Combo & Craft Beverage',
-    desc: 'Signature flame-grilled cut with seasoned sides, cold pressed house soda or craft iced tea.',
-    oldPrice: '₦12,000',
-    price: '₦9,600',
-    save: 'Save ₦2,400',
-  },
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAMMq2p2R60fy8nGqTffVlFuNFXj_JULtN0PNvSiorrseQ547ZELJ0-_5LlDP143Y8OEsKVTl2FHNPDecHuhTb7lpTitdZ25h2DOskoIaVC_LsM9bBnQ8YCdkGDMLCMMoXDaZFjPN0w4adJQeOLhyHH6t7ZQCC3utKwWOqo4NX3UlgCef4CI1SNLquEyqk6gDCtGh04yrZ2ZZnNSSP_3jfqWKeC8-cbQozghrDp3g6S0fDoVEpMM7EEUw',
-    alt: 'Row of exclusive limited-edition sneakers on minimalist concrete display shelves in a premium streetwear boutique studio, neon ambient blue lighting, reflective polished floor, crisp modern fashion aesthetics in Area 11 Abuja',
-    discount: '30% OFF',
-    promo: 'Sponsored',
-    distance: '1.2 km',
-    area: 'Area 11',
-    urgencyIcon: 'bolt',
-    urgencyText: 'Limited 15 Left',
-    urgencyClass: 'bg-tertiary-fixed text-on-tertiary-fixed',
-    merchant: 'Sole District Boutique',
-    rating: '4.8',
-    title: 'Weekend Sneaker Drop & Urban Streetwear Pass',
-    desc: 'Valid across high-top designer sneakers, oversized graphic hoodies, and fresh cargo caps.',
-    oldPrice: '₦40,000',
-    price: '₦28,000',
-    save: 'Save ₦12,000',
-  },
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCoTMqwPuiebQOXvJeWM5oQp_ToAp7FZcPST3J3ZoYcy29Zn7KMjrfHyqiXRx8tl6pP2n3V_AefaCcYRoUEstW96G2ecZLusMKY2aNOkEv3aPVMYkFRdXVZQdaUOPBoEWrAJzzIj6PdsTxjyqYnFc5QMG8lKM5jJ7Nk1nPgGSiWEocU_RH7qm1TiGresCuBrngLlYJDj5ZmXqEHidslSExNBectOm5IWU8MfpsxkvJHlDbSl3X_ntQyuw',
-    alt: 'Serene luxury spa treatment room with warm wooden slat walls, white rolled towels, eucalyptus leaves in a glass vase, gentle candle glow, soothing modern aesthetic in Maitama Abuja luxury wellness salon',
-    discount: '25% OFF',
-    promo: 'Promoted',
-    distance: '1.4 km',
-    area: 'Maitama Heights',
-    urgencyIcon: 'trending_up',
-    urgencyText: 'Popular',
-    urgencyClass: 'bg-surface-tint-blue text-primary',
-    merchant: 'Glow & Serenity Spa & Salon',
-    rating: '5.0',
-    title: 'Weekend Glow Facial & Sauna Therapy Pass',
-    desc: 'Full 75-minute hydration peel, deep facial mask, steam sauna, and complimentary herbal detox infusion.',
-    oldPrice: '₦25,000',
-    price: '₦18,500',
-    save: 'Save ₦6,500',
-  },
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC1cAXhSqymfVjN281YG5KWwJqFViU_QUk0ifJxzxQeb3rRiQaknLiDNP5IvunH6hJ1HrDx8UR7rj251rGzYeuXomeJXNF6qJ8k9wZ4qaS0nIIgWPdo5BU1RBE64NmiITAOlLUkBpzSPeUY8AZko8GsqrbLbMPii0vvSSNBHiirCWC2-djSbX54bc4kvZw5MjYZl02qKUOJqu7gm_b-4_VP7sqEQvV23nJIp1tstplMSG9JRnNqNqmfyw',
-    alt: 'Rooftop terrace fine dining table overlooking panoramic city skyline at sunset in Central District Abuja, fine wine glasses, exquisite culinary seafood presentation, warm violet sky tones and ambient fairy lights',
-    discount: '50% OFF',
-    promo: 'Sponsored',
-    distance: '2.1 km',
-    area: 'Central District',
-    urgencyIcon: 'alarm',
-    urgencyText: 'Ends Tonight',
-    urgencyClass: 'bg-error-container text-on-error-container',
-    merchant: 'The Sky Lounge & Grill',
-    rating: '4.9',
-    title: "Chef's 5-Course Sunset Tasting Menu for Two",
-    desc: 'Handcrafted seasonal courses including braised beef short ribs, grilled king prawns, and chocolate soufflé.',
-    oldPrice: '₦49,000',
-    price: '₦24,500',
-    save: 'Save ₦24,500',
-  },
-  {
-    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCTiTiNm-VwwOcHXKte7bQeh4Lm5yTwqooorUJyORX5ZYUCFDIyF_Xpdz9rnX3V70M3TUdXW8YFqe0Wq1_ogHbzibWschLM89u6CEHHEF8fcTkQwJC9g64f8sZOexYv4-lsBOtpumfyr3P1k_osWCmlUZDFXXfe5nnKjswHF7K6CLNvm3qyywi7duHCkLkWIqNMCAnlMUUNbRA2fxpaVTBd1HMccupvCTYfZFxtFNPEfHMOkhIq-tUUmQ',
-    alt: 'Freshly baked sourdough artisan loaf with crisp golden crust sliced on a light wooden cutting board next to a cup of creamy cappuccino with latte art in a sunlit Scandinavian bakery cafe in Garki Abuja',
-    discount: '30% OFF',
-    promo: 'Promoted',
-    distance: '2.8 km',
-    area: 'Garki II',
-    urgencyIcon: 'bakery_dining',
-    urgencyText: 'Breakfast Only',
-    urgencyClass: 'bg-secondary-fixed text-on-secondary-fixed',
-    merchant: 'Artisan Bakery & Cafe',
-    rating: '4.7',
-    title: 'Artisanal Sourdough & Specialty Breakfast Combo',
-    desc: 'Warm sourdough basket, avocado mash, poached free-range eggs, and double shot flat white.',
-    oldPrice: '₦6,500',
-    price: '₦4,500',
-    save: 'Save ₦2,000',
-  },
-];
+    title,
+    desc: getOfferDescription(offer),
+    oldPrice: comparePrice > price ? formatCurrency(comparePrice) : '',
+    price: formatCurrency(price),
+    save: price > 0 ? `Save ${formatCurrency(discountValue)}` : 'Limited-time',
+  };
+};
 
 const SORTS: { label: string; icon: string; filled?: boolean }[] = [
   { label: 'Closest to You', icon: 'near_me', filled: true },
@@ -125,30 +132,68 @@ const RADII = ['3 km', '5 km', '10 km', '25 km'];
 
 export interface FeaturedDealsScreenProps {
   onBack: () => void;
-  onOpenDeal: () => void;
+  onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
 }
 
-function dealCardProps(onOpen: () => void) {
+function dealCardProps(
+  onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void,
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string },
+) {
   return {
-    onClick: onOpen,
+    onClick: () => onOpen(deal),
     role: 'button' as const,
     tabIndex: 0,
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        onOpen();
+        onOpen(deal);
       }
     },
   };
 }
 
 export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenProps) {
+  const { city, district } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [radius, setRadius] = useState('10 km');
   const [sortIndex, setSortIndex] = useState(0);
-  const [saved, setSaved] = useState<boolean[]>(() => DEALS.map(() => false));
+  const [saved, setSaved] = useState<boolean[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const toastTimers = useRef<number[]>([]);
+  const locationLabel = [city, district].filter(Boolean).join(', ') || 'Your area';
+
+  useEffect(() => {
+    let ignore = false;
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setPublicOffers([]);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 5 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+      } catch {
+        if (!ignore) setPublicOffers([]);
+      }
+    };
+
+    loadOffers();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const deals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 5).map(toFeaturedDeal), [publicOffers]);
+
+  useEffect(() => {
+    setSaved((prev) => {
+      if (prev.length === deals.length) return prev;
+      return Array.from({ length: deals.length }, (_, index) => prev[index] ?? false);
+    });
+  }, [deals]);
 
   useEffect(() => {
     const timers = toastTimers.current;
@@ -209,7 +254,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
             <div className="flex items-center justify-between gap-space-xs">
               <div className="flex items-center gap-space-xs min-w-0 bg-surface-container-low px-space-sm py-space-xs rounded-full">
                 <Icon name="location_on" className="text-primary text-[18px] flex-shrink-0" filled />
-                <span className="font-label-md text-label-md text-on-surface truncate font-semibold">Apo, Abuja</span>
+                <span className="font-label-md text-label-md text-on-surface truncate font-semibold">{locationLabel}</span>
                 <span className="font-caption text-caption text-text-secondary">Within</span>
                 <button
                   aria-label="Adjust radius"
@@ -223,7 +268,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
               </div>
               <div className="flex items-center gap-1 px-space-xs py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-caption text-caption font-semibold flex-shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                <span>5 Live Deals</span>
+                <span>{deals.length} live deal{deals.length === 1 ? '' : 's'}</span>
               </div>
             </div>
 
@@ -284,9 +329,13 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
           </section>
 
           <section className="flex flex-col gap-space-md px-margin py-space-md">
-            {DEALS.map((deal, index) => (
+            {deals.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
+                Live featured deals will appear here when the public offers feed is available.
+              </div>
+            ) : deals.map((deal, index) => (
               <article
-                key={deal.title}
+                key={`${deal.title}-${deal.merchant}-${index}`}
                 {...dealCardProps(onOpenDeal)}
                 className="flex flex-col bg-surface-canvas rounded-2xl shadow-sm overflow-hidden active:shadow-md transition-shadow cursor-pointer"
               >
@@ -352,7 +401,16 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                     </div>
                     <button
                       type="button"
-                      onClick={onOpenDeal}
+                      onClick={() => onOpenDeal({
+                        id: `${deal.title}-${deal.merchant}-${index}`,
+                        title: deal.title,
+                        business: deal.merchant,
+                        location: deal.area,
+                        price: Number(String(deal.price).replace(/[^\d.]/g, '')) || undefined,
+                        oldPrice: Number(String(deal.oldPrice).replace(/[^\d.]/g, '')) || undefined,
+                        discountLabel: deal.discount,
+                        image: deal.img,
+                      })}
                       className="h-11 px-space-lg rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold shadow-sm active:scale-95 transition-transform flex items-center gap-1"
                     >
                       <span>View Deal</span>
@@ -372,11 +430,11 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
               <h4 className="font-label-md text-label-md font-bold text-text-primary">About Featured Listings</h4>
               <p className="font-caption text-caption text-text-secondary max-w-xs leading-relaxed">
                 Featured Deals are sponsored placements boosted by verified local merchants. Ranking is strictly computed
-                based on exact real-time GPS proximity to Apo, Abuja.
+                based on exact real-time GPS proximity to {locationLabel}.
               </p>
               <button
                 type="button"
-                onClick={() => showToast('Ranking is based on live GPS distance from Apo, Abuja')}
+                onClick={() => showToast(`Ranking is based on live GPS distance from ${locationLabel}`)}
                 className="mt-space-xs font-caption text-caption text-primary font-semibold flex items-center gap-0.5 active:opacity-75"
               >
                 <span>Learn how VEMTAP ranking works</span>

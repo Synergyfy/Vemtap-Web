@@ -1,3 +1,6 @@
+import { LiveReviewStep } from '../components/business/LiveItemSteps';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -59,7 +62,7 @@ const parseAmount = (value: string) => Number(value.replace(/[^0-9]/g, '')) || 0
 
 const formatAmount = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-export function BusinessProductReviewScreen({
+function DemoBusinessProductReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -565,5 +568,33 @@ export function BusinessProductReviewScreen({
         </div>
       </div>
     </AppScreen>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function BusinessProductReviewScreen(props: BusinessProductReviewScreenProps) {
+  if (!hasApiConfig()) return <DemoBusinessProductReviewScreen {...props} />;
+  return (
+    <BusinessSubScreen title="Review & publish" onBack={props.onBack}>
+      <LiveReviewStep
+        item={{
+    kind: 'product',
+    title: props.draft.title,
+    image: props.draft.mainImage,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: props.draft.lowStock ? [['Low-stock alert', `${props.draft.lowStock} units`]] : [],
+  }}
+        branchIds={Object.keys(props.draft.branches ?? {}).filter((id) => props.draft.branches[id])}
+        onBack={props.onBack}
+        onEditBasics={props.onEditBasics}
+        onEditPricing={props.onEditPricing}
+        onEditBranches={props.onEditBranches}
+        onPublish={props.onPublish}
+        onSaveDraft={props.onSaveDraft}
+      />
+    </BusinessSubScreen>
   );
 }

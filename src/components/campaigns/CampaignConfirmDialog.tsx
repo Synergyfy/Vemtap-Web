@@ -2,6 +2,7 @@ import { Icon } from '../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../desktop/DesktopModal';
 import { SheetShell } from '../sheets/SheetShell';
 import { useIsDesktop } from '../../hooks/useIsDesktop';
+import { hasApiConfig } from '../../services/api/client';
 import {
   CAMPAIGN_TIMEZONE,
   formatDateTime,
@@ -53,7 +54,7 @@ function summaryRows(props: CampaignConfirmDialogProps): Array<{ icon: string; l
     rows.push({ icon: 'schedule', label: 'Scheduled for', value: formatDateTime(props.scheduledAt) });
     rows.push({ icon: 'public', label: 'Timezone', value: CAMPAIGN_TIMEZONE.long });
   } else {
-    rows.push({ icon: 'bolt', label: 'Timing', value: 'Queued immediately after confirmation' });
+    rows.push({ icon: 'bolt', label: 'Timing', value: hasApiConfig() ? 'Sent immediately after confirmation' : 'Queued immediately after confirmation' });
   }
   return rows;
 }
@@ -88,8 +89,9 @@ function ConfirmBody(props: CampaignConfirmDialogProps & { onHeaderClose: () => 
 
         <p className="flex items-start gap-space-2xs rounded-lg bg-surface-tint-blue p-space-sm font-caption text-caption text-text-secondary leading-relaxed">
           <Icon name="info" className="text-primary text-[16px] shrink-0 mt-0.5" />
-          This demo queues the campaign locally — no SMS or email provider is connected, so nothing leaves your device and
-          delivery cannot be confirmed.
+          {hasApiConfig()
+            ? `Messages go out through VEMTAP and use this business’s ${props.channel === 'sms' ? 'SMS' : 'email'} credits. Customers who opted out of ${props.channel === 'sms' ? 'SMS' : 'email'} are skipped.`
+            : 'This demo queues the campaign locally — no SMS or email provider is connected, so nothing leaves your device and delivery cannot be confirmed.'}
         </p>
 
         <div className="flex flex-col gap-space-xs">
@@ -104,7 +106,7 @@ function ConfirmBody(props: CampaignConfirmDialogProps & { onHeaderClose: () => 
               ? 'Working…'
               : props.sendMode === 'schedule'
                 ? 'Confirm schedule'
-                : `Queue for ${formatNumber(props.recipientCount)} recipients`}
+                : `${hasApiConfig() ? 'Send to' : 'Queue for'} ${formatNumber(props.recipientCount)} recipients`}
           </button>
           <button
             type="button"

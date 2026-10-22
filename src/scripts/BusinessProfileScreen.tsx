@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { catalogueService } from '../services/catalogueService';
+import { findBusinessBySlug } from './businessData';
 import { URBAN_PRODUCTS, naira } from './catalogueData';
 
 export interface BusinessProfileScreenProps {
   venue: 'urban' | 'spa';
+  business?: { name?: string; slug?: string } | null;
   onBack: () => void;
   onOpenDeals: () => void;
   onOpenProducts?: () => void;
@@ -33,6 +37,92 @@ const SPA_LOGO_ALT =
   'Minimalist elegant gold and white monogram emblem logo for Glow and Serenity luxury salon and wellness clinic on pristine backdrop.';
 const SPA_MAP_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuA6XQNzq87g57O4a_PsvJ4pGw9BJLpUzInFmOY-fS5ILhv_Xp1HyfXk7PjQdHT0gH4klO-vzG6y00uugG8dJAwyILi67QtuRxz5Ac3GNMKAnMGh_Ygc2x3Z1nMF9tcCgJ42190s3VK9YeO0Po8X91LZJmK6lGVvjSUdNhz4JCU10xwEDvejqUJmKzWNC4AazPBT6Y552uVJHpB9IP5P2sW2_ccjLKkeRfaqDZ75wyVy4hIJ65TPlMI_bA';
+
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+
+const getOfferImage = (offer: Record<string, unknown>): string => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? FALLBACK_IMAGE;
+  return typeof image === 'string' && image.trim() ? image : FALLBACK_IMAGE;
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>): string => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Business storefront';
+  return typeof value === 'string' && value.trim() ? value : 'Business storefront';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>): string => {
+  const value = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
+  return typeof value === 'string' && value.trim() ? value : 'Local offer';
+};
+
+const getOfferDescription = (offer: Record<string, unknown>): string => {
+  const value = offer.description ?? offer.summary ?? offer.copy ?? 'Fresh local offer from nearby vendors.';
+  return typeof value === 'string' && value.trim() ? value : 'Fresh local offer from nearby vendors.';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.amount, offer.salePrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const getOfferComparePrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.compareAtPrice, offer.originalPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, item?.compareAtPrice, item?.originalPrice, item?.listPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return getOfferPrice(offer);
+};
+
+const formatCurrency = (value: number | string | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
+
+const toLiveDeal = (offer: Record<string, unknown>) => {
+  const title = getOfferTitle(offer);
+  const price = getOfferPrice(offer);
+  const oldPrice = getOfferComparePrice(offer);
+  return {
+    badge: oldPrice > price ? `${Math.max(Math.round(((oldPrice - price) / oldPrice) * 100), 1)}% OFF` : 'Live Deal',
+    meta: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    metaIcon: 'schedule',
+    title,
+    price: formatCurrency(price),
+    was: oldPrice > price ? formatCurrency(oldPrice) : '',
+    image: getOfferImage(offer),
+  };
+};
+
+const toLiveProduct = (offer: Record<string, unknown>) => {
+  const title = getOfferTitle(offer);
+  const price = getOfferPrice(offer);
+  return {
+    name: title,
+    price: formatCurrency(price),
+    image: getOfferImage(offer),
+    alt: `${title} by ${getOfferBusinessName(offer)}`,
+  };
+};
 
 const URBAN_DEALS = [
   {
@@ -238,13 +328,28 @@ const SPA_REVIEWS = [
 ];
 
 function UrbanProfile({
+  offers,
+  businessName,
   onOpenDeals,
   onOpenProducts,
   onClaim,
-}: Pick<BusinessProfileScreenProps, 'onOpenDeals' | 'onOpenProducts' | 'onClaim'>) {
+}: Pick<BusinessProfileScreenProps, 'onOpenDeals' | 'onOpenProducts' | 'onClaim'> & { offers: Record<string, unknown>[]; businessName: string }) {
   const [following, setFollowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<number, boolean>>({});
+
+  const liveDeals = useMemo(() => {
+    if (offers.length > 0) return offers.slice(0, 3).map(toLiveDeal);
+    return URBAN_DEALS;
+  }, [offers]);
+
+  const liveProducts = useMemo(() => {
+    if (offers.length > 0) return offers.slice(0, 4).map(toLiveProduct);
+    return URBAN_PRODUCTS_PREVIEW;
+  }, [offers]);
+
+  const profileName = offers.length > 0 ? getOfferBusinessName(offers[0]) : businessName;
+  const profileSummary = offers.length > 0 ? getOfferDescription(offers[0]) : `${businessName} is a premier culinary destination in Apo, offering artisanal flame-grilled steaks, hand-crafted burgers, and fine wines. Fresh local ingredients with modern recipes.`;
 
   return (
     <main className="relative w-full pt-14 pb-safe bg-surface min-h-screen">
@@ -280,7 +385,7 @@ function UrbanProfile({
               </button>
             </div>
             <div>
-              <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Urban Grill & Bistro</h2>
+              <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{profileName}</h2>
               <p className="font-body-md text-body-md text-text-secondary mt-0.5">
                 Restaurant • Gourmet Dining • ₦₦₦
               </p>
@@ -309,7 +414,7 @@ function UrbanProfile({
             onClick={onOpenDeals}
           >
             <Icon name="local_offer" className="text-[20px]" />
-            <span>View Deals (3)</span>
+            <span>View Deals ({liveDeals.length})</span>
           </button>
           <button
             className="col-span-5 h-[52px] rounded-2xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
@@ -327,8 +432,7 @@ function UrbanProfile({
                 expanded ? '' : 'line-clamp-2'
               }`}
             >
-              Urban Grill & Bistro is a premier culinary destination in Apo, offering artisanal flame-grilled steaks,
-              hand-crafted burgers, and fine wines. Fresh local ingredients with modern recipes.
+              {profileSummary}
             </p>
             <button
               className="font-label-md text-label-md text-primary font-medium mt-1 inline-flex items-center gap-0.5"
@@ -344,21 +448,21 @@ function UrbanProfile({
           <div className="px-margin flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Active Deals</h3>
-              <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-caption">3</span>
+              <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-caption">{liveDeals.length}</span>
             </div>
             <button
               className="font-label-md text-label-md text-primary font-semibold"
               type="button"
               onClick={onOpenDeals}
             >
-              See All (3)
+              See All ({liveDeals.length})
             </button>
           </div>
           <div className="px-margin flex flex-col gap-3">
-            {URBAN_DEALS.map((deal, index) => (
+            {liveDeals.map((deal, index) => (
               <div
                 className="bg-surface-canvas rounded-2xl p-3.5 shadow-sm flex items-center gap-3.5 relative overflow-hidden"
-                key={deal.title}
+                key={`${deal.title}-${index}`}
               >
                 <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-surface-container-high">
                   <img alt={deal.title} className="w-full h-full object-cover" src={deal.image} />
@@ -379,7 +483,7 @@ function UrbanProfile({
                   <div className="flex items-end justify-between mt-2">
                     <div>
                       <div className="font-heading-sm text-heading-sm text-text-primary">{deal.price}</div>
-                      <div className="font-caption text-caption text-text-tertiary line-through -mt-0.5">{deal.was}</div>
+                      {deal.was ? <div className="font-caption text-caption text-text-tertiary line-through -mt-0.5">{deal.was}</div> : null}
                     </div>
                     <button
                       className={`h-8 px-4 rounded-xl font-label-sm text-label-sm flex items-center justify-center active:scale-95 transition-transform shadow-sm ${
@@ -406,7 +510,7 @@ function UrbanProfile({
             </button>
           </div>
           <div className="grid grid-rows-2 grid-flow-col auto-cols-[10rem] gap-3 overflow-x-auto px-margin no-scrollbar pb-1">
-            {URBAN_PRODUCTS_PREVIEW.map((product) => (
+            {liveProducts.map((product) => (
               <div className="w-40 shrink-0 bg-surface-canvas rounded-2xl p-2.5 shadow-sm flex flex-col" key={product.name}>
                 <div className="w-full h-28 rounded-xl overflow-hidden bg-surface-container-high mb-2">
                   <img alt={product.alt} className="w-full h-full object-cover" src={product.image} />
@@ -580,13 +684,23 @@ function UrbanProfile({
 }
 
 function SpaProfile({
+  offers,
+  businessName,
   onOpenServices,
   onOpenService,
   onClaim,
-}: Pick<BusinessProfileScreenProps, 'onOpenServices' | 'onOpenService' | 'onClaim'>) {
+}: Pick<BusinessProfileScreenProps, 'onOpenServices' | 'onOpenService' | 'onClaim'> & { offers: Record<string, unknown>[]; businessName: string }) {
   const [following, setFollowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<number, boolean>>({});
+
+  const liveDeals = useMemo(() => {
+    if (offers.length > 0) return offers.slice(0, 2).map(toLiveDeal);
+    return SPA_DEALS;
+  }, [offers]);
+
+  const profileName = offers.length > 0 ? getOfferBusinessName(offers[0]) : businessName;
+  const profileSummary = offers.length > 0 ? getOfferDescription(offers[0]) : `${businessName} is an upscale grooming, beauty salon and wellness clinic in Maitama Heights offering luxury hair styling, facial therapies, therapeutic massages, and aesthetic skin care.`;
 
   const scrollToDeals = () => {
     document.getElementById('spa-deals-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -628,7 +742,7 @@ function SpaProfile({
           </div>
           <div className="flex flex-col gap-1">
             <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Glow & Serenity Spa & Salon
+              {profileName}
             </h2>
             <p className="font-label-md text-label-md text-text-secondary">Luxury Salon • Spa & Aesthetics • ₦₦₦</p>
           </div>
@@ -659,7 +773,7 @@ function SpaProfile({
               onClick={scrollToDeals}
             >
               <Icon name="local_activity" filled className="text-[20px]" />
-              <span>View Deals (2)</span>
+              <span>View Deals ({liveDeals.length})</span>
             </button>
             <button
               className="h-[50px] rounded-xl bg-surface-container-low hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 active:scale-95 transition-all"
@@ -675,8 +789,8 @@ function SpaProfile({
           <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-xs">About</h3>
           <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
             {expanded
-              ? 'Glow & Serenity is an upscale grooming, beauty salon and wellness clinic in Maitama Heights offering luxury hair styling, facial therapies, therapeutic massages, and aesthetic skin care. Designed as a calm sanctuary away from the city buzz, our master stylists, therapists, and dermatologists provide personalized care using the finest botanical organic formulations.'
-              : 'Glow & Serenity is an upscale grooming, beauty salon and wellness clinic in Maitama Heights offering luxury hair styling, facial therapies, therapeutic massages, and aesthetic skin care...'}{' '}
+              ? `${profileSummary} Designed as a calm sanctuary away from the city buzz, our specialists provide personalized care using premium formulations.`
+              : `${profileSummary.slice(0, 140)}...`}{' '}
             <button
               className="text-primary font-label-md text-label-md inline"
               type="button"
@@ -696,10 +810,10 @@ function SpaProfile({
             <span className="text-primary font-label-md text-label-md">See All (2)</span>
           </div>
           <div className="flex flex-col gap-space-sm">
-            {SPA_DEALS.map((deal, index) => (
+            {liveDeals.map((deal, index) => (
               <div
                 className="p-space-sm rounded-xl bg-surface-subtle shadow-sm flex flex-col gap-space-xs relative overflow-hidden"
-                key={deal.title}
+                key={`${deal.title}-${index}`}
               >
                 <div className="flex justify-between items-start">
                   <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
@@ -712,12 +826,12 @@ function SpaProfile({
                 </div>
                 <div>
                   <h4 className="font-heading-sm text-heading-sm text-text-primary">{deal.title}</h4>
-                  <p className="font-caption text-caption text-text-secondary mt-0.5">{deal.desc}</p>
+                  <p className="font-caption text-caption text-text-secondary mt-0.5">{deal.was ? `Save ${deal.was}` : 'Limited-time offer'}</p>
                 </div>
                 <div className="flex items-center justify-between mt-space-2xs pt-space-2xs">
                   <div className="flex items-baseline gap-2">
                     <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{deal.price}</span>
-                    <span className="font-caption text-caption text-text-tertiary line-through">{deal.was}</span>
+                    {deal.was ? <span className="font-caption text-caption text-text-tertiary line-through">{deal.was}</span> : null}
                   </div>
                   <button
                     className={`px-space-md py-2 rounded-lg font-label-md text-label-md shadow-sm transition-all ${
@@ -934,6 +1048,7 @@ function SpaProfile({
 
 export function BusinessProfileScreen({
   venue,
+  business,
   onBack,
   onOpenDeals,
   onOpenProducts,
@@ -943,6 +1058,28 @@ export function BusinessProfileScreen({
 }: BusinessProfileScreenProps) {
   const [bookmarked, setBookmarked] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setPublicOffers([]);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 6 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+      } catch {
+        if (!ignore) setPublicOffers([]);
+      }
+    };
+
+    loadOffers();
+    return () => { ignore = true; };
+  }, []);
 
   const handleShare = () => {
     const url = window.location.href;
@@ -952,6 +1089,34 @@ export function BusinessProfileScreen({
     setLinkCopied(true);
     window.setTimeout(() => setLinkCopied(false), 1800);
   };
+
+  const businessName = business?.name?.trim() || (venue === 'spa' ? 'Spa storefront' : 'Business storefront');
+  const isKnownBusiness = !!business?.slug && !!findBusinessBySlug(business.slug);
+
+  if (business && !isKnownBusiness) {
+    return (
+      <AppScreen>
+        <div className="flex min-h-screen items-center justify-center bg-surface px-margin py-10">
+          <div className="w-full max-w-[420px] rounded-3xl bg-surface-canvas p-6 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-subtle text-primary">
+              <Icon name="storefront" className="text-[32px]" />
+            </div>
+            <h1 className="font-heading-lg text-heading-lg text-text-primary">Storefront unavailable</h1>
+            <p className="mt-3 font-body-md text-body-md text-text-secondary leading-relaxed">
+              This business profile is not available yet. Browse nearby businesses or return to the discover feed.
+            </p>
+            <button
+              type="button"
+              onClick={onBack}
+              className="mt-6 h-11 w-full rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-md active:scale-[0.98] transition-transform"
+            >
+              Back to Discover
+            </button>
+          </div>
+        </div>
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>
@@ -1006,9 +1171,9 @@ export function BusinessProfileScreen({
         )}
       </header>
       {venue === 'urban' ? (
-        <UrbanProfile onOpenDeals={onOpenDeals} onOpenProducts={onOpenProducts} onClaim={onClaim} />
+        <UrbanProfile businessName={businessName} offers={publicOffers} onOpenDeals={onOpenDeals} onOpenProducts={onOpenProducts} onClaim={onClaim} />
       ) : (
-        <SpaProfile onOpenServices={onOpenServices} onOpenService={onOpenService} onClaim={onClaim} />
+        <SpaProfile businessName={businessName} offers={publicOffers} onOpenServices={onOpenServices} onOpenService={onOpenService} onClaim={onClaim} />
       )}
     </AppScreen>
   );

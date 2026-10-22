@@ -1,4 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useCatalogueItemMutations, useCatalogueItems } from '../../hooks/business/useCatalogueItems';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { productDraftToInput, serviceDraftToInput, toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import { formatNaira } from '../../utils/format';
+import { CategoriesPanel } from '../../components/business/CategoriesPanel';
+import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategories';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -9,13 +18,13 @@ import { DesktopAddProductStep3Screen } from './DesktopAddProductStep3Screen';
 import { DesktopProductReviewScreen } from './DesktopProductReviewScreen';
 import { DesktopProductPublishedScreen } from './DesktopProductPublishedScreen';
 import { DesktopProductPricingConfigScreen } from './DesktopProductPricingConfigScreen';
-import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
+import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
 import { DesktopAddServiceStep1Screen } from './DesktopAddServiceStep1Screen';
 import { DesktopAddServiceStep2Screen } from './DesktopAddServiceStep2Screen';
 import { DesktopAddServiceStep3Screen } from './DesktopAddServiceStep3Screen';
 import { DesktopServiceReviewScreen } from './DesktopServiceReviewScreen';
 import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
-import { INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
+import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
 import { getBusinessSetupSnapshot } from '../businessSetup';
 import { classifyServiceFromBusiness } from '../serviceClassification';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
@@ -454,6 +463,51 @@ const BRANCH_DOT: Record<CatalogRow['branchDot'], string> = {
   tertiary: 'bg-text-tertiary',
 };
 
+const ITEM_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23eef2ff'/></svg>";
+
+/** A live catalogue item in the hub's row shape. */
+function itemToRow(item: CatalogueItem): CatalogRow {
+  const isService = item.itemType === 'service';
+  const price = toPrice(item.price ?? undefined);
+  const was = toPrice(item.compareAtPrice ?? undefined);
+  const stock = item.stockQuantity ?? null;
+  const low = stock !== null && item.minStock !== null && item.minStock !== undefined && stock <= item.minStock;
+  const published = item.status === 'active' || item.status === 'published';
+  const branchCount = item.branches?.length ?? 1;
+  return {
+    id: item.id,
+    name: item.name,
+    image: item.mainImage || ITEM_PLACEHOLDER,
+    alt: item.name,
+    draft: !published,
+    hidden: item.isSuspended === true,
+    sku: item.sku || '—',
+    sub: isService ? item.duration || 'Service' : item.shortDescription || 'Product',
+    category: item.category?.name || 'Uncategorised',
+    categoryIcon: isService ? 'spa' : 'inventory_2',
+    price: price !== undefined ? formatNaira(price) : '—',
+    was: was !== undefined && price !== undefined && was > price ? formatNaira(was) : undefined,
+    branchDot: 'ok',
+    branchLabel: `${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}`,
+    branchNote: published ? 'Live on storefront & POS' : `Status: ${item.status}`,
+    stock: isService
+      ? { tone: 'ok', label: item.isBookable ? 'Bookable' : 'Not bookable' }
+      : stock === null
+        ? { tone: 'off', label: 'Not tracked' }
+        : stock <= 0
+          ? { tone: 'error', label: 'Out of stock', units: '0 units', unitsTone: 'error' }
+          : { tone: low ? 'error' : 'ok', label: low ? 'Low stock' : 'In Stock', units: `${stock} units`, unitsTone: low ? 'error' : 'default' },
+    sync: published,
+    filters: [
+      'all',
+      ...(published ? (['published'] as CatalogChip[]) : []),
+      ...(low ? (['low'] as CatalogChip[]) : []),
+      ...(stock === 0 ? (['oos'] as CatalogChip[]) : []),
+    ],
+  };
+}
+
 /** Maps a bulk-imported product (store record) onto a catalogue list row. */
 function importedProductToRow(product: ImportedProduct): CatalogRow {
   const onSale = product.salePrice !== null && product.price !== null && product.salePrice < product.price;
@@ -554,8 +608,21 @@ export function DesktopBusinessCatalogHubScreen({
   onOpenServices: _onOpenServices,
 }: DesktopBusinessCatalogHubScreenProps) {
   const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
-  const [productRows, setProductRows] = useState<CatalogRow[]>(ROWS);
-  const [serviceRows, setServiceRows] = useState<CatalogRow[]>(SERVICES_ROWS);
+  // Live: rows come from `/catalogue/items` for the active branch; demo keeps the sample rows.
+  const live = hasApiConfig();
+  const { activeBranchId, branches } = useBusinessBranch();
+  const productItems = useCatalogueItems('product');
+  const serviceItems = useCatalogueItems('service');
+  const itemMutations = useCatalogueItemMutations();
+  const [productRows, setProductRows] = useState<CatalogRow[]>(live ? [] : ROWS);
+  const [serviceRows, setServiceRows] = useState<CatalogRow[]>(live ? [] : SERVICES_ROWS);
+  useEffect(() => {
+    if (live && productItems.data) setProductRows(productItems.data.map(itemToRow));
+  }, [live, productItems.data]);
+  useEffect(() => {
+    if (live && serviceItems.data) setServiceRows(serviceItems.data.map(itemToRow));
+  }, [live, serviceItems.data]);
+  const liveCategories = useCatalogueCategories();
   const importedProducts = useImportedProducts();
   const importedRows = useMemo(() => importedProducts.map(importedProductToRow), [importedProducts]);
   /** Imported products still awaiting review/publish. */
@@ -673,18 +740,19 @@ export function DesktopBusinessCatalogHubScreen({
   const businessSubcategories = businessDraft?.tags ?? [];
 
   const getInitialServiceDraft = (): ServiceDraft => {
+    const base = live ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT;
     const classification = classifyServiceFromBusiness(businessCategories, businessSubcategories);
     if (classification) {
       return {
-        ...INITIAL_SERVICE_DRAFT,
+        ...base,
         primaryCategory: classification.primaryCategory,
         subCategory: classification.subCategory,
       };
     }
-    return { ...INITIAL_SERVICE_DRAFT };
+    return { ...base };
   };
 
-  const [productDraft, setProductDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
+  const [productDraft, setProductDraft] = useState<ProductDraft>({ ...(live ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT) });
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(getInitialServiceDraft);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   // When set, the add-product/add-service flow is being used to edit this existing row.
@@ -702,8 +770,41 @@ export function DesktopBusinessCatalogHubScreen({
   const [sync, setSync] = useState<Record<string, boolean>>(() =>
     Object.fromEntries([...ROWS, ...SERVICES_ROWS].map((row) => [row.id, row.sync])),
   );
+  // Live rows bring their own published state into the Terminal Sync switches.
+  useEffect(() => {
+    if (!live) return;
+    setSync((prev) => ({ ...prev, ...Object.fromEntries([...productRows, ...serviceRows].map((row) => [row.id, row.sync])) }));
+  }, [live, productRows, serviceRows]);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  /** Live publish: create or update the item, then refresh the list from the API. */
+  const publishLive = (kind: 'product' | 'service') => {
+    if (!activeBranchId) return showToast('Choose a branch first.');
+    const input = kind === 'product' ? productDraftToInput(productDraft, activeBranchId) : serviceDraftToInput(serviceDraft, activeBranchId);
+    if (!input.name) return showToast(`Give the ${kind} a name first.`);
+    const done = (name: string, edited: boolean) => {
+      setEditingRowId(null);
+      if (edited) {
+        setSubFlow('none');
+        showToast(`"${name}" updated.`);
+      } else {
+        setSubFlow(kind === 'product' ? 'productPublished' : 'servicePublished');
+      }
+    };
+    const onError = (error: unknown) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, `Could not save the ${kind}.`));
+    if (editingRowId) {
+      itemMutations.update.mutate({ id: editingRowId, input }, { onSuccess: () => done(input.name, true), onError });
+    } else {
+      itemMutations.create.mutate(input, { onSuccess: () => done(input.name, false), onError });
+    }
+  };
 
   const handlePublishProduct = () => {
+    if (live) return publishLive('product');
     const isEdit = Boolean(editingRowId);
     const updatedFields = {
       name: productDraft.title || 'New Product Item',
@@ -749,6 +850,7 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handlePublishService = () => {
+    if (live) return publishLive('service');
     const isEdit = Boolean(editingRowId);
     const updatedFields = {
       name: serviceDraft.title || 'New Service Session',
@@ -839,6 +941,9 @@ export function DesktopBusinessCatalogHubScreen({
 
   // "Edit" reopens the full add-product / add-service flow, prefilled with the row's data,
   // so every component (basics, pricing, fulfillment, review) stays editable.
+  const liveItem = (id: string) => [...(productItems.data ?? []), ...(serviceItems.data ?? [])].find((item) => item.id === id);
+  const isServiceRow = (row: CatalogRow) => (live ? serviceRows.some((r) => r.id === row.id) : row.id.startsWith('s'));
+
   const handleOpenEditItem = (row: CatalogRow) => {
     setActionMenuRowId(null);
     // Bulk-imported products are edited in the dedicated import review panel.
@@ -847,7 +952,41 @@ export function DesktopBusinessCatalogHubScreen({
       return;
     }
     setEditingRowId(row.id);
-    if (row.id.startsWith('s')) {
+    const item = live ? liveItem(row.id) : undefined;
+    if (item) {
+      // Live: prefill from the stored item so saving never drops fields the row doesn't show.
+      const amount = (v: unknown) => (toPrice(v as string) ?? '').toString();
+      if (item.itemType === 'service') {
+        const minutes = Number(/(\d+)/.exec(item.duration ?? '')?.[1]);
+        setServiceDraft({
+          ...BLANK_SERVICE_DRAFT,
+          title: item.name,
+          description: item.description ?? '',
+          standardPrice: amount(item.price),
+          basePrice: amount(item.price),
+          comparePrice: amount(item.compareAtPrice),
+          skuCode: item.sku ?? '',
+          image: item.mainImage ?? '',
+          durationMins: Number.isFinite(minutes) && minutes > 0 ? minutes : BLANK_SERVICE_DRAFT.durationMins,
+        });
+        setSubFlow('service1');
+      } else {
+        setProductDraft({
+          ...BLANK_PRODUCT_DRAFT,
+          title: item.name,
+          description: item.description ?? '',
+          basePrice: amount(item.price),
+          comparePrice: amount(item.compareAtPrice),
+          sku: item.sku ?? '',
+          skuCode: item.sku ?? '',
+          lowStock: item.minStock !== null && item.minStock !== undefined ? String(item.minStock) : '',
+          backorder: item.allowBackOrder === true,
+        });
+        setSubFlow('addProduct1');
+      }
+      return;
+    }
+    if (isServiceRow(row)) {
       const durationMatch = row.sub.match(/(\d+)\s*min/i);
       setServiceDraft((prev) => ({
         ...prev,
@@ -876,11 +1015,37 @@ export function DesktopBusinessCatalogHubScreen({
     }
   };
 
+  /** Live: set an item's status and report the outcome. */
+  const setLiveStatus = (row: CatalogRow, status: 'active' | 'inactive', message: string) => {
+    setActionMenuRowId(null);
+    itemMutations.update.mutate(
+      { id: row.id, input: { status } },
+      { onSuccess: () => showToast(message), onError: (e) => showToast(apiErrorMessage(e, 'Could not update the item.')) },
+    );
+  };
+
   const handleDuplicateItem = (row: CatalogRow) => {
     setActionMenuRowId(null);
     if (row.id.startsWith('imp_')) {
       setToastMessage('Imported products are managed from the review panel.');
       setSubFlow('importReview');
+      return;
+    }
+    const source = live ? liveItem(row.id) : undefined;
+    if (source && activeBranchId) {
+      itemMutations.create.mutate(
+        {
+          name: `${source.name} (Copy)`,
+          description: source.description || source.name,
+          price: toPrice(source.price ?? undefined),
+          compareAtPrice: toPrice(source.compareAtPrice ?? undefined),
+          itemType: source.itemType === 'service' ? 'service' : 'product',
+          mainImage: source.mainImage ?? undefined,
+          duration: source.duration ?? undefined,
+          branchId: activeBranchId,
+        },
+        { onSuccess: () => showToast(`Duplicated "${source.name}".`), onError: (e) => showToast(planErrorMessage(e) ?? apiErrorMessage(e)) },
+      );
       return;
     }
     const newId = `${row.id}-copy-${Date.now()}`;
@@ -903,6 +1068,7 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handleToggleHideItem = (row: CatalogRow) => {
+    if (live) return setLiveStatus(row, row.sync ? 'inactive' : 'active', `"${row.name}" is now ${row.sync ? 'hidden from' : 'visible in'} storefront.`);
     const nextHidden = !row.hidden;
     setActionMenuRowId(null);
     if (row.id.startsWith('imp_')) {
@@ -931,6 +1097,13 @@ export function DesktopBusinessCatalogHubScreen({
       removeImportedProducts([row.id]);
       setToastMessage(`"${row.name}" removed from imported products.`);
       setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+    if (live) {
+      itemMutations.remove.mutate(row.id, {
+        onSuccess: () => showToast(`"${row.name}" removed from catalog.`),
+        onError: (e) => showToast(apiErrorMessage(e, 'Could not delete the item.')),
+      });
       return;
     }
     if (activeTab === 'products') {
@@ -974,6 +1147,7 @@ export function DesktopBusinessCatalogHubScreen({
     return (
       <DesktopAddProductImageScreen
         draft={productDraft}
+        onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct2')}
         onNext={() => setSubFlow('addProduct3')}
         onSaveDraft={() => exitSubFlow()}
@@ -1036,7 +1210,7 @@ export function DesktopBusinessCatalogHubScreen({
           setSubFlow('none');
         }}
         onAddAnother={() => {
-          setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+          setProductDraft({ ...(live ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT) });
           setEditingRowId(null);
           setSubFlow('addProduct1');
         }}
@@ -1130,6 +1304,21 @@ export function DesktopBusinessCatalogHubScreen({
   }
 
   const currentDataset = activeTab === 'products' ? allProductRows : serviceRows;
+
+  // Live: tiles and chip counts come from the real rows; the demo keeps its sample figures.
+  const allLiveRows = [...productRows, ...serviceRows];
+  const countWith = (key: CatalogChip) => currentDataset.filter((row) => row.filters.includes(key)).length;
+  const stats = live
+    ? [
+        { ...STATS[0], label: 'Published Items', value: String(allLiveRows.filter((r) => r.sync).length), note: `${allLiveRows.length} in catalogue`, noteIcon: undefined, noteClass: 'text-text-secondary' },
+        { ...STATS[1], label: 'Drafts', value: String(allLiveRows.filter((r) => !r.sync).length), note: 'Not visible to customers', noteClass: 'text-text-secondary' },
+        { ...STATS[2], label: 'Low Stock Alerts', value: String(allLiveRows.filter((r) => r.filters.includes('low')).length), note: 'At or below minimum stock' },
+        { ...STATS[3], label: 'Out of Stock', value: String(allLiveRows.filter((r) => r.filters.includes('oos')).length), valueClass: 'text-on-surface', note: 'Restock to sell again' },
+      ]
+    : STATS;
+  const chips = live
+    ? CHIPS.map((entry) => ({ ...entry, label: `${entry.label.replace(/\s*\(\d+\)$/, '')} (${countWith(entry.key)})` }))
+    : CHIPS;
 
   const toggleRow = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
@@ -1358,11 +1547,11 @@ export function DesktopBusinessCatalogHubScreen({
           <div className="flex items-center gap-space-sm self-start sm:self-auto">
             <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-              <span>Live in POS Mesh • 28ms latency</span>
+              <span>{live ? 'Live in POS' : 'Live in POS Mesh • 28ms latency'}</span>
             </div>
             <div className="hidden md:flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-lg bg-surface-tint-blue text-primary font-caption text-caption">
               <Icon name="cloud_sync" className="text-[16px]" />
-              <span>3 Branches Synced</span>
+              <span>{live ? `${branches.length} ${branches.length === 1 ? 'Branch' : 'Branches'}` : '3 Branches Synced'}</span>
             </div>
           </div>
         </div>
@@ -1419,7 +1608,7 @@ export function DesktopBusinessCatalogHubScreen({
 
         {/* Quick Stats Bento Strip */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-space-md">
-          {STATS.map((stat) => (
+          {stats.map((stat) => (
             <div
               key={stat.label}
               className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex items-center justify-between"
@@ -1502,7 +1691,7 @@ export function DesktopBusinessCatalogHubScreen({
                     : 'bg-surface-container text-text-secondary'
                 }`}
               >
-                {centralCategories.length} categories
+                {live ? liveCategories.data?.length ?? 0 : centralCategories.length} categories
               </span>
             </button>
           </div>
@@ -1560,7 +1749,9 @@ export function DesktopBusinessCatalogHubScreen({
           </div>
         </div>
 
-        {activeTab === 'categories' ? (
+        {activeTab === 'categories' && live ? (
+          <CategoriesPanel />
+        ) : activeTab === 'categories' ? (
           <div className="flex flex-col gap-space-md">
             {/* Category Search & Action Console */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
@@ -1760,7 +1951,7 @@ export function DesktopBusinessCatalogHubScreen({
 
           {/* Quick Chips Bar */}
           <div className="flex items-center gap-space-xs overflow-x-auto pb-space-2xs pt-space-2xs">
-            {CHIPS.map((entry) => {
+            {chips.map((entry) => {
               const active = chip === entry.key;
               let classes =
                 'px-space-md py-space-2xs rounded-full bg-surface-subtle text-text-secondary hover:bg-surface-container hover:text-on-surface font-label-sm text-label-sm font-medium whitespace-nowrap transition-colors';
@@ -2193,7 +2384,11 @@ export function DesktopBusinessCatalogHubScreen({
                             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer p-0.5 transition-colors focus:outline-none rounded-full ${
                               syncOn ? 'bg-primary-container' : 'bg-surface-container-highest'
                             }`}
-                            onClick={() => setSync((prev) => ({ ...prev, [row.id]: !prev[row.id] }))}
+                            onClick={() =>
+                              live
+                                ? setLiveStatus(row, sync[row.id] ? 'inactive' : 'active', `"${row.name}" ${sync[row.id] ? 'removed from' : 'live on'} POS & storefront.`)
+                                : setSync((prev) => ({ ...prev, [row.id]: !prev[row.id] }))
+                            }
                             role="switch"
                             type="button"
                           >
@@ -2452,7 +2647,11 @@ export function DesktopBusinessCatalogHubScreen({
                           className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer p-0.5 transition-colors focus:outline-none rounded-full ${
                             syncOn ? 'bg-primary-container' : 'bg-surface-container-highest'
                           }`}
-                          onClick={() => setSync((prev) => ({ ...prev, [row.id]: !prev[row.id] }))}
+                          onClick={() =>
+                              live
+                                ? setLiveStatus(row, sync[row.id] ? 'inactive' : 'active', `"${row.name}" ${sync[row.id] ? 'removed from' : 'live on'} POS & storefront.`)
+                                : setSync((prev) => ({ ...prev, [row.id]: !prev[row.id] }))
+                            }
                           role="switch"
                           type="button"
                         >
@@ -2571,7 +2770,7 @@ export function DesktopBusinessCatalogHubScreen({
               >
                 1
               </button>
-              {['2', '3', '4'].map((page) => (
+              {(live ? [] : ['2', '3', '4']).map((page) => (
                 <button
                   key={page}
                   type="button"
@@ -2603,8 +2802,11 @@ export function DesktopBusinessCatalogHubScreen({
                 Multi-Location Pricing Rules
               </h2>
               <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-                Victoria Island (Lagos) branch has a default 7.5% regional logistics markup applied on all imported
-                meats and cellar items.
+                {live
+                  ? branches.length > 1
+                    ? `Set a different price per branch for any item across your ${branches.length} branches.`
+                    : 'Add another branch to price items differently per location.'
+                  : 'Victoria Island (Lagos) branch has a default 7.5% regional logistics markup applied on all imported meats and cellar items.'}
               </p>
               <button
                 type="button"
@@ -2622,17 +2824,24 @@ export function DesktopBusinessCatalogHubScreen({
             </div>
             <div>
               <h2 className="font-heading-sm text-heading-sm font-bold text-on-surface">
-                Low-Stock Automated Reorders
+                {live ? 'Low-Stock Alerts' : 'Low-Stock Automated Reorders'}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-                Items dropping below 5 units generate instant procurement tickets dispatched to centralized warehouse
-                suppliers.
+                {live
+                  ? (() => {
+                      const lowCount = allLiveRows.filter((row) => row.filters.includes('low')).length;
+                      return lowCount
+                        ? `${lowCount} ${lowCount === 1 ? 'item is' : 'items are'} at or below the minimum stock you set. Restock or raise the level in each item.`
+                        : 'No items are below their minimum stock. Set a minimum on each item to get low-stock alerts.';
+                    })()
+                  : 'Items dropping below 5 units generate instant procurement tickets dispatched to centralized warehouse suppliers.'}
               </p>
               <button
                 type="button"
+                onClick={live ? () => setChip('low') : undefined}
                 className="inline-flex items-center gap-space-2xs text-primary font-label-sm text-label-sm font-semibold mt-space-xs hover:underline"
               >
-                <span>Edit automated replenishment triggers</span>
+                <span>{live ? 'View low-stock items' : 'Edit automated replenishment triggers'}</span>
                 <Icon name="arrow_forward" className="text-[16px]" />
               </button>
             </div>
@@ -2811,7 +3020,7 @@ export function DesktopBusinessCatalogHubScreen({
           onClose={() => setAddMethodsOpen(false)}
           onAddManually={() => {
             setAddMethodsOpen(false);
-            setProductDraft({ ...INITIAL_PRODUCT_DRAFT });
+            setProductDraft({ ...(live ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT) });
             setEditingRowId(null);
             setSubFlow('addProduct1');
           }}

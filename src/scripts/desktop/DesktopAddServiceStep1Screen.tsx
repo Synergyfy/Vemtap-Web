@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { ServiceImageUploader } from '../../components/ServiceImageUploader';
+import { hasApiConfig } from '../../services/api/client';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { ServiceLocationSelectorModal } from '../../components/ServiceLocationSelectorModal';
 import { SERVICE_LOCATIONS, locationsToBranches } from '../serviceStudioShared';
 import { describeServiceSector, getBusinessClassificationOptions } from '../serviceClassification';
@@ -8,6 +10,10 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
+
+/** Neutral card image until a live service has a photo. */
+const EMPTY_PREVIEW =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 10'><rect width='16' height='10' fill='%23e9eef9'/></svg>";
 
 interface DesktopAddServiceStep1ScreenProps {
   draft: ServiceDraft;
@@ -66,6 +72,10 @@ export function DesktopAddServiceStep1Screen({
   businessSubcategories = [],
 }: DesktopAddServiceStep1ScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  // Live: preview this business, not the sample spa.
+  const live = hasApiConfig();
+  const myBusiness = useMyBusiness();
+  const previewBusiness = live ? myBusiness.data?.name ?? 'Your business' : 'Glow & Serenity Spa';
   const [consent, setConsent] = useState(true);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
 
@@ -149,7 +159,7 @@ export function DesktopAddServiceStep1Screen({
                   </p>
                 </div>
                 <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold px-2 py-1 bg-surface-subtle rounded-md self-start">
-                  5 / 10 Added
+                  {live ? (draft.image ? '1 photo added' : 'No photo yet') : '5 / 10 Added'}
                 </span>
               </div>
 
@@ -569,7 +579,7 @@ export function DesktopAddServiceStep1Screen({
               </div>
               <div className="rounded-xl overflow-hidden shadow-md bg-surface-canvas group">
                 <div className="relative aspect-[16/10] bg-surface-container-high overflow-hidden">
-                  <img alt="Service preview" className="w-full h-full object-cover" src={draft.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuB4wRhk7Z2awcljAxG1LjsDB3N2bAN7rQlDkEXDILlYF6i09D_DE0_JDmPFddvIXLKfZ-TtuSypTz0Kl3jUy7knUpU3HB4NuSb137foMDpgotXoiK7w3GVbU1FRlvDkCRSfNt7lLHtinSDkQaVQwt40lHDAj3DUxzf9tBWYtOf7qlTY-_mE9_3gDNIH9wVJF72-OJb0k0sqg-vLThSLsh7dq90yBqvw9fzIB1gXV-Fo2ZXSueR6oLefog'} />
+                  <img alt="Service preview" className="w-full h-full object-cover" src={draft.image || (live ? EMPTY_PREVIEW : 'https://lh3.googleusercontent.com/aida-public/AB6AXuB4wRhk7Z2awcljAxG1LjsDB3N2bAN7rQlDkEXDILlYF6i09D_DE0_JDmPFddvIXLKfZ-TtuSypTz0Kl3jUy7knUpU3HB4NuSb137foMDpgotXoiK7w3GVbU1FRlvDkCRSfNt7lLHtinSDkQaVQwt40lHDAj3DUxzf9tBWYtOf7qlTY-_mE9_3gDNIH9wVJF72-OJb0k0sqg-vLThSLsh7dq90yBqvw9fzIB1gXV-Fo2ZXSueR6oLefog')} />
                   <div className="absolute top-3 left-3">
                     <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-xs">
                       Instant Confirmation
@@ -583,7 +593,7 @@ export function DesktopAddServiceStep1Screen({
                   <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
                     <span className="font-semibold text-text-primary flex items-center gap-1">
                       <Icon name="verified" className="text-primary text-[16px]" />
-                      Glow &amp; Serenity Spa
+                      {previewBusiness}
                     </span>
                     <span className="flex items-center gap-0.5 text-text-tertiary">
                       <Icon name="near_me" className="text-[14px]" /> 0.8 km away
@@ -594,7 +604,7 @@ export function DesktopAddServiceStep1Screen({
                   </h3>
                   <div className="flex items-center gap-1 font-caption text-caption text-text-secondary">
                     <Icon name="spa" className="text-[15px] text-badge-discount-text" />
-                    <span>Sensitive Skin Safe • Steam &amp; LED</span>
+                    <span>{live ? draft.subCategory || 'Bookable service' : 'Sensitive Skin Safe • Steam & LED'}</span>
                   </div>
                   <div className="pt-2 flex items-center justify-between">
                     <div className="flex flex-col">

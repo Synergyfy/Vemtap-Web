@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { OrdersPanel } from '../../components/business/OrdersPanel';
+import { hasApiConfig } from '../../services/api/client';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { DesktopBusinessBookingsScreen } from './DesktopBusinessBookingsScreen';
 import { DesktopBusinessOrderDetailScreen } from './DesktopBusinessOrderDetailScreen';
@@ -51,8 +53,8 @@ export function DesktopBusinessOrdersScreen({
     window.setTimeout(() => setToast(null), 3000);
   };
 
-  // If viewing bookings
-  if (view === 'bookings') {
+  // If viewing bookings (demo board; live mode uses OrdersPanel's bookings view below)
+  if (view === 'bookings' && !hasApiConfig()) {
     return (
       <DesktopBusinessBookingsScreen
         onNav={onNav}
@@ -191,6 +193,21 @@ export function DesktopBusinessOrdersScreen({
         return { label: origin, icon: 'receipt', className: 'bg-surface-subtle text-text-secondary' };
     }
   };
+
+  // Live: real orders and bookings for the active branch; the designed board below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <BusinessPortalChrome activeNav={initialView === 'bookings' ? 'orders-bookings' : 'orders-all'} onNav={onNav}>
+        <div className="w-full py-space-xl flex flex-col gap-space-lg">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Orders &amp; Bookings</h1>
+            <p className="font-body-md text-body-md text-text-secondary">Accept, prepare and complete orders; confirm and close bookings.</p>
+          </div>
+          <OrdersPanel key={initialView} initialView={initialView} />
+        </div>
+      </BusinessPortalChrome>
+    );
+  }
 
   return (
     <BusinessPortalChrome activeNav="orders-all" onNav={onNav}>

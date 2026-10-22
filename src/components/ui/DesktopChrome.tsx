@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
+import { useProfile } from '../../context/ProfileContext';
 import { DesktopLocationRadiusModal } from '../DesktopLocationRadiusModal';
 import { PortalRail, RAIL_OFFSET, type RailGroup } from '../../scripts/desktop/PortalShell';
+import { notificationService, type NotificationItem } from '../../services/notificationService';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 
@@ -21,6 +23,7 @@ export type DesktopNavKey =
   | 'orders'
   | 'messages'
   | 'cart'
+  | 'notifications'
   | 'referrals'
   | 'account-settings'
   | 'storefront'
@@ -67,6 +70,7 @@ const CUSTOMER_NAV_ITEMS: Array<{ key: DesktopNavKey; label: string }> = [
   { key: 'orders', label: 'Orders & Bookings' },
   { key: 'messages', label: 'Messages' },
   { key: 'cart', label: 'Saved Items & Stores' },
+  { key: 'notifications', label: 'Notifications' },
   { key: 'referrals', label: 'Referrals & Rewards' },
   { key: 'account-settings', label: 'Account & Security' },
 ];
@@ -92,13 +96,19 @@ const CUSTOMER_RAIL_ICONS: Readonly<Record<string, string>> = {
 
 export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = false }: DesktopNavHeaderProps) {
   const { authed, signOut } = useAuth();
+  const { fullName, email, initials } = useProfile();
   const { district, city, radius, setLocation } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const accountRef = useRef<HTMLDivElement | null>(null);
+  const notifRef = useRef<HTMLDivElement | null>(null);
 
   const closeMenu = () => setMenuOpen(false);
   const openLocation = onOpenLocation ?? (() => setLocationOpen(true));
+  const unreadCount = notificationItems.filter((item) => !readIds.has(item.id)).length;
 
   // The header uses `backdrop-blur`, which turns it into the containing block
   // for `position: fixed` children — so a fixed overlay would be trapped
@@ -118,6 +128,68 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
       document.removeEventListener('keydown', handleEscape);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!authed) {
+      setNotificationItems([]);
+      setReadIds(new Set());
+      return;
+    }
+
+    let ignore = false;
+
+    const loadNotifications = async () => {
+      try {
+        const response = await notificationService.list({ limit: 5 });
+        if (ignore) return;
+
+        const mapped = response.map((item) => ({
+          ...item,
+          id: String(item.id),
+          title: item.title || 'Vemtap update',
+          message: item.message || item.body || 'You have a new update.',
+          unread: item.unread ?? !(item.isRead ?? item.read ?? false),
+        }));
+
+        setNotificationItems(mapped);
+        setReadIds(() => {
+          const next = new Set<string>();
+          mapped.filter((item) => !item.unread).forEach((item) => next.add(item.id));
+          return next;
+        });
+      } catch (error) {
+        console.warn('Unable to load desktop notifications:', error);
+        if (!ignore) {
+          setNotificationItems([]);
+          setReadIds(new Set());
+        }
+      }
+    };
+
+    void loadNotifications();
+    return () => { ignore = true; };
+  }, [authed]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) setNotifOpen(false);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', handleDocumentClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [notifOpen]);
+
+  const openAllNotifications = () => {
+    setNotifOpen(false);
+    onNav('notifications');
+  };
 
   const navButtonClass = (key: DesktopNavKey) =>
     `px-space-sm py-space-2xs font-label-md text-label-md transition-colors rounded-lg ${
@@ -209,14 +281,112 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
                 ))}
               </nav>
 
-              <button
-                type="button"
-                aria-label="Notifications"
-                className="relative w-10 h-10 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors"
-              >
-                <Icon name="notifications" className="text-[22px]" />
-                <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-tertiary-container" />
-              </button>
+              <div ref={notifRef} className="relative">
+                <button
+                  type="button"
+                  aria-label="Notifications"
+                  aria-expanded={notifOpen}
+                  aria-haspopup="true"
+                  onClick={() => setNotifOpen((open) => !open)}
+                  className="relative w-10 h-10 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors"
+                >
+                  <Icon name="notifications" className="text-[22px]" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-caption text-[10px] font-bold text-on-primary leading-none ring-2 ring-surface-canvas">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {notifOpen && (
+                  <div className="absolute right-0 top-full mt-2 z-50 w-[min(360px,calc(100vw-2rem))] rounded-2xl bg-surface-canvas border border-border-subtle shadow-[0_12px_32px_-8px_rgba(13,37,76,0.18)] overflow-hidden">
+                    <div className="flex items-center justify-between gap-space-sm px-space-md py-space-sm border-b border-border-subtle bg-surface-subtle/60">
+                      <div className="flex items-center gap-space-2xs">
+                        <span className="font-label-md text-label-md text-on-surface font-semibold">Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="px-space-2xs py-0.5 rounded-full bg-primary-container text-on-primary font-caption text-caption font-bold">
+                            {unreadCount} new
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={unreadCount === 0}
+                        onClick={async () => {
+                          if (unreadCount === 0) return;
+                          setReadIds(new Set(notificationItems.map((item) => item.id)));
+                          try {
+                            await notificationService.markAllRead();
+                          } catch (error) {
+                            console.warn('Unable to mark all notifications read:', error);
+                          }
+                        }}
+                        className="font-label-sm text-label-sm text-primary disabled:text-text-tertiary disabled:no-underline hover:underline"
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+
+                    <div className="max-h-[320px] overflow-y-auto divide-y divide-border-subtle">
+                      {notificationItems.length === 0 ? (
+                        <div className="px-space-md py-space-lg text-center text-text-secondary">
+                          <p className="font-label-md text-label-md text-on-surface">No new notifications</p>
+                          <p className="mt-1 font-caption text-caption">We’ll show your latest updates here.</p>
+                        </div>
+                      ) : (
+                        notificationItems.map((item) => {
+                          const unread = !readIds.has(item.id);
+                          const category = String(item.category ?? item.type ?? item.kind ?? 'system').toLowerCase();
+                          const icon = category.includes('reward') ? 'stars' : category.includes('booking') || category.includes('order') ? 'calendar_month' : category.includes('deal') ? 'local_offer' : 'campaign';
+                          const iconClass = category.includes('reward')
+                            ? 'bg-badge-discount-bg text-badge-discount-text'
+                            : category.includes('booking') || category.includes('order')
+                              ? 'bg-primary-fixed text-primary'
+                              : category.includes('deal')
+                                ? 'bg-tertiary-fixed text-tertiary'
+                                : 'bg-surface-container-highest text-secondary';
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={openAllNotifications}
+                              className="w-full flex items-start gap-space-sm px-space-md py-space-sm text-left hover:bg-surface-subtle transition-colors"
+                            >
+                              <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${iconClass}`}>
+                                <Icon name={icon} className="text-[18px]" />
+                              </span>
+                              <span className="flex flex-col flex-1 min-w-0">
+                                <span className="flex items-center justify-between gap-space-2xs">
+                                  <span className="font-label-sm text-label-sm text-on-surface font-semibold truncate">
+                                    {item.title}
+                                  </span>
+                                  <span className="font-caption text-caption text-text-tertiary whitespace-nowrap">
+                                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Now'}
+                                  </span>
+                                </span>
+                                <span className="font-caption text-caption text-text-secondary leading-snug mt-0.5">
+                                  {item.message || item.body || 'You have a new update.'}
+                                </span>
+                              </span>
+                              {unread && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={openAllNotifications}
+                      className="w-full px-space-md py-space-sm border-t border-border-subtle bg-surface-subtle/60 hover:bg-surface-subtle text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs transition-colors"
+                    >
+                      <span>View all notifications</span>
+                      <Icon name="arrow_forward" className="text-[15px]" />
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div ref={accountRef} className="relative">
                 <button
@@ -226,11 +396,11 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
                   onClick={() => setMenuOpen((open) => !open)}
                   className="flex items-center gap-space-xs pl-space-xs rounded-xl hover:bg-surface-subtle transition-colors"
                 >
-                  <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-                    <Icon name="person" className="text-on-primary text-[18px]" />
+                  <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 text-on-primary text-[12px] font-bold">
+                    {initials || 'U'}
                   </span>
                   <span className="hidden lg:flex flex-col text-left leading-tight">
-                    <span className="font-label-md text-label-md text-text-primary">Zainab Ahmed</span>
+                    <span className="font-label-md text-label-md text-text-primary">{fullName || 'User'}</span>
                     <span className="font-caption text-caption text-text-tertiary">Consumer</span>
                   </span>
                   <Icon name="keyboard_arrow_down" className="text-[18px] text-text-tertiary hidden lg:inline-block" />
@@ -240,8 +410,8 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
                   <>
                       <div className="absolute right-0 top-full mt-space-xs z-50 w-56 py-space-xs bg-surface-canvas rounded-xl shadow-[0_12px_32px_-8px_rgba(13,37,76,0.18)] border border-border-subtle flex flex-col">
                       <div className="px-space-sm py-space-2xs">
-                        <span className="font-label-md text-label-md text-text-primary font-semibold block">Zainab Ahmed</span>
-                        <span className="font-caption text-caption text-text-tertiary">zainab.ahmed@example.com</span>
+                        <span className="font-label-md text-label-md text-text-primary font-semibold block">{fullName || 'User'}</span>
+                        <span className="font-caption text-caption text-text-tertiary">{email || 'No email'}</span>
                       </div>
                       <div className="h-px bg-border-subtle my-space-2xs" />
                       {ACCOUNT_MENU_ITEMS.map((item) => (

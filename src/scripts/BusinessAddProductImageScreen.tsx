@@ -3,12 +3,15 @@ import { Icon } from '../components/ui/Icon';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
 import type { ProductDraft } from './productDraft';
+import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
 
 interface BusinessAddProductImageScreenProps {
   draft: ProductDraft;
   onBack: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  /** Live: receives the uploaded photo's URL as `mainImage`. */
+  onDraftChange?: (patch: Partial<ProductDraft>) => void;
 }
 
 const PRODUCT_IMAGES = [
@@ -36,7 +39,13 @@ const PRODUCT_IMAGES = [
  * brand, description, category). The merchant never re-enters product
  * information here; the draft stays mounted in the container meanwhile.
  */
-export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDraft }: BusinessAddProductImageScreenProps) {
+export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDraft, onDraftChange }: BusinessAddProductImageScreenProps) {
+  // Live: a real photo upload instead of the sample gallery.
+  const editor = useLiveItemEditor('product');
+  const changePhoto = async () => {
+    const url = await editor.uploadPhoto();
+    if (url) onDraftChange?.({ mainImage: url });
+  };
   /** Product facts from the draft — business facts come from setup state. */
   const aiProductContext: AiPromptContext = {
     itemName: draft.title,
@@ -121,6 +130,32 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
                 Guidelines
               </span>
             </div>
+            {editor.live ? (
+              <div className="flex flex-col gap-space-xs">
+                <button
+                  type="button"
+                  onClick={changePhoto}
+                  disabled={editor.uploading}
+                  className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low flex flex-col items-center justify-center gap-space-xs text-text-secondary hover:text-primary disabled:opacity-60"
+                >
+                  {draft.mainImage ? (
+                    <img alt={draft.title || 'Product photo'} className="absolute inset-0 w-full h-full object-cover" src={draft.mainImage} />
+                  ) : (
+                    <>
+                      <Icon name="add_a_photo" className="text-[40px] text-primary" />
+                      <span className="font-label-md text-label-md font-semibold">{editor.uploading ? 'Uploading…' : 'Add a product photo'}</span>
+                    </>
+                  )}
+                  {draft.mainImage ? (
+                    <span className="absolute bottom-3 right-3 bg-surface-container-lowest/95 text-text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm font-label-sm text-label-sm font-semibold">
+                      <Icon name="add_a_photo" className="text-[16px] text-primary" /> {editor.uploading ? 'Uploading…' : 'Change'}
+                    </span>
+                  ) : null}
+                </button>
+                {editor.uploadError ? <span className="font-caption text-caption text-red-600">{editor.uploadError}</span> : null}
+              </div>
+            ) : (
+              <>
             <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low group shadow-inner">
               <img
                 alt={PRODUCT_IMAGES[0].alt}
@@ -173,6 +208,8 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
                 <Icon name="photo_camera" className="text-[18px]" />
               </div>
             </div>
+              </>
+            )}
             <div className="flex items-start gap-space-xs p-space-sm bg-surface-tint-blue rounded-xl text-primary">
               <Icon className="text-[20px] text-primary-container shrink-0 mt-0.5" filled name="lightbulb" />
               <p className="font-caption text-caption text-on-secondary-container leading-relaxed">

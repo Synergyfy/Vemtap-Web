@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { DealsPanel } from '../components/business/DealsPanel';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessHubHeader } from './BusinessHubHeader';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { FilterMenu } from '../components/FilterMenu';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
@@ -8,7 +11,8 @@ import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '.
 interface BusinessDealsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onBoost: (itemName?: string) => void;
-  onOpenDeal: () => void;
+  /** Live passes the deal group to open. */
+  onOpenDeal: (dealGroupId?: string) => void;
   onCreateDeal: () => void;
 }
 
@@ -136,6 +140,19 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
       label: name,
     })),
   ];
+  // Live: real deals at the active branch; the designed list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <BusinessHubHeader />
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
+          <h1 className="font-heading-md text-heading-md text-text-primary">Deals</h1>
+          <DealsPanel onCreate={onCreateDeal} onBoost={onBoost} onOpenDetail={(id) => onOpenDeal(id)} />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>

@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import type { ClaimDealSummary } from './ClaimIdentityModal';
 
 export interface ShareModalProps {
   open: boolean;
   onClose: () => void;
+  deal?: ClaimDealSummary | null;
 }
 
 const DEAL_IMAGE =
@@ -13,9 +15,7 @@ const DEAL_IMAGE =
 const DEAL_ALT =
   'Close-up of a stacked artisan bistro lunch burger and golden crispy fries beside a sparkling drink, studio warm lighting.';
 
-const SHARE_URL = 'https://vemtap.com/d/lunch-combo-urban-grill';
-const SHARE_DISPLAY = 'vemtap.com/d/lunch-combo-urban-grill';
-const SHARE_TEXT = 'Lunch Combo — 20% Off at Urban Grill & Bistro';
+const toSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'deal';
 
 interface Friend {
   name: string;
@@ -43,11 +43,26 @@ const CHANNEL_CLASS: Record<string, string> = {
   more: 'w-[52px] h-[52px] rounded-full bg-surface-container-high text-on-surface-variant group-hover:bg-surface-container-highest transition-colors flex items-center justify-center',
 };
 
-export function ShareModal({ open, onClose }: ShareModalProps) {
+export function ShareModal({ open, onClose, deal }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; icon: string } | null>(null);
   const timers = useRef<Array<number>>([]);
+
+  const dealTitle = deal?.title?.trim() || 'Local deal';
+  const businessName = deal?.business?.trim() || 'This business';
+  const dealLocation = deal?.location?.trim() || 'Nearby';
+  const dealImage = deal?.image || DEAL_IMAGE;
+  const dealImageAlt = `${dealTitle} at ${businessName}`;
+  const dealPrice = typeof deal?.price === 'number' ? deal.price : 0;
+  const dealOldPrice = typeof deal?.oldPrice === 'number' ? deal.oldPrice : dealPrice;
+  const savings = Math.max(dealOldPrice - dealPrice, 0);
+  const shareUrl = useMemo(
+    () => `https://vemtap.com/d/${toSlug(businessName)}-${toSlug(dealTitle)}`,
+    [businessName, dealTitle],
+  );
+  const shareDisplay = shareUrl.replace(/^https?:\/\//, '');
+  const shareText = `${dealTitle}${deal?.discountLabel ? ` — ${deal.discountLabel}` : ''} at ${businessName}`;
 
   useEffect(() => {
     return () => {
@@ -72,7 +87,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
   };
 
   const copyLink = () => {
-    navigator.clipboard?.writeText(SHARE_URL).catch(() => undefined);
+    navigator.clipboard?.writeText(shareUrl).catch(() => undefined);
     setCopied(true);
     showToast('Offer link copied to clipboard!');
     timers.current.push(window.setTimeout(() => setCopied(false), 2000));
@@ -84,7 +99,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
 
   const shareMore = () => {
     if (typeof navigator.share === 'function') {
-      navigator.share({ title: SHARE_TEXT, url: SHARE_URL }).catch(() => undefined);
+      navigator.share({ title: shareText, url: shareUrl }).catch(() => undefined);
       return;
     }
     copyLink();
@@ -114,23 +129,28 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
         <div className="max-h-[70vh] overflow-y-auto p-space-lg space-y-space-md">
           <div className="bg-surface-container-low p-space-sm rounded-xl flex items-center gap-space-sm shadow-sm">
             <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-container relative">
-              <img className="w-full h-full object-cover" alt={DEAL_ALT} src={DEAL_IMAGE} />
+              <img className="w-full h-full object-cover" alt={dealImageAlt || DEAL_ALT} src={dealImage} />
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
-                Lunch Combo — 20% Off
+                {dealTitle}
               </span>
               <span className="font-caption text-caption text-text-secondary truncate mt-0.5">
-                Urban Grill &amp; Bistro • Apo, Abuja
+                {businessName} • {dealLocation}
               </span>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold px-2 py-0.5 rounded-full inline-flex items-center">
-                  ₦9,600 (Save ₦2,400)
+                  {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)}
+                  {savings > 0 ? ` (Save ${new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(savings)})` : ''}
                 </span>
-                <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>
+                {dealOldPrice > dealPrice ? (
+                  <span className="font-caption text-caption text-text-tertiary line-through">
+                    {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealOldPrice)}
+                  </span>
+                ) : null}
                 <span className="font-caption text-caption text-primary bg-surface-tint-blue px-2 py-0.5 rounded-full inline-flex items-center gap-0.5">
                   <Icon name="verified" className="text-[12px]" />
-                  Vetted Deal
+                  {deal?.discountLabel || 'Vetted Deal'}
                 </span>
               </div>
             </div>
@@ -139,7 +159,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
           <div className="w-full bg-surface-subtle p-space-xs pl-space-sm rounded-xl flex items-center justify-between gap-space-xs shadow-sm">
             <div className="flex items-center gap-space-xs min-w-0 flex-1">
               <Icon name="link" className="text-text-tertiary text-[20px] shrink-0" />
-              <span className="font-caption text-caption text-text-secondary truncate select-all">{SHARE_DISPLAY}</span>
+              <span className="font-caption text-caption text-text-secondary truncate select-all">{shareDisplay}</span>
             </div>
             <button
               type="button"
@@ -162,7 +182,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
                 aria-label="Share to WhatsApp"
                 type="button"
                 onClick={() =>
-                  openExternal(`https://wa.me/?text=${encodeURIComponent(`${SHARE_TEXT} — ${SHARE_URL}`)}`)
+                  openExternal(`https://wa.me/?text=${encodeURIComponent(`${shareText} — ${shareUrl}`)}`)
                 }
                 className="flex flex-col items-center gap-1.5 group p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors"
               >
@@ -203,7 +223,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
                 type="button"
                 onClick={() =>
                   openExternal(
-                    `https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_TEXT)}&url=${encodeURIComponent(SHARE_URL)}`,
+                    `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`,
                   )
                 }
                 className="flex flex-col items-center gap-1.5 group p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors"

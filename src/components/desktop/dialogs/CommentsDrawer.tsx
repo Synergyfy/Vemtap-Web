@@ -1,10 +1,13 @@
 import { Icon } from '../../ui/Icon';
+import { parsePrice } from '../../../utils/format';
 import { DesktopDrawer } from '../DesktopModal';
+import type { ClaimDealSummary } from './ClaimIdentityModal';
 
 export interface CommentsDrawerProps {
   open: boolean;
   onClose: () => void;
   onClaim: () => void;
+  deal?: ClaimDealSummary | null;
 }
 
 interface Reaction {
@@ -64,7 +67,11 @@ const COMMENTS: Comment[] = [
   },
 ];
 
-export function CommentsDrawer({ open, onClose, onClaim }: CommentsDrawerProps) {
+export function CommentsDrawer({ open, onClose, onClaim, deal }: CommentsDrawerProps) {
+  const merchantName = deal?.business?.trim() || 'This local partner';
+  const dealTitle = deal?.title?.trim() || 'this deal';
+  const dealPrice = parsePrice(deal?.price);
+
   return (
     <DesktopDrawer open={open} onClose={onClose}>
       <div className="px-space-lg py-space-md bg-surface-canvas shadow-[0_1px_6px_rgba(0,0,0,0.03)] flex items-center justify-between">
@@ -77,7 +84,7 @@ export function CommentsDrawer({ open, onClose, onClaim }: CommentsDrawerProps) 
             </span>
           </div>
           <p className="font-caption text-caption text-text-secondary">
-            Ask questions about menu options, portions, or table wait times
+            Ask questions about {dealTitle.toLowerCase()} and the nearby merchant experience.
           </p>
         </div>
         <button
@@ -202,7 +209,7 @@ export function CommentsDrawer({ open, onClose, onClaim }: CommentsDrawerProps) 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-space-xs">
                     <Icon name="storefront" className="text-[16px] text-primary-container" />
-                    <span className="font-label-sm text-label-sm font-bold text-on-surface">Urban Grill &amp; Bistro</span>
+                    <span className="font-label-sm text-label-sm font-bold text-on-surface">{merchantName}</span>
                     <span className="bg-surface-tint-blue text-primary font-caption text-caption px-1.5 py-0.5 rounded-full font-semibold">
                       Verified Merchant
                     </span>
@@ -229,7 +236,11 @@ export function CommentsDrawer({ open, onClose, onClaim }: CommentsDrawerProps) 
           onClick={onClaim}
           className="h-11 px-space-md bg-primary-container hover:bg-primary active:scale-95 text-on-primary font-button-primary text-button-primary rounded-xl flex items-center gap-space-xs shrink-0 shadow-md transition-all"
         >
-          <span>Claim Deal (₦9,600)</span>
+          <span>{`Claim Deal (${new Intl.NumberFormat('en-NG', {
+            style: 'currency',
+            currency: 'NGN',
+            maximumFractionDigits: 0,
+          }).format(dealPrice)})`}</span>
         </button>
       </div>
     </DesktopDrawer>

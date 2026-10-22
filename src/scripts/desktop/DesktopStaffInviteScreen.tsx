@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { InviteStaffForm } from '../../components/business/TeamPanels';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
@@ -229,6 +231,21 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
   const submitLabel =
     submitState === 'idle' ? 'Send Invitation' : submitState === 'sending' ? 'Transmitting Token...' : 'Invitation Dispatched!';
   const submitIcon = submitState === 'idle' ? 'send' : submitState === 'sending' ? 'sync' : 'check_circle';
+
+  // Live: sends a real invite; the designed form below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <EnterpriseShell activeNav="business-staff" onNav={onNav}>
+        <div className="w-full py-space-xl flex flex-col gap-space-lg">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Invite a team member</h1>
+            <p className="font-body-md text-body-md text-text-secondary">They get an email to set up their sign-in.</p>
+          </div>
+          <InviteStaffForm onDone={() => onBack?.()} onCancel={() => onBack?.()} />
+        </div>
+      </EnterpriseShell>
+    );
+  }
 
   return (
     <EnterpriseShell activeNav="business-staff" onNav={onNav}>

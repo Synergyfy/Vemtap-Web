@@ -14,7 +14,7 @@ export interface LocationRadiusModalProps {
   radius?: number;
 }
 
-const POPULAR_DISTRICTS = ['Apo', 'Maitama', 'Wuse II', 'Garki', 'Jabi'];
+const POPULAR_DISTRICTS = ['Downtown', 'Central', 'North Side', 'West End', 'Market Area'];
 
 const RADIUS_PRESETS = [2, 5, 10, 15, 25];
 
@@ -51,8 +51,8 @@ export function LocationRadiusModal({
   radius: radiusProp,
 }: LocationRadiusModalProps) {
   const [radius, setRadius] = useState(radiusProp ?? 5);
-  const [district, setDistrict] = useState(districtProp ?? 'Apo');
-  const [query, setQuery] = useState(`${districtProp ?? 'Apo'}, Abuja`);
+  const [district, setDistrict] = useState(districtProp ?? 'Your area');
+  const [query, setQuery] = useState(`${districtProp ?? 'Your area'}`);
   const [gpsActive, setGpsActive] = useState(true);
 
   if (!open) return null;
@@ -62,13 +62,13 @@ export function LocationRadiusModal({
 
   const selectDistrict = (name: string) => {
     setDistrict(name);
-    setQuery(`${name}, Abuja`);
+    setQuery(name);
     setGpsActive(false);
   };
 
   const useAutoDetect = () => {
-    setDistrict('Apo');
-    setQuery('Apo, Abuja');
+    setDistrict('Your area');
+    setQuery('Your area');
     setGpsActive(true);
   };
 
@@ -93,7 +93,7 @@ export function LocationRadiusModal({
           <div className="flex flex-col">
             <h2 className="font-heading-sm text-heading-sm text-text-primary">Location &amp; Radius</h2>
             <p className="font-caption text-caption text-text-secondary">
-              Set your area to discover local Abuja deals
+              Set your area to discover nearby local deals
             </p>
           </div>
           <button
@@ -126,7 +126,7 @@ export function LocationRadiusModal({
                   </span>
                 </div>
                 <span className="font-caption text-caption text-text-secondary truncate pt-0.5">
-                  Apo District, Abuja • High Precision
+                  Your current area • Live location
                 </span>
               </div>
             </div>

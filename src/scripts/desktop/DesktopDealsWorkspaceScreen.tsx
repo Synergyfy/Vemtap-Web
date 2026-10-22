@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react';
+import { DealsPanel } from '../../components/business/DealsPanel';
+import { hasApiConfig } from '../../services/api/client';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
@@ -9,11 +11,14 @@ interface DesktopDealsWorkspaceScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onCreateDeal?: () => void;
   onEditDeal?: () => void;
-  onOpenDealDetail?: () => void;
+  /** Live passes the deal group to open. */
+  onOpenDealDetail?: (dealGroupId?: string) => void;
   onOpenLogs?: () => void;
   onOpenPos?: () => void;
   /** Opens the Boost Studio; the deal's name pre-selects it in the campaign. */
   onBoost?: (dealName?: string) => void;
+  /** Live: opens the redemption ledger. */
+  onOpenLedger?: () => void;
 }
 
 // Telemetry backing the three live deal cards above — used by "Export Stats".
@@ -174,6 +179,7 @@ export function DesktopDealsWorkspaceScreen({
   onOpenLogs,
   onOpenPos,
   onBoost,
+  onOpenLedger,
 }: DesktopDealsWorkspaceScreenProps) {
   const [statusTab, setStatusTab] = useState<'active' | 'scheduled' | 'expired'>('active');
   const [pausedDeals, setPausedDeals] = useState<Record<string, boolean>>({});
@@ -244,6 +250,21 @@ export function DesktopDealsWorkspaceScreen({
       volume: '₦194,500',
     },
   ];
+
+  // Live: real deals at the active branch; the designed workspace below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <MerchantPortalChrome activeNav="business-deals" onNav={onNav} content="full">
+        <div className="w-full py-space-xl flex flex-col gap-space-lg">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Deals</h1>
+            <p className="font-body-md text-body-md text-text-secondary">Your live, paused and ended deals, and how they are doing.</p>
+          </div>
+          <DealsPanel onCreate={() => onCreateDeal?.()} onBoost={(name) => onBoost?.(name)} onOpenLedger={onOpenLedger} onOpenDetail={(id) => onOpenDealDetail?.(id)} />
+        </div>
+      </MerchantPortalChrome>
+    );
+  }
 
   return (
     <MerchantPortalChrome activeNav="business-deals" onNav={onNav} content="full">
@@ -580,7 +601,7 @@ export function DesktopDealsWorkspaceScreen({
             primaryAction={
               <button
                 type="button"
-                onClick={onOpenDealDetail}
+                onClick={() => onOpenDealDetail?.()}
                 className="flex-1 h-11 px-3 rounded-xl bg-primary text-on-primary hover:bg-surface-tint font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(0,85,196,0.25)] transition-all"
               >
                 <Icon name="insights" className="text-[18px]" />

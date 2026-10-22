@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { Logo } from '../components/ui/Logo';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
@@ -30,6 +30,8 @@ export function StoreOrderingScreen({
     settings,
     updateSettings,
     toggleQrActive,
+    lastError,
+    clearLastError,
   } = useStoreOrdering();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -49,6 +51,12 @@ export function StoreOrderingScreen({
     setToast(msg);
     window.setTimeout(() => setToast(null), 2500);
   };
+
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
 
   const originCounts = {
     all: orders.length,

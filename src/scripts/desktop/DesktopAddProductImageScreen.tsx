@@ -5,6 +5,7 @@ import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 import { CreateWithAiButton } from '../../components/CreateWithAiButton';
 import type { AiPromptContext } from '../aiDesignAssistant';
+import { useLiveItemEditor } from '../../hooks/business/useLiveItemEditor';
 
 interface DesktopAddProductImageScreenProps {
   draft: ProductDraft;
@@ -12,6 +13,8 @@ interface DesktopAddProductImageScreenProps {
   onNext: () => void;
   onSaveDraft: () => void;
   onNav?: (key: BusinessPortalNavKey) => void;
+  /** Live: receives the uploaded photo's URL as `mainImage`. */
+  onDraftChange?: (patch: Partial<ProductDraft>) => void;
 }
 
 const COVER_IMAGE =
@@ -51,8 +54,15 @@ export function DesktopAddProductImageScreen({
   onNext,
   onSaveDraft,
   onNav,
+  onDraftChange,
 }: DesktopAddProductImageScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  // Live: a real photo upload instead of the sample cover.
+  const editor = useLiveItemEditor('product');
+  const changePhoto = async () => {
+    const url = await editor.uploadPhoto();
+    if (url) onDraftChange?.({ mainImage: url });
+  };
 
   /** Product facts from the draft — business facts come from setup state. */
   const aiProductContext: AiPromptContext = {
@@ -151,11 +161,23 @@ export function DesktopAddProductImageScreen({
               </div>
 
               <div className="relative w-full h-80 rounded-xl overflow-hidden bg-surface-container-high group shadow-sm mb-space-md">
-                <img
-                  alt={COVER_ALT}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  src={COVER_IMAGE}
-                />
+                {editor.live && !draft.mainImage ? (
+                  <button
+                    type="button"
+                    onClick={changePhoto}
+                    className="w-full h-full flex flex-col items-center justify-center gap-space-xs text-text-secondary hover:text-primary"
+                  >
+                    <Icon name="add_photo_alternate" className="text-[40px]" />
+                    <span className="font-label-md text-label-md font-semibold">{editor.uploading ? 'Uploading…' : 'Add a product photo'}</span>
+                    <span className="font-caption text-caption">JPG or PNG, landscape works best</span>
+                  </button>
+                ) : (
+                  <img
+                    alt={editor.live ? draft.title || 'Product photo' : COVER_ALT}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    src={editor.live ? draft.mainImage : COVER_IMAGE}
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-on-background/80 via-transparent to-transparent pointer-events-none" />
                 <div className="absolute top-space-md left-space-md flex items-center gap-space-xs">
                   <span className="bg-primary text-on-primary font-label-sm text-label-sm font-semibold px-space-sm py-1 rounded-full shadow-sm flex items-center gap-1">

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLiveItemEditor } from '../../hooks/business/useLiveItemEditor';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -62,15 +63,19 @@ export function DesktopAddProductStep1Screen({
   onNav,
 }: DesktopAddProductStep1ScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  // Live: real categories, real photo uploads and no sample tags.
+  const editor = useLiveItemEditor('product');
   const [activeChips, setActiveChips] = useState<string[]>(
-    DIETARY_CHIPS.filter((chip) => chip.active).map((chip) => chip.label),
+    editor.live ? [] : DIETARY_CHIPS.filter((chip) => chip.active).map((chip) => chip.label),
   );
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const timers = useRef<number[]>([]);
 
   // Category management & inline category creation
-  const [categories, setCategories] = useState<CentralCategory[]>(() => getCentralCategories('product'));
+  const [demoCategories, setCategories] = useState<CentralCategory[]>(() => getCentralCategories('product'));
+  const categories = editor.live ? editor.categories : demoCategories;
+  const defaultCategoryId = editor.live ? '' : 'grills';
   const [showInlineCategoryModal, setShowInlineCategoryModal] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatDescription, setNewCatDescription] = useState('');
@@ -81,6 +86,20 @@ export function DesktopAddProductStep1Screen({
   const handleCreateCategoryInline = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
+    if (editor.live) {
+      editor
+        .createCategory(newCatName.trim())
+        .then((created) => {
+          onDraftChange({ categoryId: created.id, subCategory: created.name });
+          setNewCatName('');
+          setNewCatDescription('');
+          setNewCatImage('');
+          setShowInlineCategoryModal(false);
+          showToast(`Category "${created.name}" created and selected!`);
+        })
+        .catch(() => showToast('Could not create the category. Try again.'));
+      return;
+    }
     const slug = newCatName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const created = addCentralCategory({
       id: slug,
@@ -328,7 +347,7 @@ export function DesktopAddProductStep1Screen({
                     <span className="text-caption text-text-tertiary">{categories.length} Central Categories Available</span>
                   </label>
                   <select
-                    value={draft.categoryId || 'grills'}
+                    value={draft.categoryId || defaultCategoryId}
                     onChange={(e) => {
                       const selectedId = e.target.value;
                       const found = categories.find((c) => c.id === selectedId);
@@ -340,9 +359,14 @@ export function DesktopAddProductStep1Screen({
                     }}
                     className="w-full px-4 py-3 rounded-xl bg-surface-subtle border border-border text-body-md font-medium text-text-primary focus:outline-hidden focus:border-primary"
                   >
+                    {editor.live ? (
+                      <option value="" disabled>
+                        {categories.length ? 'Choose a category' : 'No categories yet — create one'}
+                      </option>
+                    ) : null}
                     {categories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
-                        {cat.name} ({cat.productCount} items)
+                        {editor.live ? cat.name : `${cat.name} (${cat.productCount} items)`}
                       </option>
                     ))}
                   </select>
@@ -350,7 +374,7 @@ export function DesktopAddProductStep1Screen({
 
                 {/* Selected Category Preview Info Card */}
                 {(() => {
-                  const activeCat = categories.find((c) => c.id === (draft.categoryId || 'grills')) || categories[0];
+                  const activeCat = categories.find((c) => c.id === (draft.categoryId || defaultCategoryId)) || (editor.live ? undefined : categories[0]);
                   if (!activeCat) return null;
                   return (
                     <div className="p-space-md rounded-xl bg-surface-subtle/80 border border-border-subtle flex items-start gap-space-sm">

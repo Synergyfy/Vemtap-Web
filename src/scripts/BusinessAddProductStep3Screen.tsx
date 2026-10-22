@@ -1,3 +1,6 @@
+import { LiveAvailabilityStep } from '../components/business/LiveItemSteps';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -41,7 +44,7 @@ const PREP_CHIPS = [
   { range: '45+', title: '45 – 60m', sub: 'Custom', label: '45 - 60 minutes' },
 ];
 
-export function BusinessAddProductStep3Screen({
+function DemoBusinessAddProductStep3Screen({
   draft,
   onDraftChange,
   onBack,
@@ -427,5 +430,31 @@ export function BusinessAddProductStep3Screen({
         </div>
       </div>
     </AppScreen>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function BusinessAddProductStep3Screen(props: BusinessAddProductStep3ScreenProps) {
+  if (!hasApiConfig()) return <DemoBusinessAddProductStep3Screen {...props} />;
+  return (
+    <BusinessSubScreen title="Where it sells" onBack={props.onBack}>
+      <LiveAvailabilityStep
+        item={{
+    kind: 'product',
+    title: props.draft.title,
+    image: props.draft.mainImage,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: props.draft.lowStock ? [['Low-stock alert', `${props.draft.lowStock} units`]] : [],
+  }}
+        selected={Object.keys(props.draft.branches ?? {}).filter((id) => props.draft.branches[id])}
+        onChange={(ids) => props.onDraftChange({ branches: Object.fromEntries(ids.map((id) => [id, true])) })}
+        onBack={props.onBack}
+        onNext={props.onNext}
+        nextLabel="Review & publish"
+      />
+    </BusinessSubScreen>
   );
 }

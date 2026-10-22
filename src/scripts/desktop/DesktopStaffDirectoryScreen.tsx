@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { TeamPanel } from '../../components/business/TeamPanels';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
@@ -154,6 +156,21 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
   const showAmara = (roleFilter === 'all' || roleFilter === 'managers') && matches('amara kalu +234 812 443 0912 victoria island branch lagos');
   const showTunde = (roleFilter === 'all' || roleFilter === 'cashiers') && matches('tunde bakare vem-csh-094 wuse branch terminal 1 cashier');
   const showKemi = (roleFilter === 'all' || roleFilter === 'pending') && matches('kemi davies kemi.d@example.com pending invite wuse branch');
+
+  // Live: the real team from the API; the designed directory below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <EnterpriseShell activeNav="business-staff" onNav={onNav}>
+        <div className="w-full py-space-xl flex flex-col gap-space-lg">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Staff &amp; Permissions</h1>
+            <p className="font-body-md text-body-md text-text-secondary">Who works at your branches and what they can do.</p>
+          </div>
+          <TeamPanel onInvite={() => onInvite?.()} />
+        </div>
+      </EnterpriseShell>
+    );
+  }
 
   return (
     <EnterpriseShell activeNav="business-staff" onNav={onNav}>

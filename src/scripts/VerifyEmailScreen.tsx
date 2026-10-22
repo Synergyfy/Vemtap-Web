@@ -4,8 +4,10 @@ import { ScreenHeader } from '../components/ui/ScreenHeader';
 
 interface VerifyEmailScreenProps {
   onBack: () => void;
-  onContinue: () => void;
+  onContinue: (code: string) => Promise<void> | void;
   onEditEmail: () => void;
+  email?: string;
+  onResend?: (email: string) => Promise<void> | void;
   /** "Set up your business on VEMTAP" shortcut (desktop parity). */
   onBusinessSetup?: () => void;
 }
@@ -15,13 +17,14 @@ const RESEND_SECONDS = 45;
 
 type Status = 'idle' | 'verifying';
 
-export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, onBusinessSetup }: VerifyEmailScreenProps) {
+export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '', onResend, onBusinessSetup }: VerifyEmailScreenProps) {
   const [digits, setDigits] = useState<string[]>(() => Array(CODE_LENGTH).fill(''));
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState<Status>('idle');
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const [error, setError] = useState<string | null>(null);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
-  const email = 'jo****@gmail.com';
+  const emailLabel = email ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : 'your email';
 
   useEffect(() => {
     if (secondsLeft <= 0) return;
@@ -84,17 +87,31 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, onBusinessS
     window.setTimeout(() => focusInput(Math.min(pasted.length, CODE_LENGTH - 1)), 0);
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (secondsLeft > 0) return;
+    setError(null);
     setDigits(Array(CODE_LENGTH).fill(''));
     setSecondsLeft(RESEND_SECONDS);
     window.setTimeout(() => focusInput(0), 0);
+    if (onResend && email) {
+      try {
+        await Promise.resolve(onResend(email));
+      } catch (resendError) {
+        setError(resendError instanceof Error ? resendError.message : 'We could not resend your code. Please try again.');
+      }
+    }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!isComplete || status !== 'idle') return;
+    setError(null);
     setStatus('verifying');
-    window.setTimeout(onContinue, 900);
+    try {
+      await Promise.resolve(onContinue(code));
+    } catch (continueError) {
+      setError(continueError instanceof Error ? continueError.message : 'The verification code is invalid. Please try again.');
+      setStatus('idle');
+    }
   };
 
   return (
@@ -111,6 +128,11 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, onBusinessS
           <span className="font-label-sm text-label-sm text-text-secondary">Step 2 of 3</span>
         </div>
 
+        {error ? (
+          <div className="mb-space-md rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
+            {error}
+          </div>
+        ) : null}
         <div className="flex flex-col items-center text-center mt-space-sm mb-space-lg">
           <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-surface-container-low shadow-sm mb-space-md">
             <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary-container/10 to-transparent" />
@@ -131,7 +153,7 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, onBusinessS
           </p>
 
           <div className="mt-space-xs inline-flex items-center gap-space-xs px-space-sm py-1.5 rounded-full bg-surface-subtle shadow-sm">
-            <span className="font-label-md text-label-md text-text-primary font-semibold">{email}</span>
+            <span className="font-label-md text-label-md text-text-primary font-semibold">{emailLabel}</span>
             <button
               aria-label="Edit email address"
               type="button"

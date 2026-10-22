@@ -1,7 +1,157 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
+import { useProfile } from '../context/ProfileContext';
+import { hasApiConfig } from '../lib/api';
+import { accountService, authService } from '../services';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../services/api/client';
+import { DevicesDialog, type LinkedDevice } from '../components/business/SecurityPrivacyDialogs';
+
+const deviceIcon = (device: LinkedDevice) =>
+  /ipad|tablet/i.test(`${device.deviceName} ${device.userAgent ?? ''}`)
+    ? 'tablet_mac'
+    : /iphone|android|mobile|ios/i.test(`${device.platform} ${device.userAgent ?? ''}`)
+      ? 'smartphone'
+      : 'computer';
+
+const lastActive = (iso: string) => {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  return days <= 0 ? 'Active today' : days === 1 ? 'Last active yesterday' : `Last active ${days} days ago`;
+};
+
+function PasswordChangeModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [revealed, setRevealed] = useState({ current: false, next: false, confirm: false });
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const submit = async () => {
+    if (currentPassword.length < 8) {
+      setError('Current password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('New password confirmation does not match.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await authService.changePassword({ currentPassword, newPassword });
+      onSaved();
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (changePasswordError) {
+      console.error('Password change failed:', changePasswordError);
+      setError('Unable to update your password right now. Please try again later.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const field = (
+    label: string,
+    value: string,
+    setter: (value: string) => void,
+    fieldKey: 'current' | 'next' | 'confirm',
+  ) => (
+    <label className="flex flex-col gap-space-2xs">
+      <span className="font-label-sm text-label-sm text-text-secondary font-semibold">{label}</span>
+      <div className="relative">
+        <input
+          type={revealed[fieldKey] ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => setter(event.target.value)}
+          className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface outline-none focus:border-primary transition-colors"
+        />
+        <button
+          type="button"
+          aria-label={revealed[fieldKey] ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          onClick={() => setRevealed((currentState) => ({ ...currentState, [fieldKey]: !currentState[fieldKey] }))}
+          className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-text-tertiary hover:bg-surface-container hover:text-on-surface transition-colors"
+        >
+          <Icon name={revealed[fieldKey] ? 'visibility_off' : 'visibility'} className="text-[18px]" />
+        </button>
+      </div>
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-inverse-surface/40 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="Change password" className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md">
+        <div className="flex items-start justify-between gap-space-sm">
+          <div className="flex items-center gap-space-sm">
+            <span className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+              <Icon name="lock" className="text-[20px]" />
+            </span>
+            <div className="flex flex-col">
+              <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Change password</h2>
+              <p className="font-caption text-caption text-text-secondary">Update your sign-in credentials securely</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} title="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-on-surface hover:bg-surface-subtle transition-colors">
+            <Icon name="close" className="text-[18px]" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-space-sm">
+          {field('Current password', currentPassword, setCurrentPassword, 'current')}
+          {field('New password', newPassword, setNewPassword, 'next')}
+          {field('Confirm new password', confirmPassword, setConfirmPassword, 'confirm')}
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-lg bg-error-container text-error font-label-sm text-label-sm">
+            <Icon name="error" className="text-[16px]" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-space-sm pt-space-2xs">
+          <button type="button" onClick={onClose} className="h-11 px-space-md rounded-xl bg-surface-container text-on-surface font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={() => void submit()} disabled={isSubmitting} className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform disabled:opacity-70">
+            <span>{isSubmitting ? 'Updating...' : 'Update password'}</span>
+            <Icon name="check" className="text-[18px]" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface AccountSettingsScreenProps {
   onBack: () => void;
@@ -45,6 +195,7 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 }
 
 export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSignOut }: AccountSettingsScreenProps) {
+  const profile = useProfile();
   const [toggles, setToggles] = useState<ToggleState>({
     biometrics: true,
     sms: true,
@@ -53,7 +204,46 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   });
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showDevices, setShowDevices] = useState(false);
+  const live = hasApiConfig();
+  // Same cache key as the Devices dialog, so signing a device out refreshes this list too.
+  const devices = useQuery({
+    queryKey: ['business-settings', 'linked-devices'],
+    queryFn: () => api.get<LinkedDevice[]>('/users/linked-devices'),
+    enabled: live,
+  });
+  const activeDevices = (devices.data ?? [])
+    .filter((device) => !device.revokedAt)
+    .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.lastActiveAt.localeCompare(a.lastActiveAt));
+  const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
+
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+
+    let cancelled = false;
+    const fetchSecurity = async () => {
+      try {
+        const response = await accountService.getSecurity();
+        if (!cancelled) {
+          const nextSecurityState =
+            response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object'
+              ? (response.data as Record<string, unknown>)
+              : (response && typeof response === 'object' ? (response as Record<string, unknown>) : {});
+
+          setSecurityState(nextSecurityState);
+        }
+      } catch (error) {
+        console.warn('Unable to load account security settings:', error);
+      }
+    };
+
+    fetchSecurity();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -68,6 +258,10 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
     });
   };
 
+  const handlePasswordReset = () => {
+    setShowPasswordChangeModal(true);
+  };
+
   const sectionTitle =
     'font-label-sm text-label-sm text-text-tertiary uppercase tracking-wider font-semibold px-space-2xs';
   const rowButton =
@@ -76,6 +270,13 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   const rowTitle = 'font-heading-sm text-heading-sm text-text-primary text-[15px]';
   const rowHint = 'font-caption text-caption text-text-secondary truncate';
   const chevron = <Icon name="chevron_right" className="text-outline-variant text-[20px] shrink-0" />;
+  const displayName = profile.fullName || 'User';
+  const emailAddress = profile.email || 'No email';
+  const phoneNumber = profile.phone || 'No phone number';
+  const securityLabel =
+    typeof securityState?.status === 'string' && securityState.status.trim()
+      ? securityState.status
+      : 'Protected';
 
   return (
     <AppScreen>
@@ -112,7 +313,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               </div>
               <div>
                 <span className="inline-flex items-center px-space-xs py-0.5 rounded-full bg-badge-discount-bg font-caption text-caption text-badge-discount-text font-semibold">
-                  Security Status: Protected
+                  Security Status: {securityLabel}
                 </span>
               </div>
             </div>
@@ -124,7 +325,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           <div className="pt-space-2xs flex items-center gap-space-xs text-text-tertiary">
             <Icon name="account_circle" className="text-[16px] text-primary" />
             <span className="font-caption text-caption text-text-secondary truncate">
-              Zainab Ahmed • +234 803 555 0192 •{' '}
+              {displayName} • {phoneNumber} •{' '}
               <span className="text-badge-discount-text font-medium">Verified</span>
             </span>
           </div>
@@ -177,7 +378,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
 
             <button
               type="button"
-              onClick={() => showToast('Password reset link sent to your email')}
+              onClick={() => void handlePasswordReset()}
               className={`${rowButton} hover:bg-surface-subtle`}
             >
               <div className="flex items-center gap-space-sm min-w-0">
@@ -186,7 +387,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Change Password</span>
-                  <p className={rowHint}>Last updated on Oct 4, 2024</p>
+                  <p className={rowHint}>{live ? 'Change the password you sign in with' : 'Last updated on Oct 4, 2024'}</p>
                 </div>
               </div>
               {chevron}
@@ -196,6 +397,44 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
 
         <section className="space-y-space-xs">
           <h2 className={sectionTitle}>Devices &amp; Sessions</h2>
+          {live ? (
+            <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-md">
+              {devices.isLoading && <p className={rowHint}>Loading devices…</p>}
+              {devices.isError && <p className={rowHint}>Couldn&apos;t load your devices.</p>}
+              {devices.isSuccess && activeDevices.length === 0 && <p className={rowHint}>No signed-in devices.</p>}
+              {activeDevices.slice(0, 2).map((device, index) => (
+                <div key={device.id}>
+                  {index > 0 && <div className="h-[1px] bg-surface-container w-full mb-space-md" />}
+                  <div className="flex items-start gap-space-sm min-w-0">
+                    <div className={`${device.isCurrent ? iconTile : 'w-10 h-10 rounded-xl bg-surface-subtle flex items-center justify-center shrink-0'} mt-0.5`}>
+                      <Icon name={deviceIcon(device)} className={`${device.isCurrent ? 'text-primary' : 'text-secondary'} text-[22px]`} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-space-2xs flex-wrap">
+                        <span className={rowTitle}>{device.deviceName || device.platform}</span>
+                        {device.isCurrent && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-badge-discount-bg font-caption text-[11px] text-badge-discount-text font-semibold">
+                            This device
+                          </span>
+                        )}
+                      </div>
+                      <p className={rowHint}>
+                        {device.platform} • {device.isCurrent ? 'Active now' : lastActive(device.lastActiveAt)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setShowDevices(true)}
+                className="w-full text-left pt-space-2xs flex items-center justify-between text-primary font-label-md text-label-md font-semibold active:opacity-75 transition-opacity"
+              >
+                <span>Manage All Devices ({activeDevices.length}) &amp; Log Out Others</span>
+                <Icon name="arrow_forward" className="text-[18px]" />
+              </button>
+            </div>
+          ) : (
           <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-md">
             <div className="flex items-start justify-between gap-space-xs">
               <div className="flex items-start gap-space-sm min-w-0">
@@ -237,6 +476,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               <Icon name="arrow_forward" className="text-[18px]" />
             </button>
           </div>
+          )}
         </section>
 
         <section className="space-y-space-xs">
@@ -250,7 +490,11 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>SMS Alerts</span>
                   <p className="font-caption text-caption text-text-secondary line-clamp-1">
-                    Codes for sign-ins to +234 803 555 0192
+                    {live
+                      ? profile.phone
+                        ? `Codes for sign-ins to ${profile.phone}`
+                        : 'Add a phone number to get sign-in codes'
+                      : 'Codes for sign-ins to +234 803 555 0192'}
                   </p>
                 </div>
               </div>
@@ -265,7 +509,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Email Notices</span>
                   <p className="font-caption text-caption text-text-secondary line-clamp-1">
-                    Sent to zainab.ahmed@example.com
+                    Sent to {emailAddress}
                   </p>
                 </div>
               </div>
@@ -301,7 +545,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Location Precision</span>
-                  <p className={rowHint}>Deals within 5km in Apo &amp; Maitama</p>
+                  <p className={rowHint}>{live ? 'How precisely VEMTAP uses your location' : 'Deals within 5km in Apo & Maitama'}</p>
                 </div>
               </div>
               <div className="flex items-center gap-space-2xs shrink-0">
@@ -431,6 +675,14 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
         </div>
       )}
 
+      <PasswordChangeModal
+        open={showPasswordChangeModal}
+        onClose={() => setShowPasswordChangeModal(false)}
+        onSaved={() => {
+          setShowPasswordChangeModal(false);
+          showToast('Password updated successfully');
+        }}
+      />
       <DeleteAccountSheet
         open={showDeleteAccount}
         onClose={() => setShowDeleteAccount(false)}
@@ -439,6 +691,8 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           onSignOut();
         }}
       />
+
+      {showDevices && <DevicesDialog onClose={() => setShowDevices(false)} />}
 
       {toast && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-space-md py-2.5 rounded-full shadow-lg font-label-md text-label-md flex items-center gap-2 transition-all duration-300">
