@@ -102,6 +102,11 @@ export function useBusinessSetupNav(): BusinessSetupNavValue | null {
  * snapshot keeps the merchant's progress (current step + in-flight drafts)
  * alive across that round trip so returning resumes at the right step instead
  * of restarting setup.
+ *
+ * It is additionally mirrored into `sessionStorage`, so a hard browser
+ * refresh (or reopening the tab on Vercel, where every URL is a fresh page
+ * load) resumes the run at the same step with the same drafts instead of
+ * restarting setup from scratch.
  * ------------------------------------------------------------------ */
 
 export interface BusinessSetupSnapshot {
@@ -117,7 +122,11 @@ const STORAGE_KEY = 'vemtap_business_setup';
 const readStored = (): BusinessSetupSnapshot | null => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as BusinessSetupSnapshot) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BusinessSetupSnapshot | null;
+    // A corrupted or older-shaped payload starts clean instead of crashing setup.
+    if (!parsed || typeof parsed.step !== 'string' || typeof parsed.data !== 'object' || !parsed.data) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -162,7 +171,10 @@ export function setBusinessSetupVerificationState(state: VerificationSectionStat
  * merchant back to the screen they just left.
  */
 export function setBusinessSetupSnapshotStep(step: string): void {
-  if (snapshot) snapshot = { ...snapshot, step };
+  if (snapshot) {
+    snapshot = { ...snapshot, step };
+    persist();
+  }
 }
 
 /** Called only once setup is genuinely finished, so a new run starts clean. */
