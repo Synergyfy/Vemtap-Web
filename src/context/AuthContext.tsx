@@ -32,7 +32,17 @@ const DEFAULT_VALUE: AuthContextValue = {
 
 const AUTHED_KEY = 'vemtap_authed';
 const CLAIMED_KEY = 'vemtap_claimed';
+const CLAIMS_KEY = 'vemtap_claims';
 const PROFILE_KEY = 'vemtap_profile';
+
+const clearStoredClaims = () => {
+  try {
+    window.localStorage.removeItem(CLAIMS_KEY);
+    window.localStorage.removeItem(CLAIMED_KEY);
+  } catch {
+    // storage unavailable; ignore cleanup failures
+  }
+};
 
 const readFlag = (key: string) => {
   try {
@@ -40,6 +50,22 @@ const readFlag = (key: string) => {
   } catch {
     return false;
   }
+};
+
+const readStoredClaims = () => {
+  try {
+    const raw = window.localStorage.getItem(CLAIMS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const readClaimedState = () => {
+  const storedClaims = readStoredClaims();
+  return storedClaims.length > 0;
 };
 
 const writeFlag = (key: string, value: boolean) => {
@@ -109,7 +135,7 @@ const AuthContext = createContext<AuthContextValue>(DEFAULT_VALUE);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(() => readFlag(AUTHED_KEY) || Boolean(getAccessToken()));
-  const [claimed, setClaimed] = useState(() => readFlag(CLAIMED_KEY));
+  const [claimed, setClaimed] = useState(() => readClaimedState());
 
   useEffect(() => {
     if (authed) {
@@ -170,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             throw error;
           } finally {
             clearStoredProfile();
+            clearStoredClaims();
             clearAuthTokens();
             writeFlag(AUTHED_KEY, false);
             writeFlag(CLAIMED_KEY, false);
@@ -181,6 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         clearAuthTokens();
         clearStoredProfile();
+        clearStoredClaims();
         writeFlag(AUTHED_KEY, false);
         writeFlag(CLAIMED_KEY, false);
         setAuthed(false);
@@ -191,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthed(next);
         if (!next) {
           clearStoredProfile();
+          clearStoredClaims();
           writeFlag(CLAIMED_KEY, false);
           setClaimed(false);
         }

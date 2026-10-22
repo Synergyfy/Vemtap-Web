@@ -1278,45 +1278,53 @@ function AppInner() {
     setRoute(authed ? 'claim-confirm' : 'claim-auth');
   };
 
-  const completeClaim = () => {
-    const record = claims.recordClaim({
-      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
-      kind: claimRecipient ? 'someone-else' : 'self',
-      dealTitle: selectedDeal?.title ?? 'Featured local deal',
-      dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-      dealImage: selectedDeal?.image,
-      dealLocation: selectedDeal?.location,
-      dealPrice: parsePrice(selectedDeal?.price),
-      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-      discountLabel: selectedDeal?.discountLabel,
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      recipient: claimRecipient ?? undefined,
-    });
-    setActiveClaim(record);
-    setClaimRecipient(null);
-    markClaimed();
-    setRoute('claim-success');
+  const completeClaim = async () => {
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind: claimRecipient ? 'someone-else' : 'self',
+        dealTitle: selectedDeal?.title ?? 'Featured local deal',
+        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+        dealImage: selectedDeal?.image,
+        dealLocation: selectedDeal?.location,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel,
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        recipient: claimRecipient ?? undefined,
+      });
+      setActiveClaim(record);
+      setClaimRecipient(null);
+      markClaimed();
+      setRoute('claim-success');
+    } catch {
+      // Do not continue to the success screen unless the backend confirms the claim.
+    }
   };
 
-  const completeGift = () => {
-    const record = claims.recordClaim({
-      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
-      kind: 'gift',
-      dealTitle: selectedDeal?.title ?? 'Featured local deal',
-      dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-      dealImage: selectedDeal?.image,
-      dealLocation: selectedDeal?.location,
-      dealPrice: parsePrice(selectedDeal?.price),
-      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-      discountLabel: selectedDeal?.discountLabel,
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      recipient: giftRecipient
-        ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
-        : undefined,
-    });
-    setActiveClaim(record);
-    markClaimed();
-    setRoute('gift-sent');
+  const completeGift = async () => {
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind: 'gift',
+        dealTitle: selectedDeal?.title ?? 'Featured local deal',
+        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+        dealImage: selectedDeal?.image,
+        dealLocation: selectedDeal?.location,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel,
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        recipient: giftRecipient
+          ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
+          : undefined,
+      });
+      setActiveClaim(record);
+      markClaimed();
+      setRoute('gift-sent');
+    } catch {
+      // Keep the user on the claim flow until the backend confirms the gift claim.
+    }
   };
 
   /**
@@ -1343,31 +1351,36 @@ function AppInner() {
   };
 
   /** BUG-005/BUG-006/BUG-009 — "Claim for myself" only completes after the identity confirmation step. */
-  const confirmSelfClaim = () => {
+  const confirmSelfClaim = async () => {
     setClaimSelfConfirmOpen(false);
     const onClaimed = claimSuccessRef.current;
     claimSuccessRef.current = null;
     onClaimed?.();
-    const record = claims.recordClaim({
-      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
-      kind: 'self',
-      dealTitle: selectedDeal?.title ?? 'Featured local deal',
-      dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-      dealImage: selectedDeal?.image,
-      dealLocation: selectedDeal?.location,
-      dealPrice: parsePrice(selectedDeal?.price),
-      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-      discountLabel: selectedDeal?.discountLabel,
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-    });
-    setActiveClaim(record);
-    if (claimed) {
-      setClaimedFrom(route);
-      setRoute('claimed-deal');
-      return;
+
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind: 'self',
+        dealTitle: selectedDeal?.title ?? 'Featured local deal',
+        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+        dealImage: selectedDeal?.image,
+        dealLocation: selectedDeal?.location,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel,
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+      });
+      setActiveClaim(record);
+      if (claimed) {
+        setClaimedFrom(route);
+        setRoute('claimed-deal');
+        return;
+      }
+      markClaimed();
+      setRoute('claim-success');
+    } catch {
+      // Do not transition to success until backend confirms the claim.
     }
-    markClaimed();
-    setRoute('claim-success');
   };
 
   const [claimPopupOpen, setClaimPopupOpen] = useState(false);

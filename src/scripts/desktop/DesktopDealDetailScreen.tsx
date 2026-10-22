@@ -215,34 +215,39 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     setDialog(step);
   };
 
-  const completeClaim = () => {
+  const completeClaim = async () => {
     const kind: ClaimKind =
       dialog === 'giftConfirm' ? 'gift' : dialog === 'summary' ? 'someone-else' : 'self';
-    const record = claims.recordClaim({
-      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
-      kind,
-      dealTitle: selectedDeal?.title ?? dealTitle,
-      dealBusiness: selectedDeal?.business ?? dealBusiness,
-      dealImage: selectedDeal?.image ?? MAIN_IMAGE,
-      dealLocation: selectedDeal?.location ?? dealLocation,
-      dealPrice: parsePrice(selectedDeal?.price),
-      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-      discountLabel: selectedDeal?.discountLabel ?? 'Save on this deal',
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
-    });
-    markClaimed();
-    setDialog(null);
-    setClaimRecipient(null);
-    if (onClaimComplete) {
-      onClaimComplete(record);
-      return;
+
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind,
+        dealTitle: selectedDeal?.title ?? dealTitle,
+        dealBusiness: selectedDeal?.business ?? dealBusiness,
+        dealImage: selectedDeal?.image ?? MAIN_IMAGE,
+        dealLocation: selectedDeal?.location ?? dealLocation,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel ?? 'Save on this deal',
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
+      });
+      markClaimed();
+      setDialog(null);
+      setClaimRecipient(null);
+      if (onClaimComplete) {
+        onClaimComplete(record);
+        return;
+      }
+      showToast(
+        kind === 'gift'
+          ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
+          : `Deal claimed! Present ${record.ref} at the local merchant.`,
+      );
+    } catch {
+      // Do not show a success state until the backend confirms the claim.
     }
-    showToast(
-      kind === 'gift'
-        ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
-        : `Deal claimed! Present ${record.ref} at the local merchant.`,
-    );
   };
 
   const copyDealLink = () => {

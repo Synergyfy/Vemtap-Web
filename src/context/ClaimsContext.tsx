@@ -72,7 +72,7 @@ export interface ClaimInput {
 
 interface ClaimsContextValue {
   claims: ClaimRecord[];
-  recordClaim: (input: ClaimInput) => ClaimRecord;
+  recordClaim: (input: ClaimInput) => Promise<ClaimRecord>;
   byRef: (ref: string) => ClaimRecord | undefined;
   latestOf: (kind: ClaimKind) => ClaimRecord | undefined;
   removeClaim: (ref: string) => void;
@@ -83,6 +83,7 @@ interface ClaimsContextValue {
 }
 
 const CLAIMS_KEY = 'vemtap_claims';
+const LEGACY_CLAIMED_KEY = 'vemtap_claimed';
 
 /** Generic default values used only when the backend does not return claim metadata. */
 export const DEFAULT_CLAIMED_DEAL = {
@@ -250,6 +251,16 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
           (claim, index, source) => source.findIndex((candidate) => candidate.ref === claim.ref) === index,
         );
 
+        try {
+          if (dedupedClaims.length > 0) {
+            window.localStorage.setItem(LEGACY_CLAIMED_KEY, '1');
+          } else {
+            window.localStorage.removeItem(LEGACY_CLAIMED_KEY);
+          }
+        } catch {
+          // storage unavailable; this is only legacy compatibility cleanup
+        }
+
         setClaims(dedupedClaims);
         writeClaims(dedupedClaims);
       } catch {
@@ -264,7 +275,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const recordClaim = useCallback(
-    (input: ClaimInput): ClaimRecord => {
+    async (input: ClaimInput): Promise<ClaimRecord> => {
       const record: ClaimRecord = {
         id: input.id,
         ref: newRef(input.kind, claims),
@@ -295,30 +306,84 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
           giftToken: input.giftToken,
         };
 
-        if (input.kind === 'gift') {
-          void apiPost<{ message?: string; data?: Record<string, unknown> }>('/catalogue/offers/claim/gift', {
-            offerId: input.offerId,
-            firstName: payload.firstName,
-            lastName: payload.lastName,
-            email: payload.email,
-            phone: payload.phone,
-            recipientName: input.recipient?.name,
-            recipientEmail: input.recipient?.email,
-            recipientPhone: input.recipient?.phone,
-          }).catch(() => undefined);
-        } else if (!input.code) {
-          void apiPost<{ message?: string; data?: Record<string, unknown> }>('/catalogue/offers/claim/request', payload)
-            .catch(() => undefined);
-        } else {
-          void apiPost<{ message?: string; data?: Record<string, unknown> }>('/catalogue/offers/claim/verify', payload)
-            .catch(() => undefined);
+        let response: unknown;
+        try {
+          if (input.kind === 'gift') {
+            response = await apiPost<{ message?: string; data?: Record<string, unknown>; claim?: Record<string, unknown> }>('/catalogue/offers/claim/gift', {
+              offerId: input.offerId,
+              firstName: payload.firstName,
+              lastName: payload.lastName,
+              email: payload.email,
+              phone: payload.phone,
+              recipientName: input.recipient?.name,
+              recipientEmail: input.recipient?.email,
+              recipientPhone: input.recipient?.phone,
+            });
+          } else if (!input.code) {
+            response = await apiPost<{ message?: string; data?: Record<string, unknown>; claim?: Record<string, unknown> }>('/catalogue/offers/claim/request', payload);
+          } else {
+            response = await apiPost<{ message?: string; data?: Record<string, unknown>; claim?: Record<string, unknown> }>('/catalogue/offers/claim/verify', payload);
+          }
+        } catch (error) {
+          throw new Error('Claim could not be confirmed by the backend.');
         }
+
+        const serverEntry =
+          (response && typeof response === 'object' && 'claim' in response && response.claim && typeof response.claim === 'object')
+            ? response.claim
+            : (response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object')
+              ? response.data
+              : response;
+
+        const normalized = normalizeClaimList(Array.isArray(serverEntry) ? serverEntry : [serverEntry]);
+        const confirmed = normalized[0] ?? record;
+
+        const persisted = {
+          ...record,
+          ...confirmed,
+          id: confirmed.id ?? record.id,
+          ref: confirmed.ref ?? record.ref,
+          kind: confirmed.kind ?? record.kind,
+          dealTitle: confirmed.dealTitle || record.dealTitle,
+          dealBusiness: confirmed.dealBusiness || record.dealBusiness,
+          dealImage: confirmed.dealImage ?? record.dealImage,
+          dealLocation: confirmed.dealLocation ?? record.dealLocation,
+          dealPrice: confirmed.dealPrice ?? record.dealPrice,
+          dealOldPrice: confirmed.dealOldPrice ?? record.dealOldPrice,
+          discountLabel: confirmed.discountLabel ?? record.discountLabel,
+          code: confirmed.code || record.code,
+          status: confirmed.status ?? record.status,
+          createdAt: confirmed.createdAt || record.createdAt,
+          recipient: confirmed.recipient ?? record.recipient,
+          sender: confirmed.sender ?? record.sender,
+          terms: confirmed.terms ?? record.terms,
+        };
+
+        setClaims((current) => {
+          const next = [persisted, ...current.filter((claim) => claim.ref !== persisted.ref)].slice(0, 40);
+          writeClaims(next);
+          try {
+            if (next.length > 0) window.localStorage.setItem(LEGACY_CLAIMED_KEY, '1');
+            else window.localStorage.removeItem(LEGACY_CLAIMED_KEY);
+          } catch {
+            // storage unavailable; ignore legacy cleanup failures
+          }
+          return next;
+        });
+
+        return persisted;
       }
 
       setClaims((current) => {
         if (current.some((claim) => claim.ref === record.ref)) return current;
         const next = [record, ...current].slice(0, 40);
         writeClaims(next);
+        try {
+          if (next.length > 0) window.localStorage.setItem(LEGACY_CLAIMED_KEY, '1');
+          else window.localStorage.removeItem(LEGACY_CLAIMED_KEY);
+        } catch {
+          // storage unavailable; ignore legacy cleanup failures
+        }
         return next;
       });
 
@@ -350,6 +415,12 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
 
       const next = current.filter((claim) => claim.ref !== ref);
       writeClaims(next);
+      try {
+        if (next.length > 0) window.localStorage.setItem(LEGACY_CLAIMED_KEY, '1');
+        else window.localStorage.removeItem(LEGACY_CLAIMED_KEY);
+      } catch {
+        // storage unavailable; ignore legacy cleanup failures
+      }
       return next;
     });
   }, []);
@@ -363,6 +434,12 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
       setClaims((current) => {
         const next = current.filter((claim) => claim.id !== id && claim.ref !== id);
         writeClaims(next);
+        try {
+          if (next.length > 0) window.localStorage.setItem(LEGACY_CLAIMED_KEY, '1');
+          else window.localStorage.removeItem(LEGACY_CLAIMED_KEY);
+        } catch {
+          // storage unavailable; ignore legacy cleanup failures
+        }
         return next;
       });
       return deleted;
