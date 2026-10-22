@@ -185,7 +185,7 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated }: ClaimAuthModa
                     onChange={(event) => handleChange(index, event.target.value)}
                     onKeyDown={(event) => handleKeyDown(index, event)}
                     onFocus={(event) => event.currentTarget.select()}
-                    className="w-full h-[52px] text-center font-heading-lg text-heading-lg text-text-primary bg-surface-subtle focus:bg-surface-canvas rounded-xl shadow-inner focus:outline-none focus:ring-2 focus:ring-primary-container/20 transition-all select-all caret-primary"
+                    className="w-full h-[52px] text-center font-heading-lg text-heading-lg text-text-primary bg-surface-canvas border-2 border-outline-variant rounded-xl focus:outline-none focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 transition-all select-all caret-primary shadow-sm"
                   />
                 ))}
               </div>

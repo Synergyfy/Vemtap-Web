@@ -9,6 +9,8 @@ interface DesktopSignInScreenProps {
   onBusinessRegister: () => void;
   onCustomerSignIn: () => void;
   onBusinessSignIn: () => void;
+  /** Returns to wherever sign-in was opened from (mobile parity). */
+  onBack?: () => void;
 }
 
 type Status = 'idle' | 'submitting';
@@ -61,6 +63,7 @@ export function DesktopSignInScreen({
   onBusinessRegister,
   onCustomerSignIn,
   onBusinessSignIn,
+  onBack,
 }: DesktopSignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -153,6 +156,16 @@ export function DesktopSignInScreen({
 
           <div className="lg:col-span-7 p-space-xl lg:p-space-2xl bg-surface-canvas flex flex-col justify-between">
             <div className="flex flex-col gap-space-lg max-w-lg mx-auto w-full">
+              {onBack && (
+                <button
+                  className="inline-flex items-center gap-space-2xs text-text-secondary hover:text-primary transition-colors -ml-1 w-fit font-label-md text-label-md font-medium"
+                  type="button"
+                  onClick={onBack}
+                >
+                  <Icon name="arrow_back_ios_new" className="text-base" />
+                  <span>Back</span>
+                </button>
+              )}
               <div className="flex flex-col gap-space-2xs">
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-lg text-heading-lg text-text-primary">Sign In</h2>

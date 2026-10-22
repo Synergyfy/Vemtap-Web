@@ -10,6 +10,8 @@ import { useReferralStep } from '../hooks/useReferralStep';
 interface ProfileSetupScreenProps {
   onBack: () => void;
   onComplete: () => void;
+  /** "Set up your business on VEMTAP" shortcut (desktop parity). */
+  onBusinessSetup?: () => void;
 }
 
 type Status = 'idle' | 'saving';
@@ -43,12 +45,12 @@ function PinBoxes({
         return (
           <div
             key={index}
-            className={`w-[48px] h-[56px] rounded-xl flex items-center justify-center text-center font-heading-md text-heading-md font-semibold select-none shadow-sm transition-all duration-150 ${
+            className={`w-[48px] h-[56px] rounded-xl border-2 flex items-center justify-center text-center font-heading-md text-heading-md font-semibold select-none shadow-sm transition-all duration-150 ${
               filled
-                ? 'bg-surface-subtle text-text-primary'
+                ? 'bg-surface-canvas text-text-primary border-primary-container shadow-sm'
                 : isActive
-                  ? 'bg-surface-canvas text-primary-container shadow-md'
-                  : 'bg-surface-container-low text-text-tertiary'
+                  ? 'bg-surface-canvas text-primary border-primary-container ring-4 ring-primary-container/15 shadow-md'
+                  : 'bg-surface-canvas text-text-tertiary border-outline-variant'
             }`}
           >
             {filled ? (revealed ? value[index] : '•') : ''}
@@ -73,7 +75,7 @@ function PinBoxes({
   );
 }
 
-export function ProfileSetupScreen({ onBack, onComplete }: ProfileSetupScreenProps) {
+export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: ProfileSetupScreenProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -377,6 +379,21 @@ export function ProfileSetupScreen({ onBack, onComplete }: ProfileSetupScreenPro
               <Icon name="chevron_right" className="text-[20px] text-text-tertiary shrink-0" />
             </button>
           </div>
+
+          {onBusinessSetup && (
+            <div className="pt-space-xs text-center">
+              <p className="font-caption text-caption text-text-secondary">
+                Own a business?{' '}
+                <button
+                  className="text-primary font-medium hover:underline inline-flex items-center gap-0.5"
+                  type="button"
+                  onClick={onBusinessSetup}
+                >
+                  Set up your business on VEMTAP →
+                </button>
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

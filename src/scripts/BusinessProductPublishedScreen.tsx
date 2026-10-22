@@ -64,7 +64,7 @@ export function BusinessProductPublishedScreen({
           </div>
           <div className="flex items-center gap-space-sm flex-shrink-0">
             <div className="inline-flex items-center px-space-sm py-1 rounded-full bg-surface-tint-blue">
-              <span className="font-label-sm text-label-sm text-primary font-semibold">Step 4 of 4</span>
+              <span className="font-label-sm text-label-sm text-primary font-semibold">Step 5 of 5</span>
             </div>
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
               <Icon name="person" className="text-on-primary text-[18px]" />

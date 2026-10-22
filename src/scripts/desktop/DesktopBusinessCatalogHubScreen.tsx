@@ -4,6 +4,7 @@ import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { DesktopAddProductStep1Screen } from './DesktopAddProductStep1Screen';
 import { DesktopAddProductStep2Screen } from './DesktopAddProductStep2Screen';
+import { DesktopAddProductImageScreen } from './DesktopAddProductImageScreen';
 import { DesktopAddProductStep3Screen } from './DesktopAddProductStep3Screen';
 import { DesktopProductReviewScreen } from './DesktopProductReviewScreen';
 import { DesktopProductPublishedScreen } from './DesktopProductPublishedScreen';
@@ -651,6 +652,7 @@ export function DesktopBusinessCatalogHubScreen({
     | 'none'
     | 'addProduct1'
     | 'addProduct2'
+    | 'addProductImage'
     | 'addProduct3'
     | 'productReview'
     | 'productPricingConfig'
@@ -961,6 +963,18 @@ export function DesktopBusinessCatalogHubScreen({
         draft={productDraft}
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct1')}
+        onNext={() => setSubFlow('addProductImage')}
+        onSaveDraft={() => exitSubFlow()}
+        onNav={onNav}
+      />
+    );
+  }
+
+  if (subFlow === 'addProductImage') {
+    return (
+      <DesktopAddProductImageScreen
+        draft={productDraft}
+        onBack={() => setSubFlow('addProduct2')}
         onNext={() => setSubFlow('addProduct3')}
         onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
@@ -973,7 +987,7 @@ export function DesktopBusinessCatalogHubScreen({
       <DesktopAddProductStep3Screen
         draft={productDraft}
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => setSubFlow('addProduct2')}
+        onBack={() => setSubFlow('addProductImage')}
         onNext={() => setSubFlow('productReview')}
         onSaveDraft={() => exitSubFlow()}
         onNav={onNav}
@@ -991,6 +1005,7 @@ export function DesktopBusinessCatalogHubScreen({
         onEditBranches={() => setSubFlow('productPricingConfig')}
         onEditFulfillment={() => setSubFlow('addProduct3')}
         onEditDescription={() => setSubFlow('addProduct1')}
+        onEditImage={() => setSubFlow('addProductImage')}
         onEditSteps={() => setSubFlow('addProduct3')}
         onPublish={handlePublishProduct}
         onSaveDraft={() => exitSubFlow()}

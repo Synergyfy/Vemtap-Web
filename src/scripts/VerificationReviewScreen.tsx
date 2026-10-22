@@ -6,6 +6,10 @@ import { ScreenHeader } from '../components/ui/ScreenHeader';
 interface VerificationReviewScreenProps {
   onBack: () => void;
   onReviewComplete: () => void;
+  /** Post-review shortcuts — desktop parity: keep setting up while we review. */
+  onCatalog?: () => void;
+  onDeals?: () => void;
+  onProfile?: () => void;
   legalName: string;
   businessName: string;
 }
@@ -36,6 +40,9 @@ function ClockIcon() {
 export function VerificationReviewScreen({
   onBack,
   onReviewComplete,
+  onCatalog,
+  onDeals,
+  onProfile,
   legalName,
   businessName,
 }: VerificationReviewScreenProps) {
@@ -58,6 +65,12 @@ export function VerificationReviewScreen({
   };
 
   const reviewComplete = phase === 2;
+
+  const actionItems = [
+    { icon: 'restaurant_menu', title: 'Configure Storefront & Menu', onClick: onCatalog },
+    { icon: 'local_offer', title: 'Create Your First Deal', onClick: onDeals },
+    { icon: 'qr_code_2', title: 'Download Table QR Stands', onClick: onProfile },
+  ].filter((item) => item.onClick);
 
   return (
     <AppScreen>
@@ -227,24 +240,48 @@ export function VerificationReviewScreen({
         </div>
 
         {/* Reassurance / Continuous Setup Card */}
-        <div className="w-full bg-surface-container-lowest rounded-xl p-space-md shadow-sm mb-space-lg flex items-start gap-space-sm relative overflow-hidden">
-          <div className="w-9 h-9 rounded-full bg-badge-discount-bg flex items-center justify-center flex-shrink-0">
-            <Icon name="storefront" className="text-badge-discount-text text-[20px]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="font-label-md text-label-md text-text-primary font-semibold">
-                You don't have to wait here!
-              </span>
-              <span className="font-caption text-caption bg-surface-tint-blue text-primary px-1.5 py-0.5 rounded font-medium">
-                Ready
-              </span>
+        <div className="w-full bg-surface-container-lowest rounded-xl p-space-md shadow-sm mb-space-lg relative overflow-hidden flex flex-col gap-space-sm">
+          <div className="flex items-start gap-space-sm">
+            <div className="w-9 h-9 rounded-full bg-badge-discount-bg flex items-center justify-center flex-shrink-0">
+              <Icon name="storefront" className="text-badge-discount-text text-[20px]" />
             </div>
-            <p className="font-label-sm text-label-sm text-text-secondary leading-normal">
-              You can continue configuring your storefront, adding products, and customizing your deals in the
-              meantime.
-            </p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="font-label-md text-label-md text-text-primary font-semibold">
+                  You don't have to wait here!
+                </span>
+                <span className="font-caption text-caption bg-surface-tint-blue text-primary px-1.5 py-0.5 rounded font-medium">
+                  Ready
+                </span>
+              </div>
+              <p className="font-label-sm text-label-sm text-text-secondary leading-normal">
+                You can continue configuring your storefront, adding products, and customizing your deals in the
+                meantime.
+              </p>
+            </div>
           </div>
+          {actionItems.length > 0 && (
+            <div className="flex flex-col gap-space-xs">
+              {actionItems.map((item) => (
+                <button
+                  key={item.title}
+                  type="button"
+                  onClick={item.onClick}
+                  className="w-full p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-tint-blue active:scale-[0.99] transition-all flex items-center justify-between gap-space-sm text-left"
+                >
+                  <span className="flex items-center gap-space-sm min-w-0">
+                    <span className="w-9 h-9 rounded-lg bg-surface-container-lowest text-primary flex items-center justify-center shrink-0 shadow-sm">
+                      <Icon name={item.icon} className="text-[19px]" />
+                    </span>
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary truncate">
+                      {item.title}
+                    </span>
+                  </span>
+                  <Icon name="arrow_forward" className="text-text-tertiary text-[18px] shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Call to Actions */}
