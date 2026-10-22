@@ -170,7 +170,7 @@ import {
   BusinessSetupNavContext,
   clearBusinessSetupSnapshot,
   getBusinessSetupSnapshot,
-  hasBusinessSetupSnapshot,
+  setBusinessSetupSnapshotStep,
   setBusinessSetupVerificationState,
   type BusinessSetupNavValue,
 } from './scripts/businessSetup';
@@ -443,6 +443,7 @@ type Route =
   | 'discover-deals'
   | 'start-vemtap'
   | 'auth-code'
+  | 'business-auth'
   | 'sign-in'
   | 'forgot-pin'
   | 'liveness-done'
@@ -628,6 +629,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'discover-deals': '/discover-deals',
   'start-vemtap': '/start-vemtap',
   'auth-code': '/auth-code',
+  'business-auth': '/business-auth',
   'sign-in': '/sign-in',
   'forgot-pin': '/forgot-pin',
   'liveness-done': '/verification/liveness-done',
@@ -1045,6 +1047,15 @@ function AppInner() {
     lastName: '',
     phone: '',
   });
+  /**
+   * Which audience the in-flight sign-up belongs to. `auth-code` and
+   * `business-auth` both hand off to `verify-email` / `google-confirm`, so
+   * those screens need to know where "continue" must land: the consumer
+   * profile setup, or the Business Profile page for a merchant.
+   */
+  const [authIntent, setAuthIntent] = useState<'customer' | 'business'>('customer');
+  /** Sign In is reachable from several sign-ups — remember where it was opened from. */
+  const [signInFrom, setSignInFrom] = useState<Route>('welcome');
   const [feedFrom, setFeedFrom] = useState<Route>('home');
   /**
    * Referral code captured from a referral URL (e.g. `?ref=CODE`) at mount,
@@ -1078,6 +1089,13 @@ function AppInner() {
   const [bookingFrom, setBookingFrom] = useState<Route>('spa-profile');
   const [orderSummary, setOrderSummary] = useState<SubmittedOrder | null>(null);
   const [businessSetupSkipIntro, setBusinessSetupSkipIntro] = useState(false);
+  /**
+   * "Reuse this account or register a fresh business identity?" is asked from
+   * the business intro's primary button — i.e. once the merchant has actually
+   * started signing up — so it is its own state instead of being derived at
+   * route entry (which used to hide the intro behind the question).
+   */
+  const [businessChoiceOpen, setBusinessChoiceOpen] = useState(false);
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
   const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
   const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
@@ -1261,7 +1279,11 @@ function AppInner() {
   useEffect(() => {
     // The shared portal account menu clears the session, then asks the router
     // to move to the sign-in screen.
-    const handleSignOut = () => setRouteState('sign-in');
+    const handleSignOut = () => {
+      // Signing out is never "continue the business sign-up".
+      setSignInFrom('welcome');
+      setRouteState('sign-in');
+    };
     window.addEventListener(SIGN_OUT_EVENT, handleSignOut);
     return () => window.removeEventListener(SIGN_OUT_EVENT, handleSignOut);
   }, []);
@@ -1574,6 +1596,11 @@ function AppInner() {
     }
   }, [route, signIn]);
 
+  // The identity question only ever belongs to one visit to business onboarding.
+  useEffect(() => {
+    if (route !== 'business-onboarding') setBusinessChoiceOpen(false);
+  }, [route]);
+
   const openFeedRoute = (target: 'featured-deals' | 'filters', from: Route) => {
     setFeedFrom(from);
     setRoute(target);
@@ -1608,6 +1635,7 @@ function AppInner() {
         setRoute('business-onboarding');
         break;
       case 'sign-in':
+        setSignInFrom('welcome');
         setRoute('sign-in');
         break;
       case 'get-started':
@@ -1690,6 +1718,7 @@ function AppInner() {
         setRoute('business-onboarding');
         break;
       case 'sign-in':
+        setSignInFrom('welcome');
         setRoute('sign-in');
         break;
       case 'get-started':
@@ -2252,6 +2281,32 @@ function AppInner() {
     markAuthenticated(true);
   };
 
+  /**
+   * Point the saved run at "Business Profile": it is parked on the marketing
+   * intro while sign-up (or the account-identity choice) happens, so it must
+   * resume on profile details instead of looping back to that intro. A
+   * merchant already mid-setup keeps their saved step.
+   */
+  const resumeAtBusinessProfile = () => {
+    const saved = getBusinessSetupSnapshot();
+    if (!saved || saved.step === 'intro') setBusinessSetupSnapshotStep('basic');
+    setBusinessSetupSkipIntro(true);
+  };
+
+  /**
+   * A merchant who just finished business sign-up (`business-auth` → email
+   * code or Google confirmation) enters setup on "Business Profile". The
+   * marketing intro has already run, and the existing-account choice must not
+   * re-appear for this brand-new business identity.
+   */
+  const enterBusinessProfile = () => {
+    // Live, the owner-account step on setup signs the merchant in.
+    if (!hasApiConfig()) void signIn();
+    setAuthIntent('customer');
+    resumeAtBusinessProfile();
+    setRoute('business-onboarding');
+  };
+
   const renderClaimed = () =>
     isDesktop ? (
       <DesktopClaimedDealScreen
@@ -2271,10 +2326,16 @@ function AppInner() {
     );
 
   const renderRoute = () => {
+    // Sign In opened from the business sign-up modal: authenticating resumes
+    // business setup instead of dropping the merchant into the customer feed.
+    const resumeBusinessSetup = signInFrom === 'business-auth';
     switch (route) {
     case 'welcome':
       if (isDesktop) return <DesktopWelcomeScreen onNav={nav('start-vemtap')} />;
-      return <WelcomeScreen onGetStarted={() => setRoute('start-vemtap')} onSignIn={() => setRoute('sign-in')} />;
+      return <WelcomeScreen onGetStarted={() => setRoute('start-vemtap')} onSignIn={() => {
+        setSignInFrom('welcome');
+        setRoute('sign-in');
+      }} />;
 
     case 'discover-deals':
       if (isDesktop)
@@ -2308,7 +2369,10 @@ function AppInner() {
             setAuthFrom('start-vemtap');
             setRoute('auth-code');
           }}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => {
+            setBusinessOnboardingFrom('start-vemtap');
+            setRoute('business-onboarding');
+          }}
         />
       );
 
@@ -2316,17 +2380,26 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopAuthCodeScreen
+            onBack={() => setRoute(authFrom)}
             onContinue={() => setRoute('sign-in')}
             onSubmitEmail={async (email) => {
               await requestCustomerSignupOtp(email);
+              setAuthIntent('customer');
               setRoute('verify-email');
             }}
             onGoogle={() => {
               signIn();
+              setAuthIntent('customer');
               setRoute('google-confirm');
             }}
-            onSignIn={() => setRoute('sign-in')}
-            onBusinessRegister={() => setRoute('business-onboarding')}
+            onSignIn={() => {
+              setSignInFrom('auth-code');
+              setRoute('sign-in');
+            }}
+            onBusinessRegister={() => {
+              setBusinessOnboardingFrom('auth-code');
+              setRoute('business-onboarding');
+            }}
           />
         );
       return (
@@ -2335,13 +2408,80 @@ function AppInner() {
           onContinue={() => setRoute('sign-in')}
           onSubmitEmail={async (email) => {
             await requestCustomerSignupOtp(email);
+            setAuthIntent('customer');
             setRoute('verify-email');
           }}
           onGoogle={() => {
             signIn();
+            setAuthIntent('customer');
             setRoute('google-confirm');
           }}
-          onBusinessRegister={() => setRoute('business-onboarding')}
+          // "Already have an account? Sign In" reuses the shared sign-in
+          // screen instead of continuing into verification (desktop parity).
+          onSignIn={() => {
+            setSignInFrom('auth-code');
+            setRoute('sign-in');
+          }}
+          onBusinessRegister={() => {
+            setBusinessOnboardingFrom('auth-code');
+            setRoute('business-onboarding');
+          }}
+        />
+      );
+
+    /**
+     * The same sign-up modal, opened as a business. Entered from "Set Up My
+     * Business" on the business intro (and from "use a new account" on the
+     * account-choice screen), so `authIntent` routes verification to the
+     * Business Profile page and the swap card invites a customer to register
+     * instead of a second business.
+     */
+    case 'business-auth':
+      if (isDesktop)
+        return (
+          <DesktopAuthCodeScreen
+            mode="business"
+            onBack={() => setRoute('business-onboarding')}
+            onContinue={() => {
+              setAuthIntent('business');
+              setRoute('verify-email');
+            }}
+            onGoogle={() => {
+              signIn();
+              setAuthIntent('business');
+              setRoute('google-confirm');
+            }}
+            onSignIn={() => {
+              setSignInFrom('business-auth');
+              setRoute('sign-in');
+            }}
+            onCustomerRegister={() => {
+              setAuthFrom('business-auth');
+              setRoute('auth-code');
+            }}
+          />
+        );
+      return (
+        <AuthCodeScreen
+          mode="business"
+          onBack={() => setRoute('business-onboarding')}
+          onContinue={() => {
+            setAuthIntent('business');
+            setRoute('verify-email');
+          }}
+          onGoogle={() => {
+            signIn();
+            setAuthIntent('business');
+            setRoute('google-confirm');
+          }}
+          onSignIn={() => {
+            setSignInFrom('business-auth');
+            setRoute('sign-in');
+          }}
+          onCustomerRegister={() => {
+            setAuthFrom('business-auth');
+            setRoute('auth-code');
+          }}
         />
       );
 
@@ -2349,21 +2489,35 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopSignInScreen
+            onBack={() => setRoute(signInFrom)}
             onSignIn={async ({ identifier, password }) => {
               const user = await signIn({ identifier, password });
+              if (resumeBusinessSetup) {
+                enterBusinessProfile();
+                return;
+              }
               setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
             }}
             onGoogleSignIn={async () => {
               if (!hasApiConfig()) {
                 await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
               }
-              setRoute('discovering');
+              if (resumeBusinessSetup) {
+                enterBusinessProfile();
+                return;
+              }
+              setRoute('google-confirm');
             }}
             onCreateAccount={() => {
               setAuthFrom('sign-in');
               setRoute('auth-code');
             }}
-            onBusinessRegister={() => setRoute('business-onboarding')}
+            // Every business entry opens the business intro — the sign-up
+            // modal it leads to is what collects the new merchant's credentials.
+            onBusinessRegister={() => {
+              setBusinessOnboardingFrom('sign-in');
+              setRoute('business-onboarding');
+            }}
             onForgotPin={() => setRoute('forgot-pin')}
             onCustomerSignIn={async () => {
               setRoute('dashboard');
@@ -2375,22 +2529,35 @@ function AppInner() {
         );
       return (
         <SignInScreen
-          onBack={() => setRoute('welcome')}
+          onBack={() => setRoute(signInFrom)}
           onSignIn={async ({ identifier, password }) => {
             const user = await signIn({ identifier, password });
+            if (resumeBusinessSetup) {
+              enterBusinessProfile();
+              return;
+            }
             setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
           }}
           onGoogleSignIn={async () => {
             if (!hasApiConfig()) {
               await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
             }
-            setRoute('discovering');
+            if (resumeBusinessSetup) {
+              enterBusinessProfile();
+              return;
+            }
+            setRoute('google-confirm');
           }}
           onCreateAccount={() => {
             setAuthFrom('sign-in');
             setRoute('auth-code');
           }}
-          onBusinessRegister={() => setRoute('business-onboarding')}
+          // Every business entry opens the business intro — the sign-up
+          // modal it leads to is what collects the new merchant's credentials.
+          onBusinessRegister={() => {
+            setBusinessOnboardingFrom('sign-in');
+            setRoute('business-onboarding');
+          }}
           onForgotPin={() => setRoute('forgot-pin')}
           onCustomerSignIn={async () => {
             setRoute('dashboard');
@@ -2408,16 +2575,25 @@ function AppInner() {
       if (isDesktop) return <DesktopForgotPinScreen onBack={() => setRoute('sign-in')} />;
       return <ForgotPinScreen onBack={() => setRoute('sign-in')} />;
 
-    case 'verify-email':
+    case 'verify-email': {
+      // The code screen is shared: a merchant who signed up through
+      // `business-auth` finishes on the Business Profile page, a customer
+      // keeps going through the consumer profile setup.
+      const businessSignup = authIntent === 'business';
+      const authEntry: Route = businessSignup ? 'business-auth' : 'auth-code';
       if (isDesktop)
         return (
           <DesktopVerifyEmailScreen
-            onBack={() => setRoute('auth-code')}
+            onBack={() => setRoute(authEntry)}
             onContinue={async (code) => {
+              if (businessSignup) {
+                enterBusinessProfile();
+                return;
+              }
               await handleCustomerSignupVerification(code);
               setRoute('profile-setup');
             }}
-            onEditEmail={() => setRoute('auth-code')}
+            onEditEmail={() => setRoute(authEntry)}
             onBusinessSetup={() => setRoute('business-onboarding')}
             email={customerSignup.email}
             onResend={async () => {
@@ -2427,18 +2603,24 @@ function AppInner() {
         );
       return (
         <VerifyEmailScreen
-          onBack={() => setRoute('auth-code')}
+          onBack={() => setRoute(authEntry)}
           onContinue={async (code) => {
+            if (businessSignup) {
+              enterBusinessProfile();
+              return;
+            }
             await handleCustomerSignupVerification(code);
             setRoute('profile-setup');
           }}
-          onEditEmail={() => setRoute('auth-code')}
-          email={customerSignup.email}
-          onResend={async () => {
+          onEditEmail={() => setRoute(authEntry)}
+          onBusinessSetup={() => setRoute('business-onboarding')}
+          email={businessSignup ? undefined : customerSignup.email}
+          onResend={businessSignup ? undefined : async () => {
             await requestCustomerSignupOtp(customerSignup.email);
           }}
         />
       );
+    }
 
     case 'profile-setup':
       if (isDesktop)
@@ -2463,6 +2645,7 @@ function AppInner() {
             await completeCustomerSignup(details);
             setRoute('location-permission');
           }}
+          onBusinessSetup={() => setRoute('business-onboarding')}
         />
       );
 
@@ -3345,8 +3528,24 @@ function AppInner() {
         />
       );
 
-    case 'dashboard':
-      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} />;
+    case 'dashboard': {
+      /**
+       * Customer-dashboard "Get Started": a signed-in consumer first picks an
+       * identity for this run ("Continue with this account" vs. "Use a new
+       * account"), which is the same choice screen the business intro reaches
+       * through "Set Up My Business". Signed-out visitors have no account to
+       * reuse, so they go straight to the business sign-up modal.
+       */
+      const startBusinessSignup = () => {
+        setBusinessOnboardingFrom('dashboard');
+        if (authed) {
+          setBusinessChoiceOpen(true);
+          setRoute('business-onboarding');
+        } else {
+          setRoute('business-auth');
+        }
+      };
+      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} onStartBusinessSignup={startBusinessSignup} />;
       return (
         <DashboardScreen
           onTab={(tab) => setRoute(tab)}
@@ -3356,12 +3555,14 @@ function AppInner() {
             }
             setRoute(target);
           }}
+          onStartBusinessSignup={startBusinessSignup}
           onShowQR={() => {
             setClaimedFrom('dashboard');
             setRoute('claimed-deal');
           }}
         />
       );
+    }
 
     case 'orders':
       if (isDesktop)
@@ -3614,14 +3815,26 @@ function AppInner() {
       const finishGoogleConfirm = (details: GoogleConfirmDetails) => {
         if (details.referralCode) setProvisionalReferralCode(details.referralCode, 'manual');
         profile.update({ phone: details.phone });
+        // Merchant sign-up — the confirmed Google identity belongs to the
+        // business, so it enters setup instead of the customer feed.
+        if (authIntent === 'business') {
+          enterBusinessProfile();
+          return;
+        }
         setWelcomeAudience('customer');
         setRoute('discovering');
       };
+      const googleAuthEntry: Route = authIntent === 'business' ? 'business-auth' : 'auth-code';
       if (isDesktop)
         return (
-          <DesktopGoogleProfileConfirmScreen onBack={() => setRoute('auth-code')} onContinue={finishGoogleConfirm} />
+          <DesktopGoogleProfileConfirmScreen
+            onBack={() => setRoute(googleAuthEntry)}
+            onContinue={finishGoogleConfirm}
+          />
         );
-      return <GoogleProfileConfirmScreen onBack={() => setRoute('auth-code')} onContinue={finishGoogleConfirm} />;
+      return (
+        <GoogleProfileConfirmScreen onBack={() => setRoute(googleAuthEntry)} onContinue={finishGoogleConfirm} />
+      );
     }
 
     case 'account':
@@ -3640,7 +3853,9 @@ function AppInner() {
       return (
         <AccountScreen
           onTab={(tab) => setRoute(tab)}
-          onNavigate={(target) => setRoute(target)}
+          // `accountNav` records the origin so leaving setup returns here
+          // instead of the dashboard (desktop parity).
+          onNavigate={accountNav}
           onSignOut={() => {
             signOut();
             setRoute('home');
@@ -3831,14 +4046,14 @@ function AppInner() {
       );
 
     case 'business-onboarding': {
-      // A signed-in consumer starting business setup first chooses whether to
-      // reuse the existing (intact) consumer account or register a fresh,
-      // separate business identity. Reusing skips the marketing intro and
-      // lands directly on "Tell us about your business".
-      // Live owners already have their business identity — the choice is only for customers.
+      // Every business entry lands on the marketing intro first. The account
+      // question ("reuse this consumer account vs. a fresh business identity")
+      // only appears once the merchant actually starts signing up from it —
+      // reusing the account lands on "Tell us about your business".
+      // Live owners already have their business identity and skip the intro.
       const isOwnerSession = hasApiConfig() && sessionUser !== undefined && sessionUser !== null && isBusinessRole(sessionUser.role);
-      const showAccountChoice = authed && !isOwnerSession && !businessSetupSkipIntro && !hasBusinessSetupSnapshot();
       const leaveOnboarding = () => {
+        setBusinessChoiceOpen(false);
         setBusinessSetupSkipIntro(false);
         const destination = authed
           ? (businessOnboardingFrom && businessOnboardingFrom !== 'business-onboarding'
@@ -3859,14 +4074,43 @@ function AppInner() {
       const useNewAccount = () => {
         // BUG-028: normal registration flow with a fresh Google / email
         // identity — never silently linked to the existing consumer account.
+        // That fresh identity is a *business*, so it signs up through the
+        // business modal (which then lands on Business Profile).
+        setBusinessChoiceOpen(false);
         setBusinessSetupSkipIntro(false);
-        setRoute('auth-code');
+        setRoute('business-auth');
       };
+      const continueWithAccount = () => {
+        // Reusing the consumer account skips straight to profile details — the
+        // intro has already been shown, so re-aim the saved run at `basic`.
+        setBusinessChoiceOpen(false);
+        resumeAtBusinessProfile();
+      };
+      /**
+       * "Set Up My Business": an unknown visitor signs up through the business
+       * modal, a signed-in consumer first picks an identity for this run, and
+       * a merchant already inside their own run continues where they left off.
+       */
+      const startBusinessSignup = isOwnerSession
+        ? undefined
+        : !authed
+          ? // Live sign-up is the owner-account step below; the demo uses the modal.
+            hasApiConfig()
+            ? resumeAtBusinessProfile
+            : () => setRoute('business-auth')
+          : businessSetupSkipIntro
+            ? undefined
+            : () => setBusinessChoiceOpen(true);
 
-      // Live: setup saves to the API, so it needs an owner account first —
-      // register one when signed out, or upgrade a signed-in customer.
+      // Live: setup saves to the API, so once the merchant starts it needs an
+      // owner account — register one when signed out, or upgrade a signed-in
+      // customer who chose to reuse their account.
       const needsOwnerAccount =
-        hasApiConfig() && !showAccountChoice && (!authed || (sessionUser !== undefined && !isBusinessRole(sessionUser.role)));
+        hasApiConfig() &&
+        businessSetupSkipIntro &&
+        !businessChoiceOpen &&
+        !isOwnerSession &&
+        (!authed || (sessionUser !== undefined && sessionUser !== null && !isBusinessRole(sessionUser.role)));
       if (needsOwnerAccount) {
         return (
           <OwnerAccountStep
@@ -3877,17 +4121,17 @@ function AppInner() {
         );
       }
 
-      if (showAccountChoice) {
+      if (businessChoiceOpen) {
         return isDesktop ? (
           <DesktopBusinessAccountChoiceScreen
             onBack={leaveOnboarding}
-            onContinueWithAccount={() => setBusinessSetupSkipIntro(true)}
+            onContinueWithAccount={continueWithAccount}
             onUseNewAccount={useNewAccount}
           />
         ) : (
           <BusinessAccountChoiceScreen
             onBack={leaveOnboarding}
-            onContinueWithAccount={() => setBusinessSetupSkipIntro(true)}
+            onContinueWithAccount={continueWithAccount}
             onUseNewAccount={useNewAccount}
           />
         );
@@ -3898,26 +4142,20 @@ function AppInner() {
           {isDesktop ? (
             <DesktopBusinessOnboardingScreen
               initialStep={businessSetupSkipIntro || isOwnerSession ? 'basic' : 'intro'}
-              onBack={() => {
-                if (businessSetupSkipIntro) {
-                  setBusinessSetupSkipIntro(false);
-                } else {
-                  leaveOnboarding();
-                }
-              }}
+              onStartSignup={startBusinessSignup}
+              // The container routes Back itself (profile details → intro →
+              // here), so reaching this callback means "leave setup".
+              onBack={leaveOnboarding}
               onOpenVerification={openVerification}
               onComplete={finishOnboarding}
             />
           ) : (
             <BusinessOnboardingScreen
               initialStep={businessSetupSkipIntro || isOwnerSession ? 'basic' : 'intro'}
-              onBack={() => {
-                if (businessSetupSkipIntro) {
-                  setBusinessSetupSkipIntro(false);
-                } else {
-                  leaveOnboarding();
-                }
-              }}
+              onStartSignup={startBusinessSignup}
+              // The container routes Back itself (profile details → intro →
+              // here), so reaching this callback means "leave setup".
+              onBack={leaveOnboarding}
               onOpenVerification={openVerification}
               onComplete={finishOnboarding}
             />
@@ -3972,6 +4210,9 @@ function AppInner() {
           onComplete={finishVerification}
           onActivate={() => setRoute('subscription')}
           onPreviewStorefront={() => setRoute('storefront')}
+          onConfigureStorefront={() => setRoute('storefront')}
+          onCreateDeal={() => setRoute('deals')}
+          onQrStands={() => setRoute('business-overview')}
         />
       );
       return <BusinessSetupNavContext.Provider value={verificationNav}>{screen}</BusinessSetupNavContext.Provider>;

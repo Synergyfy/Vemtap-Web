@@ -41,11 +41,18 @@ export function BusinessVerificationScreen({
   onComplete,
   onActivate,
   onPreviewStorefront,
+  onConfigureStorefront,
+  onCreateDeal,
+  onQrStands,
 }: {
   onBack: () => void;
   onComplete: () => void;
   onActivate: () => void;
   onPreviewStorefront: () => void;
+  /** Post-verification shortcuts shown while the review is in flight (desktop parity). */
+  onConfigureStorefront?: () => void;
+  onCreateDeal?: () => void;
+  onQrStands?: () => void;
 }) {
   const [step, setStep] = useState<VerificationStep>('intro');
   const setupNav = useBusinessSetupNav();
@@ -155,6 +162,9 @@ export function BusinessVerificationScreen({
         <VerificationReviewScreen
           onBack={() => setStep('cacSuccess')}
           onReviewComplete={() => setStep('complete')}
+          onCatalog={onConfigureStorefront}
+          onDeals={onCreateDeal}
+          onProfile={onQrStands}
           legalName={draft.legalName}
           businessName={draft.businessName}
         />

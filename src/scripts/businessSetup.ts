@@ -138,10 +138,6 @@ export function getBusinessSetupSnapshot(): BusinessSetupSnapshot | null {
   return snapshot;
 }
 
-export function hasBusinessSetupSnapshot(): boolean {
-  return snapshot !== null;
-}
-
 export function saveBusinessSetupSnapshot(step: string, data: Record<string, unknown>): void {
   snapshot = {
     step,
@@ -156,6 +152,17 @@ export function setBusinessSetupVerificationState(state: VerificationSectionStat
     ? { ...snapshot, verificationState: state }
     : { step: 'basic', verificationState: state, data: {} };
   persist();
+}
+
+/**
+ * Re-aim a saved run at another step without touching its in-flight drafts.
+ * The business sign-up happens on the marketing intro, so when it completes
+ * the run is pointed at `basic` ("Business Profile") before the onboarding
+ * route mounts — otherwise restoring the saved `intro` step would send the new
+ * merchant back to the screen they just left.
+ */
+export function setBusinessSetupSnapshotStep(step: string): void {
+  if (snapshot) snapshot = { ...snapshot, step };
 }
 
 /** Called only once setup is genuinely finished, so a new run starts clean. */

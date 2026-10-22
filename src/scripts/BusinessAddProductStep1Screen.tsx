@@ -2,8 +2,6 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { useState } from 'react';
 import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
 import { Icon } from '../components/ui/Icon';
-import { CreateWithAiButton } from '../components/CreateWithAiButton';
-import type { AiPromptContext } from './aiDesignAssistant';
 import type { ProductDraft } from './productDraft';
 
 interface BusinessAddProductStep1ScreenProps {
@@ -13,25 +11,6 @@ interface BusinessAddProductStep1ScreenProps {
   onNext: () => void;
   onSaveDraft: () => void;
 }
-
-const PRODUCT_IMAGES = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDb04jGdHJx6xDCQKaYcqPFlB_pwgrGUJAO1XwYICyWuKFQPwHL7jGKdtmszrrEK5OBpvqwE6Kji3tla0GeIcAREU8WxHUJbyO-m-c6_N0WLDzhuenCDfaWpOARU46_kz9Pvek7HsHfvWwLQ8r2HNp0Ua3VpJYPmIMBxkWrLA8rrklo9NNB8gE7pIF52fHy7bY78AmNm9szf0Hgivl87UUVxp9DG9g9bxBCZSBtc1zwxq7iVhpSklKSTw',
-    alt: 'Gourmet woodfire seared Angus ribeye steak on a rustic slate board, garnished with rosemary sprig and melted garlic herb butter, soft ambient studio lighting, vibrant warm colors, sharp culinary macro photography',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBE-0GAPf0QHM1fTcU_AU5WM4JRfGNunDjoBvWC1NwHIyw7Zbc3JTZfKHgxMNTBbbThCbeQKP8UbGZeNph93IHdpwvR4J_ThXQmyP8e66P65AFXyGx4fd266Gs797nS06_4jfAQEPAnYd6B4NluGR5XO-OA3pWEfhzTn43JsD57JLSoWkHoPw3oj-9YBYFYMYxO1jDz4tgMf4neG3K-Dl_zJUYoJNnZ31n2p93nKcj3c5iQ_mcppyuHrg',
-    alt: 'Close up cut of prime grilled Angus ribeye showing medium rare pink tender center, glossy juices, professional food studio lighting',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBcPbi3ftjrPgLZdFEyanapeTBLeAVdSN5I8ptOLo2-2njr8Xg2hiazj5oOuplksYKjbyWRkXLd23iwEbjwFCpGfEJ92A5eCxaNnLvpErrRnJHtnujZOF8rTA6RD4ThAP846ccbeSen6rYcAnXWWoA4kRZFJj0xQN_F6EjpokrCrsKvTmKnAFYJYxzRhK__1SmDFAQ9VK5x64A6S-1pfYMoCXq3Db_6DspxxCAoD4RUakg6-zfetdmJkw',
-    alt: 'Side dish of golden crispy roasted rosemary baby potatoes beside seasoned grilled meat in an artisan brass bowl, commercial food photography',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuABfg1FQrGRzuijaGj1JTdU-5KcrLmJdd9-u77PwSzNOue1HQZ5sPkZmde_PXTK0kBf98hF960Q31otL-aqj3gFoz3vV_913yeXPHntCFeWYhTgly2UMSe6DbcmOrUy1DQ4VIY82p5O_ogrbABeSIma6-JaMXO6gVIzlDIRZ0qO185p4ARa7wjDPnV2wzrvC6oCBfynH-xQ67-3ihKQZu85qtiarb2OKhC5hpNkyK9VEqjRH38lIU5gYA',
-    alt: 'Chef delicately basting ribeye steak with a melted herb butter rosemary brush over smoking charcoal fire, warm sparks, appetizing culinary scene',
-  },
-];
 
 const CONDITION_OPTIONS: Array<{
   value: ProductDraft['condition'];
@@ -57,14 +36,10 @@ export function BusinessAddProductStep1Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddProductStep1ScreenProps) {
-  // Live: real photo upload and the business's own categories.
+  // Live: the business's own categories (the photo is its own step).
   const editor = useLiveItemEditor('product');
   const [newCategory, setNewCategory] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
-  const changePhoto = async () => {
-    const url = await editor.uploadPhoto();
-    if (url) onDraftChange({ mainImage: url });
-  };
   const addCategory = () => {
     const name = newCategory.trim();
     if (!name) return;
@@ -84,14 +59,6 @@ export function BusinessAddProductStep1Screen({
     { caption: 'Item Classification', value: draft.classification, icon: 'local_fire_department', active: false },
   ];
 
-  /** Product facts from the draft — business facts come from setup state. */
-  const aiProductContext: AiPromptContext = {
-    itemName: draft.title,
-    itemDescription: draft.description,
-    category: draft.primaryCategory,
-    subcategory: draft.subCategory,
-  };
-
   const addBullet = (text: string) => {
     onDraftChange({ description: `${draft.description}\n• ${text}` });
   };
@@ -110,7 +77,7 @@ export function BusinessAddProductStep1Screen({
           </button>
           <div className="flex flex-col items-center justify-center flex-1 truncate px-space-xs">
             <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-              Step 2 of 4
+              Step 1 of 5
             </span>
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">Add New Product</h1>
           </div>
@@ -136,138 +103,25 @@ export function BusinessAddProductStep1Screen({
             <div className="flex items-center gap-space-2xs">
               <span className="w-2 h-2 rounded-full bg-primary-container animate-pulse" />
               <span className="font-label-sm text-label-sm text-primary font-semibold tracking-wide uppercase">
-                Step 1 of 4: Product Basics
+                Step 1 of 5: Product Details
               </span>
             </div>
-            <span className="font-label-sm text-label-sm text-text-secondary font-medium">25% completed</span>
+            <span className="font-label-sm text-label-sm text-text-secondary font-medium">20% completed</span>
           </div>
           <div className="w-full h-2 rounded-full bg-surface-container-high overflow-hidden flex gap-1 p-0.5">
-            <div className="h-full rounded-full bg-primary-container w-1/4 transition-all duration-500 shadow-sm" />
-            <div className="h-full rounded-full bg-surface-variant/40 w-1/4" />
-            <div className="h-full rounded-full bg-surface-variant/40 w-1/4" />
-            <div className="h-full rounded-full bg-surface-variant/40 w-1/4" />
+            <div className="h-full rounded-full bg-primary-container w-1/5 transition-all duration-500 shadow-sm" />
+            <div className="h-full rounded-full bg-surface-variant/40 w-1/5" />
+            <div className="h-full rounded-full bg-surface-variant/40 w-1/5" />
+            <div className="h-full rounded-full bg-surface-variant/40 w-1/5" />
+            <div className="h-full rounded-full bg-surface-variant/40 w-1/5" />
           </div>
           <p className="font-caption text-caption text-text-secondary mt-1">
-            Enter essential item details just like top retail marketplaces (Jumia, Temu).
+            Enter essential item details just like top retail marketplaces (Jumia, Temu). Images come after
+            pricing, so AI can use these details.
           </p>
         </div>
 
         <div className="flex flex-col gap-space-lg px-margin mt-space-xs">
-          <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-heading-sm text-heading-sm text-text-primary flex items-center gap-1.5">
-                  Product Media
-                  <span className="font-caption text-caption bg-badge-discount-bg text-badge-discount-text font-semibold px-2 py-0.5 rounded-full">
-                    Required
-                  </span>
-                </h2>
-                <span className="font-caption text-caption text-text-secondary">Up to 6 high-res shots</span>
-              </div>
-              <span className="font-caption text-caption text-primary flex items-center gap-1 font-medium cursor-pointer">
-                <Icon name="help_outline" className="text-[16px]" />
-                Guidelines
-              </span>
-            </div>
-            {editor.live ? (
-              <div className="flex flex-col gap-space-xs">
-                <button
-                  type="button"
-                  onClick={changePhoto}
-                  disabled={editor.uploading}
-                  className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low flex flex-col items-center justify-center gap-space-xs text-text-secondary"
-                >
-                  {draft.mainImage ? (
-                    <img alt={draft.title || 'Product photo'} className="absolute inset-0 w-full h-full object-cover" src={draft.mainImage} />
-                  ) : (
-                    <>
-                      <Icon name="add_a_photo" className="text-[40px] text-primary" />
-                      <span className="font-label-md text-label-md font-semibold">{editor.uploading ? 'Uploading…' : 'Add a product photo'}</span>
-                    </>
-                  )}
-                  {draft.mainImage ? (
-                    <span className="absolute bottom-3 right-3 bg-surface-container-lowest/95 text-text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md font-label-sm text-label-sm font-semibold">
-                      <Icon name="add_a_photo" className="text-[16px] text-primary" /> {editor.uploading ? 'Uploading…' : 'Change'}
-                    </span>
-                  ) : null}
-                </button>
-                {editor.uploadError ? <span className="font-caption text-caption text-red-600">{editor.uploadError}</span> : null}
-              </div>
-            ) : (
-              <>
-            <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low group shadow-inner">
-              <img
-                alt={PRODUCT_IMAGES[0].alt}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                src={PRODUCT_IMAGES[0].src}
-              />
-              <div className="absolute top-3 left-3 bg-inverse-surface/85 backdrop-blur-md text-inverse-on-surface px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                <Icon className="text-[14px] text-badge-discount-bg" filled name="star" />
-                <span className="font-caption text-caption font-semibold">Cover Photo</span>
-              </div>
-              <div className="absolute top-3 right-3 bg-surface-container-lowest/90 backdrop-blur-md text-text-primary px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                <Icon name="drag_indicator" className="text-[14px]" />
-                <span className="font-caption text-caption font-medium">Drag to arrange</span>
-              </div>
-              <button
-                className="absolute bottom-3 right-3 bg-surface-container-lowest/95 backdrop-blur-md text-text-primary hover:text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
-                type="button"
-              >
-                <Icon name="add_a_photo" className="text-[16px] text-primary" />
-                <span className="font-label-sm text-label-sm font-semibold">Change</span>
-              </button>
-            </div>
-            <div className="grid grid-cols-5 gap-space-2xs mt-1">
-              <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm cursor-pointer ring-2 ring-primary-container">
-                <img alt={PRODUCT_IMAGES[1].alt} className="w-full h-full object-cover" src={PRODUCT_IMAGES[1].src} />
-                <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
-                  1
-                </span>
-              </div>
-              <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm cursor-pointer opacity-90 hover:opacity-100 transition-opacity">
-                <img alt={PRODUCT_IMAGES[2].alt} className="w-full h-full object-cover" src={PRODUCT_IMAGES[2].src} />
-                <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
-                  2
-                </span>
-              </div>
-              <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm cursor-pointer opacity-90 hover:opacity-100 transition-opacity">
-                <img alt={PRODUCT_IMAGES[3].alt} className="w-full h-full object-cover" src={PRODUCT_IMAGES[3].src} />
-                <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
-                  3
-                </span>
-              </div>
-              <button
-                className="aspect-square rounded-lg bg-surface-container-low hover:bg-surface-container flex flex-col items-center justify-center text-primary active:scale-95 transition-all"
-                type="button"
-              >
-                <Icon name="add" className="text-[20px]" />
-                <span className="text-[10px] font-medium text-text-secondary mt-0.5">Add</span>
-              </button>
-              <div className="aspect-square rounded-lg bg-surface-container-low/60 flex items-center justify-center text-outline-variant">
-                <Icon name="photo_camera" className="text-[18px]" />
-              </div>
-            </div>
-              </>
-            )}
-            <div className="flex items-start gap-space-xs p-space-sm bg-surface-tint-blue rounded-xl text-primary">
-              <Icon className="text-[20px] text-primary-container shrink-0 mt-0.5" filled name="lightbulb" />
-              <p className="font-caption text-caption text-on-secondary-container leading-relaxed">
-                <span className="font-semibold text-primary">Pro Tip:</span> Clear, well-lit photos on clean neutral
-                backgrounds unlock{' '}
-                <strong className="font-semibold text-primary">3x higher customer engagement</strong> and faster
-                checkouts.
-              </p>
-            </div>
-            <div className="pt-space-2xs">
-              <CreateWithAiButton
-                aspectRatio="square"
-                assetType="product"
-                context={aiProductContext}
-                fileHint="Up to 6 high-res shots"
-              />
-            </div>
-          </div>
-
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">
             <div className="flex flex-col gap-space-2xs">
               <div className="flex items-center justify-between">

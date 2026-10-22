@@ -81,7 +81,7 @@ function DemoBusinessAddProductStep3Screen({
           </button>
           <div className="flex flex-col items-center justify-center flex-1 truncate px-space-xs">
             <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-              Step 2 of 4
+              Step 4 of 5
             </span>
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">Add New Product</h1>
           </div>
@@ -105,12 +105,12 @@ function DemoBusinessAddProductStep3Screen({
         <div className="px-margin pt-space-md pb-space-xs">
           <div className="flex items-center justify-between mb-space-xs">
             <span className="font-label-sm text-label-sm text-text-secondary">
-              Step 3 of 4: Branch Availability
+              Step 4 of 5: Branch Availability
             </span>
-            <span className="font-label-sm text-label-sm font-semibold text-primary">75% Complete</span>
+            <span className="font-label-sm text-label-sm font-semibold text-primary">80% Complete</span>
           </div>
           <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-            <div className="h-full bg-primary-container rounded-full transition-all duration-300" style={{ width: '75%' }} />
+            <div className="h-full bg-primary-container rounded-full transition-all duration-300" style={{ width: '80%' }} />
           </div>
         </div>
 

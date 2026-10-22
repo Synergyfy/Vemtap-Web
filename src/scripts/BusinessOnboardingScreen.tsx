@@ -10,6 +10,7 @@ import { useProfile } from '../context/ProfileContext';
 import { BusinessAddBranchScreen } from './BusinessAddBranchScreen';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
 import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
+import { BusinessAddProductImageScreen } from './BusinessAddProductImageScreen';
 import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
 import { BusinessAddServiceStep1Screen } from './BusinessAddServiceStep1Screen';
 import { BusinessAddServiceStep2Screen } from './BusinessAddServiceStep2Screen';
@@ -111,6 +112,7 @@ const STEPS = [
   'catalog',
   'addProduct1',
   'addProduct2',
+  'addProductImage',
   'addProduct3',
   'productReview',
   'productPublished',
@@ -183,12 +185,19 @@ export function BusinessOnboardingScreen({
   onBack,
   onComplete,
   onOpenVerification,
+  onStartSignup,
   initialStep = 'intro',
 }: {
   onBack: () => void;
   onComplete: () => void;
   /** Opens the (separate) verification section. Setup progress is preserved. */
   onOpenVerification?: () => void;
+  /**
+   * "Set Up My Business" on the intro — opens the business sign-up modal, then
+   * returns here on the Business Profile step. Falls back to stepping straight
+   * into profile details when the caller does not wire one up.
+   */
+  onStartSignup?: () => void;
   /** `'basic'` skips the marketing intro and lands directly on profile details (existing-account flow). */
   initialStep?: 'intro' | 'basic';
 }) {
@@ -253,7 +262,7 @@ export function BusinessOnboardingScreen({
 
   const sync = useOnboardingSync();
   // Live: deals are built on a real catalogue item and published to the API.
-  const liveDeal = useLiveDealPublish(() => setStepIndex(24), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
+  const liveDeal = useLiveDealPublish(() => setStepIndex(25), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
   // Saved after the deal hook so the picked item survives a reload too.
   useEffect(() => {
     saveBusinessSetupSnapshot(STEPS[stepIndex], {
@@ -338,19 +347,19 @@ export function BusinessOnboardingScreen({
           onExit={() => setStepIndex(7)}
           onPick={(item) => {
             startLiveDeal(item);
-            setStepIndex(19);
+            setStepIndex(20);
           }}
-          onSkip={() => setStepIndex(24)}
+          onSkip={() => setStepIndex(25)}
         />
       );
     switch (step) {
     case 'intro':
-      return <BusinessIntroScreen onBack={onBack} onNext={() => setStepIndex(1)} />;
+      return <BusinessIntroScreen onBack={onBack} onNext={onStartSignup ?? (() => setStepIndex(1))} />;
     case 'basic':
       return (
         <BusinessProfileBasicScreen
           draft={draft}
-          onBack={initialStep === 'basic' ? onBack : () => setStepIndex(0)}
+          onBack={() => setStepIndex(0)}
           onChange={updateDraft}
           onNext={() => sync.saveBasic(draft, () => setStepIndex(2))}
           onSaveDraft={onBack}
@@ -410,9 +419,9 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessCatalogScreen
           onAddProduct={() => setStepIndex(8)}
-          onAddService={() => setStepIndex(14)}
+          onAddService={() => setStepIndex(15)}
           onBack={() => setStepIndex(5)}
-          onNext={() => setStepIndex(19)}
+          onNext={() => setStepIndex(20)}
           onSaveDraft={onBack}
         />
       );
@@ -436,13 +445,23 @@ export function BusinessOnboardingScreen({
           onSaveDraft={onBack}
         />
       );
+    case 'addProductImage':
+      return (
+        <BusinessAddProductImageScreen
+          draft={productDraft}
+          onDraftChange={updateProductDraft}
+          onBack={() => setStepIndex(9)}
+          onNext={() => setStepIndex(11)}
+          onSaveDraft={onBack}
+        />
+      );
     case 'addProduct3':
       return (
         <BusinessAddProductStep3Screen
           draft={productDraft}
-          onBack={() => setStepIndex(9)}
+          onBack={() => setStepIndex(10)}
           onDraftChange={updateProductDraft}
-          onNext={() => setStepIndex(11)}
+          onNext={() => setStepIndex(12)}
           onSaveDraft={onBack}
         />
       );
@@ -450,13 +469,14 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessProductReviewScreen
           draft={productDraft}
-          onBack={() => setStepIndex(10)}
+          onBack={() => setStepIndex(11)}
           onEditBasics={() => setStepIndex(8)}
           onEditPricing={() => setStepIndex(9)}
-          onEditBranches={() => setStepIndex(10)}
-          onEditFulfillment={() => setStepIndex(10)}
+          onEditImage={() => setStepIndex(10)}
+          onEditBranches={() => setStepIndex(11)}
+          onEditFulfillment={() => setStepIndex(11)}
           onEditDescription={() => setStepIndex(8)}
-          onPublish={() => sync.publishProduct(productDraft, () => setStepIndex(12))}
+          onPublish={() => sync.publishProduct(productDraft, () => setStepIndex(13))}
           onSaveDraft={onBack}
         />
       );
@@ -467,7 +487,7 @@ export function BusinessOnboardingScreen({
           onMakeDeal={() => {
             setDealDraft(productDraft);
             if (sync.lastPublished) startLiveDeal(sync.lastPublished);
-            setStepIndex(13);
+            setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
           onAddAnother={() => setStepIndex(8)}
@@ -477,9 +497,9 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessProductDealScreen
           draft={dealDraft}
-          onConfirmDeal={() => setStepIndex(19)}
+          onConfirmDeal={() => setStepIndex(20)}
           onViewCatalog={() => setStepIndex(7)}
-          onBack={() => setStepIndex(12)}
+          onBack={() => setStepIndex(13)}
         />
       );
     case 'service1':
@@ -488,7 +508,7 @@ export function BusinessOnboardingScreen({
           draft={serviceDraft}
           onBack={() => setStepIndex(7)}
           onDraftChange={updateServiceDraft}
-          onNext={() => setStepIndex(15)}
+          onNext={() => setStepIndex(16)}
           onSaveDraft={onBack}
           businessCategories={draft.categories}
           businessSubcategories={draft.tags}
@@ -498,9 +518,9 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessAddServiceStep2Screen
           draft={serviceDraft}
-          onBack={() => setStepIndex(14)}
+          onBack={() => setStepIndex(15)}
           onDraftChange={updateServiceDraft}
-          onNext={() => setStepIndex(16)}
+          onNext={() => setStepIndex(17)}
           onSaveDraft={onBack}
         />
       );
@@ -508,9 +528,9 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessAddServiceStep3Screen
           draft={serviceDraft}
-          onBack={() => setStepIndex(15)}
+          onBack={() => setStepIndex(16)}
           onDraftChange={updateServiceDraft}
-          onNext={() => setStepIndex(17)}
+          onNext={() => setStepIndex(18)}
           onSaveDraft={onBack}
         />
       );
@@ -518,11 +538,11 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessServiceReviewScreen
           draft={serviceDraft}
-          onBack={() => setStepIndex(16)}
-          onEditBasics={() => setStepIndex(14)}
-          onEditPricing={() => setStepIndex(15)}
-          onEditBranches={() => setStepIndex(16)}
-          onPublish={() => sync.publishService(serviceDraft, () => setStepIndex(18))}
+          onBack={() => setStepIndex(17)}
+          onEditBasics={() => setStepIndex(15)}
+          onEditPricing={() => setStepIndex(16)}
+          onEditBranches={() => setStepIndex(17)}
+          onPublish={() => sync.publishService(serviceDraft, () => setStepIndex(19))}
           onSaveDraft={onBack}
         />
       );
@@ -533,10 +553,10 @@ export function BusinessOnboardingScreen({
           onMakeDeal={() => {
             setDealDraft(serviceToDealDraft(serviceDraft));
             if (sync.lastPublished) startLiveDeal(sync.lastPublished);
-            setStepIndex(13);
+            setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
-          onAddAnother={() => setStepIndex(14)}
+          onAddAnother={() => setStepIndex(15)}
         />
       );
     case 'dealStudio1':
@@ -546,7 +566,7 @@ export function BusinessOnboardingScreen({
           studio={dealStudio}
           onStudioChange={updateDealStudio}
           onBack={() => setStepIndex(7)}
-          onNext={() => setStepIndex(20)}
+          onNext={() => setStepIndex(21)}
           onSaveDraft={onBack}
         />
       );
@@ -556,8 +576,8 @@ export function BusinessOnboardingScreen({
           draft={dealDraft}
           studio={dealStudio}
           onStudioChange={updateDealStudio}
-          onBack={() => setStepIndex(19)}
-          onNext={() => setStepIndex(21)}
+          onBack={() => setStepIndex(20)}
+          onNext={() => setStepIndex(22)}
           onSaveDraft={onBack}
         />
       );
@@ -567,8 +587,8 @@ export function BusinessOnboardingScreen({
           draft={dealDraft}
           studio={dealStudio}
           onStudioChange={updateDealStudio}
-          onBack={() => setStepIndex(20)}
-          onNext={() => setStepIndex(22)}
+          onBack={() => setStepIndex(21)}
+          onNext={() => setStepIndex(23)}
           onSaveDraft={onBack}
         />
       );
@@ -579,11 +599,11 @@ export function BusinessOnboardingScreen({
           <BusinessDealStudioStep4Screen
             draft={dealDraft}
             studio={dealStudio}
-            onBack={() => setStepIndex(21)}
-            onEditOffer={() => setStepIndex(19)}
-            onEditRules={() => setStepIndex(20)}
-            onEditLocations={() => setStepIndex(21)}
-            onPublish={() => setStepIndex(24)}
+            onBack={() => setStepIndex(22)}
+            onEditOffer={() => setStepIndex(20)}
+            onEditRules={() => setStepIndex(21)}
+            onEditLocations={() => setStepIndex(22)}
+            onPublish={() => setStepIndex(25)}
             livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
             onSaveDraft={() => setStepIndex(7)}
           />
@@ -600,7 +620,7 @@ export function BusinessOnboardingScreen({
         />
       );
     case 'businessQr':
-      return <BusinessBusinessQrScreen onBack={() => setStepIndex(22)} onContinue={onComplete} />;
+      return <BusinessBusinessQrScreen onBack={() => setStepIndex(23)} onContinue={onComplete} />;
     default:
       return null;
     }

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { BranchesPanel } from '../../components/business/BranchesPanel';
 import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
@@ -8,9 +7,11 @@ interface DesktopBusinessLocationsScreenProps {
   onAddBranch: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
+  /** Branches added during this setup run — kept in the shared snapshot so they survive navigation. */
+  extraBranches?: OnboardingBranch[];
 }
 
-interface OnboardingBranch {
+export interface OnboardingBranch {
   id: string;
   name: string;
   city: string;
@@ -32,8 +33,14 @@ const SEED_BRANCHES: OnboardingBranch[] = [
   },
 ];
 
-export function DesktopBusinessLocationsScreen({ onBack, onAddBranch, onNext, onSaveDraft }: DesktopBusinessLocationsScreenProps) {
-  const [branches] = useState<OnboardingBranch[]>(SEED_BRANCHES);
+export function DesktopBusinessLocationsScreen({
+  onBack,
+  onAddBranch,
+  onNext,
+  onSaveDraft,
+  extraBranches,
+}: DesktopBusinessLocationsScreenProps) {
+  const branches = [...SEED_BRANCHES, ...(extraBranches ?? [])];
 
   // Live: branches are created on the backend; the seeded list below is the demo.
   if (hasApiConfig()) {

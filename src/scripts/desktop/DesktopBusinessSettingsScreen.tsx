@@ -122,7 +122,9 @@ function CredentialModal({
           value={value}
           onChange={(event) => setter(event.target.value)}
           placeholder={isPin ? '••••' : '••••••••'}
-          className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface tracking-widest outline-none focus:border-primary transition-colors"
+          className={`h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-canvas border-2 ${
+            isPin ? 'border-outline-variant focus:border-primary-container focus:ring-4 focus:ring-primary-container/15' : 'border-border-subtle focus:border-primary'
+          } font-body-md text-body-md text-on-surface tracking-widest outline-none transition-all shadow-sm`}
         />
         <button
           type="button"

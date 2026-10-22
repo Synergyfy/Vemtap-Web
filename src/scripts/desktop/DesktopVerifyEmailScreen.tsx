@@ -21,7 +21,7 @@ const TRUST_BADGES = [
 ];
 
 const OTP_INPUT_CLASS =
-  'w-full h-14 sm:h-16 text-center font-display-hero text-display-hero text-text-primary bg-surface-subtle focus:bg-surface-canvas rounded-xl shadow-sm focus:outline-none focus:ring-0 focus:shadow-[0_0_0_3px_rgba(6,108,244,0.18)] transition-all select-all caret-primary';
+  'w-full h-14 sm:h-16 text-center font-display-hero text-display-hero text-text-primary bg-surface-canvas border-2 border-outline-variant rounded-xl shadow-sm select-all caret-primary transition-all focus:outline-none focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 focus:shadow-md';
 
 export function DesktopVerifyEmailScreen({
   onBack,
@@ -245,7 +245,11 @@ export function DesktopVerifyEmailScreen({
                             }}
                             aria-label={`Digit ${index + 1}`}
                             autoComplete="one-time-code"
-                            className={OTP_INPUT_CLASS}
+                            className={`${OTP_INPUT_CLASS} ${
+                              digit
+                                ? 'border-primary-container shadow-sm'
+                                : 'border-outline-variant'
+                            }`}
                             inputMode="numeric"
                             maxLength={1}
                             pattern="[0-9]*"

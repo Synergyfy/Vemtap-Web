@@ -16,6 +16,8 @@ interface DesktopProductReviewScreenProps {
   onEditBranches: () => void;
   onEditFulfillment: () => void;
   onEditDescription: () => void;
+  /** Jumps to the dedicated image step; falls back to basics when unwired. */
+  onEditImage?: () => void;
   onEditSteps: () => void;
   onPublish: () => void;
   onSaveDraft: () => void;
@@ -49,6 +51,7 @@ function DemoDesktopProductReviewScreen({
   onEditBranches,
   onEditFulfillment,
   onEditDescription,
+  onEditImage,
   onEditSteps,
   onPublish,
   onSaveDraft,
@@ -106,7 +109,7 @@ function DemoDesktopProductReviewScreen({
               <div>
                 <div className="flex items-center gap-space-xs">
                   <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider font-semibold">
-                    Step 4 of 4
+                    Step 5 of 5
                   </span>
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
                   <span className="font-label-sm text-label-sm text-badge-discount-text font-medium">
@@ -185,7 +188,7 @@ function DemoDesktopProductReviewScreen({
                 <div className="absolute top-space-md right-space-md">
                   <button
                     type="button"
-                    onClick={onEditBasics}
+                    onClick={onEditImage ?? onEditBasics}
                     className="bg-surface-canvas/90 hover:bg-surface-canvas text-text-primary font-label-sm text-label-sm px-3 py-1.5 rounded-lg shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Icon name="edit" className="text-[16px] text-text-secondary" />

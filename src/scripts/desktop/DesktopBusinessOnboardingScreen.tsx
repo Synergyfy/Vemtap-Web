@@ -12,11 +12,12 @@ import { DesktopBusinessProfileBasicScreen } from './DesktopBusinessProfileBasic
 import { DesktopBusinessProfileBrandingScreen } from './DesktopBusinessProfileBrandingScreen';
 import { DesktopBusinessProfileContactScreen } from './DesktopBusinessProfileContactScreen';
 import { DesktopBusinessLocationScreen } from './DesktopBusinessLocationScreen';
-import { DesktopBusinessLocationsScreen } from './DesktopBusinessLocationsScreen';
+import { DesktopBusinessLocationsScreen, type OnboardingBranch } from './DesktopBusinessLocationsScreen';
 import { DesktopBusinessAddBranchScreen } from './DesktopBusinessAddBranchScreen';
 import { DesktopBusinessCatalogScreen } from './DesktopBusinessCatalogScreen';
 import { DesktopAddProductStep1Screen } from './DesktopAddProductStep1Screen';
 import { DesktopAddProductStep2Screen } from './DesktopAddProductStep2Screen';
+import { DesktopAddProductImageScreen } from './DesktopAddProductImageScreen';
 import { DesktopAddProductStep3Screen } from './DesktopAddProductStep3Screen';
 import { DesktopProductReviewScreen } from './DesktopProductReviewScreen';
 import { DesktopProductPublishedScreen } from './DesktopProductPublishedScreen';
@@ -74,6 +75,7 @@ type BusinessOnboardingStep =
   | 'catalog'
   | 'addProduct1'
   | 'addProduct2'
+  | 'addProductImage'
   | 'addProduct3'
   | 'productReview'
   | 'productPublished'
@@ -90,6 +92,52 @@ type BusinessOnboardingStep =
   | 'dealStudio4'
   | 'dealAutoImport'
   | 'businessQr';
+
+/**
+ * Known steps, used to validate a restored snapshot: the snapshot is shared
+ * with mobile, which has a slightly different step list, so a stale or
+ * foreign step must fall back to `initialStep` instead of a blank screen.
+ */
+const ONBOARDING_STEPS: readonly BusinessOnboardingStep[] = [
+  'intro',
+  'basic',
+  'branding',
+  'contact',
+  'location',
+  'branches',
+  'addBranch',
+  'catalog',
+  'addProduct1',
+  'addProduct2',
+  'addProductImage',
+  'addProduct3',
+  'productReview',
+  'productPublished',
+  'productDeal',
+  'productPricingConfig',
+  'service1',
+  'service2',
+  'service3',
+  'serviceReview',
+  'servicePublished',
+  'dealStudio1',
+  'dealStudio2',
+  'dealStudio3',
+  'dealStudio4',
+  'dealAutoImport',
+  'businessQr',
+];
+
+/** Branch appended after "Add Branch Location" is saved (matches the form's defaults). */
+const NEW_DESKTOP_BRANCH: OnboardingBranch = {
+  id: 'garki-flagship',
+  name: 'Garki District Flagship',
+  city: 'Abuja Municipal • Garki District, FCT',
+  address: 'Plot 742, Tafawa Balewa Way, Area 11',
+  hours: 'Mon–Sun • 8:00 AM – 10:00 PM',
+  phone: '+234 809 111 4455',
+  isPrimary: false,
+};
 
 const PROFILE_STEPS: readonly BusinessOnboardingStep[] = [
   'intro',
@@ -169,12 +217,19 @@ export function DesktopBusinessOnboardingScreen({
   onBack,
   onComplete,
   onOpenVerification,
+  onStartSignup,
   initialStep = 'intro',
 }: {
   onBack: () => void;
   onComplete: () => void;
   /** Opens the (separate) verification section. Setup progress is preserved. */
   onOpenVerification?: () => void;
+  /**
+   * "Set Up My Business" on the intro — opens the business sign-up modal, then
+   * returns here on the Business Profile step. Falls back to stepping straight
+   * into profile details when the caller does not wire one up.
+   */
+  onStartSignup?: () => void;
   /** `'basic'` skips the marketing intro and lands directly on profile details (existing-account flow). */
   initialStep?: 'intro' | 'basic';
 }) {
@@ -183,7 +238,9 @@ export function DesktopBusinessOnboardingScreen({
   // route resumes at the correct step instead of restarting setup.
   const stored = getBusinessSetupSnapshot();
   const [step, setStep] = useState<BusinessOnboardingStep>(() => {
-    if (stored && (stored.step as BusinessOnboardingStep)) return stored.step as BusinessOnboardingStep;
+    if (stored && (ONBOARDING_STEPS as readonly string[]).includes(stored.step)) {
+      return stored.step as BusinessOnboardingStep;
+    }
     return initialStep;
   });
   const [draft, setDraft] = useState<BusinessProfileDraft>(
@@ -200,6 +257,12 @@ export function DesktopBusinessOnboardingScreen({
   );
   const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
     () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? INITIAL_DEAL_STUDIO_DRAFT,
+  );
+  // Branches added during setup are part of the run's data: keep them in the
+  // shared snapshot so they survive step changes, auth and verification
+  // round-trips (mobile parity).
+  const [extraBranches, setExtraBranches] = useState<OnboardingBranch[]>(
+    () => (stored?.data.extraBranches as OnboardingBranch[] | undefined) ?? [],
   );
   const [verificationState, setVerificationState] = useState<VerificationSectionState>(
     () => stored?.verificationState ?? 'not-started',
@@ -234,8 +297,8 @@ export function DesktopBusinessOnboardingScreen({
   const liveDeal = useLiveDealPublish(() => setStep('businessQr'), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
   // Saved after the deal hook so the picked item survives a reload too.
   useEffect(() => {
-    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, dealSource: liveDeal.source });
-  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, liveDeal.source]);
+    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, dealSource: liveDeal.source });
+  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, liveDeal.source]);
 
   const startLiveDeal = (item: CatalogueItem) => {
     liveDeal.pick(item);
@@ -292,13 +355,15 @@ export function DesktopBusinessOnboardingScreen({
       );
     switch (step) {
     case 'intro':
-      return <DesktopBusinessIntroScreen onStart={() => setStep('basic')} onExit={onBack} />;
+      return (
+        <DesktopBusinessIntroScreen onStart={onStartSignup ?? (() => setStep('basic'))} onExit={onBack} />
+      );
     case 'basic':
       return (
         <DesktopBusinessProfileBasicScreen
           draft={draft}
           onDraftChange={updateDraft}
-          onPrevious={initialStep === 'basic' ? onBack : () => setStep('intro')}
+          onPrevious={() => setStep('intro')}
           onNext={() => sync.saveBasic(draft, () => setStep('branding'))}
           onSaveDraft={onBack}
         />
@@ -334,6 +399,7 @@ export function DesktopBusinessOnboardingScreen({
     case 'branches':
       return (
         <DesktopBusinessLocationsScreen
+          extraBranches={extraBranches}
           onBack={() => setStep('location')}
           onAddBranch={() => setStep('addBranch')}
           onNext={() => setStep('catalog')}
@@ -341,7 +407,19 @@ export function DesktopBusinessOnboardingScreen({
         />
       );
     case 'addBranch':
-      return <DesktopBusinessAddBranchScreen onBack={() => setStep('branches')} onSaved={() => setStep('branches')} />;
+      return (
+        <DesktopBusinessAddBranchScreen
+          onBack={() => setStep('branches')}
+          onSaved={() => {
+            setExtraBranches((current) =>
+              current.some((branch) => branch.id === NEW_DESKTOP_BRANCH.id)
+                ? current
+                : [...current, NEW_DESKTOP_BRANCH],
+            );
+            setStep('branches');
+          }}
+        />
+      );
     case 'catalog':
       return (
         <DesktopBusinessCatalogScreen
@@ -368,6 +446,16 @@ export function DesktopBusinessOnboardingScreen({
           draft={productDraft}
           onDraftChange={updateProductDraft}
           onBack={() => setStep('addProduct1')}
+          onNext={() => setStep('addProductImage')}
+          onSaveDraft={onBack}
+        />
+      );
+    case 'addProductImage':
+      return (
+        <DesktopAddProductImageScreen
+          draft={productDraft}
+          onDraftChange={updateProductDraft}
+          onBack={() => setStep('addProduct2')}
           onNext={() => setStep('addProduct3')}
           onSaveDraft={onBack}
         />
@@ -377,7 +465,7 @@ export function DesktopBusinessOnboardingScreen({
         <DesktopAddProductStep3Screen
           draft={productDraft}
           onDraftChange={updateProductDraft}
-          onBack={() => setStep('addProduct2')}
+          onBack={() => setStep('addProductImage')}
           onNext={() => setStep('productReview')}
           onSaveDraft={onBack}
         />
@@ -392,6 +480,7 @@ export function DesktopBusinessOnboardingScreen({
           onEditBranches={() => setStep('productPricingConfig')}
           onEditFulfillment={() => setStep('addProduct3')}
           onEditDescription={() => setStep('addProduct1')}
+          onEditImage={() => setStep('addProductImage')}
           onEditSteps={() => setStep('addProduct3')}
           onPublish={() => sync.publishProduct(productDraft, () => setStep('productPublished'))}
           onSaveDraft={onBack}
