@@ -51,6 +51,16 @@ const MAIN_IMAGE =
 const MAIN_ALT =
   'Gourmet artisan prime dry-aged beef burger with melted cheddar, served beside crispy golden hand-cut parmesan truffle fries in a steel basket and a chilled condensation-beaded iced peach craft beverage on a black slate platter inside an upscale modern warm bistro with ambient lighting in Abuja Nigeria.';
 
+const formatCurrency = (value: number | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
+
 interface GalleryImage {
   thumb: string;
   alt: string;
@@ -150,25 +160,37 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
   const claims = useClaims();
   const profile = useProfile();
   const selectedDeal: ClaimDealSummary = {
-    title: deal?.title ?? 'Prime 3-Course Lunch Combo & Craft Beverage',
-    business: deal?.business ?? 'Urban Grill & Bistro',
-    location: deal?.location ?? 'Apo, Abuja',
+    title: deal?.title?.trim() || 'Featured local deal',
+    business: deal?.business?.trim() || 'Local dining partner',
+    location: deal?.location?.trim() || 'Your area',
     price: typeof deal?.price === 'number' ? deal.price : 9600,
     oldPrice: typeof deal?.oldPrice === 'number' ? deal.oldPrice : 12000,
-    discountLabel: deal?.discountLabel ?? 'Save ₦2,400 (20% OFF)',
-    image: deal?.image ?? MAIN_IMAGE,
+    discountLabel: deal?.discountLabel?.trim() || 'Save ₦2,400 (20% OFF)',
+    image: deal?.image || MAIN_IMAGE,
   };
+  const dealTitle = selectedDeal.title || 'Featured local deal';
+  const dealBusiness = selectedDeal.business || 'Local dining partner';
+  const dealLocation = selectedDeal.location || 'Your area';
+  const dealPrice = typeof selectedDeal.price === 'number' ? selectedDeal.price : 0;
+  const dealOldPrice = typeof selectedDeal.oldPrice === 'number' ? selectedDeal.oldPrice : Math.max(dealPrice, 0);
+  const dealSavings = dealOldPrice > dealPrice ? Math.max(dealOldPrice - dealPrice, 0) : 0;
   const [dialog, setDialog] = useState<Dialog>(null);
   const [pendingStep, setPendingStep] = useState<PendingStep>('identity');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [chip, setChip] = useState('All');
   const [selectedImage, setSelectedImage] = useState(0);
-  const [mainImage, setMainImage] = useState(MAIN_IMAGE);
+  const [mainImage, setMainImage] = useState(selectedDeal.image || MAIN_IMAGE);
   const [mainAlt, setMainAlt] = useState(MAIN_ALT);
   const [bookmarked, setBookmarked] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    setMainImage(selectedDeal.image || MAIN_IMAGE);
+    setMainAlt(`${dealTitle} at ${dealBusiness}`);
+    setSelectedImage(0);
+  }, [selectedDeal.image, dealTitle, dealBusiness]);
 
   useEffect(() => {
     return () => {
@@ -209,7 +231,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     showToast(
       kind === 'gift'
         ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
-        : `Deal claimed! Present ${record.ref} at Urban Grill & Bistro.`,
+        : `Deal claimed! Present ${record.ref} at the local merchant.`,
     );
   };
 
@@ -222,7 +244,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
 
   const shareWhatsApp = () => {
     const text = encodeURIComponent(
-      'Check out this 20% OFF Prime 3-Course Lunch Combo at Urban Grill & Bistro on VEMTAP: ' + window.location.href,
+      `Check out ${dealTitle} at ${dealBusiness} on VEMTAP: ${window.location.href}`,
     );
     window.open('https://wa.me/?text=' + text, '_blank');
   };
@@ -236,8 +258,8 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
 
   const selectImage = (index: number) => {
     setSelectedImage(index);
-    setMainImage(index === 0 ? MAIN_IMAGE : GALLERY[index].thumb);
-    setMainAlt(GALLERY[index].alt);
+    setMainImage(index === 0 ? (selectedDeal.image || MAIN_IMAGE) : GALLERY[index].thumb);
+    setMainAlt(index === 0 ? `${dealTitle} at ${dealBusiness}` : GALLERY[index].alt);
   };
 
   const tabButtonClass = (key: Tab) =>
@@ -266,11 +288,11 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
             </button>
             <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
             <button type="button" className="hover:text-primary transition-colors">
-              Urban Grill &amp; Bistro
+              {dealBusiness}
             </button>
             <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
             <span className="text-text-primary font-semibold truncate max-w-xs md:max-w-none">
-              Prime 3-Course Lunch Combo
+              {dealTitle}
             </span>
           </nav>
 
@@ -346,7 +368,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-heading-sm text-heading-sm text-text-primary">Urban Grill &amp; Bistro</span>
+                        <span className="font-heading-sm text-heading-sm text-text-primary">{dealBusiness}</span>
                         <Icon name="verified" filled className="text-[18px] text-primary" />
                       </div>
                       <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm">
@@ -359,7 +381,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                         <span className="text-text-tertiary">•</span>
                         <span className="flex items-center gap-0.5 text-text-secondary">
                           <Icon name="near_me" className="text-[15px] text-primary" />
-                          <span>0.8 km away • Apo Boulevard</span>
+                          <span>{dealLocation}</span>
                         </span>
                       </div>
                     </div>
@@ -416,7 +438,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
 
                 <div>
                   <h1 className="font-heading-lg text-heading-lg md:text-[28px] md:leading-[36px] font-bold text-text-primary mb-space-xs tracking-tight">
-                    Prime 3-Course Lunch Combo &amp; Craft Beverage
+                    {dealTitle}
                   </h1>
                   <p className="font-body-lg text-body-lg text-text-secondary leading-relaxed">
                     Signature dry-aged prime beef burger or grilled chicken plate, accompanied by loaded parmesan truffle
@@ -513,10 +535,10 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           <div className="absolute bottom-3 left-3 right-3 bg-surface-canvas/95 backdrop-blur-md p-space-sm rounded-lg shadow-sm flex items-center justify-between">
                             <div className="truncate mr-2">
                               <p className="font-label-sm text-label-sm font-semibold text-text-primary truncate">
-                                Plot 14 Apo Boulevard
+                                Nearby local branch
                               </p>
                               <p className="font-caption text-caption text-text-secondary truncate">
-                                Apo District, Abuja, FCT
+                                Your selected area
                               </p>
                             </div>
                             <span className="bg-primary text-on-primary font-caption text-caption px-2 py-1 rounded font-semibold whitespace-nowrap">
@@ -915,16 +937,18 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                 <div className="space-y-space-2xs">
                   <div className="flex items-baseline gap-space-sm">
                     <span className="font-display-hero text-display-hero text-text-primary font-bold tracking-tight">
-                      ₦9,600
+                      {formatCurrency(dealPrice)}
                     </span>
-                    <span className="font-heading-sm text-heading-sm text-text-tertiary line-through font-normal">
-                      ₦12,000
-                    </span>
+                    {dealOldPrice > dealPrice ? (
+                      <span className="font-heading-sm text-heading-sm text-text-tertiary line-through font-normal">
+                        {formatCurrency(dealOldPrice)}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-space-xs">
                     <span className="inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold px-space-sm py-1 rounded-full">
                       <Icon name="trending_down" className="text-[15px]" />
-                      <span>Save ₦2,400 today (20% OFF)</span>
+                      <span>{selectedDeal.discountLabel || `Save ${formatCurrency(dealSavings)} today`}</span>
                     </span>
                   </div>
                 </div>
@@ -953,8 +977,8 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                   <div className="font-caption text-caption text-text-secondary space-y-0.5">
                     <strong className="font-label-sm text-label-sm text-primary block">100% Free Claim Online</strong>
                     <span>
-                      Zero upfront card payment required on VEMTAP. Settle the ₦9,600 directly with your server at Urban
-                      Grill upon redemption.
+                      Zero upfront card payment required on VEMTAP. Settle the {formatCurrency(dealPrice)} directly with
+                      your server at {dealBusiness} upon redemption.
                     </span>
                   </div>
                 </div>
@@ -975,7 +999,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                         onClick={() => startClaim('identity')}
                         className="w-full h-14 bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] transition-all transform active:scale-[0.98] cursor-pointer"
                       >
-                        <span>Claim Deal Now (₦9,600)</span>
+                        <span>Claim Deal Now ({formatCurrency(dealPrice)})</span>
                         <Icon name="arrow_forward" className="text-[20px]" />
                       </button>
 

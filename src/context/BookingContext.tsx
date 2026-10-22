@@ -24,6 +24,45 @@ import {
 } from '../scripts/spaBookingData';
 
 const APPOINTMENTS_KEY = 'vemtap_appointments';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value?: string) => typeof value === 'string' && UUID_RE.test(value.trim());
+
+const timeTo24h = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '00:00';
+  const [rawTime, suffix] = trimmed.split(/\s+/);
+  if (!rawTime) return '00:00';
+  const [hours, minutes] = rawTime.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return '00:00';
+
+  let hour24 = hours;
+  if (/pm/i.test(suffix ?? '')) hour24 = hours === 12 ? 12 : hours + 12;
+  if (/am/i.test(suffix ?? '')) hour24 = hours === 12 ? 0 : hours;
+
+  return `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
+const buildBookingPayload = (dateISO: string, time: string, notes: string, serviceIds: number[]) => {
+  const branchId = (SPA_MERCHANT as { branchId?: string }).branchId?.trim();
+  const itemId = serviceIds[0] != null ? String(serviceIds[0]).trim() : '';
+
+  if (!branchId || !isUuid(branchId)) {
+    throw new Error('This booking is missing a valid branchId. Connect the live branch metadata before confirming the appointment.');
+  }
+
+  if (!itemId || !isUuid(itemId)) {
+    throw new Error('This booking is missing a valid itemId. Connect the live catalogue item UUID before confirming the appointment.');
+  }
+
+  return {
+    branchId,
+    itemId,
+    date: dateISO,
+    time: timeTo24h(time),
+    notes: notes.trim() || undefined,
+  };
+};
 
 /** A real appointment record created on confirmation (BUG-025). */
 export interface SpaAppointment {
@@ -306,20 +345,19 @@ export function BookingProvider({ children }: { children: ReactNode }) {
       };
     }
 
+    let bookingPayload: Record<string, unknown>;
+    try {
+      bookingPayload = buildBookingPayload(dateISO, time, notes, serviceIds);
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'This booking cannot be confirmed until the branch and item metadata are connected to the live backend data.',
+      };
+    }
+
     let ref = newAppointmentRef();
     const existing = new Set(appointments.map((appt) => appt.ref));
     while (existing.has(ref)) ref = newAppointmentRef();
-
-    const bookingPayload = {
-      branchId: '00000000-0000-0000-0000-000000000000',
-      itemId: services[0]?.id ? String(services[0].id) : undefined,
-      date: dateISO,
-      time,
-      notes,
-      status: 'confirmed',
-      merchantName: SPA_MERCHANT.name,
-      clientName: SPA_CLIENT.name,
-    };
 
     const record: SpaAppointment = {
       ref,
@@ -408,6 +446,11 @@ export function BookingProvider({ children }: { children: ReactNode }) {
         return { ...appt, status: 'cancelled' as const };
       }),
     );
+
+    if (hasApiConfig() && found) {
+      void bookingService.cancelBooking(ref).catch(() => undefined);
+    }
+
     return found;
   }, []);
 

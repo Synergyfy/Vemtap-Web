@@ -82,11 +82,11 @@ export function ReviewsSheet({ open, onClose }: ReviewsSheetProps) {
             />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-label-sm text-label-sm text-text-secondary truncate">Urban Grill &amp; Bistro</p>
-            <h3 className="font-heading-sm text-heading-sm text-on-surface truncate">Lunch Combo — 20% Off</h3>
+            <p className="font-label-sm text-label-sm text-text-secondary truncate">Local dining partner</p>
+            <h3 className="font-heading-sm text-heading-sm text-on-surface truncate">Featured local deal</h3>
             <div className="flex items-center gap-1 font-caption text-caption text-badge-discount-text mt-0.5">
               <Icon name="check_circle" className="text-[13px]" filled />
-              <span>Redeemed Today at 1:15 PM</span>
+              <span>Redeemed today</span>
             </div>
           </div>
         </div>
@@ -94,7 +94,7 @@ export function ReviewsSheet({ open, onClose }: ReviewsSheetProps) {
         <div className="text-center pt-4 pb-2">
           <h2 className="font-heading-md text-heading-md text-on-surface">Rate your experience</h2>
           <p className="font-body-md text-body-md text-text-secondary mt-1 max-w-[280px] mx-auto">
-            How was your meal and redemption at Urban Grill &amp; Bistro?
+            How was your meal and redemption at this local merchant?
           </p>
           <div className="flex items-center justify-center gap-2 pt-2 mt-2 mb-2">
             {[1, 2, 3, 4, 5].map((value) => (

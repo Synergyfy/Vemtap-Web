@@ -32,7 +32,7 @@ export function DesktopClaimSuccessScreen({
 
   const claimRef = claim?.ref ?? 'VT-48291';
   const isSomeoneElseClaim = claim?.kind === 'someone-else' && Boolean(claim.recipient);
-  const dealTitle = claim?.dealTitle ?? 'Lunch Combo — 20% Off';
+  const dealTitle = claim?.dealTitle ?? 'Featured Local Deal';
 
   const copyClaimCode = () => {
     navigator.clipboard?.writeText(claimRef).catch(() => undefined);
@@ -119,12 +119,12 @@ export function DesktopClaimSuccessScreen({
                 </div>
 
                 <p className="font-heading-md text-heading-md text-text-primary text-center">
-                  Your {claim?.dealBusiness ?? 'Urban Grill &amp; Bistro'} {dealTitle} is reserved.
+                  Your {claim?.dealBusiness ?? 'local dining partner'} {dealTitle} is reserved.
                 </p>
                 <p className="font-body-md text-body-md text-text-secondary text-center mt-space-2xs max-w-md">
                   {isSomeoneElseClaim
-                    ? `Show the claim code below to the attendant when ${claim?.recipient?.name} arrives at the Apo, Abuja branch.`
-                    : 'Show the claim code below to the attendant when you arrive at the Apo, Abuja branch.'}
+                    ? `Show the claim code below to the attendant when ${claim?.recipient?.name} arrives at the local branch.`
+                    : 'Show the claim code below to the attendant when you arrive at the local branch.'}
                 </p>
               </div>
 
@@ -167,14 +167,14 @@ export function DesktopClaimSuccessScreen({
                     </div>
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                        {claim?.dealBusiness ?? 'Urban Grill & Bistro'}
+                        {claim?.dealBusiness ?? 'Local dining partner'}
                       </span>
                       <h2 className="font-heading-sm text-heading-sm text-primary font-bold tracking-tight line-clamp-1">
                         {dealTitle}
                       </h2>
                       <div className="flex items-center gap-1 mt-0.5 text-text-secondary">
                         <Icon name="location_on" filled className="text-sm shrink-0" />
-                        <span className="font-caption text-caption truncate">Apo, Abuja (0.8 km away)</span>
+                        <span className="font-caption text-caption truncate">Your area (nearby)</span>
                       </div>
                     </div>
                   </div>

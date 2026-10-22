@@ -83,6 +83,48 @@ export const authService = {
     return api.post('/password-reset/reset', payload);
   },
 
+  requestCustomerOtp: async (payload: { firstName?: string; lastName?: string; email: string; phone?: string; branchId?: string }) => {
+    return api.post('/auth/customer/register/request-otp', payload);
+  },
+
+  verifyCustomerPin: async (payload: { email: string; code: string; pin: string; firstName?: string; lastName?: string; branchId?: string }) => {
+    const response = await api.post<AuthTokensResponse>('/auth/customer/register/verify-and-set-pin', payload);
+
+    const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
+    const refreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']);
+
+    if (accessToken) {
+      setAuthTokens(accessToken, refreshToken ?? undefined);
+    }
+
+    return response;
+  },
+
+  requestEmailVerification: async (payload: { email: string }) => {
+    return api.post('/auth/email-verification/send', payload);
+  },
+
+  verifyEmail: async (payload: { email: string; code: string }) => {
+    return api.post('/auth/email-verification/verify', payload);
+  },
+
+  completeCustomerSetup: async (payload: Record<string, unknown>) => {
+    return api.post('/auth/customer/complete-setup', payload);
+  },
+
+  googleSignIn: async (payload: Record<string, unknown>) => {
+    const response = await api.post<AuthTokensResponse>('/auth/google', payload);
+
+    const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
+    const refreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']);
+
+    if (accessToken) {
+      setAuthTokens(accessToken, refreshToken ?? undefined);
+    }
+
+    return response;
+  },
+
   refresh: async () => {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {

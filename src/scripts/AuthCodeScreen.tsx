@@ -6,11 +6,21 @@ import { Logo } from '../components/ui/Logo';
 interface AuthCodeScreenProps {
   onBack: () => void;
   onContinue: () => void;
+  onSubmitEmail: (email: string) => Promise<void> | void;
   onGoogle: () => void;
   onBusinessRegister: () => void;
 }
 
 type Status = 'idle' | 'sending' | 'sent';
+
+const getAuthErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return 'We could not start your account setup. Please try again.';
+};
 
 function GoogleIcon() {
   return (
@@ -51,22 +61,32 @@ function Spinner() {
 export function AuthCodeScreen({
   onBack,
   onContinue,
+  onSubmitEmail,
   onGoogle,
   onBusinessRegister,
 }: AuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const input = event.currentTarget.elements.namedItem('email') as HTMLInputElement | null;
-    if (!input || !input.value.trim() || !input.checkValidity()) {
+    const email = input?.value.trim() ?? '';
+    if (!input || !email || !input.checkValidity()) {
       input?.focus();
       return;
     }
     if (status !== 'idle') return;
+    setError(null);
     setStatus('sending');
-    window.setTimeout(() => setStatus('sent'), 1200);
-    window.setTimeout(onContinue, 2100);
+
+    try {
+      await Promise.resolve(onSubmitEmail(email));
+      setStatus('sent');
+    } catch (submitError) {
+      setError(getAuthErrorMessage(submitError));
+      setStatus('idle');
+    }
   };
 
   return (
@@ -124,6 +144,11 @@ export function AuthCodeScreen({
         </div>
 
         <form className="flex flex-col w-full" onSubmit={handleSubmit} noValidate={false}>
+          {error ? (
+            <div className="mb-space-sm rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
+              {error}
+            </div>
+          ) : null}
           <div className="flex flex-col gap-1.5 mb-2">
             <label className="font-label-md text-label-md font-medium text-text-primary" htmlFor="email-field">
               Enter your email to continue

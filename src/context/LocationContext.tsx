@@ -20,7 +20,7 @@ export interface LocationContextValue {
 }
 
 const STORAGE_KEY = 'vemtap_location';
-const DEFAULTS = { district: 'Apo', city: 'Abuja', radius: 5 };
+const DEFAULTS = { district: 'Your area', city: 'Your city', radius: 5 };
 
 type StoredLocation = { district?: string; city?: string; radius?: number };
 

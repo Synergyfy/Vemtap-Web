@@ -33,6 +33,7 @@ const CATEGORIES: { label: string; icon: string }[] = [
 ];
 
 interface FeaturedSlide {
+  id: string;
   image: string;
   imageAlt: string;
   badge: string;
@@ -174,19 +175,22 @@ const getApiComparePrice = (offer: Record<string, unknown>): number => {
   return getApiPrice(offer);
 };
 
-const toFeaturedSlide = (offer: Record<string, unknown>): FeaturedSlide => {
+const toFeaturedSlide = (offer: Record<string, unknown>, index: number): FeaturedSlide => {
   const price = getApiPrice(offer);
   const compareAtPrice = getApiComparePrice(offer);
   const likes = Number(offer.likes ?? offer.favorites ?? offer.savedCount ?? 0);
   const comments = Number(offer.comments ?? offer.reviewCount ?? 0);
+  const title = getApiTitle(offer);
+  const business = getApiBusinessName(offer);
 
   return {
+    id: String(offer.id ?? offer.offerId ?? offer._id ?? offer.businessId ?? offer.branchId ?? `${business}-${title}-${index}`),
     image: getNestedImage(offer),
-    imageAlt: `${getApiTitle(offer)} by ${getApiBusinessName(offer)}`,
+    imageAlt: `${title} by ${business}`,
     badge: typeof offer.badge === 'string' && offer.badge.trim() ? offer.badge : 'Live Deal',
     ends: typeof offer.ends === 'string' && offer.ends.trim() ? offer.ends : 'Limited time',
-    merchant: `${getApiBusinessName(offer)} • ${typeof offer.location === 'string' ? offer.location : 'Nearby'}`,
-    title: getApiTitle(offer),
+    merchant: `${business} • ${typeof offer.location === 'string' ? offer.location : 'Nearby'}`,
+    title,
     price: formatCurrency(price),
     was: compareAtPrice > price ? formatCurrency(compareAtPrice) : '',
     distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
@@ -195,16 +199,18 @@ const toFeaturedSlide = (offer: Record<string, unknown>): FeaturedSlide => {
   };
 };
 
-const toDealSummary = (offer: Record<string, unknown>): DealSummary => {
+const toDealSummary = (offer: Record<string, unknown>, index: number): DealSummary => {
   const basePrice = getApiPrice(offer);
   const comparePrice = getApiComparePrice(offer);
+  const title = getApiTitle(offer);
+  const business = getApiBusinessName(offer);
 
   return {
-    id: String(offer.id ?? getApiTitle(offer)),
+    id: String(offer.id ?? offer.offerId ?? offer._id ?? offer.businessId ?? offer.branchId ?? `${business}-${title}-${index}`),
     image: getNestedImage(offer),
-    imageAlt: `${getApiTitle(offer)} by ${getApiBusinessName(offer)}`,
-    title: getApiTitle(offer),
-    business: getApiBusinessName(offer),
+    imageAlt: `${title} by ${business}`,
+    title,
+    business,
     price: formatCurrency(basePrice),
     was: comparePrice > basePrice ? formatCurrency(comparePrice) : '',
     distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
@@ -470,7 +476,7 @@ function EnrollmentPrompt({ onEnroll }: { onEnroll: () => void }) {
   return (
     <div className="p-4 rounded-2xl bg-surface-tint-blue shadow-sm flex items-center justify-between gap-3">
       <div className="flex flex-col">
-        <span className="font-caption text-caption text-text-secondary">Own a local business in Abuja?</span>
+        <span className="font-caption text-caption text-text-secondary">Own a local business in your area?</span>
         <button type="button" onClick={onEnroll} className="font-label-md text-label-md text-primary font-semibold flex items-center gap-1 group text-left">
           <span>Put your deals on VEMTAP</span>
           <Icon name="arrow_forward" className="text-[16px] group-hover:translate-x-0.5 transition-transform" />
@@ -595,7 +601,7 @@ export function HomeScreen({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <h2 className="font-heading-sm text-heading-sm text-text-primary">Featured Deals</h2>
-                <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-caption text-[11px] font-semibold">Promoted</span>
+                <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-caption text-[11px] font-semibold">{featuredSlides.length ? `${featuredSlides.length} live` : 'Promoted'}</span>
               </div>
               <button type="button" onClick={onOpenFeatured} className="font-label-md text-label-md text-primary font-semibold hover:underline">See All</button>
             </div>
@@ -686,7 +692,7 @@ export function HomeScreen({
 
           <section className="flex flex-col space-y-3.5">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading-sm text-heading-sm text-text-primary">Deals Near You</h2>
+              <h2 className="font-heading-sm text-heading-sm text-text-primary">Deals Near You{liveDeals.length ? ` (${liveDeals.length})` : ''}</h2>
               <div className="flex items-center gap-2.5">
                 <div className={switcherContainer} role="group" aria-label="View layout switcher">
                   <button type="button" aria-label="List view" title="List view" onClick={() => setView('list')} className={view === 'list' ? activeSwitcher : inactiveSwitcher}>

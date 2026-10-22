@@ -64,8 +64,8 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated }: ClaimAuthModa
             <div className="flex flex-col">
               <h3 className="font-heading-lg text-heading-lg text-text-primary">Sign in to Claim This Deal</h3>
               <p className="font-body-md text-body-md text-text-secondary mt-1">
-                Reserve <span className="font-semibold text-text-primary">"Prime 3-Course Lunch Combo"</span> at 20% OFF
-                (Pay ₦9,600 in-store). No credit card required.
+                Reserve <span className="font-semibold text-text-primary">"Featured local deal"</span> at a special
+                rate (Pay in-store). No credit card required.
               </p>
             </div>
           </div>
@@ -82,9 +82,9 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated }: ClaimAuthModa
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-space-xs">
-              <span className="font-label-sm text-label-sm text-text-secondary truncate">Urban Grill &amp; Bistro</span>
+              <span className="font-label-sm text-label-sm text-text-secondary truncate">Local dining partner</span>
               <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shrink-0">
-                SAVE ₦2,400
+                SPECIAL RATE
               </span>
             </div>
             <div className="flex items-baseline gap-space-xs my-0.5">

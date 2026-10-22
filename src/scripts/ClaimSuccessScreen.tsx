@@ -119,14 +119,14 @@ export function ClaimSuccessScreen({ onViewMyDeal, onContinue, onBack, claim }: 
               </div>
               <div className="flex flex-col min-w-0 flex-1">
                 <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                  Urban Grill &amp; Bistro
+                  Local dining partner
                 </span>
                 <h2 className="font-heading-sm text-heading-sm text-primary font-bold tracking-tight line-clamp-1">
-                  Lunch Combo — 20% Off
+                  Featured local deal
                 </h2>
                 <div className="flex items-center gap-1 mt-0.5 text-text-secondary">
                   <Icon name="location_on" filled className="text-sm shrink-0" />
-                  <span className="font-caption text-caption truncate">Apo, Abuja (0.8 km away)</span>
+                  <span className="font-caption text-caption truncate">Your area (nearby)</span>
                 </div>
               </div>
             </div>

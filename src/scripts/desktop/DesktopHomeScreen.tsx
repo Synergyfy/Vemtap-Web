@@ -104,12 +104,22 @@ const getApiComparePrice = (offer: Record<string, unknown>): number => {
   return getApiPrice(offer);
 };
 
-const toSpotlightSlide = (offer: Record<string, unknown>) => {
+const toSpotlightSlide = (offer: Record<string, unknown>, index: number) => {
   const price = getApiPrice(offer);
   const original = getApiComparePrice(offer);
   const title = getApiTitle(offer);
   const merchant = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${merchant}-${title}-${index}`,
+  );
+
   return {
+    id: offerId,
     image: getNestedImage(offer),
     discount: 'Live Deal',
     merchant: `${merchant} • ${typeof offer.location === 'string' ? offer.location : 'Nearby'}`,
@@ -130,12 +140,22 @@ const toSpotlightSlide = (offer: Record<string, unknown>) => {
   };
 };
 
-const toListDeal = (offer: Record<string, unknown>) => {
+const toListDeal = (offer: Record<string, unknown>, index: number) => {
   const price = getApiPrice(offer);
   const original = getApiComparePrice(offer);
   const title = getApiTitle(offer);
   const business = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}-${index}`,
+  );
+
   return {
+    id: offerId,
     image: getNestedImage(offer),
     imageAlt: `${title} by ${business}`,
     discount: price > 0 ? 'Live Deal' : 'OFFER',
@@ -150,12 +170,22 @@ const toListDeal = (offer: Record<string, unknown>) => {
   };
 };
 
-const toTrendingDeal = (offer: Record<string, unknown>) => {
+const toTrendingDeal = (offer: Record<string, unknown>, index: number) => {
   const price = getApiPrice(offer);
   const original = getApiComparePrice(offer);
   const title = getApiTitle(offer);
   const business = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}-${index}`,
+  );
+
   return {
+    id: offerId,
     image: getNestedImage(offer),
     imageAlt: `${title} by ${business}`,
     claimed: 'Live deal',
@@ -189,14 +219,28 @@ const toBusinessSummary = (offer: Record<string, unknown>, index: number) => {
   };
 };
 
-const toProductSummary = (offer: Record<string, unknown>) => ({
-  image: getNestedImage(offer),
-  imageAlt: `${getApiTitle(offer)} by ${getApiBusinessName(offer)}`,
-  badge: 'Live Offer',
-  title: getApiTitle(offer),
-  store: getApiBusinessName(offer),
-  price: formatCurrency(getApiPrice(offer)),
-});
+const toProductSummary = (offer: Record<string, unknown>, index: number) => {
+  const title = getApiTitle(offer);
+  const store = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${store}-${title}-${index}`,
+  );
+
+  return {
+    id: offerId,
+    image: getNestedImage(offer),
+    imageAlt: `${title} by ${store}`,
+    badge: 'Live Offer',
+    title,
+    store,
+    price: formatCurrency(getApiPrice(offer)),
+  };
+};
 
 const GRID_MAP_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDPi8Hp2LqrNbrRjrTe4iJGQ82H5nsV1-JvhlyPbRVhxONkWJt6Hc2S_lIZk9qo9btotKPC72KuIRzlcqxkOEekBorlzOmDPiLFdngxWpwgjtTT1izq8k3mCxSxrpZYEjh5MWVcQ3PbDF_AB-uT28yp-J3pqOSTDWKLCrFnYOfqHy1aTcjOivKcO-UI_9bCybcQXu2yrMzbnFa1OR2ZwxZ22PxWZOr0qA1L94Oic9em';
@@ -282,11 +326,17 @@ export function DesktopHomeScreen({
     };
   }, []);
 
-  const spotlightDeals = useMemo(() => publicOffers.slice(0, 3).map(toSpotlightSlide), [publicOffers]);
-  const listDeals = useMemo(() => publicOffers.slice(0, 4).map(toListDeal), [publicOffers]);
-  const trendingDeals = useMemo(() => publicOffers.slice(0, 3).map(toTrendingDeal), [publicOffers]);
+  const spotlightDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toSpotlightSlide(offer, index)), [publicOffers]);
+  const listDeals = useMemo(() => publicOffers.slice(0, 4).map((offer, index) => toListDeal(offer, index)), [publicOffers]);
+  const trendingDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toTrendingDeal(offer, index)), [publicOffers]);
   const businesses = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toBusinessSummary(offer, index)), [publicOffers]);
-  const products = useMemo(() => publicOffers.slice(0, 2).map(toProductSummary), [publicOffers]);
+  const products = useMemo(() => publicOffers.slice(0, 2).map((offer, index) => toProductSummary(offer, index)), [publicOffers]);
+  const liveOfferCount = publicOffers.length;
+  const liveOfferLabel = liveOfferCount === 0
+    ? 'No live offers yet'
+    : liveOfferCount === 1
+      ? '1 live offer near you'
+      : `${liveOfferCount} live offers near you`;
   const spotlightIndex = spotlightDeals.length ? spotlight % spotlightDeals.length : 0;
   const spotlightData = spotlightDeals.length ? spotlightDeals : [];
 
@@ -456,7 +506,7 @@ export function DesktopHomeScreen({
                     {spotlightData.map((slide, index) => (
                       <button
                         aria-label={`Show spotlight deal ${index + 1}: ${slide.title}`}
-                        key={slide.title}
+                        key={slide.id ?? `${slide.title}-${slide.merchant ?? 'merchant'}-${index}`}
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
@@ -609,9 +659,9 @@ export function DesktopHomeScreen({
                   <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
                     {offersLoading ? 'Loading live deals...' : 'No live deals are available right now.'}
                   </div>
-                ) : listDeals.map((deal) => (
+                ) : listDeals.map((deal, index) => (
                   <div
-                    key={deal.title}
+                    key={deal.id ?? `${deal.title}-${deal.store ?? 'store'}-${index}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => onOpenDeal({
@@ -707,7 +757,7 @@ export function DesktopHomeScreen({
                       Trending Deals Right Now
                     </h3>
                     <p className="font-caption text-caption text-text-secondary">
-                      Claimed by more than 250 shoppers in Abuja today
+                      Claimed by shoppers near you today
                     </p>
                   </div>
                 </div>
@@ -738,9 +788,9 @@ export function DesktopHomeScreen({
                   <div className="w-full rounded-xl border border-dashed border-primary/20 bg-surface-canvas p-space-lg text-text-secondary">
                     Live trending deals will appear here soon.
                   </div>
-                ) : trendingDeals.map((deal) => (
+                ) : trendingDeals.map((deal, index) => (
                   <div
-                    key={deal.title}
+                    key={deal.id ?? `${deal.title}-${deal.store ?? 'store'}-${index}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => onOpenDeal({
@@ -811,9 +861,9 @@ export function DesktopHomeScreen({
                     <div className="rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
                       Nearby businesses will appear here when live offers are available.
                     </div>
-                  ) : businesses.map((business) => (
+                  ) : businesses.map((business, index) => (
                     <div
-                      key={business.id}
+                      key={business.id ?? `${business.name}-${index}`}
                       className="p-space-md bg-surface-canvas rounded-xl shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-space-md group cursor-pointer"
                     >
                       <div className="flex items-center gap-space-sm min-w-0">
@@ -868,9 +918,9 @@ export function DesktopHomeScreen({
                     <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
                       Popular nearby products will load from the public catalogue feed.
                     </div>
-                  ) : products.map((product) => (
+                  ) : products.map((product, index) => (
                     <div
-                      key={product.title}
+                      key={product.id ?? `${product.title}-${product.store ?? 'store'}-${index}`}
                       className="bg-surface-canvas rounded-xl p-space-sm shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
                     >
                       <div className="relative h-36 w-full rounded-lg overflow-hidden">
@@ -910,7 +960,7 @@ export function DesktopHomeScreen({
                     Merchant Growth Network
                   </span>
                   <h4 className="font-heading-md text-heading-md text-text-primary tracking-tight">
-                    Own a local business in Abuja?
+                    Own a local business in your area?
                   </h4>
                   <p className="font-body-md text-body-md text-text-secondary mt-0.5">
                     Put your neighborhood deals on VEMTAP and welcome high-value repeat walk-ins.
@@ -948,7 +998,7 @@ export function DesktopHomeScreen({
                   Neighborhood Pulse
                 </span>
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                <span className="font-caption text-caption text-text-secondary">42 Active Local Flash Deals</span>
+                <span className="font-caption text-caption text-text-secondary">{liveOfferLabel}</span>
               </div>
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight flex items-center gap-space-xs">
                 Good evening
@@ -1008,23 +1058,29 @@ export function DesktopHomeScreen({
                 <div className="space-y-space-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-label-sm text-label-sm font-semibold text-secondary-fixed uppercase tracking-wider">
-                      The Sky Lounge &amp; Grill • Apo Hills
+                      {city || 'Your area'} • {district || 'Local picks'}
                     </span>
                     <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                      50% OFF
+                      Live Deal
                     </span>
                   </div>
                   <h2 className="font-heading-lg text-heading-lg font-bold text-on-primary tracking-tight leading-snug">
-                    Chef&apos;s 5-Course Tasting Menu &amp; Wine Pairing
+                    Featured local offer from nearby merchants
                   </h2>
                   <p className="font-body-md text-body-md text-text-tertiary">
-                    Intimate dining experience featuring slow-roasted prime cuts, artisanal pastries, and rooftop
-                    sunset views over Apo Valley.
+                    Fresh savings, quick redemption, and walk-in perks from the best-rated businesses around your current
+                    location.
                   </p>
                   <div className="flex items-baseline gap-space-sm pt-space-xs">
-                    <span className="font-heading-lg text-heading-lg font-bold text-on-primary">₦24,500</span>
-                    <span className="font-body-md text-body-md text-text-tertiary line-through">₦49,000</span>
-                    <span className="font-caption text-caption text-secondary-fixed font-medium">Save ₦24,500</span>
+                    <span className="font-heading-lg text-heading-lg font-bold text-on-primary">
+                      {publicOffers.length > 0 ? formatCurrency(publicOffers[0] ? getApiPrice(publicOffers[0] as Record<string, unknown>) : 0) : '₦0'}
+                    </span>
+                    <span className="font-body-md text-body-md text-text-tertiary line-through">
+                      {publicOffers.length > 0 ? formatCurrency(publicOffers[0] ? getApiComparePrice(publicOffers[0] as Record<string, unknown>) : 0) : ''}
+                    </span>
+                    <span className="font-caption text-caption text-secondary-fixed font-medium">
+                      {publicOffers.length > 0 ? 'Live now' : 'Loading live offers'}
+                    </span>
                   </div>
                 </div>
 
@@ -1035,15 +1091,15 @@ export function DesktopHomeScreen({
                     onClick={(event) => {
                       event.stopPropagation();
                       const selected = {
-                        title: 'Chef\'s 5-Course Tasting Menu & Wine Pairing',
-                        business: 'The Sky Lounge & Grill',
+                        title: publicOffers[0] ? getApiTitle(publicOffers[0] as Record<string, unknown>) : 'Local featured offer',
+                        business: publicOffers[0] ? getApiBusinessName(publicOffers[0] as Record<string, unknown>) : 'Nearby merchant',
                         location: `${city}, ${district}`,
-                        price: 24500,
-                        oldPrice: 49000,
-                        discountLabel: '50% OFF',
-                        image: HERO_GRID_IMAGE,
+                        price: publicOffers[0] ? getApiPrice(publicOffers[0] as Record<string, unknown>) : 0,
+                        oldPrice: publicOffers[0] ? getApiComparePrice(publicOffers[0] as Record<string, unknown>) : 0,
+                        discountLabel: 'Live Deal',
+                        image: publicOffers[0] ? getNestedImage(publicOffers[0] as Record<string, unknown>) : HERO_GRID_IMAGE,
                       };
-                      onClaim?.(selected, () => showToast("Chef's Tasting Voucher reserved for 15 mins!"));
+                      onClaim?.(selected, () => showToast('Featured voucher is ready to claim.'));
                     }}
                   >
                     <span>Claim Voucher</span>
@@ -1051,7 +1107,9 @@ export function DesktopHomeScreen({
                   </button>
                   <div className="flex items-center gap-space-2xs text-text-tertiary">
                     <Icon name="timer" className="text-tertiary-fixed text-[18px]" />
-                    <span className="font-caption text-caption font-medium">Only 4 vouchers remaining</span>
+                    <span className="font-caption text-caption font-medium">
+                      {Math.max(1, publicOffers.length || 1)} live vouchers available
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1216,9 +1274,9 @@ export function DesktopHomeScreen({
                 <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
                   Live trending deals will appear here when the catalog refreshes.
                 </div>
-              ) : trendingDeals.map((deal) => (
+              ) : trendingDeals.map((deal, index) => (
                 <div
-                  key={deal.title}
+                  key={`${deal.title}-${deal.store ?? 'store'}-${index}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => onOpenDeal(createDealPayload({
@@ -1313,9 +1371,9 @@ export function DesktopHomeScreen({
                   <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
                     Nearby business cards will load from the live catalogue feed.
                   </div>
-                ) : businesses.map((business) => (
+                ) : businesses.map((business, index) => (
                   <div
-                    key={business.id}
+                    key={business.id ?? `${business.name}-${index}`}
                     className="bg-surface-canvas rounded-2xl p-space-md flex items-center justify-between gap-space-md shadow-sm hover:shadow-md transition-all"
                   >
                     <div className="flex items-center gap-space-md">
@@ -1366,20 +1424,20 @@ export function DesktopHomeScreen({
                   <div className="absolute inset-0 bg-primary/10" />
                   <div className="absolute top-1/3 left-1/4 bg-primary text-on-primary px-2 py-1 rounded-full text-caption font-semibold shadow-md flex items-center gap-1 scale-90">
                     <Icon name="restaurant" className="text-[14px]" />
-                    <span>Urban Grill</span>
+                    <span>{publicOffers[0] ? getApiBusinessName(publicOffers[0] as Record<string, unknown>) : 'Nearby merchant'}</span>
                   </div>
                   <div className="absolute bottom-1/3 right-1/4 bg-tertiary-container text-on-tertiary px-2 py-1 rounded-full text-caption font-semibold shadow-md flex items-center gap-1 scale-90">
                     <Icon name="shopping_bag" className="text-[14px]" />
-                    <span>Sole District</span>
+                    <span>{district || 'Local area'}</span>
                   </div>
                 </div>
                 <div className="p-space-xs flex items-center justify-between">
                   <div>
                     <p className="font-label-md text-label-md font-semibold text-text-primary">
-                      Apo Legislative Quarters • Zone B
+                      {city || 'Your area'} • {district || 'Nearby'}
                     </p>
                     <p className="font-caption text-caption text-text-tertiary">
-                      14 partner merchants actively redeeming today
+                      {Math.max(1, publicOffers.length || 1)} partner merchants actively redeeming today
                     </p>
                   </div>
                   <button
@@ -1400,7 +1458,7 @@ export function DesktopHomeScreen({
                   VEMTAP for Business
                 </span>
                 <h3 className="font-heading-md text-heading-md font-bold text-text-primary">
-                  Own a business in Apo or around Abuja?
+                  Own a business in {city || 'your area'}?
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary">
                   Publish flash offers, convert nearby walk-in foot traffic, and build lifetime repeat customers with

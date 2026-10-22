@@ -96,10 +96,10 @@ export function DesktopGiftSentScreen({
                       <span className="font-caption text-caption text-text-tertiary">Gift Voucher</span>
                     </div>
                     <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
-                      Lunch Combo — 20% Off
+                      Featured local deal
                     </h2>
                     <p className="font-caption text-caption text-text-secondary truncate">
-                      Urban Grill &amp; Bistro • Apo, Abuja
+                      Local dining partner • Nearby
                     </p>
                   </div>
                 </div>

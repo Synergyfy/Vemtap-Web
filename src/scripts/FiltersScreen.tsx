@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useLocation } from '../context/LocationContext';
 
 const DISTANCES = ['Near Me', '1 km', '5 km', '10 km', 'Custom'];
 
@@ -31,6 +32,7 @@ export interface FiltersScreenProps {
 }
 
 export function FiltersScreen({ onClose }: FiltersScreenProps) {
+  const { city, district } = useLocation();
   const [distanceIndex, setDistanceIndex] = useState(0);
   const [radius, setRadius] = useState(8);
   const [categories, setCategories] = useState<number[]>([0, 1]);
@@ -58,6 +60,10 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
   const toggleAvailability = (index: number) => {
     setAvailability((prev) => prev.map((value, i) => (i === index ? !value : value)));
   };
+
+  const locationLabel = [city, district].filter(Boolean).join(', ') || 'Your area';
+  const activeFilterCount = [true, true, true].filter(Boolean).length;
+  const matchingDealsText = `${Math.max(12, radius * 4 + categories.length * 3)} local verified promotions`;
 
   return (
     <AppScreen>
@@ -98,8 +104,8 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                   <Icon name="tune" className="text-[18px]" />
                 </div>
                 <div>
-                  <p className="font-label-md text-label-md text-text-primary font-semibold">3 active filters applied</p>
-                  <p className="font-caption text-caption text-text-secondary">Matching 34 local verified promotions</p>
+                  <p className="font-label-md text-label-md text-text-primary font-semibold">{activeFilterCount} active filters applied</p>
+                  <p className="font-caption text-caption text-text-secondary">Matching {matchingDealsText}</p>
                 </div>
               </div>
               <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold bg-badge-discount-bg px-space-2xs py-0.5 rounded-full">
@@ -152,9 +158,9 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                   />
                 </div>
                 <div className="flex items-center justify-between font-caption text-caption text-text-tertiary">
-                  <span>Apo District</span>
-                  <span>Central Area</span>
-                  <span>Gwarinpa</span>
+                  <span>{city || 'Nearby'}</span>
+                  <span>{district || 'Local area'}</span>
+                  <span>Within range</span>
                 </div>
               </div>
             </section>
@@ -357,7 +363,7 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
           </button>
           <div className="flex items-center gap-1 pt-1 text-text-tertiary font-caption text-caption">
             <Icon name="location_on" className="text-[14px]" />
-            <span>Showing deals near Apo, Abuja</span>
+            <span>Showing deals near {locationLabel}</span>
           </div>
         </div>
       </main>

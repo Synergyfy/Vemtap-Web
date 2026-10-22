@@ -6,6 +6,7 @@ import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { hasApiConfig } from './lib/api';
+import { authService } from './services';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
@@ -869,7 +870,7 @@ export default function App() {
 }
 
 function AppInner() {
-  const { authed, claimed, signIn, signOut, markClaimed, resetClaim } = useAuth();
+  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim } = useAuth();
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -883,6 +884,13 @@ function AppInner() {
   });
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
   const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
+  const [customerSignup, setCustomerSignup] = useState({
+    email: '',
+    code: '',
+    firstName: '',
+    lastName: '',
+    phone: '',
+  });
   const [feedFrom, setFeedFrom] = useState<Route>('home');
   /**
    * Referral code captured from a referral URL (e.g. `?ref=CODE`) at mount,
@@ -1776,6 +1784,7 @@ function AppInner() {
         onNav={feedNav}
         onBack={() => setRoute(dealFrom)}
         onClaimComplete={handleClaimComplete}
+        deal={selectedDeal}
       />
     ) : (
       <DealDetailScreen
@@ -1798,6 +1807,7 @@ function AppInner() {
           setClaimedFrom('deal-detail');
           setRoute('claimed-deal');
         }}
+        deal={selectedDeal}
       />
     );
 
@@ -1807,6 +1817,68 @@ function AppInner() {
     setActiveClaim(null);
     resetClaim();
     setRoute('home');
+  };
+
+  const requestCustomerSignupOtp = async (email: string) => {
+    const nextEmail = email.trim().toLowerCase();
+    if (!nextEmail) {
+      throw new Error('An email is required to continue.');
+    }
+
+    setCustomerSignup((current) => ({ ...current, email: nextEmail }));
+
+    if (!hasApiConfig()) {
+      return;
+    }
+
+    await authService.requestCustomerOtp({ email: nextEmail });
+  };
+
+  const handleCustomerSignupVerification = async (code: string) => {
+    const nextCode = code.replace(/\D/g, '').slice(0, 6);
+    if (!nextCode) {
+      throw new Error('Enter the 6-digit verification code to continue.');
+    }
+
+    setCustomerSignup((current) => ({ ...current, code: nextCode }));
+  };
+
+  const completeCustomerSignup = async (details: { firstName: string; lastName: string; phone: string; pin: string }) => {
+    const email = customerSignup.email.trim().toLowerCase();
+    const code = customerSignup.code.replace(/\D/g, '').slice(0, 6);
+    const firstName = details.firstName.trim();
+    const lastName = details.lastName.trim();
+    const phone = details.phone.replace(/\D/g, '').slice(0, 15);
+    const pin = details.pin.replace(/\D/g, '').slice(0, 6);
+
+    if (!email || !code) {
+      throw new Error('Your email and verification code are required to finish registration.');
+    }
+
+    if (pin.length !== 6) {
+      throw new Error('Create a 6-digit security PIN to continue.');
+    }
+
+    const payload = {
+      email,
+      code,
+      pin,
+      ...(firstName ? { firstName } : {}),
+      ...(lastName ? { lastName } : {}),
+      ...(phone ? { phone: `+${phone}` } : {}),
+    };
+
+    if (hasApiConfig()) {
+      await authService.verifyCustomerPin(payload);
+    }
+
+    profile.update({
+      firstName: firstName || 'User',
+      lastName,
+      email,
+      phone: phone ? `+${phone}` : '',
+    });
+    markAuthenticated(true);
   };
 
   const renderClaimed = () =>
@@ -1873,7 +1945,11 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopAuthCodeScreen
-            onContinue={() => setRoute('verify-email')}
+            onContinue={() => setRoute('sign-in')}
+            onSubmitEmail={async (email) => {
+              await requestCustomerSignupOtp(email);
+              setRoute('verify-email');
+            }}
             onGoogle={() => {
               signIn();
               setRoute('google-confirm');
@@ -1885,7 +1961,11 @@ function AppInner() {
       return (
         <AuthCodeScreen
           onBack={() => setRoute(authFrom)}
-          onContinue={() => setRoute('verify-email')}
+          onContinue={() => setRoute('sign-in')}
+          onSubmitEmail={async (email) => {
+            await requestCustomerSignupOtp(email);
+            setRoute('verify-email');
+          }}
           onGoogle={() => {
             signIn();
             setRoute('google-confirm');
@@ -1912,15 +1992,9 @@ function AppInner() {
             }}
             onBusinessRegister={() => setRoute('business-onboarding')}
             onCustomerSignIn={async () => {
-              if (!hasApiConfig()) {
-                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
-              }
               setRoute('dashboard');
             }}
             onBusinessSignIn={async () => {
-              if (!hasApiConfig()) {
-                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
-              }
               setRoute('business-overview');
             }}
           />
@@ -1942,15 +2016,9 @@ function AppInner() {
           }}
           onBusinessRegister={() => setRoute('business-onboarding')}
           onCustomerSignIn={async () => {
-            if (!hasApiConfig()) {
-              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
-            }
             setRoute('dashboard');
           }}
           onBusinessSignIn={async () => {
-            if (!hasApiConfig()) {
-              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
-            }
             setRoute('business-overview');
           }}
         />
@@ -1961,16 +2029,30 @@ function AppInner() {
         return (
           <DesktopVerifyEmailScreen
             onBack={() => setRoute('auth-code')}
-            onContinue={() => setRoute('profile-setup')}
+            onContinue={async (code) => {
+              await handleCustomerSignupVerification(code);
+              setRoute('profile-setup');
+            }}
             onEditEmail={() => setRoute('auth-code')}
             onBusinessSetup={() => setRoute('business-onboarding')}
+            email={customerSignup.email}
+            onResend={async () => {
+              await requestCustomerSignupOtp(customerSignup.email);
+            }}
           />
         );
       return (
         <VerifyEmailScreen
           onBack={() => setRoute('auth-code')}
-          onContinue={() => setRoute('profile-setup')}
+          onContinue={async (code) => {
+            await handleCustomerSignupVerification(code);
+            setRoute('profile-setup');
+          }}
           onEditEmail={() => setRoute('auth-code')}
+          email={customerSignup.email}
+          onResend={async () => {
+            await requestCustomerSignupOtp(customerSignup.email);
+          }}
         />
       );
 
@@ -1979,11 +2061,26 @@ function AppInner() {
         return (
           <DesktopProfileSetupScreen
             onBack={() => setRoute('verify-email')}
-            onComplete={() => setRoute('location-permission')}
+            email={customerSignup.email}
+            code={customerSignup.code}
+            onComplete={async (details) => {
+              await completeCustomerSignup(details);
+              setRoute('location-permission');
+            }}
             onBusinessSetup={() => setRoute('business-onboarding')}
           />
         );
-      return <ProfileSetupScreen onBack={() => setRoute('verify-email')} onComplete={() => setRoute('location-permission')} />;
+      return (
+        <ProfileSetupScreen
+          onBack={() => setRoute('verify-email')}
+          email={customerSignup.email}
+          code={customerSignup.code}
+          onComplete={async (details) => {
+            await completeCustomerSignup(details);
+            setRoute('location-permission');
+          }}
+        />
+      );
 
     case 'location-permission':
       if (isDesktop)
@@ -2209,13 +2306,13 @@ function AppInner() {
         return (
           <>
             {renderDetail()}
-            <ShareModal open onClose={() => setRoute('deal-detail')} />
+            <ShareModal open onClose={() => setRoute('deal-detail')} deal={selectedDeal} />
           </>
         );
       return (
         <>
           {renderDetail()}
-          <ShareSheet open onClose={() => setRoute('deal-detail')} />
+          <ShareSheet open onClose={() => setRoute('deal-detail')} deal={selectedDeal} />
         </>
       );
 

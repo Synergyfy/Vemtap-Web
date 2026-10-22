@@ -26,14 +26,14 @@ const STEPS: { step: string; title: string; icon: string; body: string; extra: R
     step: '2',
     title: 'Visit the Business',
     icon: 'near_me',
-    body: 'Head to Urban Grill & Bistro in Apo, Abuja anytime before the deal expires on 20 Sep.',
+    body: 'Head to the featured local business in your area anytime before the deal expires.',
     extra: (
       <div className="mt-space-xs flex items-center justify-between gap-2 p-space-xs rounded-lg bg-surface-container-low">
         <div className="flex items-center gap-space-2xs min-w-0">
           <Icon name="location_on" className="text-primary text-[18px] shrink-0" />
-          <span className="font-caption text-caption text-text-primary truncate">Plot 412, Apo Resettlement</span>
+          <span className="font-caption text-caption text-text-primary truncate">Your local branch</span>
         </div>
-        <span className="font-label-sm text-label-sm text-primary shrink-0 font-medium">0.8 mi</span>
+        <span className="font-label-sm text-label-sm text-primary shrink-0 font-medium">Nearby</span>
       </div>
     ),
   },

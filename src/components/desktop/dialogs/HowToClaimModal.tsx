@@ -29,10 +29,10 @@ const STEPS: Step[] = [
   {
     icon: 'storefront',
     iconClass: 'bg-surface-container text-on-secondary-container',
-    title: '2. Visit Urban Grill & Bistro',
-    badge: 'Apo, Abuja',
+    title: '2. Visit the Featured Merchant',
+    badge: 'Nearby',
     badgeClass: 'font-caption text-caption text-text-secondary bg-surface-container',
-    copy: 'Head to Plot 14 Apo Boulevard during valid hours (Monday to Friday, 12:00 PM – 4:00 PM).',
+    copy: 'Head to the active local branch during the valid redemption window for your selected offer.',
   },
   {
     icon: 'qr_code_2',
@@ -71,9 +71,9 @@ export function HowToClaimModal({ open, onClose, onProceed }: HowToClaimModalPro
           </div>
           <h2 className="font-heading-lg text-heading-lg text-on-surface tracking-tight">How to Claim &amp; Voucher Terms</h2>
           <p className="font-body-md text-body-md text-text-secondary flex items-center gap-1.5">
-            <span className="font-medium text-on-surface">Prime 3-Course Lunch Combo</span>
+            <span className="font-medium text-on-surface">Featured Local Deal</span>
             <span className="text-text-tertiary">•</span>
-            <span>Urban Grill &amp; Bistro</span>
+            <span>Local dining partner</span>
           </p>
         </div>
         <ModalCloseButton onClose={onClose} />

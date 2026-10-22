@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useLocation } from '../context/LocationContext';
 import { hasApiConfig } from '../services/api/client';
 import { catalogueService } from '../services/catalogueService';
 
@@ -149,6 +150,7 @@ function dealCardProps(onOpen: () => void) {
 }
 
 export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenProps) {
+  const { city, district } = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [radius, setRadius] = useState('10 km');
   const [sortIndex, setSortIndex] = useState(0);
@@ -156,6 +158,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
   const [toast, setToast] = useState<string | null>(null);
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const toastTimers = useRef<number[]>([]);
+  const locationLabel = [city, district].filter(Boolean).join(', ') || 'Your area';
 
   useEffect(() => {
     let ignore = false;
@@ -248,7 +251,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
             <div className="flex items-center justify-between gap-space-xs">
               <div className="flex items-center gap-space-xs min-w-0 bg-surface-container-low px-space-sm py-space-xs rounded-full">
                 <Icon name="location_on" className="text-primary text-[18px] flex-shrink-0" filled />
-                <span className="font-label-md text-label-md text-on-surface truncate font-semibold">Apo, Abuja</span>
+                <span className="font-label-md text-label-md text-on-surface truncate font-semibold">{locationLabel}</span>
                 <span className="font-caption text-caption text-text-secondary">Within</span>
                 <button
                   aria-label="Adjust radius"
@@ -262,7 +265,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
               </div>
               <div className="flex items-center gap-1 px-space-xs py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-caption text-caption font-semibold flex-shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                <span>5 Live Deals</span>
+                <span>{deals.length} live deal{deals.length === 1 ? '' : 's'}</span>
               </div>
             </div>
 
@@ -329,7 +332,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
               </div>
             ) : deals.map((deal, index) => (
               <article
-                key={deal.title}
+                key={`${deal.title}-${deal.merchant}-${index}`}
                 {...dealCardProps(onOpenDeal)}
                 className="flex flex-col bg-surface-canvas rounded-2xl shadow-sm overflow-hidden active:shadow-md transition-shadow cursor-pointer"
               >
@@ -415,11 +418,11 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
               <h4 className="font-label-md text-label-md font-bold text-text-primary">About Featured Listings</h4>
               <p className="font-caption text-caption text-text-secondary max-w-xs leading-relaxed">
                 Featured Deals are sponsored placements boosted by verified local merchants. Ranking is strictly computed
-                based on exact real-time GPS proximity to Apo, Abuja.
+                based on exact real-time GPS proximity to {locationLabel}.
               </p>
               <button
                 type="button"
-                onClick={() => showToast('Ranking is based on live GPS distance from Apo, Abuja')}
+                onClick={() => showToast(`Ranking is based on live GPS distance from ${locationLabel}`)}
                 className="mt-space-xs font-caption text-caption text-primary font-semibold flex items-center gap-0.5 active:opacity-75"
               >
                 <span>Learn how VEMTAP ranking works</span>

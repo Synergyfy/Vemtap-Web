@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { Icon } from '../../components/ui/Icon';
+import { useLocation } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 import { DISCOVER_CATEGORIES, buildDiscoverCardsFromOffers, type BusinessCard } from '../discoverData';
@@ -17,6 +18,7 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
   const [mapView, setMapView] = useState(false);
   const [businessCards, setBusinessCards] = useState<BusinessCard[]>([]);
   const [bookmarked, setBookmarked] = useState<boolean[]>([]);
+  const { district, city, radius } = useLocation();
 
   useEffect(() => {
     let ignore = false;
@@ -85,12 +87,12 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
               className="inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-tint-blue text-primary-container active:opacity-80 transition-opacity"
             >
               <Icon name="location_on" className="text-[18px]" />
-              <span className="font-label-md text-label-md font-semibold">Apo, Abuja</span>
+              <span className="font-label-md text-label-md font-semibold">{district}, {city}</span>
               <Icon name="keyboard_arrow_down" className="text-[16px]" />
             </button>
             <div className="flex items-center gap-1 text-text-tertiary">
               <Icon name="radar" className="text-[14px]" />
-              <span className="font-caption text-caption">Within 5 km radius</span>
+              <span className="font-caption text-caption">Within {radius} km radius</span>
             </div>
           </div>
 
