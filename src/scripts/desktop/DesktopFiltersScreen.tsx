@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { useLocation } from '../../context/LocationContext';
 
 interface DesktopFiltersScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -107,6 +108,7 @@ const PREVIEW_DEALS: PreviewDeal[] = [
 const DEFAULT_CATEGORIES = ['Food & Drinks', 'Beauty & Spa'];
 
 export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenProps) {
+  const { city, district } = useLocation();
   const [radius, setRadius] = useState(8);
   const [radiusPill, setRadiusPill] = useState('Near Me');
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
@@ -132,6 +134,8 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
       (timing.walkins ? 1 : 0) +
       (timing.weekend ? 1 : 0)
   );
+
+  const activeFilterText = `${Math.max(1, categories.length)} active`;
 
   const toggleCategory = (label: string) => {
     setCategories((prev) =>
@@ -162,6 +166,8 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
       active ? 'bg-surface-tint-blue text-primary font-semibold' : 'bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container'
     }`;
 
+  const locationLabel = [city, district].filter(Boolean).join(', ') || 'Your area';
+
   return (
     <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
       <div className="w-full max-w-7xl mx-auto px-margin py-space-xl">
@@ -173,7 +179,7 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
               </div>
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Filters</h1>
               <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
-                3 Active
+                {activeFilterText}
               </span>
             </div>
             <p className="font-body-md text-body-md text-text-secondary">
@@ -219,7 +225,7 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                 </div>
                 <span className="px-space-xs py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1 w-fit">
                   <Icon name="my_location" className="text-[14px]" />
-                  Apo, Abuja
+                  {locationLabel}
                 </span>
               </div>
 
@@ -253,11 +259,11 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                 <div className="flex justify-between items-center text-text-tertiary font-caption text-caption gap-space-sm">
                   <span className="flex items-center gap-1 font-medium text-text-secondary">
                     <Icon name="trip_origin" className="text-[14px]" />
-                    1km (Apo District)
+                    1km ({district || 'local area'})
                   </span>
                   <span className="font-semibold text-primary">Selected: {radius}km</span>
                   <span className="flex items-center gap-1 font-medium text-text-secondary">
-                    25km (Gwarinpa / Airport Rd) <Icon name="location_on" className="text-[14px]" />
+                    25km ({city || 'nearby'} / {district || 'local'}) <Icon name="location_on" className="text-[14px]" />
                   </span>
                 </div>
               </div>
@@ -521,7 +527,7 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                 Target Neighborhood
               </p>
               <p className="font-label-md text-label-md font-semibold text-text-primary">
-                Showing deals near Apo, Abuja • {radius}km Radius
+                Showing deals near {locationLabel} • {radius}km Radius
               </p>
             </div>
           </div>

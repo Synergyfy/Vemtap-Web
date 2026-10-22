@@ -42,4 +42,26 @@ export const supportService = {
   createTicket: (input: { subject: string; category: string; message: string; priority?: TicketPriority }) =>
     api.post<SupportTicket>('/support/tickets', input),
   reply: (id: string, message: string) => api.post<TicketMessage>(`/support/tickets/${id}/message`, { message }),
+
+  queryBot: async (payload: Record<string, unknown>) => {
+    try {
+      return await api.post<unknown>('/support/bot/query', payload);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'status' in error && typeof (error as { status?: number }).status === 'number') {
+        return { fallback: true, message: 'Support bot is temporarily unavailable.' };
+      }
+      throw error;
+    }
+  },
+
+  escalate: async (payload: Record<string, unknown>) => {
+    try {
+      return await api.post<unknown>('/support/escalate', payload);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'status' in error && typeof (error as { status?: number }).status === 'number') {
+        return { escalated: false, message: 'Unable to escalate support right now.' };
+      }
+      throw error;
+    }
+  },
 };

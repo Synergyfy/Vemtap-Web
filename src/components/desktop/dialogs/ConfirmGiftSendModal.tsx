@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
-import { maskPhone } from '../../../utils/format';
+import { maskPhone, parsePrice } from '../../../utils/format';
 
 export interface ConfirmGiftSendModalProps {
   open: boolean;
@@ -10,14 +10,32 @@ export interface ConfirmGiftSendModalProps {
   onSend: () => void;
   /** Gift recipient collected in the previous step. */
   recipient?: { name: string; email: string; phone?: string } | null;
+  deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  } | null;
 }
 
 type DispatchState = 'idle' | 'sending' | 'sent';
 
-export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient }: ConfirmGiftSendModalProps) {
+export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient, deal }: ConfirmGiftSendModalProps) {
   const recipientName = recipient?.name ?? 'Gift Recipient';
   const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : 'Phone not provided';
   const firstName = recipientName.split(/\s+/)[0] || recipientName || 'recipient';
+  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+  const businessName = deal?.business?.trim() || 'This local partner';
+  const dealLocation = deal?.location?.trim() || 'Your selected area';
+  const dealImage =
+    deal?.image ||
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuBXC0UICumcOqUgWRJhksyfo1WV4W_z_Jah24z17LixUVf_ZwyTV7cOsMK8mUbjlRW0wDeE9yhj2K30sqtivL48v2w685VmwyLNsVx4AdCwwcUurgusf3wMMjPCx6qbHD6POoacLsb0JgzozuqmuUWFLDymyq-Ow0tH8GDpH3UrTbdesSIX-AjcYMeqgChtR-jGUGCmDLtSQ8k-42V8pISEEi-4ILLBVobVDoxD3Wyq';
+  const price = parsePrice(deal?.price);
+  const oldPrice = parsePrice(deal?.oldPrice) || price;
+  const discountLabel = deal?.discountLabel || (oldPrice > price ? '20% OFF' : 'Special rate');
   const [agreed, setAgreed] = useState(true);
   const [state, setState] = useState<DispatchState>('idle');
   const timers = useRef<Array<number>>([]);
@@ -105,21 +123,21 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient 
               <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 shadow-sm relative">
                 <img
                   className="w-full h-full object-cover"
-                  alt="Signature woodfire flame-grilled beef steak combo with golden french fries and craft iced peach beverage in Abuja bistro setting"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXC0UICumcOqUgWRJhksyfo1WV4W_z_Jah24z17LixUVf_ZwyTV7cOsMK8mUbjlRW0wDeE9yhj2K30sqtivL48v2w685VmwyLNsVx4AdCwwcUurgusf3wMMjPCx6qbHD6POoacLsb0JgzozuqmuUWFLDymyq-Ow0tH8GDpH3UrTbdesSIX-AjcYMeqgChtR-jGUGCmDLtSQ8k-42V8pISEEi-4ILLBVobVDoxD3Wyq"
+                  alt={dealTitle}
+                  src={dealImage}
                 />
                 <div className="absolute top-1 left-1 bg-badge-discount-bg text-badge-discount-text text-[10px] font-bold px-1.5 py-0.5 rounded">
-                  20% OFF
+                  {discountLabel}
                 </div>
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-heading-sm text-heading-sm text-text-primary leading-tight truncate">
-                  Prime 3-Course Lunch Combo &amp; Craft Beverage
+                  {dealTitle}
                 </h3>
                 <div className="flex items-center gap-1 text-text-secondary mt-1">
                   <Icon name="storefront" className="text-[16px] text-primary" />
                   <span className="font-body-md text-body-md truncate">
-                    Urban Grill &amp; Bistro • Apo District, Abuja
+                    {businessName} • {dealLocation}
                   </span>
                 </div>
               </div>
@@ -215,8 +233,10 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient 
               </span>
             </div>
             <div className="text-right shrink-0">
-              <span className="font-heading-sm text-heading-sm font-bold text-primary">₦9,600</span>
-              <span className="font-caption text-caption text-badge-discount-text ml-1">(20% OFF)</span>
+              <span className="font-heading-sm text-heading-sm font-bold text-primary">
+                {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(price)}
+              </span>
+              <span className="font-caption text-caption text-badge-discount-text ml-1">({discountLabel})</span>
             </div>
           </div>
         </div>

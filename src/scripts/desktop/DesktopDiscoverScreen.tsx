@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { Icon } from '../../components/ui/Icon';
+import { useLocation } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 import { DISCOVER_CATEGORIES, buildDiscoverCardsFromOffers, type BusinessCard } from '../discoverData';
@@ -17,9 +18,20 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
   const [mapView, setMapView] = useState(false);
   const [businessCards, setBusinessCards] = useState<BusinessCard[]>([]);
   const [bookmarked, setBookmarked] = useState<boolean[]>([]);
+  const { district, city, radius } = useLocation();
 
   useEffect(() => {
     let ignore = false;
+
+    const extractRows = (payload: unknown): Record<string, unknown>[] => {
+      if (Array.isArray(payload)) return payload as Record<string, unknown>[];
+      if (!payload || typeof payload !== 'object') return [];
+      const container = payload as { data?: unknown; items?: unknown; results?: unknown };
+      if (Array.isArray(container.data)) return container.data as Record<string, unknown>[];
+      if (Array.isArray(container.items)) return container.items as Record<string, unknown>[];
+      if (Array.isArray(container.results)) return container.results as Record<string, unknown>[];
+      return [];
+    };
 
     const loadOffers = async () => {
       if (!hasApiConfig()) {
@@ -31,9 +43,14 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
       }
 
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        const cards = buildDiscoverCardsFromOffers(rows as Record<string, unknown>[]);
+        const [businessResponse, statsResponse] = await Promise.all([
+          catalogueService.getPublicBusinesses({ page: 1, limit: 4 }).catch(() => null),
+          catalogueService.getPublicStats({ page: 1, limit: 4 }).catch(() => null),
+        ]);
+
+        const rows = extractRows(businessResponse ?? statsResponse);
+        const cards = buildDiscoverCardsFromOffers(rows.length > 0 ? rows : (await catalogueService.getPublicOffers({ page: 1, limit: 4 }).catch(() => ({ data: [] }))).data ?? []);
+
         if (!ignore) {
           setBusinessCards(cards.length > 0 ? cards : []);
           setBookmarked(Array.from({ length: cards.length > 0 ? cards.length : 0 }, () => false));
@@ -85,12 +102,12 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
               className="inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-tint-blue text-primary-container active:opacity-80 transition-opacity"
             >
               <Icon name="location_on" className="text-[18px]" />
-              <span className="font-label-md text-label-md font-semibold">Apo, Abuja</span>
+              <span className="font-label-md text-label-md font-semibold">{district}, {city}</span>
               <Icon name="keyboard_arrow_down" className="text-[16px]" />
             </button>
             <div className="flex items-center gap-1 text-text-tertiary">
               <Icon name="radar" className="text-[14px]" />
-              <span className="font-caption text-caption">Within 5 km radius</span>
+              <span className="font-caption text-caption">Within {radius} km radius</span>
             </div>
           </div>
 

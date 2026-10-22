@@ -111,16 +111,24 @@ const isUsableOffer = (offer: Record<string, unknown>): boolean => {
   return Boolean(business && title && (price > 0 || compare > 0));
 };
 
-const toDealCardModel = (offer: Record<string, unknown>) => {
+const toDealCardModel = (offer: Record<string, unknown>, index?: number) => {
   const title = getOfferTitle(offer);
   const business = getOfferBusinessName(offer);
   const price = getOfferPrice(offer);
   const compare = getOfferComparePrice(offer);
   const saveAmount = Math.max(compare - price, 0);
   const percent = compare > 0 ? Math.max(Math.round((saveAmount / compare) * 100), 5) : 15;
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}-${index ?? 0}`,
+  );
 
   return {
-    id: String(offer.id ?? `${business}-${title}`),
+    id: offerId,
     image: getOfferImage(offer),
     business,
     title,
@@ -136,21 +144,24 @@ const toDealCardModel = (offer: Record<string, unknown>) => {
 export interface DealsScreenProps {
   onTab: (tab: MobileTabKey) => void;
   onOpenFilters: () => void;
-  onOpenDeal: () => void;
+  onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
   onOpenNotifications: () => void;
   onClaim?: (onClaimed?: () => void) => void;
   onAccount: () => void;
 }
 
-function dealCardProps(onOpen: () => void) {
+function dealCardProps(
+  onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void,
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string },
+) {
   return {
-    onClick: onOpen,
+    onClick: () => onOpen(deal),
     role: 'button' as const,
     tabIndex: 0,
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        onOpen();
+        onOpen(deal);
       }
     },
   };
@@ -222,9 +233,9 @@ function GreetingHeader({
   );
 }
 
-function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unknown>[]; onOpen: () => void; onClaim?: (onClaimed?: () => void) => void }) {
+function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unknown>[]; onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void; onClaim?: (onClaimed?: () => void) => void }) {
   const { claimed } = useAuth();
-  const cards = useMemo(() => deals.map(toDealCardModel), [deals]);
+  const cards = useMemo(() => deals.map((deal, index) => toDealCardModel(deal, index)), [deals]);
 
   if (!cards.length) {
     return (
@@ -239,11 +250,20 @@ function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unkno
 
   return (
     <div className="grid grid-cols-2 gap-3 px-margin pb-space-lg">
-      {cards.map((deal) => (
+      {cards.map((deal, index) => (
         <article
-          {...dealCardProps(onOpen)}
+          {...dealCardProps(onOpen, {
+            id: String((deal as Record<string, unknown>).id ?? (deal as Record<string, unknown>).offerId ?? (deal as Record<string, unknown>)._id ?? (deal as Record<string, unknown>).businessId ?? (deal as Record<string, unknown>).branchId ?? `${(deal as Record<string, unknown>).business}-${(deal as Record<string, unknown>).title}-${index}`),
+            title: String((deal as Record<string, unknown>).title ?? ''),
+            business: String((deal as Record<string, unknown>).business ?? ''),
+            location: typeof (deal as Record<string, unknown>).location === 'string' ? String((deal as Record<string, unknown>).location) : undefined,
+            price: Number((deal as Record<string, unknown>).price ?? 0),
+            oldPrice: Number((deal as Record<string, unknown>).compare ?? 0),
+            discountLabel: String((deal as Record<string, unknown>).discount ?? ''),
+            image: String((deal as Record<string, unknown>).image ?? ''),
+          })}
           className="bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden flex flex-col hover:shadow-md transition-all cursor-pointer"
-          key={deal.id}
+          key={`${deal.id}-${index}`}
         >
           <div className="relative w-full aspect-[4/3] bg-surface-container overflow-hidden">
             <img alt={deal.title} className="w-full h-full object-cover" src={deal.image} />
@@ -527,7 +547,18 @@ export function DealsScreen({
             <div className="px-margin mb-space-md">
               {featuredDeal ? (
                 <div
-                  {...dealCardProps(onOpenDeal)}
+                  {...dealCardProps(onOpenDeal, {
+                    id: String(featuredDeal.id ?? featuredDeal.title),
+                    title: featuredDeal.title,
+                    business: featuredDeal.business,
+                    location: featuredDeal.distance,
+                    price: typeof featuredDeal.price === 'number' ? featuredDeal.price : Number(String(featuredDeal.price ?? '').replace(/[^\d.]/g, '')) || undefined,
+                    oldPrice: typeof featuredDeal.compare === 'number'
+                      ? featuredDeal.compare
+                      : Number(String(featuredDeal.compare ?? '').replace(/[^\d.]/g, '')) || undefined,
+                    discountLabel: featuredDeal.discount,
+                    image: featuredDeal.image,
+                  })}
                   className="w-full text-left bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden flex flex-col hover:shadow-md transition-all cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-2">
@@ -613,95 +644,6 @@ export function DealsScreen({
                   <p className="mt-1 font-body-md text-body-md text-text-secondary">Local offers will appear here once the catalogue is active.</p>
                 </div>
               )}
-              <div
-                {...dealCardProps(onOpenDeal)}
-                className="w-full text-left bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden flex flex-col hover:shadow-md transition-all cursor-pointer"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Icon name="local_fire_department" className="text-primary text-[18px]" filled />
-                    <span className="font-label-sm text-[12px] font-bold uppercase tracking-wider text-text-secondary">
-                      FEATURED DEAL OF THE DAY
-                    </span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
-                    50% OFF
-                  </span>
-                </div>
-                <div className="relative w-full aspect-[16/9] bg-surface-container overflow-hidden">
-                  <img
-                    alt="Chef's 5-Course Sunset Tasting Menu"
-                    className="w-full h-full object-cover"
-                    src={IMAGES.tasting}
-                  />
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-[11px] font-bold shadow-xs flex items-center gap-1">
-                      <Icon name="star" className="text-[13px]" filled />Top Pick
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium">
-                      Special Promo
-                    </span>
-                  </div>
-                  <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium flex items-center gap-1">
-                    <Icon name="hourglass_top" className="text-[13px] text-tertiary-fixed" />
-                    Ends in 8h
-                  </div>
-                </div>
-                <div className="p-space-md flex flex-col">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-1 min-w-0">
-                      <span className="font-caption text-[12px] text-text-secondary font-medium truncate">
-                        The Sky Lounge &amp; Grill • Apo Legacy Tower
-                      </span>
-                      <Icon name="verified" className="text-primary text-[14px] shrink-0" filled />
-                    </div>
-                    <div className="flex items-center gap-0.5 text-text-secondary font-caption text-[11px] shrink-0">
-                      <Icon name="location_on" className="text-[13px]" />
-                      <span>1.1 km</span>
-                    </div>
-                  </div>
-                  <h2 className="font-heading-sm text-[17px] text-text-primary font-bold leading-snug mb-2">
-                    Chef&apos;s 5-Course Sunset Tasting Menu &amp; Wine Pairing
-                  </h2>
-                  <div className="flex items-baseline justify-between mb-2.5">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-heading-md text-heading-md text-text-primary font-bold">₦22,500</span>
-                      <span className="font-body-md text-body-md text-text-tertiary line-through">₦45,000</span>
-                      <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
-                        Save ₦22,500
-                      </span>
-                    </div>
-                    <span className="font-caption text-[11px] text-error font-medium">
-                      Limited to 30 vouchers
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between pt-2.5 border-t border-border-subtle">
-                    <div className="flex items-center gap-3 text-text-secondary font-caption text-[12px]">
-                      <span className="flex items-center gap-1">
-                        <Icon name="favorite" className="text-[15px] text-error" filled />148
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Icon name="chat_bubble" className="text-[15px]" />32
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onClaim?.(() => {});
-                      }}
-                      className={`h-9 px-4 rounded-xl font-label-md text-label-md font-semibold active:scale-95 transition-all shadow-xs flex items-center gap-1.5 ${
-                        claimed
-                          ? 'bg-badge-discount-bg text-badge-discount-text'
-                          : 'bg-primary text-on-primary hover:bg-surface-tint'
-                      }`}
-                    >
-                      {claimed ? 'Claimed' : 'Claim Deal'}
-                      <Icon name="arrow_forward" className="text-[16px]" />
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
 
             <div className="px-margin mb-space-sm flex items-center justify-between">

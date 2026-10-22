@@ -11,26 +11,29 @@ interface DesktopDealsScreenProps {
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
   onOpenDeal: (deal?: {
+    id?: string | number;
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
     image?: string;
   }) => void;
   onClaim?: (deal?: {
+    id?: string | number;
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
     image?: string;
   } | null, onClaimed?: () => void) => void;
 }
 
 interface DiscoveryDeal {
+  id?: string | number;
   image: string;
   imageAlt: string;
   discount: string;
@@ -46,6 +49,7 @@ interface DiscoveryDeal {
 }
 
 interface CatalogDeal {
+  id?: string | number;
   image: string;
   imageAlt: string;
   discount: string;
@@ -158,6 +162,14 @@ const toDiscoveryDeal = (offer: Record<string, unknown>): DiscoveryDeal => {
   const compare = getOfferComparePrice(offer);
   const difference = Math.max(compare - price, 0);
   return {
+    id: String(
+      offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${getOfferBusinessName(offer)}-${title}`,
+    ),
     image: getOfferImage(offer),
     imageAlt: `${title} by ${getOfferBusinessName(offer)}`,
     discount: price > 0 ? 'Live Deal' : 'Offer',
@@ -179,6 +191,14 @@ const toCatalogDeal = (offer: Record<string, unknown>): CatalogDeal => {
   const compare = getOfferComparePrice(offer);
   const business = getOfferBusinessName(offer);
   return {
+    id: String(
+      offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}`,
+    ),
     image: getOfferImage(offer),
     imageAlt: `${title} by ${business}`,
     discount: price > 0 ? 'Live Offer' : 'Offer',
@@ -196,7 +216,7 @@ const toCatalogDeal = (offer: Record<string, unknown>): CatalogDeal => {
   };
 };
 
-const CONTEXT_CATEGORIES = ['All Deals (6)', 'Food & Dining', 'Fashion & Wear', 'Wellness & Spa', 'Fitness'];
+const CONTEXT_CATEGORIES = ['All Deals', 'Food & Dining', 'Fashion & Wear', 'Wellness & Spa', 'Fitness'];
 
 export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onClaim }: DesktopDealsScreenProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -389,7 +409,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
             <div className="w-full bg-surface-container-lowest rounded-2xl p-space-md mb-space-xl flex flex-col sm:flex-row items-center justify-between gap-space-md shadow-[0_4px_20px_-4px_rgba(13,37,76,0.03)]">
               <div className="flex items-center gap-space-md w-full sm:w-auto">
                 <div className="flex items-center gap-space-xs">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">Showing 6 deals</span>
+                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">Showing {catalogDeals.length} deal{catalogDeals.length === 1 ? '' : 's'}</span>
                   <span className="px-2 py-0.5 rounded-md bg-secondary-fixed text-on-secondary-fixed text-caption font-caption font-bold">
                     VERIFIED LOCAL
                   </span>
@@ -438,9 +458,9 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                 <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
                   Live catalog deals will appear here as soon as the public offers feed is available.
                 </div>
-              ) : catalogDeals.map((deal) => (
+              ) : catalogDeals.map((deal, index) => (
                 <article
-                  key={deal.title}
+                  key={`${deal.title}-${deal.store}-${index}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => onOpenDeal({
@@ -582,7 +602,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                     Zero-Risk VEMTAP Guarantee
                   </h4>
                   <p className="font-body-md text-body-md text-text-secondary">
-                    Claim online for free. Show your barcode to the cashier and pay the discounted price in Apo.
+                    Claim online for free. Show your barcode to the cashier and pay the discounted price in {district || city || 'your area'}.
                   </p>
                 </div>
               </div>
@@ -852,9 +872,9 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                 <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
                   Nearby discovery deals will appear here when live offers are returned.
                 </div>
-              ) : discoveryDeals.map((deal) => (
+              ) : discoveryDeals.map((deal, index) => (
                 <article
-                  key={deal.title}
+                  key={`${deal.title}-${deal.store}-${index}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => onOpenDeal({
@@ -968,7 +988,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all hover:gap-space-xs"
                   type="button"
                 >
-                  <span>Load More Apo Neighborhood Offers</span>
+                  <span>Load More {district || city || 'Local'} Neighborhood Offers</span>
                   <Icon name="keyboard_arrow_down" className="text-[18px]" />
                 </button>
               </div>

@@ -104,6 +104,9 @@ export const normalizeBookingRecord = (
 };
 
 export const bookingService = {
+  getAvailability: async (params: Record<string, string | number | boolean | undefined>) =>
+    api.get<unknown>('/bookings/availability', { params }),
+
   getMyBookings: async (params?: Record<string, string | number | boolean | undefined>): Promise<NormalizedBookingAppointment[]> => {
     const response = await api.get<unknown>('/me/bookings', { params });
     return extractArray(response)

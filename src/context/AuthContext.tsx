@@ -23,6 +23,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   /** Signs in with a session issued by registration or a role upgrade (`{ access_token, user }`). */
   adoptSession: (response: { access_token?: string; user?: SessionUser }) => SessionUser | undefined;
+  markAuthenticated: (next?: boolean) => void;
   markClaimed: () => void;
   resetClaim: () => void;
 }
@@ -33,6 +34,7 @@ const DEFAULT_VALUE: AuthContextValue = {
   signIn: async () => undefined,
   signOut: async () => undefined,
   adoptSession: () => undefined,
+  markAuthenticated: () => undefined,
   markClaimed: () => undefined,
   resetClaim: () => undefined,
 };
@@ -218,6 +220,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         writeFlag(AUTHED_KEY, true);
         setAuthed(true);
         return response.user;
+      },
+      markAuthenticated: (next = true) => {
+        writeFlag(AUTHED_KEY, next);
+        setAuthed(next);
+        if (!next) {
+          clearStoredProfile();
+          writeFlag(CLAIMED_KEY, false);
+          setClaimed(false);
+        }
       },
       markClaimed: () => {
         writeFlag(CLAIMED_KEY, true);

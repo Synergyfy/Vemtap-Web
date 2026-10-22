@@ -53,9 +53,8 @@ const REDEMPTION_RULES: RuleRow[] = [
     icon: 'pin_drop',
     body: (
       <>
-        Valid exclusively at{' '}
-        <span className="font-label-md text-label-md text-text-primary">Urban Grill &amp; Bistro</span>, Apo Boulevard,
-        Abuja branch.
+        Valid exclusively at the{' '}
+        <span className="font-label-md text-label-md text-text-primary">featured local merchant</span> in your selected area.
       </>
     ),
     caption: 'Not valid at airport kiosks or sister branches.',
@@ -183,7 +182,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
               </button>
               <span className="text-outline-variant">/</span>
               <button className="hover:text-primary transition-colors" onClick={() => onNav('deals')} type="button">
-                Lunch Combo — 20% Off
+                Featured local deal
               </button>
               <span className="text-outline-variant">/</span>
               <span className="text-text-primary font-medium">Deal Terms</span>
@@ -191,7 +190,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
             <div className="pt-1">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Deal Terms</h1>
               <p className="font-body-md text-body-md text-text-secondary mt-1 max-w-2xl">
-                Review the validity window, redemption rules and exclusions for the Lunch Combo — 20% Off before you
+                Review the validity window, redemption rules and exclusions for the featured local deal before you
                 claim it at checkout.
               </p>
             </div>
@@ -211,10 +210,10 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption truncate">
                       <Icon name="storefront" className="text-[14px]" />
-                      <span className="truncate">Urban Grill &amp; Bistro • Apo, Abuja</span>
+                      <span className="truncate">Local dining partner • Nearby</span>
                     </div>
                     <h2 className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">
-                      Lunch Combo — 20% Off
+                      Featured local deal
                     </h2>
                     <div className="flex items-baseline gap-space-2xs mt-1">
                       <span className="font-heading-sm text-heading-sm text-primary">₦9,600</span>
@@ -348,7 +347,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
               <div className="p-space-sm rounded-xl bg-surface-tint-blue flex items-start gap-2">
                 <Icon name="info" className="text-primary text-[18px] shrink-0 mt-0.5" />
                 <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                  Questions about this voucher? Message Urban Grill &amp; Bistro from your Messages hub.
+                  Questions about this voucher? Message the selected local merchant from your Messages hub.
                 </p>
               </div>
 

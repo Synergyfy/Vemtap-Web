@@ -125,6 +125,50 @@ const lineSignature = (lines: OrderLine[]): string =>
     .sort()
     .join('|');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value?: string) => typeof value === 'string' && UUID_RE.test(value.trim());
+
+const buildCatalogueOrderPayload = (
+  input: SubmitOrderInput,
+  customer: { firstName: string; lastName: string; email: string; phone: string },
+): Record<string, unknown> => {
+  const firstName = customer.firstName.trim() || 'Customer';
+  const lastName = customer.lastName.trim();
+  const phone = (input.customerPhone ?? customer.phone ?? '').trim();
+  const branchId = input.merchantId?.trim() && isUuid(input.merchantId) ? input.merchantId.trim() : null;
+
+  if (!branchId) {
+    throw new Error('This merchant is missing a valid branchId. Connect the live branch metadata before submitting checkout.');
+  }
+
+  const items = input.lines.map((line, index) => {
+    const itemId = (line.productId ?? line.id ?? '').trim();
+    if (!isUuid(itemId)) {
+      throw new Error(
+        `Cart item "${line.name || `#${index + 1}`}" has a non-UUID catalogue id (${itemId || 'missing'}). The backend rejects these slug-style ids.`,
+      );
+    }
+
+    return {
+      itemId,
+      quantity: Math.max(1, Number(line.qty) || 1),
+    };
+  });
+
+  return {
+    branchId,
+    items,
+    notes: input.note?.trim() || undefined,
+    customer: {
+      firstName,
+      lastName,
+      phone: phone || undefined,
+      email: customer.email?.trim() || undefined,
+    },
+  };
+};
+
 const OrdersContext = createContext<OrdersContextValue | null>(null);
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
@@ -194,6 +238,20 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      let payload: Record<string, unknown>;
+      try {
+        const profile = {
+          firstName: input.customerName.split(' ')[0] ?? 'Customer',
+          lastName: input.customerName.split(' ').slice(1).join(' '),
+          email: '',
+          phone: input.customerPhone ?? '',
+        };
+        payload = buildCatalogueOrderPayload(input, profile);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'The live order API rejected this checkout payload.';
+        return { ok: false, error: message };
+      }
+
       const ref = newOrderRef(orders.map((order) => order.ref));
       const paymentMethod = input.paymentMethod ?? 'pay-at-counter';
       // An order is never marked paid at submission. Pay-at-counter stays
@@ -220,34 +278,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         paymentMethod,
         paymentStatus: paymentMethod === 'pay-at-counter' ? 'not-required' : 'pending',
         marketingConsent: input.marketingConsent === true,
-      };
-
-      const payload = {
-        ref: order.ref,
-        merchantId: order.merchantId,
-        merchantName: order.merchantName,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        items: order.lines.map((line) => ({
-          id: line.id,
-          productId: line.productId,
-          name: line.name,
-          quantity: line.qty,
-          price: line.price,
-          image: line.image,
-          options: line.options,
-          instructions: line.instructions,
-        })),
-        subtotal: order.subtotal,
-        savings: order.savings,
-        deliveryFee: order.deliveryFee,
-        total: order.total,
-        fulfillment: order.fulfillment,
-        note: order.note,
-        status: initialStatus,
-        paymentMethod: paymentMethod,
-        paymentStatus: paymentMethod === 'pay-at-counter' ? 'not-required' : 'pending',
-        marketingConsent: order.marketingConsent,
       };
 
       const createdOrder = { ...order };
@@ -311,6 +341,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       return found ? next : current;
     });
 
+    if (hasApiConfig()) {
+      void ordersService.updateStatus(ref, { status: String(status) }).catch(() => undefined);
+    }
+
     return found;
   }, []);
 
@@ -329,6 +363,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
       return found ? next : current;
     });
+
+    if (hasApiConfig()) {
+      void ordersService.updateStatus(ref, { status: 'paid' }).catch(() => undefined);
+    }
 
     return found;
   }, []);

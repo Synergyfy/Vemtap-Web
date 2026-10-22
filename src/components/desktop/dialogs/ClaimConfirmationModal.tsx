@@ -1,4 +1,5 @@
 import { Icon } from '../../ui/Icon';
+import { parsePrice } from '../../../utils/format';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 
 export interface ClaimConfirmationModalProps {
@@ -9,24 +10,24 @@ export interface ClaimConfirmationModalProps {
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
   } | null;
 }
 
 const REDEMPTION: Array<{ icon: string; label: string; value: string }> = [
   { icon: 'schedule', label: 'Validity Window:', value: 'Valid for 48 hours from claim time' },
-  { icon: 'today', label: 'Operational Hours:', value: 'Monday – Friday • 12:00 PM – 4:00 PM' },
-  { icon: 'place', label: 'Location:', value: 'Plot 14 Apo Boulevard, Apo District, Abuja (0.8 km)' },
+  { icon: 'today', label: 'Operational Hours:', value: 'Check local business hours for the selected merchant' },
+  { icon: 'place', label: 'Location:', value: 'Nearby local branch • Your selected area' },
 ];
 
 export function ClaimConfirmationModal({ open, onClose, onConfirm, deal }: ClaimConfirmationModalProps) {
   const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This business';
   const dealLocation = deal?.location?.trim() || 'Your selected location';
-  const price = typeof deal?.price === 'number' ? deal.price : 0;
-  const oldPrice = typeof deal?.oldPrice === 'number' ? deal.oldPrice : price;
+  const price = parsePrice(deal?.price);
+  const oldPrice = parsePrice(deal?.oldPrice) || price;
   const discountLabel = deal?.discountLabel || 'Instant savings';
 
   return (

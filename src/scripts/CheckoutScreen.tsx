@@ -163,7 +163,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   </div>
                   <p className="font-caption text-caption text-text-secondary flex items-center gap-1 truncate">
                     <Icon name="location_on" className="text-[15px] text-text-tertiary" />
-                    Apo Boulevard, Abuja • 0.6 km away
+                    Nearby local branch • Your selected area
                   </p>
                 </div>
               </div>
@@ -237,8 +237,8 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   </p>
                   <p className="font-caption text-caption text-text-secondary">
                     {mode === 'pickup'
-                      ? 'Plot 104 Apo Boulevard, Ground Floor Food Court'
-                      : 'Delivering to Apo District (within 45 mins)'}
+                      ? 'Your selected local pickup point'
+                      : 'Delivering to your selected area'}
                   </p>
                 </div>
               </div>

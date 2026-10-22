@@ -7,8 +7,10 @@ import { useReferralStep } from '../../hooks/useReferralStep';
 
 interface DesktopProfileSetupScreenProps {
   onBack: () => void;
-  onComplete: () => void;
+  onComplete: (details: { firstName: string; lastName: string; phone: string; pin: string }) => Promise<void> | void;
   onBusinessSetup: () => void;
+  email?: string;
+  code?: string;
 }
 
 const PIN_LENGTH = 6;
@@ -93,9 +95,9 @@ function PinGroup({ label, hint, value, onChange, revealed }: PinGroupProps) {
 }
 
 export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: DesktopProfileSetupScreenProps) {
-  const [firstName, setFirstName] = useState('John');
-  const [lastName, setLastName] = useState('Doe');
-  const [phone, setPhone] = useState('801 234 5678');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [pinRevealed, setPinRevealed] = useState(false);
@@ -110,23 +112,30 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup 
   const passName = [firstName, lastName].filter(Boolean).join(' ') || 'First Last';
   const passPhone = `+234 ${phone.trim() || '800 000 0000'}`;
 
-  const finishSetup = () => {
+  const finishSetup = async () => {
     setStatus('saving');
-    window.setTimeout(() => {
+    setError('');
+    try {
+      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
       setStatus('verified');
-      window.setTimeout(onComplete, 700);
-    }, 900);
+    } catch (completeError) {
+      setError(completeError instanceof Error ? completeError.message : 'We could not finish your profile setup. Please try again.');
+      setStatus('idle');
+    }
   };
 
   /** Runs whatever the user asked for once the referral step is resolved. */
-  const completePendingAction = () => {
+  const completePendingAction = async () => {
     const action = pendingAction;
     setPendingAction(null);
-    if (action === 'next') onComplete();
-    else finishSetup();
+    if (action === 'next') {
+      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
+      return;
+    }
+    await finishSetup();
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (status !== 'idle') return;
     if (!firstName.trim() || !lastName.trim()) {
@@ -148,17 +157,17 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup 
       referral.requestConfirmation();
       return;
     }
-    finishSetup();
+    await finishSetup();
   };
 
   /** The "skip ahead" link obeys the same referral check as the main button. */
-  const handleNext = () => {
+  const handleNext = async () => {
     if (referral.needsConfirmation) {
       setPendingAction('next');
       referral.requestConfirmation();
       return;
     }
-    onComplete();
+    await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
   };
 
   return (

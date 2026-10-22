@@ -78,11 +78,11 @@ const RECENT_CARDS = [
 const ACTIVITY_LOG: Array<{ type: string; merchant: string; detail: string; date: string; location: string; value: string }> = [
   {
     type: 'Redemption',
-    merchant: 'Urban Grill & Bistro',
-    detail: 'Redeemed 20% Off Prime Lunch',
+    merchant: 'Local dining partner',
+    detail: 'Redeemed a featured local offer',
     date: 'Oct 15, 2024 • 1:15 PM',
-    location: 'Apo Blvd',
-    value: 'Saved ₦4,200',
+    location: 'Nearby',
+    value: 'Saved on offer',
   },
   {
     type: 'Visit',
@@ -269,23 +269,23 @@ export function ActivityScreen({
                   <div className="flex items-start justify-between gap-space-sm">
                     <div className="flex items-start gap-space-sm min-w-0">
                       <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                        <img className="w-full h-full object-cover" src={URBAN_IMG} alt="Urban Grill & Bistro" />
+                        <img className="w-full h-full object-cover" src={URBAN_IMG} alt="Local dining partner" />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <h3 className="font-label-md text-label-md text-text-primary font-bold truncate">
-                            Urban Grill &amp; Bistro
+                            Local dining partner
                           </h3>
                           <Icon name="verified" className="text-[16px] text-primary shrink-0" />
                         </div>
                         <p className="font-label-sm text-label-sm text-primary font-semibold truncate mt-0.5">
-                          Redeemed 20% Off Prime Lunch
+                          Redeemed a featured local offer
                         </p>
                         <div className="flex items-center gap-1.5 text-text-tertiary font-caption text-caption mt-1">
                           <span>Oct 15, 2024 • 1:15 PM</span>
                           <span>•</span>
                           <span className="flex items-center gap-0.5 truncate">
-                            <Icon name="location_on" className="text-[12px]" /> Apo Blvd
+                            <Icon name="location_on" className="text-[12px]" /> Nearby
                           </span>
                         </div>
                       </div>

@@ -4,6 +4,7 @@ import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
 import { storeOrderingService } from '../services/storeOrderingService';
 import { teamService } from '../services/teamService';
+import { ordersService } from '../services/ordersService';
 import {
   type StoreOrder,
   type StoreOrderStatus,
@@ -478,6 +479,34 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       };
 
       setOrders((prev) => [newOrder, ...prev]);
+
+      if (hasApiConfig()) {
+        const tableMatch = /table\s*(\d+)/i.exec(input.placementDetails ?? '');
+        const payload = {
+          branchId: input.branchId ?? undefined,
+          tableNumber: tableMatch ? Number(tableMatch[1]) : undefined,
+          customer: {
+            name: input.customerName,
+            phone: input.customerPhone,
+          },
+          note: input.customerNotes,
+          items: input.items.map((item) => ({
+            itemId: item.productId ?? item.id,
+            quantity: item.qty,
+            unitPrice: item.unitPrice ?? item.totalPrice ?? 0,
+            totalPrice: item.totalPrice ?? item.unitPrice * item.qty,
+          })),
+        };
+
+        ordersService.createTableOrder(payload).then((serverOrder) => {
+          if (!serverOrder) return;
+          const nextRef = serverOrder.ref ?? serverOrder.reference ?? serverOrder.orderNumber ?? newRef;
+          setOrders((prev) => prev.map((order) => order.id === newId ? { ...order, orderRef: nextRef } : order));
+        }).catch(() => {
+          // swallow backend errors and keep the local in-app order flow working
+        });
+      }
+
       return newOrder;
     },
     []
