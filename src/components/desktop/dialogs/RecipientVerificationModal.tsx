@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
-import { maskPhone } from '../../../utils/format';
+import { maskPhone, parsePrice } from '../../../utils/format';
 
 export interface RecipientVerificationModalProps {
   open: boolean;
@@ -10,6 +10,10 @@ export interface RecipientVerificationModalProps {
   onBack: () => void;
   /** Recipient whose contact details should be verified. */
   recipient?: { name: string; email: string; phone?: string } | null;
+  deal?: {
+    business?: string;
+    price?: number | string;
+  } | null;
 }
 
 export function RecipientVerificationModal({
@@ -18,6 +22,7 @@ export function RecipientVerificationModal({
   onVerify,
   onBack,
   recipient,
+  deal,
 }: RecipientVerificationModalProps) {
   const [digits, setDigits] = useState(['5', '8', '2', '9', '', '']);
   const [focusedIndex, setFocusedIndex] = useState(4);
@@ -25,6 +30,8 @@ export function RecipientVerificationModal({
 
   const recipientName = recipient?.name ?? 'Samuel Adeleke';
   const maskedTarget = recipient?.phone ? maskPhone(recipient.phone) : recipient?.email ?? 'recipient@example.com';
+  const businessName = deal?.business?.trim() || 'This local partner';
+  const price = parsePrice(deal?.price);
 
   const focusInput = (index: number) => {
     setFocusedIndex(index);
@@ -129,8 +136,7 @@ export function RecipientVerificationModal({
       <div className="rounded-xl bg-badge-discount-bg p-space-sm flex items-center gap-space-xs">
         <Icon name="check_circle" filled className="text-badge-discount-text text-[20px] shrink-0" />
         <p className="font-label-sm text-label-sm text-badge-discount-text font-medium leading-snug">
-          No payment is taken now. Settle <span className="font-bold">₦9,600</span> directly at Urban Grill &amp; Bistro
-          upon dining.
+          No payment is taken now. Settle <span className="font-bold">{new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(price)}</span> directly at {businessName} upon dining.
         </p>
       </div>
 

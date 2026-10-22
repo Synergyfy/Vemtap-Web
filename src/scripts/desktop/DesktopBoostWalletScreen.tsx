@@ -3,6 +3,9 @@ import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { BoostTabKey } from '../../components/BoostTabBar';
+import { hasApiConfig } from '../../lib/api';
+import { adWalletService } from '../../services';
+import type { AdWalletSummary, AdWalletTransaction } from '../../services/types';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
 
@@ -72,6 +75,17 @@ const TOP_UP_PACKS: TopUpPack[] = [
   },
 ];
 
+const DEFAULT_WALLET_SUMMARY: AdWalletSummary = {
+  balance: 25000,
+  reserved: 14350,
+  spendable: 10650,
+  walletRef: 'VEM-WAL-709',
+  virtualAccount: {
+    bank: 'Wema Bank',
+    number: '9940284411',
+  },
+};
+
 const LEDGER = [
   {
     key: 'bst-9042',
@@ -125,26 +139,85 @@ const LEDGER = [
   },
 ];
 
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+
+const toLedgerEntry = (transaction: AdWalletTransaction) => {
+  const sign = transaction.amount >= 0 ? '+' : '-';
+  const amountLabel = `${sign}${formatCurrency(Math.abs(transaction.amount))}`;
+  return {
+    key: transaction.id,
+    icon: transaction.type === 'topup' ? 'credit_card' : transaction.type === 'refund' ? 'replay' : 'campaign',
+    iconBox:
+      transaction.type === 'topup'
+        ? 'bg-badge-discount-bg text-badge-discount-text'
+        : transaction.type === 'refund'
+          ? 'bg-surface-tint-blue text-primary'
+          : 'bg-surface-container-high text-tertiary',
+    title: transaction.type === 'topup' ? 'Wallet Top-Up via Card' : transaction.type === 'refund' ? 'Refund Unspent Budget' : 'Campaign Spend',
+    date: new Date(transaction.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+    ref: transaction.status,
+    amount: amountLabel,
+    amountClass: transaction.amount >= 0 ? 'text-badge-discount-text' : 'text-text-primary',
+    status: transaction.status,
+    statusClass: transaction.status === 'completed' || transaction.status === 'credited' ? 'text-badge-discount-text' : 'text-secondary',
+  };
+};
+
 export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostWalletScreenProps) {
   const [pack, setPack] = useState('25k');
   const [autoReload, setAutoReload] = useState(true);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [walletSummary, setWalletSummary] = useState<AdWalletSummary>(DEFAULT_WALLET_SUMMARY);
+  const [ledger, setLedger] = useState(LEDGER);
   const [entryStatus, setEntryStatus] = useState('');
+  const timers = useRef<number[]>([]);
 
-  // Statuses are read from the ledger itself, so the menu can never offer an
-  // entry type the history does not actually hold.
   const statusChoices = [
     { value: '', label: 'All entries' },
-    ...Array.from(new Set(LEDGER.map((entry) => entry.status))).map((status) => ({
+    ...Array.from(new Set(ledger.map((entry) => entry.status))).map((status) => ({
       value: status,
       label: status,
     })),
   ];
 
-  const visibleLedger =
-    entryStatus === '' ? LEDGER : LEDGER.filter((entry) => entry.status === entryStatus);
-  const timers = useRef<number[]>([]);
+  const visibleLedger = entryStatus === '' ? ledger : ledger.filter((entry) => entry.status === entryStatus);
+
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+
+    let ignore = false;
+
+    const hydrate = async () => {
+      try {
+        const [summary, transactions] = await Promise.all([
+          adWalletService.getSummary(),
+          adWalletService.getTransactions({ limit: 4 }),
+        ]);
+
+        if (ignore) return;
+
+        setWalletSummary({ ...DEFAULT_WALLET_SUMMARY, ...summary });
+
+        if (Array.isArray(transactions) && transactions.length > 0) {
+          setLedger(transactions.map(toLedgerEntry));
+        }
+      } catch {
+        // Keep the curated UI fallback when the backend is unavailable.
+      }
+    };
+
+    void hydrate();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -163,6 +236,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
     timers.current.push(timer);
   };
 
+  const accountNumber = walletSummary.virtualAccount?.number ?? DEFAULT_WALLET_SUMMARY.virtualAccount?.number ?? '9940284411';
   /** September VAT invoice — real PDF (print → save) + CSV ledger attachment. */
   const downloadVatInvoice = () => {
     const vatRows = LEDGER.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]);
@@ -227,7 +301,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
 
   const copyAccount = () => {
     if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText('9940284411').catch(() => undefined);
+      navigator.clipboard.writeText(accountNumber).catch(() => undefined);
     }
     setCopied(true);
     showToast('Account number copied');
@@ -403,7 +477,9 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                     Available Advertising Balance
                   </p>
                   <div className="flex items-baseline gap-1 mt-1">
-                    <span className="font-heading-lg text-heading-lg font-bold tracking-tight">₦25,000.00</span>
+                    <span className="font-heading-lg text-heading-lg font-bold tracking-tight">
+                      {formatCurrency(walletSummary.balance)}
+                    </span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-space-sm mt-5 pt-4 bg-surface-canvas/10 rounded-xl p-space-sm backdrop-blur-sm">
@@ -412,7 +488,9 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                       <Icon className="text-[14px]" name="lock_clock" />
                       <span>Reserved Boosts</span>
                     </div>
-                    <p className="font-heading-sm text-heading-sm font-semibold mt-0.5 text-on-primary">₦14,350.00</p>
+                    <p className="font-heading-sm text-heading-sm font-semibold mt-0.5 text-on-primary">
+                      {formatCurrency(walletSummary.reserved)}
+                    </p>
                   </div>
                   <div>
                     <div className="flex items-center gap-1 text-on-primary/75 font-caption text-caption">
@@ -420,7 +498,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                       <span>Net Spendable</span>
                     </div>
                     <p className="font-heading-sm text-heading-sm font-semibold mt-0.5 text-badge-discount-bg">
-                      ₦10,650.00
+                      {formatCurrency(walletSummary.spendable)}
                     </p>
                   </div>
                 </div>
@@ -528,10 +606,12 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                       WEMA
                     </div>
                     <div className="min-w-0">
-                      <p className="font-caption text-caption text-text-secondary">Wema Bank • VEMTAP Advertising</p>
+                      <p className="font-caption text-caption text-text-secondary">
+                        {walletSummary.virtualAccount?.bank ?? 'Wema Bank'} • VEMTAP Advertising
+                      </p>
                       <div className="flex items-center gap-2">
                         <span className="font-heading-sm text-heading-sm font-semibold tracking-wider text-text-primary">
-                          9940284411
+                          {accountNumber}
                         </span>
                         <button
                           aria-label="Copy Account Number"
@@ -636,7 +716,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
               </div>
 
               <div className="flex flex-col gap-space-2xs">
-                {visibleLedger.map((entry) => (
+                {LEDGER.map((entry) => (
                   <div
                     className="p-space-sm rounded-xl bg-surface-container-lowest shadow-sm flex items-center justify-between gap-3"
                     key={entry.key}

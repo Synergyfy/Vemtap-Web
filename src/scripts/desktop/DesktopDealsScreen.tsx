@@ -1,24 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
 import { useLocation } from '../../context/LocationContext';
+import { hasApiConfig } from '../../services/api/client';
+import { catalogueService } from '../../services/catalogueService';
 
 interface DesktopDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
-  onOpenDeal: () => void;
-  onClaim?: (onClaimed?: () => void) => void;
+  onOpenDeal: (deal?: {
+    id?: string | number;
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  }) => void;
+  onClaim?: (deal?: {
+    id?: string | number;
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  } | null, onClaimed?: () => void) => void;
 }
 
-const DEAL_OF_DAY_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuB_l35VLFaK11RltRrE-nzB22BkuA_N75zreMrW6RsT9blVALkpXOAXKbAn-lFN7t03ty5K377JuUw39bCaUxSTVQcHS3Dmr4ahhy5GFgVK2hPI0sGkeYaxf1d4joa1uxsJeNRwJ9-e8PPl5ObqKpgnkji83P015ig14H-AAPPhXw0JC7obYa-ebKvoJIkE-nX7kF-TW34CZ_t1p-J7y8FMqvweALg7JOeOIZGSf0D8';
-
-const DEAL_OF_DAY_ALT =
-  'High-end rooftop fine dining experience at sunset featuring a lavish 5-course gourmet meal with artisanal wine pairings, glowing warm amber candlelight, panoramic Abuja skyline views, elegant plating with modern culinary aesthetics, vibrant rich warm colors, and editorial food photography lighting';
-
 interface DiscoveryDeal {
+  id?: string | number;
   image: string;
   imageAlt: string;
   discount: string;
@@ -33,105 +48,8 @@ interface DiscoveryDeal {
   save: string;
 }
 
-const DISCOVERY_DEALS: DiscoveryDeal[] = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCzuzWH0U2QwYnphmSNvwNgYy2KT9cbZZxQNp4OF417hvHDjdXIJqcXgAC0Jq8C7aUqvI9P8d-w7L8889ftoMaC7SVb55GxQI8STHGI_jgEb4tRuyj8-9dAez7sJPsXlovchJ-pR0bEzWHx0RgkXq2BlmOzLSdyrwzyteeyXHL-RtjY_NoILSeP30TIsuIXZ9oQkLa1XyGCEuUU0ytwTAoVRMYGUsww_IPRVpVUea3B',
-    imageAlt:
-      'Close up of a savory gourmet beef smash burger alongside crispy truffle fries and a chilled craft soda presented on a rustic dark slate board inside Urban Grill Apo, soft ambient restaurant lighting, commercial food shoot',
-    discount: '20% OFF',
-    timer: '4h left',
-    store: 'Urban Grill',
-    distance: '0.8km away',
-    title: 'Prime 3-Course Lunch Combo',
-    copy: 'Succulent dry-aged cuts paired with artisan brioche sides and freshly pressed mint cooler.',
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-    save: '-₦2,400',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAYU9CHvad8mmB1n7HZebj-9-RJNU48y8c41IO7GzzEk_4mD-lhgfd9MReQAi7YmYcbcDcZHGy4JlFEc8Y_xvGS6GKTRikmdwO8inJNNZQsqJthBLoFuxRSpANFde0IjudqyzaZd9ctxXpfJ_cpK_TFjTBltS6O6CxRYEBNCjzmWBdHm6GkyB7QsKUssO8D-I_atfFeR6xo6CqLFnTTx60Hn6je8raKJ2qdZ15i07to',
-    imageAlt:
-      'Trendy streetwear boutique sneaker wall showcasing limited edition high-top kicks and modern minimalist urban apparel bathed in striking neon blue and warm spotlighting, high end fashion retail concept',
-    discount: '30% OFF',
-    extra: { label: 'Hot', className: 'bg-tertiary-fixed text-on-tertiary-fixed font-bold' },
-    timer: '18h left',
-    store: 'Sole District',
-    distance: '1.2km away',
-    title: 'Weekend Streetwear Drop & Sneakers',
-    copy: 'Exclusive store voucher applicable toward selected premium retro sneakers and cargo essentials.',
-    price: '₦28,000',
-    oldPrice: '₦40,000',
-    save: '-₦12,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuD8LxbXWebu4BeWFCBPcQnwZ3yOVjHO9H4S9ZOfPGV9cMmACi2aZB_Hhu0JontfNGmJN7KDb9t8ObRhK6kcgRU9c1neHq-t6gNg7HFK2Z7F6XMKJNJcoMQCUei7KQvEMOdk3yYtVf3e5Ie3aMnIgjAIYTBFhfC430FSqSmLEtAuHlaO5BSCLUxZ4BFq5qVHBfhvErtWg7n15YG4LtYJ5TbHhVwyxpqngk-At1VnoQZ5',
-    imageAlt:
-      'Serene luxury spa treatment room with soft warm bamboo styling, organic facial essential oils, neatly stacked white towels, burning aromatic scented candle, and tranquil wellness aesthetic',
-    discount: '25% OFF',
-    extra: { label: 'Popular', className: 'bg-secondary-fixed text-on-secondary-fixed font-semibold' },
-    timer: '1d left',
-    store: 'Glow & Serenity Spa',
-    distance: '2.4km away',
-    title: 'Weekend Glow Facial & Massage',
-    copy: 'Hydrating botanical facial therapy accompanied by a 45-minute hot stone tension release session.',
-    price: '₦18,500',
-    oldPrice: '₦24,600',
-    save: '-₦6,100',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuB6mVwJbVAhXMM6239ZPfDxwph2u7rXh0Me0cneDcRhckqCG_zdKDD2N_U8F7OK8e3jF5BJ2M0prZjgOX_1rQUbl5SJSX27asdG82U5vIYoaeC-SwhTYdK3Tr-da_MBPcs00hrZX4a8XBjl4JD9J6BTr3RflgchtVCldlT7yQzQOdSScCg7yC1Zagz_1EsP-7VUerTf5jQH7KjI-KelSjRNCL8gD9QySyXtULI9QIWC',
-    imageAlt:
-      'Chilled bottle of artisanal single-origin cold brew coffee with fresh flaky golden croissants in a chic modern cafe setting with soft natural sunlight on wooden counter, coffeehouse aesthetic',
-    discount: 'BOGO FREE',
-    extra: { label: '15% OFF', className: 'bg-surface-tint-blue text-primary font-semibold' },
-    timer: '2d left',
-    store: 'Cafe Neo Artisanal',
-    distance: '3.1km away',
-    title: 'Cold Brew 1L & Pastry Box',
-    copy: 'Slow-steeped Arabica cold brew bottle packed with 4 warm almond butter pastries of your pick.',
-    price: '₦4,500',
-    oldPrice: '₦7,000',
-    save: '-₦2,500',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuC_Eg_JS8x1JFRVATxQeOiiQ3TMoMDrh4EhAiR9-wIDqscysVxQV1cCp4l-BDSgx3n_UAd_vD-1tD_Xv4YcSei9qtvi0YKwPPv08-rYPo0-tGJXM-rbpQI8WxkvYpP_0XqQymVLOAf7kewqDGZSq29JRiMRtfD-j5v-HuOyD3WFf7C10KeQzNGI2zaE14CE6XtUY04jA2LMw-juPENi_JB9-S82f_5yhQUbX8OwN1Ux',
-    imageAlt:
-      'Sophisticated bespoke fashion atelier showing tailored modern traditional suits, measuring tape, premium Nigerian brocade fabrics, and vintage sewing tools in warm luxury lighting',
-    discount: '35% OFF',
-    extra: { label: 'Featured', className: 'bg-primary-fixed text-on-primary-fixed font-semibold' },
-    timer: '12h left',
-    store: 'Velvet Stitch Couture',
-    distance: '1.8km away',
-    title: 'Bespoke Tailoring & Custom Fitting',
-    copy: 'Complete styling consultation and master craftsmanship for 1 two-piece custom-made traditional wear.',
-    price: '₦32,000',
-    oldPrice: '₦49,000',
-    save: '-₦17,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDw6OkTPzKZR-Uae5KgRNwRpUUxHaV3xjDrt5alZPyfzQGcTbbQheK-zj4nl_miWFG2OWSmboQrFlaGFe3I1xrwjcKJCDeDPENEwo1M-q80Ga_OS2k4ycSjvl2jC0OeWXco2dM0vutx9HI45LEYTchDYLvsiWjJhEBl_0xoCB8xKnaoY7oz85z63k3LQ3HpD4jN1Y4bXp_TAOxaNuP01gTe1kwBTtvSNc1dGNDTXHGW',
-    imageAlt:
-      'High tech athletic fitness center featuring modern rows of cardio equipment, clean dumbbell racks, motivational floor graphics, and crisp bright studio illumination',
-    discount: '40% OFF',
-    extra: { label: 'Limited', className: 'bg-tertiary-fixed text-on-tertiary-fixed font-semibold' },
-    timer: '5h left',
-    store: 'Pulse Fitness & Gym',
-    distance: '1.5km away',
-    title: 'Monthly Pass + Personal Trainer',
-    copy: 'Unlimited premium gym access, 4 one-on-one conditioning sessions, and personalized nutrition plan.',
-    price: '₦15,000',
-    oldPrice: '₦25,000',
-    save: '-₦10,000',
-  },
-];
-
 interface CatalogDeal {
+  id?: string | number;
   image: string;
   imageAlt: string;
   discount: string;
@@ -148,122 +66,157 @@ interface CatalogDeal {
   save: string;
 }
 
-const CATALOG_DEALS: CatalogDeal[] = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAm_UT0z4RFY74FAD1RofAbJEzfrBXfwx7_sPp3IqkDFRJYeRgU2np6hTl96-YrVZIz2EzO0HApwv0tzkQKSfZH1iuYTG-t6cSKH2KOlXnJI-rffu8XnsGX7rQiQdWpwJY5O19q9saGtn2BNkhcPvAN9qPel_aJOZDLJki1bor5-nLgCyie7_qFIbNjkGsVBWKOdSdhXRkjWXPhnSV8dGQu9JFzYiYOwoTRKTZc7CnM',
-    imageAlt:
-      'A gourmet artisanal stacked beef burger with melted aged cheddar, crisp lettuce, charred brioche bun, and golden rustic french fries arranged on a slate plate inside an ambient, warm industrial restaurant in Apo, Abuja. Professional culinary lighting with warm reflections.',
-    discount: '20% OFF',
-    distance: '0.8 km away',
-    store: 'Urban Grill – Apo',
-    verified: true,
-    rating: '4.9',
-    title: 'Prime 3-Course Lunch Combo & Craft Drink',
-    copy: 'Valid weekdays 12pm-4pm. Includes Angus burger, signature sides & drink.',
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-    save: 'Save ₦2,400',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAZEi5c854POZ4AICs5MN7gIdvpHFb2SI3Uxzhq2xvHqARL7pDGRWFav8eyjrQOV3clq3FH2MaV0kDIr0dwoLLrxpTKkYeZxUItz6ypB3PEoHLp4m6kKSwJxcBEvYtamci5RitB-vx-F6bKt9YhZfRm2CzU4Jx7gluWTfMXmOgc1j8zCYND41ntkMm0m4ZQh1eEXhSzHw6m6jF4pwqLwt01UQRZUa3DpJA7mkrOY6_G',
-    imageAlt:
-      'A curated display of high-end urban designer sneakers and streetwear hoodies on sleek acrylic pedestals in a minimalist modern boutique. Bright contemporary architectural gallery lighting with subtle blue reflections.',
-    discount: '30% OFF',
-    extra: {
-      label: 'Hot',
-      className: 'bg-error-container text-on-error-container',
-      icon: 'local_fire_department',
-      iconFilled: true,
-    },
-    distance: '1.2 km away',
-    store: 'Sole District Boutique',
-    verified: false,
-    badge: { label: 'HOT', className: 'bg-surface-container-high text-primary' },
-    rating: '4.8',
-    title: 'Weekend Streetwear Drop & Sneakers',
-    copy: 'Applicable to selected vintage low tops and graphic oversized tees.',
-    price: '₦28,000',
-    oldPrice: '₦40,000',
-    save: 'Save ₦12,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCp0NgHxcJ3z5eanfpjf6SxbMpNWp59dpo9z7KjHlkggD3N3-LxISAb6UzWiFFOjzZ9h0r0JbKYwYivHJ6DcyLdXqBAaZCfhFbcIi5nYffDQ0Q9GdGoiK4AnPcCGwxKeT067PBCJxlQViWj6alGM5U5iTDGpD9LS0myrcKsuRHgibPxZ2lTS1i4wh-kJ7ADYxNmMrAMBEJx-FPEIDWZCIF-mbHZjNgELHrNxYVGzDRT',
-    imageAlt:
-      'A tranquil wellness spa sanctuary in Abuja with polished black river massage stones, warm essential massage oil bottles, fluffy rolled white cotton towels, and subtle soft candle illumination.',
-    discount: '25% OFF',
-    extra: {
-      label: 'Popular',
-      className: 'bg-secondary-fixed text-on-secondary-fixed',
-      icon: 'trending_up',
-    },
-    distance: '2.4 km away',
-    store: 'Glow & Serenity Spa',
-    verified: false,
-    badge: { label: 'TOP RATED', className: 'bg-surface-tint-blue text-primary' },
-    rating: '5.0',
-    title: 'Weekend Glow Facial & Massage',
-    copy: '60-minute organic deep tissue session with lavender aromatherapy.',
-    price: '₦18,500',
-    oldPrice: '₦25,000',
-    save: 'Save ₦6,500',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAhGznbs92qp68XDygsvb-5-9fjS5K8CLQ1pWyi6vx2TC7H70EAqyMGwI-JSDM0zkB31FVy_WedExHj0vik7TFI73nD8Zeb7KKo6vnPQ2ROO-pfYQ3pjI-lHZ6ppMOrTtRidyxOVmV3uUplZoR5wOVfN7wsQg0-G7T9EjYWFNJHlf104YmhUMlRs5ZgzP9N_0sQYpE8YriIwdpFfB58va0nmJ02bjscySDUNch6059r',
-    imageAlt:
-      'Chilled glass amber bottle of cold brew coffee next to fresh buttery golden croissants on an aesthetic terrazzo coffee shop counter with morning sunlight streaming through.',
-    discount: 'BOGO Free',
-    extra: { className: 'bg-badge-discount-bg text-badge-discount-text', label: '15% OFF' },
-    distance: '3.1 km away',
-    store: 'Cafe Neo Artisanal',
-    verified: false,
-    rating: '4.7',
-    title: 'Cold Brew 1L & Pastry Box',
-    copy: 'Steeped 24 hours. Paired with 2 almond croissants of your choice.',
-    price: '₦4,500',
-    oldPrice: '₦6,000',
-    save: 'Save ₦1,500',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuALVh9jzJkC-WymKf5PQws4vtf7RlvCLgC75qaDVoohniWLYrNhZhlAbyVG2hj28GYAjVk25bQVqhaFlDBxKxam_IeBumKlfgC9HXoJYIHqyOM0FQ-a2_sZFAreKbhqjb2DJ-rf9GRt5IQsEAb2lDt2M7Z6xDwFQcjxIw-KvcMtg9q0kOv8PRa4_QBvUf9F9D3uLfEpNNXko0YFcf6bPW9td63bEnJ_oAl1xVK0CfFE',
-    imageAlt:
-      'An artisanal haute couture bespoke tailoring atelier in Nigeria, featuring premium linen fabrics, tape measures, dressmaker mannequin with tailored suit jacket and warm interior wood styling.',
-    discount: '35% OFF',
-    extra: { label: 'Featured', className: 'bg-surface-tint-blue text-primary', icon: 'stars' },
-    distance: '1.8 km away',
-    store: 'Velvet Stitch Couture',
-    verified: true,
-    rating: '4.9',
-    title: 'Bespoke Tailoring & Custom Fitting',
-    copy: 'Personal measurement session and rush delivery on traditional Kaftans.',
-    price: '₦32,000',
-    oldPrice: '₦49,000',
-    save: 'Save ₦17,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBvTeFkPu7sZ9lbavkG2NNZEGRio8gb8YQE_qUIv1QgAfuSB7GwV-19yicMTW42FzeYYhFfcvTxktABntL8xSw64eycXRuzSnpkQcCQ4Xgjs1btijpTY5GyF__Id5pPJpLcGys11zVCutV_FgO1Z_1Pt5JMs6iCCii0xLt7KZFCisxZY_Wn2CQ8G1V_faq2t3XscJ76jdv8MbbJb93EVZwa45gvJe55B0m4p59EvjHt',
-    imageAlt:
-      'High-end modern fitness studio with clean rows of dumbbells, state-of-the-art cardiovascular running machines, ambient recessed overhead blue illumination, and polished rubber floor.',
-    discount: '40% OFF',
-    extra: { label: 'Limited', className: 'bg-primary text-on-primary', icon: 'bolt' },
-    distance: '1.5 km away',
-    store: 'Pulse Fitness & Gym',
-    verified: true,
-    rating: '4.9',
-    title: 'Monthly Pass + Personal Trainer',
-    copy: 'Full locker access, steam room privileges and 4 dedicated coaching drills.',
-    price: '₦15,000',
-    oldPrice: '₦25,000',
-    save: 'Save ₦10,000',
-  },
-];
+const formatCurrency = (value: number | string | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
 
-const CONTEXT_CATEGORIES = ['All Deals (6)', 'Food & Dining', 'Fashion & Wear', 'Wellness & Spa', 'Fitness'];
+const getOfferImage = (offer: Record<string, unknown>): string => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const imageValue =
+    offer.image ??
+    offer.coverImage ??
+    offer.heroImage ??
+    offer.mediaUrl ??
+    item?.image ??
+    item?.mainImage ??
+    (offer.business && typeof offer.business === 'object'
+      ? ((offer.business as Record<string, unknown>).logo ?? (offer.business as Record<string, unknown>).image)
+      : undefined) ??
+    'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+  return typeof imageValue === 'string' && imageValue.trim() ? imageValue : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>): string => {
+  const business = offer.business && typeof offer.business === 'object' ? offer.business as Record<string, unknown> : {};
+  const names = [
+    offer.businessName,
+    offer.merchantName,
+    offer.vendorName,
+    offer.branchName,
+    business.name,
+    business.businessName,
+    business.merchantName,
+    business.companyName,
+  ];
+  const found = names.find((value) => typeof value === 'string' && value.trim());
+  return typeof found === 'string' && found.trim() ? found : 'Local business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>): string => {
+  const title = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
+  return typeof title === 'string' && title.trim() ? title : 'Local offer';
+};
+
+const getOfferDescription = (offer: Record<string, unknown>): string => {
+  const description = offer.description ?? offer.summary ?? offer.copy ?? 'Special local promotion available now.';
+  return typeof description === 'string' && description.trim() ? description : 'Special local promotion available now.';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.price, offer.dealPrice, offer.calculatedPrice, offer.amount, offer.fixedPrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const getOfferComparePrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.originalPrice, offer.compareAtPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, item?.originalPrice, item?.compareAtPrice, item?.listPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return getOfferPrice(offer);
+};
+
+const isUsableOffer = (offer: Record<string, unknown>): boolean => {
+  const business =
+    getOfferBusinessName(offer) !== 'Local business'
+      ? getOfferBusinessName(offer)
+      : '';
+  const title = getOfferTitle(offer) !== 'Local offer' ? getOfferTitle(offer) : '';
+  const price = getOfferPrice(offer);
+  const compare = getOfferComparePrice(offer);
+
+  return Boolean(business && title && (price > 0 || compare > 0));
+};
+
+const toDiscoveryDeal = (offer: Record<string, unknown>): DiscoveryDeal => {
+  const title = getOfferTitle(offer);
+  const price = getOfferPrice(offer);
+  const compare = getOfferComparePrice(offer);
+  const difference = Math.max(compare - price, 0);
+  return {
+    id: String(
+      offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${getOfferBusinessName(offer)}-${title}`,
+    ),
+    image: getOfferImage(offer),
+    imageAlt: `${title} by ${getOfferBusinessName(offer)}`,
+    discount: price > 0 ? 'Live Deal' : 'Offer',
+    extra: { label: 'Local', className: 'bg-tertiary-fixed text-on-tertiary-fixed font-bold' },
+    timer: 'Now live',
+    store: getOfferBusinessName(offer),
+    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    title,
+    copy: getOfferDescription(offer),
+    price: formatCurrency(price),
+    oldPrice: compare > price ? formatCurrency(compare) : '',
+    save: price > 0 ? `-${formatCurrency(difference)}` : 'Limited-time',
+  };
+};
+
+const toCatalogDeal = (offer: Record<string, unknown>): CatalogDeal => {
+  const title = getOfferTitle(offer);
+  const price = getOfferPrice(offer);
+  const compare = getOfferComparePrice(offer);
+  const business = getOfferBusinessName(offer);
+  return {
+    id: String(
+      offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}`,
+    ),
+    image: getOfferImage(offer),
+    imageAlt: `${title} by ${business}`,
+    discount: price > 0 ? 'Live Offer' : 'Offer',
+    extra: { label: 'Live', className: 'bg-error-container text-on-error-container', icon: 'local_fire_department', iconFilled: true },
+    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    store: business,
+    verified: true,
+    badge: { label: 'LIVE', className: 'bg-surface-tint-blue text-primary' },
+    rating: '4.9',
+    title,
+    copy: getOfferDescription(offer),
+    price: formatCurrency(price),
+    oldPrice: compare > price ? formatCurrency(compare) : '',
+    save: price > 0 ? `Save ${formatCurrency(Math.max(compare - price, 0))}` : 'Limited-time',
+  };
+};
+
+const CONTEXT_CATEGORIES = ['All Deals', 'Food & Dining', 'Fashion & Wear', 'Wellness & Spa', 'Fitness'];
 
 export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onClaim }: DesktopDealsScreenProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -274,8 +227,48 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   const [heroClaimed, setHeroClaimed] = useState(false);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState(false);
+  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const toastTimer = useRef<number | undefined>(undefined);
   const claimTimers = useRef<Record<string, number>>({});
+  const apiReady = hasApiConfig();
+
+  useEffect(() => {
+    let ignore = false;
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        console.log('[DesktopDealsScreen] No API config detected; skipping public offers request.');
+        if (!ignore) setPublicOffers([]);
+        return;
+      }
+      try {
+        console.log('[DesktopDealsScreen] Requesting public offers...');
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 6 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        console.log('[DesktopDealsScreen] Raw public offers payload:', rows);
+        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+      } catch (error) {
+        console.error('[DesktopDealsScreen] Public offers request failed:', error);
+        if (!ignore) setPublicOffers([]);
+      }
+    };
+
+    loadOffers();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const discoveryDeals = useMemo(() => {
+    const filtered = publicOffers.filter(isUsableOffer);
+    console.log('[DesktopDealsScreen] Filtered discovery deals:', filtered);
+    return filtered.slice(0, 6).map(toDiscoveryDeal);
+  }, [publicOffers]);
+  const catalogDeals = useMemo(() => {
+    const filtered = publicOffers.filter(isUsableOffer);
+    console.log('[DesktopDealsScreen] Filtered catalog deals:', filtered);
+    return filtered.slice(0, 6).map(toCatalogDeal);
+  }, [publicOffers]);
+  const featuredDeal = catalogDeals[0] ?? null;
 
   useEffect(() => {
     const timers = claimTimers.current;
@@ -315,6 +308,48 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
       </div>
     </div>
   ) : null;
+
+  if (!publicOffers.length) {
+    return (
+      <>
+        <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
+          <section className="w-full max-w-7xl mx-auto px-margin py-space-3xl">
+            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
+                <Icon name="info" className="text-[22px]" />
+              </div>
+              <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+              <p className="mt-1 font-body-md text-body-md text-text-secondary">
+                Publish live public offers to populate this feed.
+              </p>
+            </div>
+          </section>
+        </DesktopPage>
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
+      </>
+    );
+  }
+
+  if (!apiReady) {
+    return (
+      <>
+        <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
+          <section className="w-full max-w-7xl mx-auto px-margin py-space-3xl">
+            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
+                <Icon name="info" className="text-[22px]" />
+              </div>
+              <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+              <p className="mt-1 font-body-md text-body-md text-text-secondary">
+                Connect the API and publish public offers to populate this feed.
+              </p>
+            </div>
+          </section>
+        </DesktopPage>
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
+      </>
+    );
+  }
 
   if (view === 'list') {
     return (
@@ -374,7 +409,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
             <div className="w-full bg-surface-container-lowest rounded-2xl p-space-md mb-space-xl flex flex-col sm:flex-row items-center justify-between gap-space-md shadow-[0_4px_20px_-4px_rgba(13,37,76,0.03)]">
               <div className="flex items-center gap-space-md w-full sm:w-auto">
                 <div className="flex items-center gap-space-xs">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">Showing 6 deals</span>
+                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">Showing {catalogDeals.length} deal{catalogDeals.length === 1 ? '' : 's'}</span>
                   <span className="px-2 py-0.5 rounded-md bg-secondary-fixed text-on-secondary-fixed text-caption font-caption font-bold">
                     VERIFIED LOCAL
                   </span>
@@ -419,16 +454,36 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg">
-              {CATALOG_DEALS.map((deal) => (
+              {catalogDeals.length === 0 ? (
+                <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
+                  Live catalog deals will appear here as soon as the public offers feed is available.
+                </div>
+              ) : catalogDeals.map((deal, index) => (
                 <article
-                  key={deal.title}
+                  key={`${deal.title}-${deal.store}-${index}`}
                   role="button"
                   tabIndex={0}
-                  onClick={onOpenDeal}
+                  onClick={() => onOpenDeal({
+                    title: deal.title,
+                    business: deal.store,
+                    location: `${city}, ${district}`,
+                    price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                    oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                    discountLabel: deal.save,
+                    image: deal.image,
+                  })}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      onOpenDeal();
+                      onOpenDeal({
+                        title: deal.title,
+                        business: deal.store,
+                        location: `${city}, ${district}`,
+                        price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                        oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                        discountLabel: deal.save,
+                        image: deal.image,
+                      });
                     }
                   }}
                   className="group relative flex flex-col bg-surface-container-lowest rounded-2xl overflow-hidden shadow-[0_4px_18px_-2px_rgba(13,37,76,0.04)] hover:shadow-[0_12px_28px_-6px_rgba(6,108,244,0.12)] transition-all duration-300 cursor-pointer"
@@ -517,7 +572,16 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onClaim?.(() => claimDeal(deal.title));
+                          const selected = {
+                            title: deal.title,
+                            business: deal.store,
+                            location: `${city}, ${district}`,
+                            price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                            oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                            discountLabel: deal.save,
+                            image: deal.image,
+                          };
+                          onClaim?.(selected, () => claimDeal(deal.title));
                         }}
                       >
                         {claimed[deal.title] ? 'Claimed!' : 'Claim'}
@@ -538,7 +602,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                     Zero-Risk VEMTAP Guarantee
                   </h4>
                   <p className="font-body-md text-body-md text-text-secondary">
-                    Claim online for free. Show your barcode to the cashier and pay the discounted price in Apo.
+                    Claim online for free. Show your barcode to the cashier and pay the discounted price in {district || city || 'your area'}.
                   </p>
                 </div>
               </div>
@@ -619,125 +683,147 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
 
         <div className="max-w-7xl mx-auto px-margin py-space-xl w-full flex flex-col gap-space-2xl">
           <section className="w-full relative rounded-2xl bg-surface-canvas shadow-md overflow-hidden group">
-            <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[380px]">
-              <div className="lg:col-span-7 relative min-h-[280px] lg:min-h-full overflow-hidden">
-                <img
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  alt={DEAL_OF_DAY_ALT}
-                  src={DEAL_OF_DAY_IMAGE}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-on-surface/90 via-on-surface/40 to-transparent lg:hidden" />
-                <div className="absolute top-4 left-4 flex flex-wrap items-center gap-space-xs z-10">
-                  <span className="px-space-sm py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm">
-                    50% OFF
-                  </span>
-                  <span className="px-space-sm py-1 bg-surface-canvas/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm flex items-center gap-1">
-                    <Icon name="star" className="text-[14px]" />
-                    Top Pick
-                  </span>
-                  <span className="px-space-sm py-1 bg-primary text-on-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm">
-                    Special Promo
-                  </span>
-                </div>
-                <div className="absolute bottom-4 left-4 z-10 flex items-center gap-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-sm py-1.5 rounded-full shadow-sm text-on-surface">
-                  <Icon name="timer" className="text-tertiary-container text-[18px]" />
-                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">Ends in 07h 48m 12s</span>
-                </div>
-              </div>
-
-              <div
-                className="lg:col-span-5 p-space-xl flex flex-col justify-between bg-surface-canvas relative z-10 cursor-pointer"
-                onClick={onOpenFeatured}
-              >
-                <div className="space-y-space-md">
-                  <div className="flex items-center justify-between gap-space-sm">
-                    <div className="flex items-center gap-space-xs">
-                      <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                      <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-secondary">
-                        Deal of the Day
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption">
-                      <Icon name="distance" className="text-[15px] text-primary" />
-                      <span>Apo Legacy Tower • 1.1km</span>
-                    </div>
+            {featuredDeal ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[380px]">
+                <div className="lg:col-span-7 relative min-h-[280px] lg:min-h-full overflow-hidden">
+                  <img
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    alt={featuredDeal.imageAlt || featuredDeal.title}
+                    src={featuredDeal.image}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-on-surface/90 via-on-surface/40 to-transparent lg:hidden" />
+                  <div className="absolute top-4 left-4 flex flex-wrap items-center gap-space-xs z-10">
+                    <span className="px-space-sm py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm">
+                      {featuredDeal.discount}
+                    </span>
+                    <span className="px-space-sm py-1 bg-surface-canvas/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm flex items-center gap-1">
+                      <Icon name="star" className="text-[14px]" />
+                      {featuredDeal.badge?.label ?? 'Live'}
+                    </span>
                   </div>
-
-                  <div className="space-y-space-2xs">
-                    <span className="font-label-md text-label-md text-primary font-semibold">The Sky Lounge &amp; Grill</span>
-                    <h2 className="font-heading-lg text-heading-lg font-bold text-text-primary leading-tight">
-                      Chef&apos;s 5-Course Sunset Tasting Menu &amp; Wine Pairing
-                    </h2>
-                    <p className="font-body-md text-body-md text-text-secondary">
-                      Immerse your senses with signature slow-roasted cuts, fresh Atlantic bites, and sommelier-curated
-                      vintage reserves.
-                    </p>
-                  </div>
-
-                  <div className="p-space-sm bg-surface-subtle rounded-xl space-y-space-2xs">
-                    <div className="flex items-baseline gap-space-sm">
-                      <span className="font-display-hero text-display-hero text-primary font-bold">₦22,500</span>
-                      <span className="font-body-lg text-body-lg text-text-tertiary line-through">₦45,000</span>
-                      <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
-                        Save ₦22,500
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-text-secondary font-caption text-caption pt-1">
-                      <span>
-                        Vouchers remaining: <strong className="text-text-primary">12 of 30 left</strong>
-                      </span>
-                      <span className="text-tertiary font-semibold">Claimed fast</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-                      <div className="h-full bg-primary-container rounded-full" style={{ width: '60%' }} />
-                    </div>
+                  <div className="absolute bottom-4 left-4 z-10 flex items-center gap-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-sm py-1.5 rounded-full shadow-sm text-on-surface">
+                    <Icon name="timer" className="text-tertiary-container text-[18px]" />
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">
+                      {featuredDeal.extra?.label ?? 'Active now'}
+                    </span>
                   </div>
                 </div>
 
-                <div className="pt-space-md flex items-center justify-between gap-space-md border-t border-transparent">
-                  <div className="flex items-center gap-space-md text-text-secondary">
+                <div
+                  className="lg:col-span-5 p-space-xl flex flex-col justify-between bg-surface-canvas relative z-10 cursor-pointer"
+                  onClick={onOpenFeatured}
+                >
+                  <div className="space-y-space-md">
+                    <div className="flex items-center justify-between gap-space-sm">
+                      <div className="flex items-center gap-space-xs">
+                        <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                        <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-secondary">
+                          {featuredDeal.badge?.label ?? 'Deal of the Day'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption">
+                        <Icon name="distance" className="text-[15px] text-primary" />
+                        <span>{featuredDeal.distance}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-space-2xs">
+                      <span className="font-label-md text-label-md text-primary font-semibold">
+                        {featuredDeal.store}
+                      </span>
+                      <h2 className="font-heading-lg text-heading-lg font-bold text-text-primary leading-tight">
+                        {featuredDeal.title}
+                      </h2>
+                      <p className="font-body-md text-body-md text-text-secondary">
+                        {featuredDeal.copy}
+                      </p>
+                    </div>
+
+                    <div className="p-space-sm bg-surface-subtle rounded-xl space-y-space-2xs">
+                      <div className="flex items-baseline gap-space-sm">
+                        <span className="font-display-hero text-display-hero text-primary font-bold">
+                          {featuredDeal.price}
+                        </span>
+                        <span className="font-body-lg text-body-lg text-text-tertiary line-through">
+                          {featuredDeal.oldPrice}
+                        </span>
+                        <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
+                          {featuredDeal.save}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-text-secondary font-caption text-caption pt-1">
+                        <span>
+                          {featuredDeal.extra?.label ?? 'Live offer'}
+                        </span>
+                        <span className="text-tertiary font-semibold">{featuredDeal.save}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+                        <div className="h-full bg-primary-container rounded-full" style={{ width: '60%' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-space-md flex items-center justify-between gap-space-md border-t border-transparent">
+                    <div className="flex items-center gap-space-md text-text-secondary">
+                      <button
+                        className="flex items-center gap-1 transition-colors text-text-secondary hover:text-primary"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleHeroLike();
+                        }}
+                      >
+                        <Icon
+                          name="favorite"
+                          className={`text-[20px] ${heroLiked ? 'text-error' : 'text-tertiary'}`}
+                          filled={heroLiked}
+                        />
+                        <span className="font-label-sm text-label-sm">148</span>
+                      </button>
+                      <button
+                        className="flex items-center gap-1 hover:text-primary transition-colors text-text-secondary"
+                        type="button"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Icon name="chat_bubble_outline" className="text-[20px]" />
+                        <span className="font-label-sm text-label-sm">32</span>
+                      </button>
+                    </div>
                     <button
-                      className="flex items-center gap-1 transition-colors text-text-secondary hover:text-primary"
+                      className={`px-space-lg h-12 font-button-primary text-button-primary rounded-xl flex items-center gap-space-xs transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                        heroClaimed
+                          ? 'bg-badge-discount-bg text-badge-discount-text'
+                          : 'bg-primary-container hover:bg-primary text-on-primary shadow-md shadow-primary-container/20'
+                      }`}
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        toggleHeroLike();
+                        const selected = {
+                          title: featuredDeal?.title ?? 'Featured deal',
+                          business: featuredDeal?.store ?? 'Nearby business',
+                          location: `${city}, ${district}`,
+                          price: Number.parseFloat(String(featuredDeal?.price ?? '0').replace(/[^\d.]/g, '')) || 0,
+                          oldPrice: Number.parseFloat(String(featuredDeal?.oldPrice ?? '0').replace(/[^\d.]/g, '')) || 0,
+                          discountLabel: featuredDeal?.save ?? 'Live Deal',
+                          image: featuredDeal?.image ?? '',
+                        };
+                        onClaim?.(selected, () => setHeroClaimed(true));
                       }}
                     >
-                      <Icon
-                        name="favorite"
-                        className={`text-[20px] ${heroLiked ? 'text-error' : 'text-tertiary'}`}
-                        filled={heroLiked}
-                      />
-                      <span className="font-label-sm text-label-sm">148</span>
-                    </button>
-                    <button
-                      className="flex items-center gap-1 hover:text-primary transition-colors text-text-secondary"
-                      type="button"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <Icon name="chat_bubble_outline" className="text-[20px]" />
-                      <span className="font-label-sm text-label-sm">32</span>
+                      <span>{heroClaimed ? 'Claimed!' : 'Claim Deal'}</span>
+                      <Icon name="arrow_forward" className="text-[18px]" />
                     </button>
                   </div>
-                  <button
-                    className={`px-space-lg h-12 font-button-primary text-button-primary rounded-xl flex items-center gap-space-xs transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                      heroClaimed
-                        ? 'bg-badge-discount-bg text-badge-discount-text'
-                        : 'bg-primary-container hover:bg-primary text-on-primary shadow-md shadow-primary-container/20'
-                    }`}
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onClaim?.(() => setHeroClaimed(true));
-                    }}
-                  >
-                    <span>{heroClaimed ? 'Claimed!' : 'Claim Deal'}</span>
-                    <Icon name="arrow_forward" className="text-[18px]" />
-                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-xl text-center">
+                <p className="font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+                <p className="mt-1 font-body-md text-body-md text-text-secondary">
+                  Nearby local offers will appear here when the public catalogue is active.
+                </p>
+              </div>
+            )}
           </section>
 
           <div className="flex flex-col gap-space-lg">
@@ -782,16 +868,36 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg">
-              {DISCOVERY_DEALS.map((deal) => (
+              {discoveryDeals.length === 0 ? (
+                <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
+                  Nearby discovery deals will appear here when live offers are returned.
+                </div>
+              ) : discoveryDeals.map((deal, index) => (
                 <article
-                  key={deal.title}
+                  key={`${deal.title}-${deal.store}-${index}`}
                   role="button"
                   tabIndex={0}
-                  onClick={onOpenDeal}
+                  onClick={() => onOpenDeal({
+                    title: deal.title,
+                    business: deal.store,
+                    location: `${city}, ${district}`,
+                    price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                    oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                    discountLabel: deal.save,
+                    image: deal.image,
+                  })}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      onOpenDeal();
+                      onOpenDeal({
+                        title: deal.title,
+                        business: deal.store,
+                        location: `${city}, ${district}`,
+                        price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                        oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                        discountLabel: deal.save,
+                        image: deal.image,
+                      });
                     }
                   }}
                   className="bg-surface-canvas rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col group cursor-pointer"
@@ -856,7 +962,16 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onClaim?.(() => claimDeal(deal.title));
+                          const selected = {
+                            title: deal.title,
+                            business: deal.store,
+                            location: `${city}, ${district}`,
+                            price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                            oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                            discountLabel: deal.save,
+                            image: deal.image,
+                          };
+                          onClaim?.(selected, () => claimDeal(deal.title));
                         }}
                       >
                         {claimed[deal.title] ? 'Claimed!' : 'Claim'}
@@ -867,15 +982,17 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
               ))}
             </div>
 
-            <div className="mt-space-lg flex justify-center">
-              <button
-                className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all hover:gap-space-xs"
-                type="button"
-              >
-                <span>Load More Apo Neighborhood Offers</span>
-                <Icon name="keyboard_arrow_down" className="text-[18px]" />
-              </button>
-            </div>
+            {discoveryDeals.length > 0 && (
+              <div className="mt-space-lg flex justify-center">
+                <button
+                  className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all hover:gap-space-xs"
+                  type="button"
+                >
+                  <span>Load More {district || city || 'Local'} Neighborhood Offers</span>
+                  <Icon name="keyboard_arrow_down" className="text-[18px]" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </DesktopPage>

@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
-import { naira, nairaToNumber } from '../catalogueData';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import { findBusinessBySlug } from '../businessData';
+import { naira, nairaToNumber } from '../catalogueData';
 
 interface DesktopUrbanGrillStorefrontScreenProps {
+  business?: { name?: string; slug?: string } | null;
   onNav: (key: DesktopNavKey) => void;
   activeNav?: DesktopNavKey;
   onClaim?: (onClaimed?: () => void) => void;
@@ -202,7 +204,43 @@ const STOREFRONT_DEALS: StorefrontDeal[] = [
   },
 ];
 
-export function DesktopUrbanGrillStorefrontScreen({ onNav, activeNav = 'businesses', onClaim, onCheckout: _onCheckout }: DesktopUrbanGrillStorefrontScreenProps) {
+export function DesktopUrbanGrillStorefrontScreen({ business, onNav, activeNav = 'businesses', onClaim, onCheckout: _onCheckout }: DesktopUrbanGrillStorefrontScreenProps) {
+  const isKnownBusiness = !!business?.slug && !!findBusinessBySlug(business.slug);
+
+  if (!business || !isKnownBusiness) {
+    return (
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav={activeNav} withCustomerRail>
+        <div className="w-full min-h-[calc(100vh-80px)] bg-surface px-6 py-16">
+          <div className="mx-auto flex w-full max-w-2xl flex-col items-center rounded-3xl bg-surface-canvas p-10 text-center shadow-sm">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-subtle text-primary">
+              <Icon name="storefront" className="text-[32px]" />
+            </div>
+            <h1 className="font-heading-lg text-heading-lg text-text-primary">Storefront not available</h1>
+            <p className="mt-3 max-w-md font-body-md text-body-md text-text-secondary leading-relaxed">
+              There is no live storefront selected yet. Choose a business from discover or wait for the storefront data to load from the backend.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => onNav('discover')}
+                className="h-11 rounded-xl bg-primary px-5 text-on-primary font-button-primary text-button-primary shadow-md transition-transform active:scale-[0.98]"
+              >
+                Browse businesses
+              </button>
+              <button
+                type="button"
+                onClick={() => onNav('dashboard')}
+                className="h-11 rounded-xl bg-surface-subtle px-5 text-text-primary font-button-secondary text-button-secondary transition-colors hover:bg-surface-container-high"
+              >
+                Go home
+              </button>
+            </div>
+          </div>
+        </div>
+      </DesktopPage>
+    );
+  }
+
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('all');
   const [query, setQuery] = useState('');
   const [saved, setSaved] = useState(false);

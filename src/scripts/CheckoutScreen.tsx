@@ -41,6 +41,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<SubmittedOrder | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
 
@@ -62,6 +63,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
   const readyBy = estimateReadyBy();
 
   const placeOrder = () => {
+    setSubmitError(null);
     // BUG-015 Step 3: submit through the shared order store. The order is
     // never marked paid here — pay-at-counter stays `submitted`, online
     // methods stay `payment-pending` until the merchant verifies payment.
@@ -90,6 +92,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
       marketingConsent,
     });
     if (!result.ok) {
+      setSubmitError(result.error);
       showToast(result.error);
       return;
     }
@@ -160,7 +163,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   </div>
                   <p className="font-caption text-caption text-text-secondary flex items-center gap-1 truncate">
                     <Icon name="location_on" className="text-[15px] text-text-tertiary" />
-                    Apo Boulevard, Abuja • 0.6 km away
+                    Nearby local branch • Your selected area
                   </p>
                 </div>
               </div>
@@ -234,8 +237,8 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   </p>
                   <p className="font-caption text-caption text-text-secondary">
                     {mode === 'pickup'
-                      ? 'Plot 104 Apo Boulevard, Ground Floor Food Court'
-                      : 'Delivering to Apo District (within 45 mins)'}
+                      ? 'Your selected local pickup point'
+                      : 'Delivering to your selected area'}
                   </p>
                 </div>
               </div>
@@ -480,6 +483,15 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
 
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-surface-container-lowest/95 backdrop-blur-md px-margin py-space-sm shadow-[0_-8px_24px_-4px_rgba(17,24,39,0.08)] pb-safe">
           <div className="max-w-[430px] mx-auto">
+            {submitError && (
+              <div className="mb-3 p-3 rounded-xl bg-error-container/40 border border-error/40 flex items-start gap-2" role="alert">
+                <Icon name="error" className="text-error text-[18px] shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-label-md text-label-md font-semibold text-error">Could not place order</p>
+                  <p className="text-caption text-caption text-text-secondary mt-0.5">{submitError}</p>
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-between mb-2">
               <div>
                 <p className="font-caption text-caption text-text-secondary uppercase tracking-wider font-semibold">

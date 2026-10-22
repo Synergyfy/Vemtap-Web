@@ -1,16 +1,36 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
 import { useLocation } from '../../context/LocationContext';
+import { hasApiConfig } from '../../services/api/client';
+import { catalogueService } from '../../services/catalogueService';
 
 interface DesktopHomeScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
   onOpenDeals: () => void;
-  onOpenDeal: () => void;
-  onClaim?: (onClaimed?: () => void) => void;
+  onOpenDeal: (deal?: {
+    id?: string | number;
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  }) => void;
+  onClaim?: (deal?: {
+    id?: string | number;
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  } | null, onClaimed?: () => void) => void;
 }
 
 const HERO_LIST_IMAGE =
@@ -19,397 +39,210 @@ const HERO_LIST_IMAGE =
 const HERO_GRID_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCkIxQKPJ2CK4jYecgDvXxVKgoXnaiLRhf9nh8zig7wgyoml_WMe7fsiYtmztk9rKiUHi55eLCiwNh04f_72TTRCZNBW0KOtMZNQdQohVyPqT-NoZZFRIbzHeYhmEcHwiIlbhsqW1ynppf7c48y6EQc2bEUGsH4sezPHA7V4Fc7u0vkaUE1Y96MvuETpz-Zm7o5Pgu-vZfjTxdtSThrDeODsHDgluf_1fDho6B-juDh';
 
-interface ListDeal {
-  image: string;
-  imageAlt: string;
-  discount: string;
-  timer?: string;
-  meta: string;
-  rating: string;
-  title: string;
-  copy: string;
-  price: string;
-  oldPrice: string;
-}
+const formatCurrency = (value: number | string | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
 
-const LIST_DEALS: ListDeal[] = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBQfjmMBKVyq4oGYUBEW0nSamX7UkiblSMYJIQlzwzVwQV5bwUOKxbcd591K_SoaOl57bE6x-zaod0Pd-6Y7mi1YZLE98aOpCpBCo20g7p4fCJMAsyxJmlkwgGtVpG7AU_Ek6DRPwmzBEbBk3H7k-ccZDIdt8xrsMqxYWKfIXGz7DdaGMF3GerwuBx4GEtgBsz7ANn1_RJFBlEGrarQ2pRD6z6C8tT8NC3THEVgSn9p',
-    imageAlt:
-      'Juicy charcoal-grilled prime steak burger topped with melting aged cheddar, crispy shallots, accompanied by golden rosemary parmesan fries inside an atmospheric modern urban bistro',
-    discount: '20% OFF',
-    timer: 'Expires in 4h',
-    meta: '0.8km away • Apo District',
-    rating: '4.8',
-    title: 'Urban Grill & Bistro',
-    copy: 'Prime Lunch Combo with slow-roasted wings & iced peach infusion.',
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBEehaaJ6quatm3mZwLtce7bSobSNTp-1YZhExRfjeHAbT1kPVo17LB3ctyE-vmaIDOH55qKFB-44tWKRDTZB7AR7_qUXj6VmsgBozilox_fpSsY35RdGuT5ZEGk7ll7VXhTLeGYnyzWrsi_z2lb1VVt-LR8D0Ups-KrKgATFySFhrZ1pit4G9b3QDVxiZT6FyUSNMuYjfcY6m9SijgXcuB3DCHRKiPHzry5KcG7JPC',
-    imageAlt:
-      'Pair of limited edition collector sneakers presented on a minimalist concrete plinth inside a high-end streetwear boutique in Garki with clean architectural backlighting',
-    discount: '30% OFF',
-    meta: '1.2km away • Garki Area',
-    rating: '4.7',
-    title: 'Sole District Boutique',
-    copy: 'Weekend Sneaker Drop & Selected Streetwear Apparel voucher.',
-    price: '₦28,000',
-    oldPrice: '₦40,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAUEe61wFWuvFbTKFVZ2ePTfV6HOVImqjVTHrYnUcUQm5BeBf2gTpR5aHBRk_00Lihi-dg1y8DzPa0zor6SQAot4rd1NZdRELhmBS0cNc8rVscBorA5njN0_esdlr5GWVC357w6TB0Xigas0qhqGXcJ5n9rY4uLeE1hy64XSIWsHUu3SAFnFqTlNT8OWoaUlHqJl0iNUPM_2jtuKuY9e7LgpL9w3aDp3x7dPxxdBuLn',
-    imageAlt:
-      'Luxury spa treatment room with warm wooden slatted walls, aromatic eucalyptus steam, rolled linen towels and calming warm ambient candlelight',
-    discount: '25% OFF',
-    meta: '1.4km away • Maitama',
-    rating: '5.0',
-    title: 'Glow & Serenity Spa',
-    copy: 'Weekend Glow Facial & Scandinavian Sauna Detox Session.',
-    price: '₦18,500',
-    oldPrice: '₦24,600',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuANPgDMuHC9H_xkJNSNaJJ8lYNaVsHN4pENGtr1O9s-JUdC81clPMnagBRyIL55iuxnAR6D1cytIj5loYBp4S-azP93ULSk1lTO2fB3MmQx3l2DCejU_aoAiPta7SrlhVo8k4bBH75kGS7P-YPlWaH44ojDyA7heUtwJkC12v7kB8ORTLBetgBYr-d-av2Gfxgrqq6mSg7-8Jvc3ev3Sck-56PjZ3oN2gkxgPEnBKKU',
-    imageAlt:
-      'Two glass carafes of cold brew coffee served with ice and fresh flaky almond croissants on a marble cafe countertop in Abuja with warm natural daylight',
-    discount: 'BOGO FREE',
-    meta: '0.5km away • Apo Resettlement',
+const getApiImage = (value: unknown): string => {
+  if (typeof value === 'string' && value.trim()) return value;
+  return HERO_LIST_IMAGE;
+};
+
+const getNestedImage = (offer: Record<string, unknown>): string => {
+  const itemList = Array.isArray(offer.items) ? offer.items : [];
+  for (const item of itemList) {
+    if (item && typeof item === 'object') {
+      const current = item as Record<string, unknown>;
+      const image = getApiImage(current.mainImage ?? current.image ?? current.mediaUrl);
+      if (image !== HERO_LIST_IMAGE || current.mainImage || current.image) return image;
+    }
+  }
+
+  const business = offer.business;
+  if (business && typeof business === 'object') {
+    const current = business as Record<string, unknown>;
+    const image = getApiImage(current.logo ?? current.image ?? current.coverImage);
+    if (image !== HERO_LIST_IMAGE || current.logo || current.image) return image;
+  }
+
+  return getApiImage(offer.image ?? offer.coverImage ?? offer.mediaUrl ?? offer.photo);
+};
+
+const getApiBusinessName = (offer: Record<string, unknown>): string => {
+  const business = offer.business;
+  const fromBusiness = business && typeof business === 'object' ? ((business as Record<string, unknown>).name ?? (business as Record<string, unknown>).businessName ?? (business as Record<string, unknown>).merchantName) : undefined;
+  const value = offer.businessName ?? offer.merchantName ?? offer.branchName ?? offer.vendorName ?? offer.companyName ?? fromBusiness ?? 'Nearby business';
+  return typeof value === 'string' && value.trim() ? value : 'Nearby business';
+};
+
+const getApiTitle = (offer: Record<string, unknown>): string => {
+  const value = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
+  return typeof value === 'string' && value.trim() ? value : 'Local offer';
+};
+
+const getApiPrice = (offer: Record<string, unknown>): number => {
+  const nestedItem = Array.isArray(offer.items) && offer.items.length > 0 && typeof offer.items[0] === 'object' ? (offer.items[0] as Record<string, unknown>) : null;
+  const candidates = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.amount, offer.salePrice, nestedItem?.price, nestedItem?.dealPrice, nestedItem?.calculatedPrice];
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const getApiComparePrice = (offer: Record<string, unknown>): number => {
+  const nestedItem = Array.isArray(offer.items) && offer.items.length > 0 && typeof offer.items[0] === 'object' ? (offer.items[0] as Record<string, unknown>) : null;
+  const candidates = [offer.compareAtPrice, offer.originalPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, nestedItem?.compareAtPrice, nestedItem?.originalPrice, nestedItem?.listPrice];
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return getApiPrice(offer);
+};
+
+const toSpotlightSlide = (offer: Record<string, unknown>, index: number) => {
+  const price = getApiPrice(offer);
+  const original = getApiComparePrice(offer);
+  const title = getApiTitle(offer);
+  const merchant = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${merchant}-${title}-${index}`,
+  );
+
+  return {
+    id: offerId,
+    image: getNestedImage(offer),
+    discount: 'Live Deal',
+    merchant: `${merchant} • ${typeof offer.location === 'string' ? offer.location : 'Nearby'}`,
+    title,
+    copy: typeof offer.description === 'string' && offer.description.trim() ? offer.description : 'Fresh local offer from nearby vendors.',
     rating: '4.9',
-    title: 'Cafe Neo Artisanal',
-    copy: 'Buy One Get One Free Cold Brew & Warm Almond Pastry Box.',
-    price: '₦4,500',
-    oldPrice: '₦9,000',
-  },
-];
+    reviews: '(live)',
+    price: formatCurrency(price),
+    oldPrice: original > price ? formatCurrency(original) : '',
+    save: price > 0 ? `Save ${formatCurrency(Math.max(original - price, 0))} instantly` : 'Limited-time offer',
+    ending: 'Ends soon',
+    features: [
+      { icon: 'check_circle', text: 'Includes local perk' },
+      { icon: 'check_circle', text: 'Instant checkout' },
+      { icon: 'schedule', text: 'Limited time', error: true },
+      { icon: 'pin_drop', text: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby' },
+    ],
+  };
+};
 
-interface SpotlightFeature {
-  icon: string;
-  text: string;
-  error?: boolean;
-}
+const toListDeal = (offer: Record<string, unknown>, index: number) => {
+  const price = getApiPrice(offer);
+  const original = getApiComparePrice(offer);
+  const title = getApiTitle(offer);
+  const business = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}-${index}`,
+  );
 
-interface SpotlightSlide {
-  image: string;
-  discount: string;
-  merchant: string;
-  title: string;
-  copy: string;
-  rating: string;
-  reviews: string;
-  price: string;
-  oldPrice: string;
-  save: string;
-  ending: string;
-  features: SpotlightFeature[];
-}
-
-const SPOTLIGHT_SLIDES: SpotlightSlide[] = [
-  {
-    image: HERO_LIST_IMAGE,
-    discount: '50% OFF',
-    merchant: 'The Sky Lounge & Grill • Maitama Heights',
-    title: "Chef's 5-Course Signature Tasting Menu & Sunset Pairing",
-    copy: 'Experience refined dining with Wagyu bites, smoked butter prawns, and botanical mocktails curated exclusively for VEMTAP patrons.',
+  return {
+    id: offerId,
+    image: getNestedImage(offer),
+    imageAlt: `${title} by ${business}`,
+    discount: price > 0 ? 'Live Deal' : 'OFFER',
+    timer: 'Limited time',
+    meta: typeof offer.distance === 'string' && offer.distance.trim() ? `${offer.distance} • Nearby` : 'Nearby',
     rating: '4.9',
-    reviews: '(184 reviews)',
-    price: '₦24,500',
-    oldPrice: '₦49,000',
-    save: 'Save ₦24,500 instantly',
-    ending: 'Ends Tonight (11:59 PM)',
-    features: [
-      { icon: 'check_circle', text: 'Includes Welcome Drink' },
-      { icon: 'check_circle', text: 'Valet Parking Apo Link' },
-      { icon: 'schedule', text: 'Expires Tonight', error: true },
-      { icon: 'pin_drop', text: 'Maitama • 4.1km' },
-    ],
-  },
-  {
-    image: LIST_DEALS[0].image,
-    discount: '20% OFF',
-    merchant: 'Urban Grill & Bistro • Apo District',
-    title: 'Prime Lunch Combo with Slow-Roasted Wings & Peach Infusion',
-    copy: 'Woodfire aged ribeye, truffle parmesan fries and house craft peach iced tea — the neighborhood favorite, ready in 15 minutes.',
-    rating: '4.8',
-    reviews: '(184 reviews)',
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-    save: 'Save ₦2,400 instantly',
-    ending: 'Ends in 4h (3:00 PM)',
-    features: [
-      { icon: 'check_circle', text: 'Includes House Craft Iced Tea' },
-      { icon: 'check_circle', text: 'Patio Seating for Two' },
-      { icon: 'schedule', text: 'Expires in 4h', error: true },
-      { icon: 'pin_drop', text: 'Apo • 0.8km' },
-    ],
-  },
-  {
-    image: LIST_DEALS[2].image,
-    discount: '25% OFF',
-    merchant: 'Glow & Serenity Spa • Maitama',
-    title: 'Weekend Glow Facial & Scandinavian Sauna Detox',
-    copy: 'A 75-minute radiance facial paired with eucalyptus steam, sauna detox and a complimentary herbal infusion for two.',
-    rating: '5.0',
-    reviews: '(96 reviews)',
-    price: '₦18,500',
-    oldPrice: '₦24,600',
-    save: 'Save ₦6,100 instantly',
-    ending: 'Ends Sunday (9:00 PM)',
-    features: [
-      { icon: 'check_circle', text: 'Includes Herbal Infusion' },
-      { icon: 'check_circle', text: 'Complimentary Valet' },
-      { icon: 'schedule', text: 'Weekend Slots Only' },
-      { icon: 'pin_drop', text: 'Maitama • 1.4km' },
-    ],
-  },
-];
+    title,
+    store: business,
+    copy: typeof offer.description === 'string' && offer.description.trim() ? offer.description : 'Fresh local offer from nearby vendors.',
+    price: formatCurrency(price),
+    oldPrice: original > price ? formatCurrency(original) : '',
+  };
+};
 
-interface TrendingDeal {
-  image: string;
-  imageAlt: string;
-  claimed: string;
-  title: string;
-  store: string;
-  price: string;
-  discount: string;
-}
+const toTrendingDeal = (offer: Record<string, unknown>, index: number) => {
+  const price = getApiPrice(offer);
+  const original = getApiComparePrice(offer);
+  const title = getApiTitle(offer);
+  const business = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}-${index}`,
+  );
 
-const TRENDING_DEALS: TrendingDeal[] = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCR2OWkGMPg-P6oABzzOrjzQ5ebc_MnDOi1GDUgx16665jwq5J3-cMTcPJwIcB5HTGLduvLker2ffFkcG7T1eiwhULCzs7Uj9ISzbPXnSHGX4a20CV2aTieWnpG85ml28KI1TcE4bV-nWDto4N46DQAv7_NCP47_v-TWvvlEhQ9F-SkV-vkfd7i7jslcoy_obmyJG6QcUF1QSpclZ0quoyuNOAU2OdBd5wmmnbgipLS',
-    imageAlt:
-      'Artisanal flat white coffee with exquisite latte art inside a modern ceramics mug with roasted coffee beans nearby',
-    claimed: '82 claimed today',
-    title: 'Specialty Espresso Bundle',
-    store: 'Brew Bar Coffee Co. • Apo',
-    price: '₦3,200',
-    discount: '35% OFF',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuALRDAbLcFn9BwqvwgTCZHHjC8eW4LmVCL7qbIl4Z44EUFQiFb-OM1ytNMaiKT_cV-oFf7jiPbeFAdweLJl0kAcPBobAJXIh4FeYRF_fWnwhdP4CfU_RJoU86aAo8f4JyaKFuGr8tU50pAjsUItGg_eeo3XNGtrh6al9BlLQjKxYJfCZ-ZsJdZkx2e0u0viw1DwcFgmPujVtj5rcJvax2Bca-L4nAYRrhUyXidbLLVH',
-    imageAlt:
-      'Modern fitness gym studio with kettlebells, dumbbells and glowing neon lighting fixtures in Garki Abuja',
-    claimed: '140 claimed',
-    title: 'Unlimited Gym Pass (7 Days)',
-    store: 'Apex Fitness Zone • Wuse II',
-    price: '₦7,000',
-    discount: '40% OFF',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDz-fY92SqjI90Dn8xoKiBeAfQImf6pTkdhNdvCbNSMVdMoM4AhvbNcFX0hUOs22TQphQNsmF1Xm8lnbU5kS3Q40okJQAtTfoZaDUNUo-YGZNxtEbmrqK-5QWRPElc577zQrCu6zhjglg2NcgdOhPds7FMTa-KnBNVZJA3TIfILYq-tjY_xEIcpzh2XcTujvgV4kvSC-PyQW_Z34U0N8HnQNsjQhsPVb_OrW4qgcJKX',
-    imageAlt:
-      'Luxury car detailing studio with water beading over freshly ceramic coated midnight blue sports car',
-    claimed: '45 claimed',
-    title: 'Full Interior Steam Detailing',
-    store: 'Velocity Auto Spa • Central Area',
-    price: '₦14,000',
-    discount: '20% OFF',
-  },
-];
+  return {
+    id: offerId,
+    image: getNestedImage(offer),
+    imageAlt: `${title} by ${business}`,
+    claimed: 'Live deal',
+    title,
+    store: business,
+    price: formatCurrency(price),
+    oldPrice: original > price ? formatCurrency(original) : '',
+    discount: 'Live Deal',
+  };
+};
 
-const LIST_BUSINESSES = [
-  { initials: 'AB', name: 'Artisan Bakery & Cafe', rating: '4.9 (310)', area: 'Apo Legislative Quarters', deals: '3 Deals Active' },
-  { initials: 'PF', name: 'Pulse Fitness & Wellness', rating: '4.8 (142)', area: 'Gudu District (1.1km)', deals: '2 Deals Active' },
-  { initials: 'VS', name: 'Velvet Stitch Couture', rating: '4.7 (96)', area: 'Apo Resettlement', deals: '1 Deal Active' },
-];
+const toBusinessSummary = (offer: Record<string, unknown>, index: number) => {
+  const businessName = getApiBusinessName(offer);
+  const distance = typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby';
+  const idCandidate =
+    offer.id ??
+    offer.businessId ??
+    offer.branchId ??
+    offer.slug ??
+    offer._id ??
+    (offer.business && typeof offer.business === 'object' ? ((offer.business as Record<string, unknown>).id ?? (offer.business as Record<string, unknown>).businessId ?? (offer.business as Record<string, unknown>).branchId) : undefined) ??
+    `${businessName}-${distance}-${index}`;
 
-const LIST_PRODUCTS = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBGNefYj3-NHZ-oT5_OZxr7oFG68vkHNXpTu_9MmwJqszjFrX7CBk_MAp6ldbvX21jXRCo6QlGmaTzRRYf8ftVkp5eaFMI7WON_oaTM3wct52P6vc4DGKYE0-SAXmyyIsV9yxNoRsl8cCyOf0p2EJCrfzkutWF8gbciy9kcopty0I1DR8K9kMX1IGJHkkxeK3sCdxgd06lFzVE9vl9FyGclO4Ng29ogeSJvQU1XN3uS',
-    imageAlt: 'Sleek 1 liter amber glass bottle of cold brew coffee labeled artisanal roast on white studio backdrop',
-    badge: '15% OFF Voucher',
-    title: 'Artisanal Cold Brew 1L Jug',
-    store: 'Cafe Neo • Apo District',
-    price: '₦5,100',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAZ6r9hZG8A3m9K8_g44MPX3gIEb2PufqKgR8DRxdyriX_hW_6BxbB3yOTvV1rWZEDkEPHsZp4W9pPa6M1zt2XLmLbCfrb4fCm7meWbkS36d0XhcKI0DKGxOV-DdEFSle6nW6VlwTulSfA53WAMbTcerGVsYjuVPXMTX9BBpk47Dx4F_fbt1n1lpHXp9aL_bntolEYxTHW4HM6MNWkF9hLJGgq3QrQGQS5d9CKfp6iw',
-    imageAlt: 'Handcrafted genuine tan leather everyday tote bag resting on minimal wooden bench',
-    badge: '25% Voucher',
-    title: 'Handcrafted Leather Tote Bag',
-    store: 'Velvet Stitch • Apo Resettlement',
-    price: '₦22,500',
-  },
-];
+  return {
+    id: String(idCandidate),
+    initials: (businessName.split(' ').slice(0, 2).map((part) => part[0] ?? '').join('') || 'LB').slice(0, 2).toUpperCase(),
+    name: businessName,
+    rating: '4.9 (live)',
+    area: distance,
+    deals: 'Live Offer',
+  };
+};
 
-interface GridDeal {
-  image: string;
-  imageAlt: string;
-  discount: string;
-  discountClass: string;
-  distance: string;
-  store: string;
-  rating: string;
-  title: string;
-  copy: string;
-  price: string;
-  oldPrice: string;
-  claim: string;
-}
+const toProductSummary = (offer: Record<string, unknown>, index: number) => {
+  const title = getApiTitle(offer);
+  const store = getApiBusinessName(offer);
+  const offerId = String(
+    offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${store}-${title}-${index}`,
+  );
 
-const GRID_DEALS: GridDeal[] = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuC8SAMXY0-DNcvOAMjtZWHlYhfdXyG2kSSv7PpN516hastSklskvWZssBjEiiAXLIX_mrI5Nw91MscJtHEaissP-B8ZOvSiW7EWfJ8pBMjBae2DG8NM4gjXU_QzRFe8DHMmgRrCCn7_vk71UyH86oZQD3W0wXqEjkfEpUX0tkVAZTw8GkkDP3wSXHJal0WmsDY3wCqX71xNeAwmV9QQgOJyMIPyErt9V7RWhKfmaUiM',
-    imageAlt:
-      'Juicy flame-grilled burger combo with crispy golden french fries, craft soda glass, and artisanal dipping sauces served on a dark slate board, commercial food styling, cinematic lighting, sharp focus.',
-    discount: '20% OFF',
-    discountClass: 'bg-badge-discount-bg text-badge-discount-text',
-    distance: '0.3 km',
-    store: 'Urban Grill • Bistro',
-    rating: '4.9 (184)',
-    title: 'Prime Lunch Combo',
-    copy: 'Smoked brisket burger, hand-cut fries & drink.',
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-    claim: 'Claimed Prime Lunch Combo at Urban Grill!',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBnulDcDKFGmBjjLBdymhmMHP42Zyd48BOeN6inOk41II3queDYDrj2EUc6Gq6QNI79TE3WZPjBcvduX5Qrr3Sapyaok8J43EglnR4yt8vvb16lWeazu_0D8JMVdU0AwINpw4OIxGKJglwrTeFk_0bph5Nzf-KFIapzFB6C0gq-aPM8G7_YXqGt_iHuhQ0yN-sTlvxZgFd-_HJAoQMbTnzKeI4fVJAgdCxNTCaPF-eB',
-    imageAlt:
-      'Exclusive streetwear limited-edition sneakers displayed beside folded premium heavyweight cotton tees on a sleek concrete retail pedestal, minimalist boutique lighting, cool blue and steel accents.',
-    discount: '30% OFF',
-    discountClass: 'bg-badge-discount-bg text-badge-discount-text',
-    distance: '0.9 km',
-    store: 'Sole District • Retail',
-    rating: '4.8 (92)',
-    title: 'Sneaker Drop & Graphic Tees',
-    copy: 'Weekend urban lifestyle curated bundle.',
-    price: '₦28,000',
-    oldPrice: '₦40,000',
-    claim: 'Claimed Sole District Fashion Deal!',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuD3Tl0kyJV02kgTCaaMs3hLfTP15jQuXkQw18vkDef2r7iQFBpyhKRiaYGz5nqD1EdipwImCtv4kH3nGoR1TXky3RoccfPrFwVETV4Tx3vfr1WClFRDJqrmjlQ4-8a9Hb1d5C-3GlmBn9vsk0K_Dch75akSHig0JwldhMvbxyVrC6JISahX8ptBm-RI2iNmdLj-1felT-pAJzUwlWNthrbYXEeQGCfq4y5NafDHJsaP',
-    imageAlt:
-      'Two freshly steamed barista espresso cups with delicate latte art rosettas placed on a warm oak coffee shop counter, sunlit morning ambience with soft focus coffee roaster in background, natural warm tones.',
-    discount: 'BUY 1 GET 1',
-    discountClass: 'bg-secondary-fixed text-on-secondary-fixed',
-    distance: '0.5 km',
-    store: 'Cafe Neo • Bakery',
-    rating: '4.7 (310)',
-    title: 'Buy 1 Get 1 Artisan Latte',
-    copy: 'Choice of vanilla bean, oat milk, or classic hazelnut.',
-    price: '₦3,200',
-    oldPrice: '₦6,400',
-    claim: 'Cafe Neo BOGO Voucher Saved!',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAzVn-GUAdbi2bFgjQKR0mbnEJZj4sftIMdbraFcKTl2wj548rJ8m45hMtJ3ksemLPdWj-Cxo_ClFc1wY9L59B5ghGbxGG8G6b-Hhh-to680EALRrQOvTBH-QHIt2IH33lxXZ8o4UmBs6UQlkgIu99bcZZEM9KVuXPq7q2llZVY_1SzP3l0EdWEMTjABd4NHuFlTN9VUJkfE7X3hFO0iXYFfbUyAbBAyNhd08cUvX_g',
-    imageAlt:
-      'Relaxing luxury spa wellness room with eucalyptus leaves, heated basalt stones, and gentle mist diffuser glowing in soft golden light, tranquil modern aesthetic with pristine white towels.',
-    discount: '25% OFF',
-    discountClass: 'bg-badge-discount-bg text-badge-discount-text',
-    distance: '1.4 km',
-    store: 'Glow Spa • Wellness',
-    rating: '4.9 (78)',
-    title: 'Facial & Sauna Day Pass',
-    copy: '60-minute botanical hydration and cedar sauna entry.',
-    price: '₦18,500',
-    oldPrice: '₦24,600',
-    claim: 'Glow Spa Day Pass Claimed!',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCwlYu8W4_YhD_Gdi3n33htwwua9r7Q6Gt25lx4E4RAZW2iWCCXDKBQCKXqo4nvF_q50rsA5TPYR4hsoPIGBOlso422fiU7wDenS-ZNs-IUY7ZbgkwMhv5qv_N3ah4U68EepnbfPhLE4TKYvKVB2d8CxUITpM8huscUbv6rl2x7aqGBpwdMfDQtQtMjqj-Wvt5eQOVGxOq7yxgt48UUxTykpEFGgS5wypb3FxJ7Yq2H',
-    imageAlt:
-      'Tailor cutting bespoke navy merino wool fabric on a clean measuring table with measuring tape, tailor chalk, and brass shears, professional craftsmanship atelier atmosphere, crisp clean lighting.',
-    discount: '35% OFF',
-    discountClass: 'bg-badge-discount-bg text-badge-discount-text',
-    distance: '1.8 km',
-    store: 'Velvet Stitch • Tailoring',
-    rating: '5.0 (64)',
-    title: 'Bespoke Suit Consultation',
-    copy: 'Hand-tailored custom fitting & lining customization.',
-    price: '₦32,000',
-    oldPrice: '₦49,000',
-    claim: 'Velvet Stitch Fitting Booked!',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCw55akIpB_abgE4bTrsEpY2lF4UerDRylqEGgWZjD7BRaOojrbs8H6WhDy4cqROC62CEq-NeIGj7Eo4wneXfbFWw6MCJJtMxjCWcJfMiz-IhkYz4QQnOi7W-_BLOc8GXtRxFaTB7m7k8u3YR25auT3Net7sInQzLk8AoTQexA5umETpdF4XH5KN3cJ9YDHm1vIV--FUKvFwc3KyH3c3q15yJTMUbG8TopmMYP-oPO3',
-    imageAlt:
-      'Modern fitness studio interior with sleek kettlebells, ergonomic rowing machines, clean rubberized athletic turf, and neon motivation accents, energetic and spotless workout environment.',
-    discount: '40% OFF',
-    discountClass: 'bg-badge-discount-bg text-badge-discount-text',
-    distance: '2.1 km',
-    store: 'Pulse Fitness • Gym',
-    rating: '4.8 (240)',
-    title: 'Monthly Pass + 2 PT Sessions',
-    copy: 'Full access to weights, sauna & functional trainer.',
-    price: '₦15,000',
-    oldPrice: '₦25,000',
-    claim: 'Pulse Fitness Membership voucher unlocked!',
-  },
-];
-
-const GRID_TRENDING = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuC1VPIrceZq-fiKrFm44R5jvWor4MwpPCoTdhPnfiwk4XXvX74xQ4JaBlPPHnMoL8Jxs0NatjWxECuFcJZrLR7GJUYPzO0rsTuUJif3gj-gWp7_7e73NgmxrvZrmJmDZALMkyPt9PYvBdiDK5YR5yUFIozHy8sUGjNgvqQvEjSWVpXLD4HLpEM7FOroG9zjcd_LqciYdQ10N_TEX5M6T86sQktFxepe-X4e3nqxDSxm',
-    imageAlt:
-      'Fluffy wood-fired Neapolitan pizza bubbling with mozzarella cheese, fresh basil leaves and sun-ripened tomatoes, captured fresh from stone oven, steam rising, high end culinary photography.',
-    discount: '45% OFF',
-    store: 'Trattoria Romana • Apo Resettlement',
-    rank: 'Trending #1',
-    title: 'Family Stone-Baked Pizza Feast',
-    copy: '2 Large pizzas + garlic knots + 1.5L drink pitcher.',
-    price: '₦11,500',
-    oldPrice: '₦21,000',
-    claim: 'Claimed Trattoria Romana Feast!',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBMGXSJzfa7-LgjL4JO-DzI7s4Y41ByfrtJK6AqyWbWsYR73mKClS_2yjUW5ourmonjDDn9Os78rAuq4FLbUDf4DMUJKIpQGxUAj_H3p1HwtybMqR20BOY1iqYssjla7X34FWBnmMnr7SBznBIi4M0ORWrA0P0V3pFMKdPHpEtr649TrmSrY5xLxp_yMSb4LMtoeDW_FXdF6oYkv60M-dmz3zxHZn-GfrU7DuBgRDH_',
-    imageAlt:
-      'Organic cold pressed fresh wellness juices bottled in minimalist glass containers with orange slices, ginger roots, and green leafy mint leaves surrounding, bright natural morning studio illumination.',
-    discount: '30% OFF',
-    store: 'Vital Cleanse Bar • Garki 2',
-    rank: 'Trending #2',
-    title: '3-Day Detox Immunity Pack',
-    copy: '6 cold-pressed functional juices formulated for metabolic reboot.',
-    price: '₦8,900',
-    oldPrice: '₦12,800',
-    claim: 'Claimed Vital Cleanse Pack!',
-  },
-];
-
-const GRID_BUSINESSES = [
-  {
-    initials: 'AB',
-    name: 'Apex Auto Boutique',
-    copy: 'Detailing • Ceramic Coating • Oil Change',
-    status: 'Open now',
-    area: '0.8km away',
-  },
-  {
-    initials: 'BL',
-    name: 'Bloom & Leaf Florists',
-    copy: 'Exotic Bouquets • Event Decor • Plants',
-    status: 'Open now',
-    area: '1.1km away',
-  },
-  {
-    initials: 'OM',
-    name: 'Optima Med Spa',
-    copy: 'Dermatology • Laser Skin • IV Therapy',
-    status: 'Open until 9 PM',
-    area: '1.6km away',
-  },
-];
+  return {
+    id: offerId,
+    image: getNestedImage(offer),
+    imageAlt: `${title} by ${store}`,
+    badge: 'Live Offer',
+    title,
+    store,
+    price: formatCurrency(getApiPrice(offer)),
+  };
+};
 
 const GRID_MAP_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDPi8Hp2LqrNbrRjrTe4iJGQ82H5nsV1-JvhlyPbRVhxONkWJt6Hc2S_lIZk9qo9btotKPC72KuIRzlcqxkOEekBorlzOmDPiLFdngxWpwgjtTT1izq8k3mCxSxrpZYEjh5MWVcQ3PbDF_AB-uT28yp-J3pqOSTDWKLCrFnYOfqHy1aTcjOivKcO-UI_9bCybcQXu2yrMzbnFa1OR2ZwxZ22PxWZOr0qA1L94Oic9em';
@@ -444,14 +277,80 @@ export function DesktopHomeScreen({
   const toastTimer = useRef<number | undefined>(undefined);
   const [spotlight, setSpotlight] = useState(0);
   const [spotlightPaused, setSpotlightPaused] = useState(false);
+  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
+  const [offersLoading, setOffersLoading] = useState(false);
+
+  const createDealPayload = (deal: {
+    id?: string | number;
+    title: string;
+    business?: string;
+    store?: string;
+    meta?: string;
+    price: string | number;
+    oldPrice?: string | number;
+    discount?: string;
+    image: string;
+  }) => ({
+    id: deal.id,
+    title: deal.title,
+    business: deal.business ?? deal.store ?? deal.meta?.split('•')[0]?.trim() ?? 'Nearby business',
+    location: `${city}, ${district}`,
+    price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+    oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+    discountLabel: deal.discount ?? 'Live Deal',
+    image: deal.image,
+  });
 
   useEffect(() => {
-    if (spotlightPaused) return;
+    let ignore = false;
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) {
+          setPublicOffers([]);
+          setOffersLoading(false);
+        }
+        return;
+      }
+
+      setOffersLoading(true);
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 8 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+      } catch {
+        if (!ignore) setPublicOffers([]);
+      } finally {
+        if (!ignore) setOffersLoading(false);
+      }
+    };
+
+    loadOffers();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const spotlightDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toSpotlightSlide(offer, index)), [publicOffers]);
+  const listDeals = useMemo(() => publicOffers.slice(0, 4).map((offer, index) => toListDeal(offer, index)), [publicOffers]);
+  const trendingDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toTrendingDeal(offer, index)), [publicOffers]);
+  const businesses = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toBusinessSummary(offer, index)), [publicOffers]);
+  const products = useMemo(() => publicOffers.slice(0, 2).map((offer, index) => toProductSummary(offer, index)), [publicOffers]);
+  const liveOfferCount = publicOffers.length;
+  const liveOfferLabel = liveOfferCount === 0
+    ? 'No live offers yet'
+    : liveOfferCount === 1
+      ? '1 live offer near you'
+      : `${liveOfferCount} live offers near you`;
+  const spotlightIndex = spotlightDeals.length ? spotlight % spotlightDeals.length : 0;
+  const spotlightData = spotlightDeals.length ? spotlightDeals : [];
+
+  useEffect(() => {
+    if (spotlightPaused || spotlightDeals.length <= 1) return;
     const timer = window.setInterval(() => {
-      setSpotlight((current) => (current + 1) % SPOTLIGHT_SLIDES.length);
+      setSpotlight((current) => (current + 1) % spotlightDeals.length);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [spotlightPaused]);
+  }, [spotlightPaused, spotlightDeals.length]);
 
   useEffect(() => {
     return () => window.clearTimeout(toastTimer.current);
@@ -547,28 +446,40 @@ export function DesktopHomeScreen({
                 onMouseLeave={() => setSpotlightPaused(false)}
               >
                 <div className="lg:col-span-7 relative min-h-[300px] lg:min-h-[420px] overflow-hidden">
-                  <div
-                    className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
-                    style={{ backgroundImage: `url('${SPOTLIGHT_SLIDES[spotlight].image}')` }}
-                  />
+                  {spotlightData.length === 0 ? (
+                    <div className="w-full h-full bg-surface-subtle flex items-center justify-center text-text-secondary p-space-xl">
+                      No live offers are available right now.
+                    </div>
+                  ) : (
+                    <div
+                      className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                      style={{ backgroundImage: `url('${spotlightData[spotlightIndex].image}')` }}
+                    />
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent lg:hidden" />
                   <div className="absolute top-4 left-4 flex flex-wrap gap-2 items-center">
-                    <span className="px-3 py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm flex items-center gap-1">
-                      <Icon name="local_fire_department" className="text-[14px]" />
-                      {SPOTLIGHT_SLIDES[spotlight].discount}
-                    </span>
-                    <span className="px-3 py-1 bg-surface-canvas/90 backdrop-blur text-primary font-caption text-caption font-semibold rounded-full shadow-sm">
-                      PROMOTED SPOTLIGHT
-                    </span>
+                    {spotlightData.length > 0 && (
+                      <>
+                        <span className="px-3 py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm flex items-center gap-1">
+                          <Icon name="local_fire_department" className="text-[14px]" />
+                          {spotlightData[spotlightIndex].discount}
+                        </span>
+                        <span className="px-3 py-1 bg-surface-canvas/90 backdrop-blur text-primary font-caption text-caption font-semibold rounded-full shadow-sm">
+                          PROMOTED SPOTLIGHT
+                        </span>
+                      </>
+                    )}
                   </div>
-                  <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-surface-canvas lg:hidden">
-                    <span className="text-caption font-semibold bg-black/60 px-2.5 py-1 rounded-md backdrop-blur">
-                      {SPOTLIGHT_SLIDES[spotlight].ending}
-                    </span>
-                    <span className="font-heading-sm text-heading-sm font-bold text-surface-canvas">
-                      {SPOTLIGHT_SLIDES[spotlight].price}
-                    </span>
-                  </div>
+                  {spotlightData.length > 0 && (
+                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-surface-canvas lg:hidden">
+                      <span className="text-caption font-semibold bg-black/60 px-2.5 py-1 rounded-md backdrop-blur">
+                        {spotlightData[spotlightIndex].ending}
+                      </span>
+                      <span className="font-heading-sm text-heading-sm font-bold text-surface-canvas">
+                        {spotlightData[spotlightIndex].price}
+                      </span>
+                    </div>
+                  )}
                   <div className="absolute bottom-4 left-4 hidden lg:flex items-center gap-2">
                     <button
                       aria-label="Previous spotlight deal"
@@ -576,7 +487,8 @@ export function DesktopHomeScreen({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        setSpotlight((current) => (current - 1 + SPOTLIGHT_SLIDES.length) % SPOTLIGHT_SLIDES.length);
+                        if (spotlightData.length === 0) return;
+                        setSpotlight((current) => (current - 1 + spotlightData.length) % spotlightData.length);
                       }}
                     >
                       <Icon name="chevron_left" className="text-[20px]" />
@@ -587,24 +499,25 @@ export function DesktopHomeScreen({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        setSpotlight((current) => (current + 1) % SPOTLIGHT_SLIDES.length);
+                        if (spotlightData.length === 0) return;
+                        setSpotlight((current) => (current + 1) % spotlightData.length);
                       }}
                     >
                       <Icon name="chevron_right" className="text-[20px]" />
                     </button>
                   </div>
                   <div className="absolute bottom-4 right-4 flex items-center gap-1.5">
-                    {SPOTLIGHT_SLIDES.map((slide, index) => (
+                    {spotlightData.map((slide, index) => (
                       <button
                         aria-label={`Show spotlight deal ${index + 1}: ${slide.title}`}
-                        key={slide.title}
+                        key={slide.id ?? `${slide.title}-${slide.merchant ?? 'merchant'}-${index}`}
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
                           setSpotlight(index);
                         }}
                         className={`h-2 rounded-full transition-all ${
-                          index === spotlight
+                          index === spotlightIndex
                             ? 'w-6 bg-surface-canvas'
                             : 'w-2 bg-surface-canvas/50 hover:bg-surface-canvas/80'
                         }`}
@@ -614,72 +527,90 @@ export function DesktopHomeScreen({
                 </div>
 
                 <div className="lg:col-span-5 p-space-lg lg:p-space-xl flex flex-col justify-between bg-surface-canvas">
-                  <div className="flex flex-col gap-space-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-primary">
-                        <Icon name="verified" className="text-[18px]" />
-                        <span className="font-caption text-caption font-semibold uppercase tracking-wider">
-                          Partner Verified
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 text-tertiary-container font-label-sm text-label-sm font-bold">
-                        <Icon name="star" filled className="text-[16px] text-tertiary-container" />
-                        {SPOTLIGHT_SLIDES[spotlight].rating}{' '}
-                        <span className="text-text-tertiary font-normal">{SPOTLIGHT_SLIDES[spotlight].reviews}</span>
-                      </div>
+                  {spotlightData.length === 0 ? (
+                    <div className="w-full h-full flex items-center justify-center text-text-secondary border border-dashed border-primary/20 rounded-xl p-space-lg">
+                      Live spotlight deals will appear here.
                     </div>
-
-                    <div>
-                      <p className="text-text-secondary font-label-sm text-label-sm uppercase tracking-wide">
-                        {SPOTLIGHT_SLIDES[spotlight].merchant}
-                      </p>
-                      <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mt-1">
-                        {SPOTLIGHT_SLIDES[spotlight].title}
-                      </h2>
-                      <p className="font-body-md text-body-md text-text-secondary mt-2">
-                        {SPOTLIGHT_SLIDES[spotlight].copy}
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 mt-2 pt-2">
-                      {SPOTLIGHT_SLIDES[spotlight].features.map((feature) => (
-                        <div
-                          className="flex items-center gap-2 text-text-secondary font-label-sm text-label-sm"
-                          key={feature.text}
-                        >
-                          <Icon name={feature.icon} className="text-primary text-[18px]" />
-                          <span className={feature.error ? 'text-error font-medium' : undefined}>{feature.text}</span>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-space-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-primary">
+                            <Icon name="verified" className="text-[18px]" />
+                            <span className="font-caption text-caption font-semibold uppercase tracking-wider">
+                              Partner Verified
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 text-tertiary-container font-label-sm text-label-sm font-bold">
+                            <Icon name="star" filled className="text-[16px] text-tertiary-container" />
+                            {spotlightData[spotlightIndex].rating}{' '}
+                            <span className="text-text-tertiary font-normal">{spotlightData[spotlightIndex].reviews}</span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
 
-                  <div className="pt-space-lg mt-space-md flex items-center justify-between gap-space-md">
-                    <div className="flex flex-col">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-heading-lg text-heading-lg font-bold text-text-primary">
-                          {SPOTLIGHT_SLIDES[spotlight].price}
-                        </span>
-                        <span className="font-body-md text-body-md text-text-tertiary line-through">
-                          {SPOTLIGHT_SLIDES[spotlight].oldPrice}
-                        </span>
+                        <div>
+                          <p className="text-text-secondary font-label-sm text-label-sm uppercase tracking-wide">
+                            {spotlightData[spotlightIndex].merchant}
+                          </p>
+                          <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mt-1">
+                            {spotlightData[spotlightIndex].title}
+                          </h2>
+                          <p className="font-body-md text-body-md text-text-secondary mt-2">
+                            {spotlightData[spotlightIndex].copy}
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2">
+                          {spotlightData[spotlightIndex].features.map((feature) => (
+                            <div
+                              className="flex items-center gap-2 text-text-secondary font-label-sm text-label-sm"
+                              key={feature.text}
+                            >
+                              <Icon name={feature.icon} className="text-primary text-[18px]" />
+                              <span className={feature.error ? 'text-error font-medium' : undefined}>{feature.text}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <span className="text-caption text-caption text-badge-discount-text font-medium">
-                        {SPOTLIGHT_SLIDES[spotlight].save}
-                      </span>
-                    </div>
-                    <button
-                      className="h-[52px] px-8 bg-primary-container hover:bg-primary text-on-primary rounded-xl font-button-primary text-button-primary shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center gap-2"
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onClaim?.();
-                      }}
-                    >
-                      <span>Claim Voucher</span>
-                      <Icon name="arrow_forward" className="text-[18px]" />
-                    </button>
-                  </div>
+
+                      <div className="pt-space-lg mt-space-md flex items-center justify-between gap-space-md">
+                        <div className="flex flex-col">
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-heading-lg text-heading-lg font-bold text-text-primary">
+                              {spotlightData[spotlightIndex].price}
+                            </span>
+                            <span className="font-body-md text-body-md text-text-tertiary line-through">
+                              {spotlightData[spotlightIndex].oldPrice}
+                            </span>
+                          </div>
+                          <span className="text-caption text-badge-discount-text font-medium">
+                            {spotlightData[spotlightIndex].save}
+                          </span>
+                        </div>
+                        <button
+                          className="h-[52px] px-8 bg-primary-container hover:bg-primary text-on-primary rounded-xl font-button-primary text-button-primary shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center gap-2"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const offer = spotlightData[spotlightIndex];
+                            const selected = {
+                              title: offer?.title ?? 'Featured deal',
+                              business: offer?.merchant?.split('•')[0]?.trim() ?? 'Nearby business',
+                              location: `${city}, ${district}`,
+                              price: Number.parseFloat(String((offer?.price ?? '0').replace(/[^\d.]/g, '')) || '0') || 0,
+                              oldPrice: Number.parseFloat(String((offer?.oldPrice ?? '0').replace(/[^\d.]/g, '')) || '0') || 0,
+                              discountLabel: offer?.discount ?? 'Live Deal',
+                              image: offer?.image ?? '',
+                            };
+                            onClaim?.(selected);
+                          }}
+                        >
+                          <span>Claim Voucher</span>
+                          <Icon name="arrow_forward" className="text-[18px]" />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </section>
@@ -728,16 +659,38 @@ export function DesktopHomeScreen({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
-                {LIST_DEALS.map((deal) => (
+                {listDeals.length === 0 ? (
+                  <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
+                    {offersLoading ? 'Loading live deals...' : 'No live deals are available right now.'}
+                  </div>
+                ) : listDeals.map((deal, index) => (
                   <div
-                    key={deal.title}
+                    key={deal.id ?? `${deal.title}-${deal.store ?? 'store'}-${index}`}
                     role="button"
                     tabIndex={0}
-                    onClick={onOpenDeal}
+                    onClick={() => onOpenDeal({
+                      id: deal.id,
+                      title: deal.title,
+                      business: deal.meta?.split('•')[0]?.trim() || 'Nearby business',
+                      location: `${city}, ${district}`,
+                      price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                      oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                      discountLabel: deal.discount,
+                      image: deal.image,
+                    })}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        onOpenDeal();
+                        onOpenDeal({
+                          id: deal.id,
+                          title: deal.title,
+                          business: deal.meta?.split('•')[0]?.trim() || 'Nearby business',
+                          location: `${city}, ${district}`,
+                          price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                          oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                          discountLabel: deal.discount,
+                          image: deal.image,
+                        });
                       }
                     }}
                     className="bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer"
@@ -810,7 +763,7 @@ export function DesktopHomeScreen({
                       Trending Deals Right Now
                     </h3>
                     <p className="font-caption text-caption text-text-secondary">
-                      Claimed by more than 250 shoppers in Abuja today
+                      Claimed by shoppers near you today
                     </p>
                   </div>
                 </div>
@@ -837,16 +790,38 @@ export function DesktopHomeScreen({
                 ref={trendingRef}
                 className="flex gap-space-md overflow-x-auto no-scrollbar scroll-smooth pb-2"
               >
-                {TRENDING_DEALS.map((deal) => (
+                {trendingDeals.length === 0 ? (
+                  <div className="w-full rounded-xl border border-dashed border-primary/20 bg-surface-canvas p-space-lg text-text-secondary">
+                    Live trending deals will appear here soon.
+                  </div>
+                ) : trendingDeals.map((deal, index) => (
                   <div
-                    key={deal.title}
+                    key={deal.id ?? `${deal.title}-${deal.store ?? 'store'}-${index}`}
                     role="button"
                     tabIndex={0}
-                    onClick={onOpenDeal}
+                    onClick={() => onOpenDeal({
+                      id: deal.id,
+                      title: deal.title,
+                      business: deal.store,
+                      location: `${city}, ${district}`,
+                      price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                      oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                      discountLabel: deal.discount,
+                      image: deal.image,
+                    })}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        onOpenDeal();
+                        onOpenDeal({
+                          id: deal.id,
+                          title: deal.title,
+                          business: deal.store,
+                          location: `${city}, ${district}`,
+                          price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                          oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                          discountLabel: deal.discount,
+                          image: deal.image,
+                        });
                       }
                     }}
                     className="min-w-[280px] sm:min-w-[340px] bg-surface-canvas rounded-xl p-space-md shadow-sm hover:shadow-md transition-all flex gap-3.5 items-center shrink-0 cursor-pointer"
@@ -890,9 +865,13 @@ export function DesktopHomeScreen({
                   </button>
                 </div>
                 <div className="flex flex-col gap-space-xs">
-                  {LIST_BUSINESSES.map((business) => (
+                  {businesses.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
+                      Nearby businesses will appear here when live offers are available.
+                    </div>
+                  ) : businesses.map((business, index) => (
                     <div
-                      key={business.name}
+                      key={business.id ?? `${business.name}-${index}`}
                       className="p-space-md bg-surface-canvas rounded-xl shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-space-md group cursor-pointer"
                     >
                       <div className="flex items-center gap-space-sm min-w-0">
@@ -943,9 +922,13 @@ export function DesktopHomeScreen({
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
-                  {LIST_PRODUCTS.map((product) => (
+                  {products.length === 0 ? (
+                    <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
+                      Popular nearby products will load from the public catalogue feed.
+                    </div>
+                  ) : products.map((product, index) => (
                     <div
-                      key={product.title}
+                      key={product.id ?? `${product.title}-${product.store ?? 'store'}-${index}`}
                       className="bg-surface-canvas rounded-xl p-space-sm shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
                     >
                       <div className="relative h-36 w-full rounded-lg overflow-hidden">
@@ -985,7 +968,7 @@ export function DesktopHomeScreen({
                     Merchant Growth Network
                   </span>
                   <h4 className="font-heading-md text-heading-md text-text-primary tracking-tight">
-                    Own a local business in Abuja?
+                    Own a local business in your area?
                   </h4>
                   <p className="font-body-md text-body-md text-text-secondary mt-0.5">
                     Put your neighborhood deals on VEMTAP and welcome high-value repeat walk-ins.
@@ -1023,7 +1006,7 @@ export function DesktopHomeScreen({
                   Neighborhood Pulse
                 </span>
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                <span className="font-caption text-caption text-text-secondary">42 Active Local Flash Deals</span>
+                <span className="font-caption text-caption text-text-secondary">{liveOfferLabel}</span>
               </div>
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight flex items-center gap-space-xs">
                 Good evening
@@ -1083,23 +1066,29 @@ export function DesktopHomeScreen({
                 <div className="space-y-space-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-label-sm text-label-sm font-semibold text-secondary-fixed uppercase tracking-wider">
-                      The Sky Lounge &amp; Grill • Apo Hills
+                      {city || 'Your area'} • {district || 'Local picks'}
                     </span>
                     <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                      50% OFF
+                      Live Deal
                     </span>
                   </div>
                   <h2 className="font-heading-lg text-heading-lg font-bold text-on-primary tracking-tight leading-snug">
-                    Chef&apos;s 5-Course Tasting Menu &amp; Wine Pairing
+                    Featured local offer from nearby merchants
                   </h2>
                   <p className="font-body-md text-body-md text-text-tertiary">
-                    Intimate dining experience featuring slow-roasted prime cuts, artisanal pastries, and rooftop
-                    sunset views over Apo Valley.
+                    Fresh savings, quick redemption, and walk-in perks from the best-rated businesses around your current
+                    location.
                   </p>
                   <div className="flex items-baseline gap-space-sm pt-space-xs">
-                    <span className="font-heading-lg text-heading-lg font-bold text-on-primary">₦24,500</span>
-                    <span className="font-body-md text-body-md text-text-tertiary line-through">₦49,000</span>
-                    <span className="font-caption text-caption text-secondary-fixed font-medium">Save ₦24,500</span>
+                    <span className="font-heading-lg text-heading-lg font-bold text-on-primary">
+                      {publicOffers.length > 0 ? formatCurrency(publicOffers[0] ? getApiPrice(publicOffers[0] as Record<string, unknown>) : 0) : '₦0'}
+                    </span>
+                    <span className="font-body-md text-body-md text-text-tertiary line-through">
+                      {publicOffers.length > 0 ? formatCurrency(publicOffers[0] ? getApiComparePrice(publicOffers[0] as Record<string, unknown>) : 0) : ''}
+                    </span>
+                    <span className="font-caption text-caption text-secondary-fixed font-medium">
+                      {publicOffers.length > 0 ? 'Live now' : 'Loading live offers'}
+                    </span>
                   </div>
                 </div>
 
@@ -1109,7 +1098,16 @@ export function DesktopHomeScreen({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onClaim?.(() => showToast("Chef's Tasting Voucher reserved for 15 mins!"));
+                      const selected = {
+                        title: publicOffers[0] ? getApiTitle(publicOffers[0] as Record<string, unknown>) : 'Local featured offer',
+                        business: publicOffers[0] ? getApiBusinessName(publicOffers[0] as Record<string, unknown>) : 'Nearby merchant',
+                        location: `${city}, ${district}`,
+                        price: publicOffers[0] ? getApiPrice(publicOffers[0] as Record<string, unknown>) : 0,
+                        oldPrice: publicOffers[0] ? getApiComparePrice(publicOffers[0] as Record<string, unknown>) : 0,
+                        discountLabel: 'Live Deal',
+                        image: publicOffers[0] ? getNestedImage(publicOffers[0] as Record<string, unknown>) : HERO_GRID_IMAGE,
+                      };
+                      onClaim?.(selected, () => showToast('Featured voucher is ready to claim.'));
                     }}
                   >
                     <span>Claim Voucher</span>
@@ -1117,7 +1115,9 @@ export function DesktopHomeScreen({
                   </button>
                   <div className="flex items-center gap-space-2xs text-text-tertiary">
                     <Icon name="timer" className="text-tertiary-fixed text-[18px]" />
-                    <span className="font-caption text-caption font-medium">Only 4 vouchers remaining</span>
+                    <span className="font-caption text-caption font-medium">
+                      {Math.max(1, publicOffers.length || 1)} live vouchers available
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1162,16 +1162,36 @@ export function DesktopHomeScreen({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-space-md">
-            {GRID_DEALS.map((deal, index) => (
+            {listDeals.length === 0 ? (
+              <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
+                {offersLoading ? 'Loading live deals...' : 'No live offers are available for this grid view yet.'}
+              </div>
+            ) : listDeals.map((deal, index) => (
               <div
-                key={deal.title}
+                key={`${deal.title}-${index}`}
                 role="button"
                 tabIndex={0}
-                onClick={onOpenDeal}
+                onClick={() => onOpenDeal({
+                  title: deal.title,
+                  business: deal.store,
+                  location: `${city}, ${district}`,
+                  price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                  oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                  discountLabel: deal.discount,
+                  image: deal.image,
+                })}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    onOpenDeal();
+                    onOpenDeal({
+                      title: deal.title,
+                      business: deal.store,
+                      location: `${city}, ${district}`,
+                      price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                      oldPrice: Number.parseFloat(String(deal.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                      discountLabel: deal.discount,
+                      image: deal.image,
+                    });
                   }
                 }}
                 className="group relative bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer"
@@ -1182,9 +1202,7 @@ export function DesktopHomeScreen({
                       className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-300"
                       style={{ backgroundImage: `url('${deal.image}')` }}
                     />
-                    <span
-                      className={`absolute top-space-sm left-space-sm px-space-xs py-0.5 rounded-full font-caption text-caption font-bold shadow-sm ${deal.discountClass}`}
-                    >
+                    <span className="absolute top-space-sm left-space-sm px-space-xs py-0.5 rounded-full font-caption text-caption font-bold shadow-sm bg-badge-discount-bg text-badge-discount-text">
                       {deal.discount}
                     </span>
                     <button
@@ -1202,12 +1220,12 @@ export function DesktopHomeScreen({
                     </button>
                     <div className="absolute bottom-space-2xs left-space-sm px-space-xs py-0.5 rounded-md bg-inverse-surface/80 backdrop-blur-sm text-on-primary font-caption text-caption flex items-center gap-1">
                       <Icon name="near_me" className="text-[14px]" />
-                      <span>{deal.distance}</span>
+                      <span>{deal.meta}</span>
                     </div>
                   </div>
                   <div className="p-space-md space-y-space-2xs">
                     <div className="flex items-center justify-between text-text-tertiary font-caption text-caption">
-                      <span>{deal.store}</span>
+                      <span>{deal.title}</span>
                       <span className="flex items-center gap-0.5 text-text-primary font-medium">
                         <Icon name="star" filled className="text-tertiary-container text-[14px]" />
                         {deal.rating}
@@ -1229,7 +1247,16 @@ export function DesktopHomeScreen({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onClaim?.(() => showToast(deal.claim));
+                      const selected = {
+                        title: deal.title,
+                        business: deal.store,
+                        location: `${city}, ${district}`,
+                        price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                        oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                        discountLabel: deal.discount,
+                        image: deal.image,
+                      };
+                      onClaim?.(selected, () => showToast(`${deal.title} voucher is ready to claim.`));
                     }}
                   >
                     Claim
@@ -1251,16 +1278,34 @@ export function DesktopHomeScreen({
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-              {GRID_TRENDING.map((deal) => (
+              {trendingDeals.length === 0 ? (
+                <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
+                  Live trending deals will appear here when the catalog refreshes.
+                </div>
+              ) : trendingDeals.map((deal, index) => (
                 <div
-                  key={deal.title}
+                  key={`${deal.title}-${deal.store ?? 'store'}-${index}`}
                   role="button"
                   tabIndex={0}
-                  onClick={onOpenDeal}
+                  onClick={() => onOpenDeal(createDealPayload({
+                    title: deal.title,
+                    price: deal.price,
+                    oldPrice: 0,
+                    discount: deal.discount,
+                    image: deal.image,
+                    business: deal.store,
+                  }))}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      onOpenDeal();
+                      onOpenDeal(createDealPayload({
+                        title: deal.title,
+                        price: deal.price,
+                        oldPrice: 0,
+                        discount: deal.discount,
+                        image: deal.image,
+                        business: deal.store,
+                      }));
                     }
                   }}
                   className="bg-surface-canvas rounded-2xl p-space-md flex flex-col sm:flex-row items-center gap-space-md shadow-sm hover:shadow-md transition-all cursor-pointer"
@@ -1277,15 +1322,15 @@ export function DesktopHomeScreen({
                   <div className="flex-1 w-full space-y-space-2xs">
                     <div className="flex items-center justify-between text-text-tertiary font-caption text-caption">
                       <span>{deal.store}</span>
-                      <span className="text-tertiary-container font-semibold">{deal.rank}</span>
+                      <span className="text-tertiary-container font-semibold">{deal.claimed}</span>
                     </div>
                     <h3 className="font-heading-sm text-heading-sm font-semibold text-text-primary">{deal.title}</h3>
-                    <p className="font-body-md text-body-md text-text-secondary line-clamp-1">{deal.copy}</p>
+                    <p className="font-body-md text-body-md text-text-secondary line-clamp-1">{deal.store}</p>
                     <div className="flex items-center justify-between pt-space-xs">
                       <div className="flex items-baseline gap-space-xs">
                         <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{deal.price}</span>
                         <span className="font-caption text-caption text-text-tertiary line-through">
-                          {deal.oldPrice}
+                          {deal.discount}
                         </span>
                       </div>
                       <button
@@ -1293,7 +1338,16 @@ export function DesktopHomeScreen({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onClaim?.(() => showToast(deal.claim));
+                          const selected = {
+                            title: deal.title,
+                            business: deal.store,
+                            location: `${city}, ${district}`,
+                            price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                            oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                            discountLabel: deal.discount,
+                            image: deal.image,
+                          };
+                          onClaim?.(selected, () => showToast(`${deal.title} voucher is live.`));
                         }}
                       >
                         Claim Deal
@@ -1321,9 +1375,13 @@ export function DesktopHomeScreen({
                 </button>
               </div>
               <div className="space-y-space-sm">
-                {GRID_BUSINESSES.map((business) => (
+                {businesses.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
+                    Nearby business cards will load from the live catalogue feed.
+                  </div>
+                ) : businesses.map((business, index) => (
                   <div
-                    key={business.name}
+                    key={business.id ?? `${business.name}-${index}`}
                     className="bg-surface-canvas rounded-2xl p-space-md flex items-center justify-between gap-space-md shadow-sm hover:shadow-md transition-all"
                   >
                     <div className="flex items-center gap-space-md">
@@ -1337,11 +1395,11 @@ export function DesktopHomeScreen({
                           </h4>
                           <Icon name="verified" filled className="text-[16px] text-primary" />
                         </div>
-                        <p className="font-caption text-caption text-text-secondary">{business.copy}</p>
+                        <p className="font-caption text-caption text-text-secondary">{business.area}</p>
                         <div className="flex items-center gap-space-xs font-caption text-caption text-text-tertiary mt-0.5">
-                          <span className="text-badge-discount-text font-medium">{business.status}</span>
+                          <span className="text-badge-discount-text font-medium">{business.rating}</span>
                           <span>•</span>
-                          <span>{business.area}</span>
+                          <span>{business.deals}</span>
                         </div>
                       </div>
                     </div>
@@ -1374,20 +1432,20 @@ export function DesktopHomeScreen({
                   <div className="absolute inset-0 bg-primary/10" />
                   <div className="absolute top-1/3 left-1/4 bg-primary text-on-primary px-2 py-1 rounded-full text-caption font-semibold shadow-md flex items-center gap-1 scale-90">
                     <Icon name="restaurant" className="text-[14px]" />
-                    <span>Urban Grill</span>
+                    <span>{publicOffers[0] ? getApiBusinessName(publicOffers[0] as Record<string, unknown>) : 'Nearby merchant'}</span>
                   </div>
                   <div className="absolute bottom-1/3 right-1/4 bg-tertiary-container text-on-tertiary px-2 py-1 rounded-full text-caption font-semibold shadow-md flex items-center gap-1 scale-90">
                     <Icon name="shopping_bag" className="text-[14px]" />
-                    <span>Sole District</span>
+                    <span>{district || 'Local area'}</span>
                   </div>
                 </div>
                 <div className="p-space-xs flex items-center justify-between">
                   <div>
                     <p className="font-label-md text-label-md font-semibold text-text-primary">
-                      Apo Legislative Quarters • Zone B
+                      {city || 'Your area'} • {district || 'Nearby'}
                     </p>
                     <p className="font-caption text-caption text-text-tertiary">
-                      14 partner merchants actively redeeming today
+                      {Math.max(1, publicOffers.length || 1)} partner merchants actively redeeming today
                     </p>
                   </div>
                   <button
@@ -1408,7 +1466,7 @@ export function DesktopHomeScreen({
                   VEMTAP for Business
                 </span>
                 <h3 className="font-heading-md text-heading-md font-bold text-text-primary">
-                  Own a business in Apo or around Abuja?
+                  Own a business in {city || 'your area'}?
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary">
                   Publish flash offers, convert nearby walk-in foot traffic, and build lifetime repeat customers with

@@ -1,7 +1,7 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
-import { MOBILE_THREADS, type MobileMessage } from './messagesData';
+import { messageService, type MessageItem, type MessageThread } from '../services/messageService';
 
 interface ConversationScreenProps {
   threadId: string;
@@ -25,12 +25,41 @@ function formatTime(date: Date): string {
 }
 
 export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }: ConversationScreenProps) {
-  const thread = MOBILE_THREADS.find((item) => item.id === threadId) ?? MOBILE_THREADS[0];
-  const [messages, setMessages] = useState<MobileMessage[]>(thread.messages);
+  const [thread, setThread] = useState<MessageThread | null>(null);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
   const [draft, setDraft] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadThread = async () => {
+      if (!threadId) return;
+
+      setLoading(true);
+      try {
+        const nextThread = await messageService.getThread(threadId);
+        if (!isMounted) return;
+        setThread(nextThread);
+        setMessages(nextThread?.messages ?? []);
+      } catch {
+        if (isMounted) {
+          setThread(null);
+          setMessages([]);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadThread();
+    return () => {
+      isMounted = false;
+    };
+  }, [threadId]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -44,28 +73,70 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
     ]);
   };
 
-  const sendMessage = (event?: FormEvent) => {
+  const sendMessage = async (event?: FormEvent) => {
     if (event) event.preventDefault();
     const text = draft.trim();
-    if (!text) return;
+    if (!text || !threadId) return;
+
     appendMessage(text);
     setDraft('');
     setSheetOpen(false);
+
+    try {
+      await messageService.sendReply(threadId, text);
+    } catch {
+      showToast('Message could not be sent. Please retry.');
+    }
+
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 
   const useReply = (text: string) => {
     appendMessage(text);
+    if (threadId) {
+      void messageService.sendReply(threadId, text).catch(() => {
+        showToast('Quick reply could not be sent.');
+      });
+    }
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 
   const handleAttachment = (title: string) => {
     setSheetOpen(false);
-    if (title === 'Deal Pass' && thread.deal) {
+    if (title === 'Deal Pass' && thread?.deal) {
       appendMessage(`Attached Deal Pass: ${thread.deal.code} (${thread.deal.title})`);
     } else {
       showToast(`${title} picker opened.`);
     }
+  };
+
+  if (loading && !thread) {
+    return (
+      <AppScreen>
+        <div className="flex flex-1 items-center justify-center px-space-md text-center">
+          <div className="space-y-2">
+            <Icon name="forum" className="text-[36px] text-outline-variant mx-auto" />
+            <p className="font-label-md text-label-md text-text-secondary">Loading conversation…</p>
+          </div>
+        </div>
+      </AppScreen>
+    );
+  }
+
+  const safeThread = thread ?? {
+    id: threadId,
+    name: 'Conversation',
+    initials: 'C',
+    verified: false,
+    time: 'Now',
+    tag: 'Direct Message',
+    tagClass: 'bg-surface-container-high text-text-secondary',
+    tagIcon: 'chat_bubble_outline',
+    preview: 'No thread loaded yet.',
+    unread: false,
+    filters: ['bookings'],
+    messages: [],
+    quickReplies: ['Thanks', 'Please confirm', 'I will get back shortly'],
   };
 
   return (
@@ -83,33 +154,33 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
               <Icon name="arrow_back" className="text-[24px]" />
             </button>
             <div className="relative flex-shrink-0">
-              {thread.avatar ? (
+              {safeThread.avatar ? (
                 <img
                   className="w-10 h-10 rounded-full object-cover shadow-sm"
-                  alt={thread.alt ?? thread.name}
-                  src={thread.avatar}
+                  alt={safeThread.alt ?? safeThread.name}
+                  src={safeThread.avatar}
                 />
               ) : (
                 <div className="w-10 h-10 rounded-full bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center font-label-sm text-label-sm font-bold shadow-sm">
-                  {thread.initials}
+                  {safeThread.initials}
                 </div>
               )}
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-badge-discount-text ring-2 ring-surface" />
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-1">
-                <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">{thread.name}</h1>
-                {thread.verified && <Icon name="verified" filled className="text-primary text-[16px] shrink-0" />}
+                <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">{safeThread.name}</h1>
+                {safeThread.verified && <Icon name="verified" filled className="text-primary text-[16px] shrink-0" />}
               </div>
               <span className="font-caption text-caption text-text-secondary truncate">
-                Active now • {thread.status}
+                Active now • {safeThread.status ?? 'Secure chat'}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-space-2xs">
             <a
-              aria-label={`Call ${thread.name}`}
-              href={`tel:${thread.phone}`}
+              aria-label={`Call ${safeThread.name}`}
+              href={safeThread.phone ? `tel:${safeThread.phone}` : undefined}
               className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-primary transition-colors"
             >
               <Icon name="call" className="text-[22px]" />
@@ -133,16 +204,16 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
       <div className="flex flex-col w-full flex-1 relative">
         <div className="flex flex-col px-space-md py-space-sm space-y-space-md pb-44">
           {/* Context Anchor Card — matches BusinessChatGeneralScreen */}
-          {thread.deal ? (
+          {safeThread.deal ? (
             <div className="bg-surface-subtle p-space-sm rounded-xl shadow-sm flex flex-col space-y-space-2xs">
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full font-label-sm font-semibold tracking-wide bg-secondary-container text-on-secondary-container">
                   ACTIVE DEAL PASS
                 </span>
-                <span className="font-caption text-caption text-text-tertiary">Code: {thread.deal.code}</span>
+                <span className="font-caption text-caption text-text-tertiary">Code: {safeThread.deal.code}</span>
               </div>
               <p className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                {thread.deal.title}
+                {safeThread.deal.title}
               </p>
               <button
                 className="inline-flex items-center gap-1 font-label-sm text-label-sm text-primary font-medium hover:underline self-start pt-1"
@@ -162,7 +233,7 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                 <span className="font-caption text-caption text-text-tertiary">Secure Socket</span>
               </div>
               <p className="font-label-sm text-label-sm text-on-surface-variant">
-                You are messaging directly with the verified management team at <span className="font-semibold text-on-surface">{thread.name}</span>.
+                You are messaging directly with the verified management team at <span className="font-semibold text-on-surface">{safeThread.name}</span>.
               </p>
             </div>
           )}
@@ -260,9 +331,9 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
           )}
 
           {/* Quick Replies chips row */}
-          {!sheetOpen && thread.quickReplies?.length > 0 && (
+          {!sheetOpen && safeThread.quickReplies?.length > 0 && (
             <div className="px-space-md py-1 bg-surface-canvas/90 backdrop-blur-md flex items-center gap-space-xs overflow-x-auto no-scrollbar">
-              {thread.quickReplies.map((reply) => (
+              {safeThread.quickReplies.map((reply) => (
                 <button
                   key={reply}
                   type="button"
@@ -295,7 +366,7 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                 <input
                   ref={inputRef}
                   className="w-full bg-transparent font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none"
-                  placeholder={`Message ${thread.name}...`}
+                  placeholder={`Message ${safeThread.name}...`}
                   type="text"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}

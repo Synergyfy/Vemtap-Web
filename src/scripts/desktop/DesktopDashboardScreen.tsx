@@ -1,68 +1,18 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { AnnouncementBanner } from '../../components/AnnouncementBanner';
+import { useBooking } from '../../context/BookingContext';
 import { useLocation } from '../../context/LocationContext';
+import { useOrders } from '../../context/OrdersContext';
 import { useProfile } from '../../context/ProfileContext';
+import { hasApiConfig } from '../../services/api/client';
+import { catalogueService } from '../../services/catalogueService';
 import type { AnnouncementDestination } from '../../scripts/announcementsData';
 
 interface DesktopDashboardScreenProps {
   onNav: (key: DesktopNavKey) => void;
 }
-
-const STATS = [
-  {
-    label: 'Active Deals',
-    value: '2',
-    suffix: 'Ready to Redeem',
-    suffixClass: 'text-badge-discount-text',
-    note: 'potential savings remaining',
-    noteStrong: '₦7,400',
-    noteIcon: 'savings',
-    noteIconClass: 'text-badge-discount-text',
-    icon: 'local_offer',
-    iconBg: 'bg-surface-tint-blue text-primary',
-    bubble: 'bg-surface-tint-blue opacity-60',
-  },
-  {
-    label: 'Lifetime Saved',
-    value: '₦38,500',
-    suffix: '',
-    suffixClass: '',
-    note: 'Across 9 local merchants in FCT',
-    noteStrong: '',
-    noteIcon: 'storefront',
-    noteIconClass: 'text-primary',
-    icon: 'account_balance_wallet',
-    iconBg: 'bg-badge-discount-bg text-badge-discount-text',
-    bubble: 'bg-badge-discount-bg opacity-70',
-  },
-  {
-    label: 'Upcoming Bookings',
-    value: '1',
-    suffix: 'Scheduled',
-    suffixClass: 'text-primary',
-    note: 'Tomorrow, 1:15 PM • Glow & Serenity',
-    noteStrong: '',
-    noteIcon: '',
-    noteIconClass: '',
-    icon: 'calendar_today',
-    iconBg: 'bg-surface-container text-primary',
-    bubble: 'bg-surface-container-high opacity-60',
-  },
-  {
-    label: 'Saved Spots',
-    value: '14',
-    suffix: 'Favorites',
-    suffixClass: 'text-text-secondary',
-    note: 'Bookmarked in Apo & Maitama Hubs',
-    noteStrong: '',
-    noteIcon: '',
-    noteIconClass: '',
-    icon: 'bookmark',
-    iconBg: 'bg-surface-subtle text-text-secondary',
-    bubble: 'bg-surface-container-high opacity-60',
-  },
-];
 
 const SHORTCUTS = [
   { icon: 'confirmation_number', label: 'My Deals & Vouchers', iconBg: 'bg-surface-tint-blue text-primary', trail: 'dot' as const, target: 'my-deals' as DesktopNavKey },
@@ -72,72 +22,201 @@ const SHORTCUTS = [
   { icon: 'manage_accounts', label: 'Account & Security', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'chevron' as const, target: 'account-settings' as DesktopNavKey },
 ];
 
-const CURATED = [
-  {
-    name: 'Artisan Bakery & Cafe',
-    desc: 'Sourdough & Breakfast Combo',
-    price: '₦4,500',
-    discount: '25%',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCwlLJgn3Lo4pCUOSZ-nT8ThfxxcKg5Piru5gtuk4-6fMWIxXIvhQFt4dldSA95dzgnkZ6FEonZdZ1WC9OqVcMeWiwba31vawVYe3kqqD-jY3CSkcAPKeMerrCkuRURnREWiMYbva2pjOmeeHvy4oYtAXd9FT-IhL7h_-PwExycuLeUCRiT24Hy-QL2iC95hc6l1_Rks3n0wJwoipPmHsSjcXBI8SEoYHxB0avDmOm3',
-    alt: 'Golden crisp freshly baked artisanal sourdough loaf and flaky croissants with specialty hot pour-over coffee on marble table at high-end artisan bakery Abuja',
-  },
-  {
-    name: 'Sole District Boutique',
-    desc: 'Weekend Sneaker Drop Collection',
-    price: '₦28,000',
-    discount: '30%',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBc9LjM89m0lPfe4nvzVnfl5ah1Dz94580SSeIZLuIc_B8E1HA9JcfNsH9TR_atSi4yqFF_cfwt3r92vgQJZp2znh4grrPmsuxvLBQdb2Mo9mPPqE9ryjdUQOR3qs77YuAlT5RDUi109ooVN9-yNm9gs_utwLMdrP5bd9FqnMPkisHwoghhoyZ7eZDW8Gc5YLwdgK2u3M0rMu1nUyJVyzGQm4xMLhnc36b1pmThRvIP',
-    alt: 'Clean minimalist display of limited edition premium athletic sneakers on polished concrete pedestal in designer streetwear boutique store in Abuja',
-  },
-];
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
 
-const ACTIVE_DEALS = [
-  {
-    badge: '20% OFF',
-    distance: '0.4 km away',
-    category: 'Fine Dining • Apo Legislative Quarters',
-    title: 'Urban Grill & Bistro',
-    validity: 'Valid 48h',
+const formatCurrency = (value: number | string | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
+
+const getOfferImage = (offer: Record<string, unknown>): string => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? FALLBACK_IMAGE;
+  return typeof image === 'string' && image.trim() ? image : FALLBACK_IMAGE;
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>): string => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Nearby business';
+  return typeof value === 'string' && value.trim() ? value : 'Nearby business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>): string => {
+  const value = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
+  return typeof value === 'string' && value.trim() ? value : 'Local offer';
+};
+
+const getOfferDescription = (offer: Record<string, unknown>): string => {
+  const value = offer.description ?? offer.summary ?? offer.copy ?? 'Fresh local offer from nearby vendors.';
+  return typeof value === 'string' && value.trim() ? value : 'Fresh local offer from nearby vendors.';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.amount, offer.salePrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const getOfferComparePrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.compareAtPrice, offer.originalPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, item?.compareAtPrice, item?.originalPrice, item?.listPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return getOfferPrice(offer);
+};
+
+const toCuratedDeal = (offer: Record<string, unknown>) => {
+  const title = getOfferTitle(offer);
+  const business = getOfferBusinessName(offer);
+  const price = getOfferPrice(offer);
+  const comparePrice = getOfferComparePrice(offer);
+  return {
+    name: business,
+    desc: title,
+    price: formatCurrency(price),
+    discount: comparePrice > price ? `${Math.round(((comparePrice - price) / comparePrice) * 100)}%` : 'Live',
+    image: getOfferImage(offer),
+    alt: `${title} by ${business}`,
+  };
+};
+
+const toActiveDeal = (offer: Record<string, unknown>) => {
+  const title = getOfferTitle(offer);
+  const business = getOfferBusinessName(offer);
+  const price = getOfferPrice(offer);
+  const comparePrice = getOfferComparePrice(offer);
+  const discountValue = Math.max(comparePrice - price, 0);
+  return {
+    badge: price > 0 ? `${Math.round(((comparePrice - price) / comparePrice) * 100) || 1}% OFF` : 'Live Deal',
+    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    category: business,
+    title,
+    validity: 'Valid today',
     validityClass: 'bg-surface-tint-blue text-primary',
     validityIcon: 'timer',
-    desc: "Prime 3-Course Lunch Combo (Includes Chef's Signature Wagyu Skewers, Truffle Mash, & Hibiscus Sorbet)",
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-    save: 'Save ₦2,400',
-    id: 'ID: #VT-48F2G1',
+    desc: getOfferDescription(offer),
+    price: formatCurrency(price),
+    oldPrice: comparePrice > price ? formatCurrency(comparePrice) : '',
+    save: discountValue > 0 ? `Save ${formatCurrency(discountValue)}` : 'Limited-time offer',
+    id: `ID: ${String(offer.id ?? title)}`,
     secondAction: 'Contact Business',
     secondIcon: 'chat',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuD_Nt5D77WYU_81CtHjxldVcvlVCIcRl2U4WJUUtgI0NVk_piCcgKnLUErciZi71PDQVZVYZaVid1N4ptyjz6EXEYa291zPNo9ax-6Xk3pRxTkwi0Ot9Np7UV26p_CbHm9yBThqZ0LxTfeICILiJ2Bbdn2fXHQuvl1WCPe3GRU0GKNXJEQQo2RblYGsGwcN_mjSnQ3_AlP8KGdCLrAYYsi0OQFKhEQEOmq1SUDdvroZ',
-    alt: 'A beautifully plated woodfire grilled prime 3-course gourmet meal with tender steak, seasonal greens, and fine artisanal sauce at Urban Grill & Bistro in Abuja, warm elegant cinematic restaurant lighting with natural depth',
-  },
-  {
-    badge: '50% OFF',
-    distance: '1.2 km away',
-    category: 'Lounge & Rooftop • Apo Central',
-    title: 'The Sky Lounge',
-    validity: 'Valid Until Sunday',
-    validityClass: 'bg-surface-container-high text-on-surface',
-    validityIcon: 'event_seat',
-    desc: "Chef's 5-Course Signature Tasting Menu with Sommelier Pairings for Two Guests",
-    price: '₦24,500',
-    oldPrice: '₦49,000',
-    save: 'Save ₦24,500',
-    id: 'ID: #VT-99B12',
-    secondAction: 'Directions',
-    secondIcon: 'location_on',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAzXojjX_EFWQZATg_OWvrkzltnD-2lBbruMnZI09f_3YK_zYYUgwVEEW0IVgdspzPgaFAL27hZWdXmiBvFACY6_gP_7zxLstkJlaJ2BpCypasZPxh247i28b8YlpTEZMkumAQ1b38vNQgg9M1NMSbAzQ48kXMNFucudqcrGc4N223WNhOMNniFS-2G-oE249QPsUYwWxT_OGLeJIoRdkwwz5BJUyRDj0Mf1JO5YW9-',
-    alt: 'Stunning rooftop sunset dining view with a masterfully styled five-course tasting menu plate at The Sky Lounge Abuja, moody architectural luxury, gold and deep navy ambient lighting, pristine modern culinary presentation',
-  },
-];
+    image: getOfferImage(offer),
+    alt: `${title} by ${business}`,
+  };
+};
 
 export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
   const { fullName } = useProfile();
   const { district, city } = useLocation();
+  const { orders } = useOrders();
+  const { appointments } = useBooking();
+  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+
+  useEffect(() => {
+    let ignore = false;
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setPublicOffers([]);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+      } catch {
+        if (!ignore) setPublicOffers([]);
+      }
+    };
+
+    loadOffers();
+    return () => { ignore = true; };
+  }, []);
+
+  const curatedDeals = useMemo(() => publicOffers.slice(0, 2).map(toCuratedDeal), [publicOffers]);
+  const activeDeals = useMemo(() => publicOffers.slice(0, 2).map(toActiveDeal), [publicOffers]);
+  const activeDealCount = publicOffers.length;
+  const savingsEstimate = publicOffers.reduce((sum, offer) => {
+    const price = getOfferPrice(offer);
+    const compare = getOfferComparePrice(offer);
+    return sum + Math.max(compare - price, 0);
+  }, 0);
+  const stats = useMemo(
+    () => [
+      {
+        label: 'Live Deals',
+        value: String(activeDealCount),
+        suffix: activeDealCount === 1 ? 'Nearby offer' : 'Ready to redeem',
+        suffixClass: 'text-badge-discount-text',
+        note: 'with current partner catalogue',
+        noteStrong: formatCurrency(savingsEstimate),
+        noteIcon: 'savings',
+        noteIconClass: 'text-badge-discount-text',
+        icon: 'local_offer',
+        iconBg: 'bg-surface-tint-blue text-primary',
+        bubble: 'bg-surface-tint-blue opacity-60',
+      },
+      {
+        label: 'Saved Potential',
+        value: formatCurrency(savingsEstimate),
+        suffix: '',
+        suffixClass: '',
+        note: 'based on active nearby offers',
+        noteStrong: '',
+        noteIcon: 'storefront',
+        noteIconClass: 'text-primary',
+        icon: 'account_balance_wallet',
+        iconBg: 'bg-badge-discount-bg text-badge-discount-text',
+        bubble: 'bg-badge-discount-bg opacity-70',
+      },
+      {
+        label: 'Bookings',
+        value: String(appointments.length),
+        suffix: appointments.length === 1 ? 'Scheduled' : 'Active',
+        suffixClass: 'text-primary',
+        note: appointments.length > 0 ? 'Latest appointment in your account' : 'No bookings yet',
+        noteStrong: '',
+        noteIcon: '',
+        noteIconClass: '',
+        icon: 'calendar_today',
+        iconBg: 'bg-surface-container text-primary',
+        bubble: 'bg-surface-container-high opacity-60',
+      },
+      {
+        label: 'Orders',
+        value: String(orders.length),
+        suffix: orders.length === 1 ? 'Order' : 'Orders',
+        suffixClass: 'text-text-secondary',
+        note: orders.length > 0 ? 'Across your purchase history' : 'No recent order activity',
+        noteStrong: '',
+        noteIcon: '',
+        noteIconClass: '',
+        icon: 'receipt_long',
+        iconBg: 'bg-surface-subtle text-text-secondary',
+        bubble: 'bg-surface-container-high opacity-60',
+      },
+    ],
+    [activeDealCount, savingsEstimate, appointments.length, orders.length],
+  );
 
   const handleAnnouncementNavigate = (destination: AnnouncementDestination) => {
     switch (destination) {
@@ -227,7 +306,7 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
             <AnnouncementBanner className="mb-10" onNavigate={handleAnnouncementNavigate} />
 
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-              {STATS.map((stat) => (
+              {stats.map((stat) => (
                 <div
                   key={stat.label}
                   className="bg-surface-canvas rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group"
@@ -289,7 +368,7 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
                       <Icon name="chevron_right" className="text-[16px]" />
                     </button>
                   </div>
-                  {ACTIVE_DEALS.map((deal) => (
+                  {activeDeals.length > 0 ? activeDeals.map((deal) => (
                     <div
                       key={deal.title}
                       className="bg-surface-canvas rounded-xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6"
@@ -357,7 +436,11 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="rounded-xl bg-surface-canvas p-6 text-text-secondary shadow-sm">
+                      Active vouchers will appear here when the partner catalogue is live.
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-4">
@@ -378,79 +461,94 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
                     </button>
                   </div>
 
-                  <div className="bg-surface-canvas rounded-xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary-container" />
-                    <div className="flex items-start gap-4 pl-1">
-                      <div className="w-12 h-12 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
-                        <Icon name="spa" className="text-[26px]" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-bold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                            <span>UPCOMING APPOINTMENT</span>
-                          </span>
-                          <span className="font-caption text-caption text-text-tertiary">• Booking #GS-810</span>
+                  {appointments.length === 0 && orders.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border-subtle bg-surface-canvas p-6 text-center shadow-sm">
+                      <p className="font-heading-sm text-heading-sm text-text-primary mb-1">No recent activity</p>
+                      <p className="font-body-md text-body-md text-text-secondary">
+                        Your live orders and bookings will appear here once the backend starts returning your account activity.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {appointments.slice(0, 1).map((appointment) => (
+                        <div key={appointment.ref} className="bg-surface-canvas rounded-xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
+                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary-container" />
+                          <div className="flex items-start gap-4 pl-1">
+                            <div className="w-12 h-12 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
+                              <Icon name="spa" className="text-[26px]" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-bold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                  <span>UPCOMING APPOINTMENT</span>
+                                </span>
+                                <span className="font-caption text-caption text-text-tertiary">• Booking #{appointment.ref}</span>
+                              </div>
+                              <h3 className="font-heading-sm text-heading-sm text-text-primary">{appointment.merchantName || 'Booked service'}</h3>
+                              <p className="font-body-md text-body-md text-text-secondary mt-0.5">
+                                {appointment.serviceNames.join(' & ') || 'Service booking'}
+                              </p>
+                              <p className="font-caption text-caption text-text-tertiary mt-0.5 flex items-center gap-1.5">
+                                <Icon name="schedule" className="text-[14px]" />
+                                <span>{appointment.dateShort || appointment.dateLong || 'Schedule pending'} • {appointment.time || 'Time pending'}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row md:flex-col items-end gap-2 w-full md:w-auto shrink-0 pt-1 md:pt-0">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold rounded-full">
+                              <Icon name="check_circle" className="text-[14px]" />
+                              <span>{appointment.status === 'confirmed' ? 'Confirmed by Host' : appointment.status}</span>
+                            </span>
+                            <button
+                              onClick={() => onNav('spa-storefront')}
+                              className="w-full md:w-auto px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors text-center"
+                              type="button"
+                            >
+                              View Booking Details
+                            </button>
+                          </div>
                         </div>
-                        <h3 className="font-heading-sm text-heading-sm text-text-primary">Glow &amp; Serenity Spa &amp; Salon</h3>
-                        <p className="font-body-md text-body-md text-text-secondary mt-0.5">
-                          Deep Hydration Radiance Facial &amp; Luxury Gel Manicure
-                        </p>
-                        <p className="font-caption text-caption text-text-tertiary mt-0.5 flex items-center gap-1.5">
-                          <Icon name="schedule" className="text-[14px]" />
-                          <span>Thu, Oct 17 • 1:15 PM (Assigned Specialist: Amara K.)</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row md:flex-col items-end gap-2 w-full md:w-auto shrink-0 pt-1 md:pt-0">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold rounded-full">
-                        <Icon name="check_circle" className="text-[14px]" />
-                        <span>Confirmed by Host</span>
-                      </span>
-                      <button
-                        onClick={() => onNav('spa-storefront')}
-                        className="w-full md:w-auto px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors text-center"
-                        type="button"
-                      >
-                        View Booking Details
-                      </button>
-                    </div>
-                  </div>
+                      ))}
 
-                  <div className="bg-surface-canvas rounded-xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-badge-discount-text" />
-                    <div className="flex items-start gap-4 pl-1">
-                      <div className="w-12 h-12 rounded-xl bg-surface-subtle flex items-center justify-center text-text-secondary shrink-0">
-                        <Icon name="restaurant" className="text-[26px]" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-surface-subtle text-text-secondary font-caption text-caption font-bold">
-                            IN-STORE NFC TAP
-                          </span>
-                          <span className="font-caption text-caption text-text-tertiary">• Yesterday, 8:42 PM</span>
+                      {orders.slice(0, 1).map((order) => (
+                        <div key={order.ref} className="bg-surface-canvas rounded-xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
+                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-badge-discount-text" />
+                          <div className="flex items-start gap-4 pl-1">
+                            <div className="w-12 h-12 rounded-xl bg-surface-subtle flex items-center justify-center text-text-secondary shrink-0">
+                              <Icon name="restaurant" className="text-[26px]" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-surface-subtle text-text-secondary font-caption text-caption font-bold">
+                                  {order.fulfillment === 'delivery' ? 'DELIVERY ORDER' : 'IN-STORE NFC TAP'}
+                                </span>
+                                <span className="font-caption text-caption text-text-tertiary">• {new Date(order.submittedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                              </div>
+                              <h3 className="font-heading-sm text-heading-sm text-text-primary">{order.merchantName}</h3>
+                              <p className="font-body-md text-body-md text-text-secondary mt-0.5">
+                                {order.lines.slice(0, 2).map((line) => line.name).join(', ') || 'Order items pending'}
+                              </p>
+                              <p className="font-caption text-caption text-badge-discount-text mt-0.5 flex items-center gap-1.5 font-medium">
+                                <Icon name="loyalty" className="text-[14px]" />
+                                <span>{order.paymentStatus === 'verified' ? 'Payment verified' : order.paymentStatus}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row md:flex-col items-end gap-2 w-full md:w-auto shrink-0 pt-1 md:pt-0">
+                            <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{formatCurrency(order.total)}</span>
+                            <button
+                              onClick={() => onNav('orders')}
+                              className="w-full md:w-auto px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors text-center"
+                              type="button"
+                            >
+                              Reorder / View Receipt
+                            </button>
+                          </div>
                         </div>
-                        <h3 className="font-heading-sm text-heading-sm text-text-primary">Urban Grill &amp; Bistro</h3>
-                        <p className="font-body-md text-body-md text-text-secondary mt-0.5">
-                          Woodfire Aged Ribeye, Garlic Rosemary Potatoes &amp; House Spritz (Table #07)
-                        </p>
-                        <p className="font-caption text-caption text-badge-discount-text mt-0.5 flex items-center gap-1.5 font-medium">
-                          <Icon name="loyalty" className="text-[14px]" />
-                          <span>Earned +190 VEMTAP Reward Credits</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col sm:flex-row md:flex-col items-end gap-2 w-full md:w-auto shrink-0 pt-1 md:pt-0">
-                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦19,000</span>
-                      <button
-                        onClick={() => onNav('orders')}
-                        className="w-full md:w-auto px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors text-center"
-                        type="button"
-                      >
-                        Reorder / View Receipt
-                      </button>
-                    </div>
-                  </div>
+                      ))}
+                    </>
+                  )}
                 </div>
 
                 <div className="bg-surface-canvas rounded-xl p-6 shadow-sm">
@@ -532,7 +630,7 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
                     <span className="font-caption text-caption text-text-tertiary">Based on your taste</span>
                   </div>
                   <div className="flex flex-col gap-4">
-                    {CURATED.map((item) => (
+                    {curatedDeals.length > 0 ? curatedDeals.map((item) => (
                       <div
                         key={item.name}
                         className="flex gap-3 group cursor-pointer hover:bg-surface-subtle p-2 rounded-xl transition-colors"
@@ -562,7 +660,11 @@ export function DesktopDashboardScreen({ onNav }: DesktopDashboardScreenProps) {
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )) : (
+                      <div className="rounded-xl bg-surface-subtle p-3 text-text-secondary text-caption">
+                        Curated recommendations will sync here when the live catalog is ready.
+                      </div>
+                    )}
                   </div>
                 </div>
 

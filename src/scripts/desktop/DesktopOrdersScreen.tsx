@@ -6,80 +6,40 @@ import { printKvTable, printReport } from '../../utils/printReport';
 
 interface DesktopOrdersScreenProps {
   onNav: (key: DesktopNavKey) => void;
-  onOpenOrder: (ref: string) => void;
-  onOpenBooking: () => void;
+  onOpenOrder?: (ref: string) => void;
+  onOpenBooking?: () => void;
 }
 
 const TABS = [
-  { label: 'All Activity', count: '8', badge: '', type: 'active' },
-  { label: 'Upcoming Appointments', count: '', badge: '1 Tomorrow', type: 'upcoming' },
-  { label: 'Past Orders & Dine-in', count: '(6)', badge: '', type: 'past' },
-  { label: 'Cancelled', count: '(1)', badge: '', type: 'cancelled' },
+  { label: 'All Activity', count: '0', badge: '', type: 'active' },
+  { label: 'Upcoming Appointments', count: '', badge: '', type: 'upcoming' },
+  { label: 'Past Orders & Dine-in', count: '', badge: '', type: 'past' },
+  { label: 'Cancelled', count: '', badge: '', type: 'cancelled' },
 ];
 
-const ROWS = [
-  {
-    merchant: 'Urban Grill & Bistro',
-    orderId: '#UG-9021 • Apo District',
-    type: 'Dine-in (Table #07)',
-    typeIcon: 'restaurant',
-    typeClass: 'bg-surface-tint-blue text-primary',
-    specifics: '1x Woodfire Aged Ribeye, 1x Truffle Fries, 1x Peach Tea',
-    date: 'Oct 15, 2024',
-    time: '7:30 PM WAT',
-    amount: '₦19,000',
-    method: 'Paid at Counter (Card)',
-    methodIcon: 'credit_card',
-    methodIconClass: 'text-badge-discount-text',
-    status: 'Completed',
-    actions: 'reorder',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCta-AVcjCZDWInIcUOJAuZYV2oAQHyTKLW5eoRshVGRfv8UJJbZ9ZCzBn61chEDIfTHAGW1GJtmX2WtS91OqMMUuKu_rwDf5fhd87TDW44tR2GYusQ1Q0A_EdzsPpIuPe9Ka3jV_pnY_4A-0zbBoXeaXu8h257sUKg1LWCudIZeklCl2b_QS7i_d4Cq3p8rIm-xBCEHufzUuVhTBN4Z6tLGW_WUhyJZBbwR8YVUOYg',
-    alt: 'Plated gourmet woodfire steak dinner at Urban Grill and Bistro Abuja with warm ambient restaurant spotlighting',
-    merchantTarget: 'storefront' as DesktopNavKey,
-  },
-  {
-    merchant: 'Cafe Neo Artisanal',
-    orderId: '#CN-1184 • Wuse II',
-    type: 'Counter Takeaway',
-    typeIcon: 'takeout_dining',
-    typeClass: 'bg-surface-subtle text-text-secondary',
-    specifics: 'Cold Brew & Almond Pastry Box (2 pcs)',
-    date: 'Oct 11, 2024',
-    time: '9:15 AM WAT',
-    amount: '₦4,500',
-    method: 'VEMTAP Instant Tap',
-    methodIcon: 'contactless',
-    methodIconClass: 'text-primary',
-    status: 'Completed',
-    actions: 'receipt',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuC_QV6uRZyyO54NZ_xP-h2bJ8ASlYYKyHrhcifuXhWq8-8e8k7vVjQp92ikYv3cH5MH1U3mE-cqvqgIrgvoTD-_3v0kflAwqqy8Epu7Gxy7JGLPfKzbysfHasIYlfBSpqOZTvvLMf7DdGcoLZHsJdXHYXPoe6YzKvM1VfQBm0hKUBoocqfb1jEx0XIwvHG3Cu3MbVVrfoRPKvM2x6jDPEgCeLL7VDkEoBDmTl5tggWL',
-    alt: 'Chic modern cafe counter with freshly baked golden croissants and chilled nitro cold brew coffee in Abuja',
-    merchantTarget: 'discover' as DesktopNavKey,
-  },
-  {
-    merchant: 'Velvet Stitch Couture',
-    orderId: '#VS-8804 • Garki II',
-    type: 'Bespoke Tailoring',
-    typeIcon: 'design_services',
-    typeClass: 'bg-surface-subtle text-text-secondary',
-    specifics: 'Custom Wool Suit Tailoring Fitting Session',
-    date: 'Sep 28, 2024',
-    time: '3:00 PM WAT',
-    amount: '₦35,000',
-    method: 'Bank Transfer Verified',
-    methodIcon: 'account_balance',
-    methodIconClass: 'text-badge-discount-text',
-    status: 'Completed',
-    actions: 'details',
-    image: '',
-    alt: '',
-    merchantTarget: 'discover' as DesktopNavKey,
-  },
-];
+type OrderRow = {
+  merchant: string;
+  orderId: string;
+  type: string;
+  typeIcon: string;
+  typeClass: string;
+  specifics: string;
+  date: string;
+  time: string;
+  amount: string;
+  method: string;
+  methodIcon: string;
+  methodIconClass: string;
+  status: string;
+  actions: 'reorder' | 'receipt' | 'details';
+  image: string;
+  alt: string;
+  merchantTarget: DesktopNavKey;
+};
 
-export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: DesktopOrdersScreenProps) {
+const ROWS: OrderRow[] = [];
+
+export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpenBooking }: DesktopOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [merchant, setMerchant] = useState('all');
@@ -192,130 +152,17 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
 
             <div className="relative w-full rounded-2xl bg-surface-canvas shadow-xl p-6 mb-10 overflow-hidden">
               <div className="absolute -right-16 -top-16 w-80 h-80 rounded-full bg-primary/5 blur-3xl pointer-events-none" />
-              <div className="flex flex-col lg:flex-row gap-6 items-stretch relative">
-                <div className="w-full lg:w-72 shrink-0 flex flex-col justify-between rounded-xl bg-surface-subtle p-4 relative overflow-hidden">
-                  <div className="relative h-44 w-full rounded-lg overflow-hidden mb-2">
-                    <img
-                      alt="Serene luxury day spa treatment room with botanical accents, warm timber furnishings, soft diffuse daylight, and organic skincare essentials arranged neatly in Abuja"
-                      className="w-full h-full object-cover"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuBO8mzoeLehe5p8uSLXesvatMxVjYR42ABeOPmuFYI827KTEwRO_SPbscYV7f85BXGejWcdoe2uaUHATPe7YX9Rznp1ckMjgg-u7m-vBxw0Z67DFpm0ufm4rg1v1fGgqvCCskKZshUlIKCtKB50TjOwwucnjYkGAVmSwO0YgV_OxiLRsYEJ5-ds90djDhdE4ldxF1jZdkv2QhqFByRPUAEcfTeF26LVqRB4KKWSUseg"
-                    />
-                    <div className="absolute top-2 left-2">
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shadow-sm">
-                        <Icon name="local_offer" className="text-[14px]" />
-                        <span>₦5,000 VEMTAP Deal Applied</span>
-                      </span>
-                    </div>
+              <div className="flex items-center justify-center min-h-[220px] text-center relative">
+                <div className="max-w-xl mx-auto">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-tint-blue text-primary shadow-sm">
+                    <Icon name="receipt_long" className="text-[30px]" />
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between text-text-tertiary font-caption text-caption mb-0.5">
-                      <span>Confirmation Code</span>
-                      <span className="font-mono text-text-primary font-semibold">#GS-44218</span>
-                    </div>
-                    <div className="flex items-center gap-2 pt-2 border-t border-border-subtle">
-                      <Icon name="pin_drop" className="text-[18px] text-primary" />
-                      <span className="font-caption text-caption text-text-secondary truncate">
-                        Maitama Heights, 3rd Floor, Abuja
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex-1 flex flex-col justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
-                          <Icon name="verified" className="text-[16px]" />
-                          <span>Confirmed &amp; Slot Reserved</span>
-                        </span>
-                        <span className="px-2 py-0.5 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                          Happening Tomorrow
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-caption text-caption text-text-tertiary block">Settlement Upon Arrival</span>
-                        <span className="font-heading-lg text-heading-lg text-text-primary font-bold">₦24,000</span>
-                      </div>
-                    </div>
-                    <div className="mb-4">
-                      <p className="font-label-md text-label-md text-primary font-semibold uppercase tracking-wider mb-0.5">
-                        Upcoming Appointment Spotlight
-                      </p>
-                      <h2 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight mb-0.5">
-                        Glow &amp; Serenity Spa &amp; Salon
-                      </h2>
-                      <p className="font-body-lg text-body-lg text-text-secondary">
-                        Deep Hydration Radiance Facial &amp; Gel Manicure
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-surface-subtle mb-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-surface-canvas shadow-sm flex items-center justify-center text-primary">
-                          <Icon name="calendar_clock" className="text-[20px]" />
-                        </div>
-                        <div>
-                          <span className="font-caption text-caption text-text-tertiary block">Date &amp; Time</span>
-                          <span className="font-label-md text-label-md text-text-primary font-semibold">
-                            Thu, Oct 17 • 1:15 PM
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-surface-canvas shadow-sm flex items-center justify-center text-primary">
-                          <Icon name="hourglass_top" className="text-[20px]" />
-                        </div>
-                        <div>
-                          <span className="font-caption text-caption text-text-tertiary block">Duration</span>
-                          <span className="font-label-md text-label-md text-text-primary font-semibold">~1h 45m</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-surface-canvas shadow-sm flex items-center justify-center text-primary">
-                          <Icon name="badge" className="text-[20px]" />
-                        </div>
-                        <div>
-                          <span className="font-caption text-caption text-text-tertiary block">Assigned Specialist</span>
-                          <span className="font-label-md text-label-md text-text-primary font-semibold">
-                            Amara K. (Lead Aesthetician)
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border-subtle">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={onOpenBooking}
-                        className="px-4 py-2 rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary hover:opacity-95 transition-all shadow-sm"
-                        type="button"
-                      >
-                        View Booking Details
-                      </button>
-                      <button
-                        onClick={() => onNav('spa-booking')}
-                        className="px-4 py-2 rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors"
-                        type="button"
-                      >
-                        Reschedule
-                      </button>
-                      <button
-                        onClick={() => onNav('messages')}
-                        className="px-4 py-2 rounded-xl bg-surface-subtle text-text-secondary font-button-secondary text-button-secondary hover:text-text-primary hover:bg-surface-container-high transition-colors"
-                        type="button"
-                      >
-                        Contact Spa
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-primary hover:bg-surface-tint-blue font-label-sm text-label-sm transition-colors"
-                        type="button"
-                      >
-                        <Icon name="event" className="text-[18px]" />
-                        <span>Add to Google / Outlook Calendar</span>
-                      </button>
-                    </div>
-                  </div>
+                  <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mb-2">
+                    No orders or bookings yet
+                  </h2>
+                  <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+                    When you place an order or reserve a service, it will appear here with live status and receipts.
+                  </p>
                 </div>
               </div>
             </div>
@@ -434,6 +281,15 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-subtle/50 px-6 py-12 mt-4 text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-canvas shadow-sm text-text-tertiary">
+                  <Icon name="inventory_2" className="text-[28px]" />
+                </div>
+                <h3 className="font-heading-sm text-heading-sm text-text-primary mb-1">No activity to show</h3>
+                <p className="font-body-md text-body-md text-text-secondary max-w-md mx-auto leading-relaxed">
+                  Your real order history and appointments will appear here once the backend starts returning records.
+                </p>
+              </div>
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -519,7 +375,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                           <td className="py-4 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={() => onOpenOrder(row.orderId.split(' ')[0].replace(/^#/, '').trim())}
+                                onClick={() => onOpenOrder?.(row.orderId.split(' ')[0].replace(/^#/, '').trim())}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold transition-colors"
                                 type="button"
                               >
@@ -576,8 +432,8 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 mt-4 border-t border-border-subtle">
                 <p className="font-caption text-caption text-text-secondary">
-                  Showing <span className="font-semibold text-text-primary">1–3</span> of{' '}
-                  <span className="font-semibold text-text-primary">8</span> total transactions across Abuja
+                  Showing <span className="font-semibold text-text-primary">0</span> of{' '}
+                  <span className="font-semibold text-text-primary">0</span> total transactions across Abuja
                 </p>
                 <div className="flex items-center gap-1">
                   <button className="p-2 rounded-lg text-text-tertiary cursor-not-allowed" disabled type="button">

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { catalogueService } from '../services/catalogueService';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { SubscriptionHeader } from './SubscriptionHeader';
 import { SubscriptionChrome } from './desktop/SubscriptionChrome';
@@ -52,7 +54,71 @@ interface BoostItem {
   locText: string;
 }
 
-const CONTENT_POOL: BoostItem[] = [
+const getOfferImage = (offer: Record<string, unknown>) => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const fallback = item?.mainImage ?? item?.image ?? offer.image ?? offer.coverImage ?? offer.heroImage ?? PUBLIC_IMAGES.hero;
+  return typeof fallback === 'string' && fallback.trim() ? fallback : PUBLIC_IMAGES.hero;
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>) => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? business.name ?? 'Local business';
+  return typeof value === 'string' && value.trim() ? value : 'Local business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>) => {
+  const value = offer.title ?? offer.name ?? offer.offerTitle ?? 'Exclusive offer';
+  return typeof value === 'string' && value.trim() ? value : 'Exclusive offer';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>) => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.originalPrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const formatCurrency = (value: number) => new Intl.NumberFormat('en-NG', {
+  style: 'currency',
+  currency: 'NGN',
+  maximumFractionDigits: 0,
+}).format(value || 0);
+
+const buildBoostItemFromOffer = (offer: Record<string, unknown>, index: number): BoostItem => {
+  const name = getOfferTitle(offer);
+  const businessName = getOfferBusinessName(offer);
+  const price = getOfferPrice(offer);
+  const badgeText = price > 0 ? `${formatCurrency(price)}` : 'LIVE';
+  return {
+    key: String(offer.id ?? `${name}-${index}`),
+    name,
+    typeLabel: 'Deal',
+    meta: `${badgeText} • ${businessName}`,
+    statusLabel: 'Live Offer',
+    statusClass: 'bg-badge-discount-bg text-badge-discount-text',
+    icon: 'local_offer',
+    iconBox: 'bg-surface-tint-blue text-primary',
+    kind: 'deals',
+    image: getOfferImage(offer),
+    thumbBadge: 'DEAL',
+    thumbBadgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+    cardLabel: 'LIVE',
+    cardLabelClass: 'text-badge-discount-text',
+    cardDesc: businessName,
+    perfIcon: 'trending_up',
+    perfText: 'Updated from backend',
+    locText: 'Nearby locations',
+  };
+};
+
+const FALLBACK_CONTENT_POOL: BoostItem[] = [
   {
     key: 'lunch-combo',
     name: '20% Off Prime Lunch Combo',
@@ -309,6 +375,7 @@ export function BusinessBoostScreen({
   const [objective, setObjective] = useState('customers');
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [extraItem, setExtraItem] = useState<BoostItem | null>(null);
+  const [liveBoostItems, setLiveBoostItems] = useState<BoostItem[]>([]);
   const [preselected] = useState(!!preselectedItem);
   const [audienceMode, setAudienceMode] = useState<'broadcast' | 'segments'>('segments');
   const [cohorts, setCohorts] = useState<string[]>(['vip', 'deal-regulars', 'new-patrons']);
@@ -349,19 +416,32 @@ export function BusinessBoostScreen({
   );
 
   useEffect(() => {
+    let ignore = false;
+
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setLiveBoostItems([]);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 5 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        const mapped = rows.map((offer, index) => buildBoostItemFromOffer(offer as Record<string, unknown>, index));
+        if (!ignore) setLiveBoostItems(mapped);
+      } catch {
+        if (!ignore) setLiveBoostItems([]);
+      }
+    };
+
+    loadOffers();
+    return () => { ignore = true; };
+  }, []);
+
+  useEffect(() => {
     if (!preselectedItem) return;
-    // The deals list, catalog and deal-detail screens each name the same item
-    // differently, so match loosely: exact name, pool key, or any alias —
-    // ignoring case, punctuation and spacing.
-    const normalize = (value: string) =>
-      value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const wanted = normalize(preselectedItem);
-    const found = CONTENT_POOL.find(
-      (entry) =>
-        normalize(entry.name) === wanted ||
-        normalize(entry.key) === wanted ||
-        (entry.aliases ?? []).some((alias) => normalize(alias) === wanted),
-    );
+    const sourcePool = liveBoostItems.length > 0 ? liveBoostItems : FALLBACK_CONTENT_POOL;
+    const found = sourcePool.find((entry) => entry.name.toLowerCase() === preselectedItem.toLowerCase());
     if (found) {
       setSelectedKeys([found.key]);
       if (found.kind === 'deals') setObjective('deal');
@@ -391,10 +471,10 @@ export function BusinessBoostScreen({
       setSelectedKeys([fallback.key]);
     }
     setPhase('content');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [liveBoostItems, preselectedItem]);
 
-  const contentPool = extraItem ? [...CONTENT_POOL, extraItem] : CONTENT_POOL;
+  const baseContentPool = liveBoostItems.length > 0 ? liveBoostItems : FALLBACK_CONTENT_POOL;
+  const contentPool = extraItem ? [...baseContentPool, extraItem] : baseContentPool;
   const item = contentPool.find((entry) => entry.key === selectedKeys[0]) ?? null;
   const branches = BRANCHES.filter((option) => branchKeys.includes(option.key));
   const primaryBranch = branches[0] ?? BRANCHES[0];

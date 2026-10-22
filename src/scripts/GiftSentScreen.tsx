@@ -21,8 +21,8 @@ interface GiftSentScreenProps {
 
 export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack, claim }: GiftSentScreenProps) {
   const [copied, setCopied] = useState(false);
-  const recipientName = recipient?.name || 'Amara Okafor';
-  const recipientEmail = recipient?.email || 'amara@email.com';
+  const recipientName = recipient?.name || 'Recipient';
+  const recipientEmail = recipient?.email || 'No email provided';
   const recipientPhone = recipient?.phone || claim?.recipient?.phone;
   const maskedPhone = recipientPhone ? maskPhone(recipientPhone) : null;
   const reference = claim?.ref ?? '#VT-GIFT-83921';
@@ -69,9 +69,9 @@ export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack, claim
                 </span>
                 <span className="font-caption text-caption text-text-tertiary">Gift Voucher</span>
               </div>
-              <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Lunch Combo — 20% Off</h3>
+              <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured local deal</h3>
               <p className="font-caption text-caption text-text-secondary truncate">
-                Urban Grill &amp; Bistro • Apo, Abuja
+                Local dining partner • Nearby
               </p>
             </div>
           </div>
