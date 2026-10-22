@@ -102,6 +102,11 @@ export function useBusinessSetupNav(): BusinessSetupNavValue | null {
  * snapshot keeps the merchant's progress (current step + in-flight drafts)
  * alive across that round trip so returning resumes at the right step instead
  * of restarting setup.
+ *
+ * It is additionally mirrored into `sessionStorage`, so a hard browser
+ * refresh (or reopening the tab on Vercel, where every URL is a fresh page
+ * load) resumes the run at the same step with the same drafts instead of
+ * restarting setup from scratch.
  * ------------------------------------------------------------------ */
 
 export interface BusinessSetupSnapshot {
@@ -110,7 +115,42 @@ export interface BusinessSetupSnapshot {
   data: Record<string, unknown>;
 }
 
-let snapshot: BusinessSetupSnapshot | null = null;
+const SNAPSHOT_STORAGE_KEY = 'vemtap_business_setup_snapshot';
+
+function readPersistedSnapshot(): BusinessSetupSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(SNAPSHOT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BusinessSetupSnapshot | null;
+    if (
+      !parsed ||
+      typeof parsed.step !== 'string' ||
+      typeof parsed.data !== 'object' ||
+      !parsed.data
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    // Unreadable/corrupted payload or storage blocked — start clean.
+    return null;
+  }
+}
+
+function persistSnapshot(): void {
+  try {
+    if (snapshot) {
+      window.sessionStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+    } else {
+      window.sessionStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+    }
+  } catch {
+    // Storage unavailable (private mode/quota) — the in-memory copy still works.
+  }
+}
+
+// Hydrate from the previous page load so a refresh mid-setup resumes the run.
+let snapshot: BusinessSetupSnapshot | null = readPersistedSnapshot();
 
 export function getBusinessSetupSnapshot(): BusinessSetupSnapshot | null {
   return snapshot;
@@ -122,12 +162,14 @@ export function saveBusinessSetupSnapshot(step: string, data: Record<string, unk
     verificationState: snapshot?.verificationState ?? 'not-started',
     data,
   };
+  persistSnapshot();
 }
 
 export function setBusinessSetupVerificationState(state: VerificationSectionState): void {
   snapshot = snapshot
     ? { ...snapshot, verificationState: state }
     : { step: 'basic', verificationState: state, data: {} };
+  persistSnapshot();
 }
 
 /**
@@ -138,10 +180,14 @@ export function setBusinessSetupVerificationState(state: VerificationSectionStat
  * merchant back to the screen they just left.
  */
 export function setBusinessSetupSnapshotStep(step: string): void {
-  if (snapshot) snapshot = { ...snapshot, step };
+  if (snapshot) {
+    snapshot = { ...snapshot, step };
+    persistSnapshot();
+  }
 }
 
 /** Called only once setup is genuinely finished, so a new run starts clean. */
 export function clearBusinessSetupSnapshot(): void {
   snapshot = null;
+  persistSnapshot();
 }
