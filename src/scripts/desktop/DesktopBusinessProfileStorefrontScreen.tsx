@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
+import { useBusinessProfileForm, type BusinessProfileForm } from '../../hooks/business/useBusinessProfileForm';
+import { apiErrorMessage } from '../../services/errorMessages';
 import { Icon } from '../../components/ui/Icon';
 import { SocialChannelPicker } from '../../components/SocialChannelPicker';
 import { CreateWithAiButton } from '../../components/CreateWithAiButton';
 import {
   CHANNEL_PLATFORMS,
   CHANNEL_PLATFORM_BY_ID,
+  isChannelPlatform,
   normalizeChannel,
   type ChannelPlatformId,
 } from '../../utils/socialChannels';
 import { MerchantWorkspaceChrome } from './MerchantWorkspaceChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { AiPromptContext } from '../aiDesignAssistant';
+import { useStorefrontPreview } from '../../hooks/business/useStorefrontPreview';
 
 interface DesktopBusinessProfileStorefrontScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -68,6 +72,8 @@ interface TrustItem {
   value: string;
   mono?: boolean;
   note: string;
+  /** Not confirmed yet: the note reads as a to-do rather than a pass. */
+  pending?: boolean;
 }
 
 const TRUST_ITEMS: TrustItem[] = [
@@ -154,18 +160,99 @@ export function DesktopBusinessProfileStorefrontScreen({
   onNav,
   onDiscard,
 }: DesktopBusinessProfileStorefrontScreenProps) {
+  const profile = useBusinessProfileForm();
+  const preview = useStorefrontPreview();
+  /** What the brand header, trust panel and phone preview show: live facts, or the demo storefront. */
+  const view = preview.live
+    ? {
+        storeCode: preview.storeCode ? `Store ID #${preview.storeCode}` : null,
+        cover: preview.coverImage,
+        logo: preview.logoUrl,
+        location: preview.location,
+        category: preview.category,
+        url: preview.publicUrl,
+        verified: preview.verified,
+        statusLabel: preview.verified ? 'Active & Verified' : 'Active',
+        tierLabel: preview.verificationLabel,
+        trustItems: [
+          {
+            icon: 'domain',
+            iconBoxClass: preview.businessCheckOk ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container-high text-text-tertiary',
+            title: 'CAC Registration',
+            value: preview.businessCheck ?? 'Loading…',
+            mono: false,
+            note: preview.businessCheckOk ? 'Corporate Affairs Registry Confirmed' : 'Submit your CAC number in Verification',
+            pending: !preview.businessCheckOk,
+          },
+          {
+            icon: 'fingerprint',
+            iconBoxClass: preview.identityCheckOk ? 'bg-surface-tint-blue text-primary-container' : 'bg-surface-container-high text-text-tertiary',
+            title: 'Owner ID Verification',
+            value: preview.identityCheck ?? 'Loading…',
+            note: preview.identityCheckOk ? 'NIN / ID check passed' : 'Verify the owner ID in Verification',
+            pending: !preview.identityCheckOk,
+          },
+          TRUST_ITEMS[3],
+        ] as TrustItem[],
+        rating: preview.rating,
+        reviewCount: preview.reviewCount,
+        dealsLabel: preview.activeDeals != null ? `${preview.activeDeals} ${preview.activeDeals === 1 ? 'Deal' : 'Deals'}` : 'Deals',
+        promo: null as string | null,
+        distance: null as string | null,
+        audience: preview.city ? `${preview.city} shoppers (Nearby)` : 'Shoppers nearby',
+        itemCount: preview.itemCount,
+        featured: preview.featured,
+      }
+    : {
+        storeCode: 'Store ID #4082',
+        cover: COVER_IMAGE,
+        logo: AVATAR_IMAGE,
+        location: BRAND_LOCATION,
+        category: 'Nigerian-Continental Fusion',
+        url: SUBDOMAIN_URL,
+        verified: true,
+        statusLabel: 'Active & Verified',
+        tierLabel: 'Tier 3 Enterprise Verified',
+        trustItems: TRUST_ITEMS,
+        rating: '4.9',
+        reviewCount: 142,
+        dealsLabel: '3 Deals',
+        promo: '15% Off First Dine-In' as string | null,
+        distance: '0.4 km away' as string | null,
+        audience: 'Abuja Diners (Nearby)',
+        itemCount: 38 as number | null,
+        featured: FEATURED_ITEMS.map((item) => ({ id: item.name, name: item.name, note: item.note, price: item.price, image: item.image as string | null })),
+      };
+  const brandInitial = (profile.form.name || BRAND_NAME).charAt(0).toUpperCase();
   const [toastVisible, setToastVisible] = useState(false);
   const [copied, setCopied] = useState(false);
 
   /** Brand facts shown on this screen — reused by the contextual AI prompts. */
   const aiProfileContext: AiPromptContext = {
-    businessName: BRAND_NAME,
-    category: BRAND_CATEGORY,
-    location: BRAND_LOCATION,
-    description: BRAND_BIO,
+    businessName: profile.form.name || (preview.live ? '' : BRAND_NAME),
+    category: preview.live ? profile.category : BRAND_CATEGORY,
+    location: (preview.live ? view.location : BRAND_LOCATION) ?? '',
+    description: profile.form.description || (preview.live ? '' : BRAND_BIO),
   };
   const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
   const [channels, setChannels] = useState<StorefrontChannel[]>(STOREFRONT_CHANNELS);
+
+  // Seed channels and amenities from the loaded profile (live business or demo).
+  const seededFrom = useRef<BusinessProfileForm | null>(null);
+  useEffect(() => {
+    if (profile.isLoading || seededFrom.current === profile.form) return;
+    seededFrom.current = profile.form;
+    const fromSocials = Object.entries(profile.form.socials)
+      .filter(([platform, value]) => value && isChannelPlatform(platform) && platform !== 'whatsapp')
+      .map(([platform, value]) => ({ id: platform, platform: platform as ChannelPlatformId, value, touched: false }));
+    if (profile.form.whatsappNumber) {
+      fromSocials.push({ id: 'whatsapp', platform: 'whatsapp', value: profile.form.whatsappNumber, touched: false });
+    }
+    setChannels(fromSocials);
+    setActiveAmenities(profile.form.amenities);
+    // Re-seed only after a load or save replaces the profile object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.isLoading, profile.form.socials, profile.form.amenities, profile.form.whatsappNumber]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const channelSeq = useRef(0);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -201,6 +288,21 @@ export function DesktopBusinessProfileStorefrontScreen({
     setActiveAmenities((prev) => (prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]));
 
   const handleSave = () => {
+    const socials: Record<string, string> = {};
+    let whatsappNumber = '';
+    channels.forEach((channel) => {
+      const value = channel.value.trim();
+      if (!value) return;
+      if (channel.platform === 'whatsapp') whatsappNumber = value;
+      else socials[channel.platform] = value;
+    });
+    profile.save.mutate(
+      { ...profile.form, socials, whatsappNumber, amenities: activeAmenities },
+      { onSuccess: showSavedToast },
+    );
+  };
+
+  const showSavedToast = () => {
     setToastVisible(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -208,14 +310,15 @@ export function DesktopBusinessProfileStorefrontScreen({
   };
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(SUBDOMAIN_URL).catch(() => undefined);
+    if (!view.url) return;
+    navigator.clipboard?.writeText(view.url).catch(() => undefined);
     setCopied(true);
     if (copyTimer.current) window.clearTimeout(copyTimer.current);
     copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
   };
 
   const handlePreview = () => {
-    window.open(SUBDOMAIN_URL, '_blank');
+    if (view.url) window.open(view.url, '_blank');
   };
 
   return (
@@ -272,10 +375,11 @@ export function DesktopBusinessProfileStorefrontScreen({
             <button
               type="button"
               onClick={handleSave}
-              className="flex items-center gap-2 px-space-lg py-2.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_20px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-all"
+              disabled={profile.save.isPending || profile.isLoading}
+              className="flex items-center gap-2 px-space-lg py-2.5 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_20px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-all disabled:opacity-60"
             >
               <Icon name="check" className="text-[18px]" />
-              <span>Save Changes</span>
+              <span>{profile.save.isPending ? 'Saving…' : 'Save Changes'}</span>
             </button>
           </div>
         </div>
@@ -289,7 +393,7 @@ export function DesktopBusinessProfileStorefrontScreen({
           <div className="flex items-center gap-space-sm">
             <Icon name="verified" className="text-[20px]" />
             <span className="font-label-md text-label-md font-medium">
-              Merchant credentials and live public storefront successfully synchronized across Abuja cluster nodes.
+              Your business profile and public storefront are updated.
             </span>
           </div>
           <button
@@ -301,6 +405,14 @@ export function DesktopBusinessProfileStorefrontScreen({
             <Icon name="close" className="text-[18px]" />
           </button>
         </div>
+
+        {profile.save.isError || profile.loadError ? (
+          <div role="alert" className="w-full p-space-md rounded-xl bg-error-container text-on-error-container font-label-md text-label-md">
+            {profile.save.isError
+              ? `Could not save your profile: ${apiErrorMessage(profile.save.error)}`
+              : `Could not load your business profile: ${(profile.loadError as Error).message}`}
+          </div>
+        ) : null}
 
         {/* Main 2-Column Responsive Layout (12 cols: 7 Left, 5 Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
@@ -315,7 +427,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                     Cover &amp; Brand Identity
                   </h2>
                 </div>
-                <span className="font-caption text-caption text-text-tertiary">Store ID #4082</span>
+                {view.storeCode && <span className="font-caption text-caption text-text-tertiary">{view.storeCode}</span>}
               </div>
               {/* Hero Cover Banner Container */}
               <div className="relative w-full h-52 rounded-xl overflow-hidden group bg-surface-container">
@@ -323,7 +435,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                   role="img"
                   aria-label={COVER_ALT}
                   className="w-full h-full bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                  style={{ backgroundImage: `url('${COVER_IMAGE}')` }}
+                  style={view.cover ? { backgroundImage: `url('${view.cover}')` } : undefined}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-black/20" />
                 <button
@@ -341,7 +453,13 @@ export function DesktopBusinessProfileStorefrontScreen({
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-space-md -mt-10 sm:-mt-12 px-space-xs z-10">
                 <div className="relative group">
                   <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full p-1 bg-surface-canvas shadow-md">
-                    <img className="w-full h-full rounded-full object-cover" alt={AVATAR_ALT} src={AVATAR_IMAGE} />
+                    {view.logo ? (
+                      <img className="w-full h-full rounded-full object-cover" alt={preview.live ? `${profile.form.name} logo` : AVATAR_ALT} src={view.logo} />
+                    ) : (
+                      <div className="w-full h-full rounded-full bg-surface-tint-blue text-primary flex items-center justify-center font-heading-md text-heading-md">
+                        {brandInitial}
+                      </div>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -354,18 +472,18 @@ export function DesktopBusinessProfileStorefrontScreen({
                 <div className="flex flex-col pt-2 sm:pt-6">
                   <div className="flex items-center gap-2">
                     <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                      {BRAND_NAME}
+                      {profile.form.name || (preview.live ? 'Your business' : BRAND_NAME)}
                     </span>
-                    <Icon name="verified" className="text-primary-container text-[20px]" filled />
+                    {view.verified && <Icon name="verified" className="text-primary-container text-[20px]" filled />}
                   </div>
                   <div className="flex items-center gap-space-xs font-caption text-caption text-text-secondary mt-0.5">
                     <span className="px-2 py-0.5 rounded-md bg-surface-container font-semibold text-text-primary">
-                      {BRAND_LOCATION}
+                      {view.location ?? 'Add your address'}
                     </span>
                     <span>•</span>
                     <span className="flex items-center gap-1 text-badge-discount-text font-medium">
                       <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                      Active &amp; Verified
+                      {view.statusLabel}
                     </span>
                   </div>
                 </div>
@@ -387,7 +505,9 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] px-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="text"
-                      defaultValue={BRAND_NAME}
+                      aria-label="Public brand name"
+                      value={profile.form.name}
+                      onChange={(event) => profile.set('name', event.target.value)}
                     />
                     <Icon name="badge" className="absolute right-3 text-text-tertiary text-[18px]" />
                   </div>
@@ -400,7 +520,10 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] px-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="text"
-                      defaultValue={BRAND_CATEGORY}
+                      aria-label="Category"
+                      readOnly
+                      title="Change your category from Business setup"
+                      value={profile.category}
                     />
                     <Icon name="restaurant" className="absolute right-3 text-text-tertiary text-[18px]" />
                   </div>
@@ -410,12 +533,15 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <label className="font-label-sm text-label-sm font-semibold text-text-primary">
                       Storefront Public Bio
                     </label>
-                    <span className="font-caption text-caption text-text-tertiary">142 / 240 chars</span>
+                    <span className="font-caption text-caption text-text-tertiary">{profile.form.description.length} / 240 chars</span>
                   </div>
                   <textarea
                     className="w-full p-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none resize-none transition-all"
                     rows={3}
-                    defaultValue={BRAND_BIO}
+                    maxLength={240}
+                    aria-label="Storefront public bio"
+                    value={profile.form.description}
+                    onChange={(event) => profile.set('description', event.target.value)}
                   />
                   <p className="font-caption text-caption text-text-tertiary">
                     Visible at top of discovery feeds in Abuja &amp; Lagos consumer app searches.
@@ -433,13 +559,19 @@ export function DesktopBusinessProfileStorefrontScreen({
                     Trust &amp; Verification Dossier
                   </h2>
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1">
-                  <Icon name="shield" className="text-[14px]" />
-                  Tier 3 Enterprise Verified
-                </span>
+                {view.tierLabel && (
+                  <span
+                    className={`px-2.5 py-1 rounded-full font-caption text-caption font-semibold flex items-center gap-1 ${
+                      view.verified ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container-high text-text-secondary'
+                    }`}
+                  >
+                    <Icon name="shield" className="text-[14px]" />
+                    {view.tierLabel}
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm pt-space-xs">
-                {TRUST_ITEMS.map((item) => (
+                {view.trustItems.map((item) => (
                   <div key={item.title} className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-sm">
                     <div
                       className={`w-8 h-8 rounded-lg ${item.iconBoxClass} flex items-center justify-center flex-shrink-0`}
@@ -453,8 +585,12 @@ export function DesktopBusinessProfileStorefrontScreen({
                       >
                         {item.value}
                       </span>
-                      <span className="font-caption text-caption text-badge-discount-text flex items-center gap-0.5 mt-0.5">
-                        <Icon name="done_all" className="text-[12px]" /> {item.note}
+                      <span
+                        className={`font-caption text-caption flex items-center gap-0.5 mt-0.5 ${
+                          item.pending ? 'text-text-tertiary' : 'text-badge-discount-text'
+                        }`}
+                      >
+                        <Icon name={item.pending ? 'schedule' : 'done_all'} className="text-[12px]" /> {item.note}
                       </span>
                     </div>
                   </div>
@@ -501,8 +637,10 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <Icon name="call" className="absolute left-3 text-text-tertiary text-[18px]" />
                     <input
                       className="w-full h-[48px] pl-10 pr-24 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
-                      type="text"
-                      defaultValue="+234 803 900 2210"
+                      type="tel"
+                      aria-label="Customer booking hotline"
+                      value={profile.form.phone}
+                      onChange={(event) => profile.set('phone', event.target.value)}
                     />
                     <span className="absolute right-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1">
                       <Icon name="check_circle" className="text-[12px]" /> Verified
@@ -519,7 +657,9 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <input
                       className="w-full h-[48px] pl-10 pr-3 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none transition-all"
                       type="email"
-                      defaultValue="contact@urbangrill.ng"
+                      aria-label="Support email"
+                      value={profile.form.officialEmail}
+                      onChange={(event) => profile.set('officialEmail', event.target.value)}
                     />
                   </div>
                 </div>
@@ -535,7 +675,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                         className="w-full h-[48px] pl-10 pr-28 rounded-xl bg-surface-container text-text-primary font-body-md text-body-md font-mono outline-none select-all"
                         readOnly
                         type="text"
-                        value={SUBDOMAIN_URL}
+                        value={view.url ?? 'Loading your public link…'}
                       />
                       <span className="absolute right-3 px-2 py-0.5 rounded bg-surface-canvas font-caption text-caption text-badge-discount-text font-semibold">
                         SSL 256-Bit
@@ -668,7 +808,7 @@ export function DesktopBusinessProfileStorefrontScreen({
               </div>
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption font-semibold">
                 <span className="w-2 h-2 rounded-full bg-primary-container animate-pulse" />
-                Abuja Diners (Nearby)
+                {view.audience}
               </div>
             </div>
 
@@ -688,26 +828,36 @@ export function DesktopBusinessProfileStorefrontScreen({
                     role="img"
                     aria-label={PHONE_HERO_ALT}
                     className="w-full h-full bg-cover bg-center"
-                    style={{ backgroundImage: `url('${PHONE_HERO_IMAGE}')` }}
+                    style={preview.live ? (view.cover ? { backgroundImage: `url('${view.cover}')` } : undefined) : { backgroundImage: `url('${PHONE_HERO_IMAGE}')` }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/85 via-transparent to-black/10" />
                   {/* Promo Discount Badge */}
-                  <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm flex items-center gap-1">
-                    <Icon name="local_offer" className="text-[14px]" />
-                    15% Off First Dine-In
-                  </div>
+                  {view.promo && (
+                    <div className="absolute top-3 left-3 px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm flex items-center gap-1">
+                      <Icon name="local_offer" className="text-[14px]" />
+                      {view.promo}
+                    </div>
+                  )}
                   {/* Distance Pill */}
-                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-inverse-surface/75 text-surface-bright font-caption text-caption font-medium backdrop-blur-sm flex items-center gap-1">
-                    <Icon name="near_me" className="text-[13px] text-badge-discount-text" />
-                    0.4 km away
-                  </div>
+                  {view.distance && (
+                    <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-inverse-surface/75 text-surface-bright font-caption text-caption font-medium backdrop-blur-sm flex items-center gap-1">
+                      <Icon name="near_me" className="text-[13px] text-badge-discount-text" />
+                      {view.distance}
+                    </div>
+                  )}
                   {/* Brand Avatar overlapping bottom */}
                   <div className="absolute -bottom-6 left-4 w-14 h-14 rounded-full p-1 bg-surface-canvas shadow-lg">
-                    <img
-                      className="w-full h-full rounded-full object-cover"
-                      alt={PHONE_AVATAR_ALT}
-                      src={PHONE_AVATAR_IMAGE}
-                    />
+                    {preview.live ? (
+                      view.logo ? (
+                        <img className="w-full h-full rounded-full object-cover" alt={`${profile.form.name} logo`} src={view.logo} />
+                      ) : (
+                        <div className="w-full h-full rounded-full bg-surface-tint-blue text-primary flex items-center justify-center font-heading-sm text-heading-sm">
+                          {brandInitial}
+                        </div>
+                      )
+                    ) : (
+                      <img className="w-full h-full rounded-full object-cover" alt={PHONE_AVATAR_ALT} src={PHONE_AVATAR_IMAGE} />
+                    )}
                   </div>
                 </div>
                 {/* Profile Info Body inside phone */}
@@ -715,26 +865,31 @@ export function DesktopBusinessProfileStorefrontScreen({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
                       <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary leading-tight">
-                        Urban Grill &amp; Bistro
+                        {profile.form.name || (preview.live ? 'Your business' : BRAND_NAME)}
                       </h3>
-                      <Icon name="verified" className="text-primary-container text-[18px]" filled />
+                      {view.verified && <Icon name="verified" className="text-primary-container text-[18px]" filled />}
                     </div>
-                    <div className="flex items-center gap-1 text-tertiary-container font-label-sm text-label-sm font-bold">
-                      <Icon name="star" className="text-[16px] text-tertiary-container" filled />
-                      <span>4.9</span>
-                      <span className="text-text-tertiary font-normal">(142)</span>
-                    </div>
+                    {view.rating ? (
+                      <div className="flex items-center gap-1 text-tertiary-container font-label-sm text-label-sm font-bold">
+                        <Icon name="star" className="text-[16px] text-tertiary-container" filled />
+                        <span>{view.rating}</span>
+                        <span className="text-text-tertiary font-normal">({view.reviewCount})</span>
+                      </div>
+                    ) : (
+                      <span className="font-caption text-caption text-text-tertiary">New</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 font-caption text-caption text-text-secondary">
-                    <span className="font-medium text-text-primary">Nigerian-Continental Fusion</span>
-                    <span>•</span>
-                    <span>Apo District, Abuja</span>
-                    <span>•</span>
+                    {view.category && <span className="font-medium text-text-primary">{view.category}</span>}
+                    {view.category && <span>•</span>}
+                    {view.location && <span className="truncate">{view.location}</span>}
+                    {view.location && <span>•</span>}
                     <span className="text-badge-discount-text font-semibold">Open Now</span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary line-clamp-2">
-                    Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks and
-                    artisanal burgers.
+                    {preview.live
+                      ? profile.form.description || 'Add a short description so shoppers know what you offer.'
+                      : 'Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks and artisanal burgers.'}
                   </p>
                   {/* Quick Action Pills Deck */}
                   <div className="grid grid-cols-4 gap-1.5 pt-1">
@@ -764,7 +919,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                       className="py-2 rounded-xl bg-badge-discount-bg text-badge-discount-text flex flex-col items-center justify-center gap-0.5 hover:opacity-90 transition-opacity"
                     >
                       <Icon name="loyalty" className="text-[18px]" />
-                      <span className="font-caption text-[11px] font-semibold">3 Deals</span>
+                      <span className="font-caption text-[11px] font-semibold">{view.dealsLabel}</span>
                     </button>
                   </div>
                   {/* Featured Menu Mini-Grid */}
@@ -772,17 +927,28 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <div className="flex items-center justify-between">
                       <span className="font-label-sm text-label-sm font-bold text-text-primary">Featured Today</span>
                       <span className="font-caption text-caption text-primary-container font-semibold cursor-pointer">
-                        View All (38)
+                        {view.itemCount != null ? `View All (${view.itemCount})` : 'View All'}
                       </span>
                     </div>
                     <div className="flex flex-col gap-2">
-                      {FEATURED_ITEMS.map((item) => (
+                      {view.featured.length === 0 && (
+                        <p className="p-2 rounded-xl bg-surface-canvas font-caption text-caption text-text-tertiary">
+                          Your active products and services appear here.
+                        </p>
+                      )}
+                      {view.featured.map((item) => (
                         <div
-                          key={item.name}
+                          key={item.id}
                           className="p-2 rounded-xl bg-surface-canvas flex items-center justify-between shadow-sm"
                         >
                           <div className="flex items-center gap-2.5">
-                            <img className="w-11 h-11 rounded-lg object-cover" alt={item.alt} src={item.image} />
+                            {item.image ? (
+                              <img className="w-11 h-11 rounded-lg object-cover" alt={item.name} src={item.image} />
+                            ) : (
+                              <div className="w-11 h-11 rounded-lg bg-surface-container flex items-center justify-center text-text-tertiary">
+                                <Icon name="inventory_2" className="text-[18px]" />
+                              </div>
+                            )}
                             <div className="flex flex-col">
                               <span className="font-label-sm text-label-sm font-semibold text-text-primary">
                                 {item.name}

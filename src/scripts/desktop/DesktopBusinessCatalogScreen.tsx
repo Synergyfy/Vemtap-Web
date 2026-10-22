@@ -5,6 +5,9 @@ import { ProductImportWizard } from '../../components/import/ProductImportWizard
 import { useImportedProducts } from '../productImport/importedProductStore';
 import { summariseImport } from '../productImport/importSummary';
 import { naira } from '../catalogueData';
+import { hasApiConfig } from '../../services/api/client';
+import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
+import { toPrice } from '../../services/catalogueItemsService';
 
 interface DesktopBusinessCatalogScreenProps {
   onBack: () => void;
@@ -42,7 +45,19 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
     price: product.price !== null ? naira(product.price) : '—',
     category: `${product.category || 'General'}${product.status === 'draft' ? ' • Draft' : ''}`,
   }));
-  const entries = [...importedEntries, ...SEED_ENTRIES];
+  // Live: the items this business has actually published; demo keeps the samples.
+  const live = hasApiConfig();
+  const products = useCatalogueItems('product');
+  const services = useCatalogueItems('service');
+  const liveEntries: CatalogEntry[] = [...(products.data ?? []), ...(services.data ?? [])].map((item) => ({
+    id: item.id,
+    name: item.name,
+    type: item.itemType === 'service' ? 'Service' : 'Product',
+    price: naira(toPrice(item.price ?? undefined) ?? 0),
+    category: item.category?.name || (item.itemType === 'service' ? 'Service' : 'Product'),
+  }));
+  const entries = [...importedEntries, ...(live ? liveEntries : SEED_ENTRIES)];
+  const loadingLive = live && (products.isLoading || services.isLoading);
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 flex flex-col gap-8">
@@ -58,6 +73,14 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
       </div>
 
       <div className="flex flex-col gap-3">
+        {loadingLive ? <p className="font-body-md text-body-md text-text-secondary">Loading your catalogue…</p> : null}
+        {!loadingLive && !entries.length ? (
+          <div className="rounded-xl border border-dashed border-border-subtle p-6 text-center flex flex-col items-center gap-1">
+            <Icon name="inventory_2" className="text-[28px] text-text-tertiary" />
+            <span className="font-label-md text-label-md text-text-primary font-semibold">Nothing in your catalogue yet</span>
+            <span className="font-caption text-caption text-text-secondary">Add a product or service so customers have something to order, book or claim.</span>
+          </div>
+        ) : null}
         {entries.map((e) => (
           <div key={e.id} className="bg-surface-canvas rounded-xl p-4 shadow-sm border border-surface-container flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">

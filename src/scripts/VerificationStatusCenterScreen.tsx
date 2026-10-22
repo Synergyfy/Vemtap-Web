@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
+import { VerificationStatusPanel } from '../components/business/VerificationStatusPanel';
+import { hasApiConfig } from '../services/api/client';
 import {
   ID_TYPE_CONFIG,
   INITIAL_VERIFICATION_DRAFT,
@@ -21,6 +24,15 @@ type CertificateModal = 'id' | 'cac' | null;
 export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: VerificationStatusCenterScreenProps) {
   const [modal, setModal] = useState<CertificateModal>(null);
   const [letterSent, setLetterSent] = useState(false);
+
+  // Live: the real status from the backend; the designed page below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <BusinessSubScreen title="Verification" onBack={onBack}>
+        <VerificationStatusPanel onContinue={onUpdateInfo} />
+      </BusinessSubScreen>
+    );
+  }
 
   const draft = INITIAL_VERIFICATION_DRAFT;
   const idConfig = ID_TYPE_CONFIG[draft.idType];

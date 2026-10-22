@@ -3,10 +3,11 @@ import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 
 interface DesktopSignInScreenProps {
-  onSignIn: () => void;
+  onSignIn: (credentials: { identifier: string; password: string }) => Promise<void> | void;
   onGoogleSignIn: () => void;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
+  onForgotPin: () => void;
   onCustomerSignIn: () => void;
   onBusinessSignIn: () => void;
   /** Returns to wherever sign-in was opened from (mobile parity). */
@@ -14,6 +15,15 @@ interface DesktopSignInScreenProps {
 }
 
 type Status = 'idle' | 'submitting';
+
+const getAuthErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return 'We could not sign you in. Please check your email or password and try again.';
+};
 
 const PILLARS = [
   {
@@ -61,6 +71,7 @@ export function DesktopSignInScreen({
   onGoogleSignIn,
   onCreateAccount,
   onBusinessRegister,
+  onForgotPin,
   onCustomerSignIn,
   onBusinessSignIn,
   onBack,
@@ -69,6 +80,7 @@ export function DesktopSignInScreen({
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>('idle');
   const [googleStatus, setGoogleStatus] = useState<Status>('idle');
+  const [error, setError] = useState<string | null>(null);
 
   const busy = status !== 'idle' || googleStatus !== 'idle';
 
@@ -86,8 +98,19 @@ export function DesktopSignInScreen({
       credential?.focus();
       return;
     }
+    const nextIdentifier = identifier.value.trim();
+    const nextPassword = credential.value;
+    setError(null);
     setStatus('submitting');
-    window.setTimeout(onSignIn, 900);
+    window.setTimeout(() => {
+      Promise.resolve(onSignIn({ identifier: nextIdentifier, password: nextPassword }))
+        .catch((signInError) => {
+          setError(getAuthErrorMessage(signInError));
+        })
+        .finally(() => {
+          setStatus('idle');
+        });
+    }, 900);
   };
 
   const handleGoogle = () => {
@@ -245,6 +268,11 @@ export function DesktopSignInScreen({
               </div>
 
               <form className="flex flex-col gap-space-md" onSubmit={handleSubmit}>
+                {error ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
+                    {error}
+                  </div>
+                ) : null}
                 <div className="flex flex-col gap-1.5">
                   <label className="font-label-md text-label-md text-text-primary flex items-center justify-between" htmlFor="identifier">
                     <span>Email or Phone Number</span>
@@ -270,15 +298,15 @@ export function DesktopSignInScreen({
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <label className="font-label-md text-label-md text-text-primary" htmlFor="password">
-                      PIN
+                      PIN or Password
                     </label>
-                    <a
+                    <button
+                      type="button"
                       className="font-label-sm text-label-sm text-primary-container hover:underline font-medium"
-                      href="#forgot-password"
-                      onClick={(event) => event.preventDefault()}
+                      onClick={onForgotPin}
                     >
-                      Forgot PIN?
-                    </a>
+                      Forgot?
+                    </button>
                   </div>
                   <div className="relative flex items-center">
                     <Icon
@@ -293,7 +321,7 @@ export function DesktopSignInScreen({
                       id="password"
                       name="password"
                       maxLength={32}
-                      placeholder="Enter 6-digit PIN"
+                      placeholder="Enter 6-digit PIN or password"
                       required
                       type={showPassword ? 'text' : 'password'}
                     />

@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { useProfile } from '../context/ProfileContext';
+import { hasApiConfig } from '../lib/api';
 
 interface BusinessAccountChoiceScreenProps {
   onBack: () => void;
@@ -283,7 +284,7 @@ export function BusinessAccountChoiceScreen({
           <button
             className="w-full p-space-md rounded-3xl bg-surface-canvas border-2 border-transparent hover:border-primary shadow-sm transition-all text-left group active:scale-[0.99]"
             type="button"
-            onClick={() => setShowConfirmation(true)}
+            onClick={() => (hasApiConfig() ? onContinueWithAccount() : setShowConfirmation(true))}
           >
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">

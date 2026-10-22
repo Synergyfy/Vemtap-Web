@@ -4,9 +4,11 @@ import { Logo } from '../../components/ui/Logo';
 
 interface DesktopVerifyEmailScreenProps {
   onBack: () => void;
-  onContinue: () => void;
+  onContinue: (code: string) => Promise<void> | void;
   onEditEmail: () => void;
   onBusinessSetup: () => void;
+  email?: string;
+  onResend?: (email: string) => Promise<void> | void;
 }
 
 const OTP_LENGTH = 6;
@@ -26,10 +28,13 @@ export function DesktopVerifyEmailScreen({
   onContinue,
   onEditEmail,
   onBusinessSetup,
+  email = '',
+  onResend,
 }: DesktopVerifyEmailScreenProps) {
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [seconds, setSeconds] = useState(RESEND_SECONDS);
   const [status, setStatus] = useState<'idle' | 'verifying'>('idle');
+  const [error, setError] = useState<string | null>(null);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
 
   const code = digits.join('');
@@ -71,18 +76,33 @@ export function DesktopVerifyEmailScreen({
     inputsRef.current[Math.min(pasted.length, OTP_LENGTH - 1)]?.focus();
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!complete || status !== 'idle') return;
+    setError(null);
     setStatus('verifying');
-    window.setTimeout(onContinue, 700);
+
+    try {
+      await Promise.resolve(onContinue(code));
+    } catch (continueError) {
+      setError(continueError instanceof Error ? continueError.message : 'The verification code is invalid. Please try again.');
+      setStatus('idle');
+    }
   };
 
-  const resendCode = () => {
+  const resendCode = async () => {
     if (seconds > 0) return;
+    setError(null);
     setSeconds(RESEND_SECONDS);
     setDigits(Array(OTP_LENGTH).fill(''));
     inputsRef.current[0]?.focus();
+    if (onResend && email) {
+      try {
+        await Promise.resolve(onResend(email));
+      } catch (resendError) {
+        setError(resendError instanceof Error ? resendError.message : 'We could not resend your code. Please try again.');
+      }
+    }
   };
 
   return (
@@ -192,7 +212,7 @@ export function DesktopVerifyEmailScreen({
                     <div className="flex items-center flex-wrap gap-2 text-text-secondary font-body-md text-body-md">
                       <span>We sent a 6-digit verification code to</span>
                       <span className="font-semibold text-text-primary bg-surface-subtle px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 shadow-sm">
-                        jo****@gmail.com
+                        {email ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : 'your email'}
                         <button
                           className="text-primary hover:text-on-primary-fixed-variant transition-colors"
                           title="Change email"
@@ -205,6 +225,11 @@ export function DesktopVerifyEmailScreen({
                     </div>
                   </div>
 
+                  {error ? (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
+                      {error}
+                    </div>
+                  ) : null}
                   <form className="pt-space-md flex flex-col gap-space-lg" onSubmit={handleSubmit}>
                     <div>
                       <label className="block font-label-md text-label-md text-text-primary mb-space-sm">

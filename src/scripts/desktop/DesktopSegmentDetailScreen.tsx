@@ -16,7 +16,7 @@ const RETURNING_REF: SegmentRef = {
   name: 'Returning Customers',
   count: '294',
   meta: '68.2% repeat interaction rate',
-  desc: 'Interacted or placed 2+ orders at Urban Grill & Bistro in the trailing 90 days.',
+  desc: 'Interacted or placed 2+ orders with your local dining partner in the trailing 90 days.',
 };
 
 const TAGS = ['Repeat Diners', '68.2% Repeat Rate', 'Avg. Basket ₦11,200', 'Last Visit: 6d ago'];
@@ -126,7 +126,7 @@ export function DesktopSegmentDetailScreen({
               <span className="text-label-md font-label-md text-text-secondary">verified diners</span>
             </div>
             <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-              Customers who have interacted or ordered from Urban Grill &amp; Bistro 2 or more times in the trailing 90
+              Customers who have interacted or ordered from a local dining partner 2 or more times in the trailing 90
               days.
             </p>
             <div className="flex flex-wrap gap-1.5 pt-space-2xs">

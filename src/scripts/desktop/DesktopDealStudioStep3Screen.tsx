@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveDealBranch } from '../../hooks/business/useLiveDealBranch';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -159,7 +160,12 @@ export function DesktopDealStudioStep3Screen({
   const [newStep, setNewStep] = useState('');
   const [newTerm, setNewTerm] = useState('');
 
-  const selectedBranches = BRANCHES.filter((branch) => studio.branches[branch.key]).length;
+  // Live: the deal runs at the active branch — show that one, not the samples.
+  const liveBranch = useLiveDealBranch();
+  const branchList: typeof BRANCHES = liveBranch.live
+    ? [{ key: 'wuseII', name: liveBranch.name, address: liveBranch.area, badge: 'Your branch', hardware: [], note: 'Switch branch in the top bar to run a deal elsewhere.' }]
+    : BRANCHES;
+  const selectedBranches = liveBranch.live ? 1 : BRANCHES.filter((branch) => studio.branches[branch.key]).length;
 
   const selectedDays = DAYS.filter((day) => studio.days[day.key]);
   const everyDay = selectedDays.length === DAYS.length;
@@ -293,8 +299,8 @@ export function DesktopDealStudioStep3Screen({
                 </button>
               </div>
               <div className="flex flex-col gap-space-sm">
-                {BRANCHES.map((branch) => {
-                  const active = studio.branches[branch.key];
+                {branchList.map((branch) => {
+                  const active = liveBranch.live || studio.branches[branch.key];
                   return (
                     <label
                       key={branch.key}
@@ -312,7 +318,7 @@ export function DesktopDealStudioStep3Screen({
                         disabled={branch.disabled}
                         checked={active}
                         onChange={(event) =>
-                          onStudioChange({ branches: { ...studio.branches, [branch.key]: event.target.checked } })
+                          liveBranch.live ? undefined : onStudioChange({ branches: { ...studio.branches, [branch.key]: event.target.checked } })
                         }
                       />
                       <div className="flex-1 min-w-0">
@@ -850,7 +856,7 @@ export function DesktopDealStudioStep3Screen({
                       <span className="font-caption text-caption uppercase tracking-wider text-primary-fixed font-bold">
                         Coverage Zones
                       </span>
-                      <div className="font-label-md text-label-md font-bold">Wuse II • Garki II • Area 11</div>
+                      <div className="font-label-md text-label-md font-bold">{liveBranch.live ? liveBranch.area : 'Wuse II • Garki II • Area 11'}</div>
                     </div>
                     <div className="px-space-xs py-1 rounded bg-inverse-surface/80 text-on-primary font-caption text-caption font-bold backdrop-blur">
                       3.5 km Geofence
@@ -880,7 +886,7 @@ export function DesktopDealStudioStep3Screen({
                   </div>
                 </div>
                 <div className="p-space-md bg-surface-subtle rounded-xl">
-                  <div className="font-caption text-caption text-text-secondary">Maitama / Wuse Apps</div>
+                  <div className="font-caption text-caption text-text-secondary">{liveBranch.live ? liveBranch.name : 'Maitama / Wuse Apps'}</div>
                   <div className="font-heading-md text-heading-md font-bold text-primary mt-1">19,400</div>
                   <div className="font-caption text-caption text-text-secondary mt-0.5 flex items-center gap-1">
                     <Icon name="smartphone" className="text-[14px]" />

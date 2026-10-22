@@ -10,8 +10,8 @@ const DEAL_ALT =
 
 const HOW_TO_CLAIM_STEPS = [
   'Tap Confirm to instantly obtain your one-time digital dynamic QR code pass.',
-  'Arrive at Urban Grill & Bistro during lunch hours (12:00 PM – 4:00 PM).',
-  'Present the QR screen before requesting the bill to deduct 20% right away.',
+  'Arrive at the featured local business during the active redemption window.',
+  'Present the QR screen before requesting the bill to redeem your discount right away.',
 ];
 
 const TERMS_BULLETS = [
@@ -89,9 +89,9 @@ export function ClaimConfirmSheet({ open, onClose, onConfirm }: ClaimConfirmShee
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-label-sm text-label-sm text-text-secondary truncate">
-                  Urban Grill &amp; Bistro
+                  Local dining partner
                 </span>
-                <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Lunch Combo — 20% Off</h3>
+                <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured local deal</h3>
               </div>
             </div>
             <div className="flex flex-col gap-space-2xs bg-surface-canvas rounded-xl p-space-sm shadow-sm">

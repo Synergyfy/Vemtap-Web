@@ -4,6 +4,8 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { hubCardChips, useHubModuleCounts } from '../hooks/business/useHubModuleCounts';
+import { hasApiConfig } from '../services/api/client';
 
 export type HubModuleKey = 'deals' | 'catalog' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile' | 'referrals';
 
@@ -95,7 +97,8 @@ const MENU_CARDS: {
 export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   // Branch switching lives only in the header's MobileLocationMenu.
-  const { branch } = useBusinessBranch();
+  const { branch, branches } = useBusinessBranch();
+  const hubCounts = useHubModuleCounts();
 
   const showToast = (message: string) => {
     setToast(message);
@@ -130,7 +133,9 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
             <div className="flex items-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-sm py-1 rounded-full shadow-sm">
               <Icon name="verified" filled className="text-[15px]" />
               <span className="font-caption text-caption font-semibold tracking-tight">
-                Verified Business â€¢ 3 Branches Active
+                {hasApiConfig()
+                  ? `${hubCounts.verification === 'Not verified' ? 'Business' : 'Verified Business'} • ${branches.length} ${branches.length === 1 ? 'Branch' : 'Branches'}`
+                  : 'Verified Business • 3 Branches Active'}
               </span>
             </div>
             <button
@@ -195,7 +200,7 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
                   <span className="font-heading-sm text-heading-sm text-text-primary truncate">{card.title}</span>
                   <span className="font-body-md text-body-md text-text-secondary mt-0.5 line-clamp-1">{card.desc}</span>
                   <div className="mt-1 flex items-center gap-1">
-                    {card.chips.map((chip) => (
+                    {hubCardChips(card.key, card.chips, hubCounts).map((chip) => (
                       <span
                         className={`px-space-xs py-0.5 rounded-full font-caption text-caption ${chip.chipClass}`}
                         key={chip.label}

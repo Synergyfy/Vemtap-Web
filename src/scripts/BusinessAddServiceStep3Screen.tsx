@@ -1,3 +1,6 @@
+import { LiveAvailabilityStep } from '../components/business/LiveItemSteps';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -40,7 +43,7 @@ const OUTLETS: OutletCard[] = [
 const LEAD_OPTIONS = ['Same day (2 hrs)', '12 hrs ahead', '24 hrs ahead'];
 const HORIZON_OPTIONS = ['14 days', '30 days in advance', '60 days'];
 
-export function BusinessAddServiceStep3Screen({
+function DemoBusinessAddServiceStep3Screen({
   draft,
   onDraftChange,
   onBack,
@@ -616,5 +619,31 @@ export function BusinessAddServiceStep3Screen({
         </div>
       </div>
     </AppScreen>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function BusinessAddServiceStep3Screen(props: BusinessAddServiceStep3ScreenProps) {
+  if (!hasApiConfig()) return <DemoBusinessAddServiceStep3Screen {...props} />;
+  return (
+    <BusinessSubScreen title="Where it sells" onBack={props.onBack}>
+      <LiveAvailabilityStep
+        item={{
+    kind: 'service',
+    title: props.draft.title,
+    image: /^https?:\/\//.test(props.draft.image) ? props.draft.image : undefined,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.standardPrice || props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: [['Duration', `${props.draft.durationMins} mins`]],
+  }}
+        selected={props.draft.locations ?? []}
+        onChange={(ids) => props.onDraftChange({ locations: ids })}
+        onBack={props.onBack}
+        onNext={props.onNext}
+        nextLabel="Review & publish"
+      />
+    </BusinessSubScreen>
   );
 }

@@ -13,6 +13,8 @@ import {
 export interface ReferralCodeCardProps {
   /** Preview code. Always rendered with a "Preview" badge while backend-less. */
   code: string;
+  /** False once the code is issued by the server; hides the "Preview" badge. */
+  isPreview?: boolean;
   link: string;
   /** Who the invitation is *for* — drives the share message wording. */
   audience: ReferralAudience;
@@ -39,6 +41,7 @@ export interface ReferralCodeCardProps {
  */
 export function ReferralCodeCard({
   code,
+  isPreview = true,
   link,
   audience,
   accountType,
@@ -99,10 +102,12 @@ export function ReferralCodeCard({
       <div className="rounded-xl bg-surface-subtle border border-border-subtle p-space-sm flex flex-col gap-space-xs">
         <div className="flex items-center justify-between gap-space-xs">
           <span className="font-caption text-caption text-text-secondary">Referral code</span>
-          <span className="inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-surface-container-high text-text-secondary font-caption text-caption">
-            <Icon name="visibility" className="text-[12px]" />
-            <span>Preview</span>
-          </span>
+          {isPreview ? (
+            <span className="inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-surface-container-high text-text-secondary font-caption text-caption">
+              <Icon name="visibility" className="text-[12px]" />
+              <span>Preview</span>
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center justify-between gap-space-xs">
           <span className="font-heading-md text-heading-md text-primary font-bold tracking-[0.14em] truncate">

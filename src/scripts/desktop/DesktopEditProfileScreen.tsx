@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { useProfile } from '../../context/ProfileContext';
 
 interface DesktopEditProfileScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -16,10 +17,11 @@ const GENDERS = ['Female', 'Male', 'Prefer not to say'] as const;
 type Gender = (typeof GENDERS)[number];
 
 export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileScreenProps) {
-  const [firstName, setFirstName] = useState('Zainab');
-  const [lastName, setLastName] = useState('Ahmed');
-  const [email, setEmail] = useState('zainab.ahmed@example.com');
-  const [phone, setPhone] = useState('803 555 0192');
+  const profile = useProfile();
+  const [firstName, setFirstName] = useState(profile.firstName || 'User');
+  const [lastName, setLastName] = useState(profile.lastName || '');
+  const [email, setEmail] = useState(profile.email || '');
+  const [phone, setPhone] = useState(profile.phone || '');
   const [birthday, setBirthday] = useState('14 October');
   const [gender, setGender] = useState<Gender>('Female');
   const [saving, setSaving] = useState(false);
@@ -33,6 +35,13 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
     const timer = window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2400);
     timers.current.push(timer);
   };
+
+  const memberSinceLabel = (() => {
+    if (!profile.createdAt) return 'New member';
+    const date = new Date(profile.createdAt);
+    if (Number.isNaN(date.getTime())) return 'New member';
+    return `Active member since ${new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date)}`;
+  })();
 
   const saveProfile = () => {
     if (saving) return;
@@ -115,7 +124,7 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                       <span className="font-label-md text-label-md text-text-primary truncate">Verified Consumer</span>
                       <Icon name="check_circle" className="text-[16px] text-badge-discount-text shrink-0" filled />
                     </div>
-                    <span className="text-text-secondary font-caption text-caption">Active member since Sept 2024</span>
+                    <span className="text-text-secondary font-caption text-caption">{memberSinceLabel}</span>
                   </div>
                 </div>
                 <span className="bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-space-xs py-space-2xs rounded-full shrink-0">

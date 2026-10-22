@@ -1,3 +1,5 @@
+import { LiveReviewStep } from '../../components/business/LiveItemSteps';
+import { hasApiConfig } from '../../services/api/client';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -102,7 +104,7 @@ const toNumber = (value: string) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-export function DesktopServiceReviewScreen({
+function DemoDesktopServiceReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -796,6 +798,37 @@ export function DesktopServiceReviewScreen({
             </button>
           </div>
         </div>
+      </div>
+    </Shell>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function DesktopServiceReviewScreen(props: DesktopServiceReviewScreenProps) {
+  if (!hasApiConfig()) return <DemoDesktopServiceReviewScreen {...props} />;
+  const Shell = props.onNav ? MerchantShell : BusinessSetupChrome;
+  return (
+    <Shell activeNav="catalog" onNav={props.onNav}>
+      <div className="max-w-4xl mx-auto w-full px-6 py-space-xl">
+      <LiveReviewStep
+        item={{
+    kind: 'service',
+    title: props.draft.title,
+    image: /^https?:\/\//.test(props.draft.image) ? props.draft.image : undefined,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.standardPrice || props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: [['Duration', `${props.draft.durationMins} mins`]],
+  }}
+        branchIds={props.draft.locations ?? []}
+        onBack={props.onBack}
+        onEditBasics={props.onEditBasics}
+        onEditPricing={props.onEditPricing}
+        onEditBranches={props.onEditBranches}
+        onPublish={props.onPublish}
+        onSaveDraft={props.onSaveDraft}
+      />
       </div>
     </Shell>
   );

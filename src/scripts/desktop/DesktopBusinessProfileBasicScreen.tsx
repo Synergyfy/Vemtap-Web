@@ -1,8 +1,10 @@
 import { Fragment, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
+import { useBusinessCategoryOptions } from '../../hooks/business/useBusinessCategoryOptions';
 import {
   BUSINESS_CATEGORIES,
   MAX_CATEGORY_SELECTIONS,
@@ -24,18 +26,7 @@ interface DesktopBusinessProfileBasicScreenProps {
 const PREVIEW_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC5dzA4NBAOCv8WHjHeAUd0GDHJuw3Xu9Wt_eewOB-81uuYogGXyQ6MFM98NYjTQRSM3oOSevn6R6MYNHn9HIshGOXM9F_mGWj0f6XtvdcBO5r6p9C_g6xN2DjZ2TWv71WNNByGsVIY65oH1-uEw48N9OgZytM-xS3cIYNegsQxRCxC_OKVjSmPuyMAuDiR3WW7SbMbW77BRJv0naZYXPjPch665tF_fD7Xkq4VGBet';
 
-const CATEGORY_OPTIONS = BUSINESS_CATEGORIES.map((category) => ({
-  value: category.label,
-  label: category.label,
-}));
 
-/** Subcategories available for a given set of parent categories (order preserved, deduped). */
-const availableSubcategories = (categoryLabels: string[]): string[] => {
-  const subcategories = BUSINESS_CATEGORIES.filter((category) => categoryLabels.includes(category.label)).flatMap(
-    (category) => category.subcategories,
-  );
-  return subcategories.filter((subcategory, index) => subcategories.indexOf(subcategory) === index);
-};
 
 export function DesktopBusinessProfileBasicScreen({
   draft,
@@ -45,6 +36,15 @@ export function DesktopBusinessProfileBasicScreen({
   onSaveDraft,
 }: DesktopBusinessProfileBasicScreenProps) {
   const [showErrors, setShowErrors] = useState(false);
+  const categoryData = useBusinessCategoryOptions(BUSINESS_CATEGORIES);
+  const CATEGORY_OPTIONS = categoryData.options.map((category) => ({ value: category.label, label: category.label }));
+  /** Subcategories available for a given set of parent categories (order preserved, deduped). */
+  const availableSubcategories = (selected: string[]): string[] => {
+    const subcategories = categoryData.options
+      .filter((category) => selected.includes(category.label))
+      .flatMap((category) => category.subcategories);
+    return subcategories.filter((subcategory, index) => subcategories.indexOf(subcategory) === index);
+  };
 
   const descriptionCount =
     draft.description === SEED_DESCRIPTION ? MOCKUP_SEED_CHAR_COUNT : draft.description.length;
@@ -409,13 +409,18 @@ export function DesktopBusinessProfileBasicScreen({
                     : 'Provide a brief summary of what you offer to let neighbors explore your craft.'}
                 </p>
                 <div className="pt-space-xs flex items-center justify-between text-on-surface">
-                  <div className="flex items-center gap-space-xs">
-                    <div className="flex items-center text-tertiary-container">
-                      <Icon name="star" filled className="text-[18px]" />
-                      <span className="font-label-md text-label-md font-bold ml-1">4.9</span>
+                  {hasApiConfig() ? (
+                    // A business still onboarding has no reviews yet.
+                    <span className="font-caption text-caption text-text-secondary">New on VEMTAP</span>
+                  ) : (
+                    <div className="flex items-center gap-space-xs">
+                      <div className="flex items-center text-tertiary-container">
+                        <Icon name="star" filled className="text-[18px]" />
+                        <span className="font-label-md text-label-md font-bold ml-1">4.9</span>
+                      </div>
+                      <span className="font-caption text-caption text-text-secondary">(120+ local patrons)</span>
                     </div>
-                    <span className="font-caption text-caption text-text-secondary">(120+ local patrons)</span>
-                  </div>
+                  )}
                   <div className="flex items-center gap-space-2xs text-badge-discount-text font-label-sm text-caption font-medium bg-badge-discount-bg px-space-xs py-space-2xs rounded-md">
                     <Icon name="bolt" className="text-[14px]" />
                     <span>Instant Tap Perks</span>

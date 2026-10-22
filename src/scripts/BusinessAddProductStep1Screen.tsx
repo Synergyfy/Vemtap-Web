@@ -1,4 +1,6 @@
 import { AppScreen } from '../components/ui/AppScreen';
+import { useState } from 'react';
+import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
 import { Icon } from '../components/ui/Icon';
 import type { ProductDraft } from './productDraft';
 
@@ -34,6 +36,23 @@ export function BusinessAddProductStep1Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddProductStep1ScreenProps) {
+  // Live: the business's own categories (the photo is its own step).
+  const editor = useLiveItemEditor('product');
+  const [newCategory, setNewCategory] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const addCategory = () => {
+    const name = newCategory.trim();
+    if (!name) return;
+    setCreatingCategory(true);
+    editor
+      .createCategory(name)
+      .then((created) => {
+        onDraftChange({ categoryId: created.id, subCategory: created.name });
+        setNewCategory('');
+      })
+      .catch(() => undefined)
+      .finally(() => setCreatingCategory(false));
+  };
   const categoryLevels = [
     { caption: 'Primary Category', value: draft.primaryCategory, icon: 'restaurant', active: true },
     { caption: 'Sub-Category', value: draft.subCategory, icon: 'outdoor_grill', active: false },
@@ -156,7 +175,7 @@ export function BusinessAddProductStep1Screen({
                   onChange={(event) =>
                     onDraftChange({
                       unbranded: event.target.checked,
-                      producer: event.target.checked ? 'Unbranded / Homemade' : 'Urban Grill Kitchen',
+                      producer: event.target.checked ? 'Unbranded / Homemade' : editor.live ? '' : 'Urban Grill Kitchen',
                     })
                   }
                 />
@@ -177,6 +196,43 @@ export function BusinessAddProductStep1Screen({
               </div>
               <Icon name="category" className="text-primary text-[22px]" />
             </div>
+            {editor.live ? (
+              <div className="flex flex-col gap-space-xs">
+                <select
+                  aria-label="Category"
+                  value={draft.categoryId ?? ''}
+                  onChange={(event) => {
+                    const found = editor.categories.find((c) => c.id === event.target.value);
+                    onDraftChange({ categoryId: event.target.value || undefined, subCategory: found?.name ?? draft.subCategory });
+                  }}
+                  className="h-11 rounded-xl bg-surface-subtle px-space-sm font-body-md text-body-md"
+                >
+                  <option value="">{editor.categories.length ? 'Choose a category' : 'No categories yet'}</option>
+                  {editor.categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-space-xs">
+                  <input
+                    aria-label="New category name"
+                    value={newCategory}
+                    onChange={(event) => setNewCategory(event.target.value)}
+                    placeholder="New category, e.g. Soups & Swallow"
+                    className="flex-1 h-10 rounded-xl bg-surface-subtle px-space-sm font-body-md text-body-md"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCategory}
+                    disabled={!newCategory.trim() || creatingCategory}
+                    className="h-10 px-space-sm rounded-xl bg-surface-tint-blue text-primary font-label-md text-label-md disabled:opacity-50"
+                  >
+                    {creatingCategory ? 'Adding…' : 'Add'}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="bg-surface-subtle rounded-xl p-space-sm flex flex-col gap-space-xs">
               {categoryLevels.map((level, index) => (
                 <div key={level.caption} className="contents">
@@ -209,6 +265,7 @@ export function BusinessAddProductStep1Screen({
                 </div>
               ))}
             </div>
+            )}
           </div>
 
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-2xs">

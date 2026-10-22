@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveDealBranch } from '../hooks/business/useLiveDealBranch';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft, DealStrategy } from './dealStudio';
@@ -37,7 +38,8 @@ export function BusinessDealStudioStep1Screen({
   const activeVariants = getActiveVariants(draft);
   const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
   const baseAmount = parseDealAmount(regularVariant?.price ?? draft.basePrice);
-  const activeBranchCount = Object.values(studio.branches).filter(Boolean).length;
+  const liveBranch = useLiveDealBranch();
+  const activeBranchCount = liveBranch.live ? 1 : Object.values(studio.branches).filter(Boolean).length;
 
   const bundleCatalog: ComboProduct[] = [
     { id: 'current', name: draft.title, price: baseAmount },
@@ -121,7 +123,7 @@ export function BusinessDealStudioStep1Screen({
           <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
             <div className="flex items-center gap-space-sm px-space-sm py-space-2xs">
               <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                <img className="w-full h-full object-cover" alt={CATALOG_IMAGE.alt} src={CATALOG_IMAGE.src} />
+                <img className="w-full h-full object-cover" alt={draft.mainImage ? draft.title : CATALOG_IMAGE.alt} src={draft.mainImage || (liveBranch.live ? undefined : CATALOG_IMAGE.src)} />
                 <div className="absolute bottom-0.5 left-0.5 px-1 py-px rounded bg-surface-canvas/90 backdrop-blur-sm flex items-center gap-0.5 shadow-xs">
                   <Icon name="sync" className="text-primary text-[9px]" filled />
                   <span className="font-caption text-[8px] leading-tight text-text-secondary font-medium">
@@ -141,10 +143,10 @@ export function BusinessDealStudioStep1Screen({
                   <span className="font-label-sm text-label-sm text-text-primary font-bold">
                     ₦{formatDealAmount(baseAmount)}
                   </span>
-                  <span className="font-caption text-caption text-text-tertiary">/ 350g cut</span>
+                  {liveBranch.live ? null : <span className="font-caption text-caption text-text-tertiary">/ 350g cut</span>}
                   <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption font-semibold">
                     <span className="w-1 h-1 rounded-full bg-badge-discount-text inline-block" />
-                    {activeBranchCount} Branches
+                    {activeBranchCount} {activeBranchCount === 1 ? 'Branch' : 'Branches'}
                   </span>
                 </div>
               </div>
@@ -152,7 +154,7 @@ export function BusinessDealStudioStep1Screen({
             <div className="flex items-center justify-between bg-surface-subtle px-space-sm py-1">
               <div className="flex items-center gap-1 text-text-secondary">
                 <Icon name="storefront" className="text-[13px] text-primary" />
-                <span className="font-caption text-caption">Victoria Island & Lekki Phase 1</span>
+                <span className="font-caption text-caption">{liveBranch.live ? liveBranch.area : 'Victoria Island & Lekki Phase 1'}</span>
               </div>
               <button
                 className="font-caption text-caption text-primary font-semibold hover:underline flex items-center gap-0.5"

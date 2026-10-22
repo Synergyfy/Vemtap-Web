@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveDealBranch } from '../../hooks/business/useLiveDealBranch';
 import { Icon } from '../../components/ui/Icon';
 import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -63,6 +64,7 @@ export function DesktopDealStudioStep1Screen({
     activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice;
   const parsedVariantPrice = TO_NUMBER(variantPriceSource);
   const basePrice = parsedVariantPrice > 0 ? parsedVariantPrice : TO_NUMBER(draft.basePrice);
+  const liveBranch = useLiveDealBranch();
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
 
   const bundleCatalog: ComboProduct[] = [
@@ -221,8 +223,8 @@ export function DesktopDealStudioStep1Screen({
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
-                  <Icon name="storefront" className="text-[15px] text-badge-discount-text" /> {activeBranchCount}{' '}
-                  Active Branches (Wuse II &amp; Garki II)
+                  <Icon name="storefront" className="text-[15px] text-badge-discount-text" />{' '}
+                  {liveBranch.live ? `Runs at ${liveBranch.name}` : `${activeBranchCount} Active Branches (Wuse II & Garki II)`}
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1 text-on-surface-variant">
@@ -304,7 +306,7 @@ export function DesktopDealStudioStep1Screen({
                   </span>
                 </div>
                 <p className="font-body-md text-body-md text-on-surface mt-1">
-                  Steakhouse deals in <strong>Wuse II &amp; Maitama</strong> offering{' '}
+                  {liveBranch.live ? 'Deals near you' : 'Steakhouse deals in'} <strong>{liveBranch.live ? liveBranch.area : 'Wuse II & Maitama'}</strong> offering{' '}
                   <strong>20% – 25% discount</strong> convert <strong>3.6x faster</strong> and average{' '}
                   <strong>+42 additional diners per week</strong> compared to discounts under 15%.
                 </p>
@@ -346,7 +348,7 @@ export function DesktopDealStudioStep1Screen({
                     </div>
                     <div className="absolute top-3 right-3 px-space-xs py-space-2xs rounded-full bg-inverse-surface/80 text-inverse-on-surface backdrop-blur font-caption text-caption flex items-center gap-1">
                       <Icon name="location_on" className="text-[13px]" />
-                      <span>0.4 km • Wuse II</span>
+                      <span>{liveBranch.live ? liveBranch.area : '0.4 km • Wuse II'}</span>
                     </div>
                   </div>
                   <div className="p-space-md flex flex-col gap-space-xs">

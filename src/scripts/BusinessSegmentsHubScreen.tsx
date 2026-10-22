@@ -51,7 +51,7 @@ const SEGMENTS: SegmentCard[] = [
     badgeClass: 'bg-surface-subtle text-text-secondary',
     meta: 'Last updated: Just now',
     count: '1,482',
-    desc: 'Every customer profile that has transacted, claimed a deal, or interacted with Urban Grill & Bistro.',
+    desc: 'Every customer profile that has transacted, claimed a deal, or interacted with your business.',
     highlight: {
       icon: 'cell_tower',
       className: 'bg-surface-subtle',
@@ -99,7 +99,7 @@ const SEGMENTS: SegmentCard[] = [
       name: 'Returning Customers',
       count: '294',
       meta: '68.2% repeat interaction rate',
-      desc: 'Interacted or placed 2+ orders at Urban Grill & Bistro in the trailing 90 days.',
+      desc: 'Interacted or placed 2+ orders with your local dining partner in the trailing 90 days.',
     },
   },
   {

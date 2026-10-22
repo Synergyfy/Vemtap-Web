@@ -2,11 +2,14 @@ import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
+import { BranchesPanel } from '../../components/business/BranchesPanel';
+import { hasApiConfig } from '../../services/api/client';
 
 interface DesktopBusinessLocationsHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onAddBranch?: () => void;
-  onOpenBranch?: () => void;
+  /** Live mode passes the branch id that was opened. */
+  onOpenBranch?: (branchId?: string) => void;
 }
 
 interface BranchCardData {
@@ -96,6 +99,19 @@ export function DesktopBusinessLocationsHubScreen({
   onAddBranch,
   onOpenBranch,
 }: DesktopBusinessLocationsHubScreenProps) {
+  // Live: real branches from the API; the designed hub below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <MerchantShell activeNav="business-locations" onNav={onNav}>
+        <div className="flex flex-col gap-space-2xs mb-space-lg">
+          <h1 className="font-heading-lg text-heading-lg text-on-surface tracking-tight">Locations</h1>
+          <p className="font-body-md text-body-md text-text-secondary">Every branch customers can find you at.</p>
+        </div>
+        <BranchesPanel onOpenBranch={(id) => onOpenBranch?.(id)} />
+      </MerchantShell>
+    );
+  }
+
   return (
     <MerchantShell activeNav="business-locations" onNav={onNav}>
       <div className="flex flex-col gap-space-2xs mb-space-lg">
@@ -382,7 +398,7 @@ export function DesktopBusinessLocationsHubScreen({
                 <div className="flex flex-wrap items-center gap-space-xs mt-space-lg">
                   <button
                     type="button"
-                    onClick={onOpenBranch}
+                    onClick={() => onOpenBranch?.()}
                     className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5"
                   >
                     <Icon name="edit_note" className="text-[18px]" />

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { useProfile } from '../../context/ProfileContext';
+import { hasApiConfig } from '../../lib/api';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 
 interface DesktopBusinessAccountChoiceScreenProps {
@@ -142,7 +143,7 @@ export function DesktopBusinessAccountChoiceScreen({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <button
                   type="button"
-                  onClick={() => setConfirming(true)}
+                  onClick={() => (hasApiConfig() ? onContinueWithAccount() : setConfirming(true))}
                   className="group w-full p-6 rounded-2xl bg-surface-canvas border-2 border-surface-subtle hover:border-primary shadow-sm transition-all text-left active:scale-[0.99]"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">

@@ -1,5 +1,7 @@
 export interface ProductDraft {
   title: string;
+  /** Uploaded photo URL (live). */
+  mainImage?: string;
   producer: string;
   sku: string;
   unbranded: boolean;
@@ -49,4 +51,23 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   branches: { wuse: true, garki: true, maitama: false },
   pricingMode: 'custom',
   prepWindow: '20 – 30 Mins',
+};
+
+/** Live catalogue starts from an empty product — the sample above is demo-only. */
+export const BLANK_PRODUCT_DRAFT: ProductDraft = {
+  ...INITIAL_PRODUCT_DRAFT,
+  title: '',
+  producer: '',
+  sku: '',
+  categoryId: undefined,
+  description: '',
+  basePrice: '',
+  comparePrice: '',
+  costPrice: '',
+  variantsEnabled: false,
+  variants: [],
+  skuCode: '',
+  lowStock: '',
+  branches: {},
+  pricingMode: 'uniform',
 };

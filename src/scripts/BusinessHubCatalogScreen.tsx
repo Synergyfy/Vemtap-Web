@@ -4,6 +4,8 @@ import { FilterMenu } from '../components/FilterMenu';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
+import { CatalogueItemsPanel } from '../components/business/CatalogueItemsPanel';
+import { hasApiConfig } from '../services/api/client';
 import { AddProductMethodsDialog } from '../components/import/AddProductMethodsDialog';
 import { ProductImportWizard } from '../components/import/ProductImportWizard';
 import { ImportedProductsReview } from '../components/import/ImportedProductsReview';
@@ -310,6 +312,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
         {manualStep === 3 && (
           <BusinessAddProductImageScreen
             draft={manualDraft}
+            onDraftChange={changeManualDraft}
             onBack={() => setManualStep(2)}
             onNext={() => setManualStep(4)}
             onSaveDraft={() => setManualStep(0)}
@@ -338,6 +341,20 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
             onSaveDraft={() => setManualStep(0)}
           />
         )}
+      </AppScreen>
+    );
+  }
+
+  // Live: the branch's real catalogue; the designed list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <BusinessHubHeader />
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
+          <h1 className="font-heading-md text-heading-md text-text-primary">Products &amp; Services</h1>
+          <CatalogueItemsPanel />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
       </AppScreen>
     );
   }

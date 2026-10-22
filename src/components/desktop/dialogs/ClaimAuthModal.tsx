@@ -1,20 +1,31 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import { parsePrice } from '../../../utils/format';
 
 export interface ClaimAuthModalProps {
   open: boolean;
   onClose: () => void;
   onAuthenticated: () => void;
+  deal?: {
+    title?: string;
+    business?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+  } | null;
 }
 
 const PIN_LENGTH = 6;
 
-export function ClaimAuthModal({ open, onClose, onAuthenticated }: ClaimAuthModalProps) {
+export function ClaimAuthModal({ open, onClose, onAuthenticated, deal }: ClaimAuthModalProps) {
   const [pin, setPin] = useState('123456');
   const [revealed, setRevealed] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(899);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+  const dealTitle = deal?.title || 'Featured local deal';
+  const businessName = deal?.business?.trim() || 'Local dining partner';
+  const dealPrice = parsePrice(deal?.price);
+  const oldPrice = parsePrice(deal?.oldPrice) || dealPrice;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -64,8 +75,8 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated }: ClaimAuthModa
             <div className="flex flex-col">
               <h3 className="font-heading-lg text-heading-lg text-text-primary">Sign in to Claim This Deal</h3>
               <p className="font-body-md text-body-md text-text-secondary mt-1">
-                Reserve <span className="font-semibold text-text-primary">"Prime 3-Course Lunch Combo"</span> at 20% OFF
-                (Pay ₦9,600 in-store). No credit card required.
+                Reserve <span className="font-semibold text-text-primary">{dealTitle}</span> at a special
+                rate (Pay in-store). No credit card required.
               </p>
             </div>
           </div>
@@ -82,14 +93,18 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated }: ClaimAuthModa
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-space-xs">
-              <span className="font-label-sm text-label-sm text-text-secondary truncate">Urban Grill &amp; Bistro</span>
+              <span className="font-label-sm text-label-sm text-text-secondary truncate">{businessName}</span>
               <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shrink-0">
-                SAVE ₦2,400
+                SPECIAL RATE
               </span>
             </div>
             <div className="flex items-baseline gap-space-xs my-0.5">
-              <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦9,600</span>
-              <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>
+              <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)}
+              </span>
+              <span className="font-caption text-caption text-text-tertiary line-through">
+                {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(oldPrice)}
+              </span>
             </div>
             <div className="flex items-center gap-1 text-tertiary-container">
               <Icon name="timer" className="text-[14px] animate-pulse" />

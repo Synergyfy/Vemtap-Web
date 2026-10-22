@@ -8,6 +8,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { posService, type NewSaleInput } from '../services/posService';
 
 /**
  * POS offline queue.
@@ -17,9 +19,10 @@ import {
  * them) and pushed the moment connectivity returns — or straight away when the
  * cashier hits "Sync Online".
  *
- * There is no backend yet, so "syncing" is a simulated upload. The queue drains
- * in order, each item flips to `synced`, and the ledger is kept so the cashier
- * can see what went out.
+ * Live: orders that carry the real sale `payload` upload through
+ * `POST /pos/sales/batch-sync` (idempotent on `clientRef`, so a retry never
+ * double-books). Demo orders without a payload keep the simulated upload. The
+ * ledger is kept so the cashier can see what went out.
  */
 
 export interface OfflineOrder {
@@ -37,6 +40,12 @@ export interface OfflineOrder {
   takenAt: number;
   /** Set once the queue drains this order. */
   syncedAt?: number;
+  /** The sale exactly as `POST /pos/sales` takes it (live mode only). */
+  payload?: NewSaleInput;
+  /** Why the server refused it on the last sync, if it did. */
+  syncError?: string;
+  /** Receipt number the server assigned once synced. */
+  receiptNumber?: string;
 }
 
 export type SyncStatus = 'idle' | 'syncing';
@@ -131,7 +140,24 @@ export function PosOfflineProvider({ children }: { children: ReactNode }) {
     try {
       // Drain in take-order so the server sees a monotonic stream.
       const ordered = [...queue].sort((a, b) => a.takenAt - b.takenAt);
+      const real = ordered.filter((order) => !order.syncedAt && order.payload);
+      if (hasApiConfig() && real.length) {
+        const results = await posService.batchSync(real.map((order) => order.payload as NewSaleInput));
+        const byRef = new Map(results.map((r) => [r.clientRef, r]));
+        setQueue((current) => {
+          const next = current.map((item) => {
+            const result = item.payload ? byRef.get(item.payload.clientRef) : undefined;
+            if (!result) return item;
+            return result.status === 'synced' || result.status === 'duplicate'
+              ? { ...item, syncedAt: Date.now(), syncError: undefined, receiptNumber: result.receiptNumber ?? undefined }
+              : { ...item, syncError: result.error ?? `Sync ${result.status}` };
+          });
+          writeQueue(next);
+          return next;
+        });
+      }
       for (const order of ordered) {
+        if (order.payload) continue;
         if (order.syncedAt) continue;
         // eslint-disable-next-line no-await-in-loop -- deliberate one-at-a-time upload
         await new Promise((resolve) => window.setTimeout(resolve, SYNC_PER_ORDER_MS));
@@ -155,7 +181,8 @@ export function PosOfflineProvider({ children }: { children: ReactNode }) {
   autoSyncRef.current = syncNow;
   useEffect(() => {
     if (!isOnline) return;
-    const hasWork = queue.some((order) => !order.syncedAt);
+    // Sales the server refused wait for a manual retry, so they can't loop.
+    const hasWork = queue.some((order) => !order.syncedAt && !order.syncError);
     if (!hasWork) return;
     const timer = window.setTimeout(() => {
       void autoSyncRef.current();

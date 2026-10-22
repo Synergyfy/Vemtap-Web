@@ -1,42 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { AddressFormSheet } from '../../components/AddressFormSheet';
+import { useSavedAddresses } from '../../hooks/useSavedAddresses';
+import type { SavedAddress } from '../../services/addressesService';
+import { apiErrorMessage } from '../../services/errorMessages';
 
 interface DesktopAddressesScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
 }
 
-interface AddressEntry {
-  id: string;
-  label: string;
-  line: string;
-  area: string;
-  radius: string;
-  isDefault: boolean;
-}
-
-const INITIAL: AddressEntry[] = [
-  {
-    id: 'home',
-    label: 'Home',
-    line: '12 Aminu Kano Crescent, Wuse II',
-    area: 'Abuja, FCT',
-    radius: '5 km delivery radius',
-    isDefault: true,
-  },
-  {
-    id: 'office',
-    label: 'Office',
-    line: 'Plot 700 Ahmadu Bello Way, Central Business District',
-    area: 'Abuja, FCT',
-    radius: '3 km pickup radius',
-    isDefault: false,
-  },
-];
-
 export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreenProps) {
-  const [addresses, setAddresses] = useState<AddressEntry[]>(INITIAL);
+  const { addresses, isLoading, error, refetch, save, makeDefault: setDefault, remove } = useSavedAddresses();
+  const [editing, setEditing] = useState<SavedAddress | null | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -52,22 +29,22 @@ export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreen
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
 
-  const makeDefault = (id: string) => {
-    const found = addresses.find((item) => item.id === id);
-    setAddresses((prev) => prev.map((item) => ({ ...item, isDefault: item.id === id })));
-    showToast((found?.label ?? 'Address') + ' set as default');
+  const makeDefault = async (item: SavedAddress) => {
+    try {
+      await setDefault(item.id);
+      showToast(item.label + ' set as default');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not change the default address.'));
+    }
   };
 
-  const removeAddress = (id: string) => {
-    const found = addresses.find((item) => item.id === id);
-    setAddresses((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      if (found?.isDefault && next[0]) {
-        return next.map((item, index) => (index === 0 ? { ...item, isDefault: true } : item));
-      }
-      return next;
-    });
-    showToast((found?.label ?? 'Address') + ' removed');
+  const removeAddress = async (item: SavedAddress) => {
+    try {
+      await remove(item.id);
+      showToast(item.label + ' removed');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not remove this address.'));
+    }
   };
 
   return (
@@ -117,7 +94,18 @@ export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreen
             </aside>
 
             <div className="w-full flex flex-col gap-6">
-              {addresses.length === 0 ? (
+              {isLoading ? (
+                <section className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex justify-center">
+                  <Icon name="progress_activity" className="text-[24px] text-text-tertiary animate-spin" />
+                </section>
+              ) : error ? (
+                <section className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col items-center text-center gap-space-xs">
+                  <p className="font-label-md text-label-md text-text-primary font-semibold">Could not load your addresses</p>
+                  <button type="button" onClick={refetch} className="font-label-md text-label-md text-primary font-semibold">
+                    Try again
+                  </button>
+                </section>
+              ) : addresses.length === 0 ? (
                 <section className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col items-center text-center gap-space-xs">
                   <div className="w-12 h-12 rounded-full bg-surface-tint-blue flex items-center justify-center">
                     <Icon name="location_off" className="text-[24px] text-text-secondary" />
@@ -154,7 +142,7 @@ export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreen
                           </div>
                           <p className="font-body-md text-body-md text-text-secondary mt-1 leading-snug">{item.line}</p>
                           <p className="font-caption text-caption text-text-secondary mt-1">
-                            {item.area} &middot; {item.radius}
+                            {[item.area, item.notes].filter(Boolean).join(' · ')}
                           </p>
                         </div>
                       </div>
@@ -162,7 +150,7 @@ export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreen
                         {!item.isDefault && (
                           <button
                             type="button"
-                            onClick={() => makeDefault(item.id)}
+                            onClick={() => void makeDefault(item)}
                             className="h-9 px-space-sm rounded-lg bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold hover:bg-surface-canvas active:scale-95 transition-all"
                           >
                             Set default
@@ -170,14 +158,14 @@ export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreen
                         )}
                         <button
                           type="button"
-                          onClick={() => showToast('Edit address flow coming soon')}
+                          onClick={() => setEditing(item)}
                           className="h-9 px-space-sm rounded-lg bg-surface-container-high text-text-secondary font-label-sm text-label-sm font-medium active:scale-95 transition-transform"
                         >
                           Edit
                         </button>
                         <button
                           type="button"
-                          onClick={() => removeAddress(item.id)}
+                          onClick={() => void removeAddress(item)}
                           className="h-9 px-space-sm rounded-lg text-error font-label-sm text-label-sm font-medium active:scale-95 transition-transform ml-auto"
                         >
                           Remove
@@ -190,7 +178,7 @@ export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreen
 
               <button
                 type="button"
-                onClick={() => showToast('Add-address map opens in the next release')}
+                onClick={() => setEditing(null)}
                 className="w-full h-12 rounded-xl border-2 border-dashed border-border-subtle font-label-md text-label-md text-primary font-semibold flex items-center justify-center gap-2 hover:border-primary/40 hover:bg-surface-tint-blue transition-colors"
               >
                 <Icon name="add" className="text-[18px]" />
@@ -198,6 +186,16 @@ export function DesktopAddressesScreen({ onNav, onBack }: DesktopAddressesScreen
               </button>
             </div>
           </div>
+
+          <AddressFormSheet
+            open={editing !== undefined}
+            address={editing}
+            onClose={() => setEditing(undefined)}
+            onSave={async (input) => {
+              await save(input, editing?.id);
+              showToast(editing ? 'Address updated' : 'Address saved');
+            }}
+          />
 
           {toast && (
             <div className="fixed bottom-6 right-6 z-50 bg-surface-tint-blue text-text-primary border border-border-subtle px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">

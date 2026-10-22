@@ -95,8 +95,8 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
   const profile = useProfile();
   const claim = claims.find((entry) => entry.kind !== 'gift') ?? null;
   const claimCode = claim?.code ?? CLAIM_CODE;
-  const businessName = claim?.dealBusiness ?? 'Urban Grill & Bistro';
-  const offerTitle = claim?.dealTitle ?? 'Prime Lunch Gourmet Combo';
+  const businessName = claim?.dealBusiness ?? 'Local dining partner';
+  const offerTitle = claim?.dealTitle ?? 'Featured Local Deal';
   const holderName = claim?.recipient?.name || profile.fullName;
   const holderContact = claim?.recipient?.phone || claim?.recipient?.email || profile.maskedPhone;
   const redeemSteps = REDEEM_STEPS(businessName, claimCode);
@@ -218,7 +218,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
                 <div className="flex items-start gap-1 text-on-surface-variant mt-1">
                   <Icon name="pin_drop" className="text-[16px] mt-0.5 text-primary" />
                   <p className="font-caption text-caption">
-                    Apo Boulevard Branch • Suite 12, Apo District, Abuja (0.8 km away)
+                    Nearby local branch • Your selected area
                   </p>
                 </div>
               </div>
