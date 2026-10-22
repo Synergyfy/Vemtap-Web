@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { reviewService } from '../../../services';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import type { ClaimDealSummary } from './ClaimIdentityModal';
 
 export interface ReviewsModalProps {
   open: boolean;
   onClose: () => void;
+  deal?: ClaimDealSummary | null;
 }
 
 const SCORE_LABELS: Record<number, string> = {
@@ -56,54 +59,85 @@ interface ReviewCard {
   comments?: number;
 }
 
-const REVIEWS: ReviewCard[] = [
-  {
-    id: 'chidi',
-    initials: 'CO',
-    avatarClass: 'bg-surface-container-high text-primary',
-    name: 'Dr. Chidi Okafor',
-    meta: 'Verified Patron • Apo Resident',
-    rating: '5.0',
-    badge: 'In-Store QR Tap',
-    date: 'Redeemed on Oct 14, 2024',
-    body: 'Outstanding value. The Angus beef patty was cooked to a perfect medium well, brioche bun held together nicely. The truffle dip is the best in Apo. Will definitely claim again.',
-    helpful: 24,
-    comments: 2,
-  },
-  {
-    id: 'fatima',
-    initials: 'FB',
-    avatarClass: 'bg-secondary-container text-on-secondary-container',
-    name: 'Fatima Bello',
-    meta: 'Verified Patron • Wuse II',
-    rating: '5.0',
-    badge: 'Instant Counter Scan',
-    date: 'Redeemed on Oct 12, 2024',
-    body: 'Zero issues redeeming the VEMTAP code at counter. Cashier scanned it instantly and gave the discounted bill of ₦9,600 without any back and forth. Great atmosphere.',
-    helpful: 18,
-  },
-  {
-    id: 'kemi',
-    initials: 'KD',
-    avatarClass: 'bg-surface-container-high text-secondary',
-    name: 'Kemi Daniel',
-    meta: 'Verified Patron',
-    rating: '4.8',
-    badge: 'Verified Lunch Service',
-    date: 'Redeemed on Oct 09, 2024',
-    body: 'Generous portion. You might not need dinner after this lunch combo. The craft peach tea was very refreshing and not overly sweet. Parking in front of the venue was simple too.',
-    helpful: 11,
-  },
-];
+const pickString = (source: Record<string, unknown> | undefined, keys: string[]): string => {
+  if (!source) return '';
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+};
 
-export function ReviewsModal({ open, onClose }: ReviewsModalProps) {
+const pickNumber = (source: Record<string, unknown> | undefined, keys: string[]): number => {
+  if (!source) return 0;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return 0;
+};
+
+const buildInitials = (value: string): string => {
+  const words = value.split(/\s+/).filter(Boolean).slice(0, 2);
+  if (!words.length) return 'V';
+  return words.map((word) => word[0]?.toUpperCase() ?? '').join('').slice(0, 2);
+};
+
+const normalizeReviewCard = (record: Record<string, unknown>, index: number): ReviewCard => {
+  const author = pickString(record, ['authorName', 'customerName', 'userName', 'name']) || `Verified customer ${index + 1}`;
+  const body = pickString(record, ['comment', 'message', 'content', 'review', 'text', 'body']) || 'Helpful review from a verified customer.';
+  const ratingValue = pickNumber(record, ['rating', 'score', 'stars']) || 5;
+  const createdAt = pickString(record, ['createdAt', 'created_at', 'updatedAt', 'reviewedAt', 'date']) || new Date().toISOString();
+  const helpful = pickNumber(record, ['helpfulCount', 'likes', 'likeCount']) || 0;
+  const comments = pickNumber(record, ['commentsCount', 'commentCount']) || undefined;
+
+  return {
+    id: String(pickString(record, ['id', '_id', 'reviewId']) || `review-${index}`),
+    initials: buildInitials(author),
+    avatarClass: index % 2 === 0 ? 'bg-surface-container-high text-primary' : 'bg-secondary-container text-on-secondary-container',
+    name: author,
+    meta: pickString(record, ['customerMeta', 'location', 'verifiedLabel']) || 'Verified Patron',
+    rating: `${ratingValue.toFixed(1)}`,
+    badge: pickString(record, ['badge', 'status']) || 'Verified Purchase',
+    date: createdAt ? new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+    body,
+    helpful,
+    comments,
+  };
+};
+
+const toReviewCards = (payload: unknown): ReviewCard[] => {
+  if (Array.isArray(payload)) {
+    return payload.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map((item, index) => normalizeReviewCard(item, index));
+  }
+
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>;
+    for (const key of ['reviews', 'items', 'results', 'data', 'rows', 'list']) {
+      const value = record[key];
+      if (Array.isArray(value)) {
+        return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map((item, index) => normalizeReviewCard(item, index));
+      }
+    }
+  }
+
+  return [];
+};
+
+export function ReviewsModal({ open, onClose, deal }: ReviewsModalProps) {
   const [rating, setRating] = useState(5);
   const [selectedPills, setSelectedPills] = useState<boolean[]>(FEEDBACK_PILLS.map((pill) => pill.initiallySelected));
   const [reviewText, setReviewText] = useState('');
   const [photos, setPhotos] = useState(INITIAL_PHOTOS);
   const [status, setStatus] = useState<'idle' | 'publishing' | 'published'>('idle');
   const [helpfulOn, setHelpfulOn] = useState<Record<string, boolean>>({});
+  const [reviews, setReviews] = useState<ReviewCard[]>([]);
   const timers = useRef<Array<number>>([]);
+  const offerId = deal?.id ? String(deal.id) : '';
 
   useEffect(() => {
     return () => {
@@ -111,6 +145,33 @@ export function ReviewsModal({ open, onClose }: ReviewsModalProps) {
       timers.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!open || !offerId) {
+      setReviews([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const loadReviews = async () => {
+      try {
+        const next = await reviewService.listByOffer(offerId);
+        if (!active) return;
+        setReviews(toReviewCards(next));
+      } catch {
+        if (active) setReviews([]);
+      }
+    };
+
+    void loadReviews();
+
+    return () => {
+      active = false;
+    };
+  }, [open, offerId]);
 
   useEffect(() => {
     if (!open) {
@@ -133,11 +194,26 @@ export function ReviewsModal({ open, onClose }: ReviewsModalProps) {
     setHelpfulOn((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const submitReview = () => {
-    if (status !== 'idle') return;
+  const submitReview = async () => {
+    if (status !== 'idle' || !offerId || !reviewText.trim()) return;
     setStatus('publishing');
-    timers.current.push(window.setTimeout(() => setStatus('published'), 1100));
+    try {
+      await reviewService.create(offerId, {
+        rating,
+        comment: reviewText.trim(),
+        tags: FEEDBACK_PILLS.filter((_, index) => selectedPills[index]).map((pill) => pill.label),
+      });
+      const refreshed = await reviewService.listByOffer(offerId);
+      setReviews(toReviewCards(refreshed));
+      setStatus('published');
+      timers.current.push(window.setTimeout(() => setStatus('idle'), 1200));
+    } catch {
+      setStatus('idle');
+    }
   };
+
+  const averageRating = reviews.length ? reviews.reduce((sum, review) => sum + Number(review.rating), 0) / reviews.length : 4.8;
+  const displayReviews = reviews.length ? reviews : [];
 
   return (
     <DesktopModal open={open} onClose={onClose} maxWidth="max-w-2xl">
@@ -159,16 +235,16 @@ export function ReviewsModal({ open, onClose }: ReviewsModalProps) {
           <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
             <img
               className="w-full h-full object-cover"
-              alt="Close up crisp shot of freshly grilled brioche cheeseburger paired with golden shoestring fries inside modern brass diner basket, warm appetizing highlights"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFqqLNHhuH9W4IdXGLvTW2t2YDrv9cGefs5r2XEK9XKSaeiyeyogGmSomgI0WgkZnhIPh88NCQm1KW8X_0qAkYf_D06yF-MZzuawfnUA21eQASoFq6TokITjG974O9jkTancNVbKCf0lb5FLwh5FeoTYhctib3ilk2a7ORd69-WnT7dQrPAmS_wkMjTbJNzYkaCZJ1M4FgMmziz_oSrRium3sj4BWwXp8p9IFfD0BtTXtOXdVJKbGQfQ"
+              alt="Close up crisp shot of freshly grilled brioche cheeseburger paired with golden shoestring fries inside modern minimalist setting"
+              src={deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCFqqLNHhuH9W4IdXGLvTW2t2YDrv9cGefs5r2XEK9XKSaeiyeyogGmSomgI0WgkZnhIPh88NCQm1KW8X_0qAkYf_D06yF-MZzuawfnUA21eQASoFq6TokITjG974O9jkTancNVbKCf0lb5FLwh5FeoTYhctib3ilk2a7ORd69-WnT7dQrPAmS_wkMjTbJNzYkaCZJ1M4FgMmziz_oSrRium3sj4BWwXp8p9IFfD0BtTXtOXdVJKbGQfQ'}
             />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-label-sm text-label-sm text-text-secondary truncate">Local dining partner</p>
-            <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured local deal</h3>
+            <p className="font-label-sm text-label-sm text-text-secondary truncate">{deal?.business || 'Local dining partner'}</p>
+            <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">{deal?.title || 'Featured local deal'}</h3>
             <div className="flex items-center gap-1 font-caption text-caption text-badge-discount-text mt-0.5">
               <Icon name="check_circle" className="text-[13px]" filled />
-              <span>Redeemed today</span>
+              <span>{deal?.location || 'Redeemed today'}</span>
             </div>
           </div>
         </div>
@@ -177,21 +253,21 @@ export function ReviewsModal({ open, onClose }: ReviewsModalProps) {
           <div className="flex flex-col sm:flex-row sm:items-center gap-space-md">
             <div className="flex flex-col items-center sm:items-start bg-surface-canvas rounded-xl p-space-sm shadow-xs sm:w-48 shrink-0">
               <div className="flex items-baseline gap-space-2xs">
-                <span className="font-heading-lg text-heading-lg text-text-primary leading-none">4.8</span>
+                <span className="font-heading-lg text-heading-lg text-text-primary leading-none">{averageRating.toFixed(1)}</span>
                 <span className="font-caption text-caption text-text-tertiary">/ 5.0</span>
               </div>
               <div className="flex items-center gap-0.5 my-space-xs text-tertiary">
                 {[1, 2, 3, 4, 5].map((value) => (
-                  <Icon key={value} name="star" filled={value <= 4} className="text-[18px]" />
+                  <Icon key={value} name="star" filled={value <= Math.round(averageRating)} className="text-[18px]" />
                 ))}
               </div>
               <p className="font-caption text-caption text-text-secondary leading-snug text-center sm:text-left">
-                Based on <strong className="text-text-primary font-semibold">120 verified customer redemptions</strong>{' '}
+                Based on <strong className="text-text-primary font-semibold">{displayReviews.length} verified customer ratings</strong>{' '}
                 in your area
               </p>
               <div className="mt-space-xs w-full flex items-center justify-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-sm py-space-2xs rounded-lg">
                 <Icon name="thumb_up" className="text-[16px]" />
-                <span className="font-label-sm text-label-sm font-semibold">98% diners recommend this</span>
+                <span className="font-label-sm text-label-sm font-semibold">{displayReviews.length ? 'Local shoppers recommend this' : 'Be the first to review this deal'}</span>
               </div>
             </div>
 
@@ -309,75 +385,81 @@ export function ReviewsModal({ open, onClose }: ReviewsModalProps) {
             <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-semibold">
               Recent verified reviews
             </span>
-            <span className="font-caption text-caption text-text-secondary">4.8 • 120 reviews</span>
+            <span className="font-caption text-caption text-text-secondary">{displayReviews.length} review{displayReviews.length === 1 ? '' : 's'}</span>
           </div>
 
-          {REVIEWS.map((review) => (
-            <article
-              key={review.id}
-              className="bg-surface-subtle p-space-md rounded-xl space-y-space-sm shadow-xs transition-shadow hover:shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-space-sm">
-                <div className="flex items-center gap-space-sm min-w-0">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center font-label-md text-label-md font-bold shrink-0 ${review.avatarClass}`}
-                  >
-                    {review.initials}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-space-xs flex-wrap">
-                      <span className="font-label-md text-label-md font-semibold text-text-primary">{review.name}</span>
-                      <Icon name="verified" className="text-primary text-[16px]" filled />
-                      <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-1.5 py-0.5 rounded-full font-semibold">
-                        {review.badge}
-                      </span>
+          {displayReviews.length === 0 ? (
+            <div className="bg-surface-subtle p-space-md rounded-xl text-text-secondary text-body-md">
+              There are no verified reviews for this deal yet. Be the first to rate it.
+            </div>
+          ) : (
+            displayReviews.map((review) => (
+              <article
+                key={review.id}
+                className="bg-surface-subtle p-space-md rounded-xl space-y-space-sm shadow-xs transition-shadow hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-space-sm">
+                  <div className="flex items-center gap-space-sm min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-label-md text-label-md font-bold shrink-0 ${review.avatarClass}`}
+                    >
+                      {review.initials}
                     </div>
-                    <span className="font-caption text-caption text-text-tertiary">{review.meta}</span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-space-xs flex-wrap">
+                        <span className="font-label-md text-label-md font-semibold text-text-primary">{review.name}</span>
+                        <Icon name="verified" className="text-primary text-[16px]" filled />
+                        <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-1.5 py-0.5 rounded-full font-semibold">
+                          {review.badge}
+                        </span>
+                      </div>
+                      <span className="font-caption text-caption text-text-tertiary">{review.meta}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-tertiary shrink-0">
+                    <Icon name="star" className="text-[16px]" filled />
+                    <span className="font-label-md text-label-md font-bold text-text-primary">{review.rating}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 text-tertiary shrink-0">
-                  <Icon name="star" className="text-[16px]" filled />
-                  <span className="font-label-md text-label-md font-bold text-text-primary">{review.rating}</span>
+
+                <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
+                  <Icon name="calendar_today" className="text-[14px]" />
+                  <span>{review.date}</span>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                <Icon name="calendar_today" className="text-[14px]" />
-                <span>{review.date}</span>
-              </div>
+                <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{review.body}</p>
 
-              <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{review.body}</p>
-
-              <div className="flex items-center justify-between gap-space-sm pt-space-2xs">
-                <span className="font-caption text-caption text-text-tertiary">Was this review helpful?</span>
-                <div className="flex items-center gap-space-xs">
-                  <button
-                    type="button"
-                    onClick={() => toggleHelpful(review.id)}
-                    aria-pressed={Boolean(helpfulOn[review.id])}
-                    className={`flex items-center gap-1 px-space-sm py-1 rounded-lg font-label-sm text-label-sm font-medium transition-colors ${
-                      helpfulOn[review.id]
-                        ? 'bg-badge-discount-bg text-badge-discount-text'
-                        : 'bg-surface-canvas hover:bg-surface-container-low text-text-primary'
-                    }`}
-                  >
-                    <Icon
-                      name="thumb_up"
-                      filled={Boolean(helpfulOn[review.id])}
-                      className={`text-[16px] ${helpfulOn[review.id] ? 'text-badge-discount-text' : 'text-primary'}`}
-                    />
-                    <span>{review.helpful + (helpfulOn[review.id] ? 1 : 0)}</span>
-                  </button>
-                  {typeof review.comments === 'number' ? (
-                    <span className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-canvas text-text-secondary font-label-sm text-label-sm font-medium">
-                      <Icon name="chat_bubble_outline" className="text-[16px]" />
-                      <span>{review.comments}</span>
-                    </span>
-                  ) : null}
+                <div className="flex items-center justify-between gap-space-sm pt-space-2xs">
+                  <span className="font-caption text-caption text-text-tertiary">Was this review helpful?</span>
+                  <div className="flex items-center gap-space-xs">
+                    <button
+                      type="button"
+                      onClick={() => toggleHelpful(review.id)}
+                      aria-pressed={Boolean(helpfulOn[review.id])}
+                      className={`flex items-center gap-1 px-space-sm py-1 rounded-lg font-label-sm text-label-sm font-medium transition-colors ${
+                        helpfulOn[review.id]
+                          ? 'bg-badge-discount-bg text-badge-discount-text'
+                          : 'bg-surface-canvas hover:bg-surface-container-low text-text-primary'
+                      }`}
+                    >
+                      <Icon
+                        name="thumb_up"
+                        filled={Boolean(helpfulOn[review.id])}
+                        className={`text-[16px] ${helpfulOn[review.id] ? 'text-badge-discount-text' : 'text-primary'}`}
+                      />
+                      <span>{review.helpful + (helpfulOn[review.id] ? 1 : 0)}</span>
+                    </button>
+                    {typeof review.comments === 'number' ? (
+                      <span className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-canvas text-text-secondary font-label-sm text-label-sm font-medium">
+                        <Icon name="chat_bubble_outline" className="text-[16px]" />
+                        <span>{review.comments}</span>
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            ))
+          )}
         </div>
       </div>
 

@@ -203,15 +203,43 @@ export const ordersService = {
     }
   },
 
+  getQrThrivePublic: async (shortId: string) =>
+    api.get<Record<string, unknown>>(`/qr-thrive/public/${encodeURIComponent(shortId)}`),
+
+  scanQrThrivePublic: async (shortId: string, payload?: Record<string, unknown>) =>
+    api.post<Record<string, unknown>>(`/qr-thrive/public/scan/${encodeURIComponent(shortId)}`, payload ?? {}),
+
+  getTapContextByUsername: async (username: string) =>
+    api.get<Record<string, unknown>>(`/tap/context-by-username/${encodeURIComponent(username)}`),
+
+  getPublicBranchOrdering: async (branchId: string, params?: Record<string, string | number | boolean | undefined>) =>
+    api.get<Record<string, unknown>>(`/public/pos/branches/${encodeURIComponent(branchId)}/ordering`, { params }),
+
+  getPublicOrderTracking: async (token: string) =>
+    api.get<Record<string, unknown>>(`/public/pos/orders/track/${encodeURIComponent(token)}`),
+
   createOrder: async (payload: Record<string, unknown>) => {
     try {
       const response = await api.post<OrderApiRecord>('/catalogue/orders', payload);
       return normalizeOrderRecord(response);
     } catch (error) {
-      const fallback = await api.post<OrderApiRecord>('/orders', payload).catch(() => null);
-      if (!fallback) throw error;
-      return normalizeOrderRecord(fallback);
+      try {
+        const bulkCheckout = await api.post<OrderApiRecord>('/bulk-checkout', payload);
+        return normalizeOrderRecord(bulkCheckout);
+      } catch {
+        const fallback = await api.post<OrderApiRecord>('/orders', payload).catch(() => null);
+        if (!fallback) throw error;
+        return normalizeOrderRecord(fallback);
+      }
     }
+  },
+
+  createTableOrder: async (payload: Record<string, unknown>) => {
+    const tableOrder = {
+      ...payload,
+      ...(payload.tableNumber !== undefined ? { tableNumber: payload.tableNumber } : {}),
+    };
+    return ordersService.createOrder(tableOrder);
   },
 
   updateStatus: async (id: string, payload: { status: string; reason?: string; refundItems?: unknown[] }) =>

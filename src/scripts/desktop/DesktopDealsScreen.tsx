@@ -11,26 +11,29 @@ interface DesktopDealsScreenProps {
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
   onOpenDeal: (deal?: {
+    id?: string | number;
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
     image?: string;
   }) => void;
   onClaim?: (deal?: {
+    id?: string | number;
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
     image?: string;
   } | null, onClaimed?: () => void) => void;
 }
 
 interface DiscoveryDeal {
+  id?: string | number;
   image: string;
   imageAlt: string;
   discount: string;
@@ -46,6 +49,7 @@ interface DiscoveryDeal {
 }
 
 interface CatalogDeal {
+  id?: string | number;
   image: string;
   imageAlt: string;
   discount: string;
@@ -158,6 +162,14 @@ const toDiscoveryDeal = (offer: Record<string, unknown>): DiscoveryDeal => {
   const compare = getOfferComparePrice(offer);
   const difference = Math.max(compare - price, 0);
   return {
+    id: String(
+      offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${getOfferBusinessName(offer)}-${title}`,
+    ),
     image: getOfferImage(offer),
     imageAlt: `${title} by ${getOfferBusinessName(offer)}`,
     discount: price > 0 ? 'Live Deal' : 'Offer',
@@ -179,6 +191,14 @@ const toCatalogDeal = (offer: Record<string, unknown>): CatalogDeal => {
   const compare = getOfferComparePrice(offer);
   const business = getOfferBusinessName(offer);
   return {
+    id: String(
+      offer.id ??
+      offer.offerId ??
+      offer._id ??
+      offer.businessId ??
+      offer.branchId ??
+      `${business}-${title}`,
+    ),
     image: getOfferImage(offer),
     imageAlt: `${title} by ${business}`,
     discount: price > 0 ? 'Live Offer' : 'Offer',

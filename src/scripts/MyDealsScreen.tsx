@@ -174,8 +174,23 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
   const [filter, setFilter] = useState<FilterKey>('active');
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
-  const [qr, setQr] = useState<{ business: string; code: string } | null>(null);
+  const [qr, setQr] = useState<{ business: string; code: string; source?: 'claim' | 'gift' } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const openQrForClaim = async (claim: ClaimRecord) => {
+    const identifier = claim.id ?? claim.ref ?? claim.code;
+    try {
+      if (claim.kind === 'gift') {
+        await getGift(identifier);
+      } else {
+        await getClaimQr(identifier);
+      }
+    } catch {
+      // The UI keeps the local voucher fallback if the live endpoint is unavailable.
+    }
+
+    setQr({ business: claim.dealBusiness, code: claim.ref, source: claim.kind === 'gift' ? 'gift' : 'claim' });
+  };
 
   useEffect(() => {
     return () => undefined;
@@ -188,7 +203,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
   };
 
   // Real claim records (localStorage-backed; backend gap: `GET /claims?customer=me`).
-  const { claims } = useClaims();
+  const { claims, getClaimQr, getGift } = useClaims();
   const needle = query.trim().toLowerCase();
   const matchesSearch = (claim: ClaimRecord) =>
     !needle ||
@@ -388,7 +403,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
                   copied={copied}
                   onCopy={copyCode}
                   onShowPass={onShowPass}
-                  onShowQr={() => setQr({ business: claim.dealBusiness, code: claim.ref })}
+                  onShowQr={() => void openQrForClaim(claim)}
                   onReceipt={() => onNavigate('orders')}
                 />
               ))
@@ -414,7 +429,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
                   claim={claim}
                   copied={copied}
                   onCopy={copyCode}
-                  onShowQr={() => setQr({ business: claim.dealBusiness, code: claim.ref })}
+                  onShowQr={() => void openQrForClaim(claim)}
                   onReceipt={() => onNavigate('gift-sent')}
                 />
               ))

@@ -7,6 +7,7 @@ import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
+import { catalogueService } from './services/catalogueService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
@@ -1187,9 +1188,61 @@ function AppInner() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
   }, [route]);
 
-  const openDeal = (from: Route, deal?: ClaimDealSummary | null) => {
+  const openDeal = async (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
-    setSelectedDeal(deal ?? null);
+
+    let nextDeal = deal ?? null;
+    const offerId = nextDeal && typeof nextDeal.id !== 'undefined' ? String(nextDeal.id) : '';
+    if (offerId) {
+      try {
+        const response = await catalogueService.getPublicOfferDetails(offerId);
+        const payload = response && typeof response === 'object' ? (response as Record<string, unknown>) : null;
+        if (payload) {
+          const nestedItem = Array.isArray(payload.items) && typeof payload.items[0] === 'object' ? (payload.items[0] as Record<string, unknown>) : null;
+          const business = payload.business && typeof payload.business === 'object' ? (payload.business as Record<string, unknown>) : {};
+          nextDeal = {
+            ...nextDeal,
+            title: typeof payload.title === 'string' && payload.title.trim() ? payload.title : nextDeal?.title,
+            business:
+              typeof payload.businessName === 'string' && payload.businessName.trim()
+                ? payload.businessName
+                : typeof business.name === 'string' && business.name.trim()
+                  ? business.name
+                  : nextDeal?.business,
+            location:
+              typeof payload.location === 'string' && payload.location.trim()
+                ? payload.location
+                : typeof business.location === 'string' && business.location.trim()
+                  ? business.location
+                  : nextDeal?.location,
+            price:
+              typeof payload.price === 'number'
+                ? payload.price
+                : typeof nestedItem?.price === 'number'
+                  ? nestedItem.price
+                  : nextDeal?.price,
+            oldPrice:
+              typeof payload.originalPrice === 'number'
+                ? payload.originalPrice
+                : typeof nestedItem?.originalPrice === 'number'
+                  ? nestedItem.originalPrice
+                  : nextDeal?.oldPrice,
+            discountLabel:
+              typeof payload.badge === 'string' && payload.badge.trim() ? payload.badge : nextDeal?.discountLabel,
+            image:
+              typeof payload.image === 'string' && payload.image.trim()
+                ? payload.image
+                : typeof nestedItem?.image === 'string' && nestedItem.image.trim()
+                  ? nestedItem.image
+                  : nextDeal?.image,
+          };
+        }
+      } catch {
+        // Keep the clicked offer visible even when the detail lookup is unavailable.
+      }
+    }
+
+    setSelectedDeal(nextDeal ?? null);
     setRoute('deal-detail');
   };
 
@@ -1543,7 +1596,7 @@ function AppInner() {
     name: 'Returning Customers',
     count: '294',
     meta: '68.2% repeat interaction rate',
-    desc: 'Interacted or placed 2+ orders at Urban Grill & Bistro in the trailing 90 days.',
+    desc: 'Interacted or placed 2+ orders with your local dining partner in the trailing 90 days.',
   });
 
   const useSegment = (segment: SegmentRef) => {
@@ -2204,7 +2257,7 @@ function AppInner() {
           onOpenFilters={() => openFeedRoute('filters', 'home')}
           onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
           onOpenDeals={() => setRoute('deals')}
-          onOpenDeal={() => openDeal('home')}
+          onOpenDeal={(deal) => openDeal('home', deal ?? null)}
           onOpenBusiness={() => {
             setProfileFrom('home');
             setRoute('business-profile');
@@ -2230,7 +2283,7 @@ function AppInner() {
         <DealsScreen
           onTab={(tab) => setRoute(tab)}
           onOpenFilters={() => openFeedRoute('filters', 'deals')}
-          onOpenDeal={() => openDeal('deals')}
+          onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
           onOpenNotifications={() => setRoute('notifications')}
           onClaim={openClaimPopup}
           onAccount={() => setRoute('account')}
@@ -2246,7 +2299,7 @@ function AppInner() {
             onOpenDeal={() => openDeal('featured-deals')}
           />
         );
-      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={() => openDeal('featured-deals')} />;
+      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)} />;
 
     case 'filters':
       if (isDesktop) return <DesktopFiltersScreen onNav={feedNav} onClose={() => setRoute(feedFrom)} />;
@@ -2291,13 +2344,13 @@ function AppInner() {
         return (
           <>
             {renderDetail()}
-            <ReviewsModal open onClose={() => setRoute('deal-detail')} />
+            <ReviewsModal open deal={selectedDeal} onClose={() => setRoute('deal-detail')} />
           </>
         );
       return (
         <>
           {renderDetail()}
-          <ReviewsSheet open onClose={() => setRoute('deal-detail')} />
+          <ReviewsSheet open deal={selectedDeal} onClose={() => setRoute('deal-detail')} />
         </>
       );
 

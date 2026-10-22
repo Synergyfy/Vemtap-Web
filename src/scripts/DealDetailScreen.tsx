@@ -14,7 +14,7 @@ interface DealDetailScreenProps {
   onMerchant: () => void;
   claimed: boolean;
   onViewWallet: () => void;
-  deal?: { title?: string; business?: string; location?: string; price?: number; oldPrice?: number; discountLabel?: string; image?: string } | null;
+  deal?: { title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string } | null;
 }
 
 const HERO_IMAGE =

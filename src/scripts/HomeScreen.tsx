@@ -229,22 +229,25 @@ export interface HomeScreenProps {
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
   onOpenDeals: () => void;
-  onOpenDeal: () => void;
+  onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
   onOpenBusiness: () => void;
   onOpenNotifications: () => void;
   onEnroll: () => void;
   onAccount: () => void;
 }
 
-function dealCardProps(onOpenDeal: () => void) {
+function dealCardProps(
+  onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void,
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string },
+) {
   return {
-    onClick: onOpenDeal,
+    onClick: () => onOpenDeal(deal),
     role: 'button' as const,
     tabIndex: 0,
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        onOpenDeal();
+        onOpenDeal(deal);
       }
     },
   };
@@ -327,7 +330,7 @@ function SearchBar({ onOpenFilters }: { onOpenFilters: () => void }) {
   );
 }
 
-function TrendingSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]; onSeeAll: () => void; onOpenDeal: () => void }) {
+function TrendingSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]; onSeeAll: () => void; onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void }) {
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -346,7 +349,7 @@ function TrendingSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]
           </div>
         ) : (
           items.map((item) => (
-            <article key={item.id} {...dealCardProps(onOpenDeal)} className="w-[260px] shrink-0 flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.98] cursor-pointer">
+            <article key={item.id} {...dealCardProps(onOpenDeal, item)} className="w-[260px] shrink-0 flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.98] cursor-pointer">
               <div className="relative h-32 w-full bg-surface-container overflow-hidden">
                 <img className="w-full h-full object-cover" alt={item.imageAlt} src={item.image} />
                 <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-[11px] font-bold">
@@ -433,7 +436,7 @@ function BusinessesSection({
   );
 }
 
-function PopularSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]; onSeeAll: () => void; onOpenDeal: () => void }) {
+function PopularSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]; onSeeAll: () => void; onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void }) {
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -449,7 +452,7 @@ function PopularSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[];
           </div>
         ) : (
           items.slice(0, 2).map((item) => (
-            <article key={item.id} {...dealCardProps(onOpenDeal)} className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden transition-transform active:scale-[0.98] cursor-pointer">
+            <article key={item.id} {...dealCardProps(onOpenDeal, item)} className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden transition-transform active:scale-[0.98] cursor-pointer">
               <div className="relative w-full aspect-square bg-surface-container overflow-hidden">
                 <img className="w-full h-full object-cover" alt={item.imageAlt} src={item.image} />
                 <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
@@ -628,7 +631,16 @@ export function HomeScreen({
               >
                 <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${featured * 100}%)` }}>
                   {featuredSlides.map((slide, index) => (
-                    <article key={`${slide.title}-${index}`} {...dealCardProps(onOpenDeal)} className="min-w-full flex flex-col bg-surface-container-lowest cursor-pointer">
+                    <article key={`${slide.title}-${index}`} {...dealCardProps(onOpenDeal, {
+                      id: slide.id,
+                      title: slide.title,
+                      business: slide.merchant,
+                      location: slide.distance,
+                      price: Number(String(slide.price).replace(/[^\d.]/g, '')) || undefined,
+                      oldPrice: Number(String(slide.was ?? '').replace(/[^\d.]/g, '')) || undefined,
+                      discountLabel: slide.badge,
+                      image: slide.image,
+                    })} className="min-w-full flex flex-col bg-surface-container-lowest cursor-pointer">
                       <div className="relative w-full aspect-[16/9] overflow-hidden bg-surface-container">
                         <img className="w-full h-full object-cover" alt={slide.imageAlt} src={slide.image} />
                         <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold shadow-sm backdrop-blur-sm">
@@ -710,7 +722,16 @@ export function HomeScreen({
               liveDeals.length > 0 ? (
                 <>
                   {liveDeals.map((deal) => (
-                    <article key={deal.id} {...dealCardProps(onOpenDeal)} className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.99] cursor-pointer">
+                    <article key={deal.id} {...dealCardProps(onOpenDeal, {
+                      id: deal.id,
+                      title: deal.title,
+                      business: deal.business,
+                      location: deal.distance,
+                      price: Number(String(deal.price).replace(/[^\d.]/g, '')) || undefined,
+                      oldPrice: Number(String(deal.was ?? '').replace(/[^\d.]/g, '')) || undefined,
+                      discountLabel: deal.badge,
+                      image: deal.image,
+                    })} className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden transition-transform active:scale-[0.99] cursor-pointer">
                       <div className="relative w-full aspect-[16/9] overflow-hidden bg-surface-container">
                         <img className="w-full h-full object-cover" alt={deal.imageAlt} src={deal.image} />
                         <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold shadow-sm backdrop-blur-sm">
@@ -761,7 +782,16 @@ export function HomeScreen({
               liveDeals.length > 0 ? (
                 <div className="grid grid-cols-2 gap-3">
                   {liveDeals.map((deal) => (
-                    <article key={`${deal.id}-grid`} {...dealCardProps(onOpenDeal)} className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md overflow-hidden transition-all active:scale-[0.98] cursor-pointer">
+                    <article key={`${deal.id}-grid`} {...dealCardProps(onOpenDeal, {
+                      id: deal.id,
+                      title: deal.title,
+                      business: deal.business,
+                      location: deal.distance,
+                      price: Number(String(deal.price).replace(/[^\d.]/g, '')) || undefined,
+                      oldPrice: Number(String(deal.was ?? '').replace(/[^\d.]/g, '')) || undefined,
+                      discountLabel: deal.badge,
+                      image: deal.image,
+                    })} className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-sm hover:shadow-md overflow-hidden transition-all active:scale-[0.98] cursor-pointer">
                       <div className="relative w-full aspect-square overflow-hidden bg-surface-container">
                         <img className="w-full h-full object-cover" alt={deal.imageAlt} src={deal.image} />
                         <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-[11px] font-bold shadow-sm backdrop-blur-sm">

@@ -1,11 +1,11 @@
 import { io, type Socket } from 'socket.io-client';
 import { getAccessToken } from './api/client';
 
-export type SocketNamespace = '/' | '/messaging' | '/support' | '/notifications';
+export type SocketNamespace = '/' | '/messaging' | '/support' | '/notifications' | '/pos';
 
 type SocketEventHandler = (...args: any[]) => void;
 
-const SOCKET_NAMESPACES: SocketNamespace[] = ['/', '/messaging', '/support', '/notifications'];
+const SOCKET_NAMESPACES: SocketNamespace[] = ['/', '/messaging', '/support', '/notifications', '/pos'];
 const sockets = new Map<SocketNamespace, Socket>();
 
 const normalizeBaseUrl = (value: string): string => {
@@ -52,15 +52,16 @@ const getNamespaceUrl = (namespace: SocketNamespace) => {
   return `${baseUrl}${suffix}`;
 };
 
-const getSocketAuth = () => {
+const getSocketAuth = (extraAuth: Record<string, string | undefined> = {}) => {
   const token = getAccessToken();
   return {
     token: token ?? '',
     Authorization: token ? `Bearer ${token}` : undefined,
+    ...extraAuth,
   };
 };
 
-const createSocket = (namespace: SocketNamespace) => {
+const createSocket = (namespace: SocketNamespace, extraAuth: Record<string, string | undefined> = {}) => {
   const url = getNamespaceUrl(namespace);
   if (!url) return null;
 
@@ -70,7 +71,7 @@ const createSocket = (namespace: SocketNamespace) => {
     reconnection: true,
     reconnectionAttempts: 6,
     timeout: 10000,
-    auth: getSocketAuth(),
+    auth: getSocketAuth(extraAuth),
   });
 
   socket.on('connect', () => {
@@ -92,14 +93,14 @@ const createSocket = (namespace: SocketNamespace) => {
 export const socketService = {
   getBaseUrl: () => readConfiguredSocketBaseUrl(),
   hasConfig: () => Boolean(readConfiguredSocketBaseUrl()),
-  connect: (namespace: SocketNamespace = '/messaging') => {
+  connect: (namespace: SocketNamespace = '/messaging', extraAuth: Record<string, string | undefined> = {}) => {
     if (SOCKET_NAMESPACES.includes(namespace) === false) {
       return null;
     }
 
     let socket = sockets.get(namespace);
     if (!socket) {
-      const nextSocket = createSocket(namespace);
+      const nextSocket = createSocket(namespace, extraAuth);
       if (!nextSocket) return null;
       socket = nextSocket;
     }
@@ -109,10 +110,18 @@ export const socketService = {
     }
 
     if (socket.disconnected) {
-      socket.auth = getSocketAuth();
+      socket.auth = getSocketAuth(extraAuth);
       socket.connect();
     }
 
+    return socket;
+  },
+  connectPosTracking: (trackingToken?: string) => {
+    if (!trackingToken) return null;
+    const socket = socketService.connect('/pos', { trackingToken });
+    if (socket) {
+      socket.auth = { ...(socket.auth ?? {}), trackingToken };
+    }
     return socket;
   },
   disconnect: (namespace: SocketNamespace = '/messaging') => {
@@ -129,14 +138,20 @@ export const socketService = {
     return Boolean(socket && socket.connected);
   },
   getSocket: (namespace: SocketNamespace = '/messaging') => sockets.get(namespace) ?? null,
-  on: (namespace: SocketNamespace, event: string, handler: SocketEventHandler) => {
-    const socket = socketService.connect(namespace);
+  on: (namespace: SocketNamespace, event: string, handler: SocketEventHandler, extraAuth?: Record<string, string | undefined>) => {
+    const socket = socketService.connect(namespace, extraAuth ?? {});
     if (!socket) return () => undefined;
     socket.on(event, handler);
     return () => socket.off(event, handler);
   },
-  emit: (namespace: SocketNamespace, event: string, payload?: unknown) => {
-    const socket = socketService.connect(namespace);
+  onOrderStatus: (trackingToken: string, handler: SocketEventHandler) => {
+    const socket = socketService.connectPosTracking(trackingToken);
+    if (!socket) return () => undefined;
+    socket.on('order.status', handler);
+    return () => socket.off('order.status', handler);
+  },
+  emit: (namespace: SocketNamespace, event: string, payload?: unknown, extraAuth?: Record<string, string | undefined>) => {
+    const socket = socketService.connect(namespace, extraAuth ?? {});
     if (!socket) return false;
     socket.emit(event, payload);
     return true;

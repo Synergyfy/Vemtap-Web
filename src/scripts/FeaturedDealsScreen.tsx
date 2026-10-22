@@ -132,18 +132,21 @@ const RADII = ['3 km', '5 km', '10 km', '25 km'];
 
 export interface FeaturedDealsScreenProps {
   onBack: () => void;
-  onOpenDeal: () => void;
+  onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
 }
 
-function dealCardProps(onOpen: () => void) {
+function dealCardProps(
+  onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void,
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string },
+) {
   return {
-    onClick: onOpen,
+    onClick: () => onOpen(deal),
     role: 'button' as const,
     tabIndex: 0,
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        onOpen();
+        onOpen(deal);
       }
     },
   };
@@ -398,7 +401,16 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                     </div>
                     <button
                       type="button"
-                      onClick={onOpenDeal}
+                      onClick={() => onOpenDeal({
+                        id: `${deal.title}-${deal.merchant}-${index}`,
+                        title: deal.title,
+                        business: deal.merchant,
+                        location: deal.area,
+                        price: Number(String(deal.price).replace(/[^\d.]/g, '')) || undefined,
+                        oldPrice: Number(String(deal.oldPrice).replace(/[^\d.]/g, '')) || undefined,
+                        discountLabel: deal.discount,
+                        image: deal.img,
+                      })}
                       className="h-11 px-space-lg rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold shadow-sm active:scale-95 transition-transform flex items-center gap-1"
                     >
                       <span>View Deal</span>

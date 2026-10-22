@@ -157,13 +157,15 @@ const buildCatalogueOrderPayload = (
   });
 
   return {
-    firstName,
-    lastName,
-    phone,
-    email: customer.email?.trim() || undefined,
-    notes: input.note?.trim() || undefined,
-    items,
     branchId,
+    items,
+    notes: input.note?.trim() || undefined,
+    customer: {
+      firstName,
+      lastName,
+      phone: phone || undefined,
+      email: customer.email?.trim() || undefined,
+    },
   };
 };
 

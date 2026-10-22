@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiGet, apiPost, hasApiConfig } from '../lib/api';
+import { claimsService } from '../services/claimsService';
 
 /**
  * Claim, gift and redemption records for the signed-in customer.
@@ -19,6 +20,8 @@ export interface ClaimParty {
 }
 
 export interface ClaimRecord {
+  /** Backend claim id when available; used for QR and delete calls. */
+  id?: string;
   /** Human-shareable reference, e.g. `VT-48F261` or `VT-GIFT-83921`. */
   ref: string;
   kind: ClaimKind;
@@ -43,6 +46,7 @@ export interface ClaimRecord {
 }
 
 export interface ClaimInput {
+  id?: string;
   kind: ClaimKind;
   offerId?: string;
   dealTitle?: string;
@@ -66,6 +70,10 @@ interface ClaimsContextValue {
   byRef: (ref: string) => ClaimRecord | undefined;
   latestOf: (kind: ClaimKind) => ClaimRecord | undefined;
   removeClaim: (ref: string) => void;
+  getGift: (token: string) => Promise<unknown>;
+  rejectGift: (token: string, reason?: string) => Promise<unknown>;
+  getClaimQr: (id: string) => Promise<unknown>;
+  deleteClaim: (id: string) => Promise<unknown>;
 }
 
 const CLAIMS_KEY = 'vemtap_claims';
@@ -166,14 +174,19 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
               : 'Live claim';
 
     const claimKind: ClaimKind = item.kind === 'gift' || item.kind === 'someone-else' ? item.kind : 'self';
+    const claimId =
+      typeof item.id === 'string' && item.id.trim()
+        ? item.id.trim()
+        : typeof item.claimId === 'string' && item.claimId.trim()
+          ? item.claimId.trim()
+          : undefined;
     const normalizedRef =
       typeof item.ref === 'string' && item.ref.trim()
         ? item.ref.trim()
-        : typeof item.id === 'string' && item.id.trim()
-          ? item.id.trim()
-          : `VT-${Date.now().toString(36).toUpperCase()}`;
+        : claimId ?? `VT-${Date.now().toString(36).toUpperCase()}`;
 
     const claimRecord: ClaimRecord = {
+      id: claimId,
       ref: normalizedRef,
       kind: claimKind,
       dealTitle,
@@ -251,6 +264,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
   const recordClaim = useCallback(
     (input: ClaimInput): ClaimRecord => {
       const record: ClaimRecord = {
+        id: input.id,
         ref: newRef(input.kind, claims),
         kind: input.kind,
         dealTitle: input.dealTitle ?? 'Live claim',
@@ -322,15 +336,38 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
 
   const removeClaim = useCallback((ref: string) => {
     setClaims((current) => {
+      const target = current.find((claim) => claim.ref === ref);
+      const targetId = target?.id ?? target?.ref;
+      if (hasApiConfig() && targetId) {
+        void claimsService.deleteClaim(targetId).catch(() => undefined);
+      }
+
       const next = current.filter((claim) => claim.ref !== ref);
       writeClaims(next);
       return next;
     });
   }, []);
 
+  const getGift = useCallback((token: string) => claimsService.getGift(token), []);
+  const rejectGift = useCallback((token: string, reason?: string) => claimsService.rejectGift(token, reason), []);
+  const getClaimQr = useCallback((id: string) => claimsService.getClaimQr(id), []);
+  const deleteClaim = useCallback(async (id: string) => {
+    try {
+      const deleted = await claimsService.deleteClaim(id);
+      setClaims((current) => {
+        const next = current.filter((claim) => claim.id !== id && claim.ref !== id);
+        writeClaims(next);
+        return next;
+      });
+      return deleted;
+    } catch (error) {
+      throw error;
+    }
+  }, []);
+
   const value = useMemo<ClaimsContextValue>(
-    () => ({ claims, recordClaim, byRef, latestOf, removeClaim }),
-    [claims, recordClaim, byRef, latestOf, removeClaim],
+    () => ({ claims, recordClaim, byRef, latestOf, removeClaim, getGift, rejectGift, getClaimQr, deleteClaim }),
+    [claims, recordClaim, byRef, latestOf, removeClaim, getGift, rejectGift, getClaimQr, deleteClaim],
   );
 
   return <ClaimsContext.Provider value={value}>{children}</ClaimsContext.Provider>;

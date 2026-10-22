@@ -12,20 +12,22 @@ interface DesktopHomeScreenProps {
   onOpenFeatured: () => void;
   onOpenDeals: () => void;
   onOpenDeal: (deal?: {
+    id?: string | number;
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
     image?: string;
   }) => void;
   onClaim?: (deal?: {
+    id?: string | number;
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
     image?: string;
   } | null, onClaimed?: () => void) => void;
@@ -279,6 +281,7 @@ export function DesktopHomeScreen({
   const [offersLoading, setOffersLoading] = useState(false);
 
   const createDealPayload = (deal: {
+    id?: string | number;
     title: string;
     business?: string;
     store?: string;
@@ -288,6 +291,7 @@ export function DesktopHomeScreen({
     discount?: string;
     image: string;
   }) => ({
+    id: deal.id,
     title: deal.title,
     business: deal.business ?? deal.store ?? deal.meta?.split('•')[0]?.trim() ?? 'Nearby business',
     location: `${city}, ${district}`,
@@ -665,6 +669,7 @@ export function DesktopHomeScreen({
                     role="button"
                     tabIndex={0}
                     onClick={() => onOpenDeal({
+                      id: deal.id,
                       title: deal.title,
                       business: deal.meta?.split('•')[0]?.trim() || 'Nearby business',
                       location: `${city}, ${district}`,
@@ -677,6 +682,7 @@ export function DesktopHomeScreen({
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onOpenDeal({
+                          id: deal.id,
                           title: deal.title,
                           business: deal.meta?.split('•')[0]?.trim() || 'Nearby business',
                           location: `${city}, ${district}`,
@@ -794,6 +800,7 @@ export function DesktopHomeScreen({
                     role="button"
                     tabIndex={0}
                     onClick={() => onOpenDeal({
+                      id: deal.id,
                       title: deal.title,
                       business: deal.store,
                       location: `${city}, ${district}`,
@@ -806,6 +813,7 @@ export function DesktopHomeScreen({
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onOpenDeal({
+                          id: deal.id,
                           title: deal.title,
                           business: deal.store,
                           location: `${city}, ${district}`,

@@ -23,6 +23,16 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
   useEffect(() => {
     let ignore = false;
 
+    const extractRows = (payload: unknown): Record<string, unknown>[] => {
+      if (Array.isArray(payload)) return payload as Record<string, unknown>[];
+      if (!payload || typeof payload !== 'object') return [];
+      const container = payload as { data?: unknown; items?: unknown; results?: unknown };
+      if (Array.isArray(container.data)) return container.data as Record<string, unknown>[];
+      if (Array.isArray(container.items)) return container.items as Record<string, unknown>[];
+      if (Array.isArray(container.results)) return container.results as Record<string, unknown>[];
+      return [];
+    };
+
     const loadOffers = async () => {
       if (!hasApiConfig()) {
         if (!ignore) {
@@ -33,9 +43,14 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
       }
 
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        const cards = buildDiscoverCardsFromOffers(rows as Record<string, unknown>[]);
+        const [businessResponse, statsResponse] = await Promise.all([
+          catalogueService.getPublicBusinesses({ page: 1, limit: 4 }).catch(() => null),
+          catalogueService.getPublicStats({ page: 1, limit: 4 }).catch(() => null),
+        ]);
+
+        const rows = extractRows(businessResponse ?? statsResponse);
+        const cards = buildDiscoverCardsFromOffers(rows.length > 0 ? rows : (await catalogueService.getPublicOffers({ page: 1, limit: 4 }).catch(() => ({ data: [] }))).data ?? []);
+
         if (!ignore) {
           setBusinessCards(cards.length > 0 ? cards : []);
           setBookmarked(Array.from({ length: cards.length > 0 ? cards.length : 0 }, () => false));

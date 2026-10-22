@@ -144,21 +144,24 @@ const toDealCardModel = (offer: Record<string, unknown>, index?: number) => {
 export interface DealsScreenProps {
   onTab: (tab: MobileTabKey) => void;
   onOpenFilters: () => void;
-  onOpenDeal: () => void;
+  onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
   onOpenNotifications: () => void;
   onClaim?: (onClaimed?: () => void) => void;
   onAccount: () => void;
 }
 
-function dealCardProps(onOpen: () => void) {
+function dealCardProps(
+  onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void,
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string },
+) {
   return {
-    onClick: onOpen,
+    onClick: () => onOpen(deal),
     role: 'button' as const,
     tabIndex: 0,
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        onOpen();
+        onOpen(deal);
       }
     },
   };
@@ -230,7 +233,7 @@ function GreetingHeader({
   );
 }
 
-function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unknown>[]; onOpen: () => void; onClaim?: (onClaimed?: () => void) => void }) {
+function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unknown>[]; onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void; onClaim?: (onClaimed?: () => void) => void }) {
   const { claimed } = useAuth();
   const cards = useMemo(() => deals.map((deal, index) => toDealCardModel(deal, index)), [deals]);
 
@@ -249,7 +252,16 @@ function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unkno
     <div className="grid grid-cols-2 gap-3 px-margin pb-space-lg">
       {cards.map((deal, index) => (
         <article
-          {...dealCardProps(onOpen)}
+          {...dealCardProps(onOpen, {
+            id: String((deal as Record<string, unknown>).id ?? (deal as Record<string, unknown>).offerId ?? (deal as Record<string, unknown>)._id ?? (deal as Record<string, unknown>).businessId ?? (deal as Record<string, unknown>).branchId ?? `${(deal as Record<string, unknown>).business}-${(deal as Record<string, unknown>).title}-${index}`),
+            title: String((deal as Record<string, unknown>).title ?? ''),
+            business: String((deal as Record<string, unknown>).business ?? ''),
+            location: typeof (deal as Record<string, unknown>).location === 'string' ? String((deal as Record<string, unknown>).location) : undefined,
+            price: Number((deal as Record<string, unknown>).price ?? 0),
+            oldPrice: Number((deal as Record<string, unknown>).compare ?? 0),
+            discountLabel: String((deal as Record<string, unknown>).discount ?? ''),
+            image: String((deal as Record<string, unknown>).image ?? ''),
+          })}
           className="bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden flex flex-col hover:shadow-md transition-all cursor-pointer"
           key={`${deal.id}-${index}`}
         >
@@ -535,7 +547,18 @@ export function DealsScreen({
             <div className="px-margin mb-space-md">
               {featuredDeal ? (
                 <div
-                  {...dealCardProps(onOpenDeal)}
+                  {...dealCardProps(onOpenDeal, {
+                    id: String(featuredDeal.id ?? featuredDeal.title),
+                    title: featuredDeal.title,
+                    business: featuredDeal.business,
+                    location: featuredDeal.distance,
+                    price: typeof featuredDeal.price === 'number' ? featuredDeal.price : Number(String(featuredDeal.price ?? '').replace(/[^\d.]/g, '')) || undefined,
+                    oldPrice: typeof featuredDeal.compare === 'number'
+                      ? featuredDeal.compare
+                      : Number(String(featuredDeal.compare ?? '').replace(/[^\d.]/g, '')) || undefined,
+                    discountLabel: featuredDeal.discount,
+                    image: featuredDeal.image,
+                  })}
                   className="w-full text-left bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden flex flex-col hover:shadow-md transition-all cursor-pointer"
                 >
                   <div className="flex items-center justify-between mb-2">

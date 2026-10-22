@@ -3,11 +3,12 @@ import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 
 export interface ClaimDealSummary {
+  id?: string | number;
   title?: string;
   business?: string;
   location?: string;
-  price?: number;
-  oldPrice?: number;
+  price?: number | string;
+  oldPrice?: number | string;
   discountLabel?: string;
   image?: string;
 }

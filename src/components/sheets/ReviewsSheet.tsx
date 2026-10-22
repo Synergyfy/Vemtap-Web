@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { reviewService } from '../../services';
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
+import type { ClaimDealSummary } from '../desktop/dialogs/ClaimIdentityModal';
 
 export interface ReviewsSheetProps {
   open: boolean;
   onClose: () => void;
+  deal?: ClaimDealSummary | null;
 }
 
 const SCORE_LABELS: Record<number, string> = {
@@ -34,21 +37,149 @@ const INITIAL_PHOTOS = [
   },
 ];
 
-export function ReviewsSheet({ open, onClose }: ReviewsSheetProps) {
+interface ReviewCard {
+  id: string;
+  initials: string;
+  name: string;
+  meta: string;
+  rating: string;
+  badge: string;
+  date: string;
+  body: string;
+  helpful: number;
+}
+
+const pickString = (source: Record<string, unknown> | undefined, keys: string[]): string => {
+  if (!source) return '';
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+};
+
+const pickNumber = (source: Record<string, unknown> | undefined, keys: string[]): number => {
+  if (!source) return 0;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return 0;
+};
+
+const buildInitials = (value: string): string => {
+  const words = value.split(/\s+/).filter(Boolean).slice(0, 2);
+  if (!words.length) return 'V';
+  return words.map((word) => word[0]?.toUpperCase() ?? '').join('').slice(0, 2);
+};
+
+const normalizeReview = (record: Record<string, unknown>, index: number): ReviewCard => {
+  const author = pickString(record, ['authorName', 'customerName', 'userName', 'name']) || `Verified customer ${index + 1}`;
+  const body = pickString(record, ['comment', 'message', 'content', 'review', 'text', 'body']) || 'Helpful review from a verified customer.';
+  const ratingValue = pickNumber(record, ['rating', 'score', 'stars']) || 5;
+  const createdAt = pickString(record, ['createdAt', 'created_at', 'updatedAt', 'reviewedAt', 'date']) || new Date().toISOString();
+
+  return {
+    id: String(pickString(record, ['id', '_id', 'reviewId']) || `review-${index}`),
+    initials: buildInitials(author),
+    name: author,
+    meta: pickString(record, ['customerMeta', 'location', 'verifiedLabel']) || 'Verified Patron',
+    rating: `${ratingValue.toFixed(1)}`,
+    badge: pickString(record, ['badge', 'status']) || 'Verified Purchase',
+    date: createdAt ? new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+    body,
+    helpful: pickNumber(record, ['helpfulCount', 'likes', 'likeCount']) || 0,
+  };
+};
+
+const toReviewCards = (payload: unknown): ReviewCard[] => {
+  if (Array.isArray(payload)) {
+    return payload.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map((item, index) => normalizeReview(item, index));
+  }
+
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>;
+    for (const key of ['reviews', 'items', 'results', 'data', 'rows', 'list']) {
+      const value = record[key];
+      if (Array.isArray(value)) {
+        return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map((item, index) => normalizeReview(item, index));
+      }
+    }
+  }
+
+  return [];
+};
+
+export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
   const [rating, setRating] = useState(5);
   const [selectedPills, setSelectedPills] = useState<boolean[]>(FEEDBACK_PILLS.map((pill) => pill.initiallySelected));
   const [reviewText, setReviewText] = useState('');
   const [photos, setPhotos] = useState(INITIAL_PHOTOS);
   const [status, setStatus] = useState<'idle' | 'publishing' | 'published'>('idle');
+  const [reviews, setReviews] = useState<ReviewCard[]>([]);
+  const offerId = deal?.id ? String(deal.id) : '';
+
+  useEffect(() => {
+    let active = true;
+
+    if (!open || !offerId) {
+      setReviews([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const loadReviews = async () => {
+      try {
+        const next = await reviewService.listByOffer(offerId);
+        if (!active) return;
+        setReviews(toReviewCards(next));
+      } catch {
+        if (active) setReviews([]);
+      }
+    };
+
+    void loadReviews();
+
+    return () => {
+      active = false;
+    };
+  }, [open, offerId]);
+
+  useEffect(() => {
+    if (!open) {
+      setStatus('idle');
+      setRating(5);
+      setReviewText('');
+      setPhotos(INITIAL_PHOTOS);
+      setSelectedPills(FEEDBACK_PILLS.map((pill) => pill.initiallySelected));
+    }
+  }, [open]);
 
   const togglePill = (index: number) => {
     setSelectedPills((prev) => prev.map((value, i) => (i === index ? !value : value)));
   };
 
-  const submitReview = () => {
-    if (status !== 'idle') return;
+  const submitReview = async () => {
+    if (status !== 'idle' || !offerId || !reviewText.trim()) return;
     setStatus('publishing');
-    window.setTimeout(() => setStatus('published'), 1100);
+    try {
+      await reviewService.create(offerId, {
+        rating,
+        comment: reviewText.trim(),
+        tags: FEEDBACK_PILLS.filter((_, index) => selectedPills[index]).map((pill) => pill.label),
+      });
+      const refreshed = await reviewService.listByOffer(offerId);
+      setReviews(toReviewCards(refreshed));
+      setStatus('published');
+      window.setTimeout(() => setStatus('idle'), 1200);
+    } catch {
+      setStatus('idle');
+    }
   };
 
   return (
@@ -77,16 +208,16 @@ export function ReviewsSheet({ open, onClose }: ReviewsSheetProps) {
           <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
             <img
               className="w-full h-full object-cover"
-              alt="Close up crisp shot of freshly grilled brioche cheeseburger paired with golden shoestring fries inside modern brass diner basket, warm appetizing highlights"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFqqLNHhuH9W4IdXGLvTW2t2YDrv9cGefs5r2XEK9XKSaeiyeyogGmSomgI0WgkZnhIPh88NCQm1KW8X_0qAkYf_D06yF-MZzuawfnUA21eQASoFq6TokITjG974O9jkTancNVbKCf0lb5FLwh5FeoTYhctib3ilk2a7ORd69-WnT7dQrPAmS_wkMjTbJNzYkaCZJ1M4FgMmziz_oSrRium3sj4BWwXp8p9IFfD0BtTXtOXdVJKbGQfQ"
+              alt={deal?.title || 'Deal'}
+              src={deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCFqqLNHhuH9W4IdXGLvTW2t2YDrv9cGefs5r2XEK9XKSaeiyeyogGmSomgI0WgkZnhIPh88NCQm1KW8X_0qAkYf_D06yF-MZzuawfnUA21eQASoFq6TokITjG974O9jkTancNVbKCf0lb5FLwh5FeoTYhctib3ilk2a7ORd69-WnT7dQrPAmS_wkMjTbJNzYkaCZJ1M4FgMmziz_oSrRium3sj4BWwXp8p9IFfD0BtTXtOXdVJKbGQfQ'}
             />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-label-sm text-label-sm text-text-secondary truncate">Local dining partner</p>
-            <h3 className="font-heading-sm text-heading-sm text-on-surface truncate">Featured local deal</h3>
+            <p className="font-label-sm text-label-sm text-text-secondary truncate">{deal?.business || 'Local dining partner'}</p>
+            <h3 className="font-heading-sm text-heading-sm text-on-surface truncate">{deal?.title || 'Featured local deal'}</h3>
             <div className="flex items-center gap-1 font-caption text-caption text-badge-discount-text mt-0.5">
               <Icon name="check_circle" className="text-[13px]" filled />
-              <span>Redeemed today</span>
+              <span>{deal?.location || 'Redeemed today'}</span>
             </div>
           </div>
         </div>
@@ -187,6 +318,62 @@ export function ReviewsSheet({ open, onClose }: ReviewsSheetProps) {
         </div>
 
         <div className="pt-5 pb-8 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-semibold">
+              Recent verified reviews
+            </span>
+            <span className="font-caption text-caption text-text-secondary">{reviews.length || 0} review{reviews.length === 1 ? '' : 's'}</span>
+          </div>
+
+          {reviews.length === 0 ? (
+            <div className="bg-surface-subtle p-space-md rounded-xl text-text-secondary text-body-md">
+              There are no verified reviews for this deal yet. Be the first to rate it.
+            </div>
+          ) : (
+            reviews.map((review) => (
+              <article key={review.id} className="bg-surface-subtle p-space-md rounded-xl space-y-space-sm shadow-xs">
+                <div className="flex items-start justify-between gap-space-sm">
+                  <div className="flex items-center gap-space-sm min-w-0">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-label-md text-label-md font-bold shrink-0 bg-surface-container-high text-primary">
+                      {review.initials}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-space-xs flex-wrap">
+                        <span className="font-label-md text-label-md font-semibold text-text-primary">{review.name}</span>
+                        <Icon name="verified" className="text-primary text-[16px]" filled />
+                        <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-1.5 py-0.5 rounded-full font-semibold">
+                          {review.badge}
+                        </span>
+                      </div>
+                      <span className="font-caption text-caption text-text-tertiary">{review.meta}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-tertiary shrink-0">
+                    <Icon name="star" className="text-[16px]" filled />
+                    <span className="font-label-md text-label-md font-bold text-text-primary">{review.rating}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
+                  <Icon name="calendar_today" className="text-[14px]" />
+                  <span>{review.date}</span>
+                </div>
+
+                <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{review.body}</p>
+
+                <div className="flex items-center justify-between gap-space-sm pt-space-2xs">
+                  <span className="font-caption text-caption text-text-tertiary">Was this review helpful?</span>
+                  <div className="flex items-center gap-space-xs">
+                    <span className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-canvas text-text-primary font-label-sm text-label-sm font-medium">
+                      <Icon name="thumb_up" className="text-[16px] text-primary" />
+                      <span>{review.helpful}</span>
+                    </span>
+                  </div>
+                </div>
+              </article>
+            ))
+          )}
+
           <button
             type="button"
             onClick={submitReview}
@@ -216,8 +403,8 @@ export function ReviewsSheet({ open, onClose }: ReviewsSheetProps) {
           <div className="flex items-start justify-center gap-1.5 px-2 text-center text-text-tertiary">
             <Icon name="shield" className="text-[15px] flex-shrink-0 mt-0.5 text-badge-discount-text" filled />
             <p className="font-caption text-caption">
-              Reviews are verified by VEMTAP digital receipts and displayed on the business profile to support your
-              local neighborhood.
+              Reviews are verified by VEMTAP digital receipts and displayed on the business profile to support your local
+              neighborhood.
             </p>
           </div>
         </div>

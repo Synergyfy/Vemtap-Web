@@ -9,8 +9,8 @@ export interface ClaimConfirmationModalProps {
     title?: string;
     business?: string;
     location?: string;
-    price?: number;
-    oldPrice?: number;
+    price?: number | string;
+    oldPrice?: number | string;
     discountLabel?: string;
   } | null;
 }
@@ -25,8 +25,8 @@ export function ClaimConfirmationModal({ open, onClose, onConfirm, deal }: Claim
   const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This business';
   const dealLocation = deal?.location?.trim() || 'Your selected location';
-  const price = typeof deal?.price === 'number' ? deal.price : 0;
-  const oldPrice = typeof deal?.oldPrice === 'number' ? deal.oldPrice : price;
+  const price = Number(deal?.price ?? 0) || 0;
+  const oldPrice = Number(deal?.oldPrice ?? price) || price;
   const discountLabel = deal?.discountLabel || 'Instant savings';
 
   return (
