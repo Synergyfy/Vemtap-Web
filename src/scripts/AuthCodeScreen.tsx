@@ -7,7 +7,18 @@ interface AuthCodeScreenProps {
   onBack: () => void;
   onContinue: () => void;
   onGoogle: () => void;
-  onBusinessRegister: () => void;
+  /** Customer sign-up only — swaps into the business registration flow. */
+  onBusinessRegister?: () => void;
+  /** Business sign-up only (`mode="business"`) — swaps into customer registration. */
+  onCustomerRegister?: () => void;
+  /** "Already have an account? Sign In". Falls back to `onContinue`. */
+  onSignIn?: () => void;
+  /**
+   * `business` re-skins this same sign-up modal for merchants: the copy, the
+   * account-type swap card and the destinations all assume a business is
+   * registering (verification still finishes on the Business Profile page).
+   */
+  mode?: 'customer' | 'business';
 }
 
 type Status = 'idle' | 'sending' | 'sent';
@@ -53,8 +64,12 @@ export function AuthCodeScreen({
   onContinue,
   onGoogle,
   onBusinessRegister,
+  onCustomerRegister,
+  onSignIn,
+  mode = 'customer',
 }: AuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
+  const business = mode === 'business';
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -84,7 +99,7 @@ export function AuthCodeScreen({
           <div className="flex items-center gap-1.5 px-3 py-1 bg-surface-container-low rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-primary" />
             <span className="font-caption text-caption text-text-secondary font-medium tracking-tight">
-              Step 1 of 3
+              {business ? 'Business • Step 1 of 3' : 'Step 1 of 3'}
             </span>
           </div>
           <div className="w-10" />
@@ -97,10 +112,12 @@ export function AuthCodeScreen({
         <div className="flex flex-col items-center text-center mt-2 mb-space-xl">
           <Logo variant="mark" className="h-11 w-auto mb-space-md" />
           <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mb-2">
-            Welcome to VEMTAP
+            {business ? 'Welcome to VEMTAP for Business' : 'Welcome to VEMTAP'}
           </h1>
           <p className="font-body-md text-body-md text-text-secondary max-w-[280px]">
-            Create your account or sign in to save deals and claim exclusive offers near you.
+            {business
+              ? 'Create your business account to list your store, publish offers, and turn nearby foot traffic into lifetime customers.'
+              : 'Create your account or sign in to save deals and claim exclusive offers near you.'}
           </p>
         </div>
 
@@ -181,7 +198,7 @@ export function AuthCodeScreen({
               Already have an account?{' '}
               <button
                 type="button"
-                onClick={onContinue}
+                onClick={onSignIn ?? onContinue}
                 className="text-primary font-bold hover:underline underline-offset-2 transition-colors"
               >
                 Sign In
@@ -209,25 +226,47 @@ export function AuthCodeScreen({
         </div>
 
         <div className="mt-space-xl pt-space-xs">
-          <button
-            type="button"
-            onClick={onBusinessRegister}
-            className="w-full p-space-md bg-surface-tint-blue rounded-xl flex items-center justify-between gap-3 border border-border-active active:bg-surface-container-low transition-colors duration-150 text-left"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-primary shadow-sm shrink-0">
-                <Icon name="storefront" className="text-[20px]" />
+          {business ? (
+            <button
+              type="button"
+              onClick={onCustomerRegister}
+              className="w-full p-space-md bg-surface-tint-blue rounded-xl flex items-center justify-between gap-3 border border-border-active active:bg-surface-container-low transition-colors duration-150 text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-secondary shadow-sm shrink-0">
+                  <Icon name="person" className="text-[20px]" />
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="font-label-md text-label-md font-bold text-text-primary">Register as a Customer</span>
+                  <span className="font-caption text-caption text-text-secondary">Save deals &amp; claim offers near you</span>
+                </div>
               </div>
-              <div className="flex flex-col text-left">
-                <span className="font-label-md text-label-md font-bold text-text-primary">Own a Business?</span>
-                <span className="font-caption text-caption text-text-secondary">Register your store & publish offers</span>
+              <div className="flex items-center text-primary font-medium font-label-md text-label-md gap-1 shrink-0">
+                <span>Click Here</span>
+                <Icon name="arrow_forward" className="text-[18px]" />
               </div>
-            </div>
-            <div className="flex items-center text-primary font-medium font-label-md text-label-md gap-1 shrink-0">
-              <span>Register Here</span>
-              <Icon name="arrow_forward" className="text-[18px]" />
-            </div>
-          </button>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onBusinessRegister}
+              className="w-full p-space-md bg-surface-tint-blue rounded-xl flex items-center justify-between gap-3 border border-border-active active:bg-surface-container-low transition-colors duration-150 text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-primary shadow-sm shrink-0">
+                  <Icon name="storefront" className="text-[20px]" />
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="font-label-md text-label-md font-bold text-text-primary">Own a Business?</span>
+                  <span className="font-caption text-caption text-text-secondary">Register your store & publish offers</span>
+                </div>
+              </div>
+              <div className="flex items-center text-primary font-medium font-label-md text-label-md gap-1 shrink-0">
+                <span>Register Here</span>
+                <Icon name="arrow_forward" className="text-[18px]" />
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </AppScreen>
