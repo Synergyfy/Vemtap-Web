@@ -18,6 +18,8 @@ interface OwnerAccountStepProps {
   mode: 'register' | 'upgrade';
   onDone: () => void;
   onBack: () => void;
+  /** Register mode only: the merchant already has a business account and wants to sign in. */
+  onSignIn?: () => void;
 }
 
 /**
@@ -25,7 +27,7 @@ interface OwnerAccountStepProps {
  * setup step can save to the API. Registration: email → 4-character code →
  * password + business name. Upgrade: business name (+ password confirmation).
  */
-export function OwnerAccountStep({ mode, onDone, onBack }: OwnerAccountStepProps) {
+export function OwnerAccountStep({ mode, onDone, onBack, onSignIn }: OwnerAccountStepProps) {
   const { adoptSession } = useAuth();
   const [phase, setPhase] = useState<Phase>(mode === 'upgrade' ? 'details' : 'email');
   const [email, setEmail] = useState('');
@@ -189,6 +191,16 @@ export function OwnerAccountStep({ mode, onDone, onBack }: OwnerAccountStepProps
         >
           {busy ? 'Please wait…' : phase === 'email' ? 'Send code' : phase === 'code' ? 'Verify code' : mode === 'upgrade' ? 'Create business account' : 'Create account'}
         </button>
+
+        {mode === 'register' && onSignIn ? (
+          <button
+            type="button"
+            onClick={onSignIn}
+            className="self-center font-label-md text-label-md text-primary hover:underline"
+          >
+            Already have a business account? Sign in
+          </button>
+        ) : null}
       </form>
     </div>
   );

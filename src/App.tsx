@@ -1028,6 +1028,9 @@ export default function App() {
 function AppInner() {
   const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim } = useAuth();
   const sessionUser = useSessionUser().data;
+  // A live owner already has their business identity: business entry points
+  // should open their dashboard instead of starting sign-up again.
+  const isBusinessSession = hasApiConfig() && !!sessionUser && isBusinessRole(sessionUser.role);
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -1624,6 +1627,11 @@ function AppInner() {
 
   const accountNav = (target: AccountTarget) => {
     if (target === 'business-onboarding') {
+      // An owner switching to the customer view still owns a business.
+      if (isBusinessSession) {
+        setRoute('business-overview');
+        return;
+      }
       setBusinessOnboardingFrom('account');
     }
     setRoute(target);
@@ -3550,12 +3558,22 @@ function AppInner() {
        * identity for this run ("Continue with this account" vs. "Use a new
        * account"), which is the same choice screen the business intro reaches
        * through "Set Up My Business". Signed-out visitors have no account to
-       * reuse, so they go straight to the business sign-up modal.
+       * reuse, so live sign-up goes straight to the owner registration step;
+       * only the demo still uses the business sign-up modal.
        */
       const startBusinessSignup = () => {
+        // A live owner taps this from their customer view: send them back to
+        // the business dashboard rather than through setup again.
+        if (isBusinessSession) {
+          setRoute('business-overview');
+          return;
+        }
         setBusinessOnboardingFrom('dashboard');
         if (authed) {
           setBusinessChoiceOpen(true);
+          setRoute('business-onboarding');
+        } else if (hasApiConfig()) {
+          resumeAtBusinessProfile();
           setRoute('business-onboarding');
         } else {
           setRoute('business-auth');
@@ -4067,7 +4085,7 @@ function AppInner() {
       // only appears once the merchant actually starts signing up from it —
       // reusing the account lands on "Tell us about your business".
       // Live owners already have their business identity and skip the intro.
-      const isOwnerSession = hasApiConfig() && sessionUser !== undefined && sessionUser !== null && isBusinessRole(sessionUser.role);
+      const isOwnerSession = isBusinessSession;
       const leaveOnboarding = () => {
         setBusinessChoiceOpen(false);
         setBusinessSetupSkipIntro(false);
@@ -4087,12 +4105,22 @@ function AppInner() {
         setBusinessSetupVerificationState('in-progress');
         setRoute('business-verification');
       };
-      const useNewAccount = () => {
+      const useNewAccount = async () => {
         // BUG-028: normal registration flow with a fresh Google / email
         // identity — never silently linked to the existing consumer account.
-        // That fresh identity is a *business*, so it signs up through the
-        // business modal (which then lands on Business Profile).
         setBusinessChoiceOpen(false);
+        if (hasApiConfig()) {
+          // Sign out first so the owner step registers a new account instead
+          // of upgrading the consumer account the merchant chose to leave.
+          try {
+            await signOut();
+          } catch {
+            // Tokens and local state are cleared even when the logout call fails.
+          }
+          // signOut clears saved setup progress, so re-aim the run afterwards.
+          resumeAtBusinessProfile();
+          return;
+        }
         setBusinessSetupSkipIntro(false);
         setRoute('business-auth');
       };
@@ -4102,10 +4130,20 @@ function AppInner() {
         setBusinessChoiceOpen(false);
         resumeAtBusinessProfile();
       };
+      const signInToExistingBusiness = () => {
+        // "Use a new account" also covers an owner who already registered a
+        // separate business account: send them to sign-in (business roles land
+        // on the business dashboard) instead of making them register again.
+        setBusinessChoiceOpen(false);
+        setBusinessSetupSkipIntro(false);
+        setSignInFrom('business-onboarding');
+        setRoute('sign-in');
+      };
       /**
-       * "Set Up My Business": an unknown visitor signs up through the business
-       * modal, a signed-in consumer first picks an identity for this run, and
-       * a merchant already inside their own run continues where they left off.
+       * "Set Up My Business": an unknown visitor signs up on the owner step
+       * (live) or through the demo modal, a signed-in consumer first picks an
+       * identity for this run, and a merchant already inside their own run
+       * continues where they left off.
        */
       const startBusinessSignup = isOwnerSession
         ? undefined
@@ -4133,6 +4171,7 @@ function AppInner() {
             mode={authed ? 'upgrade' : 'register'}
             onBack={leaveOnboarding}
             onDone={() => setBusinessSetupSkipIntro(true)}
+            onSignIn={signInToExistingBusiness}
           />
         );
       }
