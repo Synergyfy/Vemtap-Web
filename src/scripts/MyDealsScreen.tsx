@@ -202,7 +202,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
     window.setTimeout(() => setCopied((current) => (current === code ? null : current)), 2000);
   };
 
-  // Real claim records (localStorage-backed; backend gap: `GET /claims?customer=me`).
+  // Source of truth: the customer claim list from `/me/claims`, hydrated into the UI.
   const { claims, getClaimQr, getGift } = useClaims();
   const needle = query.trim().toLowerCase();
   const matchesSearch = (claim: ClaimRecord) =>

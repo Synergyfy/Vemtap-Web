@@ -19,6 +19,16 @@ const CASHIER_PIN = '8821';
 const HERO_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDHNsQYzlQAh9oju3O9Pp7b2OqE4Q1w9NTs0_fLXsac8VzxG06oD2NcwkkT8F3q8guxDTRfKEplRfmk3C-S9j62uAZ-X3SG4rkR3dDcngRx8sOpiwe5UeKWYk-lyy81904uUukw2Do3wMAOVj0Vg_7dv90NC6KTvhmoR0HFL6aPR56jOI4gZrX7w67mzbdQcgA44gm5lNRoAe6oGg6V1rNX8nBhjhfYCCBlRIssV7QqZImEOkPqpYnQDw';
 
+const formatCurrency = (value: number | undefined) => {
+  const safeValue = Number(value ?? 0);
+  if (!Number.isFinite(safeValue) || safeValue <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(safeValue);
+};
+
 const MAP_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBRzuuVi9eFa4IfiKY-0CLXnUqZT2sbZNosW0fYczr-35iaT8YS48jMPhxX5FhnlpIT0M6U61-52cj6dPjBQzinsAIKVmlZpDUKfvnY7-G3LByd50m-xoQvFZg9A_dkudzO9jz0LRWmtKBN1qsOyrPwhv2R0EFtDw9bUTJM-yJ2xFm00pWt8sgDfxXVcbelWtpObOkpjajIiqRQK8pSgKgT2aPd465gP81ZRfUsDx5-0GtlsxHiafGQhg';
 
@@ -115,6 +125,11 @@ export function DesktopClaimedDealScreen({
   const claimCode = claim?.code ?? CLAIM_CODE;
   const businessName = claim?.dealBusiness ?? 'Local dining partner';
   const offerTitle = claim?.dealTitle ?? 'Featured local deal';
+  const heroImage = claim?.dealImage ?? HERO_IMG;
+  const dealPrice = Number(claim?.dealPrice ?? 0);
+  const dealOldPrice = Number(claim?.dealOldPrice ?? (claim?.dealPrice ?? dealPrice) ?? 0);
+  const discountAmount = dealOldPrice > dealPrice ? Math.max(dealOldPrice - dealPrice, 0) : 0;
+  const discountLabel = claim?.discountLabel ?? (discountAmount > 0 ? `Save ${formatCurrency(discountAmount)}` : 'Special offer');
   const holderName = claim?.recipient?.name || profile.fullName;
   const holderContact = claim?.recipient?.phone || claim?.recipient?.email || profile.maskedPhone;
   const redeemSteps = REDEEM_STEPS(businessName, claimCode);
@@ -232,11 +247,11 @@ export function DesktopClaimedDealScreen({
 
                 <div className="p-space-md space-y-space-sm">
                   <div className="relative w-full h-56 lg:h-64 rounded-xl overflow-hidden">
-                    <img className="w-full h-full object-cover" alt="Gourmet double beef burger platter" src={HERO_IMG} />
+                    <img className="w-full h-full object-cover" alt={offerTitle} src={heroImage} />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                     <div className="absolute bottom-space-xs left-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-xs py-0.5 rounded-full flex items-center gap-1 text-primary shadow-sm">
                       <Icon name="local_fire_department" className="text-[16px]" />
-                      <span className="font-label-sm text-label-sm font-semibold">20% Saved</span>
+                      <span className="font-label-sm text-label-sm font-semibold">{discountLabel}</span>
                     </div>
                   </div>
 
@@ -261,13 +276,17 @@ export function DesktopClaimedDealScreen({
                   <div className="bg-surface-tint-blue rounded-xl p-space-sm flex items-center justify-between">
                     <div>
                       <p className="font-caption text-caption text-text-secondary">Discounted Total</p>
-                      <p className="font-heading-md text-heading-md text-primary font-bold">₦9,600</p>
+                      <p className="font-heading-md text-heading-md text-primary font-bold">{formatCurrency(dealPrice)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-caption text-caption text-text-tertiary line-through">₦12,000 Reg.</p>
-                      <span className="inline-block bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold px-2 py-0.5 rounded-md">
-                        Save ₦2,400
-                      </span>
+                      {dealOldPrice > dealPrice ? (
+                        <p className="font-caption text-caption text-text-tertiary line-through">{formatCurrency(dealOldPrice)} Reg.</p>
+                      ) : null}
+                      {discountAmount > 0 ? (
+                        <span className="inline-block bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold px-2 py-0.5 rounded-md">
+                          {discountLabel}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>

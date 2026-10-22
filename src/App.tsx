@@ -1280,6 +1280,7 @@ function AppInner() {
 
   const completeClaim = () => {
     const record = claims.recordClaim({
+      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
       kind: claimRecipient ? 'someone-else' : 'self',
       dealTitle: selectedDeal?.title ?? 'Featured local deal',
       dealBusiness: selectedDeal?.business ?? 'Local dining partner',
@@ -1299,6 +1300,7 @@ function AppInner() {
 
   const completeGift = () => {
     const record = claims.recordClaim({
+      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
       kind: 'gift',
       dealTitle: selectedDeal?.title ?? 'Featured local deal',
       dealBusiness: selectedDeal?.business ?? 'Local dining partner',
@@ -1347,6 +1349,7 @@ function AppInner() {
     claimSuccessRef.current = null;
     onClaimed?.();
     const record = claims.recordClaim({
+      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
       kind: 'self',
       dealTitle: selectedDeal?.title ?? 'Featured local deal',
       dealBusiness: selectedDeal?.business ?? 'Local dining partner',

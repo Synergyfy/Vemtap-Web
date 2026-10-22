@@ -5,10 +5,8 @@ import { claimsService } from '../services/claimsService';
 /**
  * Claim, gift and redemption records for the signed-in customer.
  *
- * The backend contract uses customer-scoped claim listing under `/me/claims`.
- * This frontend keeps a localStorage fallback for the app shell while the
- * backend payload shape is being wired up, so the UI remains stable without
- * sending requests to invalid routes.
+ * The source of truth is the backend `/me/claims` listing, while the app also
+ * keeps the latest claim set in the browser for quick in-session rendering.
  */
 
 export type ClaimKind = 'self' | 'gift' | 'someone-else';
@@ -95,8 +93,6 @@ export const DEFAULT_CLAIMED_DEAL = {
 };
 
 const readClaims = (): ClaimRecord[] => {
-  if (!hasApiConfig()) return [];
-
   try {
     const raw = window.localStorage.getItem(CLAIMS_KEY);
     if (!raw) return [];
@@ -112,8 +108,6 @@ const readClaims = (): ClaimRecord[] => {
 };
 
 const writeClaims = (claims: ClaimRecord[]) => {
-  if (!hasApiConfig()) return;
-
   try {
     window.localStorage.setItem(CLAIMS_KEY, JSON.stringify(claims));
   } catch {

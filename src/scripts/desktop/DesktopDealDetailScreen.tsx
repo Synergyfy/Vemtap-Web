@@ -219,7 +219,15 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     const kind: ClaimKind =
       dialog === 'giftConfirm' ? 'gift' : dialog === 'summary' ? 'someone-else' : 'self';
     const record = claims.recordClaim({
+      offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
       kind,
+      dealTitle: selectedDeal?.title ?? dealTitle,
+      dealBusiness: selectedDeal?.business ?? dealBusiness,
+      dealImage: selectedDeal?.image ?? MAIN_IMAGE,
+      dealLocation: selectedDeal?.location ?? dealLocation,
+      dealPrice: parsePrice(selectedDeal?.price),
+      dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+      discountLabel: selectedDeal?.discountLabel ?? 'Save on this deal',
       sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
       recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
     });
