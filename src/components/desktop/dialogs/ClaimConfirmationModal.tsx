@@ -1,4 +1,5 @@
 import { Icon } from '../../ui/Icon';
+import { parsePrice } from '../../../utils/format';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 
 export interface ClaimConfirmationModalProps {
@@ -25,8 +26,8 @@ export function ClaimConfirmationModal({ open, onClose, onConfirm, deal }: Claim
   const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This business';
   const dealLocation = deal?.location?.trim() || 'Your selected location';
-  const price = Number(deal?.price ?? 0) || 0;
-  const oldPrice = Number(deal?.oldPrice ?? price) || price;
+  const price = parsePrice(deal?.price);
+  const oldPrice = parsePrice(deal?.oldPrice) || price;
   const discountLabel = deal?.discountLabel || 'Instant savings';
 
   return (

@@ -819,9 +819,28 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
   }
 }
 
+function dealDetailSlug(deal?: ClaimDealSummary | null): string {
+  const rawTitle = deal?.title?.trim() || deal?.business?.trim() || 'deal';
+  const normalized = rawTitle
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+
+  const idPart = typeof deal?.id !== 'undefined' && deal?.id !== null ? String(deal.id).trim() : '';
+  return (normalized || 'deal') + (idPart ? `-${idPart}` : '');
+}
+
+function dealDetailPath(deal?: ClaimDealSummary | null): string {
+  const slug = dealDetailSlug(deal);
+  return `/deals/${encodeURIComponent(slug)}`;
+}
+
 function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
+  if (path.startsWith('/deals/')) return 'deal-detail';
   const direct = PATH_ROUTE.get(path);
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
@@ -1027,9 +1046,10 @@ function AppInner() {
     }
   };
 
-  const resolveRoutePath = useCallback((target: Route) => {
+  const resolveRoutePath = useCallback((target: Route, overrideDeal?: ClaimDealSummary | null) => {
     const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : null;
     const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : null;
+    const dealForRoute = overrideDeal ?? selectedDeal ?? null;
 
     switch (target) {
       case 'storefront':
@@ -1054,14 +1074,16 @@ function AppInner() {
         return detailService && activeSpaBusiness ? servicePath(activeSpaBusiness.slug, detailService.slug) : '/discover';
       case 'product-detail':
         return detailProduct && activeUrbanBusiness ? productPath(activeUrbanBusiness.slug, detailProduct.id) : '/discover';
+      case 'deal-detail':
+        return dealForRoute ? dealDetailPath(dealForRoute) : '/deals';
       default:
         return ROUTE_PATH[target];
     }
-  }, [detailProduct, detailService, selectedBusiness]);
+  }, [detailProduct, detailService, selectedBusiness, selectedDeal]);
 
-  const setRoute = (target: Route) => {
+  const setRoute = (target: Route, nextDeal?: ClaimDealSummary | null) => {
     if (target === route) return;
-    const targetPath = resolveRoutePath(target);
+    const targetPath = resolveRoutePath(target, nextDeal);
     if (window.location.pathname !== targetPath) window.history.pushState(null, '', targetPath);
     setRouteState(target);
   };
@@ -1243,7 +1265,7 @@ function AppInner() {
     }
 
     setSelectedDeal(nextDeal ?? null);
-    setRoute('deal-detail');
+    setRoute('deal-detail', nextDeal ?? null);
   };
 
   const startClaim = (from: Route) => {
@@ -2376,6 +2398,7 @@ function AppInner() {
             {renderDetail()}
             <ClaimAuthModal
               open
+              deal={selectedDeal}
               onAuthenticated={() => {
                 signIn();
                 setRoute('claim-confirm');
@@ -2500,6 +2523,7 @@ function AppInner() {
             <RecipientVerificationModal
               open
               recipient={claimRecipient}
+              deal={selectedDeal}
               onVerify={() => setRoute('claim-summary')}
               onBack={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
@@ -2527,6 +2551,7 @@ function AppInner() {
             <RecipientSummaryModal
               open
               recipient={claimRecipient}
+              deal={selectedDeal}
               onConfirm={completeClaim}
               onEdit={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
@@ -5224,6 +5249,7 @@ function AppInner() {
       {isDesktop && claimDialog === 'gift' && (
         <GiftRecipientDetailsModal
           open
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onContinue={(values) => {
             setGiftRecipient({
@@ -5239,6 +5265,7 @@ function AppInner() {
         <ConfirmGiftSendModal
           open
           recipient={giftRecipient}
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onEdit={() => setClaimDialog('gift')}
           onSend={() => finishDesktopClaim('gift')}
@@ -5262,6 +5289,7 @@ function AppInner() {
         <RecipientVerificationModal
           open
           recipient={claimRecipient}
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onVerify={() => setClaimDialog('summary')}
           onBack={() => setClaimDialog('other')}
@@ -5271,6 +5299,7 @@ function AppInner() {
         <RecipientSummaryModal
           open
           recipient={claimRecipient}
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onConfirm={() => finishDesktopClaim('someone-else')}
           onEdit={() => setClaimDialog('other')}

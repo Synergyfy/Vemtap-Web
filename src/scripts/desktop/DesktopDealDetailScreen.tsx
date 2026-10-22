@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { parsePrice } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { useClaims, type ClaimKind, type ClaimRecord } from '../../context/ClaimsContext';
 import { useProfile } from '../../context/ProfileContext';
@@ -163,17 +164,18 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     title: deal?.title?.trim() || 'Featured local deal',
     business: deal?.business?.trim() || 'Local dining partner',
     location: deal?.location?.trim() || 'Your area',
-    price: typeof deal?.price === 'number' ? deal.price : 9600,
-    oldPrice: typeof deal?.oldPrice === 'number' ? deal.oldPrice : 12000,
-    discountLabel: deal?.discountLabel?.trim() || 'Save ₦2,400 (20% OFF)',
+    price: parsePrice(deal?.price),
+    oldPrice: parsePrice(deal?.oldPrice) || parsePrice(deal?.price),
+    discountLabel: deal?.discountLabel?.trim() || (parsePrice(deal?.oldPrice) > parsePrice(deal?.price) ? `Save ${formatCurrency(Math.max(parsePrice(deal?.oldPrice) - parsePrice(deal?.price), 0))}` : 'Save on this deal'),
     image: deal?.image || MAIN_IMAGE,
   };
   const dealTitle = selectedDeal.title || 'Featured local deal';
   const dealBusiness = selectedDeal.business || 'Local dining partner';
-  const dealLocation = selectedDeal.location || 'Your area';
-  const dealPrice = typeof selectedDeal.price === 'number' ? selectedDeal.price : 0;
-  const dealOldPrice = typeof selectedDeal.oldPrice === 'number' ? selectedDeal.oldPrice : Math.max(dealPrice, 0);
+  const dealLocation = selectedDeal.location || 'Your selected area';
+  const dealPrice = parsePrice(selectedDeal.price);
+  const dealOldPrice = parsePrice(selectedDeal.oldPrice) || dealPrice;
   const dealSavings = dealOldPrice > dealPrice ? Math.max(dealOldPrice - dealPrice, 0) : 0;
+  const businessOverview = `${dealBusiness} is a local dining partner serving freshly prepared favourites for nearby customers in ${dealLocation}. This offer brings together a limited-time value opportunity designed for a quick in-person redemption through the VEMTAP app.`;
   const [dialog, setDialog] = useState<Dialog>(null);
   const [pendingStep, setPendingStep] = useState<PendingStep>('identity');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
@@ -502,13 +504,8 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                 {tab === 'overview' && (
                   <div className="p-space-xl flex flex-col gap-space-xl">
                     <div className="space-y-space-sm">
-                      <h3 className="font-heading-sm text-heading-sm text-text-primary">About Urban Grill &amp; Bistro</h3>
-                      <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                        Located in the vibrant culinary corridor of Apo District, Urban Grill &amp; Bistro delivers
-                        woodfire-grilled cuts, slow-fermented brioche, and bespoke cold beverages. Sourcing Angus prime
-                        beef directly from organic regional farms and pairing it with house sauces made fresh every
-                        morning, chef Ibrahim Al-Hassan crafts modern casual comfort dining with zero compromises.
-                      </p>
+                      <h3 className="font-heading-sm text-heading-sm text-text-primary">About {dealBusiness}</h3>
+                      <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{businessOverview}</p>
                     </div>
 
                     <div className="space-y-space-md">
@@ -538,7 +535,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                                 Nearby local branch
                               </p>
                               <p className="font-caption text-caption text-text-secondary truncate">
-                                Your selected area
+                                {dealLocation}
                               </p>
                             </div>
                             <span className="bg-primary text-on-primary font-caption text-caption px-2 py-1 rounded font-semibold whitespace-nowrap">
@@ -716,17 +713,17 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           <div className="flex items-start justify-between gap-space-xs">
                             <div className="flex items-center gap-space-sm">
                               <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center text-primary font-bold font-heading-sm text-heading-sm">
-                                CO
+                                VE
                               </div>
                               <div>
                                 <div className="flex items-center gap-space-2xs">
                                   <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Dr. Chidi Okafor
+                                    Verified guest
                                   </h3>
                                   <Icon name="verified" className="text-primary text-[18px]" />
                                 </div>
                                 <p className="font-caption text-caption text-text-secondary">
-                                  Verified Patron • Apo Resident
+                                  Local diner • Nearby area
                                 </p>
                               </div>
                             </div>
@@ -737,36 +734,14 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           </div>
                           <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
                             <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed on Oct 14, 2024</span>
+                            <span>Redeemed recently</span>
                             <span>•</span>
-                            <span className="text-badge-discount-text font-medium">In-Store QR Tap</span>
+                            <span className="text-badge-discount-text font-medium">On-site redemption</span>
                           </div>
                           <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                            Outstanding value. The Angus beef patty was cooked to a perfect medium well, brioche bun held
-                            together nicely. The truffle dip is the best in Apo. Will definitely claim again.
+                            The value was strong and the experience at {dealBusiness} felt easy from claim to checkout. The
+                            offer was clearly explained and the redemption was quick and stress-free.
                           </p>
-                          <div className="grid grid-cols-2 gap-space-xs pt-space-2xs">
-                            <div className="relative rounded-xl overflow-hidden shadow-sm h-36 bg-surface-container">
-                              <img
-                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                                alt="Close-up high key photo of a gourmet Angus burger with melted cheddar cheese on a toasted golden brioche bun with crisp truffle parmesan fries on a rustic slate platter at a modern upscale Abuja restaurant."
-                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtckhGb2xAiHBuXZwzd-kpqvanRaP3kPYGYg0-MQV7U9fkLOcsZMX4fFLqlz3PQ2NdxX3JLgat4RSGceKKlVBIOEWr89uIKJQQ2VoxxnSrXY3-1XcucwBj6hddaHHXyV62ngI-Mq-ul9oYe3RwsUrpDBkKX1AWHeEoRCVdRUYtIY6fStjaKKvglwm35yfKZJeTcoLmLPjq3p1zUcssGT-PSb8l2rVuLdp6WHXfADua"
-                              />
-                              <span className="absolute bottom-2 left-2 px-space-xs py-space-2xs rounded-md bg-surface-canvas/90 backdrop-blur-md text-text-primary font-caption text-caption font-semibold">
-                                Burger Platter
-                              </span>
-                            </div>
-                            <div className="relative rounded-xl overflow-hidden shadow-sm h-36 bg-surface-container">
-                              <img
-                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                                alt="Refreshing tall glass of craft peach iced tea garnished with fresh mint sprigs and sliced Nigerian lemons on an outdoor dining wooden table in Apo Abuja with bright daylight."
-                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGNy0L1Dk2SfyK2g0vA8YvnF-Y27nvvxvqXwdn4MQpQhVuowQUXmrhey0RtnAUH3fc9qHiN9WZWEd5LX1g4KP6xKA_XnIT4ePCoDBwxuqSM3V2O92HYLx4Y-kAFiBa_iHhL2xDdsEco-JYY2bx3SsusEbfPsfo9qDKs6bXZp6F23CthM6AlfPmlJJgMMEtOFncJSZuXWw2gvqMqAvXwLN-wy_UkTGnHRoaGfvzoOpe"
-                              />
-                              <span className="absolute bottom-2 left-2 px-space-xs py-space-2xs rounded-md bg-surface-canvas/90 backdrop-blur-md text-text-primary font-caption text-caption font-semibold">
-                                Peach Tea
-                              </span>
-                            </div>
-                          </div>
                         </div>
                         <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
                           <span className="text-text-tertiary">Was this review helpful?</span>
@@ -794,17 +769,17 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           <div className="flex items-start justify-between gap-space-xs">
                             <div className="flex items-center gap-space-sm">
                               <div className="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold font-heading-sm text-heading-sm">
-                                FB
+                                LS
                               </div>
                               <div>
                                 <div className="flex items-center gap-space-2xs">
                                   <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Fatima Bello
+                                    Local saver
                                   </h3>
                                   <Icon name="verified" className="text-primary text-[18px]" />
                                 </div>
                                 <p className="font-caption text-caption text-text-secondary">
-                                  Verified Patron • Wuse II
+                                  Verified customer • {dealLocation}
                                 </p>
                               </div>
                             </div>
@@ -815,13 +790,13 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           </div>
                           <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
                             <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed on Oct 12, 2024</span>
+                            <span>Redeemed this week</span>
                             <span>•</span>
-                            <span className="text-badge-discount-text font-medium">Instant Counter Scan</span>
+                            <span className="text-badge-discount-text font-medium">Fast QR check-in</span>
                           </div>
                           <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                            Zero issues redeeming the VEMTAP code at counter. Cashier scanned it instantly and gave the
-                            discounted bill of ₦9,600 without any back and forth. Great atmosphere.
+                            Claiming {dealTitle.toLowerCase()} was quick and clear. The discount was easy to redeem at {dealBusiness},
+                            and the staff explained the offer without any confusion.
                           </p>
                           <div className="p-space-md rounded-xl bg-surface-subtle flex items-center gap-space-md mt-space-2xs">
                             <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-primary shadow-sm flex-shrink-0">
@@ -829,10 +804,10 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                             </div>
                             <div className="flex flex-col">
                               <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                                Staff Trained on VEMTAP
+                                Smooth redemption
                               </span>
                               <span className="font-caption text-caption text-text-secondary">
-                                Subtotal paid: ₦9,600 • Saved ₦5,200
+                                Fast queue, clear discount, easy follow-through.
                               </span>
                             </div>
                           </div>
@@ -854,16 +829,16 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           <div className="flex items-start justify-between gap-space-xs">
                             <div className="flex items-center gap-space-sm">
                               <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center text-secondary font-bold font-heading-sm text-heading-sm">
-                                KD
+                                RD
                               </div>
                               <div>
                                 <div className="flex items-center gap-space-2xs">
                                   <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Kemi Daniel
+                                    Repeat diner
                                   </h3>
                                   <Icon name="verified" className="text-primary text-[18px]" />
                                 </div>
-                                <p className="font-caption text-caption text-text-secondary">Verified Patron</p>
+                                <p className="font-caption text-caption text-text-secondary">Verified local customer</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 text-tertiary">
@@ -873,13 +848,13 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           </div>
                           <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
                             <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed on Oct 09, 2024</span>
+                            <span>Redeemed recently</span>
                             <span>•</span>
-                            <span className="text-badge-discount-text font-medium">Verified Lunch Service</span>
+                            <span className="text-badge-discount-text font-medium">Good value offer</span>
                           </div>
                           <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed max-w-3xl">
-                            Generous portion. You might not need dinner after this lunch combo. The craft peach tea was
-                            very refreshing and not overly sweet. Parking in front of the venue was simple too.
+                            The offer at {dealBusiness} felt worthwhile and well explained. The discount felt easy to redeem,
+                            and the overall experience matched what was promised in the app.
                           </p>
                         </div>
                         <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
@@ -916,14 +891,14 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                       <Icon name="help" className="text-primary text-[20px]" />
                       <div>
                         <p className="font-label-md text-label-md font-semibold text-text-primary">
-                          Can I use 2 vouchers if I bring a colleague?
+                          Can I use this offer if I visit with a friend?
                         </p>
                         <p className="font-body-md text-body-md text-text-secondary mt-1">
-                          Yes! Each diner can claim their own voucher in the VEMTAP app, or you can select ‘Claim for
-                          Someone Else’ and allocate a second voucher to their number.
+                          Each guest can claim their own voucher, or a single claim can be gifted to a friend through the
+                          VEMTAP flow. Check the active redemption window and venue terms before finalising your visit.
                         </p>
                         <span className="font-caption text-caption text-primary font-medium mt-2 block">
-                          — Answered by Urban Grill Support
+                          — Answered by {dealBusiness} support
                         </span>
                       </div>
                     </div>
@@ -1044,7 +1019,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                       rel="noreferrer"
                     >
                       <Icon name="chat" className="text-[16px]" />
-                      <span>WhatsApp Bistro</span>
+                      <span>WhatsApp {dealBusiness}</span>
                     </a>
                   </div>
                 </div>
@@ -1061,10 +1036,10 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                 </div>
                 <div className="flex-1">
                   <p className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    Urban Grill &amp; Bistro Hospitality Ltd.
+                    {dealBusiness}
                   </p>
                   <p className="font-caption text-caption text-text-secondary">
-                    CAC Registered • Apo Boulevard, Abuja
+                    Local partner • {dealLocation}
                   </p>
                 </div>
                 <Icon name="chevron_right" className="text-[18px] text-text-tertiary" />
@@ -1085,11 +1060,13 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
         open={dialog === 'comments'}
         onClose={() => setDialog(null)}
         onClaim={() => startClaim('identity')}
+        deal={selectedDeal}
       />
       <HowToClaimModal
         open={dialog === 'howTo'}
         onClose={() => setDialog(null)}
         onProceed={() => startClaim('claimConfirm')}
+        deal={selectedDeal}
       />
       <ClaimConfirmationModal
         open={dialog === 'claimConfirm'}
@@ -1099,6 +1076,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
       />
       <ClaimAuthModal
         open={dialog === 'auth'}
+        deal={selectedDeal}
         onClose={() => setDialog(null)}
         onAuthenticated={() => {
           signIn();
@@ -1132,6 +1110,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
       <RecipientVerificationModal
         open={dialog === 'verify'}
         recipient={claimRecipient}
+        deal={selectedDeal}
         onClose={() => setDialog(null)}
         onVerify={() => setDialog('summary')}
         onBack={() => setDialog('someoneElse')}
@@ -1139,12 +1118,14 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
       <RecipientSummaryModal
         open={dialog === 'summary'}
         recipient={claimRecipient}
+        deal={selectedDeal}
         onClose={() => setDialog(null)}
         onConfirm={completeClaim}
         onEdit={() => setDialog('someoneElse')}
       />
       <GiftRecipientDetailsModal
         open={dialog === 'gift'}
+        deal={selectedDeal}
         onClose={() => setDialog(null)}
         onContinue={(values) => {
           setClaimRecipient({
@@ -1158,6 +1139,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
       <ConfirmGiftSendModal
         open={dialog === 'giftConfirm'}
         recipient={claimRecipient}
+        deal={selectedDeal}
         onClose={() => setDialog(null)}
         onEdit={() => setDialog('gift')}
         onSend={completeClaim}

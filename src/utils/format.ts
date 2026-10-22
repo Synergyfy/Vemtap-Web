@@ -40,6 +40,18 @@ export function maskPhone(phone?: string | null): string {
   return `${country}${country ? ' ' : ''}${masked} ${visibleTail}`;
 }
 
+/** Convert a price from a number or formatted currency string into a numeric value. */
+export function parsePrice(value: number | string | null | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^\d.-]/g, '');
+    if (!cleaned) return 0;
+    const parsed = Number.parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 /** `9600` -> `₦9,600` */
 export function formatNaira(value: number): string {
   return `\u20A6${Math.round(value).toLocaleString('en-US')}`;

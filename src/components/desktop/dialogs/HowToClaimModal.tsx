@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Icon } from '../../ui/Icon';
+import { parsePrice } from '../../../utils/format';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+
+import type { ClaimDealSummary } from './ClaimIdentityModal';
 
 export interface HowToClaimModalProps {
   open: boolean;
   onClose: () => void;
   onProceed: () => void;
+  deal?: ClaimDealSummary | null;
 }
 
 interface Step {
@@ -17,7 +21,7 @@ interface Step {
   copy: string;
 }
 
-const STEPS: Step[] = [
+const buildSteps = (dealBusiness: string, dealLocation: string): Step[] => [
   {
     icon: 'touch_app',
     iconClass: 'bg-surface-tint-blue text-primary',
@@ -29,18 +33,18 @@ const STEPS: Step[] = [
   {
     icon: 'storefront',
     iconClass: 'bg-surface-container text-on-secondary-container',
-    title: '2. Visit the Featured Merchant',
+    title: `2. Visit ${dealBusiness}`,
     badge: 'Nearby',
     badgeClass: 'font-caption text-caption text-text-secondary bg-surface-container',
-    copy: 'Head to the active local branch during the valid redemption window for your selected offer.',
+    copy: `Head to the active branch in ${dealLocation} during the valid redemption window for this offer.`,
   },
   {
     icon: 'qr_code_2',
     iconClass: 'bg-badge-discount-bg text-badge-discount-text',
     title: '3. Show Voucher & Pay at Counter',
-    badge: 'Pay ₦9,600',
+    badge: 'Pay at Venue',
     badgeClass: 'font-label-sm text-label-sm text-primary font-bold',
-    copy: 'Present your offline-ready QR pass or 6-digit claim code to your server. Settle the discounted ₦9,600 via POS card swipe, transfer, or cash.',
+    copy: `Present your QR pass or claim code to the team at ${dealBusiness}. Settle the discounted total at the counter with card, transfer, or cash.`,
   },
 ];
 
@@ -52,8 +56,13 @@ const TERMS: string[] = [
   'NDPR compliant: Your personal payment details are never stored.',
 ];
 
-export function HowToClaimModal({ open, onClose, onProceed }: HowToClaimModalProps) {
+export function HowToClaimModal({ open, onClose, onProceed, deal }: HowToClaimModalProps) {
   const [agreed, setAgreed] = useState(true);
+  const dealTitle = deal?.title?.trim() || 'Featured local deal';
+  const dealBusiness = deal?.business?.trim() || 'Local dining partner';
+  const dealLocation = deal?.location?.trim() || 'your selected area';
+  const dealPrice = parsePrice(deal?.price);
+  const steps = buildSteps(dealBusiness, dealLocation);
 
   return (
     <DesktopModal
@@ -71,9 +80,9 @@ export function HowToClaimModal({ open, onClose, onProceed }: HowToClaimModalPro
           </div>
           <h2 className="font-heading-lg text-heading-lg text-on-surface tracking-tight">How to Claim &amp; Voucher Terms</h2>
           <p className="font-body-md text-body-md text-text-secondary flex items-center gap-1.5">
-            <span className="font-medium text-on-surface">Featured Local Deal</span>
+            <span className="font-medium text-on-surface">{dealTitle}</span>
             <span className="text-text-tertiary">•</span>
-            <span>Local dining partner</span>
+            <span>{dealBusiness}</span>
           </p>
         </div>
         <ModalCloseButton onClose={onClose} />
@@ -85,7 +94,7 @@ export function HowToClaimModal({ open, onClose, onProceed }: HowToClaimModalPro
             Simple 3-Step Redemption Flow
           </span>
           <div className="space-y-space-sm">
-            {STEPS.map((step) => (
+            {steps.map((step) => (
               <div
                 key={step.title}
                 className="flex items-start gap-space-md p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container-low/70 transition-colors"
@@ -151,7 +160,13 @@ export function HowToClaimModal({ open, onClose, onProceed }: HowToClaimModalPro
                 : 'bg-surface-container-high text-text-tertiary cursor-not-allowed'
             }`}
           >
-            <span>Understood, Proceed to Claim Deal (₦9,600)</span>
+            <span>
+              {`Understood, Proceed to Claim Deal (${new Intl.NumberFormat('en-NG', {
+                style: 'currency',
+                currency: 'NGN',
+                maximumFractionDigits: 0,
+              }).format(dealPrice)})`}
+            </span>
             <Icon name="arrow_forward" className="text-[20px]" />
           </button>
           <button

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { parsePrice } from '../utils/format';
 
 interface DealDetailScreenProps {
   onBack: () => void;
@@ -191,16 +192,16 @@ export function DealDetailScreen({
           <div className="flex items-baseline gap-space-sm mt-space-xs">
             <span className="font-display-hero-mobile text-display-hero-mobile text-text-primary font-bold">
               {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
-                typeof deal?.price === 'number' ? deal.price : 9600,
+                parsePrice(deal?.price),
               )}
             </span>
             <span className="font-body-md text-body-md text-text-tertiary line-through">
               {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
-                typeof deal?.oldPrice === 'number' ? deal.oldPrice : 12000,
+                parsePrice(deal?.oldPrice) || parsePrice(deal?.price),
               )}
             </span>
             <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
-              {deal?.discountLabel || 'Save ₦2,400'}
+              {deal?.discountLabel || (parsePrice(deal?.oldPrice) > parsePrice(deal?.price) ? `Save ${new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Math.max(parsePrice(deal?.oldPrice) - parsePrice(deal?.price), 0))}` : 'Save on this deal')}
             </span>
           </div>
         </div>
