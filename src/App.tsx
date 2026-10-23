@@ -2563,7 +2563,12 @@ function AppInner() {
               setRoute('dashboard');
             }}
             onBusinessSignIn={async () => {
-              setRoute('business-overview');
+              if (isBusinessSession) {
+                setRoute('business-overview');
+                return;
+              }
+              setBusinessOnboardingFrom('sign-in');
+              setRoute('business-onboarding');
             }}
           />
         );
@@ -2603,7 +2608,12 @@ function AppInner() {
             setRoute('dashboard');
           }}
           onBusinessSignIn={async () => {
-            setRoute('business-overview');
+            if (isBusinessSession) {
+              setRoute('business-overview');
+              return;
+            }
+            setBusinessOnboardingFrom('sign-in');
+            setRoute('business-onboarding');
           }}
         />
       );
