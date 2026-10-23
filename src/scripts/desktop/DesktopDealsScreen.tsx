@@ -5,12 +5,23 @@ import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadi
 import { useLocation } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
+import { dealEngagementService } from '../../services/dealEngagementService';
 
 interface DesktopDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenFilters: () => void;
   onOpenFeatured: () => void;
   onOpenDeal: (deal?: {
+    id?: string | number;
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  }) => void;
+  onOpenComments?: (deal?: {
     id?: string | number;
     title?: string;
     business?: string;
@@ -218,7 +229,7 @@ const toCatalogDeal = (offer: Record<string, unknown>): CatalogDeal => {
 
 const CONTEXT_CATEGORIES = ['All Deals', 'Food & Dining', 'Fashion & Wear', 'Wellness & Spa', 'Fitness'];
 
-export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onClaim }: DesktopDealsScreenProps) {
+export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onOpenComments, onClaim }: DesktopDealsScreenProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
@@ -226,7 +237,10 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   const [heroLiked, setHeroLiked] = useState(false);
   const [heroClaimed, setHeroClaimed] = useState(false);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
+  const [likedDeals, setLikedDeals] = useState<Record<string, boolean>>({});
+  const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [toast, setToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Deal Claimed Successfully!');
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const toastTimer = useRef<number | undefined>(undefined);
   const claimTimers = useRef<Record<string, number>>({});
@@ -278,11 +292,48 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     };
   }, []);
 
+  useEffect(() => {
+    let ignore = false;
+
+    const syncDealReactions = async () => {
+      if (!publicOffers.length) return;
+
+      const offers = publicOffers.filter(isUsableOffer).slice(0, 6);
+
+      for (const offer of offers) {
+        const dealId = String(
+          offer.id ?? offer.offerId ?? offer._id ?? offer.businessId ?? offer.branchId ?? `${getOfferBusinessName(offer)}-${getOfferTitle(offer)}`,
+        );
+
+        try {
+          const status = await dealEngagementService.getReactionStatus(dealId);
+          const payload = status as Record<string, unknown> | null;
+          const nextCount = getReactionCount(payload, 0);
+          const nextLiked = Boolean(payload?.liked ?? payload?.isLiked ?? false);
+
+          if (!ignore) {
+            setReactionCounts((prev) => ({ ...prev, [dealId]: nextCount }));
+            setLikedDeals((prev) => ({ ...prev, [dealId]: nextLiked }));
+          }
+        } catch (error) {
+          console.warn('[DesktopDealsScreen] Reaction status request failed for deal:', dealId, error);
+        }
+      }
+    };
+
+    syncDealReactions();
+
+    return () => {
+      ignore = true;
+    };
+  }, [publicOffers]);
+
   const claimDeal = (key: string) => {
     if (claimed[key]) {
       return;
     }
     setClaimed((prev) => ({ ...prev, [key]: true }));
+    setToastMessage('Deal Claimed Successfully!');
     setToast(true);
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(false), 3000);
@@ -293,8 +344,84 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     }, 3500);
   };
 
-  const toggleHeroLike = () => {
-    setHeroLiked((prev) => !prev);
+  const getReactionKey = (deal: { id?: string | number; store?: string; title?: string }) => String(
+    deal.id ?? `${deal.store ?? 'deal'}-${deal.title ?? 'offer'}`,
+  );
+
+  const toggleDealLike = async (key: string, offerId?: string, shouldLike?: boolean) => {
+    const previousLiked = Boolean(likedDeals[key]);
+    const previousCount = Number(reactionCounts[key] ?? 0);
+    const desiredLiked = typeof shouldLike === 'boolean' ? shouldLike : !previousLiked;
+    const reactionType = desiredLiked ? 'like' : 'dislike';
+    const targetOfferId = String(offerId ?? key);
+
+    try {
+      const { status } = await dealEngagementService.reactAndRefresh(targetOfferId, reactionType);
+      const payload = status as Record<string, unknown> | null;
+      const nextLiked = Boolean(payload?.liked ?? payload?.isLiked ?? desiredLiked);
+      const nextCount = getReactionCount(payload, previousCount);
+
+      setLikedDeals((prev) => ({ ...prev, [key]: nextLiked }));
+      setReactionCounts((prev) => ({ ...prev, [key]: nextCount }));
+    } catch (error) {
+      console.warn('[DesktopDealsScreen] Deal reaction update failed; keeping prior server state:', error);
+    }
+  };
+
+  const toggleHeroLike = async (shouldLike?: boolean) => {
+    const offerId = featuredDeal?.id ? String(featuredDeal.id) : null;
+    const previousLiked = heroLiked;
+    const previousCount = Number(reactionCounts[String(featuredDeal?.id ?? 'featured')] ?? 0);
+    const desiredLiked = typeof shouldLike === 'boolean' ? shouldLike : !previousLiked;
+    const reactionType = desiredLiked ? 'like' : 'dislike';
+
+    if (!offerId) {
+      return;
+    }
+
+    try {
+      const { status } = await dealEngagementService.reactAndRefresh(offerId, reactionType);
+      const payload = status as Record<string, unknown> | null;
+      const nextLiked = Boolean(payload?.liked ?? payload?.isLiked ?? desiredLiked);
+      const nextCount = getReactionCount(payload, previousCount);
+
+      setHeroLiked(nextLiked);
+      setReactionCounts((prev) => ({ ...prev, [offerId]: nextCount }));
+    } catch (error) {
+      console.warn('[DesktopDealsScreen] Featured deal reaction update failed; keeping prior server state:', error);
+    }
+  };
+
+  const getReactionCount = (payload: Record<string, unknown> | null | undefined, fallback = 0) => {
+    const record = (payload ?? {}) as Record<string, unknown>;
+    const counts = (record.counts ?? {}) as Record<string, unknown>;
+    const metrics = (record.metrics ?? {}) as Record<string, unknown>;
+
+    const candidate =
+      record.likes ??
+      record.count ??
+      record.totalLikes ??
+      record.reactionCount ??
+      record.likesCount ??
+      record.likeCount ??
+      record.likes_count ??
+      record.total_likes ??
+      record.reaction_count ??
+      counts.likes ??
+      metrics.likes ??
+      fallback;
+
+    const numeric = Number(candidate);
+    return Number.isFinite(numeric) ? Math.max(0, numeric) : fallback;
+  };
+
+  const getLikedCount = (baseCount: number) => Math.max(0, baseCount);
+
+  const showToastMessage = (message: string) => {
+    setToastMessage(message);
+    setToast(true);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(false), 2500);
   };
 
   const claimToast = toast ? (
@@ -303,8 +430,10 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
         <Icon name="check" className="text-[18px]" />
       </div>
       <div>
-        <p className="font-label-md text-label-md font-semibold">Deal Claimed Successfully!</p>
-        <p className="font-caption text-caption opacity-80">Saved to your wallet. Present QR in-store to redeem.</p>
+        <p className="font-label-md text-label-md font-semibold">{toastMessage}</p>
+        <p className="font-caption text-caption opacity-80">
+          {toastMessage === 'Deal Claimed Successfully!' ? 'Saved to your wallet. Present QR in-store to redeem.' : 'Open the deal page to join the conversation.'}
+        </p>
       </div>
     </div>
   ) : null;
@@ -766,27 +895,42 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   <div className="pt-space-md flex items-center justify-between gap-space-md border-t border-transparent">
                     <div className="flex items-center gap-space-md text-text-secondary">
                       <button
-                        className="flex items-center gap-1 transition-colors text-text-secondary hover:text-primary"
+                        className={`flex items-center gap-1 transition-colors ${heroLiked ? 'text-error' : 'text-text-secondary hover:text-error'} cursor-pointer`}
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          toggleHeroLike();
+                          const nextValue = !heroLiked;
+                          void toggleHeroLike(nextValue);
+                          showToastMessage(nextValue ? 'Saved to liked deals' : 'Removed from liked deals');
                         }}
                       >
                         <Icon
                           name="favorite"
-                          className={`text-[20px] ${heroLiked ? 'text-error' : 'text-tertiary'}`}
+                          className="text-[20px]"
                           filled={heroLiked}
                         />
-                        <span className="font-label-sm text-label-sm">148</span>
+                        <span className="font-label-sm text-label-sm">{getLikedCount(reactionCounts[String(featuredDeal?.id ?? 'featured')] ?? 0)}</span>
                       </button>
                       <button
-                        className="flex items-center gap-1 hover:text-primary transition-colors text-text-secondary"
+                        className="flex items-center gap-1 hover:text-primary transition-colors text-text-secondary cursor-pointer"
                         type="button"
-                        onClick={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const selected = {
+                            title: featuredDeal?.title ?? 'Featured deal',
+                            business: featuredDeal?.store ?? 'Nearby business',
+                            location: `${city}, ${district}`,
+                            price: Number.parseFloat(String(featuredDeal?.price ?? '0').replace(/[^\d.]/g, '')) || 0,
+                            oldPrice: Number.parseFloat(String(featuredDeal?.oldPrice ?? '0').replace(/[^\d.]/g, '')) || 0,
+                            discountLabel: featuredDeal?.save ?? 'Live Deal',
+                            image: featuredDeal?.image ?? '',
+                            commentCount: (featuredDeal as Record<string, unknown> | undefined)?.commentCount ?? (featuredDeal as Record<string, unknown> | undefined)?.commentsCount ?? 0,
+                          };
+                          onOpenComments?.(selected);
+                        }}
                       >
                         <Icon name="chat_bubble_outline" className="text-[20px]" />
-                        <span className="font-label-sm text-label-sm">32</span>
+                        <span className="font-label-sm text-label-sm">{Number((featuredDeal as Record<string, unknown> | undefined)?.commentCount ?? (featuredDeal as Record<string, unknown> | undefined)?.commentsCount ?? 0)}</span>
                       </button>
                     </div>
                     <button
@@ -942,17 +1086,42 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                     </div>
 
                     <div className="pt-space-xs flex items-center justify-between gap-space-sm border-t border-surface-subtle">
-                      <div className="flex flex-col">
-                        <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{deal.price}</span>
-                        <div className="flex items-center gap-1">
-                          <span className="font-caption text-caption text-text-tertiary line-through">
-                            {deal.oldPrice}
-                          </span>
-                          <span className="font-caption text-caption text-badge-discount-text font-semibold">
-                            {deal.save}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-2 text-text-secondary">
+                        <button
+                          type="button"
+                          className={`flex items-center gap-1 rounded-full px-2 py-1 transition-colors ${likedDeals[`${deal.store}-${deal.title}`] ? 'text-error bg-error/10' : 'text-text-secondary hover:text-error hover:bg-error/5'}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const key = getReactionKey({ id: deal.id, store: deal.store, title: deal.title });
+                            const nextValue = !Boolean(likedDeals[key]);
+                            void toggleDealLike(key, String(deal.id ?? key), nextValue);
+                            showToastMessage(nextValue ? 'Saved to liked deals' : 'Removed from liked deals');
+                          }}
+                        >
+                          <Icon name="favorite" className="text-[16px]" filled={Boolean(likedDeals[getReactionKey({ id: deal.id, store: deal.store, title: deal.title })])} />
+                          <span className="font-label-sm text-label-sm">{getLikedCount(reactionCounts[getReactionKey({ id: deal.id, store: deal.store, title: deal.title })] ?? 0)}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 rounded-full px-2 py-1 text-text-secondary transition-colors hover:text-primary hover:bg-primary/5"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenComments?.({
+                              title: deal.title,
+                              business: deal.store,
+                              location: `${city}, ${district}`,
+                              price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                              oldPrice: Number.parseFloat(String(deal.oldPrice ?? 0).replace(/[^\d.]/g, '')) || 0,
+                              discountLabel: deal.save,
+                              image: deal.image,
+                            });
+                          }}
+                        >
+                          <Icon name="chat_bubble_outline" className="text-[16px]" />
+                          <span className="font-label-sm text-label-sm">Comment</span>
+                        </button>
                       </div>
+
                       <button
                         className={`h-10 px-space-md rounded-xl font-button-secondary text-button-secondary flex items-center justify-center transition-colors ${
                           claimed[deal.title]

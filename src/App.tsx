@@ -1092,6 +1092,7 @@ function AppInner() {
   } | null>(null);
   const [dealFrom, setDealFrom] = useState<Route>('home');
   const [selectedDeal, setSelectedDeal] = useState<ClaimDealSummary | null>(null);
+  const [commentsModalOnly, setCommentsModalOnly] = useState(false);
   const [bizFrom, setBizFrom] = useState<Route>('discover');
   const [profileFrom, setProfileFrom] = useState<Route>('discover');
   const [catalogueFrom, setCatalogueFrom] = useState<Route>('storefront');
@@ -1458,6 +1459,13 @@ function AppInner() {
 
     setSelectedDeal(nextDeal ?? null);
     setRoute('deal-detail', nextDeal ?? null);
+  };
+
+  const openDealComments = (from: Route, deal?: ClaimDealSummary | null) => {
+    setDealFrom(from);
+    setSelectedDeal(deal ?? null);
+    setCommentsModalOnly(true);
+    setRoute(from);
   };
 
   const startClaim = (from: Route) => {
@@ -2234,7 +2242,10 @@ function AppInner() {
           setTermsFrom('deal-detail');
           setRoute('deal-terms');
         }}
-        onComments={() => setRoute('comments')}
+        onComments={() => {
+          setCommentsModalOnly(false);
+          setRoute('comments');
+        }}
         onReviews={() => setRoute('reviews')}
         onShare={() => setRoute('share')}
         onClaim={() => startClaim('deal-detail')}
@@ -2835,23 +2846,53 @@ function AppInner() {
     case 'deals':
       if (isDesktop)
         return (
-          <DesktopDealsScreen
-            onNav={feedNav}
-            onOpenFilters={() => openFeedRoute('filters', 'deals')}
-            onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
-            onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
-            onClaim={openClaimPopup}
-          />
+          <>
+            <DesktopDealsScreen
+              onNav={feedNav}
+              onOpenFilters={() => openFeedRoute('filters', 'deals')}
+              onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
+              onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
+              onOpenComments={(deal) => openDealComments('deals', deal ?? null)}
+              onClaim={openClaimPopup}
+            />
+            {commentsModalOnly ? (
+              <CommentsDrawer
+                open
+                deal={selectedDeal}
+                onClose={() => {
+                  setCommentsModalOnly(false);
+                  setRoute('deals');
+                }}
+                onClaim={() => {
+                  setCommentsModalOnly(false);
+                  setRoute('deal-detail');
+                  openClaimPopup();
+                }}
+              />
+            ) : null}
+          </>
         );
       return (
-        <DealsScreen
-          onTab={(tab) => setRoute(tab)}
-          onOpenFilters={() => openFeedRoute('filters', 'deals')}
-          onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
-          onOpenNotifications={() => setRoute('notifications')}
-          onClaim={openClaimPopup}
-          onAccount={() => setRoute('account')}
-        />
+        <>
+          <DealsScreen
+            onTab={(tab) => setRoute(tab)}
+            onOpenFilters={() => openFeedRoute('filters', 'deals')}
+            onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
+            onOpenNotifications={() => setRoute('notifications')}
+            onClaim={openClaimPopup}
+            onAccount={() => setRoute('account')}
+          />
+          {commentsModalOnly ? (
+            <CommentsSheet
+              open
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('deals');
+              }}
+            />
+          ) : null}
+        </>
       );
 
     case 'featured-deals':
@@ -2883,23 +2924,56 @@ function AppInner() {
 
     case 'comments':
       if (isDesktop)
-        return (
+        return commentsModalOnly ? (
+          <CommentsDrawer
+            open
+            deal={selectedDeal}
+            onClose={() => {
+              setCommentsModalOnly(false);
+              setRoute(dealFrom);
+            }}
+            onClaim={() => {
+              setCommentsModalOnly(false);
+              setRoute('deal-detail');
+              openClaimPopup();
+            }}
+          />
+        ) : (
           <>
             {renderDetail()}
             <CommentsDrawer
               open
-              onClose={() => setRoute('deal-detail')}
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('deal-detail');
+              }}
               onClaim={() => {
+                setCommentsModalOnly(false);
                 setRoute('deal-detail');
                 openClaimPopup();
               }}
             />
           </>
         );
-      return (
+      return commentsModalOnly ? (
+        <CommentsSheet
+          open
+          onClose={() => {
+            setCommentsModalOnly(false);
+            setRoute(dealFrom);
+          }}
+        />
+      ) : (
         <>
           {renderDetail()}
-          <CommentsSheet open onClose={() => setRoute('deal-detail')} />
+          <CommentsSheet
+            open
+            onClose={() => {
+              setCommentsModalOnly(false);
+              setRoute('deal-detail');
+            }}
+          />
         </>
       );
 

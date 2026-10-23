@@ -15,7 +15,7 @@ interface DealDetailScreenProps {
   onMerchant: () => void;
   claimed: boolean;
   onViewWallet: () => void;
-  deal?: { title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string } | null;
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string; commentCount?: number | string; commentsCount?: number | string } | null;
 }
 
 const HERO_IMAGE =
@@ -83,6 +83,7 @@ export function DealDetailScreen({
   const dealBusiness = deal?.business?.trim() || 'Local dining partner';
   const dealLocation = deal?.location?.trim() || 'Your area';
   const dealImage = deal?.image || HERO_IMAGE;
+  const commentsCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
 
   return (
     <AppScreen>
@@ -309,7 +310,7 @@ export function DealDetailScreen({
             className="flex items-center gap-1.5 py-1.5 px-3 rounded-full hover:bg-surface-subtle active:scale-95 transition-all"
           >
             <Icon name="chat_bubble" className="text-[18px] text-text-secondary" />
-            <span className="font-label-md text-label-md font-semibold text-text-secondary">32</span>
+            <span className="font-label-md text-label-md font-semibold text-text-secondary">{commentsCount}</span>
           </button>
           <div className="w-px h-5 bg-surface-container" />
           <button
