@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveDealBranch } from '../hooks/business/useLiveDealBranch';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
@@ -78,7 +79,10 @@ export function BusinessDealStudioStep3Screen({
   const [durationOpen, setDurationOpen] = useState(false);
   const [newTerm, setNewTerm] = useState('');
 
-  const selectedBranchCount = Object.values(studio.branches).filter(Boolean).length;
+  // Live: the deal runs at the active branch — show that one, not the samples.
+  const liveBranch = useLiveDealBranch();
+  const branchOptions: typeof BRANCH_OPTIONS = liveBranch.live ? [{ key: 'wuseII', name: liveBranch.name, address: liveBranch.area }] : BRANCH_OPTIONS;
+  const selectedBranchCount = liveBranch.live ? 1 : Object.values(studio.branches).filter(Boolean).length;
 
   const selectedDays = DAY_OPTIONS.filter((day) => studio.days[day.key]);
   const everyDay = selectedDays.length === DAY_OPTIONS.length;
@@ -355,7 +359,7 @@ export function BusinessDealStudioStep3Screen({
                 className="text-primary font-label-sm text-label-sm hover:underline flex items-center gap-1 shrink-0"
                 type="button"
                 onClick={() => {
-                  const allSelected = selectedBranchCount === BRANCH_OPTIONS.length;
+                  const allSelected = selectedBranchCount === branchOptions.length;
                   onStudioChange({
                     branches: {
                       wuseII: !allSelected,
@@ -366,12 +370,12 @@ export function BusinessDealStudioStep3Screen({
                 }}
               >
                 <Icon name="add_location_alt" className="text-[16px]" />
-                <span>{selectedBranchCount === BRANCH_OPTIONS.length ? 'Clear All' : 'Select All'}</span>
+                <span>{selectedBranchCount === branchOptions.length ? 'Clear All' : 'Select All'}</span>
               </button>
             </div>
             <div className="flex flex-col gap-space-xs">
-              {BRANCH_OPTIONS.map((branch) => {
-                const isActive = studio.branches[branch.key];
+              {branchOptions.map((branch) => {
+                const isActive = liveBranch.live || studio.branches[branch.key];
                 return (
                   <label
                     key={branch.key}

@@ -4,6 +4,8 @@ import { FilterMenu } from '../components/FilterMenu';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
+import { CatalogueItemsPanel } from '../components/business/CatalogueItemsPanel';
+import { hasApiConfig } from '../services/api/client';
 import { AddProductMethodsDialog } from '../components/import/AddProductMethodsDialog';
 import { ProductImportWizard } from '../components/import/ProductImportWizard';
 import { ImportedProductsReview } from '../components/import/ImportedProductsReview';
@@ -14,6 +16,7 @@ import { getCategoryImageByName, naira } from './catalogueData';
 import type { ImportedProduct } from './productImport/importTypes';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
 import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
+import { BusinessAddProductImageScreen } from './BusinessAddProductImageScreen';
 import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
 import { BusinessProductReviewScreen } from './BusinessProductReviewScreen';
 import { INITIAL_PRODUCT_DRAFT } from './productDraft';
@@ -207,7 +210,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
   const [toast, setToast] = useState<string | null>(null);
 
   // Manual add-product flow: reuses the same onboarding wizard steps.
-  const [manualStep, setManualStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [manualStep, setManualStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [manualDraft, setManualDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
 
   const importedItems = importedProducts.map(importedToItem);
@@ -250,7 +253,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
     );
   }
 
-  // Manual add-product: same four steps as onboarding, published into the catalogue.
+  // Manual add-product: same five steps as onboarding, published into the catalogue.
   if (manualStep > 0) {
     const changeManualDraft = (patch: Partial<ProductDraft>) =>
       setManualDraft((previous) => ({ ...previous, ...patch }));
@@ -307,7 +310,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
           />
         )}
         {manualStep === 3 && (
-          <BusinessAddProductStep3Screen
+          <BusinessAddProductImageScreen
             draft={manualDraft}
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(2)}
@@ -316,18 +319,42 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
           />
         )}
         {manualStep === 4 && (
+          <BusinessAddProductStep3Screen
+            draft={manualDraft}
+            onDraftChange={changeManualDraft}
+            onBack={() => setManualStep(3)}
+            onNext={() => setManualStep(5)}
+            onSaveDraft={() => setManualStep(0)}
+          />
+        )}
+        {manualStep === 5 && (
           <BusinessProductReviewScreen
             draft={manualDraft}
-            onBack={() => setManualStep(3)}
+            onBack={() => setManualStep(4)}
             onEditBasics={() => setManualStep(1)}
             onEditPricing={() => setManualStep(2)}
-            onEditBranches={() => setManualStep(3)}
-            onEditFulfillment={() => setManualStep(3)}
+            onEditImage={() => setManualStep(3)}
+            onEditBranches={() => setManualStep(4)}
+            onEditFulfillment={() => setManualStep(4)}
             onEditDescription={() => setManualStep(1)}
             onPublish={handleManualPublish}
             onSaveDraft={() => setManualStep(0)}
           />
         )}
+      </AppScreen>
+    );
+  }
+
+  // Live: the branch's real catalogue; the designed list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <BusinessHubHeader />
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
+          <h1 className="font-heading-md text-heading-md text-text-primary">Products &amp; Services</h1>
+          <CatalogueItemsPanel />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
       </AppScreen>
     );
   }

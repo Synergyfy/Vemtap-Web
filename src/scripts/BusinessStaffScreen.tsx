@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { TeamPanel } from '../components/business/TeamPanels';
+import { hasApiConfig } from '../services/api/client';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
@@ -328,6 +330,20 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
       </div>
     </>
   );
+
+  // Live: the real team from the API; the designed directory below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <BusinessHubHeader />
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
+          <h1 className="font-heading-md text-heading-md text-text-primary">Staff &amp; Permissions</h1>
+          <TeamPanel onInvite={onInvite} />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>

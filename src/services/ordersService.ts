@@ -193,14 +193,8 @@ const extractArray = (payload: unknown): OrderApiRecord[] => {
 
 export const ordersService = {
   getMyOrders: async (params?: Record<string, string | number | boolean | undefined>) => {
-    try {
-      const response = await api.get<unknown>('/catalogue/orders/my-orders', { params });
-      return extractArray(response).map((item) => normalizeOrderRecord(item)).filter(Boolean);
-    } catch (error) {
-      const fallback = await api.get<unknown>('/orders/my', { params }).catch(() => null);
-      if (!fallback) throw error;
-      return extractArray(fallback).map((item) => normalizeOrderRecord(item)).filter(Boolean);
-    }
+    const response = await api.get<unknown>('/catalogue/orders/my-orders', { params });
+    return extractArray(response).map((item) => normalizeOrderRecord(item)).filter(Boolean);
   },
 
   getQrThrivePublic: async (shortId: string) =>

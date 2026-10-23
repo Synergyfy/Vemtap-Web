@@ -4,6 +4,8 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessModeHeader } from './BusinessModeHeader';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useOverviewData } from '../hooks/business/useOverviewData';
+import { greeting, todayLabel } from '../utils/format';
 
 interface BusinessOverviewScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -45,7 +47,11 @@ export function BusinessOverviewScreen({
     return () => window.clearInterval(timer);
   }, []);
 
-  const stats = branch.stats;
+  const overview = useOverviewData();
+  const stats = overview.stats;
+  // Sample rows are demo-only; live mode shows the branch's latest orders and chats.
+  const recentOrders = overview.isLive ? overview.recentOrders : RECENT_ORDERS;
+  const recentMessages = overview.isLive ? overview.recentMessages : RECENT_MESSAGES;
 
   const todayStats = [
     {
@@ -69,7 +75,7 @@ export function BusinessOverviewScreen({
       iconBox: 'bg-tertiary-fixed text-tertiary',
       label: 'Bookings',
       value: stats.bookings,
-      note: 'Next in 35 mins',
+      note: overview.isLive ? 'All time' : 'Next in 35 mins',
       onClick: onOpenBookings,
     },
     {
@@ -114,17 +120,21 @@ export function BusinessOverviewScreen({
           <div className="px-margin pt-space-sm flex items-center justify-between gap-space-sm">
             <div className="flex flex-col min-w-0">
               <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-                Friday, Oct 18 • {branch.area}
+                {[todayLabel(), branch.area].filter(Boolean).join(' • ')}
               </span>
-              <h2 className="font-heading-md text-heading-md text-text-primary truncate">Good afternoon, Urban Grill</h2>
+              <h2 className="font-heading-md text-heading-md text-text-primary truncate">{greeting()}, {overview.businessName}</h2>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                  <Icon name="verified" filled className="text-[13px]" />
-                  Verified
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption font-medium">
-                  Growth Trial • 23 days left
-                </span>
+                {overview.verified ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                    <Icon name="verified" filled className="text-[13px]" />
+                    Verified
+                  </span>
+                ) : null}
+                {overview.planBadge ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption font-medium">
+                    {overview.planBadge}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -253,7 +263,10 @@ export function BusinessOverviewScreen({
                 </button>
               </div>
               <div className="flex flex-col gap-1.5">
-                {RECENT_ORDERS.map((order) => (
+                {!recentOrders.length ? (
+                  <p className="font-caption text-caption text-text-secondary px-1 py-2">No orders yet today.</p>
+                ) : null}
+                {recentOrders.map((order) => (
                   <button
                     className="flex items-center justify-between gap-2 bg-surface-subtle rounded-lg px-3 py-2 text-left active:scale-[0.99] transition-transform"
                     key={order.id}
@@ -297,10 +310,13 @@ export function BusinessOverviewScreen({
                 </button>
               </div>
               <div className="flex flex-col gap-1.5">
-                {RECENT_MESSAGES.map((message) => (
+                {!recentMessages.length ? (
+                  <p className="font-caption text-caption text-text-secondary px-1 py-2">No conversations yet.</p>
+                ) : null}
+                {recentMessages.map((message) => (
                   <button
                     className="flex items-center justify-between gap-2 bg-surface-subtle rounded-lg px-3 py-2 text-left active:scale-[0.99] transition-transform"
-                    key={message.name}
+                    key={`${message.name}-${message.time}`}
                     type="button"
                     onClick={onOpenMessages}
                   >

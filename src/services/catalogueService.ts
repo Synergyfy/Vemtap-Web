@@ -76,16 +76,6 @@ export const catalogueService = {
   updateOffer: async (id: string, payload: UpdateCatalogueOfferDto) =>
     api.patch<Record<string, unknown>>(API_ENDPOINTS.catalogue.offerById(id), payload),
 
-  getOfferBranchPricing: async (id: string) =>
-    api.get<{ branches: Array<{ branchId: string; isActive?: boolean; dealPrice?: number; quantity?: number }> }>(
-      API_ENDPOINTS.catalogue.offerBranchPricing(id),
-    ),
-
-  putOfferBranchPricing: async (
-    id: string,
-    body: { branches: Array<{ branchId: string; isActive?: boolean; dealPrice?: number; quantity?: number }> },
-  ) => api.put<Record<string, unknown>>(API_ENDPOINTS.catalogue.offerBranchPricing(id), body),
-
   getOfferStats: async (id: string, params?: Record<string, string | number | boolean | undefined>) =>
     api.get<Record<string, unknown>>(API_ENDPOINTS.catalogue.offerStats(id), { params }),
 

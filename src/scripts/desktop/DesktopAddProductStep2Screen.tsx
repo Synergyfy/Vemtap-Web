@@ -85,7 +85,7 @@ export function DesktopAddProductStep2Screen({
               <span className="font-caption text-caption text-text-secondary">Catalog Management</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Step 2 of 4: Price, Variants &amp; Stock
+              Step 2 of 5: Price, Variants &amp; Stock
             </h1>
             <p className="font-body-md text-body-md text-text-secondary mt-1">
               Configure pricing economics, multi-portion sizes, and real-time inventory tracking for Lagos branches.
@@ -605,7 +605,7 @@ export function DesktopAddProductStep2Screen({
               onClick={onNext}
               className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
             >
-              <span>Continue to Branch Availability</span>
+              <span>Continue to Product Image</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
           </div>

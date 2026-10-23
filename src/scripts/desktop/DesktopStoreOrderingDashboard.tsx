@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { hasApiConfig } from '../../services/api/client';
 import {
   STORE_ORDER_STATUS_CONFIG,
   type StoreOrder,
@@ -24,10 +26,21 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
     completeCollection,
     settings,
     setActivePosHandoffOrderId,
+    lastError,
+    clearLastError,
   } = useStoreOrdering();
 
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>('all');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const { branches, isLive: branchesLoaded } = useBusinessBranch();
+  // Live: the business's real branches (orders carry the branch id); demo: the sample branches.
+  const branchOptions = hasApiConfig()
+    ? (branchesLoaded ? branches : []).map((b) => ({ value: b.id ?? b.key, label: b.name }))
+    : [
+        { value: 'wuse-2', label: 'Wuse II Flagship' },
+        { value: 'maitama', label: 'Maitama Heights' },
+        { value: 'garki', label: 'Garki Branch' },
+      ];
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'total'>('newest');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -60,6 +73,12 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
     setToastMessage(msg);
     window.setTimeout(() => setToastMessage(null), 3000);
   };
+
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
 
   const filteredOrders = useMemo(() => {
     return orders
@@ -372,9 +391,11 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                 className="bg-transparent text-label-md font-semibold text-on-surface focus:outline-hidden cursor-pointer"
               >
                 <option value="all">All Branches</option>
-                <option value="wuse-2">Wuse II Flagship</option>
-                <option value="maitama">Maitama Heights</option>
-                <option value="garki">Garki Branch</option>
+                {branchOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 

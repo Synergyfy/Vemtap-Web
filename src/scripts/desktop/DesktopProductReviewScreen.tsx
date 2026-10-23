@@ -1,3 +1,5 @@
+import { LiveReviewStep } from '../../components/business/LiveItemSteps';
+import { hasApiConfig } from '../../services/api/client';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { isVariantProduct, getActiveVariants } from '../productVariants';
@@ -14,6 +16,8 @@ interface DesktopProductReviewScreenProps {
   onEditBranches: () => void;
   onEditFulfillment: () => void;
   onEditDescription: () => void;
+  /** Jumps to the dedicated image step; falls back to basics when unwired. */
+  onEditImage?: () => void;
   onEditSteps: () => void;
   onPublish: () => void;
   onSaveDraft: () => void;
@@ -39,7 +43,7 @@ const toNumber = (value: string) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-export function DesktopProductReviewScreen({
+function DemoDesktopProductReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -47,6 +51,7 @@ export function DesktopProductReviewScreen({
   onEditBranches,
   onEditFulfillment,
   onEditDescription,
+  onEditImage,
   onEditSteps,
   onPublish,
   onSaveDraft,
@@ -104,7 +109,7 @@ export function DesktopProductReviewScreen({
               <div>
                 <div className="flex items-center gap-space-xs">
                   <span className="font-label-sm text-label-sm text-primary uppercase tracking-wider font-semibold">
-                    Step 4 of 4
+                    Step 5 of 5
                   </span>
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
                   <span className="font-label-sm text-label-sm text-badge-discount-text font-medium">
@@ -183,7 +188,7 @@ export function DesktopProductReviewScreen({
                 <div className="absolute top-space-md right-space-md">
                   <button
                     type="button"
-                    onClick={onEditBasics}
+                    onClick={onEditImage ?? onEditBasics}
                     className="bg-surface-canvas/90 hover:bg-surface-canvas text-text-primary font-label-sm text-label-sm px-3 py-1.5 rounded-lg shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Icon name="edit" className="text-[16px] text-text-secondary" />
@@ -787,6 +792,37 @@ export function DesktopProductReviewScreen({
             </button>
           </div>
         </div>
+      </div>
+    </Shell>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function DesktopProductReviewScreen(props: DesktopProductReviewScreenProps) {
+  if (!hasApiConfig()) return <DemoDesktopProductReviewScreen {...props} />;
+  const Shell = props.onNav ? MerchantShell : BusinessSetupChrome;
+  return (
+    <Shell activeNav="catalog" onNav={props.onNav}>
+      <div className="max-w-4xl mx-auto w-full px-6 py-space-xl">
+      <LiveReviewStep
+        item={{
+    kind: 'product',
+    title: props.draft.title,
+    image: props.draft.mainImage,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: props.draft.lowStock ? [['Low-stock alert', `${props.draft.lowStock} units`]] : [],
+  }}
+        branchIds={Object.keys(props.draft.branches ?? {}).filter((id) => props.draft.branches[id])}
+        onBack={props.onBack}
+        onEditBasics={props.onEditBasics}
+        onEditPricing={props.onEditPricing}
+        onEditBranches={props.onEditBranches}
+        onPublish={props.onPublish}
+        onSaveDraft={props.onSaveDraft}
+      />
       </div>
     </Shell>
   );

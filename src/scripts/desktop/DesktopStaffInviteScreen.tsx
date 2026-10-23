@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { InviteStaffForm } from '../../components/business/TeamPanels';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
@@ -229,6 +231,21 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
   const submitLabel =
     submitState === 'idle' ? 'Send Invitation' : submitState === 'sending' ? 'Transmitting Token...' : 'Invitation Dispatched!';
   const submitIcon = submitState === 'idle' ? 'send' : submitState === 'sending' ? 'sync' : 'check_circle';
+
+  // Live: sends a real invite; the designed form below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <EnterpriseShell activeNav="business-staff" onNav={onNav}>
+        <div className="w-full py-space-xl flex flex-col gap-space-lg">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Invite a team member</h1>
+            <p className="font-body-md text-body-md text-text-secondary">They get an email to set up their sign-in.</p>
+          </div>
+          <InviteStaffForm onDone={() => onBack?.()} onCancel={() => onBack?.()} />
+        </div>
+      </EnterpriseShell>
+    );
+  }
 
   return (
     <EnterpriseShell activeNav="business-staff" onNav={onNav}>
@@ -661,7 +678,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     </label>
                     <input
                       autoComplete="new-password"
-                      className="w-full h-[52px] px-space-md rounded-xl bg-surface-subtle focus:bg-surface-canvas text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none focus:ring-2 focus:ring-primary/20"
+                      className="w-full h-[52px] px-space-md rounded-xl bg-surface-canvas border-2 border-outline-variant text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 shadow-sm"
                       id="staff-pin"
                       inputMode="numeric"
                       maxLength={6}
@@ -677,8 +694,10 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     </label>
                     <input
                       autoComplete="new-password"
-                      className={`w-full h-[52px] px-space-md rounded-xl bg-surface-subtle focus:bg-surface-canvas text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none focus:ring-2 ${
-                        confirmPin.length === 6 && !pinOk ? 'focus:ring-error/40 ring-2 ring-error/40' : 'focus:ring-primary/20'
+                      className={`w-full h-[52px] px-space-md rounded-xl bg-surface-canvas border-2 text-text-primary font-body-md text-body-md tracking-[0.4em] transition-all outline-none shadow-sm ${
+                        confirmPin.length === 6 && !pinOk
+                          ? 'border-error focus:border-error focus:ring-4 focus:ring-error/15'
+                          : 'border-outline-variant focus:border-primary-container focus:ring-4 focus:ring-primary-container/15'
                       }`}
                       id="staff-pin-confirm"
                       inputMode="numeric"

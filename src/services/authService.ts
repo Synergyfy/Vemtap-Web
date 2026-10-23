@@ -55,6 +55,13 @@ const readTokenValue = (payload: unknown, keys: string[]) => {
   return visit(payload);
 };
 
+/** Stores the tokens from any auth response (login, registration, role switch). */
+export const storeAuthResponse = (response: unknown) => {
+  const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
+  if (!accessToken) throw new Error('The response did not include an access token.');
+  setAuthTokens(accessToken, readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']));
+};
+
 export const authService = {
   login: async (payload: { identifier: string; password?: string }) => {
     const response = await api.post<AuthTokensResponse>('/auth/login', payload);
@@ -72,7 +79,7 @@ export const authService = {
   },
 
   requestPasswordReset: async (payload: { email: string }) => {
-    return api.post('/password-reset/request', payload);
+    return api.post('/auth/password-reset/request', payload);
   },
 
   changePassword: async (payload: { currentPassword: string; newPassword: string }) => {
@@ -80,7 +87,7 @@ export const authService = {
   },
 
   resetPassword: async (payload: { email: string; otp: string; newPassword: string }) => {
-    return api.post('/password-reset/reset', payload);
+    return api.post('/auth/password-reset/reset', payload);
   },
 
   requestCustomerOtp: async (payload: { firstName?: string; lastName?: string; email: string; phone?: string; branchId?: string }) => {
@@ -144,16 +151,23 @@ export const authService = {
     return response;
   },
 
-  logout: async () => {
-    const refreshToken = getRefreshToken();
+  /** Starts 2FA setup: a TOTP secret plus a scannable QR for authenticator apps (409 when already on). */
+  setupTwoFactor: () => api.post<{ secret: string; otpauthUrl: string; qrSvg: string }>('/auth/2fa/setup'),
+  confirmTwoFactor: (code: string) => api.post<{ enabled: boolean }>('/auth/2fa/confirm', { code }),
+  disableTwoFactor: (code: string) => api.post<{ enabled: boolean }>('/auth/2fa/disable', { code }),
 
+  requestPinReset: (payload: { email: string }) =>
+    api.post<{ message: string }>('/auth/customer/pin/forgot', payload),
+
+  resetPin: (payload: { email: string; otp: string; newPin: string }) =>
+    api.post<{ message: string }>('/auth/customer/pin/reset', payload),
+
+  /** Revokes this device's session server-side; a 401 means it is already gone. */
+  logout: async () => {
     try {
-      await api.post('/auth/logout', refreshToken ? { refreshToken } : {});
+      await api.post('/auth/logout');
     } catch (error) {
-      if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
-        console.warn('Logout endpoint is not implemented on the backend. Clearing local session only.');
-        return;
-      }
+      if (error instanceof ApiError && error.status === 401) return;
       throw error;
     } finally {
       clearAuthTokens();

@@ -1,4 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { uploadImage } from '../services/uploadService';
 import { Icon } from './ui/Icon';
 import { CreateWithAiButton } from './CreateWithAiButton';
 import type { AiPromptContext } from '../scripts/aiDesignAssistant';
@@ -50,10 +52,24 @@ export function ServiceImageUploader({
   aiContext,
 }: ServiceImageUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Live: photos are uploaded and stored by URL; demo keeps local previews.
+  const live = hasApiConfig();
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (live) {
+      setUploadError(null);
+      setUploading(true);
+      uploadImage(file)
+        .then(onImageChange)
+        .catch((error: unknown) => setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.'))
+        .finally(() => setUploading(false));
+      e.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -119,10 +135,12 @@ export function ServiceImageUploader({
             className="bg-surface-canvas/95 hover:bg-surface-canvas active:scale-95 text-text-primary px-3.5 py-2 rounded-xl shadow-md flex items-center gap-1.5 transition-all font-button-secondary text-button-secondary font-semibold"
           >
             <Icon className="text-[18px] text-primary" name="file_upload" />
-            <span>{currentImage ? 'Replace Photo' : 'Upload Photo'}</span>
+            <span>{uploading ? 'Uploading…' : currentImage ? 'Replace Photo' : 'Upload Photo'}</span>
           </button>
         </div>
       </div>
+
+      {uploadError ? <span role="alert" className="font-caption text-caption text-red-600">{uploadError}</span> : null}
 
       {/* Contextual AI option — the upload action above stays unchanged */}
       <div>
@@ -134,7 +152,8 @@ export function ServiceImageUploader({
         />
       </div>
 
-      {/* Preset Gallery Selector */}
+      {/* Preset Gallery Selector (sample photos — demo only) */}
+      {live ? null : (
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="font-caption text-caption text-text-secondary font-medium">
@@ -181,6 +200,7 @@ export function ServiceImageUploader({
           })}
         </div>
       </div>
+      )}
     </div>
   );
 }

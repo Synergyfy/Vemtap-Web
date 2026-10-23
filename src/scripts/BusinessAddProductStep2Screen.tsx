@@ -64,7 +64,7 @@ export function BusinessAddProductStep2Screen({
           </button>
           <div className="flex flex-col items-center justify-center flex-1 truncate px-space-xs">
             <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-              Step 2 of 4
+              Step 2 of 5
             </span>
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">Add New Product</h1>
           </div>
@@ -87,11 +87,11 @@ export function BusinessAddProductStep2Screen({
       <div className="flex flex-col w-full pb-32">
         <div className="px-margin pt-space-md pb-space-xs flex flex-col gap-space-2xs">
           <div className="flex items-center justify-between text-on-surface-variant font-caption text-caption mb-1">
-            <span className="font-label-md text-label-md font-semibold text-primary">Step 2 of 4</span>
-            <span className="text-text-secondary font-medium">50% Completed</span>
+            <span className="font-label-md text-label-md font-semibold text-primary">Step 2 of 5</span>
+            <span className="text-text-secondary font-medium">40% Completed</span>
           </div>
           <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
-            <div className="h-full bg-primary-container rounded-full w-1/2 transition-all duration-500 ease-out" />
+            <div className="h-full bg-primary-container rounded-full w-2/5 transition-all duration-500 ease-out" />
           </div>
         </div>
 
@@ -430,7 +430,7 @@ export function BusinessAddProductStep2Screen({
           type="button"
           onClick={onNext}
         >
-          <span>Continue to Branch Availability</span>
+          <span>Continue to Product Image</span>
           <Icon name="arrow_forward" className="text-[20px]" />
         </button>
         <button

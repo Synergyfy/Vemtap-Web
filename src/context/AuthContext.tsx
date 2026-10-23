@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { clearAuthTokens, getAccessToken, hasApiConfig } from '../lib/api';
 import { authService } from '../services';
+import { storeAuthResponse } from '../services/authService';
+import { SESSION_EXPIRED_EVENT } from '../services/api/client';
+import { queryClient } from '../services/queryClient';
+import type { SessionUser } from '../services/sessionService';
 import { socketService } from '../services/socketService';
+import { clearBusinessSetupSnapshot } from '../scripts/businessSetup';
 
 interface AuthCredentials {
   identifier?: string;
@@ -13,8 +18,11 @@ interface AuthCredentials {
 interface AuthContextValue {
   authed: boolean;
   claimed: boolean;
-  signIn: (credentials?: AuthCredentials) => Promise<void>;
+  /** Resolves with the signed-in user when the API is configured (undefined in demo mode). */
+  signIn: (credentials?: AuthCredentials) => Promise<SessionUser | undefined>;
   signOut: () => Promise<void>;
+  /** Signs in with a session issued by registration or a role upgrade (`{ access_token, user }`). */
+  adoptSession: (response: { access_token?: string; user?: SessionUser }) => SessionUser | undefined;
   markAuthenticated: (next?: boolean) => void;
   markClaimed: () => void;
   resetClaim: () => void;
@@ -25,6 +33,7 @@ const DEFAULT_VALUE: AuthContextValue = {
   claimed: false,
   signIn: async () => undefined,
   signOut: async () => undefined,
+  adoptSession: () => undefined,
   markAuthenticated: () => undefined,
   markClaimed: () => undefined,
   resetClaim: () => undefined,
@@ -137,6 +146,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(() => readFlag(AUTHED_KEY) || Boolean(getAccessToken()));
   const [claimed, setClaimed] = useState(() => readClaimedState());
 
+  // The API rejected the token (expired or revoked): drop the local session.
+  useEffect(() => {
+    const handleExpired = () => {
+      if (!readFlag(AUTHED_KEY)) return;
+      clearStoredProfile();
+      queryClient.clear();
+      writeFlag(AUTHED_KEY, false);
+      setAuthed(false);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+  }, []);
   useEffect(() => {
     if (authed) {
       socketService.connect('/messaging');
@@ -171,9 +192,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               password: password.trim(),
             });
             persistProfileFromUser(response);
+            const user = (response as { user?: SessionUser }).user;
+            if (user) queryClient.setQueryData(['session', 'profile'], user);
             writeFlag(AUTHED_KEY, true);
             setAuthed(true);
-            return;
+            return user;
           } catch (error) {
             console.error('Login failed:', error);
             clearStoredProfile();
@@ -186,6 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         writeFlag(AUTHED_KEY, true);
         clearAuthTokens();
         setAuthed(true);
+        return undefined;
       },
       signOut: async () => {
         if (hasApiConfig()) {
@@ -197,7 +221,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } finally {
             clearStoredProfile();
             clearStoredClaims();
+            // Setup progress belongs to this owner; the next person starts clean.
+            clearBusinessSetupSnapshot();
             clearAuthTokens();
+            queryClient.clear();
             writeFlag(AUTHED_KEY, false);
             writeFlag(CLAIMED_KEY, false);
             setAuthed(false);
@@ -213,6 +240,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         writeFlag(CLAIMED_KEY, false);
         setAuthed(false);
         setClaimed(false);
+      },
+      adoptSession: (response) => {
+        storeAuthResponse(response);
+        persistProfileFromUser(response);
+        if (response.user) queryClient.setQueryData(['session', 'profile'], response.user);
+        writeFlag(AUTHED_KEY, true);
+        setAuthed(true);
+        return response.user;
       },
       markAuthenticated: (next = true) => {
         writeFlag(AUTHED_KEY, next);

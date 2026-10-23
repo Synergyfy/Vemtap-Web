@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
 import { Icon } from '../../components/ui/Icon';
 import { AudienceSelector } from '../../components/campaigns/AudienceSelector';
 import { CampaignShell } from './CampaignShell';
@@ -6,14 +8,14 @@ import { CampaignStepper, type CampaignStepKey } from '../../components/campaign
 import { CampaignConfirmDialog } from '../../components/campaigns/CampaignConfirmDialog';
 import { ScheduleControls, type SendMode } from '../../components/campaigns/ScheduleControls';
 import { useCampaigns } from '../../context/CampaignsContext';
-import { useContacts } from '../../context/ContactsContext';
+import { useCampaignAudience } from '../../hooks/business/useCampaignAudience';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { SmsComposer } from './SmsComposer';
 import { EmailComposer } from './EmailComposer';
 import type { BusinessTabKey } from '../../components/BusinessTabBar';
 import {
   CAMPAIGN_TIMEZONE,
   BUSINESS_NAME,
-  buildAudiencePool,
   defaultScheduleValue,
   describeAudience,
   emptyDraft,
@@ -59,11 +61,16 @@ export function CampaignBuilderScreen({
   onExit,
   onCompleted,
 }: CampaignBuilderScreenProps) {
-  const { upsertCampaign } = useCampaigns();
-  const { contacts } = useContacts();
-  const pool = useMemo(() => buildAudiencePool(contacts), [contacts]);
+  const { upsertCampaign, live } = useCampaigns();
+  const { pool } = useCampaignAudience();
+  const myBusiness = useMyBusiness();
 
   const [draft, setDraft] = useState<CampaignRecord>(() => (initial ? { ...initial } : emptyDraft(channel)));
+  // Live: the placeholder sender name becomes the real business name.
+  const liveName = myBusiness.data?.name;
+  useEffect(() => {
+    if (liveName) setDraft((d) => (!d.senderName || d.senderName === BUSINESS_NAME ? { ...d, senderName: liveName } : d));
+  }, [liveName]);
   const [step, setStep] = useState<CampaignStepKey>('audience');
   const [completed, setCompleted] = useState<CampaignStepKey[]>([]);
   const [templateKey, setTemplateKey] = useState<string | undefined>(undefined);
@@ -196,8 +203,8 @@ export function CampaignBuilderScreen({
     else onExit();
   };
 
-  /** Shared save used by "Save draft" and by the final send/schedule flow. */
-  const persist = (status: CampaignRecord['status'], extra: Partial<CampaignRecord> = {}): CampaignRecord => {
+  /** The record as it stands, with a history entry for this step. */
+  const buildRecord = (status: CampaignRecord['status'], extra: Partial<CampaignRecord> = {}): CampaignRecord => {
     const now = Date.now();
     const history = [...draft.history];
     if (status === 'scheduled') {
@@ -206,13 +213,15 @@ export function CampaignBuilderScreen({
       history.push({
         at: now,
         kind: 'queued',
-        label: `Queued in demonstration mode for ${formatNumber(outcome.eligible.length)} recipients`,
+        label: hasApiConfig()
+          ? `Sent to ${formatNumber(outcome.eligible.length)} recipients`
+          : `Queued in demonstration mode for ${formatNumber(outcome.eligible.length)} recipients`,
       });
     } else {
       history.push({ at: now, kind: 'saved', label: 'Draft saved' });
     }
 
-    const record: CampaignRecord = {
+    return {
       ...draft,
       ...extra,
       status,
@@ -223,6 +232,11 @@ export function CampaignBuilderScreen({
       updatedAt: now,
       history,
     };
+  };
+
+  /** Shared save used by "Save draft" and by the demo send/schedule flow. */
+  const persist = (status: CampaignRecord['status'], extra: Partial<CampaignRecord> = {}): CampaignRecord => {
+    const record = buildRecord(status, extra);
     upsertCampaign(record);
     setDraft(record);
     return record;
@@ -261,9 +275,35 @@ export function CampaignBuilderScreen({
     setConfirmOpen(true);
   };
 
+  /** Live: the server sends now, or keeps it scheduled and sends it when due. */
+  const confirmLiveSend = async (send: NonNullable<typeof live>['send']) => {
+    const scheduled = sendMode === 'schedule';
+    const record = buildRecord(scheduled ? 'scheduled' : 'sending', {
+      scheduledAt: scheduled ? scheduledTimestamp : undefined,
+      sentAt: scheduled ? undefined : Date.now(),
+    });
+    try {
+      const result = await send(
+        record,
+        outcome.eligible.map((contact) => contact.key),
+      );
+      setDraft(result);
+      setConfirmOpen(false);
+      onCompleted(result);
+    } catch (error) {
+      showToast(apiErrorMessage(error, 'Could not send the campaign.'), 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const confirmSend = () => {
     if (submitting) return;
     setSubmitting(true);
+    if (live) {
+      void confirmLiveSend(live.send);
+      return;
+    }
     window.setTimeout(() => {
       const record = persist(sendMode === 'schedule' ? 'scheduled' : 'sending', {
         scheduledAt: sendMode === 'schedule' ? scheduledTimestamp : undefined,
@@ -437,7 +477,9 @@ export function CampaignBuilderScreen({
                   value={
                     sendMode === 'schedule' && scheduledTimestamp
                       ? `${formatDateTime(scheduledTimestamp)} · ${CAMPAIGN_TIMEZONE.long}`
-                      : 'Immediately after confirmation (queued locally)'
+                      : hasApiConfig()
+                        ? 'Immediately after confirmation'
+                        : 'Immediately after confirmation (queued locally)'
                   }
                   icon={sendMode === 'schedule' ? 'schedule' : 'bolt'}
                 />
@@ -485,7 +527,10 @@ export function CampaignBuilderScreen({
                 />
                 <span className="font-label-sm text-label-sm text-text-secondary">
                   I confirm these customers opted in to {channel === 'sms' ? 'SMS' : 'email'} marketing, that excluded
-                  contacts will not be contacted, and that this is a demonstration send until a provider is connected.
+                  contacts will not be contacted
+                  {hasApiConfig()
+                    ? `, and that sending uses this business’s ${channel === 'sms' ? 'SMS' : 'email'} credits.`
+                    : ', and that this is a demonstration send until a provider is connected.'}
                 </span>
               </label>
               {attempted('review') && !consentConfirmed && (

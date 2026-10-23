@@ -101,6 +101,9 @@ export interface SegmentCriteria {
     minTotal?: number;
     minAverageTicket?: number;
   };
+  loyalty?: {
+    minPoints: number;
+  };
 }
 
 export interface SegmentSummary {
@@ -108,8 +111,33 @@ export interface SegmentSummary {
   name: string;
   type: 'static' | 'dynamic';
   size?: number;
+  description?: string | null;
+  branchId?: string | null;
   criteria?: SegmentCriteria;
   lastComputedAt?: string;
+}
+
+export interface SegmentReach {
+  size: number;
+  reachableByPush?: number;
+  reachableBySms?: number;
+  reachableByEmail?: number;
+}
+
+/** `GET /segments/:id/insights` — spend, frequency, branch mix, favourites and sample patrons. */
+export interface SegmentInsights extends SegmentReach {
+  segmentId: string;
+  name: string;
+  type: 'static' | 'dynamic';
+  excludedFromPromotions?: number;
+  totalSpend: number;
+  avgOrderValue: number;
+  visitFrequency: number;
+  spendDelta: number | null;
+  aovDelta: number | null;
+  branchSplit: { branchId: string; name: string; percent: number }[];
+  favourites: { itemId: string; name: string; orders: number }[];
+  samplePatrons: { userId: string; name: string; avatarUrl: string | null; lastVisit: string | null; spend: number }[];
 }
 
 export interface PromotionAudience {
@@ -152,8 +180,12 @@ export interface BoostGoalOption {
 export interface AdWalletTransaction {
   id: string;
   type: string;
-  amount: number;
-  status: string;
+  amount: number | string;
+  direction?: 'credit' | 'debit' | 'adjustment';
+  description?: string | null;
+  reference?: string | null;
+  /** Older mock rows only; the API has no per-row status. */
+  status?: string;
   createdAt: string;
 }
 
@@ -162,10 +194,36 @@ export interface AdWalletSummary {
   reserved: number;
   spendable: number;
   walletRef?: string;
+  currency?: string;
+  card?: { brand?: string | null; last4?: string | null; bank?: string | null } | null;
+  autoReload?: { enabled: boolean; threshold: number | string; amount: number | string; lastError?: string | null } | null;
   virtualAccount?: {
     bank: string;
     number: string;
   };
+}
+
+export interface AdWalletPrepack {
+  id: string;
+  amount: number | string;
+  bonus: number | string;
+  label: string;
+  tier?: string | null;
+}
+
+export interface AdWalletInvoice {
+  id: string;
+  invoiceNo?: string | null;
+  amount: number | string;
+  status: string;
+  date: string;
+  campaign?: { id: string; name?: string | null; kind: string } | null;
+}
+
+export interface AdWalletPage<T> {
+  data: T[];
+  total: number;
+  hasNextPage: boolean;
 }
 
 export interface ApiListResponse<T> {

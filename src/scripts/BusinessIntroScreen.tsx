@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -105,9 +105,16 @@ const CORE_TOOLS: CoreTool[] = [
 export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps) {
   const [radius, setRadius] = useState(1500);
   const [toolsOpen, setToolsOpen] = useState(true);
+  const howItWorksRef = useRef<HTMLDivElement | null>(null);
 
   const radiusLabel = `${(radius / 1000).toFixed(1)} km radius`;
   const reachCount = Math.round((radius / 1000) * (radius / 1000) * 1280).toLocaleString('en-US');
+
+  /** "Learn How VEMTAP Works" reveals and scrolls to the tools section (desktop parity). */
+  const scrollToHowItWorks = () => {
+    setToolsOpen(true);
+    window.setTimeout(() => howItWorksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
 
   return (
     <AppScreen>
@@ -211,7 +218,11 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
           </div>
         </div>
 
-        <div className="px-margin pt-space-md pb-space-xs flex items-center justify-between">
+        <div
+          className="px-margin pt-space-md pb-space-xs flex items-center justify-between scroll-mt-20"
+          id="how-it-works"
+          ref={howItWorksRef}
+        >
           <div>
             <h3 className="font-heading-sm text-heading-sm text-text-primary">What VEMTAP Does for You</h3>
             <p className="font-caption text-caption text-text-secondary">
@@ -271,7 +282,7 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
       </div>
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_-8px_24px_rgba(17,24,39,0.06)] px-margin pt-space-sm pb-safe flex flex-col gap-2">
-        <div className="flex items-center justify-center gap-2 text-text-secondary">
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-text-secondary">
           <span className="font-caption text-caption flex items-center gap-1 font-medium">
             <Icon className="text-[14px] text-badge-discount-text" name="check_circle" />
             Free to join
@@ -286,6 +297,11 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
             <Icon className="text-[14px] text-primary" name="verified_user" />
             Verified merchants
           </span>
+          <span className="text-text-tertiary">•</span>
+          <span className="font-caption text-caption flex items-center gap-1 font-medium">
+            <Icon className="text-[14px] text-primary" name="shield" />
+            NDPR Compliant
+          </span>
         </div>
         <button
           className="w-full h-[52px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:scale-[0.98] transition-transform"
@@ -295,14 +311,25 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
           <span>Set Up My Business</span>
           <Icon name="arrow_forward" className="text-[20px]" />
         </button>
-        <button
-          className="w-full h-9 flex items-center justify-center gap-1 text-text-secondary font-button-secondary text-button-secondary hover:text-text-primary transition-colors"
-          type="button"
-          onClick={onBack}
-        >
-          <span>Learn How VEMTAP Works</span>
-          <Icon name="open_in_new" className="text-[18px]" />
-        </button>
+        <div className="flex items-center justify-center gap-space-sm">
+          <button
+            className="h-9 flex items-center justify-center gap-1 text-text-secondary font-button-secondary text-button-secondary hover:text-text-primary transition-colors"
+            type="button"
+            onClick={scrollToHowItWorks}
+          >
+            <span>Learn How VEMTAP Works</span>
+            <Icon name="expand_more" className="text-[18px]" />
+          </button>
+          <span className="text-text-tertiary">•</span>
+          <button
+            className="h-9 flex items-center justify-center gap-1 text-text-secondary font-button-secondary text-button-secondary hover:text-text-primary transition-colors"
+            type="button"
+            onClick={onBack}
+          >
+            <span>Book 10-Min Demo</span>
+            <Icon name="open_in_new" className="text-[16px]" />
+          </button>
+        </div>
       </div>
     </AppScreen>
   );

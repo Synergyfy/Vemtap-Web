@@ -14,7 +14,16 @@ export class ApiError extends Error {
     this.status = status;
     this.payload = payload;
   }
+
+  /** Machine-readable slug from the error body's `error` field, e.g. `PLAN_LIMIT_REACHED`. */
+  get code(): string | undefined {
+    const value = this.payload && typeof this.payload === 'object' ? (this.payload as { error?: unknown }).error : undefined;
+    return typeof value === 'string' ? value : undefined;
+  }
 }
+
+/** Fired on `window` when the API answers 401 (no or expired token), so the app can sign in again. */
+export const SESSION_EXPIRED_EVENT = 'vemtap:session-expired';
 
 const normalizeApiBaseUrl = (value: string) => {
   const base = value.trim().replace(/\/+$/, '');
@@ -181,10 +190,14 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
 
     if (response.status === 401 && !isAuthAttempt) {
       clearAuthTokens();
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
 
+    // Validation failures send `message` as an array of field errors.
+    const rawMessage = payload && typeof payload === 'object' ? (payload as { message?: unknown }).message : undefined;
     const messageText =
-      (payload && typeof payload === 'object' && 'message' in payload && typeof (payload as { message?: unknown }).message === 'string' && (payload as { message: string }).message)
+      (Array.isArray(rawMessage) && rawMessage.filter((m) => typeof m === 'string').join('. '))
+      || (typeof rawMessage === 'string' && rawMessage)
         || (payload && typeof payload === 'object' && 'error' in payload && typeof (payload as { error?: unknown }).error === 'string' && (payload as { error: string }).error)
         || (typeof payload === 'string' && payload.trim())
         || `Request failed with status ${response.status}`;
@@ -209,3 +222,27 @@ export const api = {
 
 export const getApiBaseUrl = () => API_BASE_URL;
 export const hasApiConfig = () => Boolean(API_BASE_URL);
+
+/**
+ * Multipart upload (`field` defaults to `file`). Same auth and error handling
+ * as `request`, but the browser sets the multipart boundary header itself.
+ */
+export async function uploadFile<TResponse>(path: string, file: File, field = 'file'): Promise<TResponse> {
+  if (!API_BASE_URL) throw new Error('API is not configured. Set VITE_API_BASE_URL in your environment.');
+  const form = new FormData();
+  form.append(field, file, file.name);
+  const headers: Record<string, string> = {};
+  const accessToken = getAccessToken();
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(buildUrl(path), { method: 'POST', headers, body: form });
+  const payload = response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthTokens();
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
+    const message = payload && typeof payload === 'object' ? (payload as { message?: unknown }).message : payload;
+    throw new ApiError(Array.isArray(message) ? message.join('. ') : String(message || `Upload failed with status ${response.status}`), response.status, payload);
+  }
+  return payload as TResponse;
+}

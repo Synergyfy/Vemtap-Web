@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useBusinessQr } from '../hooks/business/useBusinessQr';
 
 const QR_IMAGE = {
   src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB9LSZ0igpV-CzTdKx1j3WTuqqk8z-z4zHbkTwlWq_Us36LF0sXWxrMC9drNESSSdhIOk60Y_blTQOZWSN-Qe-ptseWhVCz3tdDvzmd5QVtkBrWoLKHqpU-r_KceD4kqRqrtoPKE8EIO97exb7M41GPwNBM8JW7ClSzY6-bOtBv0awBILMrgU2-sudicSDAZN7lyGO8LRmo8iLeqeqVPxjp3ZFG9_PZbP53VjS8hQcBMiawormtvD1OMA',
@@ -13,6 +14,13 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const copyTimer = useRef<number | null>(null);
+  // Live: this business's own link, QR and details; demo keeps the sample.
+  const qr = useBusinessQr();
+  const businessUrl = qr.url ?? BUSINESS_LINK;
+  const businessLink = qr.link ?? 'vemtap.com/biz/urban-grill';
+  const businessName = qr.live ? qr.name ?? 'Your business' : 'Urban Grill & Bistro';
+  const businessArea = qr.live ? [qr.category, qr.area].filter(Boolean).join(' • ') || 'Your storefront on VEMTAP' : 'Artisan Smokehouse & Grill • Maitama, Abuja';
+  const coverImage = qr.live && qr.cover ? { src: qr.cover, alt: `${businessName} storefront` } : QR_IMAGE;
 
   useEffect(
     () => () => {
@@ -27,7 +35,7 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
   };
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(BUSINESS_LINK).catch(() => {});
+    navigator.clipboard?.writeText(businessUrl).catch(() => {});
     setCopied(true);
     if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
     copyTimer.current = window.setTimeout(() => setCopied(false), 2200);
@@ -120,6 +128,9 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
             </div>
           </div>
           <div className="relative w-56 h-56 bg-surface-container-lowest rounded-xl p-space-sm flex items-center justify-center shadow-md">
+            {qr.qrImage ? (
+              <img src={qr.qrImage} alt={`QR code for ${businessName}`} className="w-full h-full" style={{ imageRendering: 'pixelated' }} />
+            ) : (
             <svg className="w-full h-full text-on-surface" fill="currentColor" viewBox="0 0 160 160">
               <rect height="40" rx="6" width="40" x="10" y="10" />
               <rect fill="#FFFFFF" height="28" rx="3" width="28" x="16" y="16" />
@@ -174,6 +185,7 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
               <rect height="6" rx="1" width="6" x="98" y="144" />
               <rect height="6" rx="1" width="6" x="112" y="144" />
             </svg>
+            )}
             <div className="absolute inset-0 m-auto w-12 h-12 rounded-xl bg-surface-canvas shadow-lg flex items-center justify-center p-1">
               <div className="w-full h-full bg-primary-container rounded-lg flex items-center justify-center">
                 <Icon name="electric_bolt" className="text-on-primary text-[24px]" />
@@ -181,17 +193,15 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
             </div>
           </div>
           <div className="mt-space-md text-center flex flex-col items-center w-full">
-            <h3 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Urban Grill &amp; Bistro</h3>
-            <p className="font-caption text-caption text-text-secondary mt-space-2xs">
-              Artisan Smokehouse &amp; Grill • Maitama, Abuja
-            </p>
+            <h3 className="font-heading-sm text-heading-sm text-on-surface font-semibold">{businessName}</h3>
+            <p className="font-caption text-caption text-text-secondary mt-space-2xs">{businessArea}</p>
             <button
               className="mt-space-sm inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-container-low hover:bg-surface-container active:scale-95 transition cursor-pointer"
               type="button"
               onClick={handleCopy}
             >
               <Icon name="link" className="text-[15px] text-primary" />
-              <span className="font-label-sm text-label-sm text-on-surface font-medium">vemtap.com/biz/urban-grill</span>
+              <span className="font-label-sm text-label-sm text-on-surface font-medium">{businessLink}</span>
               <Icon
                 name={copied ? 'check' : 'content_copy'}
                 className={`text-[15px] ml-space-2xs ${copied ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
@@ -214,11 +224,13 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
               <span>Present Fullscreen</span>
             </button>
             <button
-              className="h-12 px-space-sm rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center gap-space-xs font-label-md text-label-md font-semibold transition active:scale-[0.98] shadow-sm"
+              className="h-12 px-space-sm rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center gap-space-xs font-label-md text-label-md font-semibold transition active:scale-[0.98] shadow-sm disabled:opacity-60"
               type="button"
+              onClick={qr.live ? qr.downloadKit : undefined}
+              disabled={qr.downloading}
             >
               <Icon name="download" className="text-[18px]" />
-              <span>Download Kit</span>
+              <span>{qr.downloading ? 'Preparing…' : qr.kitError ? 'Try again' : 'Download Kit'}</span>
             </button>
           </div>
           <div className="mt-space-xs mb-space-lg w-full">
@@ -233,14 +245,12 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
             </div>
             <div className="w-full bg-surface-canvas rounded-2xl shadow-md overflow-hidden transition-all duration-300">
               <div className="relative h-28 w-full overflow-hidden">
-                <img className="w-full h-full object-cover" alt={QR_IMAGE.alt} src={QR_IMAGE.src} />
+                <img className="w-full h-full object-cover" alt={coverImage.alt} src={coverImage.src} />
                 <div className="absolute inset-0 bg-gradient-to-t from-on-background/80 via-transparent to-transparent" />
                 <div className="absolute bottom-space-xs left-space-sm right-space-sm flex items-center justify-between text-on-primary">
                   <div>
-                    <span className="font-label-sm text-label-sm font-semibold block leading-tight">
-                      Urban Grill &amp; Bistro
-                    </span>
-                    <span className="font-caption text-caption opacity-90">Open • Maitama, Abuja</span>
+                    <span className="font-label-sm text-label-sm font-semibold block leading-tight">{businessName}</span>
+                    <span className="font-caption text-caption opacity-90">{qr.live ? 'Open on VEMTAP' : 'Open • Maitama, Abuja'}</span>
                   </div>
                   <div className="px-space-2xs py-0.5 rounded bg-surface-canvas/20 backdrop-blur-md text-on-primary font-caption text-[11px] font-semibold flex items-center gap-1">
                     <Icon name="bolt" className="text-[12px]" /> Instant Pass
@@ -255,7 +265,7 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
                     </span>
                     <div>
                       <p className="font-label-sm text-label-sm text-badge-discount-text font-semibold">
-                        20% Off Prime Lunch Combo
+                        {qr.live ? 'Your live deals' : '20% Off Prime Lunch Combo'}
                       </p>
                       <p className="font-caption text-caption text-text-secondary">
                         One-tap redemption at checkout

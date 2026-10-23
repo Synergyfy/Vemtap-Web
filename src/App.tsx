@@ -5,6 +5,10 @@ import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { isBusinessRole } from './services/sessionService';
+import { useSessionUser } from './hooks/useSessionUser';
+import { OwnerAccountStep } from './components/business/OwnerAccountStep';
+import { SESSION_EXPIRED_EVENT } from './services/api/client';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
 import { catalogueService } from './services/catalogueService';
@@ -77,6 +81,9 @@ import { OrderDetailScreen } from './scripts/OrderDetailScreen';
 import { BookingDetailScreen } from './scripts/BookingDetailScreen';
 import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
+import { ForgotPinScreen } from './scripts/ForgotPinScreen';
+import { LivenessDoneScreen } from './scripts/LivenessDoneScreen';
+import { DesktopForgotPinScreen } from './scripts/desktop/DesktopForgotPinScreen';
 import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
 import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
 import { LocationPermissionScreen } from './scripts/LocationPermissionScreen';
@@ -163,7 +170,7 @@ import {
   BusinessSetupNavContext,
   clearBusinessSetupSnapshot,
   getBusinessSetupSnapshot,
-  hasBusinessSetupSnapshot,
+  setBusinessSetupSnapshotStep,
   setBusinessSetupVerificationState,
   type BusinessSetupNavValue,
 } from './scripts/businessSetup';
@@ -177,6 +184,74 @@ import { BusinessPosMenuScreen } from './scripts/BusinessPosMenuScreen';
 import { BusinessHubScreen } from './scripts/BusinessHubScreen';
 import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
 import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
+import { BusinessReviewsScreen } from './scripts/BusinessReviewsScreen';
+import { DesktopBusinessReviewsScreen } from './scripts/desktop/DesktopBusinessReviewsScreen';
+import { BusinessDealLedgerScreen } from './scripts/BusinessDealLedgerScreen';
+import { DesktopBusinessDealLedgerScreen } from './scripts/desktop/DesktopBusinessDealLedgerScreen';
+import { BusinessPosTaxesScreen } from './scripts/BusinessPosTaxesScreen';
+import { BusinessCategoriesScreen } from './scripts/BusinessCategoriesScreen';
+import { BusinessIntelligenceScreen } from './scripts/BusinessIntelligenceScreen';
+import { BusinessCampaignWizardScreen } from './scripts/BusinessCampaignWizardScreen';
+import { DesktopCampaignWizardScreen } from './scripts/desktop/DesktopCampaignWizardScreen';
+import { DesktopBusinessIntelligenceScreen } from './scripts/desktop/DesktopBusinessIntelligenceScreen';
+import {
+  DesktopLiveCustomerProfileScreen,
+  DesktopLiveCustomersScreen,
+  LiveCustomerProfileScreen,
+  LiveCustomersScreen,
+} from './scripts/LiveCustomersScreens';
+import {
+  DesktopLiveAnalyticsExportScreen,
+  DesktopLiveAnalyticsScreen,
+  LiveAnalyticsExportScreen,
+  LiveAnalyticsScreen,
+} from './scripts/LiveAnalyticsScreens';
+import type { IntelligenceTab } from './components/business/IntelligencePanel';
+import { DesktopLiveAccountScreen, LiveAccountScreen, type AccountPage } from './scripts/LiveAccountScreens';
+import { DesktopLiveMessagesScreen, LiveMessagesScreen } from './scripts/LiveMessagesScreens';
+import { DesktopLivePosScreen, LivePosDisplayScreen, LivePosScreen, type LivePosPage } from './scripts/LivePosScreens';
+import type { PosHomeTarget } from './components/business/PosHomePanel';
+import {
+  DesktopLiveBranchPricingScreen,
+  DesktopLiveDealDetailScreen,
+  LiveBranchPricingScreen,
+  LiveDealDetailScreen,
+} from './scripts/LiveCatalogueScreens';
+import {
+  DesktopLiveBoostHubScreen,
+  DesktopLiveBoostStudioScreen,
+  DesktopLiveCampaignMetricsScreen,
+  DesktopLiveLoyaltyScreen,
+  DesktopLiveSegmentDetailScreen,
+  DesktopLiveSegmentsScreen,
+  DesktopLiveWalletScreen,
+  LiveBoostHubScreen,
+  LiveBoostStudioScreen,
+  LiveCampaignMetricsScreen,
+  LiveLoyaltyScreen,
+  LiveSegmentDetailScreen,
+  LiveSegmentsScreen,
+  LiveWalletScreen,
+} from './scripts/LiveGrowthScreens';
+import { DesktopLiveClusterScreen, LiveClusterScreen } from './scripts/LiveClusterScreens';
+import {
+  BusinessDiscoveryPresenceScreen,
+  BusinessNetworkDashboardScreen,
+  BusinessNetworkMilestonesScreen,
+  BusinessReferralDetailScreen,
+  BusinessReferralsScreen as BusinessNetworkReferralsScreen,
+} from './scripts/BusinessNetworkScreens';
+import {
+  DesktopBusinessDiscoveryPresenceScreen,
+  DesktopBusinessNetworkDashboardScreen,
+  DesktopBusinessNetworkMilestonesScreen,
+  DesktopBusinessReferralDetailScreen,
+  DesktopBusinessReferralsScreen as DesktopBusinessNetworkReferralsScreen,
+} from './scripts/desktop/DesktopBusinessNetworkScreens';
+import { DesktopBusinessCategoriesScreen } from './scripts/desktop/DesktopBusinessCategoriesScreen';
+import { BusinessPosReceiptScreen } from './scripts/BusinessPosReceiptScreen';
+import { DesktopPosTaxesScreen } from './scripts/desktop/DesktopPosTaxesScreen';
+import { DesktopPosReceiptScreen } from './scripts/desktop/DesktopPosReceiptScreen';
 import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
 import { DesktopStaffDirectoryScreen } from './scripts/desktop/DesktopStaffDirectoryScreen';
 import { BusinessInviteStaffScreen } from './scripts/BusinessInviteStaffScreen';
@@ -368,7 +443,10 @@ type Route =
   | 'discover-deals'
   | 'start-vemtap'
   | 'auth-code'
+  | 'business-auth'
   | 'sign-in'
+  | 'forgot-pin'
+  | 'liveness-done'
   | 'verify-email'
   | 'profile-setup'
   | 'location-permission'
@@ -473,6 +551,18 @@ type Route =
   | 'public-pos-cart'
   | 'public-pos-tracking'
   | 'business-more'
+  | 'business-reviews'
+  | 'business-deal-ledger'
+  | 'pos-taxes'
+  | 'business-categories'
+  | 'analytics-intelligence'
+  | 'campaign-create'
+  | 'network-dashboard'
+  | 'network-milestones'
+  | 'network-referrals'
+  | 'network-referral-detail'
+  | 'network-discovery'
+  | 'pos-receipt'
   | 'store-ordering-dashboard'
   | 'store-ordering-qr'
   | 'store-ordering-settings'
@@ -539,7 +629,10 @@ const ROUTE_PATH: Record<Route, string> = {
   'discover-deals': '/discover-deals',
   'start-vemtap': '/start-vemtap',
   'auth-code': '/auth-code',
+  'business-auth': '/business-auth',
   'sign-in': '/sign-in',
+  'forgot-pin': '/forgot-pin',
+  'liveness-done': '/verification/liveness-done',
   'verify-email': '/verify-email',
   'profile-setup': '/profile-setup',
   'location-permission': '/location-permission',
@@ -646,6 +739,18 @@ const ROUTE_PATH: Record<Route, string> = {
   'public-pos-cart': '/public/pos/cart',
   'public-pos-tracking': '/public/pos/tracking',
   'business-more': '/business/more',
+  'business-reviews': '/business/reviews',
+  'business-deal-ledger': '/business/deals/ledger',
+  'pos-taxes': '/pos/settings/taxes',
+  'business-categories': '/business/hub/catalog/categories',
+  'analytics-intelligence': '/business/analytics/intelligence',
+  'campaign-create': '/boost-hub/campaigns/new',
+  'network-dashboard': '/business/network',
+  'network-milestones': '/business/network/milestones',
+  'network-referrals': '/business/network/referrals',
+  'network-referral-detail': '/business/network/referrals/detail',
+  'network-discovery': '/business/network/discovery',
+  'pos-receipt': '/pos/settings/receipt',
   'cluster-onboarding': '/business/cluster/onboarding',
   'cluster-system': '/business/cluster',
   'cluster-boost': '/business/cluster/boost',
@@ -777,11 +882,41 @@ const AUTH_ROUTES = new Set<Route>([
   ...CLAIM_STEP_ROUTES,
 ]);
 
+/** Public storefront pages that live under /business/<slug> — never the merchant portal. */
+const STOREFRONT_ROUTES = new Set<Route>([
+  'storefront',
+  'storefront-products',
+  'storefront-menu',
+  'business-profile',
+  'spa-profile',
+  'spa-services',
+  'service-detail',
+  'product-detail',
+  'checkout',
+  'order-placed',
+  'spa-storefront',
+  'spa-booking',
+  'spa-booking-checkout',
+  'spa-booking-confirmed',
+]);
+
+const PORTAL_PREFIXES = ['/business/', '/pos/', '/analytics/', '/boost-hub', '/segments'];
+
+/** Merchant portal pages: they need a signed-in business user once the API is configured. */
+function isPortalRoute(route: Route) {
+  if (STOREFRONT_ROUTES.has(route)) return false;
+  const path = ROUTE_PATH[route];
+  return PORTAL_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
 ]);
 
 const ONBOARDED_KEY = 'vemtap_onboarded';
+
+/** Which sign-up journey ("customer" / "business") a verification belongs to. */
+const AUTH_INTENT_KEY = 'vemtap_auth_intent';
 
 const hasOnboarded = () => window.localStorage.getItem(ONBOARDED_KEY) === '1';
 
@@ -892,6 +1027,10 @@ export default function App() {
 
 function AppInner() {
   const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim } = useAuth();
+  const sessionUser = useSessionUser().data;
+  // A live owner already has their business identity: business entry points
+  // should open their dashboard instead of starting sign-up again.
+  const isBusinessSession = hasApiConfig() && !!sessionUser && isBusinessRole(sessionUser.role);
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -899,6 +1038,8 @@ function AppInner() {
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
   const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const [selectedReferralId, setSelectedReferralId] = useState<string | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return match?.business ?? null;
@@ -912,6 +1053,28 @@ function AppInner() {
     lastName: '',
     phone: '',
   });
+  /**
+   * Which audience the in-flight sign-up belongs to. `auth-code` and
+   * `business-auth` both hand off to `verify-email` / `google-confirm`, so
+   * those screens need to know where "continue" must land: the consumer
+   * profile setup, or the Business Profile page for a merchant.
+   */
+  const [authIntent, setAuthIntentState] = useState<'customer' | 'business'>(
+    // Restored on load so a hard refresh mid-flow (e.g. on /verify-email)
+    // still completes into the right journey instead of dropping merchants
+    // into the customer one.
+    () => (window.localStorage.getItem(AUTH_INTENT_KEY) === 'business' ? 'business' : 'customer'),
+  );
+  const setAuthIntent = (intent: 'customer' | 'business') => {
+    setAuthIntentState(intent);
+    try {
+      window.localStorage.setItem(AUTH_INTENT_KEY, intent);
+    } catch {
+      // Storage unavailable — the in-memory value still works this session.
+    }
+  };
+  /** Sign In is reachable from several sign-ups — remember where it was opened from. */
+  const [signInFrom, setSignInFrom] = useState<Route>('welcome');
   const [feedFrom, setFeedFrom] = useState<Route>('home');
   /**
    * Referral code captured from a referral URL (e.g. `?ref=CODE`) at mount,
@@ -945,6 +1108,13 @@ function AppInner() {
   const [bookingFrom, setBookingFrom] = useState<Route>('spa-profile');
   const [orderSummary, setOrderSummary] = useState<SubmittedOrder | null>(null);
   const [businessSetupSkipIntro, setBusinessSetupSkipIntro] = useState(false);
+  /**
+   * "Reuse this account or register a fresh business identity?" is asked from
+   * the business intro's primary button — i.e. once the merchant has actually
+   * started signing up — so it is its own state instead of being derived at
+   * route entry (which used to hide the intro behind the question).
+   */
+  const [businessChoiceOpen, setBusinessChoiceOpen] = useState(false);
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
   const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
   const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
@@ -1128,10 +1298,31 @@ function AppInner() {
   useEffect(() => {
     // The shared portal account menu clears the session, then asks the router
     // to move to the sign-in screen.
-    const handleSignOut = () => setRouteState('sign-in');
+    const handleSignOut = () => {
+      // Signing out is never "continue the business sign-up".
+      setSignInFrom('welcome');
+      setRouteState('sign-in');
+    };
     window.addEventListener(SIGN_OUT_EVENT, handleSignOut);
     return () => window.removeEventListener(SIGN_OUT_EVENT, handleSignOut);
   }, []);
+
+  // A 401 from the API: if the user is in the merchant portal, send them to
+  // sign in again (public pages keep working for guests).
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  useEffect(() => {
+    const handleExpired = () => {
+      if (isPortalRoute(routeRef.current)) setRouteState('sign-in');
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+  }, []);
+
+  // Opening a portal page signed out (with the API configured) goes to sign in.
+  useEffect(() => {
+    if (hasApiConfig() && !authed && isPortalRoute(route)) setRouteState('sign-in');
+  }, [authed, route]);
 
   useEffect(() => {
     const expected =
@@ -1440,6 +1631,11 @@ function AppInner() {
     }
   }, [route, signIn]);
 
+  // The identity question only ever belongs to one visit to business onboarding.
+  useEffect(() => {
+    if (route !== 'business-onboarding') setBusinessChoiceOpen(false);
+  }, [route]);
+
   const openFeedRoute = (target: 'featured-deals' | 'filters', from: Route) => {
     setFeedFrom(from);
     setRoute(target);
@@ -1447,6 +1643,11 @@ function AppInner() {
 
   const accountNav = (target: AccountTarget) => {
     if (target === 'business-onboarding') {
+      // An owner switching to the customer view still owns a business.
+      if (isBusinessSession) {
+        setRoute('business-overview');
+        return;
+      }
       setBusinessOnboardingFrom('account');
     }
     setRoute(target);
@@ -1474,6 +1675,7 @@ function AppInner() {
         setRoute('business-onboarding');
         break;
       case 'sign-in':
+        setSignInFrom('welcome');
         setRoute('sign-in');
         break;
       case 'get-started':
@@ -1556,6 +1758,7 @@ function AppInner() {
         setRoute('business-onboarding');
         break;
       case 'sign-in':
+        setSignInFrom('welcome');
         setRoute('sign-in');
         break;
       case 'get-started':
@@ -1617,6 +1820,12 @@ function AppInner() {
   const [boostReturnRoute, setBoostReturnRoute] = useState<Route>('business-overview');
   const [boostItem, setBoostItem] = useState<string | null>(null);
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
+  /** Inbox thread to open on the live Messages page (e.g. from a customer profile). */
+  const [businessThreadId, setBusinessThreadId] = useState<string | null>(null);
+  /** Deal group shown on the live deal performance page. */
+  const [dealGroupId, setDealGroupId] = useState<string | null>(null);
+  /** Campaign preselected on the live results page. */
+  const [metricsTarget, setMetricsTarget] = useState<{ kind: 'boost' | 'promotion'; id: string } | null>(null);
 
   const openBoost = (item?: string) => {
     // The Boost Studio always opens inside the dashboard (side menu intact) —
@@ -1659,6 +1868,40 @@ function AppInner() {
     desc: 'Interacted or placed 2+ orders with your local dining partner in the trailing 90 days.',
   });
 
+  // Live segments: the hub opens one by id; detail and actions share the live detail view.
+  const [liveSegmentId, setLiveSegmentId] = useState<string | null>(null);
+  const openLiveSegment = (id: string) => {
+    setLiveSegmentId(id);
+    setRoute('segment-detail');
+  };
+  const liveSegmentDetail = () => {
+    if (!liveSegmentId)
+      return isDesktop ? (
+        <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
+      ) : (
+        <LiveSegmentsScreen onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
+      );
+    const actions = {
+      onMessage: () => setRoute('business-messages-sms'),
+      onCreateDeal: () => setRoute('deal-studio'),
+      onBoost: () => openBoost(),
+      onOpenCustomer: (userId: string) => {
+        setHubCustomerName(userId);
+        setRoute('hub-customer-profile');
+      },
+    };
+    return isDesktop ? (
+      <DesktopLiveSegmentDetailScreen
+        segmentId={liveSegmentId}
+        onNav={businessPortalNav}
+        onBack={() => setRoute('segments-hub')}
+        actions={actions}
+      />
+    ) : (
+      <LiveSegmentDetailScreen segmentId={liveSegmentId} onBack={() => setRoute('segments-hub')} actions={actions} />
+    );
+  };
+
   const useSegment = (segment: SegmentRef) => {
     setActiveSegment(segment);
     setRoute('segment-actions');
@@ -1686,6 +1929,60 @@ function AppInner() {
     }
   };
 
+  /** Live analytics: one page per area; its chips switch area and period. */
+  const liveAnalytics = (tab: IntelligenceTab) =>
+    isDesktop ? (
+      <DesktopLiveAnalyticsScreen tab={tab} onNav={businessPortalNav} onExport={() => setRoute('analytics-export')} />
+    ) : (
+      <LiveAnalyticsScreen tab={tab} onBack={() => setRoute('business-hub')} onExport={() => setRoute('analytics-export')} />
+    );
+
+  /** Live subscription, add-ons, notifications and support pages. */
+  const liveAccount = (page: AccountPage) => {
+    const openLink = (actionUrl: string) => {
+      if (actionUrl.startsWith('/orders')) setRoute('business-orders');
+      else if (actionUrl.startsWith('/bookings')) setRoute('business-bookings');
+      else if (actionUrl.includes('review')) setRoute('business-reviews');
+    };
+    return isDesktop ? (
+      <DesktopLiveAccountScreen page={page} onNav={businessPortalNav} onOpenLink={openLink} />
+    ) : (
+      <LiveAccountScreen page={page} onBack={() => setRoute('business-more')} onOpenLink={openLink} />
+    );
+  };
+
+  /** Live POS pages; the designed demo screens stay for demo mode. */
+  const livePos = (page: LivePosPage) => {
+    const nav = {
+      onNewSale: () => setRoute('pos-register'),
+      onOpen: (target: PosHomeTarget) =>
+        setRoute(
+          (
+            {
+              ledger: 'pos-ledger',
+              kitchen: 'pos-kitchen',
+              stock: 'pos-stock',
+              customers: 'pos-customers-lookup',
+              display: 'pos-display-order',
+              switch: 'pos-switch',
+            } as const
+          )[target],
+        ),
+      onOpenHome: () => setRoute('pos-home'),
+      onOpenTaxes: () => setRoute('pos-taxes'),
+      onOpenReceipt: () => setRoute('pos-receipt'),
+      onSwitchCashier: () => {
+        signOut();
+        setRoute('sign-in');
+      },
+    };
+    return isDesktop ? (
+      <DesktopLivePosScreen page={page} nav={nav} onNav={posTerminalNav} />
+    ) : (
+      <LivePosScreen page={page} nav={nav} onBack={() => setRoute(page === 'home' ? 'business-overview' : 'pos-home')} />
+    );
+  };
+
   const businessTab = (key: BusinessTabKey) => {
     switch (key) {
       case 'overview':
@@ -1704,6 +2001,11 @@ function AppInner() {
         setRoute('business-more');
         break;
     }
+  };
+
+  const openReferral = (id: string) => {
+    setSelectedReferralId(id);
+    setRoute('network-referral-detail');
   };
 
   const businessPortalNav = (key: string) => {
@@ -1791,6 +2093,25 @@ function AppInner() {
       case 'pos-settings':
         setRoute('pos-settings');
         break;
+      case 'pos-taxes':
+        setRoute('pos-taxes');
+        break;
+      case 'business-categories':
+        setRoute('business-categories');
+        break;
+      case 'more-intelligence':
+        setRoute('analytics-intelligence');
+        break;
+      case 'network':
+      case 'network-dashboard':
+      case 'network-milestones':
+      case 'network-referrals':
+      case 'network-discovery':
+        setRoute(key === 'network' ? 'network-dashboard' : (key as Route));
+        break;
+      case 'pos-receipt':
+        setRoute('pos-receipt');
+        break;
       case 'pos-sync':
         // BUG: /pos/sync is gone. Offline state and "Sync Online" now live on
         // the register itself, so this nav key just lands on the till.
@@ -1834,6 +2155,12 @@ function AppInner() {
         break;
       case 'more-marketing':
         setRoute('boost-hub');
+        break;
+      case 'more-reviews':
+        setRoute('business-reviews');
+        break;
+      case 'business-deal-ledger':
+        setRoute('business-deal-ledger');
         break;
       case 'more-subscription':
         // Dashboard subscription & billing — designed for an existing account,
@@ -1994,6 +2321,32 @@ function AppInner() {
     markAuthenticated(true);
   };
 
+  /**
+   * Point the saved run at "Business Profile": it is parked on the marketing
+   * intro while sign-up (or the account-identity choice) happens, so it must
+   * resume on profile details instead of looping back to that intro. A
+   * merchant already mid-setup keeps their saved step.
+   */
+  const resumeAtBusinessProfile = () => {
+    const saved = getBusinessSetupSnapshot();
+    if (!saved || saved.step === 'intro') setBusinessSetupSnapshotStep('basic');
+    setBusinessSetupSkipIntro(true);
+  };
+
+  /**
+   * A merchant who just finished business sign-up (`business-auth` → email
+   * code or Google confirmation) enters setup on "Business Profile". The
+   * marketing intro has already run, and the existing-account choice must not
+   * re-appear for this brand-new business identity.
+   */
+  const enterBusinessProfile = () => {
+    // Live, the owner-account step on setup signs the merchant in.
+    if (!hasApiConfig()) void signIn();
+    setAuthIntent('customer');
+    resumeAtBusinessProfile();
+    setRoute('business-onboarding');
+  };
+
   const renderClaimed = () =>
     isDesktop ? (
       <DesktopClaimedDealScreen
@@ -2013,10 +2366,16 @@ function AppInner() {
     );
 
   const renderRoute = () => {
+    // Sign In opened from the business sign-up modal: authenticating resumes
+    // business setup instead of dropping the merchant into the customer feed.
+    const resumeBusinessSetup = signInFrom === 'business-auth';
     switch (route) {
     case 'welcome':
       if (isDesktop) return <DesktopWelcomeScreen onNav={nav('start-vemtap')} />;
-      return <WelcomeScreen onGetStarted={() => setRoute('start-vemtap')} onSignIn={() => setRoute('sign-in')} />;
+      return <WelcomeScreen onGetStarted={() => setRoute('start-vemtap')} onSignIn={() => {
+        setSignInFrom('welcome');
+        setRoute('sign-in');
+      }} />;
 
     case 'discover-deals':
       if (isDesktop)
@@ -2050,7 +2409,10 @@ function AppInner() {
             setAuthFrom('start-vemtap');
             setRoute('auth-code');
           }}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => {
+            setBusinessOnboardingFrom('start-vemtap');
+            setRoute('business-onboarding');
+          }}
         />
       );
 
@@ -2058,17 +2420,26 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopAuthCodeScreen
+            onBack={() => setRoute(authFrom)}
             onContinue={() => setRoute('sign-in')}
             onSubmitEmail={async (email) => {
               await requestCustomerSignupOtp(email);
+              setAuthIntent('customer');
               setRoute('verify-email');
             }}
             onGoogle={() => {
               signIn();
+              setAuthIntent('customer');
               setRoute('google-confirm');
             }}
-            onSignIn={() => setRoute('sign-in')}
-            onBusinessRegister={() => setRoute('business-onboarding')}
+            onSignIn={() => {
+              setSignInFrom('auth-code');
+              setRoute('sign-in');
+            }}
+            onBusinessRegister={() => {
+              setBusinessOnboardingFrom('auth-code');
+              setRoute('business-onboarding');
+            }}
           />
         );
       return (
@@ -2077,13 +2448,80 @@ function AppInner() {
           onContinue={() => setRoute('sign-in')}
           onSubmitEmail={async (email) => {
             await requestCustomerSignupOtp(email);
+            setAuthIntent('customer');
             setRoute('verify-email');
           }}
           onGoogle={() => {
             signIn();
+            setAuthIntent('customer');
             setRoute('google-confirm');
           }}
-          onBusinessRegister={() => setRoute('business-onboarding')}
+          // "Already have an account? Sign In" reuses the shared sign-in
+          // screen instead of continuing into verification (desktop parity).
+          onSignIn={() => {
+            setSignInFrom('auth-code');
+            setRoute('sign-in');
+          }}
+          onBusinessRegister={() => {
+            setBusinessOnboardingFrom('auth-code');
+            setRoute('business-onboarding');
+          }}
+        />
+      );
+
+    /**
+     * The same sign-up modal, opened as a business. Entered from "Set Up My
+     * Business" on the business intro (and from "use a new account" on the
+     * account-choice screen), so `authIntent` routes verification to the
+     * Business Profile page and the swap card invites a customer to register
+     * instead of a second business.
+     */
+    case 'business-auth':
+      if (isDesktop)
+        return (
+          <DesktopAuthCodeScreen
+            mode="business"
+            onBack={() => setRoute('business-onboarding')}
+            onContinue={() => {
+              setAuthIntent('business');
+              setRoute('verify-email');
+            }}
+            onGoogle={() => {
+              signIn();
+              setAuthIntent('business');
+              setRoute('google-confirm');
+            }}
+            onSignIn={() => {
+              setSignInFrom('business-auth');
+              setRoute('sign-in');
+            }}
+            onCustomerRegister={() => {
+              setAuthFrom('business-auth');
+              setRoute('auth-code');
+            }}
+          />
+        );
+      return (
+        <AuthCodeScreen
+          mode="business"
+          onBack={() => setRoute('business-onboarding')}
+          onContinue={() => {
+            setAuthIntent('business');
+            setRoute('verify-email');
+          }}
+          onGoogle={() => {
+            signIn();
+            setAuthIntent('business');
+            setRoute('google-confirm');
+          }}
+          onSignIn={() => {
+            setSignInFrom('business-auth');
+            setRoute('sign-in');
+          }}
+          onCustomerRegister={() => {
+            setAuthFrom('business-auth');
+            setRoute('auth-code');
+          }}
         />
       );
 
@@ -2091,19 +2529,36 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopSignInScreen
+            onBack={() => setRoute(signInFrom)}
             onSignIn={async ({ identifier, password }) => {
-              await signIn({ identifier, password });
-              setRoute('discovering');
+              const user = await signIn({ identifier, password });
+              if (resumeBusinessSetup) {
+                enterBusinessProfile();
+                return;
+              }
+              setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
             }}
-            onGoogleSignIn={() => {
-              signIn();
-              setRoute('discovering');
+            onGoogleSignIn={async () => {
+              if (!hasApiConfig()) {
+                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+              }
+              if (resumeBusinessSetup) {
+                enterBusinessProfile();
+                return;
+              }
+              setRoute('google-confirm');
             }}
             onCreateAccount={() => {
               setAuthFrom('sign-in');
               setRoute('auth-code');
             }}
-            onBusinessRegister={() => setRoute('business-onboarding')}
+            // Every business entry opens the business intro — the sign-up
+            // modal it leads to is what collects the new merchant's credentials.
+            onBusinessRegister={() => {
+              setBusinessOnboardingFrom('sign-in');
+              setRoute('business-onboarding');
+            }}
+            onForgotPin={() => setRoute('forgot-pin')}
             onCustomerSignIn={async () => {
               setRoute('dashboard');
             }}
@@ -2114,20 +2569,36 @@ function AppInner() {
         );
       return (
         <SignInScreen
-          onBack={() => setRoute('welcome')}
+          onBack={() => setRoute(signInFrom)}
           onSignIn={async ({ identifier, password }) => {
-            await signIn({ identifier, password });
-            setRoute('discovering');
+            const user = await signIn({ identifier, password });
+            if (resumeBusinessSetup) {
+              enterBusinessProfile();
+              return;
+            }
+            setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
           }}
-          onGoogleSignIn={() => {
-            signIn();
-            setRoute('discovering');
+          onGoogleSignIn={async () => {
+            if (!hasApiConfig()) {
+              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+            }
+            if (resumeBusinessSetup) {
+              enterBusinessProfile();
+              return;
+            }
+            setRoute('google-confirm');
           }}
           onCreateAccount={() => {
             setAuthFrom('sign-in');
             setRoute('auth-code');
           }}
-          onBusinessRegister={() => setRoute('business-onboarding')}
+          // Every business entry opens the business intro — the sign-up
+          // modal it leads to is what collects the new merchant's credentials.
+          onBusinessRegister={() => {
+            setBusinessOnboardingFrom('sign-in');
+            setRoute('business-onboarding');
+          }}
+          onForgotPin={() => setRoute('forgot-pin')}
           onCustomerSignIn={async () => {
             setRoute('dashboard');
           }}
@@ -2137,16 +2608,32 @@ function AppInner() {
         />
       );
 
-    case 'verify-email':
+    case 'liveness-done':
+      return <LivenessDoneScreen />;
+
+    case 'forgot-pin':
+      if (isDesktop) return <DesktopForgotPinScreen onBack={() => setRoute('sign-in')} />;
+      return <ForgotPinScreen onBack={() => setRoute('sign-in')} />;
+
+    case 'verify-email': {
+      // The code screen is shared: a merchant who signed up through
+      // `business-auth` finishes on the Business Profile page, a customer
+      // keeps going through the consumer profile setup.
+      const businessSignup = authIntent === 'business';
+      const authEntry: Route = businessSignup ? 'business-auth' : 'auth-code';
       if (isDesktop)
         return (
           <DesktopVerifyEmailScreen
-            onBack={() => setRoute('auth-code')}
+            onBack={() => setRoute(authEntry)}
             onContinue={async (code) => {
+              if (businessSignup) {
+                enterBusinessProfile();
+                return;
+              }
               await handleCustomerSignupVerification(code);
               setRoute('profile-setup');
             }}
-            onEditEmail={() => setRoute('auth-code')}
+            onEditEmail={() => setRoute(authEntry)}
             onBusinessSetup={() => setRoute('business-onboarding')}
             email={customerSignup.email}
             onResend={async () => {
@@ -2156,18 +2643,24 @@ function AppInner() {
         );
       return (
         <VerifyEmailScreen
-          onBack={() => setRoute('auth-code')}
+          onBack={() => setRoute(authEntry)}
           onContinue={async (code) => {
+            if (businessSignup) {
+              enterBusinessProfile();
+              return;
+            }
             await handleCustomerSignupVerification(code);
             setRoute('profile-setup');
           }}
-          onEditEmail={() => setRoute('auth-code')}
-          email={customerSignup.email}
-          onResend={async () => {
+          onEditEmail={() => setRoute(authEntry)}
+          onBusinessSetup={() => setRoute('business-onboarding')}
+          email={businessSignup ? undefined : customerSignup.email}
+          onResend={businessSignup ? undefined : async () => {
             await requestCustomerSignupOtp(customerSignup.email);
           }}
         />
       );
+    }
 
     case 'profile-setup':
       if (isDesktop)
@@ -2192,6 +2685,7 @@ function AppInner() {
             await completeCustomerSignup(details);
             setRoute('location-permission');
           }}
+          onBusinessSetup={() => setRoute('business-onboarding')}
         />
       );
 
@@ -3074,8 +3568,34 @@ function AppInner() {
         />
       );
 
-    case 'dashboard':
-      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} />;
+    case 'dashboard': {
+      /**
+       * Customer-dashboard "Get Started": a signed-in consumer first picks an
+       * identity for this run ("Continue with this account" vs. "Use a new
+       * account"), which is the same choice screen the business intro reaches
+       * through "Set Up My Business". Signed-out visitors have no account to
+       * reuse, so live sign-up goes straight to the owner registration step;
+       * only the demo still uses the business sign-up modal.
+       */
+      const startBusinessSignup = () => {
+        // A live owner taps this from their customer view: send them back to
+        // the business dashboard rather than through setup again.
+        if (isBusinessSession) {
+          setRoute('business-overview');
+          return;
+        }
+        setBusinessOnboardingFrom('dashboard');
+        if (authed) {
+          setBusinessChoiceOpen(true);
+          setRoute('business-onboarding');
+        } else if (hasApiConfig()) {
+          resumeAtBusinessProfile();
+          setRoute('business-onboarding');
+        } else {
+          setRoute('business-auth');
+        }
+      };
+      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} onStartBusinessSignup={startBusinessSignup} />;
       return (
         <DashboardScreen
           onTab={(tab) => setRoute(tab)}
@@ -3085,12 +3605,14 @@ function AppInner() {
             }
             setRoute(target);
           }}
+          onStartBusinessSignup={startBusinessSignup}
           onShowQR={() => {
             setClaimedFrom('dashboard');
             setRoute('claimed-deal');
           }}
         />
       );
+    }
 
     case 'orders':
       if (isDesktop)
@@ -3343,14 +3865,26 @@ function AppInner() {
       const finishGoogleConfirm = (details: GoogleConfirmDetails) => {
         if (details.referralCode) setProvisionalReferralCode(details.referralCode, 'manual');
         profile.update({ phone: details.phone });
+        // Merchant sign-up — the confirmed Google identity belongs to the
+        // business, so it enters setup instead of the customer feed.
+        if (authIntent === 'business') {
+          enterBusinessProfile();
+          return;
+        }
         setWelcomeAudience('customer');
         setRoute('discovering');
       };
+      const googleAuthEntry: Route = authIntent === 'business' ? 'business-auth' : 'auth-code';
       if (isDesktop)
         return (
-          <DesktopGoogleProfileConfirmScreen onBack={() => setRoute('auth-code')} onContinue={finishGoogleConfirm} />
+          <DesktopGoogleProfileConfirmScreen
+            onBack={() => setRoute(googleAuthEntry)}
+            onContinue={finishGoogleConfirm}
+          />
         );
-      return <GoogleProfileConfirmScreen onBack={() => setRoute('auth-code')} onContinue={finishGoogleConfirm} />;
+      return (
+        <GoogleProfileConfirmScreen onBack={() => setRoute(googleAuthEntry)} onContinue={finishGoogleConfirm} />
+      );
     }
 
     case 'account':
@@ -3369,7 +3903,9 @@ function AppInner() {
       return (
         <AccountScreen
           onTab={(tab) => setRoute(tab)}
-          onNavigate={(target) => setRoute(target)}
+          // `accountNav` records the origin so leaving setup returns here
+          // instead of the dashboard (desktop parity).
+          onNavigate={accountNav}
           onSignOut={() => {
             signOut();
             setRoute('home');
@@ -3560,12 +4096,14 @@ function AppInner() {
       );
 
     case 'business-onboarding': {
-      // A signed-in consumer starting business setup first chooses whether to
-      // reuse the existing (intact) consumer account or register a fresh,
-      // separate business identity. Reusing skips the marketing intro and
-      // lands directly on "Tell us about your business".
-      const showAccountChoice = authed && !businessSetupSkipIntro && !hasBusinessSetupSnapshot();
+      // Every business entry lands on the marketing intro first. The account
+      // question ("reuse this consumer account vs. a fresh business identity")
+      // only appears once the merchant actually starts signing up from it —
+      // reusing the account lands on "Tell us about your business".
+      // Live owners already have their business identity and skip the intro.
+      const isOwnerSession = isBusinessSession;
       const leaveOnboarding = () => {
+        setBusinessChoiceOpen(false);
         setBusinessSetupSkipIntro(false);
         const destination = authed
           ? (businessOnboardingFrom && businessOnboardingFrom !== 'business-onboarding'
@@ -3583,24 +4121,88 @@ function AppInner() {
         setBusinessSetupVerificationState('in-progress');
         setRoute('business-verification');
       };
-      const useNewAccount = () => {
+      const useNewAccount = async () => {
         // BUG-028: normal registration flow with a fresh Google / email
         // identity — never silently linked to the existing consumer account.
+        setBusinessChoiceOpen(false);
+        if (hasApiConfig()) {
+          // Sign out first so the owner step registers a new account instead
+          // of upgrading the consumer account the merchant chose to leave.
+          try {
+            await signOut();
+          } catch {
+            // Tokens and local state are cleared even when the logout call fails.
+          }
+          // signOut clears saved setup progress, so re-aim the run afterwards.
+          resumeAtBusinessProfile();
+          return;
+        }
         setBusinessSetupSkipIntro(false);
-        setRoute('auth-code');
+        setRoute('business-auth');
       };
+      const continueWithAccount = () => {
+        // Reusing the consumer account skips straight to profile details — the
+        // intro has already been shown, so re-aim the saved run at `basic`.
+        setBusinessChoiceOpen(false);
+        resumeAtBusinessProfile();
+      };
+      const signInToExistingBusiness = () => {
+        // "Use a new account" also covers an owner who already registered a
+        // separate business account: send them to sign-in (business roles land
+        // on the business dashboard) instead of making them register again.
+        setBusinessChoiceOpen(false);
+        setBusinessSetupSkipIntro(false);
+        setSignInFrom('business-onboarding');
+        setRoute('sign-in');
+      };
+      /**
+       * "Set Up My Business": an unknown visitor signs up on the owner step
+       * (live) or through the demo modal, a signed-in consumer first picks an
+       * identity for this run, and a merchant already inside their own run
+       * continues where they left off.
+       */
+      const startBusinessSignup = isOwnerSession
+        ? undefined
+        : !authed
+          ? // Live sign-up is the owner-account step below; the demo uses the modal.
+            hasApiConfig()
+            ? resumeAtBusinessProfile
+            : () => setRoute('business-auth')
+          : businessSetupSkipIntro
+            ? undefined
+            : () => setBusinessChoiceOpen(true);
 
-      if (showAccountChoice) {
+      // Live: setup saves to the API, so once the merchant starts it needs an
+      // owner account — register one when signed out, or upgrade a signed-in
+      // customer who chose to reuse their account.
+      const needsOwnerAccount =
+        hasApiConfig() &&
+        businessSetupSkipIntro &&
+        !businessChoiceOpen &&
+        !isOwnerSession &&
+        (!authed || (sessionUser !== undefined && sessionUser !== null && !isBusinessRole(sessionUser.role)));
+      if (needsOwnerAccount) {
+        return (
+          <OwnerAccountStep
+            mode={authed ? 'upgrade' : 'register'}
+            onBack={leaveOnboarding}
+            onDone={() => setBusinessSetupSkipIntro(true)}
+            onSignIn={signInToExistingBusiness}
+          />
+        );
+      }
+
+      if (businessChoiceOpen) {
         return isDesktop ? (
           <DesktopBusinessAccountChoiceScreen
             onBack={leaveOnboarding}
-            onContinueWithAccount={() => setBusinessSetupSkipIntro(true)}
+            onContinueWithAccount={continueWithAccount}
             onUseNewAccount={useNewAccount}
           />
         ) : (
           <BusinessAccountChoiceScreen
             onBack={leaveOnboarding}
-            onContinueWithAccount={() => setBusinessSetupSkipIntro(true)}
+            onContinueWithAccount={continueWithAccount}
             onUseNewAccount={useNewAccount}
           />
         );
@@ -3610,27 +4212,21 @@ function AppInner() {
         <>
           {isDesktop ? (
             <DesktopBusinessOnboardingScreen
-              initialStep={businessSetupSkipIntro ? 'basic' : 'intro'}
-              onBack={() => {
-                if (businessSetupSkipIntro) {
-                  setBusinessSetupSkipIntro(false);
-                } else {
-                  leaveOnboarding();
-                }
-              }}
+              initialStep={businessSetupSkipIntro || isOwnerSession ? 'basic' : 'intro'}
+              onStartSignup={startBusinessSignup}
+              // The container routes Back itself (profile details → intro →
+              // here), so reaching this callback means "leave setup".
+              onBack={leaveOnboarding}
               onOpenVerification={openVerification}
               onComplete={finishOnboarding}
             />
           ) : (
             <BusinessOnboardingScreen
-              initialStep={businessSetupSkipIntro ? 'basic' : 'intro'}
-              onBack={() => {
-                if (businessSetupSkipIntro) {
-                  setBusinessSetupSkipIntro(false);
-                } else {
-                  leaveOnboarding();
-                }
-              }}
+              initialStep={businessSetupSkipIntro || isOwnerSession ? 'basic' : 'intro'}
+              onStartSignup={startBusinessSignup}
+              // The container routes Back itself (profile details → intro →
+              // here), so reaching this callback means "leave setup".
+              onBack={leaveOnboarding}
               onOpenVerification={openVerification}
               onComplete={finishOnboarding}
             />
@@ -3685,6 +4281,9 @@ function AppInner() {
           onComplete={finishVerification}
           onActivate={() => setRoute('subscription')}
           onPreviewStorefront={() => setRoute('storefront')}
+          onConfigureStorefront={() => setRoute('storefront')}
+          onCreateDeal={() => setRoute('deals')}
+          onQrStands={() => setRoute('business-overview')}
         />
       );
       return <BusinessSetupNavContext.Provider value={verificationNav}>{screen}</BusinessSetupNavContext.Provider>;
@@ -3707,6 +4306,8 @@ function AppInner() {
       );
 
     case 'subscription':
+      // Live: the dashboard subscription panel reads the real plan, trial and billing state.
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3726,6 +4327,8 @@ function AppInner() {
       );
 
     case 'subscription-ending':
+      // Live: the dashboard subscription panel reads the real plan, trial and billing state.
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3745,6 +4348,8 @@ function AppInner() {
       );
 
     case 'subscription-expired':
+      // Live: the dashboard subscription panel reads the real plan, trial and billing state.
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3764,6 +4369,17 @@ function AppInner() {
       );
 
     case 'boost':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBoostStudioScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute('boost-hub')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+          />
+        ) : (
+          <LiveBoostStudioScreen onBack={() => setRoute(boostReturnRoute)} onDone={() => setRoute('boost-hub')} onOpenWallet={() => setRoute('boost-wallet')} />
+        );
       if (isDesktop)
         return (
           <DesktopSubscriptionScreen
@@ -3787,6 +4403,22 @@ function AppInner() {
       );
 
     case 'boost-hub':
+      if (hasApiConfig()) {
+        const growthNav = {
+          onBoost: () => openBoost(),
+          onCreateCampaign: () => setRoute('campaign-create'),
+          onOpenWallet: () => setRoute('boost-wallet'),
+          onOpenMetrics: (kind: 'boost' | 'promotion', id: string) => {
+            setMetricsTarget({ kind, id });
+            setRoute('boost-metrics');
+          },
+        };
+        return isDesktop ? (
+          <DesktopLiveBoostHubScreen onNav={businessPortalNav} {...growthNav} />
+        ) : (
+          <LiveBoostHubScreen onBack={() => setRoute('business-more')} onTab={boostTab} {...growthNav} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopBoostHubScreen
@@ -3796,6 +4428,7 @@ function AppInner() {
             onBoost={(item) => openBoost(item)}
             onOpenMetrics={() => setRoute('boost-metrics')}
             onOpenSegments={() => setRoute('segments-hub')}
+            onCreateCampaign={() => setRoute('campaign-create')}
           />
         );
       return (
@@ -3806,6 +4439,7 @@ function AppInner() {
             onBoost={(item) => openBoost(item)}
             onOpenMetrics={() => setRoute('boost-metrics')}
             onOpenSegments={() => setRoute('segments-hub')}
+            onCreateCampaign={() => setRoute('campaign-create')}
           />
         </div>
       );
@@ -3815,6 +4449,17 @@ function AppInner() {
       // with the side menu still on screen (not the onboarding shell). The only
       // purchasable placement today is the Cluster Campaign, so the studio runs
       // the same unified campaign flow as /business/cluster/boost.
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBoostStudioScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute(boostReturnRoute)}
+            onDone={() => setRoute('boost-hub')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+          />
+        ) : (
+          <LiveBoostStudioScreen onBack={() => setRoute(boostReturnRoute)} onDone={() => setRoute('boost-hub')} onOpenWallet={() => setRoute('boost-wallet')} />
+        );
       if (isDesktop)
         return (
           <ClusterBoostFlow
@@ -3840,6 +4485,12 @@ function AppInner() {
       );
 
     case 'boost-metrics':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveCampaignMetricsScreen initial={metricsTarget} onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} />
+        ) : (
+          <LiveCampaignMetricsScreen initial={metricsTarget} onBack={() => setRoute('boost-hub')} onTab={boostTab} />
+        );
       if (isDesktop)
         return <DesktopBoostMetricsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
       return (
@@ -3849,6 +4500,12 @@ function AppInner() {
       );
 
     case 'boost-wallet':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveWalletScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} />
+        ) : (
+          <LiveWalletScreen onBack={() => setRoute('boost-hub')} onTab={boostTab} />
+        );
       if (isDesktop)
         return <DesktopBoostWalletScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
       return (
@@ -3858,6 +4515,12 @@ function AppInner() {
       );
 
     case 'segments-hub':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
+        ) : (
+          <LiveSegmentsScreen onBack={() => setRoute('boost-hub')} onOpen={openLiveSegment} />
+        );
       if (isDesktop)
         return (
           <DesktopSegmentsHubScreen
@@ -3884,6 +4547,7 @@ function AppInner() {
       );
 
     case 'segment-actions':
+      if (hasApiConfig()) return liveSegmentDetail();
       if (isDesktop)
         return (
           <DesktopSegmentActionsScreen
@@ -3910,6 +4574,12 @@ function AppInner() {
       );
 
     case 'segment-create':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveSegmentsScreen onNav={businessPortalNav} onBack={() => setRoute('segments-hub')} onOpen={openLiveSegment} startCreating />
+        ) : (
+          <LiveSegmentsScreen onBack={() => setRoute('segments-hub')} onOpen={openLiveSegment} startCreating />
+        );
       if (isDesktop)
         return (
           <DesktopSegmentCreateScreen
@@ -3925,6 +4595,7 @@ function AppInner() {
       );
 
     case 'segment-detail':
+      if (hasApiConfig()) return liveSegmentDetail();
       if (isDesktop)
         return (
           <DesktopSegmentDetailScreen
@@ -3948,6 +4619,7 @@ function AppInner() {
       // Dashboard add-ons & credits — for an existing account, inside the business
       // portal chrome. The onboarding add-ons flow (route 'subscription', step
       // 'addons') remains for the setup journey only.
+      if (hasApiConfig()) return liveAccount('addons');
       if (isDesktop) return <DesktopMoreAddOnsScreen onNav={businessPortalNav} />;
       return (
         <SubscriptionScreen
@@ -3961,6 +4633,7 @@ function AppInner() {
     case 'business-notifications':
       // Dashboard notifications — account-holder feed inside the business
       // portal (the consumer route 'notifications' keeps its own chrome).
+      if (hasApiConfig()) return liveAccount('notifications');
       if (isDesktop) return <DesktopBusinessNotificationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -3985,6 +4658,7 @@ function AppInner() {
     case 'business-support':
       // Dashboard Help & Support — merchant help inside the portal, not the
       // public consumer help centre (routes 'help' / 'support').
+      if (hasApiConfig()) return liveAccount('support');
       if (isDesktop) return <DesktopBusinessHelpSupportScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4027,6 +4701,7 @@ function AppInner() {
     case 'business-subscription':
       // Dashboard subscription & billing — for an existing account, inside the
       // business portal chrome (not the onboarding SubscriptionChrome).
+      if (hasApiConfig()) return liveAccount('subscription');
       if (isDesktop) return <DesktopMoreSubscriptionScreen onNav={businessPortalNav} />;
       return (
         <SubscriptionScreen
@@ -4076,6 +4751,12 @@ function AppInner() {
       );
 
     case 'business-branch-pricing':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBranchPricingScreen onNav={businessPortalNav} onBack={() => setRoute('hub-catalog')} />
+        ) : (
+          <LiveBranchPricingScreen onBack={() => setRoute('hub-catalog')} />
+        );
       if (isDesktop)
         return (
           <DesktopBusinessBranchPricingScreen
@@ -4112,7 +4793,10 @@ function AppInner() {
           <DesktopBusinessLocationsHubScreen
             onNav={businessPortalNav}
             onAddBranch={() => setRoute('business-onboarding')}
-            onOpenBranch={() => setRoute('hub-branch-detail')}
+            onOpenBranch={(branchId) => {
+              setSelectedBranchId(branchId ?? null);
+              setRoute('hub-branch-detail');
+            }}
           />
         );
       return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -4123,6 +4807,7 @@ function AppInner() {
           <DesktopBranchDetailScreen
             onNav={businessPortalNav}
             onBackToLocations={() => setRoute('hub-locations')}
+            branchId={selectedBranchId}
           />
         );
       return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -4139,6 +4824,8 @@ function AppInner() {
       return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-services':
+      // Live desktop: the real service categories manager (mobile runs the live hub).
+      if (hasApiConfig() && isDesktop) return <DesktopBusinessCategoriesScreen onNav={businessPortalNav} />;
       if (isDesktop)
         return (
           <DesktopServicesCategoriesScreen
@@ -4155,13 +4842,30 @@ function AppInner() {
             onNav={businessPortalNav}
             onCreateDeal={() => setRoute('deal-studio')}
             onEditDeal={() => setRoute('deal-location-pricing')}
-            onOpenDealDetail={() => setRoute('hub-deal-detail')}
+            onOpenDealDetail={(id) => {
+              if (id) setDealGroupId(id);
+              setRoute('hub-deal-detail');
+            }}
             onOpenLogs={() => setRoute('analytics-deals')}
             onOpenPos={() => setRoute('business-pos-orders')}
             onBoost={(dealName) => openBoost(dealName)}
+            onOpenLedger={() => setRoute('business-deal-ledger')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'deal-studio':
       if (isDesktop)
@@ -4177,6 +4881,18 @@ function AppInner() {
       );
 
     case 'hub-customers':
+      // Live: the real directory; the selected customer's id rides in hubCustomerName.
+      if (hasApiConfig()) {
+        const openCustomer = (userId: string) => {
+          setHubCustomerName(userId);
+          setRoute('hub-customer-profile');
+        };
+        return isDesktop ? (
+          <DesktopLiveCustomersScreen onNav={businessPortalNav} onOpenCustomer={openCustomer} />
+        ) : (
+          <LiveCustomersScreen onTab={businessTab} onOpenCustomer={openCustomer} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopBusinessCustomersScreen
@@ -4219,6 +4935,8 @@ function AppInner() {
     }
 
     case 'hub-profile':
+      if (hasApiConfig() && isDesktop)
+        return <DesktopBusinessProfileStorefrontScreen onNav={businessPortalNav} onDiscard={() => setRoute('business-overview')} />;
       if (isDesktop)
         return (
           <DesktopBusinessProfilePreviewStudioScreen
@@ -4229,6 +4947,18 @@ function AppInner() {
       return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'deal-location-pricing':
+      if (hasApiConfig()) {
+        const dealProps = {
+          dealGroupId,
+          onOpenLedger: () => setRoute('business-deal-ledger'),
+          onBoost: (name: string) => openBoost(name),
+        };
+        return isDesktop ? (
+          <DesktopLiveDealDetailScreen {...dealProps} onNav={businessPortalNav} onBack={() => setRoute('hub-deals')} />
+        ) : (
+          <LiveDealDetailScreen {...dealProps} onBack={() => setRoute('hub-deals')} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopDealLocationPricingScreen
@@ -4237,9 +4967,25 @@ function AppInner() {
             onSave={() => setRoute('hub-deals')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'deal-create-locations':
+      // Live desktop: deals are created (with their locations) in the live deal studio.
+      if (hasApiConfig() && isDesktop)
+        return <DesktopDealStudioFlow onComplete={() => setRoute('hub-deals')} onExit={() => setRoute('hub-deals')} onNav={businessPortalNav} />;
       if (isDesktop)
         return (
           <DesktopDealCreateLocationsScreen
@@ -4248,7 +4994,20 @@ function AppInner() {
             onReview={() => setRoute('hub-deal-detail')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'business-profile-studio':
       if (isDesktop)
@@ -4261,6 +5020,18 @@ function AppInner() {
       return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-deal-detail':
+      if (hasApiConfig()) {
+        const dealProps = {
+          dealGroupId,
+          onOpenLedger: () => setRoute('business-deal-ledger'),
+          onBoost: (name: string) => openBoost(name),
+        };
+        return isDesktop ? (
+          <DesktopLiveDealDetailScreen {...dealProps} onNav={businessPortalNav} onBack={() => setRoute('hub-deals')} />
+        ) : (
+          <LiveDealDetailScreen {...dealProps} onBack={() => setRoute('hub-deals')} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopDealAnalyticsScreen
@@ -4272,9 +5043,42 @@ function AppInner() {
             onEditDeal={() => setRoute('deal-studio')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="deals"
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('storefront')}
+          onOpenModule={openHubModule}
+          onOpenDealDetail={(id) => {
+            setDealGroupId(id);
+            setRoute('hub-deal-detail');
+          }}
+        />
+      );
 
     case 'hub-customer-profile':
+      if (hasApiConfig()) {
+        const openThread = (threadId: string) => {
+          setBusinessThreadId(threadId);
+          setRoute('business-messages');
+        };
+        // Only a real customer id opens a dossier; anything else falls back to the directory.
+        if (!/^[0-9a-f-]{36}$/i.test(hubCustomerName)) {
+          const openCustomer = (userId: string) => setHubCustomerName(userId);
+          return isDesktop ? (
+            <DesktopLiveCustomersScreen onNav={businessPortalNav} onOpenCustomer={openCustomer} />
+          ) : (
+            <LiveCustomersScreen onTab={businessTab} onOpenCustomer={openCustomer} />
+          );
+        }
+        return isDesktop ? (
+          <DesktopLiveCustomerProfileScreen userId={hubCustomerName} onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} onMessage={openThread} />
+        ) : (
+          <LiveCustomerProfileScreen userId={hubCustomerName} onBack={() => setRoute('hub-customers')} onMessage={openThread} />
+        );
+      }
       if (isDesktop)
         return <DesktopCustomerProfileScreen onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} />;
       return (
@@ -4313,6 +5117,8 @@ function AppInner() {
       );
 
     case 'hub-loyalty':
+      if (hasApiConfig())
+        return isDesktop ? <DesktopLiveLoyaltyScreen onNav={businessPortalNav} /> : <LiveLoyaltyScreen onBack={() => businessTab('business')} />;
       if (isDesktop)
         return (
           <DesktopLoyaltyProgrammeScreen
@@ -4323,6 +5129,8 @@ function AppInner() {
       return <BusinessLoyaltyScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />;
 
     case 'hub-loyalty-rewards':
+      if (hasApiConfig())
+        return isDesktop ? <DesktopLiveLoyaltyScreen onNav={businessPortalNav} /> : <LiveLoyaltyScreen onBack={() => businessTab('business')} />;
       if (isDesktop)
         return (
           <DesktopLoyaltyRewardsScreen
@@ -4333,6 +5141,7 @@ function AppInner() {
       return <BusinessLoyaltyRewardsScreen onBack={() => setRoute('hub-loyalty')} />;
 
     case 'analytics-overview':
+      if (hasApiConfig()) return liveAnalytics('business');
       if (isDesktop) return <DesktopAnalyticsBusinessScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4345,6 +5154,7 @@ function AppInner() {
       );
 
     case 'analytics-audience':
+      if (hasApiConfig()) return liveAnalytics('customers');
       if (isDesktop) return <DesktopAnalyticsCustomersScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4357,6 +5167,7 @@ function AppInner() {
       );
 
     case 'analytics-branches':
+      if (hasApiConfig()) return liveAnalytics('locations');
       if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4365,6 +5176,7 @@ function AppInner() {
       );
 
     case 'analytics-business':
+      if (hasApiConfig()) return liveAnalytics('business');
       if (isDesktop) return <DesktopAnalyticsBusinessScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4378,6 +5190,7 @@ function AppInner() {
       );
 
     case 'analytics-customers':
+      if (hasApiConfig()) return liveAnalytics('customers');
       if (isDesktop) return <DesktopAnalyticsCustomersScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4391,6 +5204,7 @@ function AppInner() {
       );
 
     case 'analytics-deals':
+      if (hasApiConfig()) return liveAnalytics('deals');
       if (isDesktop)
         return (
           <DesktopAnalyticsDealsScreen
@@ -4414,6 +5228,7 @@ function AppInner() {
       );
 
     case 'analytics-locations':
+      if (hasApiConfig()) return liveAnalytics('locations');
       if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
@@ -4428,6 +5243,7 @@ function AppInner() {
       );
 
     case 'analytics-pos':
+      if (hasApiConfig()) return liveAnalytics('pos');
       if (isDesktop)
         return (
           <DesktopAnalyticsPosScreen
@@ -4453,6 +5269,12 @@ function AppInner() {
       );
 
     case 'analytics-export':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveAnalyticsExportScreen onNav={businessPortalNav} onBack={goBackToPrevious} />
+        ) : (
+          <LiveAnalyticsExportScreen onBack={goBackToPrevious} />
+        );
       if (isDesktop) return <DesktopAnalyticsExportScreen onNav={businessPortalNav} onBack={goBackToPrevious} />;
       return (
         <div className="biz-flow">
@@ -4461,6 +5283,7 @@ function AppInner() {
       );
 
     case 'analytics-filter':
+      if (hasApiConfig()) return liveAnalytics('business');
       if (isDesktop) return <DesktopAnalyticsFilterScreen onNav={businessPortalNav} onBack={goBackToPrevious} />;
       return (
         <div className="biz-flow">
@@ -4469,6 +5292,7 @@ function AppInner() {
       );
 
     case 'pos-display-order':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop) return <DesktopPosDisplayOrderScreen />;
       return (
         <div className="biz-flow">
@@ -4481,6 +5305,7 @@ function AppInner() {
       );
 
     case 'pos-display-tip':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop)
         return <DesktopPosDisplayTipScreen onProceed={() => setRoute('pos-display-pay')} />;
       return (
@@ -4490,6 +5315,7 @@ function AppInner() {
       );
 
     case 'pos-display-pay':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop) return <DesktopPosDisplayPayScreen onSplit={() => setRoute('pos-split-bill')} />;
       return (
         <div className="biz-flow">
@@ -4502,6 +5328,7 @@ function AppInner() {
       );
 
     case 'pos-split-bill':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopSplitBillScreen
@@ -4517,6 +5344,7 @@ function AppInner() {
       );
 
     case 'pos-display-receipt':
+      if (hasApiConfig()) return <LivePosDisplayScreen onExit={() => setRoute('pos-home')} />;
       if (isDesktop) return <DesktopPosDisplayReceiptScreen onDone={() => setRoute('pos-order-lookup')} />;
       return (
         <div className="biz-flow">
@@ -4525,6 +5353,7 @@ function AppInner() {
       );
 
     case 'pos-home':
+      if (hasApiConfig()) return livePos('home');
       if (isDesktop)
         return (
           <DesktopPosHomeScreen
@@ -4558,6 +5387,7 @@ function AppInner() {
       );
 
     case 'pos-home-offline':
+      if (hasApiConfig()) return livePos('home');
       if (isDesktop)
         return (
           <DesktopPosHomeScreen
@@ -4591,6 +5421,7 @@ function AppInner() {
       );
 
     case 'pos-register':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosRegisterScreen
@@ -4626,6 +5457,7 @@ function AppInner() {
       );
 
     case 'pos-cart':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosCartScreen
@@ -4657,6 +5489,7 @@ function AppInner() {
       );
 
     case 'pos-switch':
+      if (hasApiConfig()) return livePos('switch');
       if (isDesktop)
         return (
           <DesktopPosSwitchScreen onNav={posTerminalNav} onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
@@ -4668,6 +5501,7 @@ function AppInner() {
       );
 
     case 'pos-customer':
+      if (hasApiConfig()) return livePos('customers');
       if (isDesktop)
         return (
           <DesktopPosCustomerScreen
@@ -4695,6 +5529,7 @@ function AppInner() {
       );
 
     case 'pos-sale-complete':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosSaleCompleteScreen
@@ -4728,6 +5563,7 @@ function AppInner() {
       );
 
     case 'pos-payment':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return (
           <DesktopPosPaymentScreen
@@ -4773,6 +5609,7 @@ function AppInner() {
       );
 
     case 'pos-product-shift':
+      if (hasApiConfig()) return livePos('stock');
       if (isDesktop)
         return (
           <DesktopPosProductShiftScreen
@@ -4810,6 +5647,7 @@ function AppInner() {
       );
 
     case 'pos-stock':
+      if (hasApiConfig()) return livePos('stock');
       if (isDesktop)
         return (
           <DesktopPosStockScreen
@@ -4829,6 +5667,7 @@ function AppInner() {
       );
 
     case 'pos-ledger':
+      if (hasApiConfig()) return livePos('ledger');
       if (isDesktop)
         return <DesktopPosLedgerScreen onNav={posTerminalNav} onOpenOrder={() => setRoute('pos-txn-detail')} />;
       return (
@@ -4838,6 +5677,7 @@ function AppInner() {
       );
 
     case 'pos-customers-lookup':
+      if (hasApiConfig()) return livePos('customers');
       if (isDesktop)
         return (
           <DesktopPosCustomerLookupScreen
@@ -4871,6 +5711,7 @@ function AppInner() {
       );
 
     case 'pos-order-lookup':
+      if (hasApiConfig()) return livePos('orders');
       if (isDesktop)
         return <DesktopPosOrderLookupScreen onNav={posTerminalNav} onBack={() => setRoute('pos-home')} />;
       return (
@@ -4880,6 +5721,7 @@ function AppInner() {
       );
 
     case 'pos-dossier':
+      if (hasApiConfig()) return livePos('customers');
       if (isDesktop)
         return (
           <DesktopPosCustomerDossierScreen
@@ -4908,6 +5750,7 @@ function AppInner() {
       );
 
     case 'pos-offline':
+      if (hasApiConfig()) return livePos('register');
       if (isDesktop)
         return <DesktopPosOfflineSaleScreen onNav={posTerminalNav} />;
       return (
@@ -4917,6 +5760,7 @@ function AppInner() {
       );
 
     case 'pos-txn-detail':
+      if (hasApiConfig()) return livePos('ledger');
       if (isDesktop)
         return <DesktopPosTransactionDetailScreen onNav={posTerminalNav} onBack={goBackToPrevious} />;
       return (
@@ -4926,6 +5770,7 @@ function AppInner() {
       );
 
     case 'pos-buffer':
+      if (hasApiConfig()) return livePos('home');
       if (isDesktop)
         return <DesktopPosBufferScreen onNav={posTerminalNav} onReturnToRegister={() => setRoute('pos-offline')} />;
       return (
@@ -5003,6 +5848,7 @@ function AppInner() {
       );
 
     case 'pos-kitchen':
+      if (hasApiConfig()) return livePos('kitchen');
       if (isDesktop)
         return <DesktopPosKitchenScreen onNav={posTerminalNav} onReturnToRegister={() => setRoute('pos-register')} />;
       return (
@@ -5015,12 +5861,83 @@ function AppInner() {
       );
 
     case 'pos-settings':
-      if (isDesktop) return <DesktopPosGeneralSettingsScreen onNav={posTerminalNav} />;
+      if (hasApiConfig()) return livePos('settings');
+      if (isDesktop)
+        return (
+          <DesktopPosGeneralSettingsScreen
+            onNav={posTerminalNav}
+            onOpenTaxes={() => setRoute('pos-taxes')}
+            onOpenReceipt={() => setRoute('pos-receipt')}
+          />
+        );
       return (
         <div className="biz-flow">
-          <BusinessPosSettingsScreen onBack={goBackToPrevious} />
+          <BusinessPosSettingsScreen
+            onBack={goBackToPrevious}
+            onOpenTaxes={() => setRoute('pos-taxes')}
+            onOpenReceipt={() => setRoute('pos-receipt')}
+          />
         </div>
       );
+
+    case 'network-dashboard': {
+      const networkNav = {
+        onOpenReferrals: () => setRoute('network-referrals'),
+        onOpenReferral: openReferral,
+        onOpenMilestones: () => setRoute('network-milestones'),
+        onOpenDiscovery: () => setRoute('network-discovery'),
+      };
+      if (isDesktop) return <DesktopBusinessNetworkDashboardScreen onNav={businessPortalNav} nav={networkNav} />;
+      return <BusinessNetworkDashboardScreen onBack={() => setRoute('business-more')} nav={networkNav} />;
+    }
+
+    case 'network-milestones':
+      if (isDesktop) return <DesktopBusinessNetworkMilestonesScreen onNav={businessPortalNav} />;
+      return <BusinessNetworkMilestonesScreen onBack={() => setRoute('network-dashboard')} />;
+
+    case 'network-referrals':
+      if (isDesktop) return <DesktopBusinessNetworkReferralsScreen onNav={businessPortalNav} onOpenReferral={openReferral} />;
+      return <BusinessNetworkReferralsScreen onBack={() => setRoute('network-dashboard')} onOpenReferral={openReferral} />;
+
+    case 'network-referral-detail':
+      // A deep link has no referral in memory — fall back to the list.
+      if (!selectedReferralId) {
+        if (isDesktop) return <DesktopBusinessNetworkReferralsScreen onNav={businessPortalNav} onOpenReferral={openReferral} />;
+        return <BusinessNetworkReferralsScreen onBack={() => setRoute('network-dashboard')} onOpenReferral={openReferral} />;
+      }
+      if (isDesktop) return <DesktopBusinessReferralDetailScreen onNav={businessPortalNav} referralId={selectedReferralId} />;
+      return <BusinessReferralDetailScreen onBack={() => setRoute('network-referrals')} referralId={selectedReferralId} />;
+
+    case 'network-discovery':
+      if (isDesktop) return <DesktopBusinessDiscoveryPresenceScreen onNav={businessPortalNav} />;
+      return <BusinessDiscoveryPresenceScreen onBack={() => setRoute('network-dashboard')} />;
+
+    case 'campaign-create':
+      if (isDesktop)
+        return (
+          <DesktopCampaignWizardScreen
+            onNav={businessPortalNav}
+            onExit={() => setRoute('boost-hub')}
+            onDone={() => setRoute('boost-hub')}
+          />
+        );
+      return <BusinessCampaignWizardScreen onBack={() => setRoute('boost-hub')} onDone={() => setRoute('boost-hub')} />;
+
+    case 'analytics-intelligence':
+      if (isDesktop) return <DesktopBusinessIntelligenceScreen onNav={businessPortalNav} />;
+      return <BusinessIntelligenceScreen onBack={() => setRoute('business-more')} />;
+
+    case 'business-categories':
+      if (isDesktop) return <DesktopBusinessCategoriesScreen onNav={businessPortalNav} />;
+      return <BusinessCategoriesScreen onBack={() => setRoute('business-more')} />;
+
+    case 'pos-taxes':
+      if (isDesktop) return <DesktopPosTaxesScreen onNav={posTerminalNav} />;
+      return <BusinessPosTaxesScreen onBack={() => setRoute('pos-settings')} />;
+
+    case 'pos-receipt':
+      if (isDesktop) return <DesktopPosReceiptScreen onNav={posTerminalNav} />;
+      return <BusinessPosReceiptScreen onBack={() => setRoute('pos-settings')} />;
 
     case 'business-more':
       if (isDesktop)
@@ -5065,6 +5982,7 @@ function AppInner() {
           onOpenSupport={() => setRoute('business-support')}
           onOpenSettings={() => setRoute('business-settings')}
           onOpenCluster={() => setRoute('cluster-system')}
+          onNavKey={businessPortalNav}
           onSwitchConsumer={() => setRoute('home')}
           onSignOut={() => {
             signOut();
@@ -5072,6 +5990,14 @@ function AppInner() {
           }}
         />
       );
+
+    case 'business-deal-ledger':
+      if (isDesktop) return <DesktopBusinessDealLedgerScreen onNav={businessPortalNav} />;
+      return <BusinessDealLedgerScreen onBack={() => setRoute('business-more')} />;
+
+    case 'business-reviews':
+      if (isDesktop) return <DesktopBusinessReviewsScreen onNav={businessPortalNav} />;
+      return <BusinessReviewsScreen onBack={() => setRoute('business-more')} />;
 
     case 'business-orders':
       if (isDesktop) return <DesktopBusinessOrdersScreen onNav={businessPortalNav} initialView="orders" />;
@@ -5094,6 +6020,7 @@ function AppInner() {
       );
 
     case 'business-pos-orders':
+      if (hasApiConfig() && isDesktop) return livePos('orders');
       if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} activeNav={posActiveNav} />;
       return (
         <BusinessOrdersScreen
@@ -5105,6 +6032,17 @@ function AppInner() {
       );
 
     case 'business-messages':
+      if (hasApiConfig()) {
+        const openCustomer = (customerId: string) => {
+          setHubCustomerName(customerId);
+          setRoute('hub-customer-profile');
+        };
+        return isDesktop ? (
+          <DesktopLiveMessagesScreen onNav={businessPortalNav} initialThreadId={businessThreadId} onOpenCustomer={openCustomer} />
+        ) : (
+          <LiveMessagesScreen onBack={() => setRoute('business-overview')} initialThreadId={businessThreadId} onOpenCustomer={openCustomer} />
+        );
+      }
       if (isDesktop)
         return (
           <DesktopBusinessMessagesWorkspaceScreen
@@ -5163,6 +6101,13 @@ function AppInner() {
         />
       );
     case 'cluster-onboarding':
+      // Live: one panel covers detection/joining/proposing and the cluster itself.
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveClusterScreen onNav={businessPortalNav} onCreateDeal={() => setRoute('deal-studio')} />
+        ) : (
+          <LiveClusterScreen onBack={() => setRoute('business-overview')} onCreateDeal={() => setRoute('deal-studio')} />
+        );
       if (isDesktop)
         return (
           <DesktopClusterOnboardingScreen
@@ -5184,6 +6129,13 @@ function AppInner() {
       );
 
     case 'cluster-system':
+      // Live: one panel covers detection/joining/proposing and the cluster itself.
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveClusterScreen onNav={businessPortalNav} onCreateDeal={() => setRoute('deal-studio')} />
+        ) : (
+          <LiveClusterScreen onBack={() => setRoute('business-overview')} onCreateDeal={() => setRoute('deal-studio')} />
+        );
       if (isDesktop)
         return (
           <DesktopClusterSystemScreen
@@ -5210,6 +6162,23 @@ function AppInner() {
       );
 
     case 'cluster-boost':
+      // Live: cluster campaigns are boosts with the cluster placement — the live boost hub lists them.
+      if (hasApiConfig()) {
+        const growthNav = {
+          onBoost: () => openBoost(),
+          onCreateCampaign: () => setRoute('campaign-create'),
+          onOpenWallet: () => setRoute('boost-wallet'),
+          onOpenMetrics: (kind: 'boost' | 'promotion', id: string) => {
+            setMetricsTarget({ kind, id });
+            setRoute('boost-metrics');
+          },
+        };
+        return isDesktop ? (
+          <DesktopLiveBoostHubScreen onNav={businessPortalNav} {...growthNav} />
+        ) : (
+          <LiveBoostHubScreen onBack={() => setRoute('cluster-system')} onTab={boostTab} {...growthNav} />
+        );
+      }
       return (
         <ClusterBoostListScreen
           onBack={() => setRoute('cluster-system')}
@@ -5219,6 +6188,17 @@ function AppInner() {
       );
 
     case 'cluster-boost-new':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopLiveBoostStudioScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('cluster-system')}
+            onDone={() => setRoute('cluster-boost')}
+            onOpenWallet={() => setRoute('boost-wallet')}
+          />
+        ) : (
+          <LiveBoostStudioScreen onBack={() => setRoute('cluster-system')} onDone={() => setRoute('cluster-boost')} onOpenWallet={() => setRoute('boost-wallet')} />
+        );
       return (
         <ClusterBoostFlow
           onBack={() => setRoute('cluster-system')}

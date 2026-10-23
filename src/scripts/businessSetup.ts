@@ -102,6 +102,11 @@ export function useBusinessSetupNav(): BusinessSetupNavValue | null {
  * snapshot keeps the merchant's progress (current step + in-flight drafts)
  * alive across that round trip so returning resumes at the right step instead
  * of restarting setup.
+ *
+ * It is additionally mirrored into `sessionStorage`, so a hard browser
+ * refresh (or reopening the tab on Vercel, where every URL is a fresh page
+ * load) resumes the run at the same step with the same drafts instead of
+ * restarting setup from scratch.
  * ------------------------------------------------------------------ */
 
 export interface BusinessSetupSnapshot {
@@ -110,14 +115,36 @@ export interface BusinessSetupSnapshot {
   data: Record<string, unknown>;
 }
 
-let snapshot: BusinessSetupSnapshot | null = null;
+// Mirrored to localStorage so a reload, or coming back later, resumes setup
+// at the same step with the same drafts (cleared once setup is finished).
+const STORAGE_KEY = 'vemtap_business_setup';
+
+const readStored = (): BusinessSetupSnapshot | null => {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BusinessSetupSnapshot | null;
+    // A corrupted or older-shaped payload starts clean instead of crashing setup.
+    if (!parsed || typeof parsed.step !== 'string' || typeof parsed.data !== 'object' || !parsed.data) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+let snapshot: BusinessSetupSnapshot | null = typeof window === 'undefined' ? null : readStored();
+
+const persist = () => {
+  try {
+    if (snapshot) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    else window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage unavailable: progress still lives for this page view.
+  }
+};
 
 export function getBusinessSetupSnapshot(): BusinessSetupSnapshot | null {
   return snapshot;
-}
-
-export function hasBusinessSetupSnapshot(): boolean {
-  return snapshot !== null;
 }
 
 export function saveBusinessSetupSnapshot(step: string, data: Record<string, unknown>): void {
@@ -126,15 +153,32 @@ export function saveBusinessSetupSnapshot(step: string, data: Record<string, unk
     verificationState: snapshot?.verificationState ?? 'not-started',
     data,
   };
+  persist();
 }
 
 export function setBusinessSetupVerificationState(state: VerificationSectionState): void {
   snapshot = snapshot
     ? { ...snapshot, verificationState: state }
     : { step: 'basic', verificationState: state, data: {} };
+  persist();
+}
+
+/**
+ * Re-aim a saved run at another step without touching its in-flight drafts.
+ * The business sign-up happens on the marketing intro, so when it completes
+ * the run is pointed at `basic` ("Business Profile") before the onboarding
+ * route mounts — otherwise restoring the saved `intro` step would send the new
+ * merchant back to the screen they just left.
+ */
+export function setBusinessSetupSnapshotStep(step: string): void {
+  if (snapshot) {
+    snapshot = { ...snapshot, step };
+    persist();
+  }
 }
 
 /** Called only once setup is genuinely finished, so a new run starts clean. */
 export function clearBusinessSetupSnapshot(): void {
   snapshot = null;
+  persist();
 }

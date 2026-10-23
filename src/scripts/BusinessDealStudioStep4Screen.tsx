@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLiveDealBranch } from '../hooks/business/useLiveDealBranch';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
@@ -25,6 +26,8 @@ interface BusinessDealStudioStep4ScreenProps {
   onEditRules: () => void;
   onEditLocations: () => void;
   onPublish: () => void;
+  /** Live: publishes for real and resolves with the outcome the modal shows. */
+  livePublish?: () => Promise<DealPublicationResult>;
   onSaveDraft: () => void;
 }
 
@@ -68,6 +71,7 @@ export function BusinessDealStudioStep4Screen({
   onEditRules,
   onEditLocations,
   onPublish,
+  livePublish,
   onSaveDraft,
 }: BusinessDealStudioStep4ScreenProps) {
   const [publication, setPublication] = useState<DealPublicationResult | null>(null);
@@ -95,7 +99,10 @@ export function BusinessDealStudioStep4Screen({
         : studio.strategy === 'combo'
           ? (comboRules[0] ?? 'Combo & Bundle Deal')
           : `Percentage Discount (${pct}% Off)`;
-  const activeBranches = BRANCH_DETAILS.filter((branch) => studio.branches[branch.key]);
+  const liveBranch = useLiveDealBranch();
+  const activeBranches = liveBranch.live
+    ? [{ key: 'wuseII' as const, name: liveBranch.name, address: liveBranch.area }]
+    : BRANCH_DETAILS.filter((branch) => studio.branches[branch.key]);
   const activeDayKeys = DAY_ORDER.filter((key) => studio.days[key]);
   const weekdayCount = (['mon', 'tue', 'wed', 'thu', 'fri'] as Array<keyof DealStudioDraft['days']>).filter(
     (key) => studio.days[key],
@@ -117,8 +124,21 @@ export function BusinessDealStudioStep4Screen({
   ];
   const canPublish = readinessErrors.length === 0;
 
+  const [publishing, setPublishing] = useState(false);
   const handlePublish = () => {
-    if (!canPublish || publication) return;
+    if (!canPublish || publication || publishing) return;
+    if (livePublish) {
+      // Live: the modal shows what the API actually did; failures surface in the flow's banner.
+      setPublishing(true);
+      livePublish()
+        .then((result) => {
+          setPublication(result);
+          setShowResult(true);
+        })
+        .catch(() => undefined)
+        .finally(() => setPublishing(false));
+      return;
+    }
     // Render the status the service actually returns — never assume "live".
     const result = publishDeal({ dealTitle: draft.title, studio });
     setPublication(result);
@@ -227,7 +247,7 @@ export function BusinessDealStudioStep4Screen({
                 {studio.strategy === 'percentage' ? `${pct}% Off ${draft.title}` : `${strategyTitle}: ${draft.title}`}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary line-clamp-1 mt-0.5">
-                Signature dry-aged prime beef cut with truffle glaze.
+                {liveBranch.live ? draft.description || draft.title : 'Signature dry-aged prime beef cut with truffle glaze.'}
               </p>
             </div>
           </div>

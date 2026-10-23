@@ -246,7 +246,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business, onNav, activeNav =
   const [saved, setSaved] = useState(false);
   const [claimedDeals, setClaimedDeals] = useState<Record<number, boolean>>({});
   const cart = useCart();
-  const { submitCustomerStoreOrder } = useStoreOrdering();
+  const { submitCustomerStoreOrder } = useStoreOrdering({ withData: false });
 
   // Guest checkout state
   const [guestCheckoutOpen, setGuestCheckoutOpen] = useState(false);

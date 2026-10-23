@@ -148,8 +148,10 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 const toLedgerEntry = (transaction: AdWalletTransaction) => {
-  const sign = transaction.amount >= 0 ? '+' : '-';
-  const amountLabel = `${sign}${formatCurrency(Math.abs(transaction.amount))}`;
+  const amount = transaction.direction === 'debit' ? -Math.abs(Number(transaction.amount)) : Number(transaction.amount);
+  const status = transaction.status ?? (transaction.direction === 'debit' ? 'debited' : 'credited');
+  const sign = amount >= 0 ? '+' : '-';
+  const amountLabel = `${sign}${formatCurrency(Math.abs(amount))}`;
   return {
     key: transaction.id,
     icon: transaction.type === 'topup' ? 'credit_card' : transaction.type === 'refund' ? 'replay' : 'campaign',
@@ -161,11 +163,11 @@ const toLedgerEntry = (transaction: AdWalletTransaction) => {
           : 'bg-surface-container-high text-tertiary',
     title: transaction.type === 'topup' ? 'Wallet Top-Up via Card' : transaction.type === 'refund' ? 'Refund Unspent Budget' : 'Campaign Spend',
     date: new Date(transaction.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-    ref: transaction.status,
+    ref: transaction.reference ?? status,
     amount: amountLabel,
-    amountClass: transaction.amount >= 0 ? 'text-badge-discount-text' : 'text-text-primary',
-    status: transaction.status,
-    statusClass: transaction.status === 'completed' || transaction.status === 'credited' ? 'text-badge-discount-text' : 'text-secondary',
+    amountClass: amount >= 0 ? 'text-badge-discount-text' : 'text-text-primary',
+    status,
+    statusClass: status === 'completed' || status === 'credited' ? 'text-badge-discount-text' : 'text-secondary',
   };
 };
 
@@ -187,7 +189,8 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
     })),
   ];
 
-  const visibleLedger = entryStatus === '' ? ledger : ledger.filter((entry) => entry.status === entryStatus);
+  const visibleLedger =
+    entryStatus === '' ? ledger : ledger.filter((entry) => entry.status === entryStatus);
 
   useEffect(() => {
     if (!hasApiConfig()) return;
@@ -716,7 +719,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
               </div>
 
               <div className="flex flex-col gap-space-2xs">
-                {LEDGER.map((entry) => (
+                {visibleLedger.map((entry) => (
                   <div
                     className="p-space-sm rounded-xl bg-surface-container-lowest shadow-sm flex items-center justify-between gap-3"
                     key={entry.key}

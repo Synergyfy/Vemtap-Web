@@ -1,4 +1,6 @@
 import { Icon } from '../../components/ui/Icon';
+import { VerificationStatusPanel } from '../../components/business/VerificationStatusPanel';
+import { hasApiConfig } from '../../services/api/client';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopVerificationStatusCenterScreenProps {
@@ -28,6 +30,23 @@ export function DesktopVerificationStatusCenterScreen({
   onBrand,
   onNav,
 }: DesktopVerificationStatusCenterScreenProps) {
+  // Live: the real status from the backend; the designed page below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <BusinessPortalChrome activeNav="more-verification" onNav={onNav} onBrand={onBrand}>
+        <div className="w-full py-space-xl flex flex-col gap-space-lg">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Verification</h1>
+            <p className="font-body-md text-body-md text-text-secondary">
+              Your identity and business checks, and what is left to do.
+            </p>
+          </div>
+          <VerificationStatusPanel onContinue={onUpdateInfo} />
+        </div>
+      </BusinessPortalChrome>
+    );
+  }
+
   return (
     <BusinessPortalChrome activeNav="more-verification" onNav={onNav} onBrand={onBrand}>
       <div className="max-w-6xl mx-auto py-space-lg px-margin flex flex-col gap-space-xl w-full">

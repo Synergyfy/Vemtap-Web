@@ -2,10 +2,13 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosToggle } from '../../components/PosControls';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { MoreSettingsLink } from '../../components/business/MoreSettingsLink';
 import { usePosSettings } from '../../context/PosSettingsContext';
 
 interface DesktopPosGeneralSettingsScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
+  onOpenTaxes?: () => void;
+  onOpenReceipt?: () => void;
 }
 
 const SETTINGS_TABS = [
@@ -138,7 +141,7 @@ function Card({ children }: { children: ReactNode }) {
  * POS Settings — tabbed list of till controls. Edits are staged as a draft;
  * Save Changes applies them across the whole till.
  */
-export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSettingsScreenProps) {
+export function DesktopPosGeneralSettingsScreen({ onNav, onOpenTaxes, onOpenReceipt }: DesktopPosGeneralSettingsScreenProps) {
   const s = usePosSettings();
   const [tab, setTab] = useState<SettingsTabKey>('business');
   const [dirty, setDirty] = useState(false);
@@ -308,6 +311,30 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
         )}
 
 
+        {tab === 'receipt' && onOpenReceipt && (
+
+
+          <MoreSettingsLink
+
+
+            icon="tune"
+
+
+            title="Receipt & order customization"
+
+
+            body="Paper width, address, print triggers and a live preview"
+
+
+            onClick={onOpenReceipt}
+
+
+          />
+
+
+        )}
+
+
         {tab === 'receipt' && (
           <Card>
             <SettingFieldRow
@@ -339,6 +366,22 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
               onChange={() => update('showBusinessLogo', !draft.showBusinessLogo)}
             />
           </Card>
+        )}
+
+        {tab === 'tax' && onOpenTaxes && (
+
+          <MoreSettingsLink
+
+            icon="account_balance"
+
+            title="Taxes & surcharges"
+
+            body="Service charge, packaging fee, TIN and table QR rules"
+
+            onClick={onOpenTaxes}
+
+          />
+
         )}
 
         {tab === 'tax' && (

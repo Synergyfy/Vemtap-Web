@@ -96,8 +96,12 @@ export function RecipientVerificationSheet({
                 aria-label={`Digit ${index + 1}`}
                 className={
                   focusedIndex === index
-                    ? 'otp-input w-full aspect-square text-center text-xl font-bold text-text-primary bg-surface-canvas border-2 border-primary-container rounded-xl focus:outline-none ring-2 ring-primary-container/10 transition-all caret-primary-container'
-                    : 'otp-input w-full aspect-square text-center text-xl font-bold text-text-primary bg-surface-subtle/70 border border-border-subtle rounded-xl focus:bg-surface-canvas focus:border-primary-container focus:outline-none transition-all'
+                    ? 'otp-input w-full aspect-square text-center text-xl font-bold text-text-primary bg-surface-canvas border-2 border-primary-container rounded-xl focus:outline-none ring-4 ring-primary-container/15 transition-all caret-primary-container'
+                    : `otp-input w-full aspect-square text-center text-xl font-bold rounded-xl border-2 focus:outline-none focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 transition-all ${
+                        digit
+                          ? 'text-text-primary bg-surface-canvas border-primary-container shadow-sm'
+                          : 'text-text-tertiary bg-surface-canvas border-outline-variant'
+                      }`
                 }
                 inputMode="numeric"
                 maxLength={1}

@@ -50,6 +50,7 @@ export function AiDesignAssistantModal({
 }: AiDesignAssistantModalProps) {
   const [copyState, setCopyState] = useState<CopyState>('idle');
   const [copiedTo, setCopiedTo] = useState<string | null>(null);
+  const [editedPrompt, setEditedPrompt] = useState<string | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const resetTimer = useRef<number | undefined>(undefined);
 
@@ -57,6 +58,7 @@ export function AiDesignAssistantModal({
     if (!open) return undefined;
     setCopyState('idle');
     setCopiedTo(null);
+    setEditedPrompt(null);
     return () => {
       if (resetTimer.current !== undefined) {
         window.clearTimeout(resetTimer.current);
@@ -65,7 +67,7 @@ export function AiDesignAssistantModal({
     };
   }, [open]);
 
-  const prompt = open ? buildAiPrompt(assetType, context, { aspectRatio }) : '';
+  const prompt = open ? (editedPrompt ?? buildAiPrompt(assetType, context, { aspectRatio })) : '';
 
   const reportCopy = (ok: boolean, providerName?: string) => {
     setCopyState(ok ? 'copied' : 'failed');
@@ -131,9 +133,10 @@ export function AiDesignAssistantModal({
 
         {/* How it works */}
         <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-          VEMTAP prepared a prompt below from your business details. Copy it into ChatGPT or Google
-          Gemini, generate and download the image on their website, then come back here to upload it.
-          VEMTAP does not generate images — your own AI provider account and its limits apply.
+          VEMTAP prepared a prompt below from your business and item details. Review or edit it, then copy
+          it into ChatGPT or Google Gemini, generate and download the image on their website, and come
+          back here to upload it. VEMTAP does not generate images — your own AI provider account and its
+          limits apply.
         </p>
 
         <ol className="flex flex-col gap-space-xs bg-surface-tint-blue rounded-xl p-space-sm">
@@ -171,11 +174,13 @@ export function AiDesignAssistantModal({
           <textarea
             className="w-full h-36 rounded-xl bg-surface-subtle border border-border-subtle p-space-sm font-caption text-caption text-text-primary leading-relaxed resize-none focus:outline-none focus:shadow-[0_0_0_2px_#066cf4]"
             id="ai-design-prompt"
-            readOnly
             ref={promptRef}
             value={prompt}
-            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => setEditedPrompt(event.target.value)}
           />
+          <p className="font-caption text-caption text-text-tertiary">
+            Editable — tweak the wording before copying it into your AI tool.
+          </p>
           <p
             aria-live="polite"
             className={`font-caption text-caption font-semibold ${

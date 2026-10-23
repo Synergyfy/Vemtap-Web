@@ -1,3 +1,6 @@
+import { LiveAvailabilityStep } from '../components/business/LiveItemSteps';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -41,7 +44,7 @@ const PREP_CHIPS = [
   { range: '45+', title: '45 – 60m', sub: 'Custom', label: '45 - 60 minutes' },
 ];
 
-export function BusinessAddProductStep3Screen({
+function DemoBusinessAddProductStep3Screen({
   draft,
   onDraftChange,
   onBack,
@@ -78,7 +81,7 @@ export function BusinessAddProductStep3Screen({
           </button>
           <div className="flex flex-col items-center justify-center flex-1 truncate px-space-xs">
             <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-              Step 2 of 4
+              Step 4 of 5
             </span>
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">Add New Product</h1>
           </div>
@@ -102,12 +105,12 @@ export function BusinessAddProductStep3Screen({
         <div className="px-margin pt-space-md pb-space-xs">
           <div className="flex items-center justify-between mb-space-xs">
             <span className="font-label-sm text-label-sm text-text-secondary">
-              Step 3 of 4: Branch Availability
+              Step 4 of 5: Branch Availability
             </span>
-            <span className="font-label-sm text-label-sm font-semibold text-primary">75% Complete</span>
+            <span className="font-label-sm text-label-sm font-semibold text-primary">80% Complete</span>
           </div>
           <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-            <div className="h-full bg-primary-container rounded-full transition-all duration-300" style={{ width: '75%' }} />
+            <div className="h-full bg-primary-container rounded-full transition-all duration-300" style={{ width: '80%' }} />
           </div>
         </div>
 
@@ -427,5 +430,31 @@ export function BusinessAddProductStep3Screen({
         </div>
       </div>
     </AppScreen>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function BusinessAddProductStep3Screen(props: BusinessAddProductStep3ScreenProps) {
+  if (!hasApiConfig()) return <DemoBusinessAddProductStep3Screen {...props} />;
+  return (
+    <BusinessSubScreen title="Where it sells" onBack={props.onBack}>
+      <LiveAvailabilityStep
+        item={{
+    kind: 'product',
+    title: props.draft.title,
+    image: props.draft.mainImage,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: props.draft.lowStock ? [['Low-stock alert', `${props.draft.lowStock} units`]] : [],
+  }}
+        selected={Object.keys(props.draft.branches ?? {}).filter((id) => props.draft.branches[id])}
+        onChange={(ids) => props.onDraftChange({ branches: Object.fromEntries(ids.map((id) => [id, true])) })}
+        onBack={props.onBack}
+        onNext={props.onNext}
+        nextLabel="Review & publish"
+      />
+    </BusinessSubScreen>
   );
 }

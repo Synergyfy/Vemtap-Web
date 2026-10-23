@@ -1,5 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { storeOrderingService } from '../services/storeOrderingService';
+import { teamService } from '../services/teamService';
 import { ordersService } from '../services/ordersService';
 import {
   type StoreOrder,
@@ -71,11 +75,41 @@ interface StoreOrderingContextValue {
     posTransactionId: string,
     notes?: string
   ) => { ok: boolean; message: string };
+  /** Live mode: the last server refusal (the screen's optimistic message may have said otherwise). */
+  lastError: string | null;
+  clearLastError: () => void;
 }
 
 const StoreOrderingContext = createContext<StoreOrderingContextValue | null>(null);
+/**
+ * Mounted screens that need the live orders/QR/settings data register here, so
+ * the provider (which wraps the whole app) only fetches and polls while one is open.
+ */
+const StoreOrderingDemandContext = createContext<() => () => void>(() => () => undefined);
 
 const STORAGE_ORDERS_KEY = 'vemtap_store_orders_v1';
+
+const VALID_TRANSITIONS: Record<StoreOrderStatus, StoreOrderStatus[]> = {
+  new: ['accepted', 'rejected', 'cancelled'],
+  accepted: ['preparing', 'cancelled', 'partially-fulfilled'],
+  preparing: ['ready', 'partially-fulfilled', 'cancelled'],
+  ready: ['awaiting-payment', 'paid', 'completed', 'cancelled'],
+  'awaiting-payment': ['paid', 'cancelled'],
+  paid: ['completed', 'cancelled'],
+  completed: [],
+  'partially-fulfilled': ['ready', 'cancelled'],
+  rejected: [],
+  cancelled: [],
+};
+
+const PAID_STATUSES = ['paid-in-store', 'paid-pos'];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const liveKeys = {
+  orders: ['store-ordering', 'orders'] as const,
+  summary: ['store-ordering', 'summary'] as const,
+  qr: ['store-ordering', 'qr'] as const,
+  settings: ['store-ordering', 'settings'] as const,
+};
 const STORAGE_QRS_KEY = 'vemtap_store_qrs_v1';
 const STORAGE_SETTINGS_KEY = 'vemtap_store_settings_v1';
 
@@ -172,21 +206,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       const order = orders.find((o) => o.id === orderId || o.orderRef === orderId);
       if (!order) return { ok: false, message: 'Order not found' };
 
-      // Validate transitions
-      const validTransitions: Record<StoreOrderStatus, StoreOrderStatus[]> = {
-        new: ['accepted', 'rejected', 'cancelled'],
-        accepted: ['preparing', 'cancelled', 'partially-fulfilled'],
-        preparing: ['ready', 'partially-fulfilled', 'cancelled'],
-        ready: ['awaiting-payment', 'paid', 'completed', 'cancelled'],
-        'awaiting-payment': ['paid', 'cancelled'],
-        paid: ['completed', 'cancelled'],
-        completed: [],
-        'partially-fulfilled': ['ready', 'cancelled'],
-        rejected: [],
-        cancelled: [],
-      };
-
-      const allowed = validTransitions[order.status] ?? [];
+      const allowed = VALID_TRANSITIONS[order.status] ?? [];
       if (!allowed.includes(newStatus) && newStatus !== order.status) {
         return {
           ok: false,
@@ -566,6 +586,173 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     [orders]
   );
 
+  // ------------------------------------------------------------------ live
+  // With an API configured the same surface runs against /store-ordering/*:
+  // each action checks what it can locally (so its return value is honest),
+  // fires the request, then refetches; a server refusal lands in lastError.
+  const live = hasApiConfig();
+  const queryClient = useQueryClient();
+  const [consumers, setConsumers] = useState(0);
+  const subscribe = useCallback(() => {
+    setConsumers((count) => count + 1);
+    return () => setConsumers((count) => count - 1);
+  }, []);
+  const fetchLive = live && consumers > 0;
+  const [lastError, setLastError] = useState<string | null>(null);
+  const clearLastError = useCallback(() => setLastError(null), []);
+  const liveOrders = useQuery({ queryKey: liveKeys.orders, queryFn: storeOrderingService.orders, enabled: fetchLive, refetchInterval: 30_000 });
+  const liveSummary = useQuery({ queryKey: liveKeys.summary, queryFn: storeOrderingService.summary, enabled: fetchLive, refetchInterval: 30_000 });
+  const liveQr = useQuery({ queryKey: liveKeys.qr, queryFn: storeOrderingService.qrCodes, enabled: fetchLive });
+  const liveSettings = useQuery({ queryKey: liveKeys.settings, queryFn: storeOrderingService.settings, enabled: fetchLive });
+  const team = useQuery({ queryKey: ['store-ordering', 'team'], queryFn: () => teamService.list({ allBranches: true }), enabled: fetchLive, staleTime: 5 * 60_000 });
+
+  const run = useCallback(
+    (request: () => Promise<unknown>, keys: ReadonlyArray<readonly string[]> = [liveKeys.orders, liveKeys.summary]) => {
+      setLastError(null);
+      void request()
+        .catch((error: unknown) => setLastError(apiErrorMessage(error, 'The store-ordering update failed.')))
+        .finally(() => keys.forEach((queryKey) => void queryClient.invalidateQueries({ queryKey })));
+    },
+    [queryClient],
+  );
+
+  const liveValue = useMemo((): StoreOrderingContextValue | null => {
+    if (!live) return null;
+    const list = liveOrders.data ?? [];
+    const find = (id: string) => list.find((o) => o.id === id || o.orderRef === id);
+    return {
+      orders: list,
+      qrCodes: liveQr.data ?? [],
+      settings: liveSettings.data ?? INITIAL_ORDERING_SETTINGS,
+      summaryMetrics: liveSummary.data ?? {
+        newOrders: 0,
+        preparing: 0,
+        readyForPickup: 0,
+        awaitingCollection: 0,
+        completedToday: 0,
+        totalRevenueToday: 0,
+      },
+      getOrderById: (id) => find(id),
+      updateOrderStatus: (orderId, newStatus, note) => {
+        const order = find(orderId);
+        if (!order) return { ok: false, message: 'Order not found' };
+        if (newStatus === order.status) return { ok: true, message: `Order is already ${newStatus}` };
+        if (newStatus === 'paid') return { ok: false, message: 'Record the payment to mark the order paid.' };
+        if (!(VALID_TRANSITIONS[order.status] ?? []).includes(newStatus))
+          return { ok: false, message: `Cannot transition order directly from "${order.status}" to "${newStatus}".` };
+        if (newStatus === 'completed' && !PAID_STATUSES.includes(order.payment.status))
+          return { ok: false, message: 'Record the payment before completing the order.' };
+        run(() => storeOrderingService.setStatus(order.id, newStatus, note));
+        return { ok: true, message: `Order status updated to ${newStatus}` };
+      },
+      toggleItemAvailability: (orderId, itemId, isAvailable) => {
+        const order = find(orderId);
+        if (order) run(() => storeOrderingService.updateItem(order.id, itemId, { available: isAvailable }));
+      },
+      substituteItem: (orderId, itemId, replacementName, priceDiff) => {
+        const order = find(orderId);
+        if (order) run(() => storeOrderingService.updateItem(order.id, itemId, { substitution: { replacementName, priceDiff } }));
+      },
+      removeItem: (orderId, itemId) => {
+        const order = find(orderId);
+        if (order) run(() => storeOrderingService.updateItem(order.id, itemId, { removed: true }));
+      },
+      assignStaff: (orderId, staffName) => {
+        const order = find(orderId);
+        const needle = staffName.toLowerCase();
+        const member = (team.data ?? []).find((m) => {
+          const name = `${m.firstName} ${m.lastName}`.trim().toLowerCase();
+          return name && (needle.startsWith(name) || name.startsWith(needle));
+        });
+        if (!order) return;
+        if (!member) {
+          setLastError(`${staffName} is not on your team yet — invite them first.`);
+          return;
+        }
+        run(() => storeOrderingService.assign(order.id, member.id));
+      },
+      recordStorePayment: (orderId, methodOrParams, reference, notes) => {
+        const order = find(orderId);
+        if (!order) return { ok: false, message: 'Order not found' };
+        if (PAID_STATUSES.includes(order.payment.status)) return { ok: false, message: 'This order is already paid.' };
+        const params: RecordPaymentParams =
+          typeof methodOrParams === 'object' && methodOrParams !== null
+            ? methodOrParams
+            : { method: methodOrParams, reference, notes, markCompleted: true };
+        run(() =>
+          storeOrderingService.recordPayment(order.id, {
+            method: params.method,
+            ...(params.amountReceived !== undefined ? { amountReceived: params.amountReceived } : {}),
+            ...(params.reference ? { reference: params.reference } : {}),
+            ...(params.notes ? { notes: params.notes } : {}),
+            ...(params.markCompleted ? { markCompleted: true } : {}),
+          }),
+        );
+        return { ok: true, message: `Payment recorded for ${order.orderRef}.` };
+      },
+      completeCollection: (orderId) => {
+        const order = find(orderId);
+        if (!order) return { ok: false, message: 'Order not found' };
+        if (!PAID_STATUSES.includes(order.payment.status))
+          return { ok: false, message: 'Record the payment before handing the order over.' };
+        run(() => storeOrderingService.collect(order.id));
+        return { ok: true, message: `Order ${order.orderRef} handed over and marked as Completed.` };
+      },
+      // Customer-side checkout is not wired here; demo storefronts keep the local order.
+      submitCustomerStoreOrder,
+      addQrCode: (newQr) => {
+        const placeholder: StoreQrRecord = {
+          ...newQr,
+          id: `pending-${Date.now()}`,
+          createdAt: new Date().toISOString().split('T')[0],
+          scansCount: 0,
+          ordersCount: 0,
+          revenueGenerated: 0,
+        };
+        run(
+          () =>
+            storeOrderingService.createQr({
+              branchId: newQr.branchId,
+              name: newQr.name,
+              type: newQr.type,
+              ...(newQr.targetLabel ? { targetLabel: newQr.targetLabel } : {}),
+            }),
+          [liveKeys.qr],
+        );
+        return placeholder;
+      },
+      toggleQrActive: (qrId) => {
+        const qr = (liveQr.data ?? []).find((q) => q.id === qrId);
+        if (qr) run(() => storeOrderingService.updateQr(qr.id, { isActive: !qr.active }), [liveKeys.qr]);
+      },
+      updateSettings: (patch) => run(() => storeOrderingService.updateSettings(patch), [liveKeys.settings]),
+      activePosHandoffOrderId,
+      setActivePosHandoffOrderId,
+      completeOrderFromPos: (orderId, tender, posTransactionId, notes) => {
+        const order = find(orderId);
+        if (!order) return { ok: false, message: 'Order not found' };
+        if (!UUID.test(posTransactionId)) return { ok: false, message: 'Complete the sale on VEMTAP POS first.' };
+        run(() => storeOrderingService.completeFromPos(order.id, { tender, posSaleId: posTransactionId, notes }));
+        setActivePosHandoffOrderId(null);
+        return { ok: true, message: `Order ${order.orderRef} completed via VEMTAP POS.` };
+      },
+      lastError,
+      clearLastError,
+    };
+  }, [
+    live,
+    liveOrders.data,
+    liveQr.data,
+    liveSettings.data,
+    liveSummary.data,
+    team.data,
+    run,
+    submitCustomerStoreOrder,
+    activePosHandoffOrderId,
+    lastError,
+    clearLastError,
+  ]);
+
   const value = useMemo(
     () => ({
       orders,
@@ -587,6 +774,8 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       activePosHandoffOrderId,
       setActivePosHandoffOrderId,
       completeOrderFromPos,
+      lastError: null,
+      clearLastError: () => undefined,
     }),
     [
       orders,
@@ -610,10 +799,20 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  return <StoreOrderingContext.Provider value={value}>{children}</StoreOrderingContext.Provider>;
+  return (
+    <StoreOrderingDemandContext.Provider value={subscribe}>
+      <StoreOrderingContext.Provider value={liveValue ?? value}>{children}</StoreOrderingContext.Provider>
+    </StoreOrderingDemandContext.Provider>
+  );
 }
 
-export function useStoreOrdering() {
+/**
+ * Store-ordering state and actions. Pass `{ withData: false }` from screens that
+ * only submit orders (the customer storefront), so they don't load the owner's data.
+ */
+export function useStoreOrdering({ withData = true }: { withData?: boolean } = {}) {
+  const subscribe = useContext(StoreOrderingDemandContext);
+  useEffect(() => (withData ? subscribe() : undefined), [withData, subscribe]);
   const ctx = useContext(StoreOrderingContext);
   if (!ctx) {
     throw new Error('useStoreOrdering must be used within a StoreOrderingProvider');

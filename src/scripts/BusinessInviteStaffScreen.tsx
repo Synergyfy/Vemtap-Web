@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
+import { InviteStaffForm } from '../components/business/TeamPanels';
+import { hasApiConfig } from '../services/api/client';
 import { Icon } from '../components/ui/Icon';
 import { URBAN_BUSINESS } from './businessData';
 
@@ -107,6 +110,9 @@ const toPermissionMap = (ids: string[]) =>
 
 const fieldClass =
   'w-full h-10 px-space-sm rounded-xl bg-surface-container-low text-text-primary font-label-sm text-label-sm placeholder:text-text-tertiary outline-none focus:bg-surface-canvas border border-border-subtle';
+
+const pinFieldClass =
+  'w-full h-10 px-space-sm rounded-xl bg-surface-canvas text-text-primary font-label-md text-label-md tracking-[0.3em] placeholder:tracking-normal placeholder:text-text-tertiary outline-none border-2 border-outline-variant focus:border-primary-container focus:ring-4 focus:ring-primary-container/15 transition-all shadow-sm';
 
 const cardClass = 'bg-surface-canvas rounded-2xl p-space-sm shadow-sm';
 
@@ -346,7 +352,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
             <span className="font-caption text-caption text-text-secondary">Create PIN</span>
             <input
               autoComplete="new-password"
-              className={fieldClass}
+              className={pinFieldClass}
               inputMode="numeric"
               maxLength={6}
               placeholder="6-digit PIN"
@@ -359,7 +365,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
             <span className="font-caption text-caption text-text-secondary">Confirm PIN</span>
             <input
               autoComplete="new-password"
-              className={fieldClass}
+              className={pinFieldClass}
               inputMode="numeric"
               maxLength={6}
               placeholder="Repeat PIN"
@@ -689,6 +695,15 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
 
   const isLast = step === STEPS.length - 1;
   const valid = stepValid(step);
+
+  // Live: sends a real invite; the designed form below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <BusinessSubScreen title="Invite staff" onBack={onBack} subtitle="They get an email to set up their sign-in.">
+        <InviteStaffForm onDone={onBack} onCancel={onBack} />
+      </BusinessSubScreen>
+    );
+  }
 
   return (
     <>

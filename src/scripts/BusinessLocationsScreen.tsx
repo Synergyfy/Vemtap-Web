@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
+import { BranchesPanel } from '../components/business/BranchesPanel';
+import { hasApiConfig } from '../services/api/client';
 
 interface BusinessLocationsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -80,6 +82,19 @@ export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps)
     setToast(message);
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
+
+  // Live: real branches from the API; the designed list below is the demo.
+  if (hasApiConfig()) {
+    return (
+      <AppScreen>
+        <BusinessHubHeader />
+        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28">
+          <BranchesPanel />
+        </div>
+        <BusinessTabBar active="business" onTab={onTab} />
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>

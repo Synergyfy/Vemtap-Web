@@ -1,4 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
+import { BranchDetailPanel } from '../../components/business/BranchDetailPanel';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
@@ -7,6 +10,8 @@ import { printKvTable, printReport } from '../../utils/printReport';
 interface DesktopBranchDetailScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onBackToLocations?: () => void;
+  /** Live mode: the branch to show; defaults to the header's active branch. */
+  branchId?: string | null;
 }
 
 const MAP_IMAGE =
@@ -66,7 +71,26 @@ const DOSSIER_ROWS: Array<{ label: string; value: string; valueClass?: string; m
   { label: 'Tax ID / TIN', value: '10984429-0001', mono: true },
 ];
 
-export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopBranchDetailScreenProps) {
+export function DesktopBranchDetailScreen({ onNav, onBackToLocations, branchId }: DesktopBranchDetailScreenProps) {
+  const { activeBranchId } = useBusinessBranch();
+  const liveBranchId = branchId ?? activeBranchId;
+  // Live: the branch from the API, editable; the designed page below is the demo.
+  if (hasApiConfig() && liveBranchId) {
+    return (
+      <MerchantShell activeNav="business-locations" onNav={onNav}>
+        <button
+          type="button"
+          onClick={onBackToLocations}
+          className="inline-flex items-center gap-1 w-fit font-label-sm text-label-sm text-text-secondary hover:text-primary mb-space-sm"
+        >
+          ← Locations
+        </button>
+        <h1 className="font-heading-lg text-heading-lg text-on-surface tracking-tight mb-space-lg">Branch details</h1>
+        <BranchDetailPanel branchId={liveBranchId} />
+      </MerchantShell>
+    );
+  }
+
   return (
     <MerchantShell activeNav="business-locations" onNav={onNav}>
       {/* Breadcrumb Bar */}

@@ -1,3 +1,4 @@
+import { hasApiConfig } from '../../services/api/client';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { SocialChannelPicker } from '../../components/SocialChannelPicker';
@@ -101,7 +102,9 @@ export function DesktopBusinessProfileContactScreen({
     setStatus('saving');
     timers.current.push(
       window.setTimeout(() => {
+        // The parent saves and moves on; reset so a failed save can be retried.
         onNext();
+        setStatus('idle');
       }, 900),
     );
   };
@@ -487,11 +490,11 @@ export function DesktopBusinessProfileContactScreen({
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/90 via-inverse-surface/40 to-transparent flex flex-col justify-end p-space-md">
                     <div className="flex items-center gap-space-2xs text-on-primary">
-                      <span className="font-heading-sm text-heading-sm font-semibold">Urban Grill Lagos</span>
+                      <span className="font-heading-sm text-heading-sm font-semibold">{draft.name.trim() || 'Your business'}</span>
                       <Icon name="verified" className="text-primary-fixed text-[18px]" />
                     </div>
                     <p className="text-surface-variant font-caption text-caption flex items-center gap-1 mt-0.5">
-                      <Icon name="pin_drop" className="text-[14px]" /> Victoria Island, Lagos • 0.4 mi from center
+                      <Icon name="pin_drop" className="text-[14px]" /> {hasApiConfig() ? 'Near your customers' : 'Victoria Island, Lagos • 0.4 mi from center'}
                     </p>
                   </div>
                 </div>
@@ -502,7 +505,7 @@ export function DesktopBusinessProfileContactScreen({
                     </div>
                     <div className="flex flex-col">
                       <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                        1,420+ food lovers
+                        {hasApiConfig() ? 'Nearby customers' : '1,420+ food lovers'}
                       </span>
                       <span className="font-body-md text-caption text-text-secondary">
                         actively browsing dining vouchers within 3 km of your venue.

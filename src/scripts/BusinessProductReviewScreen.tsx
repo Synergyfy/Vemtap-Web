@@ -1,3 +1,6 @@
+import { LiveReviewStep } from '../components/business/LiveItemSteps';
+import { hasApiConfig } from '../services/api/client';
+import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -12,6 +15,8 @@ interface BusinessProductReviewScreenProps {
   onEditBranches: () => void;
   onEditFulfillment: () => void;
   onEditDescription: () => void;
+  /** Jumps to the dedicated image step; falls back to basics when unwired. */
+  onEditImage?: () => void;
   onPublish: () => void;
   onSaveDraft: () => void;
 }
@@ -57,7 +62,7 @@ const parseAmount = (value: string) => Number(value.replace(/[^0-9]/g, '')) || 0
 
 const formatAmount = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-export function BusinessProductReviewScreen({
+function DemoBusinessProductReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -65,6 +70,7 @@ export function BusinessProductReviewScreen({
   onEditBranches,
   onEditFulfillment,
   onEditDescription,
+  onEditImage,
   onPublish,
   onSaveDraft,
 }: BusinessProductReviewScreenProps) {
@@ -125,7 +131,7 @@ export function BusinessProductReviewScreen({
           </div>
           <div className="flex items-center gap-space-sm flex-shrink-0">
             <div className="inline-flex items-center px-space-sm py-1 rounded-full bg-surface-tint-blue">
-              <span className="font-label-sm text-label-sm text-primary font-semibold">Step 4 of 4</span>
+              <span className="font-label-sm text-label-sm text-primary font-semibold">Step 5 of 5</span>
             </div>
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
               <Icon name="person" className="text-on-primary text-[18px]" />
@@ -140,7 +146,7 @@ export function BusinessProductReviewScreen({
             <div className="flex items-center gap-space-2xs">
               <Icon filled name="task_alt" className="text-primary text-[18px]" />
               <span className="font-label-sm text-label-sm text-text-primary font-semibold">
-                Step 4 of 4: Final Review
+                Step 5 of 5: Final Review
               </span>
             </div>
             <span className="font-label-sm text-label-sm text-primary font-bold">100% Complete</span>
@@ -180,7 +186,7 @@ export function BusinessProductReviewScreen({
                 aria-label="Quick edit media"
                 className="absolute bottom-3 right-3 bg-surface-canvas/90 backdrop-blur-md text-text-primary px-3 py-1.5 rounded-full font-label-sm text-label-sm font-semibold flex items-center gap-1 shadow-sm active:scale-95 transition-transform"
                 type="button"
-                onClick={onEditBasics}
+                onClick={onEditImage ?? onEditBasics}
               >
                 <Icon name="edit" className="text-[16px] text-primary" />
                 Edit Media
@@ -562,5 +568,33 @@ export function BusinessProductReviewScreen({
         </div>
       </div>
     </AppScreen>
+  );
+}
+
+/** Live: the business's real branches and item; demo keeps the designed screen. */
+export function BusinessProductReviewScreen(props: BusinessProductReviewScreenProps) {
+  if (!hasApiConfig()) return <DemoBusinessProductReviewScreen {...props} />;
+  return (
+    <BusinessSubScreen title="Review & publish" onBack={props.onBack}>
+      <LiveReviewStep
+        item={{
+    kind: 'product',
+    title: props.draft.title,
+    image: props.draft.mainImage,
+    category: props.draft.subCategory,
+    description: props.draft.description,
+    price: props.draft.basePrice,
+    was: props.draft.comparePrice,
+    details: props.draft.lowStock ? [['Low-stock alert', `${props.draft.lowStock} units`]] : [],
+  }}
+        branchIds={Object.keys(props.draft.branches ?? {}).filter((id) => props.draft.branches[id])}
+        onBack={props.onBack}
+        onEditBasics={props.onEditBasics}
+        onEditPricing={props.onEditPricing}
+        onEditBranches={props.onEditBranches}
+        onPublish={props.onPublish}
+        onSaveDraft={props.onSaveDraft}
+      />
+    </BusinessSubScreen>
   );
 }
