@@ -1,0 +1,30 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "Jay/web",
+    "dev",
+    "logic",
+    "logic-fix",
+    "main",
+    "origin",
+    "tobee"
+  ],
+  "parent": {
+    "Jay/web": "main",
+    "dev": "main",
+    "logic": "main",
+    "logic-fix": "logic",
+    "main": null,
+    "origin": "main",
+    "tobee": "main"
+  },
+  "order": [
+    "main",
+    "Jay/web",
+    "dev",
+    "logic",
+    "origin",
+    "tobee",
+    "logic-fix"
+  ]
+}

@@ -149,14 +149,14 @@ const FILTER_CHIPS: Array<{ label: string; count: string; icon?: string }> = [
   { label: 'Fast Service', count: '(58)' },
 ];
 
-const TABS: Array<{ key: Tab; icon: string; label: string }> = [
-  { key: 'overview', icon: 'info', label: 'Deal Overview' },
-  { key: 'rules', icon: 'rule', label: 'How It Works & Rules' },
-  { key: 'reviews', icon: 'reviews', label: 'Reviews (4.9 ★ • 184)' },
-  { key: 'comments', icon: 'chat_bubble_outline', label: 'Community Q&A (32)' },
-];
-
 export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }: DesktopDealDetailScreenProps) {
+  const commentCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
+  const TABS: Array<{ key: Tab; icon: string; label: string }> = [
+    { key: 'overview', icon: 'info', label: 'Deal Overview' },
+    { key: 'rules', icon: 'rule', label: 'How It Works & Rules' },
+    { key: 'reviews', icon: 'reviews', label: 'Reviews (4.9 ★ • 184)' },
+    { key: 'comments', icon: 'chat_bubble_outline', label: `Community Q&A (${commentCount})` },
+  ];
   const { authed, claimed, signIn, markClaimed } = useAuth();
   const claims = useClaims();
   const profile = useProfile();
