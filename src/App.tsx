@@ -2077,24 +2077,50 @@ function AppInner() {
   };
 
   /**
-   * Live: verify the owner code, then register the owner (no password yet —
-   * it can be set later from Forgot / Change password) and keep the session.
+   * Live: verify the owner code, then collect name, phone and PIN on the
+   * shared profile-setup screen before registering. Demo goes straight to setup.
    */
-  const completeOwnerSignup = async (code: string) => {
-    if (hasApiConfig()) {
-      const email = customerSignup.email;
-      await ownerAuthService.verifyOtp(email, code.trim());
-      try {
-        adoptSession(
-          await ownerAuthService.register({ email, referralCode: getProvisionalReferralCode() || undefined }),
-        );
-      } catch (error) {
-        if (error instanceof Error && error.message.includes(OTP_GATE_MESSAGE)) {
-          throw new Error('Your code has expired. Request a new one and try again.');
-        }
-        throw error;
-      }
+  const verifyOwnerSignupCode = async (code: string) => {
+    if (!hasApiConfig()) {
+      enterBusinessProfile();
+      return;
     }
+    const nextCode = code.trim();
+    await ownerAuthService.verifyOtp(customerSignup.email, nextCode);
+    setCustomerSignup((current) => ({ ...current, code: nextCode }));
+    setRoute('profile-setup');
+  };
+
+  /** Registers the owner with the PIN as their sign-in secret (same as customers) and keeps the session. */
+  const completeOwnerSignup = async (details: { firstName: string; lastName: string; phone: string; pin: string }) => {
+    const firstName = details.firstName.trim();
+    const lastName = details.lastName.trim();
+    const phone = details.phone.replace(/\D/g, '').slice(0, 15);
+    const pin = details.pin.replace(/\D/g, '').slice(0, 6);
+    if (pin.length !== 6) {
+      throw new Error('Create a 6-digit security PIN to continue.');
+    }
+
+    const email = customerSignup.email;
+    try {
+      adoptSession(
+        await ownerAuthService.register({
+          email,
+          password: pin,
+          ...(firstName ? { firstName } : {}),
+          ...(lastName ? { lastName } : {}),
+          ...(phone ? { businessNumber: `+${phone}` } : {}),
+          referralCode: getProvisionalReferralCode() || undefined,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.includes(OTP_GATE_MESSAGE)) {
+        throw new Error('Your code has expired. Go back, request a new one and try again.');
+      }
+      throw error;
+    }
+
+    profile.update({ firstName: firstName || 'User', lastName, email, phone: phone ? `+${phone}` : '' });
     enterBusinessProfile();
   };
 
@@ -2464,7 +2490,7 @@ function AppInner() {
             onBack={() => setRoute(authEntry)}
             onContinue={async (code) => {
               if (businessSignup) {
-                await completeOwnerSignup(code);
+                await verifyOwnerSignupCode(code);
                 return;
               }
               await handleCustomerSignupVerification(code);
@@ -2485,7 +2511,7 @@ function AppInner() {
           onBack={() => setRoute(authEntry)}
           onContinue={async (code) => {
             if (businessSignup) {
-              await completeOwnerSignup(code);
+              await verifyOwnerSignupCode(code);
               return;
             }
             await handleCustomerSignupVerification(code);
@@ -2518,6 +2544,10 @@ function AppInner() {
             email={customerSignup.email}
             code={customerSignup.code}
             onComplete={async (details) => {
+              if (authIntent === 'business') {
+                await completeOwnerSignup(details);
+                return;
+              }
               await completeCustomerSignup(details);
               setRoute('location-permission');
             }}
@@ -2530,10 +2560,14 @@ function AppInner() {
           email={customerSignup.email}
           code={customerSignup.code}
           onComplete={async (details) => {
+            if (authIntent === 'business') {
+              await completeOwnerSignup(details);
+              return;
+            }
             await completeCustomerSignup(details);
             setRoute('location-permission');
           }}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={authIntent === 'business' ? undefined : () => setRoute('business-onboarding')}
         />
       );
 
@@ -4035,12 +4069,31 @@ function AppInner() {
         setBusinessSetupSkipIntro(false);
         setRoute('business-auth');
       };
-      const continueWithAccount = () => {
+      const continueWithAccount = async (pin?: string) => {
+        // Live: the customer account becomes an owner account first (a PIN
+        // account confirms its PIN); the business is created by setup's saves.
+        if (hasApiConfig() && sessionUser && !isBusinessRole(sessionUser.role)) {
+          try {
+            adoptSession(
+              await ownerAuthService.upgrade({
+                ...(pin ? { password: pin } : {}),
+                referralCode: getProvisionalReferralCode() || undefined,
+              }),
+            );
+          } catch (error) {
+            if (error instanceof Error && /incorrect password/i.test(error.message)) {
+              throw new Error('That PIN is incorrect. Try again.');
+            }
+            throw error;
+          }
+        }
         // Reusing the consumer account skips straight to profile details — the
         // intro has already been shown, so re-aim the saved run at `basic`.
         setBusinessChoiceOpen(false);
         resumeAtBusinessProfile();
       };
+      // Live PIN accounts confirm their PIN; Google accounts have none; demo shows the sample code step.
+      const accountConfirmation = !hasApiConfig() ? 'demo-code' : sessionUser?.authProvider === 'GOOGLE' ? 'none' : 'pin';
       /**
        * "Set Up My Business": an unknown visitor signs up through the business
        * modal, a signed-in consumer first picks an identity for this run, and
@@ -4057,12 +4110,14 @@ function AppInner() {
           <DesktopBusinessAccountChoiceScreen
             onBack={leaveOnboarding}
             onContinueWithAccount={continueWithAccount}
+            confirmation={accountConfirmation}
             onUseNewAccount={useNewAccount}
           />
         ) : (
           <BusinessAccountChoiceScreen
             onBack={leaveOnboarding}
             onContinueWithAccount={continueWithAccount}
+            confirmation={accountConfirmation}
             onUseNewAccount={useNewAccount}
           />
         );

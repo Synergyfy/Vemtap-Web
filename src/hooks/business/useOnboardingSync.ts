@@ -90,9 +90,9 @@ export function useOnboardingSync() {
         await ownerAuthService.upgrade({ businessName, referralCode: getProvisionalReferralCode() || undefined }),
       );
     } catch (e) {
-      // PIN-registered customers must confirm their PIN, which setup has no step for yet.
+      // PIN accounts confirm their PIN on the account-choice step; send them back there.
       if (e instanceof Error && /password confirmation is required/i.test(e.message)) {
-        throw new Error('This account needs its PIN confirmed to add a business. Go back and choose "Use a new account" instead.');
+        throw new Error('Confirm your PIN to add a business: go back and choose "Continue with this account".');
       }
       throw e;
     }
