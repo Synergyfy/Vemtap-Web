@@ -35,6 +35,17 @@ export async function uploadImage(file: File): Promise<string> {
   return url;
 }
 
+/**
+ * Uploads an image held as a `data:` URL (e.g. from an inline image field)
+ * and returns the hosted URL. Hosted URLs are returned unchanged.
+ */
+export async function uploadDataUrlImage(value: string, fileName = 'image'): Promise<string> {
+  if (!value.startsWith('data:')) return value;
+  const blob = await (await fetch(value)).blob();
+  const extension = blob.type.split('/')[1] || 'png';
+  return uploadImage(new File([blob], `${fileName}.${extension}`, { type: blob.type }));
+}
+
 /** Picks and uploads in one go; null when the user cancels. */
 export async function pickAndUploadImage(): Promise<string | null> {
   const file = await pickImage();

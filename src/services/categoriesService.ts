@@ -1,10 +1,22 @@
 import { api } from './api/client';
 import { withMock } from './mock';
 
+/** Optional details the category form collects (type, description, icon, image). */
+export interface CategoryDetails {
+  kind?: 'product' | 'service';
+  description?: string;
+  icon?: string;
+  imageUrl?: string;
+}
+
 export interface CatalogueCategory {
   id: string;
   name: string;
   businessId?: string | null;
+  kind?: 'product' | 'service' | null;
+  description?: string | null;
+  icon?: string | null;
+  imageUrl?: string | null;
 }
 
 let mockCategories: CatalogueCategory[] = [
@@ -19,11 +31,11 @@ let mockCategories: CatalogueCategory[] = [
 export const categoriesService = {
   list: () => withMock(() => api.get<CatalogueCategory[]>('/catalogue/categories'), () => [...mockCategories]),
 
-  create: (name: string) =>
+  create: (name: string, details: CategoryDetails = {}) =>
     withMock(
-      () => api.post<CatalogueCategory>('/catalogue/categories', { name }),
+      () => api.post<CatalogueCategory>('/catalogue/categories', { name, ...details }),
       () => {
-        const created = { id: `cat-${Date.now()}`, name };
+        const created = { id: `cat-${Date.now()}`, name, ...details };
         mockCategories = [...mockCategories, created];
         return created;
       },
@@ -35,6 +47,16 @@ export const categoriesService = {
       () => {
         mockCategories = mockCategories.map((c) => (c.id === id ? { ...c, name } : c));
         return { id, name };
+      },
+    ),
+
+  /** Name and/or details; fields left out are kept. */
+  update: (id: string, input: { name?: string } & CategoryDetails) =>
+    withMock(
+      () => api.patch<CatalogueCategory>(`/catalogue/categories/${id}`, input),
+      () => {
+        mockCategories = mockCategories.map((c) => (c.id === id ? { ...c, ...input } : c));
+        return mockCategories.find((c) => c.id === id) ?? { id, name: input.name ?? '' };
       },
     ),
 

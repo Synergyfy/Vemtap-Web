@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -147,12 +149,42 @@ export function DesktopAddServiceStep3Screen({
   const sector = resolveServiceSector([draft.primaryCategory], [draft.subCategory]);
   const preset = getServiceSectorPreset(sector);
 
-  const toggleBranch = (key: 'maitama' | 'wuseII' | 'garki', checked: boolean) => {
+  // Live: the business's real branches; the choice is kept in `locations` (branch ids).
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const branchCards: Array<Omit<(typeof BRANCHES)[number], 'key'> & { key: string }> = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main Branch' : 'Branch',
+          badgeClass: branch.isMainBranch ? 'bg-primary-fixed text-on-primary-fixed-variant' : 'bg-surface-container text-text-secondary',
+          address: branch.area || '—',
+          rooms: '—',
+          hours: '—',
+          lockedNote: '',
+        }))
+    : BRANCHES;
+  const isBranchOn = (key: string) =>
+    live ? draft.locations.includes(key) : Boolean(draft.branches[key as 'maitama' | 'wuseII' | 'garki']);
+
+  const toggleBranch = (key: string, checked: boolean) => {
+    if (live) {
+      onDraftChange({
+        locations: checked ? [...new Set([...draft.locations, key])] : draft.locations.filter((id) => id !== key),
+      });
+      return;
+    }
     if (key === 'garki') return;
     onDraftChange({ branches: { ...draft.branches, [key]: checked } });
   };
 
   const selectAllActive = () => {
+    if (live) {
+      onDraftChange({ locations: branchCards.map((branch) => branch.key) });
+      return;
+    }
     onDraftChange({ branches: { ...draft.branches, maitama: true, wuseII: true } });
   };
 
@@ -220,8 +252,8 @@ export function DesktopAddServiceStep3Screen({
                 </button>
               </div>
               <div className="flex flex-col gap-3 mt-2">
-                {BRANCHES.map((branch) => {
-                  const checked = draft.branches[branch.key];
+                {branchCards.map((branch) => {
+                  const checked = isBranchOn(branch.key);
                   if (branch.locked) {
                     return (
                       <div

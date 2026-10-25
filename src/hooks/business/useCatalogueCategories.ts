@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { categoriesService, type CatalogueCategory } from '../../services/categoriesService';
+import { categoriesService, type CatalogueCategory, type CategoryDetails } from '../../services/categoriesService';
 
 export const categoriesKeys = { all: ['catalogue-categories'] as const };
 
@@ -8,7 +8,8 @@ export function useCatalogueCategories() {
 }
 
 export type CategoryMutation =
-  | { type: 'create'; name: string }
+  | { type: 'create'; name: string; details?: CategoryDetails }
+  | { type: 'update'; id: string; name?: string; details?: CategoryDetails }
   | { type: 'rename'; id: string; name: string }
   | { type: 'remove'; id: string }
   | { type: 'reorder'; orderedIds: string[] };
@@ -19,7 +20,9 @@ export function useCategoryMutation() {
     mutationFn: (input) => {
       switch (input.type) {
         case 'create':
-          return categoriesService.create(input.name);
+          return categoriesService.create(input.name, input.details);
+        case 'update':
+          return categoriesService.update(input.id, { ...(input.name ? { name: input.name } : {}), ...input.details });
         case 'rename':
           return categoriesService.rename(input.id, input.name);
         case 'remove':

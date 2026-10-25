@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -86,11 +88,33 @@ export function DesktopAddProductStep3Screen({
   const [pickup, setPickup] = useState(true);
   const [delivery, setDelivery] = useState(true);
 
+  // Live: the business's real branches, keyed by branch id; demo keeps the samples.
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const activeBranches = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main Branch' : 'Branch',
+          badgeClass: branch.isMainBranch ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary',
+          address: branch.area || '—',
+          units: '—',
+          radius: '—',
+          price: draft.basePrice ? `₦${draft.basePrice}` : '—',
+        }))
+    : ACTIVE_BRANCHES;
+
   const toggleBranch = (key: string, checked: boolean) => {
     onDraftChange({ branches: { ...draft.branches, [key]: checked } });
   };
 
   const selectAllActive = () => {
+    if (live) {
+      onDraftChange({ branches: { ...draft.branches, ...Object.fromEntries(activeBranches.map((branch) => [branch.key, true])) } });
+      return;
+    }
     onDraftChange({ branches: { ...draft.branches, wuse: true, garki: true } });
   };
 
@@ -153,7 +177,7 @@ export function DesktopAddProductStep3Screen({
                 </button>
               </div>
               <div className="flex flex-col gap-space-sm">
-                {ACTIVE_BRANCHES.map((branch) => (
+                {activeBranches.map((branch) => (
                   <label
                     key={branch.key}
                     className="group relative flex flex-col sm:flex-row sm:items-center justify-between p-space-md rounded-xl bg-surface-subtle hover:bg-surface-tint-blue/40 transition-all cursor-pointer"

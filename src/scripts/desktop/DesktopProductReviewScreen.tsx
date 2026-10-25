@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { isVariantProduct, getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -41,6 +43,10 @@ const toNumber = (value: string) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+/** Neutral tile until a live product has a photo. */
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
 export function DesktopProductReviewScreen({
   draft,
   onBack,
@@ -68,6 +74,13 @@ export function DesktopProductReviewScreen({
   );
 
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
+  // Live: the real branches ticked in the previous step and the uploaded photo.
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const selectedLiveBranches = liveBranches.filter((branch) => branch.id && draft.branches[branch.id]);
+  const heroImage = live ? { src: draft.mainImage || LIVE_IMAGE_PLACEHOLDER, alt: draft.title || 'Product photo' } : REVIEW_IMAGES[0];
+  const cardImage = live ? heroImage : REVIEW_IMAGES[1];
+  const branchNames = selectedLiveBranches.map((branch) => branch.shortName).join(' & ') || 'your branches';
   const activeVariants = getActiveVariants(draft);
   const variantMode = isVariantProduct(draft);
   const totalStock = activeVariants.reduce((sum, variant) => sum + toNumber(variant.inventory), 0);
@@ -171,8 +184,8 @@ export function DesktopProductReviewScreen({
               <div className="relative w-full h-80 bg-surface-container-high overflow-hidden group">
                 <img
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  alt={REVIEW_IMAGES[0].alt}
-                  src={REVIEW_IMAGES[0].src}
+                  alt={heroImage.alt}
+                  src={heroImage.src}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-text-primary/75 via-text-primary/20 to-transparent" />
                 <div className="absolute top-space-md left-space-md flex items-center gap-space-xs">
@@ -364,6 +377,44 @@ export function DesktopProductReviewScreen({
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+                {live
+                  ? selectedLiveBranches.map((branch) => (
+                      <div key={branch.id} className="p-space-md rounded-xl bg-surface-subtle flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-space-xs">
+                              <Icon name="location_on" className="text-[20px] text-primary" />
+                              <div>
+                                <span className="font-label-md text-label-md text-text-primary font-semibold block">
+                                  {branch.name}
+                                </span>
+                                <span className="font-caption text-caption text-primary font-medium">
+                                  {branch.isMainBranch ? 'Main branch' : 'Branch'}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-caption font-medium">
+                              —
+                            </span>
+                          </div>
+                          <p className="font-caption text-caption text-text-secondary mt-space-sm">{branch.area || '—'}</p>
+                        </div>
+                        <div className="mt-space-md pt-space-sm flex items-center justify-between bg-surface-canvas p-space-xs rounded-lg">
+                          <div>
+                            <span className="font-caption text-caption text-text-secondary block">Branch Base</span>
+                            <span className="font-label-md text-label-md text-text-primary font-bold">
+                              {draft.basePrice ? `₦${toNumber(draft.basePrice).toLocaleString('en-US')}` : '—'}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-caption text-caption text-text-secondary block">Assigned Stock</span>
+                            <span className="font-label-md text-label-md text-text-primary font-bold">—</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  : (
+                    <>
                 <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col justify-between">
                   <div>
                     <div className="flex items-start justify-between">
@@ -432,6 +483,8 @@ export function DesktopProductReviewScreen({
                     </div>
                   </div>
                 </div>
+                    </>
+                  )}
               </div>
             </div>
 
@@ -460,7 +513,7 @@ export function DesktopProductReviewScreen({
                       Instant Availability
                     </span>
                     <span className="font-caption text-caption text-text-secondary mt-1 block">
-                      Dedicated counter at both Wuse &amp; Garki
+                      {live ? `Pickup at ${branchNames}` : 'Dedicated counter at both Wuse & Garki'}
                     </span>
                   </div>
                 </div>
@@ -557,8 +610,8 @@ export function DesktopProductReviewScreen({
                   <div className="relative w-full h-44 bg-surface-container-high overflow-hidden">
                     <img
                       className="w-full h-full object-cover"
-                      alt={REVIEW_IMAGES[1].alt}
-                      src={REVIEW_IMAGES[1].src}
+                      alt={cardImage.alt}
+                      src={cardImage.src}
                     />
                     <span className="absolute top-2.5 left-2.5 bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold px-2.5 py-1 rounded-full shadow-sm">
                       SAVE ₦{savingAmount.toLocaleString('en-US')}
@@ -577,7 +630,7 @@ export function DesktopProductReviewScreen({
                         <span className="w-2 h-2 rounded-full bg-badge-discount-text" /> {draft.producer}
                       </span>
                       <span className="flex items-center gap-0.5 text-text-secondary">
-                        <Icon name="near_me" className="text-[13px] text-primary" /> 0.8 km • Wuse II
+                        <Icon name="near_me" className="text-[13px] text-primary" /> {live ? selectedLiveBranches[0]?.shortName ?? '—' : '0.8 km • Wuse II'}
                       </span>
                     </div>
                     <h4 className="font-heading-sm text-heading-sm text-text-primary leading-tight">
@@ -697,7 +750,7 @@ export function DesktopProductReviewScreen({
                 <div className="bg-badge-discount-bg text-badge-discount-text rounded-lg p-space-sm flex items-center gap-space-xs transition-opacity duration-300">
                   <Icon name="task_alt" className="text-[18px]" />
                   <span className="font-caption text-caption font-semibold">
-                    Catalogue live on Wuse &amp; Garki networks! Redirecting...
+                    {live ? `Catalogue live at ${branchNames}! Redirecting...` : 'Catalogue live on Wuse & Garki networks! Redirecting...'}
                   </span>
                 </div>
               )}

@@ -1,4 +1,5 @@
 import { AppScreen } from '../components/ui/AppScreen';
+import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
 import { Icon } from '../components/ui/Icon';
 import type { ProductDraft } from './productDraft';
 
@@ -34,6 +35,8 @@ export function BusinessAddProductStep1Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddProductStep1ScreenProps) {
+  // Live: the business's own categories; picked from the Sub-Category "Change" control.
+  const editor = useLiveItemEditor('product');
   const categoryLevels = [
     { caption: 'Primary Category', value: draft.primaryCategory, icon: 'restaurant', active: true },
     { caption: 'Sub-Category', value: draft.subCategory, icon: 'outdoor_grill', active: false },
@@ -156,7 +159,7 @@ export function BusinessAddProductStep1Screen({
                   onChange={(event) =>
                     onDraftChange({
                       unbranded: event.target.checked,
-                      producer: event.target.checked ? 'Unbranded / Homemade' : 'Urban Grill Kitchen',
+                      producer: event.target.checked ? 'Unbranded / Homemade' : editor.live ? '' : 'Urban Grill Kitchen',
                     })
                   }
                 />
@@ -196,12 +199,35 @@ export function BusinessAddProductStep1Screen({
                         </span>
                       </div>
                     </div>
-                    <button
-                      className="font-label-sm text-label-sm text-primary font-semibold px-2 py-1 rounded hover:bg-surface-container-low transition-colors"
-                      type="button"
-                    >
-                      Change
-                    </button>
+                    {editor.live && level.caption === 'Sub-Category' ? (
+                      // Same "Change" control, backed by a native picker of the real categories.
+                      <label className="relative font-label-sm text-label-sm text-primary font-semibold px-2 py-1 rounded hover:bg-surface-container-low transition-colors cursor-pointer">
+                        Change
+                        <select
+                          aria-label="Choose a category"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          value={draft.categoryId ?? ''}
+                          onChange={(event) => {
+                            const found = editor.categories.find((category) => category.id === event.target.value);
+                            onDraftChange({ categoryId: event.target.value || undefined, subCategory: found?.name ?? '' });
+                          }}
+                        >
+                          <option value="">{editor.categories.length ? 'No category' : 'No categories yet'}</option>
+                          {editor.categories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <button
+                        className="font-label-sm text-label-sm text-primary font-semibold px-2 py-1 rounded hover:bg-surface-container-low transition-colors"
+                        type="button"
+                      >
+                        Change
+                      </button>
+                    )}
                   </div>
                   {index < categoryLevels.length - 1 && (
                     <div className="w-full h-px bg-surface-container-high/60 ml-9" />

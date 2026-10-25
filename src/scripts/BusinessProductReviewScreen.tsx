@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { isVariantProduct, getActiveVariants } from './productVariants';
@@ -55,6 +57,10 @@ const REVIEW_BRANCHES: ReviewBranch[] = [
   },
 ];
 
+/** Neutral tile until a live product has a photo. */
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
 const parseAmount = (value: string) => Number(value.replace(/[^0-9]/g, '')) || 0;
 
 const formatAmount = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -95,14 +101,32 @@ export function BusinessProductReviewScreen({
   };
 
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
-  const visibleBranches = REVIEW_BRANCHES.filter((branch) => draft.branches[branch.key]);
+  // Live: the real branches ticked in the previous step, at this item's price.
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const reviewBranches: ReviewBranch[] = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main' : undefined,
+          price: draft.basePrice ? `₦${formatAmount(parseAmount(draft.basePrice))}` : '—',
+          stock: '—',
+          note: 'Standard Base Rate',
+          noteClass: 'text-text-tertiary',
+        }))
+    : REVIEW_BRANCHES;
+  const visibleBranches = reviewBranches.filter((branch) => draft.branches[branch.key]);
   const basePrice = parseAmount(draft.basePrice);
   const comparePrice = parseAmount(draft.comparePrice);
   const savings = comparePrice - basePrice;
   const activeVariants = getActiveVariants(draft);
   const variantMode = isVariantProduct(draft);
   const totalStock = activeVariants.reduce((sum, variant) => sum + parseAmount(variant.inventory), 0);
-  const heroImage = REVIEW_IMAGES[0];
+  const heroImage = live
+    ? { src: draft.mainImage || LIVE_IMAGE_PLACEHOLDER, alt: draft.title || 'Product photo' }
+    : REVIEW_IMAGES[0];
 
   return (
     <AppScreen>

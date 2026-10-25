@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { resolveServiceSector, getServiceSectorPreset } from './serviceClassification';
@@ -14,7 +16,7 @@ interface BusinessAddServiceStep3ScreenProps {
 }
 
 interface OutletCard {
-  key: 'maitama' | 'wuseII';
+  key: string;
   name: string;
   badge?: string;
   address: string;
@@ -104,16 +106,48 @@ export function BusinessAddServiceStep3Screen({
   const sector = resolveServiceSector([draft.primaryCategory], [draft.subCategory]);
   const preset = getServiceSectorPreset(sector);
 
-  const allSelected = draft.branches.maitama && draft.branches.wuseII;
+  // Live: the business's real branches; the choice is kept in `locations` (branch ids).
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const outlets: OutletCard[] = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main' : undefined,
+          address: branch.area || '—',
+          rooms: '—',
+        }))
+    : OUTLETS;
+  const isOutletOn = (key: string) =>
+    live ? draft.locations.includes(key) : Boolean(draft.branches[key as 'maitama' | 'wuseII']);
+
+  const allSelected = live
+    ? outlets.length > 0 && outlets.every((outlet) => draft.locations.includes(outlet.key))
+    : draft.branches.maitama && draft.branches.wuseII;
 
   const toggleAll = () => {
+    if (live) {
+      onDraftChange({ locations: allSelected ? [] : outlets.map((outlet) => outlet.key) });
+      return;
+    }
     onDraftChange({
       branches: { ...draft.branches, maitama: !allSelected, wuseII: !allSelected },
     });
   };
 
-  const toggleOutlet = (key: 'maitama' | 'wuseII') => {
-    onDraftChange({ branches: { ...draft.branches, [key]: !draft.branches[key] } });
+  const toggleOutlet = (key: string) => {
+    if (live) {
+      onDraftChange({
+        locations: draft.locations.includes(key)
+          ? draft.locations.filter((id) => id !== key)
+          : [...draft.locations, key],
+      });
+      return;
+    }
+    const demoKey = key as 'maitama' | 'wuseII';
+    onDraftChange({ branches: { ...draft.branches, [demoKey]: !draft.branches[demoKey] } });
   };
 
   return (
@@ -186,8 +220,8 @@ export function BusinessAddServiceStep3Screen({
               </button>
             </div>
             <div className="flex flex-col gap-space-sm">
-              {OUTLETS.map((outlet) => {
-                const checked = draft.branches[outlet.key];
+              {outlets.map((outlet) => {
+                const checked = isOutletOn(outlet.key);
                 return (
                   <div
                     key={outlet.key}

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ProductDraft } from './productDraft';
@@ -48,15 +50,29 @@ export function BusinessAddProductStep3Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddProductStep3ScreenProps) {
+  // Live: the business's real branches, keyed by branch id; demo keeps the samples.
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const selectableBranches: SelectableBranch[] = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main' : undefined,
+          address: branch.area || '—',
+          stock: '—',
+        }))
+    : SELECTABLE_BRANCHES;
   const [pickup, setPickup] = useState(true);
   const [delivery, setDelivery] = useState(true);
 
-  const activeBranches = SELECTABLE_BRANCHES.filter((branch) => draft.branches[branch.key]);
-  const allSelected = activeBranches.length === SELECTABLE_BRANCHES.length;
+  const activeBranches = selectableBranches.filter((branch) => draft.branches[branch.key]);
+  const allSelected = activeBranches.length === selectableBranches.length;
 
   const toggleAll = () => {
     const next: Record<string, boolean> = { ...draft.branches };
-    SELECTABLE_BRANCHES.forEach((branch) => {
+    selectableBranches.forEach((branch) => {
       next[branch.key] = !allSelected;
     });
     onDraftChange({ branches: next });
@@ -132,7 +148,7 @@ export function BusinessAddProductStep3Screen({
               Select all (2 active)
             </button>
           </div>
-          {SELECTABLE_BRANCHES.map((branch) => {
+          {selectableBranches.map((branch) => {
             const checked = Boolean(draft.branches[branch.key]);
             return (
               <div
