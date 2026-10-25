@@ -3,13 +3,30 @@ import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { useOfferMutations, useOfferSummary, useOffers } from '../../hooks/business/useOffers';
+import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { BusinessOffer } from '../../services/offersService';
+import {
+  dealBadgeLabel,
+  isOfferPaused,
+  offerClaimStats,
+  offerComparePriceLabel,
+  offerPriceLabel,
+  offerScheduleLabel,
+  offerSlot,
+  pricingTypeLabel,
+} from '../catalogueLive';
 import { downloadCsv } from '../../utils/exportCsv';
 
 interface DesktopDealsWorkspaceScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onCreateDeal?: () => void;
-  onEditDeal?: () => void;
-  onOpenDealDetail?: () => void;
+  /** Receive the live deal's group id (undefined in demo). */
+  onEditDeal?: (dealGroupId?: string) => void;
+  onOpenDealDetail?: (dealGroupId?: string) => void;
   onOpenLogs?: () => void;
   onOpenPos?: () => void;
   /** Opens the Boost Studio; the deal's name pre-selects it in the campaign. */
@@ -66,6 +83,10 @@ interface DealCardProps {
   onMore?: () => void;
   paused: boolean;
 }
+
+/** Neutral image until a live deal has a photo. */
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
 
 function DealCard({
   image,
@@ -182,6 +203,30 @@ export function DesktopDealsWorkspaceScreen({
 
   const togglePause = (key: string) => setPausedDeals((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  // Live: the active branch's real deals and deal totals; demo keeps the sample cards.
+  const live = hasApiConfig();
+  const offersQuery = useOffers();
+  const summaryQuery = useOfferSummary();
+  const offerMutations = useOfferMutations();
+  const locations = useBusinessAnalytics('locations', 30);
+  const { branches } = useBusinessBranch();
+  const liveOffers = offersQuery.data ?? [];
+  const summary = summaryQuery.data;
+  const [liveToast, setLiveToast] = useState<string | null>(null);
+  const showLiveToast = (message: string) => {
+    setLiveToast(message);
+    window.setTimeout(() => setLiveToast(null), 3500);
+  };
+  const totalClaims = liveOffers.reduce((sum, offer) => sum + (offer.claimedCount ?? 0), 0);
+  const totalRedeemed = liveOffers.reduce((sum, offer) => sum + (offer.redeemedCount ?? 0), 0);
+  const naira = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
+  const groupId = (offer: BusinessOffer) => offer.dealGroupId ?? offer.id;
+  const toggleLivePause = (offer: BusinessOffer) =>
+    offerMutations.setStatus.mutate(
+      { id: offer.id, status: isOfferPaused(offer) ? 'active' : 'inactive' },
+      { onError: (error) => showLiveToast(apiErrorMessage(error, 'Could not update this deal.')) },
+    );
+
   /**
    * The deal cards further down are composed inline rather than mapped from a
    * list, so the searchable metadata for each one is declared here and the
@@ -210,15 +255,22 @@ export function DesktopDealsWorkspaceScreen({
     return query === '' || deal.haystack.includes(query);
   };
 
-  const visibleDealCount = WORKSPACE_DEALS.filter((deal) => matchesDeal(deal.id)).length;
+  const liveVisible = liveOffers.filter((offer) => {
+    if (offerSlot(offer) !== statusTab) return false;
+    const haystack = `${offer.name} ${offer.branchName ?? ''} ${offer.offerType ?? ''}`.toLowerCase();
+    return query === '' || haystack.includes(query);
+  });
 
+  const visibleDealCount = live ? liveVisible.length : WORKSPACE_DEALS.filter((deal) => matchesDeal(deal.id)).length;
+
+  const slotCount = (slot: 'active' | 'scheduled' | 'expired') => String(liveOffers.filter((offer) => offerSlot(offer) === slot).length);
   const tabs: Array<{ key: 'active' | 'scheduled' | 'expired'; label: string; count: string }> = [
-    { key: 'active', label: 'Active', count: '6' },
-    { key: 'scheduled', label: 'Scheduled', count: '2' },
-    { key: 'expired', label: 'Expired', count: '14' },
+    { key: 'active', label: 'Active', count: live ? slotCount('active') : '6' },
+    { key: 'scheduled', label: 'Scheduled', count: live ? slotCount('scheduled') : '2' },
+    { key: 'expired', label: 'Expired', count: live ? slotCount('expired') : '14' },
   ];
 
-  const branchRows = [
+  const demoBranchRows = [
     {
       name: 'Wuse II (Plot 1404 Aminu Kano)',
       deals: '3 active campaigns',
@@ -244,6 +296,16 @@ export function DesktopDealsWorkspaceScreen({
       volume: '₦194,500',
     },
   ];
+  const branchRows = live
+    ? (locations.data?.branches ?? []).map((branch) => ({
+        name: branch.name,
+        deals: branch.branchId === liveOffers[0]?.branchId ? `${slotCount('active')} active campaigns` : '—',
+        claims: `${branch.claims} vouchers`,
+        verified: '—',
+        verifiedTone: 'text-text-secondary font-medium',
+        volume: naira(branch.revenue.current),
+      }))
+    : demoBranchRows;
 
   return (
     <MerchantPortalChrome activeNav="business-deals" onNav={onNav} content="full">
@@ -331,7 +393,19 @@ export function DesktopDealsWorkspaceScreen({
                 downloadCsv(
                   'vemtap_deal_stats',
                   ['Deal', 'Promo', 'Price', 'Was', 'Branches', 'Performance'],
-                  DEAL_STATS.map((deal) => [deal.title, deal.promo, deal.price, deal.oldPrice, deal.branches, deal.performance]),
+                  live
+                    ? liveOffers.map((offer) => {
+                        const stats = offerClaimStats(offer);
+                        return [
+                          offer.name,
+                          dealBadgeLabel(offer),
+                          offerPriceLabel(offer),
+                          offerComparePriceLabel(offer),
+                          offer.branchName ?? '',
+                          `${stats.redeemed} / ${stats.claims} redeemed (${stats.rate}%)`,
+                        ];
+                      })
+                    : DEAL_STATS.map((deal) => [deal.title, deal.promo, deal.price, deal.oldPrice, deal.branches, deal.performance]),
                 );
               }}
               className="h-[48px] px-space-md rounded-xl bg-surface-container hover:bg-surface-container-high text-primary font-label-md text-label-md flex items-center gap-space-xs transition-colors"
@@ -401,7 +475,9 @@ export function DesktopDealsWorkspaceScreen({
                   <span className="font-heading-sm text-heading-sm text-text-primary">Live Pulse</span>
                   <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
                 </div>
-                <span className="font-caption text-caption text-text-tertiary">3 Branches Synced • Just now</span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  {live ? `${branches.length} ${branches.length === 1 ? 'Branch' : 'Branches'} • Just now` : '3 Branches Synced • Just now'}
+                </span>
               </div>
             </div>
 
@@ -409,37 +485,48 @@ export function DesktopDealsWorkspaceScreen({
               <div className="flex items-center justify-between text-text-tertiary font-caption text-caption">
                 <span>ACTIVE CAMPAIGNS</span>
                 <span className="text-badge-discount-text font-medium flex items-center gap-0.5">
-                  <Icon name="trending_up" className="text-[14px]" /> 100% On air
+                  <Icon name="trending_up" className="text-[14px]" />{' '}
+                  {live ? `${summary?.claimsToday ?? 0} claims today` : '100% On air'}
                 </span>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="font-heading-md text-heading-md text-text-primary">6 Active Deals</span>
-                <span className="font-caption text-caption text-text-secondary">/ 1,480 Claims</span>
+                <span className="font-heading-md text-heading-md text-text-primary">
+                  {live ? `${summary?.activeDeals ?? slotCount('active')} Active Deals` : '6 Active Deals'}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">
+                  {live ? `/ ${totalClaims.toLocaleString('en-US')} Claims` : '/ 1,480 Claims'}
+                </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-1 bg-surface-subtle p-space-sm rounded-xl">
               <div className="flex items-center justify-between text-text-tertiary font-caption text-caption">
-                <span>GROSS CLAIMED VOLUME</span>
-                <span className="text-primary font-medium">94.2% Verified</span>
+                <span>{live ? 'DEAL REVENUE (30 DAYS)' : 'GROSS CLAIMED VOLUME'}</span>
+                <span className="text-primary font-medium">
+                  {live ? `${totalClaims ? Math.round((totalRedeemed / totalClaims) * 100) : 0}% Redeemed` : '94.2% Verified'}
+                </span>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="font-heading-md text-heading-md text-text-primary">₦1,842,500</span>
-                <span className="font-caption text-caption text-badge-discount-text font-medium">+₦340k today</span>
+                <span className="font-heading-md text-heading-md text-text-primary">
+                  {live ? naira(summary?.netRevenue30d ?? 0) : '₦1,842,500'}
+                </span>
+                <span className="font-caption text-caption text-badge-discount-text font-medium">
+                  {live ? `${summary?.redeemedToday ?? 0} redeemed today` : '+₦340k today'}
+                </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5 bg-surface-subtle p-space-sm rounded-xl">
               <div className="flex items-center justify-between font-caption text-caption">
                 <span className="text-text-tertiary">DAILY REDEMPTION GOAL</span>
-                <span className="text-text-primary font-semibold">76% Reached</span>
+                <span className="text-text-primary font-semibold">{live ? '—' : '76% Reached'}</span>
               </div>
               <div className="w-full bg-surface-variant rounded-full h-2 overflow-hidden">
-                <div className="bg-primary h-full rounded-full transition-all duration-700" style={{ width: '76%' }} />
+                <div className="bg-primary h-full rounded-full transition-all duration-700" style={{ width: live ? '0%' : '76%' }} />
               </div>
               <div className="flex items-center justify-between font-caption text-caption">
-                <span className="text-badge-discount-text font-medium">+18% vs last wk</span>
-                <span className="text-text-tertiary">Target: ₦2.4M</span>
+                <span className="text-badge-discount-text font-medium">{live ? '—' : '+18% vs last wk'}</span>
+                <span className="text-text-tertiary">{live ? 'No goal set' : 'Target: ₦2.4M'}</span>
               </div>
             </div>
           </div>
@@ -447,11 +534,93 @@ export function DesktopDealsWorkspaceScreen({
 
         {/* Main Expansive Deals Grid */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-space-lg items-stretch">
-          {matchesDeal('wuse') && (
+          {live &&
+            liveVisible.map((offer) => {
+              const stats = offerClaimStats(offer);
+              const paused = isOfferPaused(offer);
+              const was = Number(offer.originalPrice ?? 0);
+              const now = Number(offer.calculatedPrice ?? offer.fixedPrice ?? 0);
+              return (
+                <DealCard
+                  key={offer.id}
+                  paused={paused}
+                  onPause={() => toggleLivePause(offer)}
+                  onEdit={() => onEditDeal?.(groupId(offer))}
+                  onMore={() => onOpenDealDetail?.(groupId(offer))}
+                  image={offer.mainImage || LIVE_IMAGE_PLACEHOLDER}
+                  imageAlt={offer.name}
+                  badges={
+                    <>
+                      <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm">
+                        {dealBadgeLabel(offer)}
+                      </span>
+                      {paused && (
+                        <span className="px-2.5 py-1 rounded-full bg-surface-subtle text-text-secondary font-caption text-caption font-medium shadow-sm">
+                          Paused
+                        </span>
+                      )}
+                    </>
+                  }
+                  dateBadge={
+                    <span className="px-2.5 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md text-text-primary font-caption text-caption font-medium shadow-sm flex items-center gap-1">
+                      <Icon name="timer" className="text-[14px] text-error" /> {offerScheduleLabel(offer)}
+                    </span>
+                  }
+                  priceLabel={pricingTypeLabel(offer)}
+                  price={offerPriceLabel(offer)}
+                  oldPrice={offerComparePriceLabel(offer) || undefined}
+                  priceNote={was > now && now ? `Save ${naira(was - now)}` : '—'}
+                  category={[offer.branchName, offer.offerType].filter(Boolean).join(' • ') || 'Deal'}
+                  status={<span className={`w-2 h-2 rounded-full ${paused ? 'bg-outline' : 'bg-badge-discount-text'}`} title={paused ? 'Paused' : 'Active'} />}
+                  title={offer.name}
+                  branches={
+                    <>
+                      <Icon name="location_on" className="text-[18px] text-primary flex-shrink-0 mt-0.5" />
+                      <span className="flex flex-col">
+                        <span className="font-medium text-text-primary">{offer.branchName ?? 'Your branch'}</span>
+                        <span className="font-caption text-caption text-text-tertiary">
+                          {offer.quantity ? `${offer.quantity} vouchers in this deal` : 'No voucher cap'}
+                        </span>
+                      </span>
+                    </>
+                  }
+                  telemetry={
+                    <>
+                      <div className="flex items-center justify-between font-caption text-caption">
+                        <span className="text-text-secondary">Redemption Rate ({stats.rate}%)</span>
+                        <span className="text-text-primary font-semibold">
+                          {stats.redeemed} / {stats.claims} Redeemed
+                        </span>
+                      </div>
+                      <div className="w-full bg-surface-variant rounded-full h-2 overflow-hidden">
+                        <div className="bg-badge-discount-text h-full rounded-full" style={{ width: `${stats.rate}%` }} />
+                      </div>
+                      <div className="flex items-center justify-between font-caption text-caption text-text-tertiary">
+                        <span className="flex items-center gap-1">
+                          <Icon name="check_circle" className="text-[13px] text-badge-discount-text" /> {stats.redeemed} Redeemed
+                        </span>
+                        <span className="font-medium text-text-secondary">{stats.unredeemed} Vouchers Pending</span>
+                      </div>
+                    </>
+                  }
+                  primaryAction={
+                    <button
+                      type="button"
+                      onClick={() => onBoost?.(offer.name)}
+                      className="flex-1 h-11 px-3 rounded-xl bg-tertiary-container hover:bg-tertiary text-on-tertiary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                    >
+                      <Icon name="rocket_launch" className="text-[18px]" />
+                      <span>Boost Deal 🚀</span>
+                    </button>
+                  }
+                />
+              );
+            })}
+          {!live && matchesDeal('wuse') && (
           <DealCard
             paused={!!pausedDeals.wuse}
             onPause={() => togglePause('wuse')}
-            onEdit={onEditDeal}
+            onEdit={() => onEditDeal?.()}
             onMore={() => undefined}
             image="https://lh3.googleusercontent.com/aida-public/AB6AXuApQ5ezQVyveoZZcJBH3RCv1zTnsyXz1eB4gQsiSmUjF1rc9P6BWIY1fEHizr7Gp4SSU5XgX6laUsXhmlrpJ1SGAN-uZoc-7dghtPWCIsUhAmZyYYNgEZgOi2C3DS3lb40N1JpN-35efQm9XfDEpKq94wKX8ekrYsbuCMFcQ03I2-vFrBbTNtJn5LSN5g7AtddvEkUa1Heq9Z8ge_NzW0MXEqj-Nl9AGw7mQ_RCFN_MdCFtg04Ux3t3Nw"
             imageAlt="Delectable premium lunch spread at an upscale urban bistro in Abuja with grilled steak cutlets, golden crispy plantains, gourmet salad, and fresh tropical drinks bathed in warm natural afternoon sunlight with modern minimalist plates."
@@ -516,11 +685,11 @@ export function DesktopDealsWorkspaceScreen({
           />
           )}
 
-          {matchesDeal('smash') && (
+          {!live && matchesDeal('smash') && (
           <DealCard
             paused={!!pausedDeals.smash}
             onPause={() => togglePause('smash')}
-            onEdit={onEditDeal}
+            onEdit={() => onEditDeal?.()}
             onMore={() => undefined}
             accent={<span className="absolute top-0 left-0 right-0 h-1 bg-primary" />}
             image="https://lh3.googleusercontent.com/aida-public/AB6AXuBtwn4LUvT44Y-9GKC3JPuD2xcw0icui-Rhxt0KEUzY8TpxgevkVbZylvMOucfTQG1KfEoS7CMplvxXevY8jBF_Yd4I8X8_HS5v_5fIaRLHCVRJkXt-dZLPnGiTou42rxCzvsCu3xFZP2OuI9Ptb3wn07d7Fg0GowiN-dB14VeTvaMVv2JN2YYMOKDgkV-SRZN0K4CxP7fQbruE6re1RBZH7SN6aC1VxeM-blNibkHhNmkhx__gUzL3Xg"
@@ -580,7 +749,7 @@ export function DesktopDealsWorkspaceScreen({
             primaryAction={
               <button
                 type="button"
-                onClick={onOpenDealDetail}
+                onClick={() => onOpenDealDetail?.()}
                 className="flex-1 h-11 px-3 rounded-xl bg-primary text-on-primary hover:bg-surface-tint font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(0,85,196,0.25)] transition-all"
               >
                 <Icon name="insights" className="text-[18px]" />
@@ -590,11 +759,11 @@ export function DesktopDealsWorkspaceScreen({
           />
           )}
 
-          {matchesDeal('chill') && (
+          {!live && matchesDeal('chill') && (
           <DealCard
             paused={!!pausedDeals.chill}
             onPause={() => togglePause('chill')}
-            onEdit={onEditDeal}
+            onEdit={() => onEditDeal?.()}
             onMore={() => undefined}
             image="https://lh3.googleusercontent.com/aida-public/AB6AXuCsG2QZ-uo912K8TVQkQhIj5Eaafr4k-vp_gNAFMoQVgSsuzXXuPDxdVWsgBfgf04RIyTsS4wzy3hIITuulPvRUnvFtziOHyAn9DwzQcEct6pB1rHG6so3k5CVbtVALoIX3DxJg2gqqYGZByq4-1r1ShE035TX3J-ospKAQx5fpg8nbBpI3JIjbpQjK3lEeoPKqxRSHsabElJ9bupNK8WN40johtun9h5THcwdU-CHb1ANvlZqZGaY44g"
             imageAlt="Artisanal cocktail drinks garnished with fresh mint and dehydrated orange slices set beside artisan charcuterie platter in a luxury lounge with atmospheric evening amber lighting and sleek dark mahogany wood counters."
@@ -758,7 +927,7 @@ export function DesktopDealsWorkspaceScreen({
                 </span>
               </div>
               <p className="font-body-md text-body-md text-text-secondary">
-                Net Merchant Realized Revenue: <strong className="text-text-primary">₦1,248,000</strong>. Zero take-rate on
+                Net Merchant Realized Revenue: <strong className="text-text-primary">{live ? naira(summary?.netRevenue30d ?? 0) : '₦1,248,000'}</strong>. Zero take-rate on
                 deal redemptions. Customers pay your business directly via counter POS, cash, or instant bank transfer upon
                 voucher validation.
               </p>
@@ -776,6 +945,11 @@ export function DesktopDealsWorkspaceScreen({
           </div>
         </section>
       </div>
+      {liveToast && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {liveToast}
+        </div>
+      )}
     </MerchantPortalChrome>
   );
 }

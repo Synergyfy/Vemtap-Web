@@ -59,6 +59,10 @@ interface DesktopBusinessCatalogHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onOpenBranchPricing?: () => void;
   onOpenServices?: () => void;
+  /** Live: start a deal for this real item. */
+  onMakeDeal?: (item: CatalogueItem) => void;
+  /** A message to show once when the screen opens (e.g. "pick an item"). */
+  notice?: string | null;
 }
 
 type CatalogChip = 'all' | 'published' | 'deals' | 'low' | 'dinein' | 'takeaway' | 'oos';
@@ -607,6 +611,8 @@ export function DesktopBusinessCatalogHubScreen({
   onNav,
   onOpenBranchPricing,
   onOpenServices: _onOpenServices,
+  onMakeDeal,
+  notice,
 }: DesktopBusinessCatalogHubScreenProps) {
   const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
   // Live: rows come from `/catalogue/items` for the active branch; demo keeps the sample rows.
@@ -841,6 +847,13 @@ export function DesktopBusinessCatalogHubScreen({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  /** The item just published, so its "Make a deal" can start from it. */
+  const [lastPublished, setLastPublished] = useState<CatalogueItem | null>(null);
+  const makeDealFromPublished = () => {
+    if (live && lastPublished && onMakeDeal) return onMakeDeal(lastPublished);
+    onNav('deals');
+  };
+
   /** Live publish: create or update the item, then refresh the list from the API. */
   const publishLive = (kind: 'product' | 'service') => {
     if (!activeBranchId) return showToast('Choose a branch first.');
@@ -859,7 +872,13 @@ export function DesktopBusinessCatalogHubScreen({
     if (editingRowId) {
       itemMutations.update.mutate({ id: editingRowId, input }, { onSuccess: () => done(input.name, true), onError });
     } else {
-      itemMutations.create.mutate(input, { onSuccess: () => done(input.name, false), onError });
+      itemMutations.create.mutate(input, {
+        onSuccess: (created) => {
+          setLastPublished(created);
+          done(input.name, false);
+        },
+        onError,
+      });
     }
   };
 
@@ -1264,7 +1283,7 @@ export function DesktopBusinessCatalogHubScreen({
     return (
       <DesktopProductPublishedScreen
         draft={productDraft}
-        onMakeDeal={() => onNav('deals')}
+        onMakeDeal={makeDealFromPublished}
         onViewCatalog={() => {
           setActiveTab('products');
           setSubFlow('none');
@@ -1348,7 +1367,7 @@ export function DesktopBusinessCatalogHubScreen({
     return (
       <DesktopServicePublishedScreen
         draft={serviceDraft}
-        onMakeDeal={() => onNav('deals')}
+        onMakeDeal={makeDealFromPublished}
         onViewCatalog={() => {
           setActiveTab('services');
           setSubFlow('none');
@@ -1448,6 +1467,10 @@ export function DesktopBusinessCatalogHubScreen({
     setTimeout(() => setToastMessage(null), 4500);
   };
 
+  useEffect(() => {
+    if (notice) flash(notice);
+  }, [notice]);
+
   /** Applies a change to the selected rows held in local catalogue state. */
   const updateSeedRows = (ids: string[], updater: (row: CatalogRow) => CatalogRow) => {
     const idSet = new Set(ids);
@@ -1476,6 +1499,15 @@ export function DesktopBusinessCatalogHubScreen({
     if (action === 'delete') {
       setBulkDelete({ ids: rows.map((row) => row.id), count: rows.length });
       return;
+    }
+
+    if (live && (action === 'addToDeals' || action === 'removeFromDeals')) {
+      // Live deals are built on one item in the deal studio.
+      const item = rows.length === 1 ? liveItem(rows[0].id) : undefined;
+      setSelected([]);
+      if (action === 'removeFromDeals') return flash('End or pause the deal from Deals to stop it.');
+      if (!item || !onMakeDeal) return flash('Select one item to make a deal from.');
+      return onMakeDeal(item);
     }
 
     const importedRowsSelected = rows.filter((row) => isImportedRow(row.id));

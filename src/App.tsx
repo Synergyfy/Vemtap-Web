@@ -10,6 +10,7 @@ import { useSessionUser } from './hooks/useSessionUser';
 import { SESSION_EXPIRED_EVENT } from './services/api/client';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
+import type { CatalogueItem } from './services/catalogueItemsService';
 import { ownerAuthService, OTP_GATE_MESSAGE } from './services/ownerAuthService';
 import { catalogueService } from './services/catalogueService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
@@ -1731,6 +1732,37 @@ function AppInner() {
   const [boostReturnRoute, setBoostReturnRoute] = useState<Route>('business-overview');
   const [boostItem, setBoostItem] = useState<string | null>(null);
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
+  // Live deals: the catalogue item a new deal is built on, the deal being
+  // viewed or priced, and a one-off catalogue message ("pick an item").
+  const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
+  const [dealGroupId, setDealGroupId] = useState<string | null>(null);
+  const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
+  /** Deals start from a real item; with none chosen, live sends the owner to the catalogue. */
+  const openDealStudio = (item?: CatalogueItem | null) => {
+    if (item) {
+      setDealSource(item);
+      setCatalogNotice(null);
+      setRoute('deal-studio');
+      return;
+    }
+    if (hasApiConfig()) {
+      setCatalogNotice(
+        isDesktop
+          ? 'Pick an item, then choose Add to Deals (or Make a Deal after publishing).'
+          : 'Pick an item, then tap Make a Deal in its options.',
+      );
+      setRoute('hub-catalog');
+      return;
+    }
+    setRoute('deal-studio');
+  };
+  const openDealGroup = (next: Route) => (id?: string) => {
+    setDealGroupId(id ?? null);
+    setRoute(next);
+  };
+  useEffect(() => {
+    if (route !== 'hub-catalog') setCatalogNotice(null);
+  }, [route]);
 
   const openBoost = (item?: string) => {
     // The Boost Studio always opens inside the dashboard (side menu intact) —
@@ -4658,6 +4690,8 @@ function AppInner() {
             onNav={businessPortalNav}
             onOpenBranchPricing={() => setRoute('business-branch-pricing')}
             onOpenServices={() => setRoute('hub-services')}
+            onMakeDeal={(item) => openDealStudio(item)}
+            notice={catalogNotice}
           />
         );
       return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -4677,9 +4711,9 @@ function AppInner() {
         return (
           <DesktopDealsWorkspaceScreen
             onNav={businessPortalNav}
-            onCreateDeal={() => setRoute('deal-studio')}
-            onEditDeal={() => setRoute('deal-location-pricing')}
-            onOpenDealDetail={() => setRoute('hub-deal-detail')}
+            onCreateDeal={() => openDealStudio()}
+            onEditDeal={openDealGroup('deal-location-pricing')}
+            onOpenDealDetail={openDealGroup('hub-deal-detail')}
             onOpenLogs={() => setRoute('analytics-deals')}
             onOpenPos={() => setRoute('business-pos-orders')}
             onBoost={(dealName) => openBoost(dealName)}
@@ -4687,18 +4721,32 @@ function AppInner() {
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
-    case 'deal-studio':
+    case 'deal-studio': {
+      const leaveStudio = () => {
+        setDealSource(null);
+        setRoute('hub-deals');
+      };
+      // Live deals need a real item; without one the catalogue is where to pick it.
+      if (hasApiConfig() && !dealSource) {
+        const notice = 'Pick an item to make a deal from.';
+        if (isDesktop)
+          return (
+            <DesktopBusinessCatalogHubScreen
+              onNav={businessPortalNav}
+              onOpenBranchPricing={() => setRoute('business-branch-pricing')}
+              onOpenServices={() => setRoute('hub-services')}
+              onMakeDeal={(item) => openDealStudio(item)}
+              notice={notice}
+            />
+          );
+        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      }
       if (isDesktop)
         return (
-          <DesktopDealStudioFlow
-            onComplete={() => setRoute('hub-deals')}
-            onExit={() => setRoute('hub-deals')}
-            onNav={businessPortalNav}
-          />
+          <DesktopDealStudioFlow sourceItem={dealSource} onComplete={leaveStudio} onExit={leaveStudio} onNav={businessPortalNav} />
         );
-      return (
-        <BusinessDealStudioFlow onComplete={() => setRoute('hub-deals')} onExit={() => setRoute('hub-deals')} />
-      );
+      return <BusinessDealStudioFlow sourceItem={dealSource} onComplete={leaveStudio} onExit={leaveStudio} />;
+    }
 
     case 'hub-customers':
       if (isDesktop)
@@ -4756,6 +4804,7 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopDealLocationPricingScreen
+            dealGroupId={dealGroupId}
             onNav={businessPortalNav}
             onCancel={() => setRoute('hub-deals')}
             onSave={() => setRoute('hub-deals')}
@@ -4788,12 +4837,14 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopDealAnalyticsScreen
+            dealGroupId={dealGroupId}
             onNav={businessPortalNav}
             onEditPricing={() => setRoute('deal-location-pricing')}
             onConfigureCap={() => setRoute('deal-location-pricing')}
             onChat={() => setRoute('business-messages')}
             onBoost={() => openBoost('Weekend Prime Lunch Combo')}
-            onEditDeal={() => setRoute('deal-studio')}
+            // Live: an existing deal is edited on its branch pricing page.
+            onEditDeal={() => (hasApiConfig() ? setRoute('deal-location-pricing') : setRoute('deal-studio'))}
           />
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -5692,7 +5743,7 @@ function AppInner() {
           <DesktopClusterOnboardingScreen
             onComplete={() => setRoute('cluster-system')}
             onSkip={() => setRoute('business-overview')}
-            onCreateDeal={() => setRoute('deal-studio')}
+            onCreateDeal={() => openDealStudio()}
             onCreateProduct={() => setRoute('hub-catalog')}
             onCreateLocation={() => setRoute('deal-create-locations')}
           />
@@ -5701,7 +5752,7 @@ function AppInner() {
         <ClusterOnboardingScreen
           onComplete={() => setRoute('cluster-system')}
           onSkip={() => setRoute('business-overview')}
-          onCreateDeal={() => setRoute('deal-studio')}
+          onCreateDeal={() => openDealStudio()}
           onCreateProduct={() => setRoute('hub-catalog')}
           onCreateLocation={() => setRoute('deal-create-locations')}
         />
@@ -5713,7 +5764,7 @@ function AppInner() {
           <DesktopClusterSystemScreen
             onNav={businessPortalNav}
             onOpenOnboarding={() => setRoute('cluster-onboarding')}
-            onCreateDeal={() => setRoute('deal-studio')}
+            onCreateDeal={() => openDealStudio()}
             onCreateProduct={() => setRoute('hub-catalog')}
             onCreateLocation={() => setRoute('deal-create-locations')}
             onBoostItem={openClusterBoost}
@@ -5725,7 +5776,7 @@ function AppInner() {
           onBack={() => setRoute('business-overview')}
           onTab={businessTab}
           onOpenOnboarding={() => setRoute('cluster-onboarding')}
-          onCreateDeal={() => setRoute('deal-studio')}
+          onCreateDeal={() => openDealStudio()}
           onCreateProduct={() => setRoute('hub-catalog')}
           onCreateLocation={() => setRoute('deal-create-locations')}
           onBoostItem={openClusterBoost}

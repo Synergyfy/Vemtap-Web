@@ -1,14 +1,65 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { useOfferGroup, useOfferGroupMutations, useOffers } from '../hooks/business/useOffers';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { apiErrorMessage } from '../services/errorMessages';
+import { planErrorMessage } from '../services/planErrors';
 
 interface BusinessDealAssignmentScreenProps {
+  /** Live: the deal group whose branches and prices are edited. */
+  dealGroupId?: string | null;
   onBack: () => void;
+}
+
+/** One branch row of the live pricing matrix. */
+interface LiveRow {
+  branchId: string;
+  name: string;
+  address: string;
+  isMain: boolean;
+  checked: boolean;
+  price: string;
+  vouchers: number | null;
 }
 
 const fmt = (value: number) => value.toLocaleString('en-US');
 
-export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentScreenProps) {
+export function BusinessDealAssignmentScreen({ dealGroupId, onBack }: BusinessDealAssignmentScreenProps) {
+  // Live: the deal's real branches and prices; demo keeps the sample matrix.
+  const live = hasApiConfig() && Boolean(dealGroupId);
+  const group = useOfferGroup(live ? dealGroupId : null);
+  const groupMutations = useOfferGroupMutations(live ? dealGroupId : null);
+  const offersQuery = useOffers();
+  const { branches } = useBusinessBranch();
+  const offer = (offersQuery.data ?? []).find((entry) => (entry.dealGroupId ?? entry.id) === dealGroupId);
+  const original = Number(offer?.originalPrice ?? 0);
+  const [rows, setRows] = useState<LiveRow[]>([]);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  useEffect(() => {
+    const pricing = group.pricing.data;
+    if (!live || !pricing) return;
+    const inDeal = new Map(pricing.branches.map((row) => [row.branchId, row]));
+    setRows(
+      branches
+        .filter((branch) => branch.id)
+        .map((branch) => {
+          const row = inDeal.get(branch.id as string);
+          return {
+            branchId: branch.id as string,
+            name: branch.name,
+            address: branch.area || '—',
+            isMain: branch.isMainBranch === true,
+            checked: row?.isActive ?? false,
+            price: row ? Math.round(Number(row.calculatedPrice)).toLocaleString('en-US') : '',
+            vouchers: row?.quantity ?? null,
+          };
+        }),
+    );
+  }, [live, group.pricing.data, branches]);
+  const updateRow = (branchId: string, patch: Partial<LiveRow>) =>
+    setRows((current) => current.map((row) => (row.branchId === branchId ? { ...row, ...patch } : row)));
   const [scope, setScope] = useState<'selected' | 'all'>('selected');
   const [locationPricing, setLocationPricing] = useState(true);
   const [wusePrice, setWusePrice] = useState('9,600');
@@ -35,8 +86,39 @@ export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentS
     setter(digits.replace(/(\d)(?=(\d{3})+$)/g, '$1,'));
   };
 
+  /** Live: one PUT with every branch's on/off state and price. */
+  const saveLive = () => {
+    const percentage = offer?.pricingType === 'percentage_discount';
+    const uniform = rows.find((row) => row.checked)?.price ?? '';
+    const entries = rows.map((row) => {
+      const price = parsePrice(locationPricing ? row.price : uniform);
+      const isActive = scope === 'all' ? true : row.checked;
+      if (!price) return { branchId: row.branchId, isActive };
+      return percentage && original
+        ? { branchId: row.branchId, isActive, discountValue: Math.max(0, Math.round(((original - price) / original) * 1000) / 10) }
+        : { branchId: row.branchId, isActive, fixedPrice: price };
+    });
+    setSaving('syncing');
+    setLiveError(null);
+    groupMutations.setPricing.mutate(
+      { branches: entries },
+      {
+        onSuccess: () => {
+          setSaving('saved');
+          window.setTimeout(() => setSaving('idle'), 2000);
+        },
+        onError: (error) => {
+          setSaving('idle');
+          setLiveError(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not save the branch pricing.'));
+          window.setTimeout(() => setLiveError(null), 4000);
+        },
+      },
+    );
+  };
+
   const handleSave = () => {
     if (saving !== 'idle') return;
+    if (live) return saveLive();
     setSaving('syncing');
     window.setTimeout(() => setSaving('saved'), 900);
     window.setTimeout(() => setSaving('idle'), 2400);
@@ -89,12 +171,12 @@ export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentS
                   Deal Context
                 </span>
                 <h2 className="font-heading-sm text-heading-sm text-on-surface truncate font-semibold">
-                  Weekend Prime Lunch Combo
+                  {live ? offer?.name ?? 'Deal' : 'Weekend Prime Lunch Combo'}
                 </h2>
               </div>
             </div>
             <span className="inline-flex items-center px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shrink-0">
-              Draft Deal
+              {live ? (offer?.status === 'active' ? 'Live Deal' : 'Paused Deal') : 'Draft Deal'}
             </span>
           </div>
         </div>
@@ -162,7 +244,7 @@ export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentS
                         scope === 'all' ? 'text-primary' : 'text-on-surface'
                       }`}
                     >
-                      All locations (3 Branches)
+                      {live ? `All locations (${rows.length} ${rows.length === 1 ? 'Branch' : 'Branches'})` : 'All locations (3 Branches)'}
                     </span>
                     <span className="font-caption text-caption text-text-tertiary">Uniform</span>
                   </div>
@@ -206,7 +288,11 @@ export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentS
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Branch Pricing Matrix</h3>
-                <p className="font-caption text-caption text-text-secondary">2 of 3 branches participating</p>
+                <p className="font-caption text-caption text-text-secondary">
+                  {live
+                    ? `${rows.filter((row) => row.checked).length} of ${rows.length} branches participating`
+                    : '2 of 3 branches participating'}
+                </p>
               </div>
               <div className="flex items-center gap-space-2xs px-space-xs py-1 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
@@ -215,6 +301,85 @@ export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentS
             </div>
 
             <div className="flex flex-col gap-space-md">
+              {live &&
+                rows.map((row) => {
+                  const rowDiscount = discount(row.price, original);
+                  return (
+                    <article key={row.branchId} className="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-md">
+                      <div className="flex items-start justify-between gap-space-xs">
+                        <div className="flex items-start gap-space-xs min-w-0">
+                          <button
+                            className={`relative flex items-center justify-center w-6 h-6 rounded-lg shrink-0 mt-0.5 cursor-pointer shadow-xs transition-colors ${
+                              row.checked ? 'bg-primary text-on-primary' : 'bg-surface-variant text-text-tertiary'
+                            }`}
+                            type="button"
+                            onClick={() => updateRow(row.branchId, { checked: !row.checked })}
+                          >
+                            <Icon name={row.checked ? 'check' : 'block'} className="text-[18px]" />
+                          </button>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-space-xs flex-wrap">
+                              <h4 className="font-label-md text-label-md text-on-surface font-semibold truncate">{row.name}</h4>
+                              {row.isMain && (
+                                <span className="px-space-2xs py-0.5 rounded bg-surface-container text-on-secondary-container font-caption text-caption font-medium">
+                                  Main branch
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-space-2xs text-text-secondary font-caption text-caption mt-1 truncate">
+                              <Icon name="location_on" className="text-[14px] shrink-0 text-text-tertiary" />
+                              <span className="truncate">{row.address}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 mt-2" title="Operational" />
+                      </div>
+                      {row.checked && (
+                        <div className="p-space-sm rounded-lg bg-surface-container-low flex flex-col gap-space-sm">
+                          <div className="grid grid-cols-2 gap-space-sm">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-caption text-caption text-text-secondary font-medium">Deal Price</span>
+                              <div className="relative flex items-center rounded-lg bg-surface-container-lowest shadow-xs overflow-hidden focus-within:ring-2 focus-within:ring-primary">
+                                <span className="pl-space-xs font-label-md text-label-md text-text-secondary font-semibold">₦</span>
+                                <input
+                                  className="w-full py-2 px-space-2xs bg-transparent font-button-primary text-button-primary text-on-surface font-semibold outline-none"
+                                  inputMode="numeric"
+                                  type="text"
+                                  value={row.price}
+                                  onChange={(event) => handlePriceChange((value) => updateRow(row.branchId, { price: value }))(event.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <span className="font-caption text-caption text-text-secondary font-medium">Original Price</span>
+                              <div className="py-2 px-space-xs rounded-lg bg-surface-variant flex items-center justify-between">
+                                <span className="font-button-secondary text-button-secondary text-text-secondary line-through font-medium">
+                                  {original ? `₦${fmt(original)}` : '—'}
+                                </span>
+                                <span className="font-caption text-caption text-text-tertiary">MSRP</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between pt-1 gap-space-xs">
+                            <div className="inline-flex items-center gap-1 px-space-xs py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                              <Icon name="local_offer" className="text-[14px]" />
+                              <span>
+                                {rowDiscount.pct}% OFF (-₦{fmt(rowDiscount.diff)})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-text-secondary font-caption text-caption">
+                              <Icon name="confirmation_number" className="text-[15px] text-text-tertiary" />
+                              <span className="font-medium text-on-surface">{row.vouchers ?? '—'}</span>
+                              <span>vouchers</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              {!live && (
+                <>
               {/* Wuse II */}
               <article className="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col gap-space-md">
                 <div className="flex items-start justify-between gap-space-xs">
@@ -398,6 +563,8 @@ export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentS
                   <span className="font-caption text-caption text-text-tertiary shrink-0">Deal Paused</span>
                 </div>
               </article>
+                </>
+              )}
             </div>
           </section>
 
@@ -453,6 +620,11 @@ export function BusinessDealAssignmentScreen({ onBack }: BusinessDealAssignmentS
           </section>
         </div>
       </div>
+      {liveError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {liveError}
+        </div>
+      )}
     </AppScreen>
   );
 }

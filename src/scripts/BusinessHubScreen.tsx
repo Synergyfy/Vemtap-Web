@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import type { CatalogueItem } from '../services/catalogueItemsService';
 import type { BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHomeScreen, type HubModuleKey } from './BusinessHubHomeScreen';
 import { BusinessLocationsScreen } from './BusinessLocationsScreen';
@@ -52,6 +54,12 @@ export function BusinessHubScreen({
 }) {
   const [step, setStep] = useState<BusinessHubStep>(initialStep);
   const [assignmentItem, setAssignmentItem] = useState('Woodfire Aged Ribeye Steak');
+  // Live deals: the item a new deal is built on, the deal being viewed, and a
+  // one-off catalogue message ("pick an item").
+  const live = hasApiConfig();
+  const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
+  const [dealGroupId, setDealGroupId] = useState<string | null>(null);
+  const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
   const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? 'Michael James');
 
   useEffect(() => {
@@ -85,6 +93,11 @@ export function BusinessHubScreen({
               setStep('assignment');
             }}
             onBoost={(itemName) => onBoost(itemName)}
+            onMakeDeal={(item) => {
+              setDealSource(item);
+              setStep('dealCreate');
+            }}
+            notice={catalogNotice}
           />
         );
       case 'assignment':
@@ -94,13 +107,25 @@ export function BusinessHubScreen({
           <BusinessDealsScreen
             onTab={handleTab}
             onBoost={(itemName) => onBoost(itemName)}
-            onOpenDeal={() => setStep('dealDetail')}
-            onCreateDeal={() => setStep('dealCreate')}
+            onOpenDeal={(id) => {
+              setDealGroupId(id ?? null);
+              setStep('dealDetail');
+            }}
+            onCreateDeal={() => {
+              // Live deals are made from a catalogue item's "Make a Deal".
+              if (live) {
+                setCatalogNotice('Pick an item, then tap Make a Deal in its options.');
+                setStep('catalog');
+                return;
+              }
+              setStep('dealCreate');
+            }}
           />
         );
       case 'dealDetail':
         return (
           <BusinessDealDetailScreen
+            dealGroupId={dealGroupId}
             onBack={() => setStep('deals')}
             onBoost={() => onBoost('Weekend Prime Lunch Combo')}
             onEditAssignment={() => setStep('dealAssignment')}
@@ -108,9 +133,21 @@ export function BusinessHubScreen({
           />
         );
       case 'dealCreate':
-        return <BusinessDealStudioFlow onComplete={() => setStep('deals')} onExit={() => setStep('deals')} />;
+        return (
+          <BusinessDealStudioFlow
+            sourceItem={dealSource}
+            onComplete={() => {
+              setDealSource(null);
+              setStep('deals');
+            }}
+            onExit={() => {
+              setDealSource(null);
+              setStep('deals');
+            }}
+          />
+        );
       case 'dealAssignment':
-        return <BusinessDealAssignmentScreen onBack={() => setStep('dealDetail')} />;
+        return <BusinessDealAssignmentScreen dealGroupId={dealGroupId} onBack={() => setStep('dealDetail')} />;
       case 'customers':
         return (
           <BusinessCustomersScreen

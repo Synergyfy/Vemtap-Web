@@ -32,6 +32,9 @@ export interface BusinessOffer {
   redeemedCount?: number | null;
   views?: number | null;
   likesCount?: number | null;
+  claimSteps?: string[] | null;
+  /** Weekdays 0–6 (Sunday = 0) with HH:mm start/end. */
+  redemptionWindows?: { weekdays: number[]; start: string; end: string }[] | null;
 }
 
 export interface OfferSummary {
@@ -95,7 +98,49 @@ export interface DealGroupStats {
   byBranch?: { offerId: string; branchId: string; branchName?: string | null; status: string; claims?: number | null; redeemed?: number | null; revenue?: number | string | null }[] | null;
 }
 
+/** `GET /catalogue/offers/groups/:id/branch-pricing` — one row per branch of the deal. */
+export interface OfferGroupBranchPricing {
+  dealGroupId: string;
+  name: string;
+  pricingType: OfferPricingType;
+  branches: {
+    offerId: string;
+    branchId: string;
+    branchName: string | null;
+    isActive: boolean;
+    fixedPrice: number | null;
+    discountValue: number | null;
+    calculatedPrice: number;
+    quantity: number | null;
+    claimedCount: number;
+    redeemedCount: number;
+  }[];
+}
+
+export interface SetOfferGroupBranchPricingInput {
+  branches: { branchId: string; isActive: boolean; fixedPrice?: number; discountValue?: number; quantity?: number }[];
+}
+
+/** `GET /catalogue/offers/groups/:id/price-history` row (newest first). */
+export interface OfferPriceChange {
+  id: string;
+  dealGroupId: string;
+  offerId: string;
+  branchId: string;
+  branchName: string | null;
+  oldPrice: number | string;
+  newPrice: number | string;
+  changedById: string | null;
+  createdAt: string;
+}
+
 export const offersService = {
+  groupBranchPricing: (dealGroupId: string) =>
+    api.get<OfferGroupBranchPricing>(`/catalogue/offers/groups/${dealGroupId}/branch-pricing`),
+  setGroupBranchPricing: (dealGroupId: string, input: SetOfferGroupBranchPricingInput) =>
+    api.put<OfferGroupBranchPricing>(`/catalogue/offers/groups/${dealGroupId}/branch-pricing`, input),
+  priceHistory: (dealGroupId: string) =>
+    api.get<OfferPriceChange[]>(`/catalogue/offers/groups/${dealGroupId}/price-history`),
   groupStats: (dealGroupId: string) => api.get<DealGroupStats>(`/catalogue/offers/groups/${dealGroupId}/stats`),
   /** Applies the same edit to every branch of a deal. */
   updateGroup: (dealGroupId: string, input: Partial<Omit<CreateOfferInput, 'branchId'>>) => api.patch<unknown>(`/catalogue/offers/groups/${dealGroupId}`, input),

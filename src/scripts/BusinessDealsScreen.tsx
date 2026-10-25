@@ -4,11 +4,25 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { FilterMenu } from '../components/FilterMenu';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { hasApiConfig } from '../services/api/client';
+import { useOfferMutations, useOffers } from '../hooks/business/useOffers';
+import { apiErrorMessage } from '../services/errorMessages';
+import type { BusinessOffer } from '../services/offersService';
+import {
+  dealBadgeLabel,
+  isOfferPaused,
+  offerClaimStats,
+  offerComparePriceLabel,
+  offerPriceLabel,
+  offerScheduleLabel,
+  offerSlot,
+} from './catalogueLive';
 
 interface BusinessDealsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onBoost: (itemName?: string) => void;
-  onOpenDeal: () => void;
+  /** Receives the live deal's group id (undefined in demo). */
+  onOpenDeal: (dealGroupId?: string) => void;
   onCreateDeal: () => void;
 }
 
@@ -106,7 +120,67 @@ const DEALS: DealCard[] = [
   },
 ];
 
+/** Neutral image until a live deal has a photo. */
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
+/** A live offer in the deal card shape. */
+function offerToCard(offer: BusinessOffer): DealCard {
+  const stats = offerClaimStats(offer);
+  return {
+    key: offer.id,
+    status: offerSlot(offer),
+    name: offer.name,
+    category: [offer.branchName, offer.offerType].filter(Boolean).join(' · ') || 'Deal',
+    price: offerPriceLabel(offer),
+    compare: offerComparePriceLabel(offer),
+    img: offer.mainImage || LIVE_IMAGE_PLACEHOLDER,
+    alt: offer.name,
+    discountBadge: dealBadgeLabel(offer),
+    scheduleLine: { icon: 'schedule', text: offerScheduleLabel(offer) },
+    claimsLine: `${stats.claims} claims · ${stats.redeemed} redeemed`,
+    branchIcon: 'storefront',
+    branchLine: offer.branchName ?? 'Your branch',
+    metric: stats.claims
+      ? {
+          title: `Redemption Rate: ${stats.rate}%`,
+          sub: `${stats.unredeemed} vouchers unredeemed`,
+          rate: `${stats.rate}%`,
+          barClass: 'bg-primary',
+          progress: stats.rate,
+        }
+      : null,
+    primaryAction: { label: 'Boost Deal', icon: 'rocket_launch', btnClass: 'bg-tertiary-fixed text-on-tertiary-fixed', iconClass: 'text-tertiary' },
+  };
+}
+
 export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }: BusinessDealsScreenProps) {
+  // Live: the active branch's real deals; demo keeps the sample cards.
+  const live = hasApiConfig();
+  const offersQuery = useOffers();
+  const offerMutations = useOfferMutations();
+  const liveOffers = offersQuery.data ?? [];
+  const liveById = new Map(liveOffers.map((offer) => [offer.id, offer]));
+  const deals = live ? liveOffers.map(offerToCard) : DEALS;
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3500);
+  };
+  const isPaused = (key: string) => {
+    const offer = liveById.get(key);
+    return offer ? isOfferPaused(offer) : false;
+  };
+  /** Live: pause/resume is the offer's status. */
+  const toggleLivePause = (key: string) => {
+    const offer = liveById.get(key);
+    if (!offer) return false;
+    offerMutations.setStatus.mutate(
+      { id: offer.id, status: isOfferPaused(offer) ? 'active' : 'inactive' },
+      { onError: (error) => showToast(apiErrorMessage(error, 'Could not update this deal.')) },
+    );
+    return true;
+  };
   const [tab, setTab] = useState<DealStatus>('active');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -117,7 +191,7 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
   const query = search.trim().toLowerCase();
 
   /** Tab, category filter and search must all agree before a card shows. */
-  const visibleDeals = DEALS.filter(
+  const visibleDeals = deals.filter(
     (deal) =>
       deal.status === tab &&
       (category === '' || deal.category === category) &&
@@ -127,11 +201,11 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
         deal.category.toLowerCase().includes(query)),
   );
 
-  const statusCount = (status: DealStatus) => DEALS.filter((deal) => deal.status === status).length;
+  const statusCount = (status: DealStatus) => deals.filter((deal) => deal.status === status).length;
 
   const categoryChoices = [
     { value: '', label: 'All categories' },
-    ...Array.from(new Set(DEALS.map((deal) => deal.category))).map((name) => ({
+    ...Array.from(new Set(deals.map((deal) => deal.category))).map((name) => ({
       value: name,
       label: name,
     })),
@@ -274,7 +348,7 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
             <div
               className="bg-surface-canvas rounded-2xl shadow-sm overflow-hidden flex flex-col transition-all cursor-pointer active:scale-[0.99]"
               key={deal.key}
-              onClick={() => onOpenDeal()}
+              onClick={() => onOpenDeal(live ? liveById.get(deal.key)?.dealGroupId ?? deal.key : undefined)}
             >
               {/* Media Header */}
               <div className="relative w-full h-44 bg-surface-container-highest overflow-hidden">
@@ -407,11 +481,12 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (live && toggleLivePause(deal.key)) return;
                       setPaused((current) => ({ ...current, [deal.key]: !current[deal.key] }));
                     }}
                   >
-                    <span className={paused[deal.key] ? 'text-primary font-semibold' : 'text-on-surface-variant'}>
-                      {paused[deal.key] ? 'Resume' : 'Pause'}
+                    <span className={(live ? isPaused(deal.key) : paused[deal.key]) ? 'text-primary font-semibold' : 'text-on-surface-variant'}>
+                      {(live ? isPaused(deal.key) : paused[deal.key]) ? 'Resume' : 'Pause'}
                     </span>
                   </button>
                 </div>
@@ -530,7 +605,19 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
             <button
               className="flex items-center gap-space-sm p-space-xs rounded-xl hover:bg-error-container/20 text-left"
               type="button"
-              onClick={() => setActionsOpen(false)}
+              onClick={() => {
+                setActionsOpen(false);
+                const offer = live && actionsDeal ? liveById.get(actionsDeal.key) : undefined;
+                if (!offer) return;
+                // Ends the deal now: it stops issuing vouchers; existing claims are kept.
+                offerMutations.setStatus.mutate(
+                  { id: offer.id, status: 'inactive' },
+                  {
+                    onSuccess: () => showToast(`“${offer.name}” has ended.`),
+                    onError: (error) => showToast(apiErrorMessage(error, 'Could not end this deal.')),
+                  },
+                );
+              }}
             >
               <div className="w-10 h-10 rounded-xl bg-error-container text-on-error-container flex items-center justify-center shrink-0">
                 <Icon name="stop_circle" className="text-[20px]" />
@@ -541,6 +628,12 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
               </div>
             </button>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
+          {toast}
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { FilterMenu } from '../components/FilterMenu';
 import { Icon } from '../components/ui/Icon';
@@ -46,6 +46,10 @@ interface BusinessHubCatalogScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onOpenAssignment: (itemName: string) => void;
   onBoost: (itemName: string) => void;
+  /** Live: start a deal for this real item. */
+  onMakeDeal?: (item: LiveCatalogueItem) => void;
+  /** A message to show once when the screen opens (e.g. "pick an item"). */
+  notice?: string | null;
 }
 
 interface CatalogItem {
@@ -239,7 +243,7 @@ function liveToItem(item: LiveCatalogueItem, offers: BusinessOffer[], branchCoun
   };
 }
 
-export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: BusinessHubCatalogScreenProps) {
+export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onMakeDeal, notice }: BusinessHubCatalogScreenProps) {
   // Live: the active branch's real catalogue; demo keeps the sample cards.
   const live = hasApiConfig();
   const itemsQuery = useCatalogueItems();
@@ -302,6 +306,10 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
     setToast(message);
     window.setTimeout(() => setToast(null), 3500);
   };
+
+  useEffect(() => {
+    if (notice) showToast(notice);
+  }, [notice]);
 
   /** Live: a copy of the item at the active branch, hidden until reviewed. */
   const duplicateLiveItem = (item: LiveCatalogueItem) => {
@@ -800,6 +808,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
               </button>
             </div>
             {[
+              ...(live ? [{ icon: 'local_offer', iconClass: 'text-badge-discount-text', label: 'Make a Deal' }] : []),
               { icon: 'content_copy', iconClass: 'text-primary', label: 'Duplicate Product' },
               { icon: 'price_change', iconClass: 'text-primary-container', label: 'Manage Location Pricing' },
               { icon: 'qr_code_2', iconClass: 'text-secondary', label: 'View Table Order QR' },
@@ -816,6 +825,9 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                   if (action.label === 'Manage Location Pricing') {
                     setSheetItem(null);
                     onOpenAssignment(liveItem ? liveItem.id : sheetItem);
+                  } else if (liveItem && action.label === 'Make a Deal') {
+                    setSheetItem(null);
+                    onMakeDeal?.(liveItem);
                   } else if (liveItem && action.label === 'Duplicate Product') {
                     setSheetItem(null);
                     duplicateLiveItem(liveItem);
