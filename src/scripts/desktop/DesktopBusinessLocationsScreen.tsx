@@ -1,4 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
+import { hasApiConfig } from '../../services/api/client';
+import { useBranches } from '../../hooks/business/useBranchesAndTeam';
+import { branchHoursLabel } from '../branchLive';
 
 interface DesktopBusinessLocationsScreenProps {
   onBack: () => void;
@@ -38,7 +41,19 @@ export function DesktopBusinessLocationsScreen({
   onSaveDraft,
   extraBranches,
 }: DesktopBusinessLocationsScreenProps) {
-  const branches = [...SEED_BRANCHES, ...(extraBranches ?? [])];
+  // Live: the business's real branches (the main one comes with the account).
+  const live = hasApiConfig();
+  const branchesQuery = useBranches();
+  const liveBranches: OnboardingBranch[] = (branchesQuery.data ?? []).map((branch) => ({
+    id: branch.id,
+    name: branch.name,
+    city: [branch.city, branch.state].filter(Boolean).join(', ') || '—',
+    address: branch.address || '—',
+    hours: branchHoursLabel(branch),
+    phone: branch.phone || '—',
+    isPrimary: branch.isMainBranch === true,
+  }));
+  const branches = live ? liveBranches : [...SEED_BRANCHES, ...(extraBranches ?? [])];
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 flex flex-col gap-8">

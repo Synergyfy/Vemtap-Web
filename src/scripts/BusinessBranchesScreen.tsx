@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { useBranches } from '../hooks/business/useBranchesAndTeam';
+import { branchAddressLabel, branchHoursLabel } from './branchLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 
@@ -57,6 +60,9 @@ const SEED_BRANCHES: BusinessBranch[] = [
   },
 ];
 
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
 export function BusinessBranchesScreen({
   onBack,
   onAddBranch,
@@ -67,7 +73,21 @@ export function BusinessBranchesScreen({
   const [seedBranches] = useState<BusinessBranch[]>(SEED_BRANCHES);
   const [multiLocation, setMultiLocation] = useState(true);
 
-  const branches = [...seedBranches, ...(extraBranches ?? [])];
+  // Live: the business's real branches (the main one comes with the account).
+  const live = hasApiConfig();
+  const branchesQuery = useBranches();
+  const liveBranches: BusinessBranch[] = (branchesQuery.data ?? []).map((branch, index) => ({
+    id: branch.id,
+    name: `${index + 1} — ${branch.name}`,
+    subtitle: [branch.isMainBranch ? 'Main branch' : 'Branch', branch.district].filter(Boolean).join(' • '),
+    address: branchAddressLabel(branch),
+    phone: branch.phone || '—',
+    hours: `· ${branchHoursLabel(branch)}`,
+    image: branch.logoUrl || LIVE_IMAGE_PLACEHOLDER,
+    imageAlt: branch.name,
+    primary: branch.isMainBranch === true,
+  }));
+  const branches = live ? liveBranches : [...seedBranches, ...(extraBranches ?? [])];
 
   return (
     <AppScreen>

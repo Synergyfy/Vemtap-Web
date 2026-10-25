@@ -404,10 +404,13 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessAddBranchScreen
           onBack={() => setStepIndex(5)}
-          onSaved={() => {
-            setExtraBranches((current) =>
-              current.some((branch) => branch.id === NEW_BRANCH.id) ? current : [...current, NEW_BRANCH],
-            );
+          onSaved={(saved) => {
+            // Live branches come from the API; the sample new branch is demo-only.
+            if (!saved) {
+              setExtraBranches((current) =>
+                current.some((branch) => branch.id === NEW_BRANCH.id) ? current : [...current, NEW_BRANCH],
+              );
+            }
             setStepIndex(5);
           }}
         />

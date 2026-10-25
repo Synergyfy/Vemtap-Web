@@ -407,12 +407,14 @@ export function DesktopBusinessOnboardingScreen({
       return (
         <DesktopBusinessAddBranchScreen
           onBack={() => setStep('branches')}
-          onSaved={() => {
-            setExtraBranches((current) =>
-              current.some((branch) => branch.id === NEW_DESKTOP_BRANCH.id)
-                ? current
-                : [...current, NEW_DESKTOP_BRANCH],
-            );
+          onSaved={(saved) => {
+            // Live branches come from the API; the sample new branch is demo-only.
+            if (!saved)
+              setExtraBranches((current) =>
+                current.some((branch) => branch.id === NEW_DESKTOP_BRANCH.id)
+                  ? current
+                  : [...current, NEW_DESKTOP_BRANCH],
+              );
             setStep('branches');
           }}
         />
