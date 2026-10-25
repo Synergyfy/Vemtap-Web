@@ -1,4 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { pickAndUploadImage } from '../services/uploadService';
+import { useLiveBranding } from '../hooks/business/useLiveBranding';
+import type { BrandingResult } from './desktop/DesktopBusinessProfileBrandingScreen';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
@@ -8,7 +12,8 @@ import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
 interface BusinessProfileBrandingScreenProps {
   draft: BusinessProfileDraft;
   onBack: () => void;
-  onNext: () => void;
+  /** Receives the uploaded image URLs (live) so the parent can save them. */
+  onNext: (branding: BrandingResult) => void;
   onSaveDraft: () => void;
 }
 
@@ -47,15 +52,49 @@ export function BusinessProfileBrandingScreen({
   onNext,
   onSaveDraft,
 }: BusinessProfileBrandingScreenProps) {
-  const [hasLogo, setHasLogo] = useState(true);
-  const [cover, setCover] = useState(COVER_IMG);
-  const [gallery, setGallery] = useState<GalleryPhoto[]>(GALLERY_POOL.slice(0, 2));
+  // Live: real uploads only — no sample logo, cover or gallery photos.
+  const live = hasApiConfig();
+  const [hasLogo, setHasLogo] = useState(!live);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [cover, setCover] = useState(live ? '' : COVER_IMG);
+  const [gallery, setGallery] = useState<GalleryPhoto[]>(live ? [] : GALLERY_POOL.slice(0, 2));
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  // Upload and save failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!uploadError) return;
+    const timer = window.setTimeout(() => setUploadError(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [uploadError]);
+  const branding = useLiveBranding((saved) => {
+    if (saved.logoUrl) {
+      setLogoUrl(saved.logoUrl);
+      setHasLogo(true);
+    }
+    if (saved.coverImage) setCover(saved.coverImage);
+    if (saved.gallery.length) setGallery(saved.gallery.map((src) => ({ src, alt: 'Business photo' })));
+  });
+  /** Saves straight away so the image survives a reload; failures surface like upload errors. */
+  const persist = (patch: Parameters<typeof branding.save>[0]) =>
+    branding.save(patch).catch(() => setUploadError('Uploaded, but saving it to your profile failed. Continue will try again.'));
 
   const remainingPhotos = GALLERY_POOL.filter(
     (photo) => !gallery.some((entry) => entry.src === photo.src),
   );
-  const canAddPhoto = remainingPhotos.length > 0 && gallery.length < 5;
-  const previewTitle = draft.name.trim() || 'Your Store Name';
+  const canAddPhoto = gallery.length < 5 && (live || remainingPhotos.length > 0);
+
+  const upload = async () => {
+    setUploadError(null);
+    setUploading(true);
+    try {
+      return await pickAndUploadImage();
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
 
   /** Business facts already in the onboarding draft — feed the AI prompt. */
   const aiBrandContext: AiPromptContext = {
@@ -65,17 +104,41 @@ export function BusinessProfileBrandingScreen({
     description: draft.description,
   };
 
-  const handleReplaceCover = () => {
-    setCover((current) => (current === COVER_IMG ? FEED_IMG : COVER_IMG));
+  const handleChangeLogo = async () => {
+    if (!live) return setHasLogo(true);
+    const url = await upload();
+    if (url) {
+      setLogoUrl(url);
+      setHasLogo(true);
+      void persist({ logoUrl: url });
+    }
+  };
+  const previewTitle = draft.name.trim() || 'Your Store Name';
+
+  const handleReplaceCover = async () => {
+    if (!live) return setCover((current) => (current === COVER_IMG ? FEED_IMG : COVER_IMG));
+    const url = await upload();
+    if (url) {
+      setCover(url);
+      void persist({ coverImage: url });
+    }
   };
 
-  const handleAddPhoto = () => {
+  const handleAddPhoto = async () => {
     if (!canAddPhoto) return;
-    setGallery((current) => [...current, remainingPhotos[0]]);
+    if (!live) return setGallery((current) => [...current, remainingPhotos[0]]);
+    const url = await upload();
+    if (url) {
+      const next = [...gallery, { src: url, alt: 'Business photo' }];
+      setGallery(next);
+      void persist({ gallery: next.map((entry) => entry.src) });
+    }
   };
 
   const handleRemovePhoto = (src: string) => {
-    setGallery((current) => current.filter((entry) => entry.src !== src));
+    const next = gallery.filter((entry) => entry.src !== src);
+    setGallery(next);
+    if (live) void persist({ gallery: next.map((entry) => entry.src) });
   };
 
   return (
@@ -157,7 +220,9 @@ export function BusinessProfileBrandingScreen({
             </div>
             <div className="mt-space-sm flex items-center gap-space-md">
               <div className="relative w-20 h-20 rounded-xl bg-surface-container flex-shrink-0 flex items-center justify-center overflow-hidden shadow-sm">
-                {hasLogo ? (
+                {hasLogo && logoUrl ? (
+                  <img src={logoUrl} alt="Your logo" className="w-full h-full object-cover" />
+                ) : hasLogo ? (
                   <div className="w-full h-full bg-surface-container-high flex flex-col items-center justify-center relative">
                     <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-on-primary shadow-sm">
                       <Icon name="restaurant_menu" className="text-[26px]" />
@@ -178,15 +243,19 @@ export function BusinessProfileBrandingScreen({
                   <button
                     className="h-9 px-space-md bg-surface-tint-blue text-primary font-button-secondary text-button-secondary rounded-lg flex items-center gap-1.5 transition-transform active:scale-95 shadow-sm"
                     type="button"
-                    onClick={() => setHasLogo(true)}
+                    onClick={() => void handleChangeLogo()}
+                    disabled={uploading}
                   >
                     <Icon name="photo_camera" className="text-[18px]" />
-                    Change
+                    {uploading ? 'Uploading…' : live && !logoUrl ? 'Upload' : 'Change'}
                   </button>
                   <button
                     className="h-9 px-space-sm bg-surface-container-low text-text-secondary hover:text-error font-button-secondary text-button-secondary rounded-lg flex items-center gap-1 transition-colors"
                     type="button"
-                    onClick={() => setHasLogo(false)}
+                    onClick={() => {
+                      setHasLogo(false);
+                      setLogoUrl(null);
+                    }}
                   >
                     <Icon name="delete" className="text-[18px]" />
                     Remove
@@ -218,11 +287,11 @@ export function BusinessProfileBrandingScreen({
               </span>
             </div>
             <div className="mt-space-sm relative w-full h-44 rounded-xl overflow-hidden shadow-sm">
-              <img
-                alt={cover === COVER_IMG ? COVER_ALT : FEED_ALT}
-                className="w-full h-full object-cover"
-                src={cover}
-              />
+              {cover ? (
+                <img alt={live ? 'Your cover photo' : cover === COVER_IMG ? COVER_ALT : FEED_ALT} className="w-full h-full object-cover" src={cover} />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-surface-tint-blue to-surface-container-low" aria-label="No cover photo yet" />
+              )}
               <div className="absolute top-space-xs left-space-xs bg-inverse-surface/80 backdrop-blur-md text-inverse-on-surface font-caption text-caption px-2 py-0.5 rounded-full flex items-center gap-1">
                 <Icon name="aspect_ratio" className="text-[12px]" />
                 1200 × 675px
@@ -231,7 +300,8 @@ export function BusinessProfileBrandingScreen({
                 <button
                   className="h-10 px-space-md bg-surface-canvas text-text-primary font-button-secondary text-button-secondary rounded-xl flex items-center gap-space-xs shadow-md transition-transform active:scale-95"
                   type="button"
-                  onClick={handleReplaceCover}
+                  onClick={() => void handleReplaceCover()}
+                  disabled={uploading}
                 >
                   <Icon name="add_a_photo" className="text-primary text-[20px]" />
                   Replace Cover Photo
@@ -279,7 +349,7 @@ export function BusinessProfileBrandingScreen({
                 <button
                   className="aspect-square rounded-xl bg-surface-subtle flex flex-col items-center justify-center gap-1 text-primary hover:bg-surface-tint-blue transition-colors p-2 text-center active:scale-95"
                   type="button"
-                  onClick={handleAddPhoto}
+                  onClick={() => void handleAddPhoto()}
                 >
                   <div className="w-8 h-8 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary">
                     <Icon name="add" className="text-[20px]" />
@@ -335,7 +405,13 @@ export function BusinessProfileBrandingScreen({
             <button
               className="w-full h-[52px] bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-2 shadow-md transition-transform active:scale-[0.98]"
               type="button"
-              onClick={onNext}
+              onClick={() =>
+                onNext({
+                  logoUrl: logoUrl ?? undefined,
+                  coverImage: live && cover ? cover : undefined,
+                  gallery: live ? gallery.map((photo) => photo.src) : [],
+                })
+              }
             >
               <span>Continue to Contact &amp; Channels</span>
               <Icon name="arrow_forward" className="text-[20px]" />
@@ -361,6 +437,11 @@ export function BusinessProfileBrandingScreen({
           </div>
         </div>
       </div>
+      {uploadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {uploadError}
+        </div>
+      )}
     </AppScreen>
   );
 }

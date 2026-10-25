@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
+import { useLiveDealPublish } from '../hooks/business/useLiveDealPublish';
+import { toPrice, type CatalogueItem } from '../services/catalogueItemsService';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
 import { BusinessAddBranchScreen } from './BusinessAddBranchScreen';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
@@ -39,9 +44,9 @@ import {
 } from './businessSetup';
 import { INITIAL_DEAL_STUDIO_DRAFT } from './dealStudio';
 import type { DealStudioDraft } from './dealStudio';
-import { INITIAL_PRODUCT_DRAFT } from './productDraft';
+import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import type { ProductDraft } from './productDraft';
-import { INITIAL_SERVICE_DRAFT } from './serviceDraft';
+import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT } from './serviceDraft';
 import type { ServiceDraft } from './serviceDraft';
 import { classifyServiceFromBusiness } from './serviceClassification';
 
@@ -64,7 +69,23 @@ export interface BusinessProfileDraft {
  * merchant recognises it immediately; it stays editable where account and
  * verification rules allow. WhatsApp is seeded as a phone number, never a link.
  */
-const createInitialDraft = (accountEmail: string): BusinessProfileDraft => ({
+const createInitialDraft = (accountEmail: string): BusinessProfileDraft =>
+  hasApiConfig()
+    ? {
+        // Live setup starts empty so nothing sample-only reaches the business record.
+        name: '',
+        categories: [],
+        tags: [],
+        description: '',
+        phone: '',
+        email: accountEmail,
+        website: '',
+        instagram: '',
+        whatsapp: '',
+        x: '',
+        prefs: { inApp: true, whatsapp: true },
+      }
+    : ({
   name: 'Urban Grill & Bistro',
   categories: ['restaurant'],
   tags: ['Grill & Steakhouse', 'Bistro & Cafe'],
@@ -196,13 +217,13 @@ export function BusinessOnboardingScreen({
     () => (stored?.data.extraBranches as BusinessBranch[] | undefined) ?? [],
   );
   const [productDraft, setProductDraft] = useState<ProductDraft>(
-    () => (stored?.data.productDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+    () => (stored?.data.productDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [dealDraft, setDealDraft] = useState<ProductDraft>(
     () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
   );
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
-    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? INITIAL_SERVICE_DRAFT,
+    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? (hasApiConfig() ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT),
   );
   const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
     () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? INITIAL_DEAL_STUDIO_DRAFT,
@@ -215,16 +236,6 @@ export function BusinessOnboardingScreen({
     window.scrollTo(0, 0);
   }, [stepIndex]);
 
-  useEffect(() => {
-    saveBusinessSetupSnapshot(STEPS[stepIndex], {
-      draft,
-      extraBranches,
-      productDraft,
-      dealDraft,
-      serviceDraft,
-      dealStudio,
-    });
-  }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio]);
 
   useEffect(() => {
     setBusinessSetupVerificationState(verificationState);
@@ -246,6 +257,58 @@ export function BusinessOnboardingScreen({
           },
     );
   }, [draft.categories, draft.tags]);
+
+  const sync = useOnboardingSync();
+  // Live: deals are built on a real catalogue item and published to the API.
+  const liveDeal = useLiveDealPublish(() => setStepIndex(25), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
+  // Saved after the deal hook so the picked item survives a reload too.
+  useEffect(() => {
+    saveBusinessSetupSnapshot(STEPS[stepIndex], {
+      draft,
+      extraBranches,
+      productDraft,
+      dealDraft,
+      serviceDraft,
+      dealStudio,
+      dealSource: liveDeal.source,
+    });
+  }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio, liveDeal.source]);
+
+  const startLiveDeal = (item: CatalogueItem) => {
+    liveDeal.pick(item);
+    setDealDraft((prev) => ({
+      ...prev,
+      title: item.name,
+      description: item.description ?? '',
+      basePrice: String(toPrice(item.price ?? undefined) ?? ''),
+      comparePrice: String(toPrice(item.compareAtPrice ?? undefined) ?? ''),
+      // The draft starts from the sample product: drop its variants and photo.
+      variantsEnabled: false,
+      variants: [],
+      mainImage: item.mainImage ?? undefined,
+      sku: item.sku ?? '',
+      skuCode: item.sku ?? '',
+    }));
+  };
+  const myBusiness = useMyBusiness();
+
+  // Live: start from the name given at sign-up.
+  useEffect(() => {
+    const name = myBusiness.data?.name;
+    if (name) setDraft((prev) => (prev.name ? prev : { ...prev, name }));
+  }, [myBusiness.data?.name]);
+
+  // Live: save and publish failures show in the flow's toast, then clear.
+  const apiError =
+    sync.error ?? (liveDeal.error && liveDeal.needsSource ? 'Publish a product or service first, then make a deal from it.' : liveDeal.error);
+  useEffect(() => {
+    if (!apiError) return;
+    const timer = window.setTimeout(() => {
+      sync.clearError();
+      liveDeal.clearError();
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [apiError]);
 
   const updateDraft = (patch: Partial<BusinessProfileDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -295,7 +358,7 @@ export function BusinessOnboardingScreen({
           draft={draft}
           onBack={() => setStepIndex(0)}
           onChange={updateDraft}
-          onNext={() => setStepIndex(2)}
+          onNext={() => sync.saveBasic(draft, () => setStepIndex(2))}
           onSaveDraft={onBack}
         />
       );
@@ -304,7 +367,7 @@ export function BusinessOnboardingScreen({
         <BusinessProfileBrandingScreen
           draft={draft}
           onBack={() => setStepIndex(1)}
-          onNext={() => setStepIndex(3)}
+          onNext={(branding) => sync.saveBranding(branding, () => setStepIndex(3))}
           onSaveDraft={onBack}
         />
       );
@@ -314,7 +377,7 @@ export function BusinessOnboardingScreen({
           draft={draft}
           onBack={() => setStepIndex(2)}
           onChange={updateDraft}
-          onNext={() => setStepIndex(4)}
+          onNext={() => sync.saveContact(draft, () => setStepIndex(4))}
           onSaveDraft={onBack}
         />
       );
@@ -323,7 +386,7 @@ export function BusinessOnboardingScreen({
         <BusinessLocationScreen
           draft={draft}
           onBack={() => setStepIndex(3)}
-          onNext={() => setStepIndex(5)}
+          onNext={(location) => sync.saveLocation(location, () => setStepIndex(5))}
           onSaveDraft={onBack}
         />
       );
@@ -383,6 +446,7 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessAddProductImageScreen
           draft={productDraft}
+          onDraftChange={updateProductDraft}
           onBack={() => setStepIndex(9)}
           onNext={() => setStepIndex(11)}
           onSaveDraft={onBack}
@@ -409,7 +473,7 @@ export function BusinessOnboardingScreen({
           onEditBranches={() => setStepIndex(11)}
           onEditFulfillment={() => setStepIndex(11)}
           onEditDescription={() => setStepIndex(8)}
-          onPublish={() => setStepIndex(13)}
+          onPublish={() => sync.publishProduct(productDraft, () => setStepIndex(13))}
           onSaveDraft={onBack}
         />
       );
@@ -419,6 +483,7 @@ export function BusinessOnboardingScreen({
           draft={productDraft}
           onMakeDeal={() => {
             setDealDraft(productDraft);
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
@@ -474,7 +539,7 @@ export function BusinessOnboardingScreen({
           onEditBasics={() => setStepIndex(15)}
           onEditPricing={() => setStepIndex(16)}
           onEditBranches={() => setStepIndex(17)}
-          onPublish={() => setStepIndex(19)}
+          onPublish={() => sync.publishService(serviceDraft, () => setStepIndex(19))}
           onSaveDraft={onBack}
         />
       );
@@ -484,6 +549,7 @@ export function BusinessOnboardingScreen({
           draft={serviceDraft}
           onMakeDeal={() => {
             setDealDraft(serviceToDealDraft(serviceDraft));
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
@@ -533,6 +599,7 @@ export function BusinessOnboardingScreen({
           onEditRules={() => setStepIndex(21)}
           onEditLocations={() => setStepIndex(22)}
           onPublish={() => setStepIndex(25)}
+          livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
           onSaveDraft={() => setStepIndex(7)}
         />
       );
@@ -558,6 +625,11 @@ export function BusinessOnboardingScreen({
       {step !== 'intro' && (
         <div className="w-full max-w-[430px] mx-auto px-gutter pt-safe pt-2">
           <BusinessSetupProgress {...progressSnapshot} variant="mobile" onSelectSection={handleSelectSection} />
+        </div>
+      )}
+      {apiError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {apiError}
         </div>
       )}
       {renderStep()}

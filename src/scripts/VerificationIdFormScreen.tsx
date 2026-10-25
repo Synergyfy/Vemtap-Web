@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { useVerificationActions } from '../hooks/business/useVerification';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
-import { ID_TYPE_CONFIG, isFailedVerificationAttempt, type VerificationDraft } from './verificationDraft';
+import { ID_TYPE_CONFIG, type VerificationDraft } from './verificationDraft';
 
 interface VerificationIdFormScreenProps {
   onBack: () => void;
@@ -14,6 +15,15 @@ interface VerificationIdFormScreenProps {
 export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResult }: VerificationIdFormScreenProps) {
   const config = ID_TYPE_CONFIG[draft.idType];
   const [submitting, setSubmitting] = useState(false);
+  const [stage, setStage] = useState<'selfie' | 'checking' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Verification failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!error) return;
+    const timeout = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
+  const verification = useVerificationActions();
   const [infoOpen, setInfoOpen] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const timer = useRef<number | null>(null);
@@ -35,10 +45,19 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
   const handleSubmit = () => {
     if (submitting) return;
     setSubmitting(true);
-    timer.current = window.setTimeout(() => {
-      setSubmitting(false);
-      onResult(isFailedVerificationAttempt(raw) ? 'review' : 'success');
-    }, 1600);
+    setError(null);
+    // Called straight from the click so the selfie tab is not popup-blocked.
+    verification
+      .verifyIdentity(
+        { idType: draft.idType, idNumber: raw, legalName: draft.legalName, dateOfBirth: draft.dateOfBirth },
+        setStage,
+      )
+      .then((outcome) => onResult(outcome.result))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Verification failed. Please try again.'))
+      .finally(() => {
+        setSubmitting(false);
+        setStage(null);
+      });
   };
 
   return (
@@ -198,7 +217,6 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
               your sensitive ID records.
             </p>
           </div>
-
           {/* Action Section */}
           <div className="mt-auto pt-space-sm flex flex-col gap-space-xs">
             <button
@@ -209,7 +227,7 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
               {submitting ? (
                 <>
                   <Icon name="sync" className="animate-spin text-[20px]" />
-                  <span>{config.loadingLabel}</span>
+                  <span>{stage === 'selfie' ? 'Finish the selfie check in the new tab…' : config.loadingLabel}</span>
                 </>
               ) : (
                 <>
@@ -238,6 +256,11 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
           </div>
         )}
       </div>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </AppScreen>
   );
 }

@@ -10,6 +10,7 @@ import { useSessionUser } from './hooks/useSessionUser';
 import { SESSION_EXPIRED_EVENT } from './services/api/client';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
+import { ownerAuthService, OTP_GATE_MESSAGE } from './services/ownerAuthService';
 import { catalogueService } from './services/catalogueService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
@@ -926,7 +927,7 @@ export default function App() {
 }
 
 function AppInner() {
-  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim } = useAuth();
+  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession } = useAuth();
   const sessionUser = useSessionUser().data;
   // A live owner already has their business identity: business entry points
   // should open their dashboard instead of starting sign-up again.
@@ -2059,6 +2060,44 @@ function AppInner() {
     await authService.requestCustomerOtp({ email: nextEmail });
   };
 
+  /** Business sign-up (`business-auth`): live, the email gets a 4-digit owner code. */
+  const requestOwnerSignupOtp = async (email: string) => {
+    const nextEmail = email.trim().toLowerCase();
+    if (!nextEmail) {
+      throw new Error('An email is required to continue.');
+    }
+
+    setCustomerSignup((current) => ({ ...current, email: nextEmail }));
+
+    if (!hasApiConfig()) {
+      return;
+    }
+
+    await ownerAuthService.requestOtp(nextEmail);
+  };
+
+  /**
+   * Live: verify the owner code, then register the owner (no password yet —
+   * it can be set later from Forgot / Change password) and keep the session.
+   */
+  const completeOwnerSignup = async (code: string) => {
+    if (hasApiConfig()) {
+      const email = customerSignup.email;
+      await ownerAuthService.verifyOtp(email, code.trim());
+      try {
+        adoptSession(
+          await ownerAuthService.register({ email, referralCode: getProvisionalReferralCode() || undefined }),
+        );
+      } catch (error) {
+        if (error instanceof Error && error.message.includes(OTP_GATE_MESSAGE)) {
+          throw new Error('Your code has expired. Request a new one and try again.');
+        }
+        throw error;
+      }
+    }
+    enterBusinessProfile();
+  };
+
   const handleCustomerSignupVerification = async (code: string) => {
     const nextCode = code.replace(/\D/g, '').slice(0, 6);
     if (!nextCode) {
@@ -2271,6 +2310,11 @@ function AppInner() {
               setAuthIntent('business');
               setRoute('verify-email');
             }}
+            onSubmitEmail={async (email) => {
+              await requestOwnerSignupOtp(email);
+              setAuthIntent('business');
+              setRoute('verify-email');
+            }}
             onGoogle={() => {
               signIn();
               setAuthIntent('business');
@@ -2291,6 +2335,11 @@ function AppInner() {
           mode="business"
           onBack={() => setRoute('business-onboarding')}
           onContinue={() => {
+            setAuthIntent('business');
+            setRoute('verify-email');
+          }}
+          onSubmitEmail={async (email) => {
+            await requestOwnerSignupOtp(email);
             setAuthIntent('business');
             setRoute('verify-email');
           }}
@@ -2407,13 +2456,15 @@ function AppInner() {
       // keeps going through the consumer profile setup.
       const businessSignup = authIntent === 'business';
       const authEntry: Route = businessSignup ? 'business-auth' : 'auth-code';
+      // Live owner codes are 4 digits; customer and demo codes stay at 6.
+      const ownerCodeLength = businessSignup && hasApiConfig() ? 4 : undefined;
       if (isDesktop)
         return (
           <DesktopVerifyEmailScreen
             onBack={() => setRoute(authEntry)}
             onContinue={async (code) => {
               if (businessSignup) {
-                enterBusinessProfile();
+                await completeOwnerSignup(code);
                 return;
               }
               await handleCustomerSignupVerification(code);
@@ -2423,8 +2474,10 @@ function AppInner() {
             onBusinessSetup={() => setRoute('business-onboarding')}
             email={customerSignup.email}
             onResend={async () => {
-              await requestCustomerSignupOtp(customerSignup.email);
+              if (businessSignup) await requestOwnerSignupOtp(customerSignup.email);
+              else await requestCustomerSignupOtp(customerSignup.email);
             }}
+            codeLength={ownerCodeLength}
           />
         );
       return (
@@ -2432,7 +2485,7 @@ function AppInner() {
           onBack={() => setRoute(authEntry)}
           onContinue={async (code) => {
             if (businessSignup) {
-              enterBusinessProfile();
+              await completeOwnerSignup(code);
               return;
             }
             await handleCustomerSignupVerification(code);
@@ -2440,10 +2493,19 @@ function AppInner() {
           }}
           onEditEmail={() => setRoute(authEntry)}
           onBusinessSetup={() => setRoute('business-onboarding')}
-          email={businessSignup ? undefined : customerSignup.email}
-          onResend={businessSignup ? undefined : async () => {
-            await requestCustomerSignupOtp(customerSignup.email);
-          }}
+          email={businessSignup && !hasApiConfig() ? undefined : customerSignup.email}
+          onResend={
+            businessSignup
+              ? hasApiConfig()
+                ? async () => {
+                    await requestOwnerSignupOtp(customerSignup.email);
+                  }
+                : undefined
+              : async () => {
+                  await requestCustomerSignupOtp(customerSignup.email);
+                }
+          }
+          codeLength={ownerCodeLength}
         />
       );
     }

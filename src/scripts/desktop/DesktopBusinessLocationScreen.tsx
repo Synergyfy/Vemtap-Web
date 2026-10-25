@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 
+export interface BusinessLocationResult {
+  address: string;
+  latitude?: number;
+  longitude?: number;
+}
+
 interface DesktopBusinessLocationScreenProps {
   draft: BusinessProfileDraft;
   onBack: () => void;
-  onComplete: () => void;
+  /** Receives the confirmed address, with GPS coordinates when the owner shared them. */
+  onComplete: (location: BusinessLocationResult) => void;
   onSaveDraft: () => void;
 }
 
@@ -17,9 +25,12 @@ const EXTERIOR_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuA77Z8_-gh3XABNqy35LVrlkdFdrkLwbR9bcuWnj9pm_ELmIpaNlfYQynP8XjetIzTS4v9XdvEgBw_SvrhTy9puswdy64xne87j0zOw1LOqtkIzrML60U-7z1WAMxTQ_xjQAOyJqC9KrIEn1ysIDnTT7gn2rPTFYQU3scz9DbOjKlJSod-4CpVTTurmYY_iT0e6x_uLByRqmlcXRHY31OnDfDBOfvpkZy_CTS4eS_l8';
 
 export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSaveDraft }: DesktopBusinessLocationScreenProps) {
-  const [address, setAddress] = useState('Plot 1428, Adetokunbo Ademola Crescent');
-  const [street, setStreet] = useState('Plot 1428, Adetokunbo Ademola Crescent');
-  const [landmark, setLandmark] = useState('Opposite Cubana Suites, Ground Floor (Suite 4)');
+  // Live setup starts empty; the sample address is demo-only.
+  const live = hasApiConfig();
+  const [address, setAddress] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent');
+  const [street, setStreet] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent');
+  const [landmark, setLandmark] = useState(live ? '' : 'Opposite Cubana Suites, Ground Floor (Suite 4)');
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [gpsLabel, setGpsLabel] = useState('Use current device location');
   const [fullscreen, setFullscreen] = useState(false);
   const [satellite, setSatellite] = useState(false);
@@ -44,12 +55,21 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
 
   const handleGps = () => {
     if (gpsLabel !== 'Use current device location') return;
+    if (!navigator.geolocation) {
+      setGpsLabel('Location is not available on this device');
+      return;
+    }
     setGpsLabel('Acquiring GPS Fix...');
-    timers.current.push(
-      window.setTimeout(() => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
         setGpsLabel('Current Location Locked');
-        timers.current.push(window.setTimeout(() => setGpsLabel('Use current device location'), 2000));
-      }, 700),
+      },
+      () => {
+        setGpsLabel('Could not get your location');
+        timers.current.push(window.setTimeout(() => setGpsLabel('Use current device location'), 2500));
+      },
+      { enableHighAccuracy: true, timeout: 15_000 },
     );
   };
 
@@ -416,7 +436,12 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
             <button
               type="button"
-              onClick={onComplete}
+              onClick={() =>
+                onComplete({
+                  address: [street.trim() || address.trim(), landmark.trim()].filter(Boolean).join(' — '),
+                  ...(coords ?? {}),
+                })
+              }
               className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
             >
               <span>Continue to Branch Details</span>

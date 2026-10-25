@@ -38,7 +38,7 @@ export const ownerAuthService = {
 
   verifyOtp: (email: string, code: string) => api.post<{ message: string }>('/auth/otp/verify', { email, code }),
 
-  register: (input: { email: string; password: string; firstName?: string; lastName?: string } & OwnerBusinessFields) =>
+  register: (input: { email: string; password?: string; firstName?: string; lastName?: string } & OwnerBusinessFields) =>
     api.post<OwnerSession>('/auth/register/owner', input),
 
   /** Local-auth accounts confirm their password; Google accounts omit it. */

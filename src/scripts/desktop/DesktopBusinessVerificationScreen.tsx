@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useSessionUser } from '../../hooks/useSessionUser';
+import { useVerificationActions } from '../../hooks/business/useVerification';
 import { DesktopVerificationIntroScreen } from './DesktopVerificationIntroScreen';
 import { DesktopVerificationIdTypeScreen } from './DesktopVerificationIdTypeScreen';
 import { DesktopVerificationIdFormScreen } from './DesktopVerificationIdFormScreen';
@@ -53,11 +56,21 @@ export function DesktopBusinessVerificationScreen({
   onBrand,
 }: DesktopBusinessVerificationScreenProps) {
   const [step, setStep] = useState<DesktopVerificationStep>('intro');
-  const [draft, setDraft] = useState<VerificationDraft>({
-    ...INITIAL_VERIFICATION_DRAFT,
-    entity: '',
-    cacNumber: '',
-  });
+  const session = useSessionUser();
+  const verification = useVerificationActions();
+  // Live checks start blank (prefilled with the account name); demo keeps sample values.
+  const [draft, setDraft] = useState<VerificationDraft>(() =>
+    hasApiConfig()
+      ? { ...INITIAL_VERIFICATION_DRAFT, idNumber: '', legalName: '', dateOfBirth: '', entity: '', cacNumber: '', businessName: '' }
+      : { ...INITIAL_VERIFICATION_DRAFT, entity: '', cacNumber: '' },
+  );
+
+  useEffect(() => {
+    const user = session.data;
+    if (!user) return;
+    const name = [user.firstName, user.lastName].filter(Boolean).join(' ');
+    setDraft((current) => (current.legalName ? current : { ...current, legalName: name, businessName: user.business?.name ?? current.businessName }));
+  }, [session.data]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -68,7 +81,7 @@ export function DesktopBusinessVerificationScreen({
   };
 
   const changeIdType = (idType: VerificationIdType) => {
-    updateDraft({ idType, idNumber: DEFAULT_ID_NUMBERS[idType] });
+    updateDraft({ idType, idNumber: hasApiConfig() ? '' : DEFAULT_ID_NUMBERS[idType] });
   };
 
   const idConfig = ID_TYPE_CONFIG[draft.idType];
@@ -139,6 +152,7 @@ export function DesktopBusinessVerificationScreen({
     case 'cacForm':
       return (
         <DesktopVerificationCacFormScreen
+          onNeedsReview={() => setStep('inReview')}
           onBrand={onBrand}
           onBack={() => setStep('cacStatus')}
           draft={draft}
@@ -188,7 +202,11 @@ export function DesktopBusinessVerificationScreen({
         <DesktopVerificationUnregisteredScreen
           onBrand={onBrand}
           onBack={() => setStep('cacStatus')}
-          onContinue={onActivate}
+          onContinue={() => {
+            // Hand the business to the review team, then continue setup either way —
+            // the status centre shows the outcome and offers a retry.
+            verification.submitUnregistered().catch(() => undefined).finally(onActivate);
+          }}
           onLearnMore={() => setStep('intro')}
           legalName={draft.legalName}
         />

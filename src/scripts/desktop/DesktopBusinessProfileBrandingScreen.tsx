@@ -1,14 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { pickAndUploadImage } from '../../services/uploadService';
+import { useLiveBranding } from '../../hooks/business/useLiveBranding';
 import { Icon } from '../../components/ui/Icon';
 import { CreateWithAiButton } from '../../components/CreateWithAiButton';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { AiPromptContext } from '../aiDesignAssistant';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 
+export interface BrandingResult {
+  logoUrl?: string;
+  coverImage?: string;
+  gallery: string[];
+}
+
+/** Neutral placeholder shown before a live business uploads its cover. */
+const EMPTY_COVER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23dbe5ff'/><stop offset='1' stop-color='%23f1f3ff'/></linearGradient></defs><rect width='16' height='9' fill='url(%23g)'/></svg>";
+
 interface DesktopBusinessProfileBrandingScreenProps {
   draft: BusinessProfileDraft;
   onBack: () => void;
-  onNext: () => void;
+  /** Receives the uploaded image URLs (live) so the parent can save them. */
+  onNext: (branding: BrandingResult) => void;
   onSaveDraft: () => void;
 }
 
@@ -82,29 +96,102 @@ export function DesktopBusinessProfileBrandingScreen({
   onNext,
   onSaveDraft,
 }: DesktopBusinessProfileBrandingScreenProps) {
-  const [hasLogo, setHasLogo] = useState(true);
+  // Live: real uploads only — no sample logo, cover or gallery photos.
+  const live = hasApiConfig();
+  const [hasLogo, setHasLogo] = useState(!live);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<'logo' | 'cover' | 'gallery' | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  // Upload and save failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!uploadError) return;
+    const timer = window.setTimeout(() => setUploadError(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [uploadError]);
   const [coverIndex, setCoverIndex] = useState(0);
-  const [gallery, setGallery] = useState<GalleryItem[]>(INITIAL_GALLERY);
+  const [gallery, setGallery] = useState<GalleryItem[]>(live ? [] : INITIAL_GALLERY);
   const [nextGalleryId, setNextGalleryId] = useState(3);
   const [poolCursor, setPoolCursor] = useState(0);
+  const branding = useLiveBranding((saved) => {
+    if (saved.logoUrl) {
+      setLogoUrl(saved.logoUrl);
+      setHasLogo(true);
+    }
+    if (saved.coverImage) setCoverUrl(saved.coverImage);
+    if (saved.gallery.length) {
+      setGallery(saved.gallery.map((src, i) => ({ id: 100 + i, src, alt: 'Business photo', label: `Photo ${i + 1}` })));
+      setNextGalleryId(100 + saved.gallery.length);
+    }
+  });
+  /** Saves straight away so the image survives a reload; failures surface like upload errors. */
+  const persist = (patch: Parameters<typeof branding.save>[0]) =>
+    branding.save(patch).catch(() => setUploadError('Uploaded, but saving it to your profile failed. Continue will try again.'));
 
   const displayName = draft.name.trim().length > 0 ? draft.name.trim() : 'Your Business Name';
   const nameWords = displayName.split(/\s+/).filter((word) => word !== '&');
   const avatarLabel = nameWords.length > 0 ? nameWords[nameWords.length - 1].toUpperCase() : 'BISTRO';
 
-  const cover = COVER_OPTIONS[coverIndex];
+  const cover = live
+    ? { src: coverUrl ?? EMPTY_COVER, alt: coverUrl ? 'Your storefront cover photo' : 'No cover photo yet' }
+    : COVER_OPTIONS[coverIndex];
 
-  const replaceCover = () => setCoverIndex((index) => (index + 1) % COVER_OPTIONS.length);
+  /** Picks an image, uploads it and hands back the hosted URL (null when cancelled). */
+  const upload = async (kind: 'logo' | 'cover' | 'gallery') => {
+    setUploadError(null);
+    setUploading(kind);
+    try {
+      return await pickAndUploadImage();
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+      return null;
+    } finally {
+      setUploading(null);
+    }
+  };
 
-  const addPhoto = () => {
+  const changeLogo = async () => {
+    if (!live) return setHasLogo(true);
+    const url = await upload('logo');
+    if (url) {
+      setLogoUrl(url);
+      setHasLogo(true);
+      void persist({ logoUrl: url });
+    }
+  };
+
+  const replaceCover = async () => {
+    if (!live) return setCoverIndex((index) => (index + 1) % COVER_OPTIONS.length);
+    const url = await upload('cover');
+    if (url) {
+      setCoverUrl(url);
+      void persist({ coverImage: url });
+    }
+  };
+
+  const addPhoto = async () => {
     if (gallery.length >= 5) return;
+    if (live) {
+      const url = await upload('gallery');
+      if (url) {
+        const next = [...gallery, { id: nextGalleryId, src: url, alt: 'Business photo', label: `Photo ${gallery.length + 1}` }];
+        setGallery(next);
+        setNextGalleryId((id) => id + 1);
+        void persist({ gallery: next.map((item) => item.src) });
+      }
+      return;
+    }
     const next = GALLERY_POOL[poolCursor % GALLERY_POOL.length];
     setGallery((prev) => [...prev, { id: nextGalleryId, ...next }]);
     setNextGalleryId((id) => id + 1);
     setPoolCursor((cursor) => cursor + 1);
   };
 
-  const removePhoto = (id: number) => setGallery((prev) => prev.filter((item) => item.id !== id));
+  const removePhoto = (id: number) => {
+    const next = gallery.filter((item) => item.id !== id);
+    setGallery(next);
+    if (live) void persist({ gallery: next.map((item) => item.src) });
+  };
 
   /** Business facts already in the onboarding draft — feed the AI prompt. */
   const aiBrandContext: AiPromptContext = {
@@ -215,7 +302,9 @@ export function DesktopBusinessProfileBrandingScreen({
               </div>
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-space-lg pt-space-xs">
                 <div className="relative group">
-                  {hasLogo ? (
+                  {hasLogo && logoUrl ? (
+                    <img src={logoUrl} alt="Your logo" className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl object-cover shadow-md" />
+                  ) : hasLogo ? (
                     <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-primary-container flex flex-col items-center justify-center shadow-md relative overflow-hidden">
                       <div className="absolute inset-0 bg-gradient-to-tr from-primary to-transparent opacity-60" />
                       <div className="relative z-10 flex flex-col items-center justify-center text-on-primary">
@@ -241,16 +330,20 @@ export function DesktopBusinessProfileBrandingScreen({
                   <div className="flex flex-wrap items-center gap-space-xs">
                     <button
                       type="button"
-                      onClick={() => setHasLogo(true)}
+                      onClick={() => void changeLogo()}
+                      disabled={uploading !== null}
                       className="px-space-md py-space-xs rounded-lg bg-surface-tint-blue hover:bg-surface-container text-primary font-button-secondary text-button-secondary flex items-center gap-space-2xs shadow-sm transition-all duration-150"
                     >
                       <Icon name="photo_camera" className="text-[18px]" />
-                      <span>Change Logo</span>
+                      <span>{uploading === 'logo' ? 'Uploading…' : live && !logoUrl ? 'Upload Logo' : 'Change Logo'}</span>
                     </button>
                     <button
                       type="button"
                       disabled={!hasLogo}
-                      onClick={() => setHasLogo(false)}
+                      onClick={() => {
+                        setHasLogo(false);
+                        setLogoUrl(null);
+                      }}
                       className="px-space-md py-space-xs rounded-lg bg-surface-subtle hover:bg-surface-container-high text-error font-button-secondary text-button-secondary flex items-center gap-space-2xs transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Icon name="delete" className="text-[18px]" />
@@ -297,21 +390,26 @@ export function DesktopBusinessProfileBrandingScreen({
                       <Icon name="verified" className="text-[14px] text-badge-discount-text" /> 1200 × 675px
                     </span>
                     <span className="px-space-xs py-space-2xs rounded-md bg-surface-canvas/90 backdrop-blur-md font-caption text-caption text-text-secondary font-medium">
-                      Cover Verified
+                      {live ? (coverUrl ? 'Cover uploaded' : 'No cover yet') : 'Cover Verified'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-space-xs">
                     <div className="text-on-primary">
-                      <p className="font-label-md text-label-md font-semibold drop-shadow">Main Dining Room &amp; Bar</p>
-                      <p className="font-caption text-caption text-on-primary/80 drop-shadow">Uploaded today, 14:20</p>
+                      <p className="font-label-md text-label-md font-semibold drop-shadow">
+                        {live ? draft.name.trim() || 'Your storefront' : 'Main Dining Room & Bar'}
+                      </p>
+                      <p className="font-caption text-caption text-on-primary/80 drop-shadow">
+                        {live ? (coverUrl ? 'Ready to publish' : 'Upload a 16:9 photo of your storefront') : 'Uploaded today, 14:20'}
+                      </p>
                     </div>
                     <button
                       type="button"
-                      onClick={replaceCover}
+                      onClick={() => void replaceCover()}
+                      disabled={uploading !== null}
                       className="px-space-md py-space-xs rounded-lg bg-surface-canvas/95 hover:bg-surface-canvas text-text-primary font-button-secondary text-button-secondary shadow-md flex items-center gap-space-2xs backdrop-blur-md transition-all"
                     >
                       <Icon name="sync" className="text-[18px]" />
-                      <span>Replace Cover Photo</span>
+                      <span>{uploading === 'cover' ? 'Uploading…' : live && !coverUrl ? 'Upload Cover Photo' : 'Replace Cover Photo'}</span>
                     </button>
                   </div>
                 </div>
@@ -387,7 +485,8 @@ export function DesktopBusinessProfileBrandingScreen({
                 {gallery.length < 5 && (
                   <button
                     type="button"
-                    onClick={addPhoto}
+                    onClick={() => void addPhoto()}
+                    disabled={uploading !== null}
                     className="border-2 border-dashed border-outline-variant hover:border-primary rounded-xl aspect-[4/3] flex flex-col items-center justify-center gap-space-xs p-space-sm text-center bg-surface-subtle hover:bg-surface-tint-blue/30 cursor-pointer transition-colors group"
                   >
                     <div className="w-10 h-10 rounded-full bg-surface-canvas shadow-sm flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
@@ -546,7 +645,13 @@ export function DesktopBusinessProfileBrandingScreen({
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
             <button
               type="button"
-              onClick={onNext}
+              onClick={() =>
+                onNext({
+                  logoUrl: logoUrl ?? undefined,
+                  coverImage: coverUrl ?? undefined,
+                  gallery: live ? gallery.map((item) => item.src) : [],
+                })
+              }
               className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
             >
               <span>Continue to Contact &amp; Channels</span>
@@ -555,6 +660,11 @@ export function DesktopBusinessProfileBrandingScreen({
           </div>
         </div>
       </div>
+      {uploadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {uploadError}
+        </div>
+      )}
     </BusinessSetupChrome>
   );
 }

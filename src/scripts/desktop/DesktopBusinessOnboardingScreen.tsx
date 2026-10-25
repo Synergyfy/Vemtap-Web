@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useLiveDealPublish } from '../../hooks/business/useLiveDealPublish';
+import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
+import { useOnboardingSync } from '../../hooks/business/useOnboardingSync';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { hasApiConfig } from '../../services/api/client';
 import { useProfile } from '../../context/ProfileContext';
 import { DesktopBusinessIntroScreen } from './DesktopBusinessIntroScreen';
 import { DesktopBusinessProfileBasicScreen } from './DesktopBusinessProfileBasicScreen';
@@ -21,8 +26,8 @@ import { DesktopAddServiceStep2Screen } from './DesktopAddServiceStep2Screen';
 import { DesktopAddServiceStep3Screen } from './DesktopAddServiceStep3Screen';
 import { DesktopServiceReviewScreen } from './DesktopServiceReviewScreen';
 import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
-import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
-import { INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
+import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
+import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
 import { INITIAL_DEAL_STUDIO_DRAFT, type DealStudioDraft } from './desktopDealStudio';
 import { DesktopDealStudioStep1Screen } from './DesktopDealStudioStep1Screen';
 import { DesktopDealStudioStep2Screen } from './DesktopDealStudioStep2Screen';
@@ -147,7 +152,23 @@ const PROFILE_STEPS: readonly BusinessOnboardingStep[] = [
  * merchant recognises it immediately; it stays editable where account and
  * verification rules allow. WhatsApp is seeded as a phone number, never a link.
  */
-const createInitialDraft = (accountEmail: string): BusinessProfileDraft => ({
+const createInitialDraft = (accountEmail: string): BusinessProfileDraft =>
+  hasApiConfig()
+    ? {
+        // Live setup starts empty so nothing sample-only reaches the business record.
+        name: '',
+        categories: [],
+        tags: [],
+        description: '',
+        phone: '',
+        email: accountEmail,
+        website: '',
+        instagram: '',
+        whatsapp: '',
+        x: '',
+        prefs: { inApp: true, whatsapp: true },
+      }
+    : ({
   name: 'Urban Grill & Bistro',
   categories: ['Restaurant & Dining'],
   tags: ['Grill & Steakhouse', 'Bistro & Cafe'],
@@ -224,10 +245,10 @@ export function DesktopBusinessOnboardingScreen({
     () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
   );
   const [productDraft, setProductDraft] = useState<ProductDraft>(
-    () => (stored?.data.productDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+    () => (stored?.data.productDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
-    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? INITIAL_SERVICE_DRAFT,
+    () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? (hasApiConfig() ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT),
   );
   const [dealDraft, setDealDraft] = useState<ProductDraft>(
     () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
@@ -249,9 +270,6 @@ export function DesktopBusinessOnboardingScreen({
     window.scrollTo(0, 0);
   }, [step]);
 
-  useEffect(() => {
-    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches });
-  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches]);
 
   useEffect(() => {
     setBusinessSetupVerificationState(verificationState);
@@ -270,6 +288,50 @@ export function DesktopBusinessOnboardingScreen({
         : { ...prev, primaryCategory: classification.primaryCategory, subCategory: classification.subCategory },
     );
   }, [draft.categories, draft.tags]);
+
+  const sync = useOnboardingSync();
+  const myBusiness = useMyBusiness();
+  // Live: deals are built on a real catalogue item and published to the API.
+  const liveDeal = useLiveDealPublish(() => setStep('businessQr'), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
+  // Saved after the deal hook so the picked item survives a reload too.
+  useEffect(() => {
+    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, dealSource: liveDeal.source });
+  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, liveDeal.source]);
+
+  const startLiveDeal = (item: CatalogueItem) => {
+    liveDeal.pick(item);
+    setDealDraft((prev) => ({
+      ...prev,
+      title: item.name,
+      description: item.description ?? '',
+      basePrice: String(toPrice(item.price ?? undefined) ?? ''),
+      comparePrice: String(toPrice(item.compareAtPrice ?? undefined) ?? ''),
+      // The draft starts from the sample product: drop its variants and photo.
+      variantsEnabled: false,
+      variants: [],
+      mainImage: item.mainImage ?? undefined,
+      sku: item.sku ?? '',
+      skuCode: item.sku ?? '',
+    }));
+  };
+
+  // Live: start from the name given at sign-up.
+  useEffect(() => {
+    const name = myBusiness.data?.name;
+    if (name) setDraft((prev) => (prev.name ? prev : { ...prev, name }));
+  }, [myBusiness.data?.name]);
+
+  // Live: save and publish failures show in the flow's toast, then clear.
+  const apiError =
+    sync.error ?? (liveDeal.error && liveDeal.needsSource ? 'Publish a product or service first, then make a deal from it.' : liveDeal.error);
+  useEffect(() => {
+    if (!apiError) return;
+    const timer = window.setTimeout(() => {
+      sync.clearError();
+      liveDeal.clearError();
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [apiError]);
 
   const updateDraft = (patch: Partial<BusinessProfileDraft>) => {
     setDraft((prev) => ({ ...prev, ...patch }));
@@ -299,7 +361,7 @@ export function DesktopBusinessOnboardingScreen({
           draft={draft}
           onDraftChange={updateDraft}
           onPrevious={() => setStep('intro')}
-          onNext={() => setStep('branding')}
+          onNext={() => sync.saveBasic(draft, () => setStep('branding'))}
           onSaveDraft={onBack}
         />
       );
@@ -308,7 +370,7 @@ export function DesktopBusinessOnboardingScreen({
         <DesktopBusinessProfileBrandingScreen
           draft={draft}
           onBack={() => setStep('basic')}
-          onNext={() => setStep('contact')}
+          onNext={(branding) => sync.saveBranding(branding, () => setStep('contact'))}
           onSaveDraft={onBack}
         />
       );
@@ -318,7 +380,7 @@ export function DesktopBusinessOnboardingScreen({
           draft={draft}
           onDraftChange={updateDraft}
           onBack={() => setStep('branding')}
-          onNext={() => setStep('location')}
+          onNext={() => sync.saveContact(draft, () => setStep('location'))}
           onSaveDraft={onBack}
         />
       );
@@ -327,7 +389,7 @@ export function DesktopBusinessOnboardingScreen({
         <DesktopBusinessLocationScreen
           draft={draft}
           onBack={() => setStep('contact')}
-          onComplete={() => setStep('branches')}
+          onComplete={(location) => sync.saveLocation(location, () => setStep('branches'))}
           onSaveDraft={onBack}
         />
       );
@@ -389,6 +451,7 @@ export function DesktopBusinessOnboardingScreen({
       return (
         <DesktopAddProductImageScreen
           draft={productDraft}
+          onDraftChange={updateProductDraft}
           onBack={() => setStep('addProduct2')}
           onNext={() => setStep('addProduct3')}
           onSaveDraft={onBack}
@@ -416,7 +479,7 @@ export function DesktopBusinessOnboardingScreen({
           onEditDescription={() => setStep('addProduct1')}
           onEditImage={() => setStep('addProductImage')}
           onEditSteps={() => setStep('addProduct3')}
-          onPublish={() => setStep('productPublished')}
+          onPublish={() => sync.publishProduct(productDraft, () => setStep('productPublished'))}
           onSaveDraft={onBack}
         />
       );
@@ -426,6 +489,7 @@ export function DesktopBusinessOnboardingScreen({
           draft={productDraft}
           onMakeDeal={() => {
             setDealDraft(productDraft);
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStep('productDeal');
           }}
           onViewCatalog={() => setStep('catalog')}
@@ -491,7 +555,7 @@ export function DesktopBusinessOnboardingScreen({
           onEditPricing={() => setStep('service2')}
           onEditBranches={() => setStep('service3')}
           onEditDescription={() => setStep('service1')}
-          onPublish={() => setStep('servicePublished')}
+          onPublish={() => sync.publishService(serviceDraft, () => setStep('servicePublished'))}
           onSaveDraft={onBack}
         />
       );
@@ -501,6 +565,7 @@ export function DesktopBusinessOnboardingScreen({
           draft={serviceDraft}
           onMakeDeal={() => {
             setDealDraft(serviceToDealDraft(serviceDraft));
+            if (sync.lastPublished) startLiveDeal(sync.lastPublished);
             setStep('productDeal');
           }}
           onViewCatalog={() => setStep('catalog')}
@@ -542,17 +607,18 @@ export function DesktopBusinessOnboardingScreen({
       );
     case 'dealStudio4':
       return (
-        <DesktopDealStudioStep4Screen
-          draft={dealDraft}
-          studio={dealStudio}
-          onBack={() => setStep('dealStudio3')}
-          onEditOffer={() => setStep('dealStudio1')}
-          onEditRules={() => setStep('dealStudio2')}
-          onEditLocations={() => setStep('dealStudio3')}
-          onPublish={() => setStep('businessQr')}
-          onAnalytics={onComplete}
-          onSaveDraft={() => setStep('catalog')}
-        />
+      <DesktopDealStudioStep4Screen
+        draft={dealDraft}
+        studio={dealStudio}
+        onBack={() => setStep('dealStudio3')}
+        onEditOffer={() => setStep('dealStudio1')}
+        onEditRules={() => setStep('dealStudio2')}
+        onEditLocations={() => setStep('dealStudio3')}
+        onPublish={() => setStep('businessQr')}
+        livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
+        onAnalytics={onComplete}
+        onSaveDraft={() => setStep('catalog')}
+      />
       );
     case 'dealAutoImport':
       return (
@@ -594,5 +660,14 @@ export function DesktopBusinessOnboardingScreen({
   const navValue: BusinessSetupNavValue | null =
     step === 'intro' ? null : { ...progressSnapshot, onSelectSection: handleSelectSection };
 
-  return <BusinessSetupNavContext.Provider value={navValue}>{renderStep()}</BusinessSetupNavContext.Provider>;
+  return (
+    <BusinessSetupNavContext.Provider value={navValue}>
+      {apiError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {apiError}
+        </div>
+      )}
+      {renderStep()}
+    </BusinessSetupNavContext.Provider>
+  );
 }

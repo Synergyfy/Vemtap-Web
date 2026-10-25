@@ -5,6 +5,7 @@ import {
   ID_TYPE_CONFIG,
   INITIAL_VERIFICATION_DRAFT,
 } from './verificationDraft';
+import { useVerificationSummary } from '../hooks/business/useVerification';
 
 interface VerificationStatusCenterScreenProps {
   onBack: () => void;
@@ -25,6 +26,11 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
   const draft = INITIAL_VERIFICATION_DRAFT;
   const idConfig = ID_TYPE_CONFIG[draft.idType];
   const idRef = `•••• ${idConfig.normalize(draft.idNumber).slice(-4).padStart(4, '0')}`;
+  // Live: the real status from `GET /verification/status`; demo keeps the sample copy.
+  const summary = useVerificationSummary();
+  const live = summary.live;
+  const pill = (ok: boolean) =>
+    ok || !live ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
 
   return (
     <div className="biz-flow">
@@ -73,12 +79,16 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="font-heading-sm text-heading-sm text-text-primary truncate">
-                        Urban Grill & Bistro
+                        {live ? summary.businessName : 'Urban Grill & Bistro'}
                       </span>
                     </div>
                     <p className="font-caption text-caption text-text-secondary mt-0.5 flex items-center gap-1">
                       <Icon name="history" className="text-[14px] text-text-tertiary" />
-                      Last verified on Oct 18, 2024
+                      {live
+                        ? summary.lastVerified
+                          ? `Last verified on ${summary.lastVerified}`
+                          : 'Not verified yet'
+                        : 'Last verified on Oct 18, 2024'}
                     </p>
                   </div>
                 </div>
@@ -89,13 +99,15 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                   <Icon name="verified" filled className="text-primary text-[20px]" />
                   <div>
                     <div className="font-label-sm text-label-sm text-primary font-semibold tracking-tight">
-                      Verified Business
+                      {live ? summary.statusLabel : 'Verified Business'}
                     </div>
-                    <div className="font-caption text-caption text-text-secondary">Tier 3 Merchant Tier</div>
+                    <div className="font-caption text-caption text-text-secondary">
+                      {live ? `${summary.checksVerified} of 2 checks verified` : 'Tier 3 Merchant Tier'}
+                    </div>
                   </div>
                 </div>
-                <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
-                  100% Compliant
+                <div className={`inline-flex items-center px-2.5 py-1 rounded-full ${pill(summary.verified)} font-label-sm text-label-sm font-semibold`}>
+                  {live ? (summary.verified ? 'Compliant' : 'In progress') : '100% Compliant'}
                 </div>
               </div>
               {/* Micro Trust Pillars */}
@@ -122,7 +134,7 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
           {/* Credentials Checklist Header */}
           <div className="px-margin mb-space-xs flex items-center justify-between mt-space-md">
             <h2 className="font-heading-sm text-heading-sm text-text-primary">Credentials & Standing</h2>
-            <span className="font-label-sm text-label-sm text-text-secondary">4 of 4 active</span>
+            <span className="font-label-sm text-label-sm text-text-secondary">{live ? `${summary.checksVerified} of 2 checks verified` : '4 of 4 active'}</span>
           </div>
 
           {/* Itemized Credentials & Status List */}
@@ -139,18 +151,22 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                       Identity Verification
                     </h3>
                     <p className="font-caption text-caption text-text-secondary mt-0.5">
-                      {draft.legalName} • NIN (Ending in {idRef})
+                      {live
+                        ? summary.identity.ref
+                          ? `${summary.identity.name ?? 'Account holder'} • ${summary.identity.idType} (${summary.identity.ref})`
+                          : 'Not submitted yet'
+                        : `${draft.legalName} • NIN (Ending in ${idRef})`}
                     </p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold flex-shrink-0">
-                  <Icon name="check" className="text-[14px]" />
-                  Verified
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${pill(summary.identity.ok)} font-label-sm text-label-sm font-semibold flex-shrink-0`}>
+                  <Icon name={summary.identity.ok || !live ? 'check' : 'schedule'} className="text-[14px]" />
+                  {live ? summary.identity.label : 'Verified'}
                 </span>
               </div>
               <div className="mt-space-sm pt-space-xs flex items-center justify-between">
                 <span className="font-caption text-caption text-text-tertiary">
-                  Gov-issued ID • Biometric check passed
+                  {live ? (summary.identity.note ?? summary.identity.date ?? 'Gov-issued ID • Selfie check') : 'Gov-issued ID • Biometric check passed'}
                 </span>
                 <button
                   className="font-label-sm text-label-sm text-primary font-semibold inline-flex items-center gap-0.5 hover:underline"
@@ -175,17 +191,19 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                       Business Registration (CAC)
                     </h3>
                     <p className="font-caption text-caption text-text-secondary mt-0.5">
-                      Corporate Affairs Commission • {draft.cacNumber}
+                      Corporate Affairs Commission • {live ? (summary.registration.ref ?? 'Not submitted yet') : draft.cacNumber}
                     </p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold flex-shrink-0">
-                  <Icon name="check" className="text-[14px]" />
-                  Verified
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${pill(summary.registration.ok)} font-label-sm text-label-sm font-semibold flex-shrink-0`}>
+                  <Icon name={summary.registration.ok || !live ? 'check' : 'schedule'} className="text-[14px]" />
+                  {live ? summary.registration.label : 'Verified'}
                 </span>
               </div>
               <div className="mt-space-sm pt-space-xs flex items-center justify-between">
-                <span className="font-caption text-caption text-text-tertiary">Registration Date: 14 May 2021</span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  {live ? (summary.registration.note ?? (summary.registration.date ? `Checked ${summary.registration.date}` : 'CAC register check')) : 'Registration Date: 14 May 2021'}
+                </span>
                 <button
                   className="font-label-sm text-label-sm text-primary font-semibold inline-flex items-center gap-0.5 hover:underline"
                   type="button"
