@@ -81,6 +81,7 @@ import { OrderDetailScreen } from './scripts/OrderDetailScreen';
 import { BookingDetailScreen } from './scripts/BookingDetailScreen';
 import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
+import { ForgotPinScreen } from './scripts/ForgotPinScreen';
 import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
 import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
 import { LocationPermissionScreen } from './scripts/LocationPermissionScreen';
@@ -92,6 +93,7 @@ import { DesktopDiscoverDealsScreen } from './scripts/desktop/DesktopDiscoverDea
 import { DesktopStartVemtapScreen } from './scripts/desktop/DesktopStartVemtapScreen';
 import { DesktopAuthCodeScreen } from './scripts/desktop/DesktopAuthCodeScreen';
 import { DesktopSignInScreen } from './scripts/desktop/DesktopSignInScreen';
+import { DesktopForgotPinScreen } from './scripts/desktop/DesktopForgotPinScreen';
 import { DesktopVerifyEmailScreen } from './scripts/desktop/DesktopVerifyEmailScreen';
 import { DesktopProfileSetupScreen } from './scripts/desktop/DesktopProfileSetupScreen';
 import { DesktopLocationPermissionScreen } from './scripts/desktop/DesktopLocationPermissionScreen';
@@ -374,6 +376,7 @@ type Route =
   | 'auth-code'
   | 'business-auth'
   | 'sign-in'
+  | 'forgot-pin'
   | 'verify-email'
   | 'profile-setup'
   | 'location-permission'
@@ -546,6 +549,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'auth-code': '/auth-code',
   'business-auth': '/business-auth',
   'sign-in': '/sign-in',
+  'forgot-pin': '/forgot-pin',
   'verify-email': '/verify-email',
   'profile-setup': '/profile-setup',
   'location-permission': '/location-permission',
@@ -2385,6 +2389,10 @@ function AppInner() {
         />
       );
 
+    case 'forgot-pin':
+      if (isDesktop) return <DesktopForgotPinScreen onBack={() => setRoute('sign-in')} />;
+      return <ForgotPinScreen onBack={() => setRoute('sign-in')} />;
+
     case 'sign-in':
       if (isDesktop)
         return (
@@ -2418,6 +2426,7 @@ function AppInner() {
               setBusinessOnboardingFrom('sign-in');
               setRoute('business-onboarding');
             }}
+            onForgotPin={() => setRoute('forgot-pin')}
             onCustomerSignIn={async () => {
               setRoute('dashboard');
             }}
@@ -2462,6 +2471,7 @@ function AppInner() {
             setBusinessOnboardingFrom('sign-in');
             setRoute('business-onboarding');
           }}
+          onForgotPin={() => setRoute('forgot-pin')}
           onCustomerSignIn={async () => {
             setRoute('dashboard');
           }}

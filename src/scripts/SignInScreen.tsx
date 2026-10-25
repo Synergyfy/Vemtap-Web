@@ -9,6 +9,7 @@ interface SignInScreenProps {
   onGoogleSignIn: () => void;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
+  onForgotPin: () => void;
   onCustomerSignIn: () => void;
   onBusinessSignIn: () => void;
 }
@@ -66,6 +67,7 @@ export function SignInScreen({
   onGoogleSignIn,
   onCreateAccount,
   onBusinessRegister,
+  onForgotPin,
   onCustomerSignIn,
   onBusinessSignIn,
 }: SignInScreenProps) {
@@ -225,9 +227,9 @@ export function SignInScreen({
                 <label className="font-label-md text-label-md text-text-primary" htmlFor="security-credential">
                   PIN or Password
                 </label>
-                <a className="font-label-sm text-label-sm text-primary hover:underline" href="#forgot-password">
+                <button type="button" className="font-label-sm text-label-sm text-primary hover:underline" onClick={onForgotPin}>
                   Forgot?
-                </a>
+                </button>
               </div>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-space-md text-outline text-[20px] pointer-events-none">
