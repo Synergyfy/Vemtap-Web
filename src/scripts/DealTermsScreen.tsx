@@ -53,12 +53,10 @@ const REDEMPTION_RULES: RuleRow[] = [
     icon: 'pin_drop',
     body: (
       <>
-        Valid exclusively at{' '}
-        <span className="font-label-md text-label-md text-text-primary">Urban Grill &amp; Bistro</span>, Apo Boulevard,
-        Abuja branch.
+        Valid exclusively at the featured local venue in your area.
       </>
     ),
-    caption: 'Not valid at airport kiosks or sister branches.',
+    caption: 'Not valid at partner kiosks or alternate locations.',
   },
   {
     icon: 'qr_code_scanner',
@@ -155,10 +153,10 @@ export function DealTermsScreen({ onBack, onClaim }: DealTermsScreenProps) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption truncate">
                 <Icon name="storefront" className="text-[14px]" />
-                <span className="truncate">Urban Grill &amp; Bistro • Apo, Abuja</span>
+                <span className="truncate">Local dining partner • Nearby</span>
               </div>
               <h2 className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">
-                Lunch Combo — 20% Off
+                Featured local deal
               </h2>
               <div className="flex items-baseline gap-space-2xs mt-1">
                 <span className="font-heading-sm text-heading-sm text-primary-container">₦9,600</span>
@@ -226,7 +224,7 @@ export function DealTermsScreen({ onBack, onClaim }: DealTermsScreenProps) {
               <Icon name="shield" className="text-[20px]" />
             </div>
             <p className="font-caption text-caption text-text-secondary flex-1">
-              Terms set by <strong className="text-text-primary font-label-sm">Urban Grill &amp; Bistro</strong> in
+              Terms set by <strong className="text-text-primary font-label-sm">the selected local merchant</strong> in
               accordance with VEMTAP consumer fair-use policy.
             </p>
           </div>

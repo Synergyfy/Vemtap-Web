@@ -5,6 +5,12 @@ import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { isBusinessRole } from './services/sessionService';
+import { useSessionUser } from './hooks/useSessionUser';
+import { SESSION_EXPIRED_EVENT } from './services/api/client';
+import { hasApiConfig } from './lib/api';
+import { authService } from './services';
+import { catalogueService } from './services/catalogueService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
@@ -12,6 +18,7 @@ import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { LocationProvider } from './context/LocationContext';
 import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
+import { parsePrice } from './utils/format';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
 import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
 import { ProductDetailScreen } from './scripts/ProductDetailScreen';
@@ -22,7 +29,14 @@ import { CampaignsProvider } from './context/CampaignsContext';
 import { AccountDeletionProvider } from './context/AccountDeletionContext';
 import type { SubmittedOrder } from './context/OrdersContext';
 import { useCart } from './context/CartContext';
-import { URBAN_BUSINESS, SPA_BUSINESS, resolveBusinessPath, productPath, servicePath } from './scripts/businessData';
+import {
+  businessPath,
+  businessSubPath,
+  resolveBusinessPath,
+  productPath,
+  servicePath,
+  type BusinessProfileRef,
+} from './scripts/businessData';
 import { CustomerInviteJoinScreen } from './scripts/CustomerInviteJoinScreen';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
 import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
@@ -60,10 +74,10 @@ import { DashboardScreen } from './scripts/DashboardScreen';
 import { MyDealsScreen } from './scripts/MyDealsScreen';
 import { MessagesScreen } from './scripts/MessagesScreen';
 import { ConversationScreen } from './scripts/ConversationScreen';
+import { useCustomerMessagingRealtime, useCustomerThreadBinding } from './hooks/useCustomerMessagingRealtime';
 import { OrdersScreen } from './scripts/OrdersScreen';
 import { OrderDetailScreen } from './scripts/OrderDetailScreen';
 import { BookingDetailScreen } from './scripts/BookingDetailScreen';
-import { getMobileThread } from './scripts/messagesData';
 import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
 import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
@@ -209,8 +223,8 @@ import { PublicPosMenuScreen } from './scripts/PublicPosMenuScreen';
 import { PublicPosCartReviewScreen } from './scripts/PublicPosCartReviewScreen';
 import { PublicPosOrderTrackingScreen } from './scripts/PublicPosOrderTrackingScreen';
 import type { PosTabKey } from './components/PosTabBar';
-import { SEED_POS_CART, type PosCartLine } from './scripts/posCartData';
-import { SEED_PUBLIC_CART, type PublicCartLine } from './scripts/publicPosData';
+import { type PosCartLine } from './scripts/posCartData';
+import { type PublicCartLine } from './scripts/publicPosData';
 import type { BusinessTabKey } from './components/BusinessTabBar';
 import { BusinessBoostHubScreen } from './scripts/BusinessBoostHubScreen';
 import { BusinessBoostMetricsScreen } from './scripts/BusinessBoostMetricsScreen';
@@ -228,7 +242,7 @@ import { ShareSheet } from './components/sheets/ShareSheet';
 import { ClaimAuthSheet } from './components/sheets/ClaimAuthSheet';
 import { ClaimConfirmSheet } from './components/sheets/ClaimConfirmSheet';
 import { ClaimIdentitySheet } from './components/sheets/ClaimIdentitySheet';
-import { ClaimIdentityModal } from './components/desktop/dialogs/ClaimIdentityModal';
+import { ClaimIdentityModal, type ClaimDealSummary } from './components/desktop/dialogs/ClaimIdentityModal';
 import { CommentsDrawer } from './components/desktop/dialogs/CommentsDrawer';
 import { ClaimAuthModal } from './components/desktop/dialogs/ClaimAuthModal';
 import { ClaimConfirmationModal } from './components/desktop/dialogs/ClaimConfirmationModal';
@@ -333,7 +347,7 @@ import { DesktopPublicPosTrackingScreen } from './scripts/desktop/DesktopPublicP
 import { DesktopPublicPosMenuScreen } from './scripts/desktop/DesktopPublicPosMenuScreen';
 import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGeneralSettingsScreen';
 import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
-import { SEED_POS_TERMINAL_LINES, type PosTerminalLine } from './scripts/desktop/posTerminalData';
+import { type PosTerminalLine } from './scripts/desktop/posTerminalData';
 import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
 import { StoreOrderingProvider } from './context/StoreOrderingContext';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
@@ -662,22 +676,22 @@ const ROUTE_PATH: Record<Route, string> = {
   'claim-success': '/claim/success',
   'gift-sent': '/gift/sent',
   'claimed-deal': '/my/claimed-deal',
-  'merchant-chat': '/messages/urban-grill',
+  'merchant-chat': '/messages',
   'deal-terms': '/deal-terms',
-  storefront: '/business/urban-grill-bistro-104/deals',
-  'storefront-products': '/business/urban-grill-bistro-104/products',
-  'storefront-menu': '/business/urban-grill-bistro-104/menu',
-  'business-profile': '/business/urban-grill-bistro-104',
-  'spa-profile': '/business/glow-serenity-spa-219',
-  'spa-services': '/business/glow-serenity-spa-219/services',
-  'service-detail': '/business/glow-serenity-spa-219/services/deep-hydration-radiance-facial',
-  'product-detail': '/business/urban-grill-bistro-104/products/woodfire-ribeye-400g',
-  checkout: '/business/urban-grill-bistro-104/checkout',
-  'order-placed': '/business/urban-grill-bistro-104/order-placed',
-  'spa-storefront': '/business/glow-serenity-spa-219/shop',
-  'spa-booking': '/business/glow-serenity-spa-219/booking',
-  'spa-booking-checkout': '/business/glow-serenity-spa-219/booking/checkout',
-  'spa-booking-confirmed': '/business/glow-serenity-spa-219/booking/confirmed',
+  storefront: '/discover',
+  'storefront-products': '/discover',
+  'storefront-menu': '/discover',
+  'business-profile': '/discover',
+  'spa-profile': '/discover',
+  'spa-services': '/discover',
+  'service-detail': '/discover',
+  'product-detail': '/discover',
+  checkout: '/checkout',
+  'order-placed': '/orders',
+  'spa-storefront': '/discover',
+  'spa-booking': '/discover',
+  'spa-booking-checkout': '/discover',
+  'spa-booking-confirmed': '/discover',
   dashboard: '/dashboard',
   orders: '/orders',
   'order-detail': '/orders/order',
@@ -768,6 +782,33 @@ const AUTH_ROUTES = new Set<Route>([
   ...CLAIM_STEP_ROUTES,
 ]);
 
+/** Public storefront pages that live under /business/<slug> — never the merchant portal. */
+const STOREFRONT_ROUTES = new Set<Route>([
+  'storefront',
+  'storefront-products',
+  'storefront-menu',
+  'business-profile',
+  'spa-profile',
+  'spa-services',
+  'service-detail',
+  'product-detail',
+  'checkout',
+  'order-placed',
+  'spa-storefront',
+  'spa-booking',
+  'spa-booking-checkout',
+  'spa-booking-confirmed',
+]);
+
+const PORTAL_PREFIXES = ['/business/', '/pos/', '/analytics/', '/boost-hub', '/segments'];
+
+/** Merchant portal pages: they need a signed-in business user once the API is configured. */
+function isPortalRoute(route: Route) {
+  if (STOREFRONT_ROUTES.has(route)) return false;
+  const path = ROUTE_PATH[route];
+  return PORTAL_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
 ]);
@@ -814,9 +855,28 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
   }
 }
 
+function dealDetailSlug(deal?: ClaimDealSummary | null): string {
+  const rawTitle = deal?.title?.trim() || deal?.business?.trim() || 'deal';
+  const normalized = rawTitle
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+
+  const idPart = typeof deal?.id !== 'undefined' && deal?.id !== null ? String(deal.id).trim() : '';
+  return (normalized || 'deal') + (idPart ? `-${idPart}` : '');
+}
+
+function dealDetailPath(deal?: ClaimDealSummary | null): string {
+  const slug = dealDetailSlug(deal);
+  return `/deals/${encodeURIComponent(slug)}`;
+}
+
 function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
+  if (path.startsWith('/deals/')) return 'deal-detail';
   const direct = PATH_ROUTE.get(path);
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
@@ -866,7 +926,11 @@ export default function App() {
 }
 
 function AppInner() {
-  const { authed, claimed, signIn, signOut, markClaimed, resetClaim } = useAuth();
+  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim } = useAuth();
+  const sessionUser = useSessionUser().data;
+  // A live owner already has their business identity: business entry points
+  // should open their dashboard instead of starting sign-up again.
+  const isBusinessSession = hasApiConfig() && !!sessionUser && isBusinessRole(sessionUser.role);
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -874,8 +938,19 @@ function AppInner() {
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
   const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
+    const match = resolveBusinessPath(window.location.pathname);
+    return match?.business ?? null;
+  });
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
   const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
+  const [customerSignup, setCustomerSignup] = useState({
+    email: '',
+    code: '',
+    firstName: '',
+    lastName: '',
+    phone: '',
+  });
   /**
    * Which audience the in-flight sign-up belongs to. `auth-code` and
    * `business-auth` both hand off to `verify-email` / `google-confirm`, so
@@ -914,6 +989,8 @@ function AppInner() {
     verificationState: 'not-started' | 'in-progress' | 'complete';
   } | null>(null);
   const [dealFrom, setDealFrom] = useState<Route>('home');
+  const [selectedDeal, setSelectedDeal] = useState<ClaimDealSummary | null>(null);
+  const [commentsModalOnly, setCommentsModalOnly] = useState(false);
   const [bizFrom, setBizFrom] = useState<Route>('discover');
   const [profileFrom, setProfileFrom] = useState<Route>('discover');
   const [catalogueFrom, setCatalogueFrom] = useState<Route>('storefront');
@@ -943,15 +1020,14 @@ function AppInner() {
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
   const [activeConversation, setActiveConversation] = useState('urban');
-  const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary>({
-    name: 'Amara Okafor',
-    email: 'amara@email.com',
-  });
+  useCustomerMessagingRealtime(authed);
+  useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
+  const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
   const [claimSelfConfirmOpen, setClaimSelfConfirmOpen] = useState(false);
-  const [posCart, setPosCart] = useState<PosCartLine[]>(SEED_POS_CART);
-  const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>(SEED_POS_TERMINAL_LINES);
+  const [posCart, setPosCart] = useState<PosCartLine[]>([]);
+  const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>([]);
   const [posCustomer, setPosCustomer] = useState<string | null>(null);
   const [posCustomerRecord, setPosCustomerRecord] = useState<PosCustomerRecord | null>(null);
   /** Loyalty points earned by the sale currently shown on the receipt screen. */
@@ -959,7 +1035,7 @@ function AppInner() {
   /** Points manually awarded to the mobile-flow customer during the sale. */
   const [posCustomerBonus, setPosCustomerBonus] = useState(0);
   const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
-  const [publicCart, setPublicCart] = useState<PublicCartLine[]>(SEED_PUBLIC_CART);
+  const [publicCart, setPublicCart] = useState<PublicCartLine[]>([]);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
   /**
@@ -1040,18 +1116,55 @@ function AppInner() {
     }
   };
 
-  const setRoute = (target: Route) => {
+  const resolveRoutePath = useCallback((target: Route, overrideDeal?: ClaimDealSummary | null) => {
+    const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : null;
+    const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : null;
+    const dealForRoute = overrideDeal ?? selectedDeal ?? null;
+
+    switch (target) {
+      case 'storefront':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'deals') : '/discover';
+      case 'storefront-products':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'products') : '/discover';
+      case 'storefront-menu':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'menu') : '/discover';
+      case 'business-profile':
+        return selectedBusiness ? businessPath(selectedBusiness) : '/discover';
+      case 'checkout':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'checkout') : '/checkout';
+      case 'order-placed':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'order-placed') : '/orders';
+      case 'spa-profile':
+        return selectedBusiness ? businessPath(selectedBusiness) : '/discover';
+      case 'spa-storefront':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'shop') : '/discover';
+      case 'spa-services':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'services') : '/discover';
+      case 'service-detail':
+        return detailService && activeSpaBusiness ? servicePath(activeSpaBusiness.slug, detailService.slug) : '/discover';
+      case 'product-detail':
+        return detailProduct && activeUrbanBusiness ? productPath(activeUrbanBusiness.slug, detailProduct.id) : '/discover';
+      case 'deal-detail':
+        return dealForRoute ? dealDetailPath(dealForRoute) : '/deals';
+      default:
+        return ROUTE_PATH[target];
+    }
+  }, [detailProduct, detailService, selectedBusiness, selectedDeal]);
+
+  const setRoute = (target: Route, nextDeal?: ClaimDealSummary | null) => {
     if (target === route) return;
-    window.history.pushState(null, '', ROUTE_PATH[target]);
+    const targetPath = resolveRoutePath(target, nextDeal);
+    if (window.location.pathname !== targetPath) window.history.pushState(null, '', targetPath);
     setRouteState(target);
   };
 
   const openProduct = (id: string, display?: Partial<CatalogueProduct>, from?: Route) => {
     const base = findProduct(id);
     if (!base) return;
+    if (!selectedBusiness || selectedBusiness.venue !== 'urban') return;
     setDetailProduct({ ...base, ...display, id: base.id });
     if (from) setDetailFrom(from);
-    const target = productPath(URBAN_BUSINESS.slug, base.id);
+    const target = productPath(selectedBusiness.slug, base.id);
     if (window.location.pathname !== target) window.history.pushState(null, '', target);
     setRouteState('product-detail');
   };
@@ -1064,9 +1177,10 @@ function AppInner() {
   const openService = (key: string, from?: Route) => {
     const base = findSpaService(key);
     if (!base) return;
+    if (!selectedBusiness || selectedBusiness.venue !== 'spa') return;
     setDetailService(base);
     if (from) setServiceFrom(from);
-    const target = servicePath(SPA_BUSINESS.slug, base.slug);
+    const target = servicePath(selectedBusiness.slug, base.slug);
     if (window.location.pathname !== target) window.history.pushState(null, '', target);
     setRouteState('service-detail');
   };
@@ -1092,26 +1206,46 @@ function AppInner() {
     return () => window.removeEventListener(SIGN_OUT_EVENT, handleSignOut);
   }, []);
 
+  // A 401 from the API: if the user is in the merchant portal, send them to
+  // sign in again (public pages keep working for guests).
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  useEffect(() => {
+    const handleExpired = () => {
+      if (isPortalRoute(routeRef.current)) setRouteState('sign-in');
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+  }, []);
+
+  // Opening a portal page signed out (with the API configured) goes to sign in.
+  useEffect(() => {
+    if (hasApiConfig() && !authed && isPortalRoute(route)) setRouteState('sign-in');
+  }, [authed, route]);
+
   useEffect(() => {
     const expected =
       route === 'customer-invite-join'
         ? null // dynamic /join/{slug}?invite=… path — never overwritten
-        : route === 'product-detail'
-        ? detailProduct
-          ? productPath(URBAN_BUSINESS.slug, detailProduct.id)
-          : null
-        : route === 'service-detail'
-          ? detailService
-            ? servicePath(SPA_BUSINESS.slug, detailService.slug)
-            : null
-          : ROUTE_PATH[route];
+        : resolveRoutePath(route);
     if (expected && window.location.pathname !== expected) {
       window.history.replaceState(null, '', expected);
     }
+
+    const pathMatch = resolveBusinessPath(window.location.pathname);
+    if (pathMatch) {
+      setSelectedBusiness((prev) => (prev && prev.slug === pathMatch.business.slug ? prev : pathMatch.business));
+    } else {
+      setSelectedBusiness(null);
+    }
+
     const onPopState = () => {
       const path = window.location.pathname;
       setRouteState(entryRoute(path, authed, isDesktop));
       const match = resolveBusinessPath(path);
+      if (match) {
+        setSelectedBusiness((prev) => (prev && prev.slug === match.business.slug ? prev : match.business));
+      }
       if (match?.section === 'products') {
         const base = findProduct(match.productId);
         if (base) setDetailProduct((prev) => (prev && prev.id === base.id ? prev : base));
@@ -1123,7 +1257,7 @@ function AppInner() {
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [authed, isDesktop, route, detailProduct, detailService]);
+  }, [authed, isDesktop, route, detailProduct, detailService, resolveRoutePath, selectedBusiness]);
 
   useEffect(() => {
     if (route !== 'product-detail' || detailProduct) return;
@@ -1167,9 +1301,69 @@ function AppInner() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
   }, [route]);
 
-  const openDeal = (from: Route) => {
+  const openDeal = async (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
-    setRoute('deal-detail');
+
+    let nextDeal = deal ?? null;
+    const offerId = nextDeal && typeof nextDeal.id !== 'undefined' ? String(nextDeal.id) : '';
+    if (offerId) {
+      try {
+        const response = await catalogueService.getPublicOfferDetails(offerId);
+        const payload = response && typeof response === 'object' ? (response as Record<string, unknown>) : null;
+        if (payload) {
+          const nestedItem = Array.isArray(payload.items) && typeof payload.items[0] === 'object' ? (payload.items[0] as Record<string, unknown>) : null;
+          const business = payload.business && typeof payload.business === 'object' ? (payload.business as Record<string, unknown>) : {};
+          nextDeal = {
+            ...nextDeal,
+            title: typeof payload.title === 'string' && payload.title.trim() ? payload.title : nextDeal?.title,
+            business:
+              typeof payload.businessName === 'string' && payload.businessName.trim()
+                ? payload.businessName
+                : typeof business.name === 'string' && business.name.trim()
+                  ? business.name
+                  : nextDeal?.business,
+            location:
+              typeof payload.location === 'string' && payload.location.trim()
+                ? payload.location
+                : typeof business.location === 'string' && business.location.trim()
+                  ? business.location
+                  : nextDeal?.location,
+            price:
+              typeof payload.price === 'number'
+                ? payload.price
+                : typeof nestedItem?.price === 'number'
+                  ? nestedItem.price
+                  : nextDeal?.price,
+            oldPrice:
+              typeof payload.originalPrice === 'number'
+                ? payload.originalPrice
+                : typeof nestedItem?.originalPrice === 'number'
+                  ? nestedItem.originalPrice
+                  : nextDeal?.oldPrice,
+            discountLabel:
+              typeof payload.badge === 'string' && payload.badge.trim() ? payload.badge : nextDeal?.discountLabel,
+            image:
+              typeof payload.image === 'string' && payload.image.trim()
+                ? payload.image
+                : typeof nestedItem?.image === 'string' && nestedItem.image.trim()
+                  ? nestedItem.image
+                  : nextDeal?.image,
+          };
+        }
+      } catch {
+        // Keep the clicked offer visible even when the detail lookup is unavailable.
+      }
+    }
+
+    setSelectedDeal(nextDeal ?? null);
+    setRoute('deal-detail', nextDeal ?? null);
+  };
+
+  const openDealComments = (from: Route, deal?: ClaimDealSummary | null) => {
+    setDealFrom(from);
+    setSelectedDeal(deal ?? null);
+    setCommentsModalOnly(true);
+    setRoute(from);
   };
 
   const startClaim = (from: Route) => {
@@ -1181,29 +1375,53 @@ function AppInner() {
     setRoute(authed ? 'claim-confirm' : 'claim-auth');
   };
 
-  const completeClaim = () => {
-    const record = claims.recordClaim({
-      kind: claimRecipient ? 'someone-else' : 'self',
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      recipient: claimRecipient ?? undefined,
-    });
-    setActiveClaim(record);
-    setClaimRecipient(null);
-    markClaimed();
-    setRoute('claim-success');
+  const completeClaim = async () => {
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind: claimRecipient ? 'someone-else' : 'self',
+        dealTitle: selectedDeal?.title ?? 'Featured local deal',
+        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+        dealImage: selectedDeal?.image,
+        dealLocation: selectedDeal?.location,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel,
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        recipient: claimRecipient ?? undefined,
+      });
+      setActiveClaim(record);
+      setClaimRecipient(null);
+      markClaimed();
+      setRoute('claim-success');
+    } catch {
+      // Do not continue to the success screen unless the backend confirms the claim.
+    }
   };
 
-  const completeGift = () => {
-    const record = claims.recordClaim({
-      kind: 'gift',
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      recipient: giftRecipient
-        ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
-        : undefined,
-    });
-    setActiveClaim(record);
-    markClaimed();
-    setRoute('gift-sent');
+  const completeGift = async () => {
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind: 'gift',
+        dealTitle: selectedDeal?.title ?? 'Featured local deal',
+        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+        dealImage: selectedDeal?.image,
+        dealLocation: selectedDeal?.location,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel,
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        recipient: giftRecipient
+          ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
+          : undefined,
+      });
+      setActiveClaim(record);
+      markClaimed();
+      setRoute('gift-sent');
+    } catch {
+      // Keep the user on the claim flow until the backend confirms the gift claim.
+    }
   };
 
   /**
@@ -1230,31 +1448,51 @@ function AppInner() {
   };
 
   /** BUG-005/BUG-006/BUG-009 — "Claim for myself" only completes after the identity confirmation step. */
-  const confirmSelfClaim = () => {
+  const confirmSelfClaim = async () => {
     setClaimSelfConfirmOpen(false);
     const onClaimed = claimSuccessRef.current;
     claimSuccessRef.current = null;
     onClaimed?.();
-    const record = claims.recordClaim({
-      kind: 'self',
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-    });
-    setActiveClaim(record);
-    if (claimed) {
-      setClaimedFrom(route);
-      setRoute('claimed-deal');
-      return;
+
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind: 'self',
+        dealTitle: selectedDeal?.title ?? 'Featured local deal',
+        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
+        dealImage: selectedDeal?.image,
+        dealLocation: selectedDeal?.location,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel,
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+      });
+      setActiveClaim(record);
+      if (claimed) {
+        setClaimedFrom(route);
+        setRoute('claimed-deal');
+        return;
+      }
+      markClaimed();
+      setRoute('claim-success');
+    } catch {
+      // Do not transition to success until backend confirms the claim.
     }
-    markClaimed();
-    setRoute('claim-success');
   };
 
   const [claimPopupOpen, setClaimPopupOpen] = useState(false);
   const [claimDialog, setClaimDialog] = useState<'gift' | 'giftConfirm' | 'other' | 'verify' | 'summary' | null>(null);
   const claimSuccessRef = useRef<(() => void) | null>(null);
 
-  const openClaimPopup = (onClaimed?: () => void) => {
-    claimSuccessRef.current = onClaimed ?? null;
+  const openClaimPopup = (dealOrCallback?: ClaimDealSummary | ((() => void) | null), onClaimed?: () => void) => {
+    const deal = typeof dealOrCallback === 'function' || dealOrCallback == null ? null : dealOrCallback;
+    const callback = typeof dealOrCallback === 'function' ? dealOrCallback : onClaimed ?? null;
+
+    if (deal) {
+      setSelectedDeal(deal);
+    }
+
+    claimSuccessRef.current = callback;
     setClaimPopupOpen(true);
   };
 
@@ -1311,6 +1549,11 @@ function AppInner() {
 
   const accountNav = (target: AccountTarget) => {
     if (target === 'business-onboarding') {
+      // An owner switching to the customer view still owns a business.
+      if (isBusinessSession) {
+        setRoute('business-overview');
+        return;
+      }
       setBusinessOnboardingFrom('account');
     }
     setRoute(target);
@@ -1379,6 +1622,9 @@ function AppInner() {
         break;
       case 'cart':
         setRoute('cart');
+        break;
+      case 'notifications':
+        setRoute('notifications');
         break;
       case 'referrals':
         setRoute('referrals');
@@ -1458,6 +1704,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'notifications':
+        setRoute('notifications');
+        break;
       case 'referrals':
         setRoute('referrals');
         break;
@@ -1516,7 +1765,7 @@ function AppInner() {
     name: 'Returning Customers',
     count: '294',
     meta: '68.2% repeat interaction rate',
-    desc: 'Interacted or placed 2+ orders at Urban Grill & Bistro in the trailing 90 days.',
+    desc: 'Interacted or placed 2+ orders with your local dining partner in the trailing 90 days.',
   });
 
   const useSegment = (segment: SegmentRef) => {
@@ -1757,6 +2006,7 @@ function AppInner() {
         onNav={feedNav}
         onBack={() => setRoute(dealFrom)}
         onClaimComplete={handleClaimComplete}
+        deal={selectedDeal}
       />
     ) : (
       <DealDetailScreen
@@ -1766,7 +2016,10 @@ function AppInner() {
           setTermsFrom('deal-detail');
           setRoute('deal-terms');
         }}
-        onComments={() => setRoute('comments')}
+        onComments={() => {
+          setCommentsModalOnly(false);
+          setRoute('comments');
+        }}
         onReviews={() => setRoute('reviews')}
         onShare={() => setRoute('share')}
         onClaim={() => startClaim('deal-detail')}
@@ -1779,6 +2032,7 @@ function AppInner() {
           setClaimedFrom('deal-detail');
           setRoute('claimed-deal');
         }}
+        deal={selectedDeal}
       />
     );
 
@@ -1788,6 +2042,68 @@ function AppInner() {
     setActiveClaim(null);
     resetClaim();
     setRoute('home');
+  };
+
+  const requestCustomerSignupOtp = async (email: string) => {
+    const nextEmail = email.trim().toLowerCase();
+    if (!nextEmail) {
+      throw new Error('An email is required to continue.');
+    }
+
+    setCustomerSignup((current) => ({ ...current, email: nextEmail }));
+
+    if (!hasApiConfig()) {
+      return;
+    }
+
+    await authService.requestCustomerOtp({ email: nextEmail });
+  };
+
+  const handleCustomerSignupVerification = async (code: string) => {
+    const nextCode = code.replace(/\D/g, '').slice(0, 6);
+    if (!nextCode) {
+      throw new Error('Enter the 6-digit verification code to continue.');
+    }
+
+    setCustomerSignup((current) => ({ ...current, code: nextCode }));
+  };
+
+  const completeCustomerSignup = async (details: { firstName: string; lastName: string; phone: string; pin: string }) => {
+    const email = customerSignup.email.trim().toLowerCase();
+    const code = customerSignup.code.replace(/\D/g, '').slice(0, 6);
+    const firstName = details.firstName.trim();
+    const lastName = details.lastName.trim();
+    const phone = details.phone.replace(/\D/g, '').slice(0, 15);
+    const pin = details.pin.replace(/\D/g, '').slice(0, 6);
+
+    if (!email || !code) {
+      throw new Error('Your email and verification code are required to finish registration.');
+    }
+
+    if (pin.length !== 6) {
+      throw new Error('Create a 6-digit security PIN to continue.');
+    }
+
+    const payload = {
+      email,
+      code,
+      pin,
+      ...(firstName ? { firstName } : {}),
+      ...(lastName ? { lastName } : {}),
+      ...(phone ? { phone: `+${phone}` } : {}),
+    };
+
+    if (hasApiConfig()) {
+      await authService.verifyCustomerPin(payload);
+    }
+
+    profile.update({
+      firstName: firstName || 'User',
+      lastName,
+      email,
+      phone: phone ? `+${phone}` : '',
+    });
+    markAuthenticated(true);
   };
 
   /**
@@ -1809,7 +2125,8 @@ function AppInner() {
    * re-appear for this brand-new business identity.
    */
   const enterBusinessProfile = () => {
-    signIn();
+    // Live, the owner-account step on setup signs the merchant in.
+    if (!hasApiConfig()) void signIn();
     setAuthIntent('customer');
     resumeAtBusinessProfile();
     setRoute('business-onboarding');
@@ -1889,7 +2206,9 @@ function AppInner() {
         return (
           <DesktopAuthCodeScreen
             onBack={() => setRoute(authFrom)}
-            onContinue={() => {
+            onContinue={() => setRoute('sign-in')}
+            onSubmitEmail={async (email) => {
+              await requestCustomerSignupOtp(email);
               setAuthIntent('customer');
               setRoute('verify-email');
             }}
@@ -1911,7 +2230,9 @@ function AppInner() {
       return (
         <AuthCodeScreen
           onBack={() => setRoute(authFrom)}
-          onContinue={() => {
+          onContinue={() => setRoute('sign-in')}
+          onSubmitEmail={async (email) => {
+            await requestCustomerSignupOtp(email);
             setAuthIntent('customer');
             setRoute('verify-email');
           }}
@@ -1994,20 +2315,22 @@ function AppInner() {
         return (
           <DesktopSignInScreen
             onBack={() => setRoute(signInFrom)}
-            onSignIn={() => {
+            onSignIn={async ({ identifier, password }) => {
+              const user = await signIn({ identifier, password });
               if (resumeBusinessSetup) {
                 enterBusinessProfile();
                 return;
               }
-              signIn();
-              setRoute('discovering');
+              setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
             }}
-            onGoogleSignIn={() => {
+            onGoogleSignIn={async () => {
+              if (!hasApiConfig()) {
+                await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+              }
               if (resumeBusinessSetup) {
                 enterBusinessProfile();
                 return;
               }
-              signIn();
               setRoute('google-confirm');
             }}
             onCreateAccount={() => {
@@ -2020,33 +2343,38 @@ function AppInner() {
               setBusinessOnboardingFrom('sign-in');
               setRoute('business-onboarding');
             }}
-            onCustomerSignIn={() => {
-              signIn();
+            onCustomerSignIn={async () => {
               setRoute('dashboard');
             }}
-            onBusinessSignIn={() => {
-              signIn();
-              setRoute('business-overview');
+            onBusinessSignIn={async () => {
+              if (isBusinessSession) {
+                setRoute('business-overview');
+                return;
+              }
+              setBusinessOnboardingFrom('sign-in');
+              setRoute('business-onboarding');
             }}
           />
         );
       return (
         <SignInScreen
           onBack={() => setRoute(signInFrom)}
-          onSignIn={() => {
+          onSignIn={async ({ identifier, password }) => {
+            const user = await signIn({ identifier, password });
             if (resumeBusinessSetup) {
               enterBusinessProfile();
               return;
             }
-            signIn();
-            setRoute('discovering');
+            setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
           }}
-          onGoogleSignIn={() => {
+          onGoogleSignIn={async () => {
+            if (!hasApiConfig()) {
+              await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
+            }
             if (resumeBusinessSetup) {
               enterBusinessProfile();
               return;
             }
-            signIn();
             setRoute('google-confirm');
           }}
           onCreateAccount={() => {
@@ -2059,13 +2387,16 @@ function AppInner() {
             setBusinessOnboardingFrom('sign-in');
             setRoute('business-onboarding');
           }}
-          onCustomerSignIn={() => {
-            signIn();
+          onCustomerSignIn={async () => {
             setRoute('dashboard');
           }}
-          onBusinessSignIn={() => {
-            signIn();
-            setRoute('business-overview');
+          onBusinessSignIn={async () => {
+            if (isBusinessSession) {
+              setRoute('business-overview');
+              return;
+            }
+            setBusinessOnboardingFrom('sign-in');
+            setRoute('business-onboarding');
           }}
         />
       );
@@ -2080,17 +2411,39 @@ function AppInner() {
         return (
           <DesktopVerifyEmailScreen
             onBack={() => setRoute(authEntry)}
-            onContinue={() => (businessSignup ? enterBusinessProfile() : setRoute('profile-setup'))}
+            onContinue={async (code) => {
+              if (businessSignup) {
+                enterBusinessProfile();
+                return;
+              }
+              await handleCustomerSignupVerification(code);
+              setRoute('profile-setup');
+            }}
             onEditEmail={() => setRoute(authEntry)}
             onBusinessSetup={() => setRoute('business-onboarding')}
+            email={customerSignup.email}
+            onResend={async () => {
+              await requestCustomerSignupOtp(customerSignup.email);
+            }}
           />
         );
       return (
         <VerifyEmailScreen
           onBack={() => setRoute(authEntry)}
-          onContinue={() => (businessSignup ? enterBusinessProfile() : setRoute('profile-setup'))}
+          onContinue={async (code) => {
+            if (businessSignup) {
+              enterBusinessProfile();
+              return;
+            }
+            await handleCustomerSignupVerification(code);
+            setRoute('profile-setup');
+          }}
           onEditEmail={() => setRoute(authEntry)}
           onBusinessSetup={() => setRoute('business-onboarding')}
+          email={businessSignup ? undefined : customerSignup.email}
+          onResend={businessSignup ? undefined : async () => {
+            await requestCustomerSignupOtp(customerSignup.email);
+          }}
         />
       );
     }
@@ -2100,14 +2453,24 @@ function AppInner() {
         return (
           <DesktopProfileSetupScreen
             onBack={() => setRoute('verify-email')}
-            onComplete={() => setRoute('location-permission')}
+            email={customerSignup.email}
+            code={customerSignup.code}
+            onComplete={async (details) => {
+              await completeCustomerSignup(details);
+              setRoute('location-permission');
+            }}
             onBusinessSetup={() => setRoute('business-onboarding')}
           />
         );
       return (
         <ProfileSetupScreen
           onBack={() => setRoute('verify-email')}
-          onComplete={() => setRoute('location-permission')}
+          email={customerSignup.email}
+          code={customerSignup.code}
+          onComplete={async (details) => {
+            await completeCustomerSignup(details);
+            setRoute('location-permission');
+          }}
           onBusinessSetup={() => setRoute('business-onboarding')}
         />
       );
@@ -2224,7 +2587,7 @@ function AppInner() {
             onOpenFilters={() => openFeedRoute('filters', 'home')}
             onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
             onOpenDeals={() => setRoute('deals')}
-            onOpenDeal={() => openDeal('home')}
+            onOpenDeal={(deal) => openDeal('home', deal ?? null)}
             onClaim={openClaimPopup}
           />
         );
@@ -2234,7 +2597,7 @@ function AppInner() {
           onOpenFilters={() => openFeedRoute('filters', 'home')}
           onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
           onOpenDeals={() => setRoute('deals')}
-          onOpenDeal={() => openDeal('home')}
+          onOpenDeal={(deal) => openDeal('home', deal ?? null)}
           onOpenBusiness={() => {
             setProfileFrom('home');
             setRoute('business-profile');
@@ -2248,23 +2611,53 @@ function AppInner() {
     case 'deals':
       if (isDesktop)
         return (
-          <DesktopDealsScreen
-            onNav={feedNav}
-            onOpenFilters={() => openFeedRoute('filters', 'deals')}
-            onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
-            onOpenDeal={() => openDeal('deals')}
-            onClaim={openClaimPopup}
-          />
+          <>
+            <DesktopDealsScreen
+              onNav={feedNav}
+              onOpenFilters={() => openFeedRoute('filters', 'deals')}
+              onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
+              onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
+              onOpenComments={(deal) => openDealComments('deals', deal ?? null)}
+              onClaim={openClaimPopup}
+            />
+            {commentsModalOnly ? (
+              <CommentsDrawer
+                open
+                deal={selectedDeal}
+                onClose={() => {
+                  setCommentsModalOnly(false);
+                  setRoute('deals');
+                }}
+                onClaim={() => {
+                  setCommentsModalOnly(false);
+                  setRoute('deal-detail');
+                  openClaimPopup();
+                }}
+              />
+            ) : null}
+          </>
         );
       return (
-        <DealsScreen
-          onTab={(tab) => setRoute(tab)}
-          onOpenFilters={() => openFeedRoute('filters', 'deals')}
-          onOpenDeal={() => openDeal('deals')}
-          onOpenNotifications={() => setRoute('notifications')}
-          onClaim={openClaimPopup}
-          onAccount={() => setRoute('account')}
-        />
+        <>
+          <DealsScreen
+            onTab={(tab) => setRoute(tab)}
+            onOpenFilters={() => openFeedRoute('filters', 'deals')}
+            onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
+            onOpenNotifications={() => setRoute('notifications')}
+            onClaim={openClaimPopup}
+            onAccount={() => setRoute('account')}
+          />
+          {commentsModalOnly ? (
+            <CommentsSheet
+              open
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('deals');
+              }}
+            />
+          ) : null}
+        </>
       );
 
     case 'featured-deals':
@@ -2276,7 +2669,7 @@ function AppInner() {
             onOpenDeal={() => openDeal('featured-deals')}
           />
         );
-      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={() => openDeal('featured-deals')} />;
+      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)} />;
 
     case 'filters':
       if (isDesktop) return <DesktopFiltersScreen onNav={feedNav} onClose={() => setRoute(feedFrom)} />;
@@ -2289,29 +2682,63 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute(dealFrom)}
             onClaimComplete={handleClaimComplete}
+            deal={selectedDeal}
           />
         );
       return <>{renderDetail()}</>;
 
     case 'comments':
       if (isDesktop)
-        return (
+        return commentsModalOnly ? (
+          <CommentsDrawer
+            open
+            deal={selectedDeal}
+            onClose={() => {
+              setCommentsModalOnly(false);
+              setRoute(dealFrom);
+            }}
+            onClaim={() => {
+              setCommentsModalOnly(false);
+              setRoute('deal-detail');
+              openClaimPopup();
+            }}
+          />
+        ) : (
           <>
             {renderDetail()}
             <CommentsDrawer
               open
-              onClose={() => setRoute('deal-detail')}
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('deal-detail');
+              }}
               onClaim={() => {
+                setCommentsModalOnly(false);
                 setRoute('deal-detail');
                 openClaimPopup();
               }}
             />
           </>
         );
-      return (
+      return commentsModalOnly ? (
+        <CommentsSheet
+          open
+          onClose={() => {
+            setCommentsModalOnly(false);
+            setRoute(dealFrom);
+          }}
+        />
+      ) : (
         <>
           {renderDetail()}
-          <CommentsSheet open onClose={() => setRoute('deal-detail')} />
+          <CommentsSheet
+            open
+            onClose={() => {
+              setCommentsModalOnly(false);
+              setRoute('deal-detail');
+            }}
+          />
         </>
       );
 
@@ -2320,13 +2747,13 @@ function AppInner() {
         return (
           <>
             {renderDetail()}
-            <ReviewsModal open onClose={() => setRoute('deal-detail')} />
+            <ReviewsModal open deal={selectedDeal} onClose={() => setRoute('deal-detail')} />
           </>
         );
       return (
         <>
           {renderDetail()}
-          <ReviewsSheet open onClose={() => setRoute('deal-detail')} />
+          <ReviewsSheet open deal={selectedDeal} onClose={() => setRoute('deal-detail')} />
         </>
       );
 
@@ -2335,13 +2762,13 @@ function AppInner() {
         return (
           <>
             {renderDetail()}
-            <ShareModal open onClose={() => setRoute('deal-detail')} />
+            <ShareModal open onClose={() => setRoute('deal-detail')} deal={selectedDeal} />
           </>
         );
       return (
         <>
           {renderDetail()}
-          <ShareSheet open onClose={() => setRoute('deal-detail')} />
+          <ShareSheet open onClose={() => setRoute('deal-detail')} deal={selectedDeal} />
         </>
       );
 
@@ -2352,6 +2779,7 @@ function AppInner() {
             {renderDetail()}
             <ClaimAuthModal
               open
+              deal={selectedDeal}
               onAuthenticated={() => {
                 signIn();
                 setRoute('claim-confirm');
@@ -2383,6 +2811,7 @@ function AppInner() {
               open
               onClose={() => setRoute('deal-detail')}
               onConfirm={() => setRoute('claim-identity')}
+              deal={selectedDeal}
             />
           </>
         );
@@ -2401,6 +2830,7 @@ function AppInner() {
             <ClaimIdentityModal
               open
               identity={{ name: profile.fullName }}
+              deal={selectedDeal}
               onClaimSelf={() => setClaimSelfConfirmOpen(true)}
               onGift={() => setRoute('claim-gift')}
               onSomeoneElse={() => {
@@ -2474,6 +2904,7 @@ function AppInner() {
             <RecipientVerificationModal
               open
               recipient={claimRecipient}
+              deal={selectedDeal}
               onVerify={() => setRoute('claim-summary')}
               onBack={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
@@ -2501,6 +2932,7 @@ function AppInner() {
             <RecipientSummaryModal
               open
               recipient={claimRecipient}
+              deal={selectedDeal}
               onConfirm={completeClaim}
               onEdit={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
@@ -2738,6 +3170,7 @@ function AppInner() {
       if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
       return (
         <MerchantDealsScreen
+          business={selectedBusiness}
           onBack={() => setRoute(bizFrom)}
           onOpenDeal={() => openDeal('storefront')}
           onBusinessSetup={() => setRoute('business-onboarding')}
@@ -2796,10 +3229,20 @@ function AppInner() {
       );
 
     case 'business-profile':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} activeNav="discover" onClaim={openClaimPopup} onCheckout={startCheckout} />;
+      if (isDesktop)
+        return (
+          <DesktopUrbanGrillStorefrontScreen
+            business={selectedBusiness}
+            onNav={feedNav}
+            activeNav="discover"
+            onClaim={openClaimPopup}
+            onCheckout={startCheckout}
+          />
+        );
       return (
         <BusinessProfileScreen
           venue="urban"
+          business={selectedBusiness}
           onBack={() => setRoute(profileFrom)}
           onOpenDeals={() => {
             setBizFrom('business-profile');
@@ -2818,6 +3261,7 @@ function AppInner() {
       return (
         <BusinessProfileScreen
           venue="spa"
+          business={selectedBusiness}
           onBack={() => setRoute(profileFrom)}
           onOpenDeals={() => setRoute(profileFrom)}
           onOpenServices={() => {
@@ -2982,6 +3426,12 @@ function AppInner() {
        * reuse, so they go straight to the business sign-up modal.
        */
       const startBusinessSignup = () => {
+        // A live owner taps this from their customer view: send them back to
+        // the business dashboard rather than through setup again.
+        if (isBusinessSession) {
+          setRoute('business-overview');
+          return;
+        }
         setBusinessOnboardingFrom('dashboard');
         if (authed) {
           setBusinessChoiceOpen(true);
@@ -3102,7 +3552,7 @@ function AppInner() {
             setClaimedFrom('messages');
             setRoute('claimed-deal');
           }}
-          onSecondary={() => setRoute(getMobileThread(activeConversation).secondaryRoute)}
+          onSecondary={() => setRoute('dashboard')}
         />
       );
 
@@ -3137,9 +3587,32 @@ function AppInner() {
           <DesktopDiscoverScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'discover')}
-            onOpenBusiness={(index) => {
+            onOpenBusiness={(business) => {
+              const normalized = (business.name ?? '').toLowerCase();
+              const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
+              const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
+
+              const businessName = business.name?.trim() || 'Business storefront';
+              const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
+              const businessRef: BusinessProfileRef = {
+                slug: slugBase,
+                id: business.id || slugBase,
+                name: businessName,
+                venue: isSpa ? 'spa' : 'urban',
+              };
+
+              setSelectedBusiness(businessRef);
               setProfileFrom('discover');
-              setRoute(index === 1 ? 'spa-storefront' : 'storefront');
+
+              if (isSpa) {
+                setRoute('spa-profile');
+                return;
+              }
+
+              if (isUrban || !isSpa) {
+                setRoute('business-profile');
+                return;
+              }
             }}
             onBusinessSetup={() => setRoute('business-onboarding')}
           />
@@ -3152,13 +3625,31 @@ function AppInner() {
             else if (tab === 'saved') setRoute('saved');
             else if (tab === 'account') setRoute('account');
           }}
-          onOpenUrban={() => {
+          onOpenBusiness={(business) => {
+            const normalized = (business.name ?? '').toLowerCase();
+            const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
+            const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
+            const businessName = business.name?.trim() || 'Business storefront';
+            const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
+            const businessRef: BusinessProfileRef = {
+              slug: slugBase,
+              id: business.id || slugBase,
+              name: businessName,
+              venue: isSpa ? 'spa' : 'urban',
+            };
+
+            setSelectedBusiness(businessRef);
             setProfileFrom('discover');
-            setRoute('business-profile');
-          }}
-          onOpenSpa={() => {
-            setProfileFrom('discover');
-            setRoute('spa-profile');
+
+            if (isSpa) {
+              setRoute('spa-profile');
+              return;
+            }
+
+            if (isUrban || !isSpa) {
+              setRoute('business-profile');
+              return;
+            }
           }}
           onOpenFilters={() => openFeedRoute('filters', 'discover')}
           onOpenNotifications={() => setRoute('notifications')}
@@ -4609,7 +5100,7 @@ function AppInner() {
             customer={posCustomer}
             awardedPoints={posSalePoints}
             onNewSale={() => {
-              setPosTermCart(SEED_POS_TERMINAL_LINES);
+              setPosTermCart([]);
               setPosCustomer(null);
               setRoute('pos-register');
             }}
@@ -5149,6 +5640,7 @@ function AppInner() {
           <ClaimIdentityModal
             open
             identity={{ name: profile.fullName }}
+            deal={selectedDeal}
             onClose={closeClaimPopup}
             onClaimSelf={() => finishClaimChoice('self')}
             onGift={() => finishClaimChoice('gift')}
@@ -5192,6 +5684,7 @@ function AppInner() {
       {isDesktop && claimDialog === 'gift' && (
         <GiftRecipientDetailsModal
           open
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onContinue={(values) => {
             setGiftRecipient({
@@ -5207,6 +5700,7 @@ function AppInner() {
         <ConfirmGiftSendModal
           open
           recipient={giftRecipient}
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onEdit={() => setClaimDialog('gift')}
           onSend={() => finishDesktopClaim('gift')}
@@ -5230,6 +5724,7 @@ function AppInner() {
         <RecipientVerificationModal
           open
           recipient={claimRecipient}
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onVerify={() => setClaimDialog('summary')}
           onBack={() => setClaimDialog('other')}
@@ -5239,6 +5734,7 @@ function AppInner() {
         <RecipientSummaryModal
           open
           recipient={claimRecipient}
+          deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onConfirm={() => finishDesktopClaim('someone-else')}
           onEdit={() => setClaimDialog('other')}

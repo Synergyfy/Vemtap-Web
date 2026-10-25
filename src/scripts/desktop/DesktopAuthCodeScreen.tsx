@@ -4,6 +4,8 @@ import { Logo } from '../../components/ui/Logo';
 
 interface DesktopAuthCodeScreenProps {
   onContinue: () => void;
+  /** Requests the email code; omitted by the business sign-up modal. */
+  onSubmitEmail?: (email: string) => Promise<void> | void;
   onGoogle: () => void;
   onSignIn: () => void;
   /** Customer sign-up only — swaps into the business registration flow. */
@@ -21,6 +23,15 @@ interface DesktopAuthCodeScreenProps {
 }
 
 type Status = 'idle' | 'sending' | 'sent';
+
+const getAuthErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return 'We could not start your account setup. Please try again.';
+};
 
 const TESTIMONIAL_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCdndq2ekzdhxQQlxJqpAvKft-cRkLx5Bj_5YzsQrhlckqaZ5Yb-khu5I8PV5ZiWZae9-aiycwpmHJntyQLLs2OQqcEsLehtr67jnD-rMLRoBi_Zws7HUWJYkni--1mfTGRyAO3QACjL-SjOT4LQy6NEUu-g0-DSJ7CddBnDQIfZLaQ5OpSlopgvpNBt3lBdm6lGxDr86ZzotMmX-i3E3CQha1-zNa8gAcVzmejYf4O';
@@ -132,6 +143,7 @@ const AUDIENCE_COPY = {
 
 export function DesktopAuthCodeScreen({
   onContinue,
+  onSubmitEmail,
   onGoogle,
   onSignIn,
   onBusinessRegister,
@@ -140,20 +152,35 @@ export function DesktopAuthCodeScreen({
   mode = 'customer',
 }: DesktopAuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
+  const [error, setError] = useState<string | null>(null);
   const business = mode === 'business';
   const copy = AUDIENCE_COPY[mode];
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const input = event.currentTarget.elements.namedItem('email') as HTMLInputElement | null;
-    if (!input || !input.value.trim() || !input.checkValidity()) {
+    const email = input?.value.trim() ?? '';
+    if (!input || !email || !input.checkValidity()) {
       input?.focus();
       return;
     }
     if (status !== 'idle') return;
+    setError(null);
     setStatus('sending');
-    window.setTimeout(() => setStatus('sent'), 1200);
-    window.setTimeout(onContinue, 2100);
+
+    try {
+      if (!onSubmitEmail) {
+        // The business modal has no email step of its own; carry on.
+        setStatus('idle');
+        onContinue();
+        return;
+      }
+      await Promise.resolve(onSubmitEmail(email));
+      setStatus('sent');
+    } catch (submitError) {
+      setError(getAuthErrorMessage(submitError));
+      setStatus('idle');
+    }
   };
 
   return (
@@ -276,6 +303,11 @@ export function DesktopAuthCodeScreen({
                 </div>
 
                 <form className="space-y-space-md" onSubmit={handleSubmit}>
+                  {error ? (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
+                      {error}
+                    </div>
+                  ) : null}
                   <div className="space-y-space-2xs">
                     <label className="block font-label-md text-label-md text-text-primary font-medium" htmlFor="email-input">
                       Email Address

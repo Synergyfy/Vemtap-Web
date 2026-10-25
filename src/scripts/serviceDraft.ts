@@ -92,3 +92,22 @@ export const INITIAL_SERVICE_DRAFT: ServiceDraft = {
   leadNotice: 'Same day (2 hrs)',
   bookingHorizon: '30 days in advance',
 };
+
+/** Live setup starts from an empty service — the sample above is demo-only. */
+export const BLANK_SERVICE_DRAFT: ServiceDraft = {
+  ...INITIAL_SERVICE_DRAFT,
+  title: '',
+  provider: '',
+  description: '',
+  highlights: [],
+  image: '',
+  standardPrice: '',
+  basePrice: '',
+  comparePrice: '',
+  tiersEnabled: false,
+  tiers: [],
+  skuCode: '',
+  locations: [],
+  branches: { maitama: false, wuseII: false, garki: false },
+  pricingMode: 'universal',
+};

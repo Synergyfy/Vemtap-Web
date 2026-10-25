@@ -15,7 +15,7 @@ interface DesktopLocationRadiusModalProps {
 }
 
 const DISTANCE_CHIPS = [2, 5, 10, 15, 25];
-const DISTRICTS = ['Apo', 'Maitama', 'Wuse II', 'Garki', 'Jabi', 'Central Area'];
+const DISTRICTS = ['Downtown', 'Central', 'North Side', 'West End', 'Market Area'];
 
 function metricsFor(km: number) {
   return {
@@ -32,8 +32,8 @@ export function DesktopLocationRadiusModal({
   radius: radiusProp,
 }: DesktopLocationRadiusModalProps) {
   const [radius, setRadius] = useState(radiusProp ?? 5);
-  const [district, setDistrict] = useState(districtProp ?? 'Apo');
-  const [query, setQuery] = useState(`${districtProp ?? 'Apo'}, Abuja`);
+  const [district, setDistrict] = useState(districtProp ?? 'Your area');
+  const [query, setQuery] = useState(`${districtProp ?? 'Your area'}`);
 
   if (!open) {
     return null;
@@ -43,7 +43,7 @@ export function DesktopLocationRadiusModal({
 
   const selectDistrict = (name: string) => {
     setDistrict(name);
-    setQuery(`${name}, Abuja`);
+    setQuery(name);
   };
 
   return (
@@ -58,7 +58,7 @@ export function DesktopLocationRadiusModal({
               <h2 className="font-heading-lg text-heading-lg font-bold text-text-primary">Location &amp; Radius</h2>
             </div>
             <p className="font-body-md text-body-md text-text-secondary mt-1">
-              Set your area to discover local Abuja deals and verified stores
+              Set your area to discover nearby deals and verified stores
             </p>
           </div>
           <button
@@ -75,7 +75,7 @@ export function DesktopLocationRadiusModal({
           <button
             className="w-full bg-surface-tint-blue rounded-xl p-space-md flex items-center justify-between cursor-pointer hover:bg-secondary-fixed/50 transition-colors text-left"
             type="button"
-            onClick={() => selectDistrict('Apo')}
+            onClick={() => selectDistrict('Your area')}
           >
             <div className="flex items-center gap-space-sm">
               <div className="w-11 h-11 rounded-xl bg-primary-container text-on-primary flex items-center justify-center shadow-sm">
@@ -88,7 +88,7 @@ export function DesktopLocationRadiusModal({
                     <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" /> GPS Active
                   </span>
                 </div>
-                <p className="font-body-md text-body-md text-text-secondary mt-0.5">Apo District, Abuja • High Precision</p>
+                <p className="font-body-md text-body-md text-text-secondary mt-0.5">Your current area • Live location</p>
               </div>
             </div>
             <div className="w-7 h-7 rounded-full bg-primary-container text-on-primary flex items-center justify-center">
@@ -99,7 +99,7 @@ export function DesktopLocationRadiusModal({
           <div className="space-y-space-2xs">
             <label className="font-label-md text-label-md font-semibold text-text-primary flex items-center gap-1" htmlFor="district-search-field">
               <span>Or Select / Search District</span>
-              <span className="font-caption text-caption font-normal text-text-tertiary">(Abuja Municipal)</span>
+              <span className="font-caption text-caption font-normal text-text-tertiary">(Your area)</span>
             </label>
             <div className="relative flex items-center w-full">
               <Icon name="location_city" className="absolute left-space-md text-outline text-[20px] pointer-events-none" />
@@ -123,7 +123,7 @@ export function DesktopLocationRadiusModal({
 
           <div className="space-y-space-xs">
             <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-semibold">
-              Popular Abuja Hubs
+              Popular Local Hubs
             </span>
             <div className="flex flex-wrap gap-space-xs">
               {DISTRICTS.map((name) => {
@@ -182,7 +182,7 @@ export function DesktopLocationRadiusModal({
               <div className="flex justify-between items-center text-text-tertiary font-caption text-caption px-1">
                 <span>1 km (Walking)</span>
                 <span>10 km (Quick Ride)</span>
-                <span>25 km (Greater Abuja)</span>
+                <span>25 km (Wider area)</span>
               </div>
             </div>
 
@@ -217,7 +217,7 @@ export function DesktopLocationRadiusModal({
                   {district} District.
                 </p>
                 <p className="font-caption text-caption text-text-secondary">
-                  Deals automatically refresh as you navigate around Abuja.
+                  Deals automatically refresh as you move around your local area.
                 </p>
               </div>
             </div>

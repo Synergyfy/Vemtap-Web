@@ -15,22 +15,9 @@ interface MyDealsScreenProps {
 const URBAN_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBtUv6B8-bTHQgNJ5PXGNef2gEEXADX5DcmFBbYUJ-93hUriTuC5gdhgOpWuXr8-DhBStRXQunlJY5F9SdbkcdBi8xvdvz-GntvTSaV6q5gL_NewJ4iBPOb1hcQhqeF_PpIhen2N-Ge140mAfbDyY6ul2n97u9nvM3MeYDbipHkt775pu0Me4sJkMWmMlYa29eu16r-L8ZOymw6wi-sxBPMQhh0dCKUVc4qc6ZPE6yNd5QRd57GJbL29w';
 
-const SPA_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAXPTWtTNegdqmo4bANxsoYCcCeGBFCLcv0d8gE8a0lI5MVZ3L9jYKQfY2RaZDPPbnWRjgX7jze-Vq05elwWA-N1iSa9FW2FNDBrnzWv2C0NBlhfPjl6vWODgqTfknZWmJVL9l_b7gxK8dBVNRYCNOZF5HG967vRm0uRdR0_DpGpeAUrsBALXlvnmpPYygbDuSyDpLT_H4g07cEXECdCdiTCNGGBtsOxn06XnVW_0YV3gHrVtfjkZl8fg';
-
-const SNEAKERS_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBQIAX-gY6vwGyuYRRw4AeOZYVkty6avo0e4GUSnvelqU9A0W62ITSfLptMvVCDZOlQ1cCPa7Ljvq6xCTiHn1mFjx99B5Em-kICYvZs0mPqo9Y6B3_KxsoOJxUqAvCvvKGrANTSpcrJasj5O2gbPrkMoVRNqaPMjZ0TuLq3n6FyI2zXwILmfSqXNcuYnp6fYzi2S5QDqpwdD4gqqyU3mJJNzq7jaA26OKs1Lzye8_rUOGmZpwpTbhIbHA';
-
-const COFFEE_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDhaveynjDuWtPu2JE7hXGvL4JUNYbbcSzUA_e17tE-fQ2ekG5_Bmpiq2FT5U99sDs4VVEYLgM9SedUAzXAR8xYGa2WmPIAVHHLHm5fWEAbFTRgkq4ECuGkRFZXPaj6susJy4hs1U_ga0O2fsnB6yIbLLXil_gLH47nnCpUvo7xTQfoLwPb2A56609PWjT7OTe4zOBInx0APBPGBDi49B3GWJHlIBCLXKmVZGsOCyGIC5X6_O31zQUZxw';
-
-const ROOFTOP_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAeAtQWLIyjDZGAe_fGVP6-PK-Lk91gGmK43js0O1SG0JI8juksx-Y5XG-gKRg-1EgZYzOc3jX33vXfe-mpI7w313488dgKy5JIV8SMnK7-0Ei5EH5KRDURZq289Tt4LG6hhlrwFy8dhbVG9Ber29ljbzVK0Ov5hUoyRSnPB_WMxFJ-yqeKTY_VwxLq02F9hmq2X8QqN3nBgucmRXuu4h8ytG-Jrb1Ncfl-FAvp74kGc9Pmoc6FG8yhBA';
 
 const FILTERS = [
   { key: 'active', label: 'Active' },
-  { key: 'used', label: 'Used' },
-  { key: 'expired', label: 'Expired' },
   { key: 'gifted', label: 'Gifted' },
 ] as const;
 
@@ -46,77 +33,6 @@ const initialsOf = (name: string) =>
     .join('')
     .toUpperCase()
     .slice(0, 2) || 'VT';
-
-interface SimpleDeal {
-  id: string;
-  image: string;
-  imageAlt: string;
-  badge: string;
-  badgeClass: string;
-  status: string;
-  statusClass: string;
-  name: string;
-  location: string;
-  item: string;
-  price: string;
-  was: string;
-  code: string;
-  meta: string;
-}
-
-const USED_DEALS: SimpleDeal[] = [
-  {
-    id: 'cafe-neo',
-    image: COFFEE_IMG,
-    imageAlt: 'Artisan breakfast spread with cold brew coffee on a marble cafe table.',
-    badge: '15% OFF',
-    badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
-    status: 'USED',
-    statusClass: 'bg-surface-container-high text-text-secondary',
-    name: 'Cafe Neo Artisan',
-    location: 'Wuse II Junction • 2.1 km',
-    item: 'Artisan Breakfast & Cold Brew',
-    price: '₦3,400',
-    was: '₦4,000',
-    code: 'VT-77B210',
-    meta: 'Redeemed Oct 14, 2024',
-  },
-  {
-    id: 'sky-lounge-used',
-    image: ROOFTOP_IMG,
-    imageAlt: 'Rooftop lounge cocktails at sunset with city skyline views.',
-    badge: 'BOGO FREE',
-    badgeClass: 'bg-tertiary-fixed text-tertiary-container',
-    status: 'USED',
-    statusClass: 'bg-surface-container-high text-text-secondary',
-    name: 'The Sky Lounge',
-    location: 'Central District • 3.0 km',
-    item: 'Sunset Sundowner Cocktails',
-    price: '₦8,000',
-    was: '₦16,000',
-    code: 'VT-55C882',
-    meta: 'Redeemed Oct 2, 2024',
-  },
-];
-
-const EXPIRED_DEALS: SimpleDeal[] = [
-  {
-    id: 'urban-expired',
-    image: URBAN_IMG,
-    imageAlt: 'Gourmet family feast platter served at a bistro.',
-    badge: '40% OFF',
-    badgeClass: 'bg-error-container text-error',
-    status: 'EXPIRED',
-    statusClass: 'bg-error-container text-error',
-    name: 'Urban Grill & Bistro',
-    location: 'Apo Boulevard Branch • 0.8 km',
-    item: 'Weekend Family Feast',
-    price: '₦14,000',
-    was: '₦23,500',
-    code: 'VT-12X450',
-    meta: 'Expired Sep 20, 2024',
-  },
-];
 
 function VoucherStrip({ code, onCopy, copied }: { code: string; onCopy: (code: string) => void; copied: boolean }) {
   return (
@@ -134,61 +50,6 @@ function VoucherStrip({ code, onCopy, copied }: { code: string; onCopy: (code: s
         <span>{copied ? 'Copied!' : 'Copy'}</span>
       </button>
     </div>
-  );
-}
-
-function SimpleDealCard({ deal }: { deal: SimpleDeal }) {
-  const dimmed = deal.status === 'EXPIRED';
-  return (
-    <article
-      className={`bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm ${
-        dimmed ? 'opacity-75' : ''
-      }`}
-    >
-      <div className="flex gap-space-sm items-start">
-        <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 bg-surface-container">
-          <img className="w-full h-full object-cover" alt={deal.imageAlt} src={deal.image} />
-          <span
-            className={`absolute top-1 left-1 px-1.5 py-0.5 rounded font-caption text-[11px] font-bold tracking-tight ${deal.badgeClass}`}
-          >
-            {deal.badge}
-          </span>
-        </div>
-        <div className="flex flex-col flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span
-              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-[11px] font-semibold ${deal.statusClass}`}
-            >
-              {deal.status}
-            </span>
-          </div>
-          <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{deal.name}</h2>
-          <div className="flex items-center gap-1 text-text-secondary font-caption text-caption mb-1">
-            <Icon name="location_on" className="text-[14px] text-primary" />
-            <span className="truncate">{deal.location}</span>
-          </div>
-          <p className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-1">{deal.item}</p>
-        </div>
-      </div>
-      <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center justify-between">
-        <div className="flex items-baseline gap-1.5">
-          <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{deal.price}</span>
-          <span className="font-caption text-caption text-text-tertiary line-through">{deal.was}</span>
-        </div>
-        <span className="font-caption text-caption text-text-tertiary">{deal.meta}</span>
-      </div>
-      <div className="flex items-center justify-between bg-surface-container-low px-space-sm py-1.5 rounded-lg">
-        <div className="flex items-center gap-1.5">
-          <span className="font-caption text-caption text-text-secondary font-medium">Code:</span>
-          <span className="font-label-md text-label-md font-mono tracking-wider font-bold text-text-primary">
-            {deal.code}
-          </span>
-        </div>
-        <span className="font-label-sm text-label-sm text-text-tertiary">
-          {deal.status === 'USED' ? 'Redeemed' : 'Lapsed'}
-        </span>
-      </div>
-    </article>
   );
 }
 
@@ -313,21 +174,27 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
   const [filter, setFilter] = useState<FilterKey>('active');
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
-  const [qr, setQr] = useState<{ business: string; code: string } | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimers = useRef<number[]>([]);
+  const [qr, setQr] = useState<{ business: string; code: string; source?: 'claim' | 'gift' } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const timers = toastTimers.current;
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, []);
+  const openQrForClaim = async (claim: ClaimRecord) => {
+    const identifier = claim.id ?? claim.ref ?? claim.code;
+    try {
+      if (claim.kind === 'gift') {
+        await getGift(identifier);
+      } else {
+        await getClaimQr(identifier);
+      }
+    } catch {
+      // The UI keeps the local voucher fallback if the live endpoint is unavailable.
+    }
 
-  const showToast = (message: string) => {
-    setToast(message);
-    const timer = window.setTimeout(() => setToast(null), 2400);
-    toastTimers.current.push(timer);
+    setQr({ business: claim.dealBusiness, code: claim.ref, source: claim.kind === 'gift' ? 'gift' : 'claim' });
   };
+
+  useEffect(() => {
+    return () => undefined;
+  }, []);
 
   const copyCode = (code: string) => {
     navigator.clipboard?.writeText(code).catch(() => undefined);
@@ -335,8 +202,8 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
     window.setTimeout(() => setCopied((current) => (current === code ? null : current)), 2000);
   };
 
-  // Real claim records (localStorage-backed; backend gap: `GET /claims?customer=me`).
-  const { claims } = useClaims();
+  // Source of truth: the customer claim list from `/me/claims`, hydrated into the UI.
+  const { claims, getClaimQr, getGift } = useClaims();
   const needle = query.trim().toLowerCase();
   const matchesSearch = (claim: ClaimRecord) =>
     !needle ||
@@ -348,8 +215,6 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
   const giftedClaims = claims.filter((claim) => claim.kind === 'gift' && matchesSearch(claim));
   const counts: Record<FilterKey, number> = {
     active: activeClaims.length,
-    used: USED_DEALS.length,
-    expired: EXPIRED_DEALS.length,
     gifted: giftedClaims.length,
   };
   const latestGift = giftedClaims[0];
@@ -459,7 +324,9 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
               </div>
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-secondary">Total Savings to Date</span>
-                <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight">₦24,500</span>
+                <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight">
+                  {activeClaims.length > 0 ? 'Live' : '—'}
+                </span>
               </div>
             </div>
             <div className="h-7 w-[1px] bg-outline-variant/30" />
@@ -536,147 +403,12 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
                   copied={copied}
                   onCopy={copyCode}
                   onShowPass={onShowPass}
-                  onShowQr={() => setQr({ business: claim.dealBusiness, code: claim.ref })}
+                  onShowQr={() => void openQrForClaim(claim)}
                   onReceipt={() => onNavigate('orders')}
                 />
               ))
             )}
 
-            <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden transition-all hover:shadow-md">
-              <div className="flex gap-space-sm items-start">
-                <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 bg-surface-container">
-                  <img
-                    className="w-full h-full object-cover"
-                    alt="Serene luxury spa treatment room with warm lighting"
-                    src={SPA_IMG}
-                  />
-                  <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold tracking-tight">
-                    20% OFF
-                  </div>
-                </div>
-                <div className="flex flex-col flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-semibold">
-                      <Icon name="check_circle" className="text-[13px]" filled />
-                      CONFIRMED
-                    </span>
-                    <button
-                      aria-label="More options"
-                      type="button"
-                      onClick={() => showToast('Booking options: reschedule, cancel, share')}
-                      className="text-text-tertiary hover:text-text-primary p-0.5"
-                    >
-                      <Icon name="more_vert" className="text-[18px]" />
-                    </button>
-                  </div>
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">Glow &amp; Serenity Spa</h2>
-                  <div className="flex items-center gap-1 text-text-secondary font-caption text-caption mb-1">
-                    <Icon name="location_on" className="text-[14px] text-primary" />
-                    <span className="truncate">Maitama Heights Branch • 1.4 km</span>
-                  </div>
-                  <p className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-1">
-                    Deep Hydration Facial &amp; Gel Manicure
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-secondary-fixed/30 p-space-xs rounded-lg flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                    <Icon name="calendar_today" className="text-[16px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                      Thu, Oct 17 • 1:15 PM
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">Specialist: Amara K.</span>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end">
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">₦24,000</span>
-                  <span className="font-caption text-caption text-badge-discount-text font-semibold">Saved ₦5,000</span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => onNavigate('orders')}
-                className="h-11 w-full rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] transition-all hover:bg-primary"
-              >
-                <Icon name="event_seat" className="text-[18px]" />
-                <span>View Booking Pass</span>
-              </button>
-            </article>
-
-            <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden transition-all hover:shadow-md">
-              <div className="flex items-center justify-between bg-tertiary-fixed/40 px-space-sm py-1 rounded-lg">
-                <div className="flex items-center gap-1.5 text-tertiary">
-                  <Icon name="hourglass_bottom" className="text-[16px] animate-pulse" />
-                  <span className="font-label-sm text-label-sm font-bold tracking-tight">EXPIRES IN 6 HOURS</span>
-                </div>
-                <span className="font-caption text-caption text-tertiary-container font-medium">Closes 9:00 PM</span>
-              </div>
-
-              <div className="flex gap-space-sm items-start">
-                <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 bg-surface-container">
-                  <img
-                    className="w-full h-full object-cover"
-                    alt="Premium designer sneakers in a boutique showroom"
-                    src={SNEAKERS_IMG}
-                  />
-                  <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-tertiary-fixed text-tertiary-container font-caption text-[11px] font-bold tracking-tight">
-                    30% OFF
-                  </div>
-                </div>
-                <div className="flex flex-col flex-1 min-w-0">
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
-                    Sole District Boutique
-                  </h2>
-                  <div className="flex items-center gap-1 text-text-secondary font-caption text-caption mb-1">
-                    <Icon name="location_on" className="text-[14px] text-primary" />
-                    <span className="truncate">Area 11 Mall • 1.2 km</span>
-                  </div>
-                  <p className="font-label-sm text-label-sm text-text-primary font-medium line-clamp-1 mb-1">
-                    Selected Footwear &amp; Apparel
-                  </p>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦28,000</span>
-                    <span className="font-caption text-caption text-text-tertiary line-through">₦40,000</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-space-xs pt-1">
-                <div className="flex-1 bg-surface-container-low px-space-sm h-11 rounded-xl flex items-center justify-between">
-                  <span className="font-caption text-caption text-text-secondary">Code</span>
-                  <span className="font-label-md text-label-md font-mono font-bold text-text-primary">VT-99A104</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setQr({ business: 'Sole District Boutique', code: 'VT-99A104' })}
-                  className="h-11 px-space-lg rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all hover:bg-primary"
-                >
-                  <Icon name="qr_code_2" className="text-[18px]" />
-                  <span>Use Deal</span>
-                </button>
-              </div>
-            </article>
-          </div>
-        )}
-
-        {filter === 'used' && (
-          <div className="px-margin flex flex-col gap-space-md">
-            {USED_DEALS.map((deal) => (
-              <SimpleDealCard key={deal.id} deal={deal} />
-            ))}
-          </div>
-        )}
-
-        {filter === 'expired' && (
-          <div className="px-margin flex flex-col gap-space-md">
-            {EXPIRED_DEALS.map((deal) => (
-              <SimpleDealCard key={deal.id} deal={deal} />
-            ))}
           </div>
         )}
 
@@ -697,7 +429,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
                   claim={claim}
                   copied={copied}
                   onCopy={copyCode}
-                  onShowQr={() => setQr({ business: claim.dealBusiness, code: claim.ref })}
+                  onShowQr={() => void openQrForClaim(claim)}
                   onReceipt={() => onNavigate('gift-sent')}
                 />
               ))
@@ -792,12 +524,6 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
       )}
 
       <MobileTabBar active="deals" onTab={onTab} />
-
-      {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
-          {toast}
-        </div>
-      )}
     </AppScreen>
   );
 }

@@ -68,7 +68,7 @@ export function ContactBusinessModal({ open, onChat, onClose }: ContactBusinessM
             <Icon name="support_agent" className="text-[14px]" />
             <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider">Contact Merchant</span>
           </span>
-          <h3 className="font-heading-sm text-heading-sm text-text-primary">Contact Urban Grill &amp; Bistro</h3>
+          <h3 className="font-heading-sm text-heading-sm text-text-primary">Contact this local merchant</h3>
           <p className="font-caption text-caption text-text-secondary leading-snug max-w-md">
             Choose how you&apos;d like to reach out to inquire, make reservations, or coordinate redemption.
           </p>
@@ -104,7 +104,7 @@ export function ContactBusinessModal({ open, onChat, onClose }: ContactBusinessM
           iconClass="bg-secondary-fixed text-secondary"
           title="Send Email"
           subtitle="For bulk inquiries"
-          href="mailto:reservations@urbangrill.ng"
+          href="mailto:reservations@example.com"
         />
 
         <div className="mt-space-xs w-full bg-surface-subtle border border-border-subtle rounded-xl p-space-sm flex items-start gap-2">

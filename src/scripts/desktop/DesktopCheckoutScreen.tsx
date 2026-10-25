@@ -43,6 +43,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
   const [dialogOpen, setDialogOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<SubmittedOrder | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
   const placeTimer = useRef<number | null>(null);
@@ -70,6 +71,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
 
   const placeOrder = () => {
     if (placing || cart.lines.length === 0) return;
+    setSubmitError(null);
     setPlacing(true);
     placeTimer.current = window.setTimeout(() => {
       // BUG-015 Step 3: submit through the shared order store; never mark paid here.
@@ -100,6 +102,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
       placeTimer.current = null;
       setPlacing(false);
       if (!result.ok) {
+        setSubmitError(result.error);
         showToast(result.error);
         return;
       }
@@ -517,6 +520,15 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
               </section>
 
               <section className="bg-surface-canvas rounded-xl border border-border-subtle p-6 shadow-md flex flex-col gap-4">
+                {submitError && (
+                  <div className="mb-4 p-3 rounded-xl bg-error-container/40 border border-error/40 flex items-start gap-2" role="alert">
+                    <Icon name="error" className="text-error text-[18px] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-label-sm text-label-sm font-bold text-error">Could not place order</p>
+                      <p className="font-caption text-caption text-text-secondary mt-0.5">{submitError}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-caption text-caption text-text-secondary uppercase tracking-wider font-semibold">

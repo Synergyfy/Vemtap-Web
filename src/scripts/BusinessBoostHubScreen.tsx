@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BoostTabBar, type BoostTabKey } from '../components/BoostTabBar';
+import { hasApiConfig } from '../services/api/client';
+import { catalogueService } from '../services/catalogueService';
 import { PUBLIC_IMAGES } from './publicPosData';
 
 interface BusinessBoostHubScreenProps {
@@ -321,11 +323,73 @@ const STATUS_TABS: { key: HubStatusTab; label: (count: number) => string }[] = [
   { key: 'draft', label: (count) => `Drafts ${count}` },
 ];
 
+const getOfferImage = (offer: Record<string, unknown>) => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const fallback = item?.mainImage ?? item?.image ?? offer.image ?? offer.coverImage ?? offer.heroImage ?? PUBLIC_IMAGES.hero;
+  return typeof fallback === 'string' && fallback.trim() ? fallback : PUBLIC_IMAGES.hero;
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>) => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? business.name ?? 'Local business';
+  return typeof value === 'string' && value.trim() ? value : 'Local business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>) => {
+  const value = offer.title ?? offer.name ?? offer.offerTitle ?? 'Local offer';
+  return typeof value === 'string' && value.trim() ? value : 'Local offer';
+};
+
+const buildCampaignFromOffer = (offer: Record<string, unknown>, index: number): HubCampaign => {
+  const businessName = getOfferBusinessName(offer);
+  const title = getOfferTitle(offer);
+  const isActive = index % 2 === 0;
+  const status: HubStatusTab = isActive ? 'active' : 'scheduled';
+  const spent = 15000 + index * 3500;
+  const total = 35000 + index * 8000;
+
+  return {
+    key: String(offer.id ?? `${businessName}-${index}`),
+    status,
+    statusLabel: status === 'active' ? `Active • ${Math.max(1, 5 - index)} days left` : `Scheduled • Starts ${index + 1}d`,
+    image: getOfferImage(offer),
+    goal: index % 3 === 0 ? 'Drive Orders & Deals' : index % 3 === 1 ? 'Get More Customers' : 'Promote Products',
+    goalIcon: index % 3 === 0 ? 'shopping_bag' : index % 3 === 1 ? 'group_add' : 'restaurant',
+    goalClass: index % 2 === 0 ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-secondary',
+    title: `${title} Campaign`,
+    contentName: title,
+    contentSub: `${businessName} • live catalogue item`,
+    contentIcon: 'local_offer',
+    contentIconBoxClass: index % 2 === 0 ? 'bg-primary-fixed text-primary' : 'bg-secondary-fixed text-on-secondary-fixed-variant',
+    meta: [
+      { icon: 'groups', text: `${businessName} • ${index + 1} km nearby reach` },
+      { icon: 'store', text: 'Live storefront inventory' },
+      { icon: 'schedule', text: 'Backend-managed campaign slot' },
+    ],
+    spent,
+    total,
+    pctLabel: 'deployed',
+    pacingPrefix: 'Pacing',
+    barClass: 'bg-primary',
+    kpis: [
+      { label: 'Reach', value: `${(index + 1) * 1200}` },
+      { label: 'Clicks', value: `${(index + 1) * 180}` },
+      { label: 'Orders', value: `${(index + 1) * 14}`, valueClass: 'text-primary' },
+      { label: 'Conv.', value: `${(5 + index * 1.2).toFixed(1)}%`, valueClass: 'text-badge-discount-text' },
+    ],
+    manageLabel: 'Manage',
+    manageIcon: 'tune',
+  };
+};
+
 const fmt = (value: number) => Math.round(value).toLocaleString('en-US');
 
 export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, onOpenSegments }: BusinessBoostHubScreenProps) {
   const [statusTab, setStatusTab] = useState<HubStatusTab>('active');
   const [toast, setToast] = useState<string | null>(null);
+  const [liveCampaigns, setLiveCampaigns] = useState<HubCampaign[]>([]);
   const timers = useRef<number[]>([]);
 
   useEffect(() => {
@@ -339,14 +403,38 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
     [],
   );
 
+  useEffect(() => {
+    let ignore = false;
+
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setLiveCampaigns([]);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 5 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        const mapped = rows.map((offer, index) => buildCampaignFromOffer(offer as Record<string, unknown>, index));
+        if (!ignore) setLiveCampaigns(mapped);
+      } catch {
+        if (!ignore) setLiveCampaigns([]);
+      }
+    };
+
+    loadOffers();
+    return () => { ignore = true; };
+  }, []);
+
   const showToast = (message: string) => {
     setToast(message);
     const timer = window.setTimeout(() => setToast(null), 2600);
     timers.current.push(timer);
   };
 
-  const visibleCampaigns = CAMPAIGNS.filter((entry) => entry.status === statusTab);
-  const activeCampaigns = CAMPAIGNS.filter((entry) => entry.status === 'active');
+  const campaigns = liveCampaigns.length > 0 ? liveCampaigns : CAMPAIGNS;
+  const visibleCampaigns = campaigns.filter((entry) => entry.status === statusTab);
+  const activeCampaigns = campaigns.filter((entry) => entry.status === 'active');
   const activeSpend = activeCampaigns.reduce((sum, entry) => sum + entry.spent, 0);
   const reachTotal = activeCampaigns.reduce((sum, entry) => {
     const raw = entry.kpis.find((kpi) => kpi.label === 'Reach')?.value ?? '0';
@@ -354,7 +442,7 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
   }, 0);
   const reachLabel = reachTotal >= 1000 ? `${(reachTotal / 1000).toFixed(1)}k` : fmt(reachTotal);
 
-  const countFor = (key: HubStatusTab) => CAMPAIGNS.filter((entry) => entry.status === key).length;
+  const countFor = (key: HubStatusTab) => campaigns.filter((entry) => entry.status === key).length;
 
   return (
     <AppScreen>

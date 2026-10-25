@@ -1,4 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { hasApiConfig } from '../lib/api';
+import { accountService } from '../services';
 
 /**
  * Customer profile store.
@@ -14,6 +16,7 @@ export interface ProfileData {
   lastName: string;
   email: string;
   phone: string;
+  createdAt?: string;
 }
 
 export interface ProfileContextValue extends ProfileData {
@@ -33,25 +36,42 @@ export function isValidEmail(value: string): boolean {
 const PROFILE_KEY = 'vemtap_profile';
 
 const DEFAULT_PROFILE: ProfileData = {
-  firstName: 'Zainab',
-  lastName: 'Ahmed',
-  email: 'zainab.ahmed@example.com',
-  phone: '+234 803 555 0192',
+  firstName: 'User',
+  lastName: '',
+  email: '',
+  phone: '',
+  createdAt: '',
 };
 
 const readProfile = (): ProfileData => {
   try {
     const raw = window.localStorage.getItem(PROFILE_KEY);
     if (!raw) return DEFAULT_PROFILE;
+
     const parsed = JSON.parse(raw) as Partial<ProfileData>;
+    const firstName = parsed.firstName?.trim();
+    const lastName = parsed.lastName?.trim();
+    const email = parsed.email?.trim();
+    const phone = parsed.phone?.trim();
+    const createdAt = parsed.createdAt?.trim();
+
+    const isDemoProfile =
+      firstName === 'Zainab' ||
+      (firstName === 'User' && email === 'zainab.ahmed@example.com') ||
+      email === 'zainab.ahmed@example.com';
+
+    if (isDemoProfile) {
+      return DEFAULT_PROFILE;
+    }
+
     return {
-      firstName: parsed.firstName ?? DEFAULT_PROFILE.firstName,
-      lastName: parsed.lastName ?? DEFAULT_PROFILE.lastName,
-      email: parsed.email ?? DEFAULT_PROFILE.email,
-      phone: parsed.phone ?? DEFAULT_PROFILE.phone,
+      firstName: firstName || DEFAULT_PROFILE.firstName,
+      lastName: lastName || DEFAULT_PROFILE.lastName,
+      email: email || DEFAULT_PROFILE.email,
+      phone: phone || DEFAULT_PROFILE.phone,
+      createdAt: createdAt || DEFAULT_PROFILE.createdAt,
     };
   } catch {
-    // storage unavailable (private mode) or corrupt JSON -> defaults
     return DEFAULT_PROFILE;
   }
 };
@@ -68,6 +88,56 @@ const ProfileContext = createContext<ProfileContextValue | null>(null);
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<ProfileData>(readProfile);
+
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+
+    let cancelled = false;
+
+    const loadProfile = async () => {
+      try {
+        const response = await accountService.getMe();
+        const user = (response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object')
+          ? (response.data as Record<string, unknown>)
+          : (response as Record<string, unknown>);
+
+        const nextUser = {
+          firstName: typeof user.firstName === 'string' ? user.firstName : '',
+          lastName: typeof user.lastName === 'string' ? user.lastName : '',
+          email: typeof user.email === 'string' ? user.email : '',
+          phone: typeof user.phone === 'string' ? user.phone : '',
+          createdAt: typeof user.createdAt === 'string'
+            ? user.createdAt
+            : typeof user.created_at === 'string'
+              ? user.created_at
+              : typeof user.joinedAt === 'string'
+                ? user.joinedAt
+                : '',
+        };
+
+        if (!cancelled && (nextUser.firstName || nextUser.lastName || nextUser.email || nextUser.phone)) {
+          const sanitized = {
+            firstName: nextUser.firstName.trim() || 'User',
+            lastName: nextUser.lastName.trim(),
+            email: nextUser.email.trim(),
+            phone: nextUser.phone.trim(),
+            createdAt: nextUser.createdAt.trim(),
+          };
+          setProfile(sanitized);
+          writeProfile(sanitized);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('Unable to load account profile:', error);
+        }
+      }
+    };
+
+    loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const update = useCallback((patch: Partial<ProfileData>) => {
     setProfile((current) => {

@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 
 interface MerchantDealsScreenProps {
+  business?: { name?: string; slug?: string; venue?: 'urban' | 'spa' } | null;
   onBack: () => void;
   onOpenDeal: (from: 'storefront') => void;
   onBusinessSetup: () => void;
@@ -101,6 +102,7 @@ const NEARBY = [
 ];
 
 export function MerchantDealsScreen({
+  business,
   onBack,
   onOpenDeal,
   onBusinessSetup,
@@ -109,6 +111,7 @@ export function MerchantDealsScreen({
 }: MerchantDealsScreenProps) {
   const [claimed, setClaimed] = useState<Record<number, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
+  const businessName = business?.name?.trim() || 'Business storefront';
 
   const showToast = (message: string) => {
     setToast(message);
@@ -152,14 +155,14 @@ export function MerchantDealsScreen({
             <div className="bg-surface-subtle rounded-xl p-space-md shadow-sm">
               <div className="flex items-center gap-space-sm">
                 <div className="relative shrink-0 w-14 h-14 rounded-full overflow-hidden bg-surface-container-high">
-                  <img className="w-full h-full object-cover" alt="Professional modern logo badge for Urban Grill & Bistro featuring clean typography, golden flame ember icon, and sleek charcoal background with high contrast fine-dining brand aesthetic" src={LOGO_URL} />
+                  <img className="w-full h-full object-cover" alt={`Professional modern logo badge for ${businessName} featuring clean typography, premium hospitality branding, and polished storefront identity`} src={LOGO_URL} />
                   <div className="absolute bottom-0 right-0 w-4 h-4 bg-primary rounded-full flex items-center justify-center text-on-primary">
                     <Icon name="verified" className="text-[11px]" filled />
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-space-2xs">
-                    <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">Urban Grill & Bistro</h2>
+                    <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{businessName}</h2>
                   </div>
                   <div className="flex items-center gap-space-2xs mt-0.5 text-text-secondary">
                     <Icon name="star" className="text-[16px] text-tertiary-container" filled />

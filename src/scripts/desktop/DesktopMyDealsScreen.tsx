@@ -41,10 +41,25 @@ const INCLUDED = [
 ];
 
 export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
-  const { claims, removeClaim } = useClaims();
+  const { claims, removeClaim, getClaimQr, getGift, deleteClaim } = useClaims();
   const profile = useProfile();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('active');
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
+
+  const openLivePassPreview = async (claim: ClaimRecord | null) => {
+    if (!claim) return;
+
+    const identifier = claim.id ?? claim.ref ?? claim.code;
+    try {
+      if (claim.kind === 'gift') {
+        await getGift(identifier);
+      } else {
+        await getClaimQr(identifier);
+      }
+    } catch {
+      // Keep the local pass preview visible if the backend endpoint is unavailable.
+    }
+  };
 
   const activeClaims = claims.filter((claim) => claim.kind !== 'gift');
   const giftedClaims = claims.filter((claim) => claim.kind === 'gift');
@@ -513,8 +528,9 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 <div className="p-4 bg-surface-subtle flex flex-col gap-1">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (!pass) return;
+                        await openLivePassPreview(pass);
                         const body = [
                           'VEMTAP PASS',
                           `Reference: ${pass.ref}`,
@@ -563,9 +579,17 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                   </div>
                   <div className="flex items-center justify-between pt-2 px-1">
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (!pass) return;
-                        removeClaim(pass.ref);
+                        try {
+                          if (pass.id) {
+                            await deleteClaim(pass.id);
+                          } else {
+                            removeClaim(pass.ref);
+                          }
+                        } catch {
+                          removeClaim(pass.ref);
+                        }
                         setSelectedRef(null);
                       }}
                       className="font-label-sm text-label-sm text-text-tertiary hover:text-error transition-colors flex items-center gap-1"

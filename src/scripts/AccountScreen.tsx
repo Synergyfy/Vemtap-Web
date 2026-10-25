@@ -2,6 +2,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../components/AccountRows';
+import { useProfile } from '../context/ProfileContext';
 
 export type { AccountTarget };
 
@@ -80,6 +81,8 @@ const UTILITY_ROWS: AccountRow[] = [
 ];
 
 export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenProps) {
+  const { fullName, email, initials, phone } = useProfile();
+
   return (
     <AppScreen>
       <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
@@ -122,7 +125,7 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
               <div className="flex items-center gap-space-sm min-w-0">
                 <div className="relative shrink-0">
                   <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner">
-                    ZA
+                    {initials || 'U'}
                   </div>
                   <span
                     className="absolute bottom-0 right-0 w-4 h-4 bg-badge-discount-text rounded-full flex items-center justify-center text-surface shadow"
@@ -133,11 +136,11 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-space-2xs">
-                    <h2 className="font-heading-md text-heading-md text-on-surface truncate">Zainab Ahmed</h2>
+                    <h2 className="font-heading-md text-heading-md text-on-surface truncate">{fullName || 'User'}</h2>
                     <Icon name="verified" className="text-primary-container text-[18px]" filled />
                   </div>
-                  <p className="font-body-md text-body-md text-text-secondary truncate">+234 803 555 0192</p>
-                  <p className="font-caption text-caption text-text-tertiary truncate">zainab.ahmed@example.com</p>
+                  <p className="font-body-md text-body-md text-text-secondary truncate">{phone || 'No phone number'}</p>
+                  <p className="font-caption text-caption text-text-tertiary truncate">{email || 'No email'}</p>
                 </div>
               </div>
               <button

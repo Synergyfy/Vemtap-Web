@@ -69,14 +69,14 @@ export function GiftRecipientDetailsSheet({ open, onClose, onContinue }: GiftRec
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center space-x-1">
                 <span className="font-label-sm text-label-sm text-primary font-semibold truncate">
-                  Urban Grill &amp; Bistro
+                  Local dining partner
                 </span>
                 <Icon name="verified" className="text-primary text-[14px]" filled />
               </div>
-              <h4 className="font-heading-sm text-heading-sm text-text-primary truncate">Lunch Combo — 20% Off</h4>
+              <h4 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured local deal</h4>
               <div className="flex items-center text-text-tertiary font-caption text-caption mt-0.5 space-x-1">
                 <Icon name="schedule" className="text-[13px]" />
-                <span>Valid for 30 days • Instant Delivery</span>
+                <span>Valid for 30 days • Instant delivery</span>
               </div>
             </div>
           </div>

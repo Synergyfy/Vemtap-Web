@@ -7,7 +7,7 @@ import { maskPhone } from '../../utils/format';
 
 interface DesktopGiftSentScreenProps {
   onNav: (key: DesktopNavKey) => void;
-  recipient: GiftRecipientSummary;
+  recipient?: GiftRecipientSummary | null;
   onBack: () => void;
   onDone: () => void;
   onSendAnother: () => void;
@@ -25,8 +25,8 @@ export function DesktopGiftSentScreen({
   const [copied, setCopied] = useState(false);
   const timers = useRef<number[]>([]);
 
-  const recipientName = recipient?.name || 'Amara Okafor';
-  const recipientEmail = recipient?.email || 'amara@email.com';
+  const recipientName = recipient?.name || 'Recipient';
+  const recipientEmail = recipient?.email || 'No email provided';
   const recipientPhone = recipient?.phone || claim?.recipient?.phone;
   const reference = claim?.ref ?? '#VT-GIFT-83921';
 
@@ -96,10 +96,10 @@ export function DesktopGiftSentScreen({
                       <span className="font-caption text-caption text-text-tertiary">Gift Voucher</span>
                     </div>
                     <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
-                      Lunch Combo — 20% Off
+                      Featured local deal
                     </h2>
                     <p className="font-caption text-caption text-text-secondary truncate">
-                      Urban Grill &amp; Bistro • Apo, Abuja
+                      Local dining partner • Nearby
                     </p>
                   </div>
                 </div>

@@ -1,6 +1,6 @@
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
-import { maskPhone } from '../../../utils/format';
+import { maskPhone, parsePrice } from '../../../utils/format';
 
 export interface RecipientSummaryModalProps {
   open: boolean;
@@ -9,6 +9,15 @@ export interface RecipientSummaryModalProps {
   onEdit: () => void;
   /** Recipient details collected in the previous steps. */
   recipient?: { name: string; email: string; phone?: string } | null;
+  deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  } | null;
 }
 
 const VALIDITY: Array<{ label: string; value: string; note: string }> = [
@@ -31,10 +40,15 @@ function ContactTile({ icon, label, value }: { icon: string; label: string; valu
   );
 }
 
-export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipient }: RecipientSummaryModalProps) {
+export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipient, deal }: RecipientSummaryModalProps) {
   const recipientName = recipient?.name ?? 'Samuel Adeleke';
   const recipientEmail = recipient?.email ?? 'samuel.adeleke@example.com';
   const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
+  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+  const businessName = deal?.business?.trim() || 'This local partner';
+  const dealPrice = parsePrice(deal?.price);
+  const oldPrice = parsePrice(deal?.oldPrice) || dealPrice;
+  const dealImage = deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBRXg9PQzMVASST6uW5-xyjbVAWUt130eROKykVMAjqADiq69ANPpZstPrtMGjqBiPZ0GntBD-J6CQvBmWzW32gDHZnuNBONvAxv5D10rP0rAdlFP9VStnh2RQtZzWQBOAG70yWBr13IgD_BmDZxIk9okXh2Kw-qVcRT2OeNBK4Rm7DWdc8IX1ksyVs8YrMhA41T0q_Cjx1MOFW21rBfp80554HhJcy6l_OC6R4Okd0';
   const initials =
     recipientName
       .split(/\s+/)
@@ -106,25 +120,29 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipi
             <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-surface-container relative">
               <img
                 className="w-full h-full object-cover"
-                alt="Plated gourmet lunch dish at Urban Grill in Abuja with savory garnishes, grilled meats, and colorful seasonal sides"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRXg9PQzMVASST6uW5-xyjbVAWUt130eROKykVMAjqADiq69ANPpZstPrtMGjqBiPZ0GntBD-J6CQvBmWzW32gDHZnuNBONvAxv5D10rP0rAdlFP9VStnh2RQtZzWQBOAG70yWBr13IgD_BmDZxIk9okXh2Kw-qVcRT2OeNBK4Rm7DWdc8IX1ksyVs8YrMhA41T0q_Cjx1MOFW21rBfp80554HhJcy6l_OC6R4Okd0"
+                alt={dealTitle}
+                src={dealImage}
               />
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider truncate">
-                  Urban Grill &amp; Bistro
+                  {businessName}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shrink-0">
-                  20% OFF
+                  {deal?.discountLabel || (oldPrice > dealPrice ? '20% OFF' : 'Special rate')}
                 </span>
               </div>
               <h3 className="font-label-md text-label-md font-semibold text-on-surface truncate">
-                Prime 3-Course Lunch Combo &amp; Craft Beverage
+                {dealTitle}
               </h3>
               <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="font-heading-sm text-heading-sm text-primary font-bold">₦9,600</span>
-                <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>
+                <span className="font-heading-sm text-heading-sm text-primary font-bold">
+                  {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)}
+                </span>
+                <span className="font-caption text-caption text-text-tertiary line-through">
+                  {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(oldPrice)}
+                </span>
               </div>
             </div>
           </div>
@@ -132,9 +150,8 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipi
           <div className="p-3 rounded-xl bg-surface-container-high/60 flex items-start gap-2.5">
             <Icon name="info" className="text-[18px] shrink-0 mt-0.5 text-primary" />
             <p className="font-caption text-caption text-text-secondary leading-snug">
-              Claim voucher will be generated in <strong className="text-on-surface font-semibold">Samuel Adeleke's</strong>{' '}
-              name. Payment of <strong className="text-on-surface font-semibold">₦9,600</strong> is settled in-store upon
-              redemption.
+              Claim voucher will be generated in <strong className="text-on-surface font-semibold">{recipientName}&apos;s</strong>{' '}
+              name. Payment of <strong className="text-on-surface font-semibold">{new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)}</strong> is settled in-store upon redemption.
             </p>
           </div>
         </div>

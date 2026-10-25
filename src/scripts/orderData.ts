@@ -26,11 +26,11 @@ export const VOUCHER_RATE = 0.2;
 export const DELIVERY_FEE = 1000;
 export const SERVICE_FEE = 0;
 
-export const MERCHANT_NAME = 'Urban Grill & Bistro';
+export const MERCHANT_NAME = 'Local dining partner';
 export const MERCHANT_PHONE_DISPLAY = '+234 802 345 6789';
 export const MERCHANT_PHONE_TEL = '+2348023456789';
-export const MERCHANT_ADDRESS = 'Plot 104 Apo Boulevard, Garki, Abuja';
-export const MERCHANT_LOCATION_SUBLINE = 'Plot 104 Apo Boulevard, Ground Floor Food Court';
+export const MERCHANT_ADDRESS = 'Your local branch';
+export const MERCHANT_LOCATION_SUBLINE = 'Available at your nearby branch';
 
 export const MERCHANT_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCA8_kMmN6cnVSKGg_FDIm2SzH9HmOHSLTtjZyaZwJWLCj2BHLOAcN6uGA-S-zEwlWFysUhzXoYUu0jeKXAYCupeyY00C-kLrF2n8NObPQMutWhfbBLfZx4Vh8gmU4sEWUIc8SyHTYKkdEVFamZLfN-R8wHGIMBAbWGuSAAY76R6eT6pCMme_X7T3tIL6nUZHfOzG1R8AlYqxsCZ8oa2oSfmEulVSGSL0kw3gcv7AjkQKzyMF06cbCDKw';

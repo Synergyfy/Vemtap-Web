@@ -191,6 +191,10 @@ export function DesktopSpaStorefrontScreen({ onNav, onClaim }: DesktopSpaStorefr
 
   const visibleServices = SERVICES.filter((service) => category === 'all' || service.category === category);
 
+  if (!onNav) {
+    return null;
+  }
+
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="businesses">
       <div className="w-full bg-surface">

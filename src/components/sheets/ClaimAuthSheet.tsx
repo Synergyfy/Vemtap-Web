@@ -50,14 +50,14 @@ export function ClaimAuthSheet({ open, onClose, onAuthenticated }: ClaimAuthShee
           </div>
           <div className="flex flex-col min-w-0 flex-1">
             <div className="flex items-center gap-space-2xs">
-              <span className="font-label-sm text-label-sm text-text-secondary truncate">Urban Grill &amp; Bistro</span>
+              <span className="font-label-sm text-label-sm text-text-secondary truncate">Local dining partner</span>
               <Icon name="verified" className="text-primary text-[14px]" filled />
             </div>
-            <p className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">Lunch Combo Special</p>
+            <p className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">Featured local deal</p>
             <div className="flex items-baseline gap-space-xs mt-1">
-              <span className="font-button-primary text-button-primary text-text-primary font-bold">₦9,600</span>
+              <span className="font-button-primary text-button-primary text-text-primary font-bold">Special rate</span>
               <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold bg-badge-discount-bg px-space-2xs py-0.5 rounded">
-                Save ₦2,400
+                Limited offer
               </span>
             </div>
           </div>

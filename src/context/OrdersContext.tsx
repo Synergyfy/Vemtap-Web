@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { hasApiConfig } from '../lib/api';
+import { ordersService } from '../services/ordersService';
 import {
-  MERCHANT_IMAGE,
-  MERCHANT_NAME,
   estimateReadyBy,
   newOrderRef,
   type FulfillmentMode,
@@ -119,80 +119,91 @@ const writeOrders = (orders: SubmittedOrder[]) => {
   }
 };
 
-const seedOrders = (): SubmittedOrder[] => {
-  const now = Date.now();
-  const line = (id: string, name: string, price: number, qty: number): OrderLine => ({
-    id,
-    name,
-    price,
-    qty,
-    image: MERCHANT_IMAGE,
-  });
-  const build = (
-    ref: string,
-    minutesAgo: number,
-    status: OrderStatus,
-    customerName: string,
-    lines: OrderLine[],
-    source: SubmittedOrder['source'] = 'customer-app',
-    payment: { method: PaymentMethod; status: PaymentStatus; ref?: string } = {
-      method: 'pay-at-counter',
-      status: 'not-required',
-    },
-  ): SubmittedOrder => {
-    const subtotal = lines.reduce((sum, item) => sum + item.price * item.qty, 0);
-    return {
-      ref,
-      merchantId: 'urban',
-      merchantName: MERCHANT_NAME,
-      customerName,
-      lines,
-      subtotal,
-      savings: 0,
-      deliveryFee: 0,
-      total: subtotal,
-      fulfillment: 'pickup',
-      status,
-      submittedAt: now - minutesAgo * 60_000,
-      readyByLabel: estimateReadyBy(Math.max(5, 25 - minutesAgo)),
-      source,
-      paymentMethod: payment.method,
-      paymentStatus: payment.status,
-      paymentRef: payment.ref,
-    };
-  };
-
-  return [
-    build('VG-94021', 6, 'submitted', 'Amina Bello', [line('ribeye', 'Ribeye Steak Platter', 18500, 1)]),
-    build(
-      'POS-1049',
-      14,
-      'processing',
-      'Walk-In Guest',
-      [line('cold-brew', 'Cold Brew 1L & Pastry Box', 4500, 2)],
-      'pos-walk-in',
-      { method: 'card', status: 'verified', ref: 'TXN-7741902' },
-    ),
-    build('VG-93988', 38, 'ready-for-collection', 'Tunde Balogun', [line('lunch-combo', 'Prime 3-Course Lunch Combo', 9600, 1)]),
-  ];
-};
-
 const lineSignature = (lines: OrderLine[]): string =>
   lines
     .map((line) => `${line.id}:${line.qty}`)
     .sort()
     .join('|');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value?: string) => typeof value === 'string' && UUID_RE.test(value.trim());
+
+const buildCatalogueOrderPayload = (
+  input: SubmitOrderInput,
+  customer: { firstName: string; lastName: string; email: string; phone: string },
+): Record<string, unknown> => {
+  const firstName = customer.firstName.trim() || 'Customer';
+  const lastName = customer.lastName.trim();
+  const phone = (input.customerPhone ?? customer.phone ?? '').trim();
+  const branchId = input.merchantId?.trim() && isUuid(input.merchantId) ? input.merchantId.trim() : null;
+
+  if (!branchId) {
+    throw new Error('This merchant is missing a valid branchId. Connect the live branch metadata before submitting checkout.');
+  }
+
+  const items = input.lines.map((line, index) => {
+    const itemId = (line.productId ?? line.id ?? '').trim();
+    if (!isUuid(itemId)) {
+      throw new Error(
+        `Cart item "${line.name || `#${index + 1}`}" has a non-UUID catalogue id (${itemId || 'missing'}). The backend rejects these slug-style ids.`,
+      );
+    }
+
+    return {
+      itemId,
+      quantity: Math.max(1, Number(line.qty) || 1),
+    };
+  });
+
+  return {
+    branchId,
+    items,
+    notes: input.note?.trim() || undefined,
+    customer: {
+      firstName,
+      lastName,
+      phone: phone || undefined,
+      email: customer.email?.trim() || undefined,
+    },
+  };
+};
+
 const OrdersContext = createContext<OrdersContextValue | null>(null);
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
-  const [orders, setOrders] = useState<SubmittedOrder[]>(() => {
-    const stored = readOrders();
-    if (stored.length > 0) return stored;
-    const seeded = seedOrders();
-    writeOrders(seeded);
-    return seeded;
-  });
+  const [orders, setOrders] = useState<SubmittedOrder[]>(() => readOrders());
+
+  useEffect(() => {
+    if (!hasApiConfig()) {
+      setOrders([]);
+      return;
+    }
+
+    let ignore = false;
+
+    const hydrate = async () => {
+      try {
+        const remoteOrders = await ordersService.getMyOrders({ page: 1, limit: 20 });
+        console.log('orders api payload', remoteOrders);
+        if (!ignore) {
+          setOrders(Array.isArray(remoteOrders) ? remoteOrders : []);
+          writeOrders(Array.isArray(remoteOrders) ? remoteOrders : []);
+        }
+      } catch (error) {
+        console.error('orders api error', error);
+        if (!ignore) {
+          setOrders([]);
+          writeOrders([]);
+        }
+      }
+    };
+
+    void hydrate();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   useEffect(() => {
     writeOrders(orders);
@@ -202,6 +213,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     (input: SubmitOrderInput): SubmitOrderResult => {
       if (input.lines.length === 0) {
         return { ok: false, error: 'Your cart is empty. Add an item before submitting an order.' };
+      }
+
+      if (!hasApiConfig()) {
+        return { ok: false, error: 'API is not configured. Set VITE_API_BASE_URL before submitting orders.' };
       }
 
       // Duplicate-submission protection: an identical cart re-submitted within
@@ -221,6 +236,20 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ok: false,
           error: `This order was already submitted as #${duplicate.ref}. Show that reference to the cashier.`,
         };
+      }
+
+      let payload: Record<string, unknown>;
+      try {
+        const profile = {
+          firstName: input.customerName.split(' ')[0] ?? 'Customer',
+          lastName: input.customerName.split(' ').slice(1).join(' '),
+          email: '',
+          phone: input.customerPhone ?? '',
+        };
+        payload = buildCatalogueOrderPayload(input, profile);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'The live order API rejected this checkout payload.';
+        return { ok: false, error: message };
       }
 
       const ref = newOrderRef(orders.map((order) => order.ref));
@@ -251,8 +280,27 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         marketingConsent: input.marketingConsent === true,
       };
 
-      setOrders((current) => [order, ...current]);
-      return { ok: true, order };
+      const createdOrder = { ...order };
+      setOrders((current) => [createdOrder, ...current]);
+      writeOrders([createdOrder, ...orders]);
+
+      void ordersService.createOrder(payload)
+        .then((remoteOrder) => {
+          if (!remoteOrder) return;
+          setOrders((current) => {
+            const next = current.some((existing) => existing.ref === remoteOrder.ref)
+              ? current
+              : [remoteOrder, ...current];
+            writeOrders(next);
+            return next;
+          });
+        })
+        .catch(() => {
+          setOrders((current) => current.filter((existing) => existing.ref !== createdOrder.ref));
+          writeOrders(orders.filter((existing) => existing.ref !== createdOrder.ref));
+        });
+
+      return { ok: true, order: createdOrder };
     },
     [orders],
   );
@@ -292,6 +340,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
       return found ? next : current;
     });
+
+    if (hasApiConfig()) {
+      void ordersService.updateStatus(ref, { status: String(status) }).catch(() => undefined);
+    }
+
     return found;
   }, []);
 
@@ -310,6 +363,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
       return found ? next : current;
     });
+
+    if (hasApiConfig()) {
+      void ordersService.updateStatus(ref, { status: 'paid' }).catch(() => undefined);
+    }
+
     return found;
   }, []);
 

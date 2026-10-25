@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { parsePrice } from '../utils/format';
 
 interface DealDetailScreenProps {
   onBack: () => void;
@@ -14,6 +15,7 @@ interface DealDetailScreenProps {
   onMerchant: () => void;
   claimed: boolean;
   onViewWallet: () => void;
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string; commentCount?: number | string; commentsCount?: number | string } | null;
 }
 
 const HERO_IMAGE =
@@ -72,10 +74,16 @@ export function DealDetailScreen({
   onMerchant,
   claimed,
   onViewWallet,
+  deal,
 }: DealDetailScreenProps) {
   const [expanded, setExpanded] = useState(false);
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
+  const dealTitle = deal?.title?.trim() || 'Featured local deal';
+  const dealBusiness = deal?.business?.trim() || 'Local dining partner';
+  const dealLocation = deal?.location?.trim() || 'Your area';
+  const dealImage = deal?.image || HERO_IMAGE;
+  const commentsCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
 
   return (
     <AppScreen>
@@ -109,7 +117,7 @@ export function DealDetailScreen({
       />
 
       <div className="relative w-full h-80 bg-surface-container-low overflow-hidden shrink-0">
-        <img className="w-full h-full object-cover" alt={HERO_ALT} src={HERO_IMAGE} />
+        <img className="w-full h-full object-cover" alt={HERO_ALT} src={dealImage} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
         <div className="absolute bottom-4 left-margin right-margin flex items-center justify-between">
           <div className="flex items-center gap-space-xs">
@@ -136,7 +144,7 @@ export function DealDetailScreen({
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-1">
-                <span className="font-label-md text-label-md font-bold text-text-primary">Urban Grill &amp; Bistro</span>
+                <span className="font-label-md text-label-md font-bold text-text-primary">{dealBusiness}</span>
                 <Icon name="verified" className="text-primary-container text-[18px]" filled />
               </div>
               <p className="font-caption text-caption text-text-secondary flex items-center gap-1">
@@ -144,10 +152,10 @@ export function DealDetailScreen({
                 <span>•</span>
                 <span className="flex items-center">
                   <Icon name="near_me" className="text-[12px] text-primary" />
-                  0.8 km away
+                  Nearby
                 </span>
                 <span>•</span>
-                <span>Apo, Abuja</span>
+                <span>{dealLocation}</span>
               </p>
             </div>
           </div>
@@ -181,12 +189,20 @@ export function DealDetailScreen({
         )}
 
         <div className="mt-space-md">
-          <h2 className="font-heading-lg text-heading-lg text-text-primary">Lunch Combo — 20% Off</h2>
+          <h2 className="font-heading-lg text-heading-lg text-text-primary">{dealTitle}</h2>
           <div className="flex items-baseline gap-space-sm mt-space-xs">
-            <span className="font-display-hero-mobile text-display-hero-mobile text-text-primary font-bold">₦9,600</span>
-            <span className="font-body-md text-body-md text-text-tertiary line-through">₦12,000</span>
+            <span className="font-display-hero-mobile text-display-hero-mobile text-text-primary font-bold">
+              {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
+                parsePrice(deal?.price),
+              )}
+            </span>
+            <span className="font-body-md text-body-md text-text-tertiary line-through">
+              {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
+                parsePrice(deal?.oldPrice) || parsePrice(deal?.price),
+              )}
+            </span>
             <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
-              Save ₦2,400
+              {deal?.discountLabel || (parsePrice(deal?.oldPrice) > parsePrice(deal?.price) ? `Save ${new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Math.max(parsePrice(deal?.oldPrice) - parsePrice(deal?.price), 0))}` : 'Save on this deal')}
             </span>
           </div>
         </div>
@@ -294,7 +310,7 @@ export function DealDetailScreen({
             className="flex items-center gap-1.5 py-1.5 px-3 rounded-full hover:bg-surface-subtle active:scale-95 transition-all"
           >
             <Icon name="chat_bubble" className="text-[18px] text-text-secondary" />
-            <span className="font-label-md text-label-md font-semibold text-text-secondary">32</span>
+            <span className="font-label-md text-label-md font-semibold text-text-secondary">{commentsCount}</span>
           </button>
           <div className="w-px h-5 bg-surface-container" />
           <button

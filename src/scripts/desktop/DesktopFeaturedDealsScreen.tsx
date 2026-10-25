@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
 import { useLocation } from '../../context/LocationContext';
+import { hasApiConfig } from '../../services/api/client';
+import { catalogueService } from '../../services/catalogueService';
 
 interface DesktopFeaturedDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -27,118 +29,92 @@ interface FeaturedDeal {
   save: string;
 }
 
-const FEATURED_DEALS: FeaturedDeal[] = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDxtyJ8lPE2Mv8GCMaYUwkPs1iA9nOGDgt6JL2RjVgUg2sVRpfLxt7ol_e1hGEkKHZTf08tSXRznNtVEVFMK3JNn3oqH1kZRveAOUg7kmMqU-P0wMyPLQ9KvG2UZGGNHKwVmhaBIEXbM14h9-CRxbmRnyWFzogg-8u4iLo1oENMfHUYYIQLeb-ZVskSPf_qtcp6yTRAdCaMzKB7ai7YStSiCY_DoSH3eKLZCchk3ECz',
-    imageAlt:
-      'Close up gourmet chargrilled beef burger with smoked bacon and crisp fries served on artisanal wood slate at a trendy sunlit urban bistro in Abuja with natural lighting and soft warm depth.',
-    discount: '20% OFF',
+const formatCurrency = (value: number | string | undefined): string => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '₦0';
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(parsed);
+};
+
+const getOfferImage = (offer: Record<string, unknown>): string => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+  return typeof image === 'string' && image.trim() ? image : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+};
+
+const getOfferBusinessName = (offer: Record<string, unknown>): string => {
+  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Nearby business';
+  return typeof value === 'string' && value.trim() ? value : 'Nearby business';
+};
+
+const getOfferTitle = (offer: Record<string, unknown>): string => {
+  const value = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
+  return typeof value === 'string' && value.trim() ? value : 'Local offer';
+};
+
+const getOfferDescription = (offer: Record<string, unknown>): string => {
+  const value = offer.description ?? offer.summary ?? offer.copy ?? 'Fresh local offer from nearby vendors.';
+  return typeof value === 'string' && value.trim() ? value : 'Fresh local offer from nearby vendors.';
+};
+
+const getOfferPrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.calculatedPrice, offer.dealPrice, offer.price, offer.fixedPrice, offer.amount, offer.salePrice, item?.price, item?.dealPrice, item?.calculatedPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return 0;
+};
+
+const getOfferComparePrice = (offer: Record<string, unknown>): number => {
+  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
+    ? (offer.items[0] as Record<string, unknown>)
+    : null;
+  const values = [offer.compareAtPrice, offer.originalPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, item?.compareAtPrice, item?.originalPrice, item?.listPrice];
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
+  }
+  return getOfferPrice(offer);
+};
+
+const toFeaturedDeal = (offer: Record<string, unknown>): FeaturedDeal => {
+  const title = getOfferTitle(offer);
+  const price = getOfferPrice(offer);
+  const comparePrice = getOfferComparePrice(offer);
+  const business = getOfferBusinessName(offer);
+  const discountValue = Math.max(comparePrice - price, 0);
+
+  return {
+    image: getOfferImage(offer),
+    imageAlt: `${title} by ${business}`,
+    discount: price > 0 ? 'Live Deal' : 'Offer',
     extra: {
-      label: 'Fast Claim',
-      className: 'bg-surface-container-lowest/90 backdrop-blur-md text-on-surface font-medium',
-      icon: 'bolt',
-    },
-    window: { icon: 'alarm', label: 'Expires in 4h' },
-    distance: '0.4km away',
-    store: 'Urban Grill & Bistro',
-    rating: '4.9',
-    reviews: '(184)',
-    title: '20% Off Prime Lunch Combo & Craft Beverage',
-    copy: 'Signature dry-aged prime beef burger or grilled chicken plate, accompanied by loaded fries and freshly brewed iced hibiscus tea.',
-    price: '₦9,600',
-    oldPrice: '₦12,000',
-    save: 'Save ₦2,400 today',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDtMNCcnGyMs_1bkUknKVikVVpRcby0k0s0ZBvtEQsc_4R-9ZUFAqeLx6ur0IFEwIJz4ts6h_tKstJxdxPR07Gzm1AOXGssJGfefuJboHcfqhHF2K0t1gPspl0Niqt-HyxSABXqQByUqz1wpO3DeCj7JU45dxFNn8al3yKVMjruVrAWeYkItP-5IEi74QYBhYioZlV3Yf4pL_GszLhDZQesJb1ZPkV7RNLiChrJp4jI',
-    imageAlt:
-      'High-end designer streetwear sneakers displayed on polished concrete pedestal in a minimalist modern boutique studio with sleek architectural lighting and luxury urban apparel racks.',
-    discount: '30% OFF',
-    extra: {
-      label: 'Limited 15 Left',
+      label: 'Live',
       className: 'bg-error-container text-on-error-container font-semibold',
       icon: 'local_fire_department',
     },
-    window: { icon: 'schedule', label: 'Valid through Sunday' },
-    distance: '1.2km away',
-    store: 'Sole District Boutique',
-    rating: '4.8',
-    reviews: '(96)',
-    title: '30% Off Weekend Sneaker Drop & Streetwear Pass',
-    copy: 'Redeemable across the new seasonal sneaker rack and luxury graphic hoodies. Includes on-the-spot custom lace swap.',
-    price: '₦28,000',
-    oldPrice: '₦40,000',
-    save: 'Save ₦12,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuABQdyVUWGnWP1TZLAK7j5LrpDjViCjK6RTmCevn-vXhmIBhcYQgrK16SLap69ZXLgT566Cb0u7rFjsEUThlgHZ3Y4x23T9dkkjVNnZU0CpHAUaxJZDIJv6PG1EvAg0Yh9565R5XoofBzRn_yuWQJ7AqYvMfbqyQwDUFcbGqVlObW0-YjJJ_x21IjpyYQ2TRsm1DNrBR_ey7KD-XsnEmKZuwGMaUnDQzMLL7N_9dhGM',
-    imageAlt:
-      'Serene wellness luxury spa interior in Abuja with cedar sauna, warm ambient bamboo lighting, aromatic essential oil diffusers, and plush folded organic towels in tranquil calm atmosphere.',
-    discount: '25% OFF',
-    extra: {
-      label: 'Popular Choice',
-      className: 'bg-secondary-fixed text-on-secondary-fixed font-semibold',
-      icon: 'spa',
-    },
-    window: { icon: 'event_available', label: 'Weekend Only' },
-    distance: '1.4km away',
-    store: 'Glow & Serenity Spa',
-    rating: '5.0',
-    reviews: '(210)',
-    title: '25% Off Weekend Glow Facial & Sauna Therapy Pass',
-    copy: 'Full 60-minute botanical hydration facial, combined with 30-minute cedar infrared sauna session and herbal detox tonic.',
-    price: '₦18,500',
-    oldPrice: '₦25,000',
-    save: 'Save ₦6,500',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDYVvk_zUvlBpNPsSW39ZIu40l3KCpc7EkGCApbQlu2NxqrDow8fjuw5UaGRcuY6Ht6Q4ti_E9Rw3LJxvbwLWPwqOmunZpeTLfHDDuPE3xYquh9CZ2b-hSiZy1_PRl34uOhK2IIN8Ef2wh5yzZ3WgdzuI-4uBOAqdplX5i6pNmhvRZgllOFTydKVhYUmfYde4-4MAn0JFH_uBfZu4LaaHtNzn_KY-V_SzDp2VGlKxO-',
-    imageAlt:
-      'Rooftop fine dining table overlooking Abuja city skyline at golden dusk hour with elegantly arranged five-course gourmet dishes and sparkling wine glasses in warm romantic ambiance.',
-    discount: '50% OFF',
-    extra: {
-      label: 'Ends Tonight',
-      className: 'bg-tertiary-fixed text-on-tertiary-fixed font-semibold',
-      icon: 'nightlife',
-    },
-    window: { icon: 'dinner_dining', label: 'Table for Two' },
-    distance: '2.1km away',
-    store: 'The Sky Lounge & Grill',
+    window: { icon: 'schedule', label: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby' },
+    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    store: business,
     rating: '4.9',
-    reviews: '(340)',
-    title: "50% Off Chef's 5-Course Sunset Tasting Menu for Two",
-    copy: 'Pan-seared jumbo tiger prawns, slow-braised short ribs, truffle mash, and handcrafted molten chocolate fondant with panoramic city views.',
-    price: '₦24,500',
-    oldPrice: '₦49,000',
-    save: 'Save ₦24,500 today',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuChhxTwztwhe6liej7iAYom5i582P6VAb9QUvMdZMAnlFxm8zl_pRWi_2hkQOCSDtAXsUNrwePtqnBhKQxS5PcM7u00e0AYSaJhtROdpygIJS0lOrV4ul7hposwFe67V5S4OH_WNIMot9APFtc67-FPmnZ4BUC46rmwWs56hyeZhRatjINPSqU-w-19_1bFRsRvlTZNKnUvoQRQAQZ6r4t7dxzE2Zud9c8dx3bt56NL',
-    imageAlt:
-      'Freshly baked golden sourdough loaves and flaky butter croissants on a rustic marble counter with hot cappuccino poured with intricate latte art in an upscale Abuja European style cafe.',
-    discount: '30% OFF',
-    extra: {
-      label: 'Breakfast Only',
-      className: 'bg-surface-container-lowest/90 backdrop-blur-md text-on-surface font-semibold',
-      icon: 'bakery_dining',
-    },
-    window: { icon: 'wb_sunny', label: '7:00 AM - 12:00 PM' },
-    distance: '2.8km away',
-    store: 'Artisan Bakery & Cafe',
-    rating: '4.7',
-    reviews: '(142)',
-    title: '30% Off Artisanal Sourdough & Specialty Breakfast Combo',
-    copy: 'Warm sourdough toast topped with poached eggs, smashed avocado, paired with single-origin pour-over coffee or flat white.',
-    price: '₦4,500',
-    oldPrice: '₦6,500',
-    save: 'Save ₦2,000',
-  },
-];
+    reviews: '(live)',
+    title,
+    copy: getOfferDescription(offer),
+    price: formatCurrency(price),
+    oldPrice: comparePrice > price ? formatCurrency(comparePrice) : '',
+    save: price > 0 ? `Save ${formatCurrency(discountValue)}` : 'Limited-time',
+  };
+};
 
 const SORT_OPTIONS = [
   { key: 'closest', label: 'Closest to You', icon: 'near_me' },
@@ -152,6 +128,32 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
   const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+    const loadOffers = async () => {
+      if (!hasApiConfig()) {
+        if (!ignore) setPublicOffers([]);
+        return;
+      }
+
+      try {
+        const response = await catalogueService.getPublicOffers({ page: 1, limit: 5 });
+        const rows = Array.isArray(response?.data) ? response.data : [];
+        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+      } catch {
+        if (!ignore) setPublicOffers([]);
+      }
+    };
+
+    loadOffers();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const featuredDeals = useMemo(() => publicOffers.slice(0, 5).map(toFeaturedDeal), [publicOffers]);
 
   const toggleSave = (store: string) => {
     setSaved((prev) => ({ ...prev, [store]: !prev[store] }));
@@ -273,9 +275,13 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
               view === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'
             }`}
           >
-            {FEATURED_DEALS.map((deal) => (
+            {featuredDeals.length === 0 ? (
+              <article className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
+                Live featured deals will appear here once the public offers feed is available.
+              </article>
+            ) : featuredDeals.map((deal) => (
               <article
-                key={deal.store}
+                key={deal.title}
                 role="button"
                 tabIndex={0}
                 onClick={onOpenDeal}

@@ -1,4 +1,23 @@
+
 # Vite cache
+node_modules/.vite/
+
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Documentation to ignore
+api-integration.md
+
+# Log files
 *.log
+
+# TypeScript output logs
 tsc-*.txt

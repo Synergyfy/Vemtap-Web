@@ -9,7 +9,9 @@ import { useReferralStep } from '../hooks/useReferralStep';
 
 interface ProfileSetupScreenProps {
   onBack: () => void;
-  onComplete: () => void;
+  onComplete: (details: { firstName: string; lastName: string; phone: string; pin: string }) => Promise<void> | void;
+  email?: string;
+  code?: string;
   /** "Set up your business on VEMTAP" shortcut (desktop parity). */
   onBusinessSetup?: () => void;
 }
@@ -85,6 +87,7 @@ export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: Prof
   const [confirmFocused, setConfirmFocused] = useState(false);
   const [pinRevealed, setPinRevealed] = useState(false);
   const [status, setStatus] = useState<Status>('idle');
+  const [error, setError] = useState<string | null>(null);
   const referral = useReferralStep();
 
   const ownIdentity = useReferralIdentity();
@@ -105,19 +108,26 @@ export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: Prof
     phone.replace(/\D/g, '').length >= 7 &&
     pinsMatch;
 
-  const finishSetup = () => {
+  const finishSetup = async () => {
+    if (!isValid || status !== 'idle') return;
     setStatus('saving');
-    window.setTimeout(onComplete, 900);
+    setError(null);
+    try {
+      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
+    } catch (completeError) {
+      setError(completeError instanceof Error ? completeError.message : 'We could not finish your profile setup. Please try again.');
+      setStatus('idle');
+    }
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (!isValid || status !== 'idle') return;
     // The referral code is checked on submit, not while it is being typed.
     if (referral.needsConfirmation) {
       referral.requestConfirmation();
       return;
     }
-    finishSetup();
+    await finishSetup();
   };
 
   return (
@@ -152,6 +162,11 @@ export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: Prof
         </div>
 
         <div className="flex flex-col px-margin gap-space-lg pb-space-3xl">
+          {error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
+              {error}
+            </div>
+          ) : null}
           <div className="flex flex-col gap-space-md">
             <div className="flex items-center gap-2">
               <span className="w-7 h-7 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary">

@@ -5,7 +5,7 @@ import { ScreenHeader } from '../components/ui/ScreenHeader';
 
 interface SignInScreenProps {
   onBack: () => void;
-  onSignIn: () => void;
+  onSignIn: (credentials: { identifier: string; password: string }) => Promise<void> | void;
   onGoogleSignIn: () => void;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
@@ -14,6 +14,15 @@ interface SignInScreenProps {
 }
 
 type Status = 'idle' | 'submitting';
+
+const getAuthErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return 'We could not sign you in. Please check your email or password and try again.';
+};
 
 function GoogleIcon() {
   return (
@@ -64,6 +73,7 @@ export function SignInScreen({
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>('idle');
   const [googleStatus, setGoogleStatus] = useState<Status>('idle');
+  const [error, setError] = useState<string | null>(null);
 
   const busy = status !== 'idle' || googleStatus !== 'idle';
 
@@ -81,8 +91,19 @@ export function SignInScreen({
       credential?.focus();
       return;
     }
+    const nextIdentifier = identifier.value.trim();
+    const nextPassword = credential.value;
+    setError(null);
     setStatus('submitting');
-    window.setTimeout(onSignIn, 900);
+    window.setTimeout(() => {
+      Promise.resolve(onSignIn({ identifier: nextIdentifier, password: nextPassword }))
+        .catch((signInError) => {
+          setError(getAuthErrorMessage(signInError));
+        })
+        .finally(() => {
+          setStatus('idle');
+        });
+    }, 900);
   };
 
   const handleGoogle = () => {
@@ -175,6 +196,11 @@ export function SignInScreen({
           </div>
 
           <form className="flex flex-col gap-space-md" onSubmit={handleSubmit}>
+            {error ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
+                {error}
+              </div>
+            ) : null}
             <div className="flex flex-col gap-space-2xs">
               <label className="font-label-md text-label-md text-text-primary" htmlFor="identifier">
                 Email or Phone Number
@@ -197,10 +223,10 @@ export function SignInScreen({
             <div className="flex flex-col gap-space-2xs">
               <div className="flex items-center justify-between">
                 <label className="font-label-md text-label-md text-text-primary" htmlFor="security-credential">
-                  PIN
+                  PIN or Password
                 </label>
                 <a className="font-label-sm text-label-sm text-primary hover:underline" href="#forgot-password">
-                  Forgot PIN?
+                  Forgot?
                 </a>
               </div>
               <div className="relative flex items-center">
@@ -217,7 +243,7 @@ export function SignInScreen({
                   autoComplete="current-password"
                 />
                 <button
-                  aria-label={showPassword ? 'Hide PIN' : 'Show PIN'}
+                  aria-label={showPassword ? 'Hide PIN or password' : 'Show PIN or password'}
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-0 top-0 bottom-0 px-space-md flex items-center justify-center text-outline hover:text-text-primary transition-colors"

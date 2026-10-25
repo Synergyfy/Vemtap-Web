@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../ui/Icon';
+import { parsePrice } from '../../../utils/format';
 import { DesktopModal } from '../DesktopModal';
 
 export interface GiftRecipientValues {
@@ -15,6 +16,15 @@ export interface GiftRecipientDetailsModalProps {
   onClose: () => void;
   /** Receives the collected recipient details so the review step and gift record can use them. */
   onContinue: (values: GiftRecipientValues) => void;
+  deal?: {
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+    oldPrice?: number | string;
+    discountLabel?: string;
+    image?: string;
+  } | null;
 }
 
 type Channel = 'whatsapp' | 'email' | 'sms';
@@ -40,11 +50,18 @@ const CHANNEL_FIELDS: Record<Channel, { label: string; placeholder: string; type
 
 const DEFAULT_MESSAGE = 'Enjoy this lunch on me! Hope you love the woodfire steaks at Urban Grill.';
 
-export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRecipientDetailsModalProps) {
+export function GiftRecipientDetailsModal({ open, onClose, onContinue, deal }: GiftRecipientDetailsModalProps) {
   const [channel, setChannel] = useState<Channel>('whatsapp');
   const [theme, setTheme] = useState<Theme>('celebration');
   const [scheduled, setScheduled] = useState(false);
-  const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+  const businessName = deal?.business?.trim() || 'This local partner';
+  const dealPrice = parsePrice(deal?.price);
+  const dealImage = deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuAJMHIARfSRdfmLjooNWrnoGUTZ6S-X-jLmnOg-Yq6LUQXHL9VZRrdMdsIwVV1MnZI6KXGPg-o_JVXHQ7ziQ4WiIfdhJKMjAx7uNK6Phr3p715JBX-rFxFy3vIdKME6C500V8Os_OUkDa7-WBQLg3Ok_5u6aoU4oP18dg7KvlFXL9pU5SNXArhRWWK1tHPerh7nf9YFsjUtdq-ZTWRoIxfOy8KB7FO-t0Ztojlpy6On';
+  const defaultMessage = deal?.title
+    ? `Enjoy this ${dealTitle.toLowerCase()} on me! Hope you love it at ${businessName}.`
+    : DEFAULT_MESSAGE;
+  const [message, setMessage] = useState(defaultMessage);
   const [fullName, setFullName] = useState('Samuel Adeleke');
   const [email, setEmail] = useState('samuel.adeleke@example.com');
   const [phone, setPhone] = useState('0802 345 6789');
@@ -93,8 +110,7 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRec
             <span className="inline-block transform hover:rotate-12 transition-transform">🎁</span>
           </h2>
           <p className="font-body-md text-body-md text-text-secondary">
-            Send a voucher pass for <span className="font-medium text-on-surface">Prime 3-Course Lunch Combo</span> at
-            Urban Grill &amp; Bistro.
+            Send a voucher pass for <span className="font-medium text-on-surface">{dealTitle}</span> at {businessName}.
           </p>
         </div>
       </div>
@@ -103,8 +119,8 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRec
         <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-container">
           <img
             className="w-full h-full object-cover"
-            alt="Plated gourmet grilled steak with roasted rosemary vegetables and artisanal garnish on a rustic slate plate inside Urban Grill restaurant, warm Nigerian hospitality ambiance, soft warm overhead bistro lighting."
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJMHIARfSRdfmLjooNWrnoGUTZ6S-X-jLmnOg-Yq6LUQXHL9VZRrdMdsIwVV1MnZI6KXGPg-o_JVXHQ7ziQ4WiIfdhJKMjAx7uNK6Phr3p715JBX-rFxFy3vIdKME6C500V8Os_OUkDa7-WBQLg3Ok_5u6aoU4oP18dg7KvlFXL9pU5SNXArhRWWK1tHPerh7nf9YFsjUtdq-ZTWRoIxfOy8KB7FO-t0Ztojlpy6On"
+            alt={dealTitle}
+            src={dealImage}
           />
           <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
             20%
@@ -113,13 +129,15 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue }: GiftRec
         <div className="flex flex-col flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <span className="font-label-sm text-label-sm font-semibold text-on-surface truncate">
-              Urban Grill &amp; Bistro
+              {businessName}
             </span>
-            <span className="font-label-md text-label-md font-bold text-primary">₦9,600</span>
+            <span className="font-label-md text-label-md font-bold text-primary">
+              {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)}
+            </span>
           </div>
           <p className="font-caption text-caption text-badge-discount-text font-medium flex items-center gap-1 mt-0.5">
             <Icon name="format_image_left" className="text-[14px]" />
-            No payment charged now — recipient pays ₦9,600 at the counter upon visit.
+            No payment charged now — recipient pays {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)} at the counter upon visit.
           </p>
         </div>
       </div>
