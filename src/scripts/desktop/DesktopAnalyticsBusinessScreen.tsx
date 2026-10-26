@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { AnalyticsShell } from './AnalyticsShell';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printReport, printKvTable } from '../../utils/printReport';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { OverviewAnalytics } from '../../services/businessAnalyticsService';
+import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
+import { DAY_LONG, change, hourLabel, share, useAnalyticsFilter } from '../analyticsLive';
 
 interface DesktopAnalyticsBusinessScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -80,6 +85,55 @@ const KPIS_BY_DOMAIN: Record<
 };
 
 const PERIOD_SCALE: Record<PeriodKey, number> = { Today: 0.033, '7D': 0.233, 'Last 30 Days': 1 };
+const PERIOD_DAYS: Record<PeriodKey, number> = { Today: 1, '7D': 7, 'Last 30 Days': 30 };
+const CHANNEL_DOTS = ['bg-primary', 'bg-tertiary-container', 'bg-secondary'];
+/** Neutral tile for items without a photo. */
+const NO_IMAGE =
+  'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Cpath d="M11 27l6-7 4 5 3-3 5 5z" fill="%23938f99"/%3E%3Ccircle cx="25" cy="15" r="3" fill="%23938f99"/%3E%3C/svg%3E';
+
+const signed = (comparison?: { current: number; previous: number }) => {
+  const value = change(comparison);
+  return value == null ? '—' : `${value >= 0 ? '+' : '-'}${Math.abs(value).toFixed(1)}%`;
+};
+
+/** Live: the period in up to four buckets of revenue, current vs previous. */
+const liveWeeks = (overview: OverviewAnalytics | undefined, days: number) => {
+  let buckets: { label: string; dates: string; amount: number; previous: number }[];
+  if (days <= 1) {
+    buckets = [0, 1, 2, 3].map((index) => {
+      const hours = (overview?.hourly ?? []).filter((row) => Math.floor(row.hour / 6) === index);
+      return {
+        label: hourLabel(index * 6),
+        dates: `${hourLabel(index * 6)} – ${hourLabel((index * 6 + 6) % 24)}`,
+        amount: hours.reduce((sum, row) => sum + row.revenue, 0),
+        previous: 0,
+      };
+    });
+  } else {
+    const series = overview?.series ?? [];
+    const size = Math.max(1, Math.ceil(series.length / 4));
+    const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+    buckets = [0, 1, 2, 3]
+      .map((index) => series.slice(index * size, (index + 1) * size))
+      .filter((chunk) => chunk.length)
+      .map((chunk, index) => ({
+        label: days <= 7 ? new Date(`${chunk[0].date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }) : `Week ${index + 1}`,
+        dates: chunk.length > 1 ? `${day(chunk[0].date)} – ${day(chunk[chunk.length - 1].date)}` : day(chunk[0].date),
+        amount: chunk.reduce((sum, row) => sum + row.revenue, 0),
+        previous: chunk.reduce((sum, row) => sum + row.previousRevenue, 0),
+      }));
+  }
+  const max = Math.max(1, ...buckets.flatMap((bucket) => [bucket.amount, bucket.previous]));
+  const peak = buckets.reduce((best, bucket, index) => (bucket.amount > buckets[best].amount ? index : best), 0);
+  return buckets.map((bucket, index) => ({
+    label: bucket.label,
+    dates: bucket.dates,
+    amount: naira(bucket.amount),
+    peak: bucket.amount > 0 && index === peak,
+    targetHeight: `${Math.round((bucket.previous / max) * 100)}%`,
+    actualHeight: `${Math.round((bucket.amount / max) * 100)}%`,
+  }));
+};
 
 const buildKpis = (domain: string, period: PeriodKey): AnalyticsKpi[] =>
   (KPIS_BY_DOMAIN[domain] ?? KPIS_BY_DOMAIN.performance).map((kpi) => ({
@@ -271,15 +325,151 @@ export function DesktopAnalyticsBusinessScreen({ onNav }: DesktopAnalyticsBusine
   const [toast, setToast] = useState<string | null>(null);
 
   const activeDomain = DOMAIN_TABS.find((tab) => tab.key === domain) ?? DOMAIN_TABS[0];
-  const kpis = buildKpis(domain, dateRange);
-  const weeks = buildWeeks(domain, dateRange);
-  const channels = buildChannels(domain, dateRange);
-  const grossTotal = channels.reduce((sum, channel) => sum + Number(channel.amount.replace(/[^0-9]/g, '')), 0);
-
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 3000);
   };
+
+  const live = hasApiConfig();
+  const filter = useAnalyticsFilter();
+  const days = PERIOD_DAYS[dateRange];
+  const branchId = filter.branchId ?? undefined;
+  const overviewQuery = useBusinessAnalytics('overview', days, branchId);
+  const overview = overviewQuery.data;
+  const customers = useBusinessAnalytics('customers', days, branchId).data;
+  const deals = useBusinessAnalytics('deals', days, branchId).data;
+  const pos = useBusinessAnalytics('pos', days, branchId).data;
+  const locations = useBusinessAnalytics('locations', days, branchId).data;
+
+  useEffect(() => {
+    if (live && overviewQuery.error) showToast(apiErrorMessage(overviewQuery.error, 'Could not load your analytics.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overviewQuery.error]);
+
+  const kpi = (
+    label: string,
+    icon: string,
+    value: string,
+    comparison: { current: number; previous: number } | undefined,
+    note: string,
+    progress?: number,
+  ): AnalyticsKpi => ({
+    label,
+    icon,
+    value,
+    change: comparison ? signed(comparison) : '—',
+    changeUp: (change(comparison) ?? 0) >= 0,
+    note,
+    progress,
+  });
+  const rate = (fraction?: number) => Math.round((fraction ?? 0) * 100);
+  const topBranch = [...(locations?.branches ?? [])].sort((a, b) => b.revenue.current - a.revenue.current)[0];
+  const liveKpis: Record<string, AnalyticsKpi[]> = {
+    performance: [
+      kpi('Gross Sales Volume', 'payments', naira(overview?.revenue.current ?? 0), overview?.revenue, 'vs previous period'),
+      kpi('Orders Processed', 'receipt_long', count(overview?.orders.current ?? 0), overview?.orders, 'vs previous period'),
+      kpi('Average Ticket Value', 'shopping_bag', naira(overview?.averageOrderValue.current ?? 0), overview?.averageOrderValue, 'per order'),
+      kpi('Patron Retention Rate', 'loyalty', `${rate(overview?.customers.repeatRate)}%`, undefined, 'repeat customers', rate(overview?.customers.repeatRate)),
+    ],
+    patrons: [
+      kpi('Active Patrons', 'group', count(customers?.active.current ?? 0), customers?.active, 'visited this period'),
+      kpi('New Signups', 'person_add', count(customers?.new.current ?? 0), customers?.new, 'first visit this period'),
+      kpi('Repeat Rate', 'loyalty', `${rate(customers?.repeatRate.current)}%`, customers?.repeatRate, 'came back', rate(customers?.repeatRate.current)),
+      kpi('Avg Visit Frequency', 'autorenew', `${(customers?.visitsPerActiveCustomer ?? 0).toFixed(1)}x`, undefined, 'per active patron'),
+    ],
+    deals: [
+      kpi('Deal Revenue Attributed', 'local_offer', naira(deals?.totals.revenue ?? 0), undefined, 'from redeemed deals'),
+      kpi('Vouchers Redeemed', 'redeem', count(deals?.totals.redeemed ?? 0), undefined, `${count(deals?.totals.claims.current ?? 0)} claimed`),
+      kpi('Claim Rate', 'campaign', `${rate(deals?.totals.claimRate)}%`, deals?.totals.claims, 'of deal views', rate(deals?.totals.claimRate)),
+      kpi('Live Deals', 'percent', count(deals?.totals.live ?? 0), undefined, `${count(deals?.totals.ended ?? 0)} ended`),
+    ],
+    locations: [
+      kpi('Total Visits', 'pin_drop', count(locations?.totals.visits ?? 0), undefined, 'check-ins across branches'),
+      kpi('Orders', 'explore', count(locations?.totals.orders ?? 0), undefined, 'across branches'),
+      kpi('Top Outlet Revenue', 'storefront', naira(topBranch?.revenue.current ?? 0), topBranch?.revenue, topBranch?.name ?? '—'),
+      kpi('Branches', 'map', count(locations?.totals.branches ?? 0), undefined, `${count(locations?.totals.dealViews ?? 0)} deal views`),
+    ],
+    pos: [
+      kpi('Terminal Gross Intake', 'point_of_sale', naira(pos?.sales.current ?? 0), pos?.sales, 'POS sales'),
+      kpi('Tickets', 'receipt_long', count(pos?.tickets.current ?? 0), pos?.tickets, `${(pos?.itemsPerTicket ?? 0).toFixed(1)} items per ticket`),
+      kpi('Average Ticket', 'cloud_sync', naira(pos?.averageTicket.current ?? 0), pos?.averageTicket, 'per sale'),
+      kpi('Refund Rate', 'schedule', `${rate(pos?.refunds.rate)}%`, undefined, `${count(pos?.refunds.count ?? 0)} refunds`, rate(pos?.refunds.rate)),
+    ],
+  };
+
+  type ChannelRow = { dot: string; name: string; amount: string; share: string; sharePct: number; orders: string; raw: number };
+  const channelRows = (rows: { name: string; amount: number; meta: string }[]): ChannelRow[] => {
+    const total = rows.reduce((sum, row) => sum + row.amount, 0);
+    return rows.slice(0, 3).map((row, index) => ({
+      dot: CHANNEL_DOTS[index],
+      name: row.name,
+      amount: naira(row.amount),
+      share: `${share(row.amount, total).toFixed(1)}% share`,
+      sharePct: share(row.amount, total),
+      orders: row.meta,
+      raw: row.amount,
+    }));
+  };
+  const liveChannels = (): ChannelRow[] => {
+    if (domain === 'pos')
+      return channelRows(
+        (pos?.tenders ?? []).map((tender) => ({
+          name: tender.method.charAt(0).toUpperCase() + tender.method.slice(1),
+          amount: tender.amount,
+          meta: `${count(tender.count)} payments`,
+        })),
+      );
+    if (domain === 'deals')
+      return channelRows(
+        [...(deals?.deals ?? [])]
+          .sort((a, b) => b.revenue - a.revenue)
+          .map((deal) => ({ name: deal.name, amount: deal.revenue, meta: `${count(deal.claims)} claims` })),
+      );
+    if (domain === 'locations')
+      return channelRows(
+        (locations?.branches ?? []).map((branch) => ({
+          name: branch.name,
+          amount: branch.revenue.current,
+          meta: `${count(branch.orders.current)} orders`,
+        })),
+      );
+    return channelRows(
+      (overview?.channels ?? []).map((channel) => ({
+        name: channel.id === 'pos' ? 'In-Store POS' : 'Online Orders',
+        amount: channel.revenue,
+        meta: `${count(channel.orders)} orders`,
+      })),
+    );
+  };
+
+  const kpis = live ? (liveKpis[domain] ?? liveKpis.performance) : buildKpis(domain, dateRange);
+  const weeks = live ? liveWeeks(overview, days) : buildWeeks(domain, dateRange);
+  const channels = live ? liveChannels() : buildChannels(domain, dateRange);
+  const grossTotal = live
+    ? (channels as ChannelRow[]).reduce((sum, channel) => sum + channel.raw, 0)
+    : channels.reduce((sum, channel) => sum + Number(channel.amount.replace(/[^0-9]/g, '')), 0);
+  const revenueChange = (overview?.revenue.current ?? 0) - (overview?.revenue.previous ?? 0);
+  const bestDay = (overview?.weekdays ?? []).reduce<{ dow: number; revenue: number } | null>(
+    (best, day) => (!best || day.revenue > best.revenue ? day : best),
+    null,
+  );
+  const bestHour = (overview?.hourly ?? []).reduce<{ hour: number; revenue: number } | null>(
+    (best, hour) => (!best || hour.revenue > best.revenue ? hour : best),
+    null,
+  );
+  const topItemMax = Math.max(1, ...(overview?.topItems ?? []).map((item) => item.revenue));
+  const topItems = live
+    ? (overview?.topItems ?? []).slice(0, 4).map((item) => ({
+        name: item.name,
+        amount: naira(item.revenue),
+        covers: `${count(item.quantity)} sold`,
+        mom: `${Math.round(item.dealShare * 100)}% via deals`,
+        momClass: 'text-text-secondary font-medium',
+        width: `${Math.round((item.revenue / topItemMax) * 100)}%`,
+        img: NO_IMAGE,
+        alt: item.name,
+      }))
+    : TOP_ITEMS;
 
   const handleExportPdf = () => {
     printReport(
@@ -501,7 +691,9 @@ ${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.
                     </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary">
-                    {activeDomain.shortLabel} intake for {dateRange} compared against branch target quota
+                    {live
+                      ? `Revenue for ${dateRange} compared with the previous period`
+                      : `${activeDomain.shortLabel} intake for ${dateRange} compared against branch target quota`}
                   </p>
                 </div>
                 <div className="flex items-center gap-space-md text-caption font-caption">
@@ -511,7 +703,7 @@ ${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-sm bg-surface-container-high" />
-                    <span className="text-text-secondary font-medium">Target Benchmark</span>
+                    <span className="text-text-secondary font-medium">{live ? 'Previous Period' : 'Target Benchmark'}</span>
                   </div>
                 </div>
               </div>
@@ -524,18 +716,22 @@ ${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.
                   </div>
                   <div>
                     <div className="font-label-md text-label-md font-bold text-on-surface">
-                      {dateRange === 'Today' ? 'Same-Day' : dateRange === '7D' ? 'Weekly' : '4-Week'} Outperformance Streak
+                      {live
+                        ? 'Change vs Previous Period'
+                        : `${dateRange === 'Today' ? 'Same-Day' : dateRange === '7D' ? 'Weekly' : '4-Week'} Outperformance Streak`}
                     </div>
                     <div className="font-caption text-caption text-text-secondary">
-                      All branches exceeded conservative baseline intake targets.
+                      {live
+                        ? `Revenue compared with the previous ${days === 1 ? 'day' : `${days} days`}.`
+                        : 'All branches exceeded conservative baseline intake targets.'}
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">
-                    +{naira(grossTotal * 0.089)}
+                    {live ? `${revenueChange >= 0 ? '+' : '-'}${naira(Math.abs(revenueChange))}` : `+${naira(grossTotal * 0.089)}`}
                   </span>
-                  <div className="font-caption text-caption text-text-secondary font-medium">Above Cumulative Target</div>
+                  <div className="font-caption text-caption text-text-secondary font-medium">{live ? 'vs previous period' : 'Above Cumulative Target'}</div>
                 </div>
               </div>
 
@@ -690,7 +886,14 @@ ${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container">
-                    {HEAT_DATA.map((row) => (
+                    {(live
+                      ? HEAT_DATA.map((row) => ({
+                          ...row,
+                          surge: false,
+                          cells: row.cells.map(() => ({ label: '—', level: 'low' as HeatLevel })),
+                        }))
+                      : HEAT_DATA
+                    ).map((row) => (
                       <tr key={row.day}>
                         <td
                           className={
@@ -723,9 +926,23 @@ ${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.
                 <div>
                   <div className="font-label-md text-label-md font-bold text-on-surface">Staffing Recommendation System</div>
                   <p className="font-body-md text-body-md text-on-surface-variant mt-0.5">
-                    <strong>Recommended:</strong> Schedule <strong>+2 floor staff and 1 prep cook</strong> on{' '}
-                    <span className="text-primary font-bold">Friday starting at 5:30 PM</span> to accommodate the recurring
-                    6 PM – 9 PM dining surge and reduce table turnover delays.
+                    {live ? (
+                      bestDay && bestDay.revenue > 0 ? (
+                        <>
+                          Your busiest day is <span className="text-primary font-bold">{DAY_LONG[bestDay.dow]}</span>
+                          {bestHour && bestHour.revenue > 0 ? ` and the busiest hour is around ${hourLabel(bestHour.hour)}` : ''}.
+                          Day-by-hour detail isn't available yet.
+                        </>
+                      ) : (
+                        'Not enough activity yet to recommend staffing.'
+                      )
+                    ) : (
+                      <>
+                        <strong>Recommended:</strong> Schedule <strong>+2 floor staff and 1 prep cook</strong> on{' '}
+                        <span className="text-primary font-bold">Friday starting at 5:30 PM</span> to accommodate the recurring
+                        6 PM – 9 PM dining surge and reduce table turnover delays.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -744,7 +961,7 @@ ${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.
                 <Icon name="leaderboard" className="text-text-tertiary text-[20px]" />
               </div>
               <div className="flex flex-col gap-space-md">
-                {TOP_ITEMS.map((item) => (
+                {topItems.map((item) => (
                   <div key={item.name} className="flex items-center gap-space-sm p-space-xs rounded-xl hover:bg-surface-subtle transition-colors">
                     <div className="w-14 h-14 rounded-lg bg-surface-container overflow-hidden shrink-0">
                       <img className="w-full h-full object-cover" alt={item.alt} src={item.img} />
@@ -770,7 +987,7 @@ ${printKvTable('Sales Channel Distribution', channels.map((channel) => [channel.
                 className="w-full mt-space-md py-2.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-primary font-button-secondary text-button-secondary transition-colors text-center"
                 type="button"
               >
-                View Complete Catalog Breakdown (48 items)
+                {live ? 'View Complete Catalog Breakdown' : 'View Complete Catalog Breakdown (48 items)'}
               </button>
             </div>
 
