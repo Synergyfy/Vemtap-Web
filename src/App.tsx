@@ -1732,6 +1732,8 @@ function AppInner() {
 
   const [boostReturnRoute, setBoostReturnRoute] = useState<Route>('business-overview');
   const [boostItem, setBoostItem] = useState<string | null>(null);
+  // Live: the boost or promotion the metrics screen shows (null = latest active).
+  const [boostMetricsTarget, setBoostMetricsTarget] = useState<{ kind: 'boost' | 'promotion'; id: string } | null>(null);
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
   const [hubCustomerId, setHubCustomerId] = useState<string | null>(null);
   // Live deals: the catalogue item a new deal is built on, the deal being
@@ -1807,6 +1809,8 @@ function AppInner() {
         openBoost();
         break;
       case 'metrics':
+        // The metrics tab shows the latest active campaign.
+        setBoostMetricsTarget(null);
         setRoute('boost-metrics');
         break;
       case 'wallet':
@@ -4385,7 +4389,10 @@ function AppInner() {
             onBack={() => setRoute('business-more')}
             onTab={boostTab}
             onBoost={(item) => openBoost(item)}
-            onOpenMetrics={() => setRoute('boost-metrics')}
+            onOpenMetrics={(target) => {
+              setBoostMetricsTarget(target ?? null);
+              setRoute('boost-metrics');
+            }}
             onOpenSegments={() => setRoute('segments-hub')}
           />
         );
@@ -4395,7 +4402,10 @@ function AppInner() {
             onBack={() => setRoute('business-more')}
             onTab={boostTab}
             onBoost={(item) => openBoost(item)}
-            onOpenMetrics={() => setRoute('boost-metrics')}
+            onOpenMetrics={(target) => {
+              setBoostMetricsTarget(target ?? null);
+              setRoute('boost-metrics');
+            }}
             onOpenSegments={() => setRoute('segments-hub')}
           />
         </div>
@@ -4432,10 +4442,17 @@ function AppInner() {
 
     case 'boost-metrics':
       if (isDesktop)
-        return <DesktopBoostMetricsScreen onNav={businessPortalNav} onBack={() => setRoute('boost-hub')} onTab={boostTab} />;
+        return (
+          <DesktopBoostMetricsScreen
+            onNav={businessPortalNav}
+            onBack={() => setRoute('boost-hub')}
+            onTab={boostTab}
+            target={boostMetricsTarget}
+          />
+        );
       return (
         <div className="biz-flow">
-          <BusinessBoostMetricsScreen onBack={() => setRoute('boost-hub')} onTab={boostTab} />
+          <BusinessBoostMetricsScreen onBack={() => setRoute('boost-hub')} onTab={boostTab} target={boostMetricsTarget} />
         </div>
       );
 

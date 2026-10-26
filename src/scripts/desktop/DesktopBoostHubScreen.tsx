@@ -3,13 +3,28 @@ import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { BoostTabKey } from '../../components/BoostTabBar';
 import { PUBLIC_IMAGES } from '../publicPosData';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import type { CampaignKind } from '../../services/sponsoredCampaignsService';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import {
+  useBoostOptions,
+  useEligibleAssets,
+  useSponsoredCampaigns,
+  useSponsoredMutations,
+  useSponsoredSummary,
+  type KindedCampaign,
+} from '../../hooks/business/useSponsored';
+import { STEP_DONE, compactCount, liveHubCard, manageAction } from '../boostsLive';
 
 interface DesktopBoostHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onBack: () => void;
   onTab: (key: BoostTabKey) => void;
   onBoost: (item: string) => void;
-  onOpenMetrics: () => void;
+  /** Live: the campaign whose insights to open. */
+  onOpenMetrics: (target?: { kind: CampaignKind; id: string }) => void;
   onOpenSegments: () => void;
 }
 
@@ -37,6 +52,8 @@ interface HubCampaign {
   kpis: { label: string; value: string; valueClass?: string }[];
   manageLabel: string;
   manageIcon: string;
+  /** Live: the boost or promotion this card shows. */
+  live?: KindedCampaign;
 }
 
 const MODULE_TABS: { key: BoostTabKey; label: string }[] = [
@@ -360,16 +377,64 @@ export function DesktopBoostHubScreen({
     timers.current.push(timer);
   };
 
-  const visibleCampaigns = CAMPAIGNS.filter((entry) => entry.status === statusTab);
-  const activeCampaigns = CAMPAIGNS.filter((entry) => entry.status === 'active');
+  const live = hasApiConfig();
+  const { branch, branches } = useBusinessBranch();
+  const sponsored = useSponsoredCampaigns();
+  const summary = useSponsoredSummary();
+  const options = useBoostOptions();
+  const assets = useEligibleAssets();
+  const { step } = useSponsoredMutations();
+
+  useEffect(() => {
+    const error = sponsored.error ?? summary.error;
+    if (error) showToast(apiErrorMessage(error, 'Could not load your campaigns.'));
+  }, [sponsored.error, summary.error]);
+
+  const branchName = (id: string) => branches.find((entry) => entry.id === id)?.name;
+  const campaigns = live
+    ? (sponsored.data ?? []).map((campaign) =>
+        liveHubCard(CAMPAIGNS[0], campaign, {
+          options: options.data,
+          assets: assets.data,
+          branchName,
+          fallbackImage: PUBLIC_IMAGES.hero,
+        }),
+      )
+    : CAMPAIGNS;
+
+  const runManage = (campaign: HubCampaign) => {
+    const target = campaign.live;
+    if (!target) return;
+    const action = manageAction(target);
+    if (!action.step) {
+      showToast(`${campaign.title} is ${action.label.toLowerCase()}.`);
+      return;
+    }
+    const stepName = action.step;
+    step.mutate(
+      { campaign: target, step: stepName },
+      {
+        onSuccess: () => showToast(`${campaign.title} ${STEP_DONE[stepName]}`),
+        onError: (error) =>
+          showToast(planErrorMessage(error) ?? apiErrorMessage(error, `Could not ${stepName} the campaign.`)),
+      },
+    );
+  };
+
+  const visibleCampaigns = campaigns.filter((entry) => entry.status === statusTab);
+  const activeCampaigns = campaigns.filter((entry) => entry.status === 'active');
   const activeSpend = activeCampaigns.reduce((sum, entry) => sum + entry.spent, 0);
   const reachTotal = activeCampaigns.reduce((sum, entry) => {
     const raw = entry.kpis.find((kpi) => kpi.label === 'Reach')?.value ?? '0';
     return sum + Number(raw.replace(/[^\d]/g, '') || 0);
   }, 0);
-  const reachLabel = reachTotal >= 1000 ? `${(reachTotal / 1000).toFixed(1)}k` : fmt(reachTotal);
+  const reachLabel = live
+    ? compactCount(summary.data?.audienceReached ?? 0)
+    : reachTotal >= 1000
+      ? `${(reachTotal / 1000).toFixed(1)}k`
+      : fmt(reachTotal);
 
-  const countFor = (key: HubStatusTab) => CAMPAIGNS.filter((entry) => entry.status === key).length;
+  const countFor = (key: HubStatusTab) => campaigns.filter((entry) => entry.status === key).length;
 
   const bentoMetrics = [
     {
@@ -393,8 +458,8 @@ export function DesktopBoostHubScreen({
       label: 'Total Reach',
       icon: 'radar',
       value: reachLabel,
-      delta: '+14.2%',
-      note: 'Unique diners reached this week',
+      delta: live ? undefined : '+14.2%',
+      note: live ? 'Customers reached across your campaigns' : 'Unique diners reached this week',
     },
     {
       key: 'pipeline',
@@ -458,7 +523,7 @@ export function DesktopBoostHubScreen({
               <span className="font-caption text-caption text-text-tertiary">Campaigns Hub</span>
               <div className="flex items-center gap-space-2xs bg-surface-container px-space-xs py-space-2xs rounded-full">
                 <Icon className="text-primary text-[16px]" name="location_on" />
-                <span className="font-caption text-caption text-on-surface-variant font-medium">Wuse II, Abuja</span>
+                <span className="font-caption text-caption text-on-surface-variant font-medium">{live ? branch.area || branch.name : 'Wuse II, Abuja'}</span>
               </div>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Campaigns Hub</h1>
@@ -562,7 +627,7 @@ export function DesktopBoostHubScreen({
             {/* Campaign list */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-space-md">
               {visibleCampaigns.map((campaign) => {
-                const pct = Math.round((campaign.spent / campaign.total) * 100);
+                const pct = (campaign.total ? Math.round((campaign.spent / campaign.total) * 100) : 0);
                 return (
                   <div
                     className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04),0_2px_6px_-1px_rgba(13,37,76,0.02)] overflow-hidden flex flex-col"
@@ -665,7 +730,9 @@ export function DesktopBoostHubScreen({
                         <button
                           className="flex-1 h-10 bg-surface-tint-blue hover:bg-surface-container text-primary font-button-secondary text-button-secondary rounded-lg flex items-center justify-center gap-1 transition-colors"
                           type="button"
-                          onClick={onOpenMetrics}
+                          onClick={() =>
+                            onOpenMetrics(campaign.live ? { kind: campaign.live.kind, id: campaign.live.id } : undefined)
+                          }
                         >
                           <Icon className="text-[18px]" name="query_stats" />
                           <span>View Insights</span>
@@ -674,11 +741,13 @@ export function DesktopBoostHubScreen({
                           className="h-10 px-space-sm bg-surface-container-low hover:bg-surface-container text-text-secondary font-label-md text-label-md rounded-lg flex items-center justify-center gap-1 transition-colors"
                           type="button"
                           onClick={() =>
-                            showToast(
-                              campaign.status === 'active'
-                                ? `${campaign.title} — manage controls opened`
-                                : `${campaign.title} — ${campaign.manageLabel.toLowerCase()}`,
-                            )
+                            live
+                              ? runManage(campaign)
+                              : showToast(
+                                  campaign.status === 'active'
+                                    ? `${campaign.title} — manage controls opened`
+                                    : `${campaign.title} — ${campaign.manageLabel.toLowerCase()}`,
+                                )
                           }
                         >
                           <Icon className="text-[18px]" name={campaign.manageIcon} />
@@ -748,7 +817,7 @@ export function DesktopBoostHubScreen({
               </div>
               {STATUS_TABS.map((tab) => {
                 const count = countFor(tab.key);
-                const pct = Math.round((count / CAMPAIGNS.length) * 100);
+                const pct = campaigns.length ? Math.round((count / campaigns.length) * 100) : 0;
                 const active = statusTab === tab.key;
                 return (
                   <button
