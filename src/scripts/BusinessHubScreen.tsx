@@ -37,6 +37,7 @@ export function BusinessHubScreen({
   onBackCustomerProfile,
   onOpenAnalytics,
   onPreviewInvite,
+  onAddLocation,
 }: {
   initialStep?: BusinessHubStep;
   onTab: (tab: BusinessTabKey) => void;
@@ -49,6 +50,8 @@ export function BusinessHubScreen({
   onBackCustomerProfile?: () => void;
   onOpenAnalytics?: () => void;
   onPreviewInvite?: (url: string) => void;
+  /** "Add Location" on the locations step — opens the paid add-location flow. */
+  onAddLocation?: () => void;
 }) {
   const [step, setStep] = useState<BusinessHubStep>(initialStep);
   const [assignmentItem, setAssignmentItem] = useState('Woodfire Aged Ribeye Steak');
@@ -75,7 +78,7 @@ export function BusinessHubScreen({
       case 'hub':
         return <BusinessHubHomeScreen onTab={handleTab} onOpenModule={onOpenModule} />;
       case 'locations':
-        return <BusinessLocationsScreen onTab={handleTab} />;
+        return <BusinessLocationsScreen onTab={handleTab} onAddLocation={onAddLocation} />;
       case 'catalog':
         return (
           <BusinessHubCatalogScreen

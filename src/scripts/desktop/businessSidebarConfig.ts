@@ -55,9 +55,9 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     label: 'Business',
     icon: 'storefront',
     defaultKey: 'business-profile',
-    // Order mirrors the mobile Business menu — keep both lists in sync.
     items: [
-      { key: 'business-catalog', label: 'Products & Services', icon: 'inventory_2' },
+      { key: 'business-catalog', label: 'My Products', icon: 'inventory_2' },
+      { key: 'business-services', label: 'My Service', icon: 'design_services' },
       { key: 'business-deals', label: 'Deals', icon: 'local_offer' },
       { key: 'business-customers', label: 'Customers', icon: 'group' },
       { key: 'business-loyalty', label: 'Loyalty & Rewards', icon: 'stars' },
@@ -171,6 +171,11 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
     'business-locations': { sectionKey: 'business', itemKey: 'business-locations' },
     catalog: { sectionKey: 'business', itemKey: 'business-catalog' },
     'business-catalog': { sectionKey: 'business', itemKey: 'business-catalog' },
+    products: { sectionKey: 'business', itemKey: 'business-catalog' },
+    'business-products': { sectionKey: 'business', itemKey: 'business-catalog' },
+    services: { sectionKey: 'business', itemKey: 'business-services' },
+    'business-services': { sectionKey: 'business', itemKey: 'business-services' },
+    'hub-services': { sectionKey: 'business', itemKey: 'business-services' },
     deals: { sectionKey: 'business', itemKey: 'business-deals' },
     'business-deals': { sectionKey: 'business', itemKey: 'business-deals' },
     customers: { sectionKey: 'business', itemKey: 'business-customers' },

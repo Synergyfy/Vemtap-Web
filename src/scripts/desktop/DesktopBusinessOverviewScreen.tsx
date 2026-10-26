@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopBusinessOverviewScreenProps {
@@ -27,12 +28,13 @@ export function DesktopBusinessOverviewScreen({
   onNav,
   onSubscribe,
   onBoost,
-  onAddOns,
+  onAddOns: _onAddOns,
   onOpenOrders,
   onOpenBookings,
   onOpenMessages,
 }: DesktopBusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
+  const { offerings, mode } = useBusinessOfferings();
   const [bannerIndex, setBannerIndex] = useState(0);
 
   useEffect(() => {
@@ -118,6 +120,22 @@ export function DesktopBusinessOverviewScreen({
                   <Icon name="verified" filled className="text-[13px]" />
                   Verified
                 </span>
+                {mode === 'products' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="inventory_2" className="text-[13px]" />
+                    PRODUCT BUSINESS
+                  </span>
+                ) : mode === 'services' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-tertiary-fixed text-tertiary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="content_cut" className="text-[13px]" />
+                    SERVICE BUSINESS
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-text-primary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="hub" className="text-[13px]" />
+                    HYBRID BUSINESS
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption font-medium">
                   Growth Trial • 23 days left
                 </span>
@@ -163,6 +181,53 @@ export function DesktopBusinessOverviewScreen({
             </div>
           </section>
 
+          {/* Offering Enable Prompt Banner */}
+          {!offerings.hasServices && (
+            <section className="p-4 rounded-2xl bg-gradient-to-r from-surface-tint-blue/80 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
+                  <Icon name="content_cut" className="text-[24px]" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">Enable Services</h3>
+                  <p className="font-body-md text-body-md text-text-secondary">
+                    Also provide services? Turn this on in your business profile to activate service bookings and packages.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNav('business-profile')}
+                className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm cursor-pointer"
+              >
+                Enable in Profile
+              </button>
+            </section>
+          )}
+
+          {!offerings.hasProducts && (
+            <section className="p-4 rounded-2xl bg-gradient-to-r from-surface-tint-blue/80 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
+                  <Icon name="inventory_2" className="text-[24px]" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">Enable Products</h3>
+                  <p className="font-body-md text-body-md text-text-secondary">
+                    Also sell products? Turn this on in your business profile to activate product stock, catalogue, and inventory.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNav('business-profile')}
+                className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm cursor-pointer"
+              >
+                Enable in Profile
+              </button>
+            </section>
+          )}
+
           {/* Main desktop grid */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-space-lg">
             {/* Wide column: stats + quick actions */}
@@ -191,26 +256,32 @@ export function DesktopBusinessOverviewScreen({
               {/* Quick Actions */}
               <section className="grid grid-cols-2 gap-space-xs">
                 <button
-                  className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform"
+                  className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform cursor-pointer"
+                  type="button"
+                  onClick={() => onNav('business-catalog')}
+                >
+                  <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                    <Icon name={mode === 'services' ? 'content_cut' : 'inventory_2'} className="text-[20px]" />
+                  </div>
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">
+                    {mode === 'services' ? 'My Services' : mode === 'products' ? 'My Products' : 'Catalogue'}
+                  </span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    {mode === 'services' ? 'Service menu & pricing' : 'Manage inventory & prices'}
+                  </span>
+                </button>
+                <button
+                  className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform cursor-pointer"
                   type="button"
                   onClick={onBoost}
                 >
-                  <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-lg bg-tertiary-fixed text-tertiary flex items-center justify-center">
                     <Icon name="rocket_launch" className="text-[20px]" />
                   </div>
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">Boost a Deal</span>
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">
+                    {mode === 'services' ? 'Service Deals' : mode === 'products' ? 'Product Deals' : 'Product & Service Deals'}
+                  </span>
                   <span className="font-caption text-caption text-text-secondary">Your budget, your reach</span>
-                </button>
-                <button
-                  className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform"
-                  type="button"
-                  onClick={onAddOns}
-                >
-                  <div className="w-9 h-9 rounded-lg bg-tertiary-fixed text-tertiary flex items-center justify-center">
-                    <Icon name="add_circle" className="text-[20px]" />
-                  </div>
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">Paid Add-ons</span>
-                  <span className="font-caption text-caption text-text-secondary">SMS credits & promotion</span>
                 </button>
               </section>
             </div>

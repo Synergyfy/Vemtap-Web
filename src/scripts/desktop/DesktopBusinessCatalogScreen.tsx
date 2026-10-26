@@ -5,6 +5,7 @@ import { ProductImportWizard } from '../../components/import/ProductImportWizard
 import { useImportedProducts } from '../productImport/importedProductStore';
 import { summariseImport } from '../productImport/importSummary';
 import { naira } from '../catalogueData';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 
 interface DesktopBusinessCatalogScreenProps {
   onBack: () => void;
@@ -30,19 +31,31 @@ const SEED_ENTRIES: CatalogEntry[] = [
 ];
 
 export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAddProduct, onAddService }: DesktopBusinessCatalogScreenProps) {
+  const { offerings, mode } = useBusinessOfferings();
   const [methodsOpen, setMethodsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const importedProducts = useImportedProducts();
 
-  const importedEntries: CatalogEntry[] = importedProducts.map((product) => ({
-    id: product.id,
-    name: product.name || 'Untitled imported product',
-    type: 'Product',
-    price: product.price !== null ? naira(product.price) : '—',
-    category: `${product.category || 'General'}${product.status === 'draft' ? ' • Draft' : ''}`,
-  }));
-  const entries = [...importedEntries, ...SEED_ENTRIES];
+  const importedEntries: CatalogEntry[] = offerings.hasProducts
+    ? importedProducts.map((product) => ({
+        id: product.id,
+        name: product.name || 'Untitled imported product',
+        type: 'Product',
+        price: product.price !== null ? naira(product.price) : '—',
+        category: `${product.category || 'General'}${product.status === 'draft' ? ' • Draft' : ''}`,
+      }))
+    : [];
+
+  const filteredSeedEntries = SEED_ENTRIES.filter((e) => {
+    if (e.type === 'Product' && !offerings.hasProducts) return false;
+    if (e.type === 'Service' && !offerings.hasServices) return false;
+    return true;
+  });
+
+  const entries = [...importedEntries, ...filteredSeedEntries];
+
+  const title = mode === 'both' ? 'Products & Services' : mode === 'services' ? 'Services' : 'Products';
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 flex flex-col gap-8">
@@ -53,7 +66,7 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
           </button>
           <span className="font-label-sm text-caption text-primary font-semibold uppercase tracking-wider">Step 5 of 8</span>
         </div>
-        <h1 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight">Products &amp; Services</h1>
+        <h1 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight">{title}</h1>
         <p className="font-body-md text-body-md text-text-secondary">Add items one at a time, or bulk-import a CSV/Excel file. Everything can be refined later in the Central Catalogue.</p>
       </div>
 
@@ -74,23 +87,27 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <button
-          type="button"
-          onClick={() => setMethodsOpen(true)}
-          className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
-        >
-          <Icon name="add" className="text-[20px]" />
-          <span>Add Product</span>
-        </button>
-        <button
-          type="button"
-          onClick={onAddService}
-          className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
-        >
-          <Icon name="add" className="text-[20px]" />
-          <span>Add Service</span>
-        </button>
+      <div className={`grid ${mode === 'both' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+        {offerings.hasProducts && (
+          <button
+            type="button"
+            onClick={() => setMethodsOpen(true)}
+            className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
+          >
+            <Icon name="add" className="text-[20px]" />
+            <span>Add Product</span>
+          </button>
+        )}
+        {offerings.hasServices && (
+          <button
+            type="button"
+            onClick={onAddService}
+            className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
+          >
+            <Icon name="add" className="text-[20px]" />
+            <span>Add Service</span>
+          </button>
+        )}
       </div>
 
       {/* Add Product: manual / bulk import / connect platform (coming soon) */}

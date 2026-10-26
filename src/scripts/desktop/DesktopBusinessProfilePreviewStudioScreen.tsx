@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useBusinessOfferings, type OfferingType } from '../../context/BusinessOfferingsContext';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 
@@ -64,9 +65,47 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   onNav,
   onPreviewStorefront,
 }: DesktopBusinessProfilePreviewStudioScreenProps) {
+  const { offerings, setOfferings } = useBusinessOfferings();
+  const [offeringsDraft, setOfferingsDraft] = useState(offerings);
+  const [confirmDisable, setConfirmDisable] = useState<OfferingType | null>(null);
   const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [copied, setCopied] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    window.setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleToggleOffering = (type: OfferingType) => {
+    const isCurrentlyOn = type === 'products' ? offeringsDraft.hasProducts : offeringsDraft.hasServices;
+    if (isCurrentlyOn) {
+      const otherOn = type === 'products' ? offeringsDraft.hasServices : offeringsDraft.hasProducts;
+      if (!otherOn) {
+        showToast('You must keep at least one offering active (Products, Services, or Both).');
+        return;
+      }
+      setConfirmDisable(type);
+    } else {
+      setOfferingsDraft((prev) => ({
+        ...prev,
+        [type === 'products' ? 'hasProducts' : 'hasServices']: true,
+      }));
+      showToast(`${type === 'products' ? 'Products' : 'Services'} enabled! Click Save Changes to apply.`);
+    }
+  };
+
+  const confirmDisableOffering = () => {
+    if (!confirmDisable) return;
+    const type = confirmDisable;
+    setOfferingsDraft((prev) => ({
+      ...prev,
+      [type === 'products' ? 'hasProducts' : 'hasServices']: false,
+    }));
+    setConfirmDisable(null);
+    showToast(`${type === 'products' ? 'Products' : 'Services'} disabled. Existing data remains safely preserved.`);
+  };
 
   const toggleAmenity = (label: string) =>
     setActiveAmenities((prev) => (prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]));
@@ -80,6 +119,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   const saveChanges = () => {
     if (saveState !== 'idle') return;
     setSaveState('saving');
+    setOfferings(offeringsDraft);
     window.setTimeout(() => {
       setSaveState('saved');
       window.setTimeout(() => setSaveState('idle'), 1800);
@@ -251,7 +291,106 @@ export function DesktopBusinessProfilePreviewStudioScreen({
               </div>
             </div>
 
-            {/* 3. Contact & Public Discovery Channels */}
+            {/* 3. Business Offerings Card */}
+            <div className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg flex flex-col gap-space-md">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-space-xs">
+                  <Icon name="tune" className="text-primary text-[22px]" />
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Business Offerings</h2>
+                </div>
+                <span className="font-caption text-caption text-text-tertiary">
+                  Controls Active Dashboard Modules
+                </span>
+              </div>
+              <p className="font-body-md text-body-md text-text-secondary">
+                Choose what this business offers on VEMTAP.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md pt-space-2xs">
+                {/* Products Toggle */}
+                <div className="bg-surface-subtle p-space-md rounded-xl flex items-start justify-between gap-space-sm border border-border-subtle">
+                  <div className="flex items-start gap-space-sm min-w-0 pr-2">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        offeringsDraft.hasProducts ? 'bg-primary text-on-primary shadow-sm' : 'bg-surface-container text-text-secondary'
+                      }`}
+                    >
+                      <Icon name="inventory_2" className="text-[20px]" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md font-bold text-text-primary">Products</span>
+                      <span className="font-caption text-caption text-text-secondary mt-0.5 leading-relaxed">
+                        Manage products, stock, prices and product deals.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Toggle Products"
+                    aria-checked={offeringsDraft.hasProducts}
+                    onClick={() => handleToggleOffering('products')}
+                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                      offeringsDraft.hasProducts ? 'bg-primary' : 'bg-surface-container-high'
+                    }`}
+                  >
+                    <span
+                      className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                        offeringsDraft.hasProducts ? 'translate-x-6' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Services Toggle */}
+                <div className="bg-surface-subtle p-space-md rounded-xl flex items-start justify-between gap-space-sm border border-border-subtle">
+                  <div className="flex items-start gap-space-sm min-w-0 pr-2">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        offeringsDraft.hasServices ? 'bg-primary text-on-primary shadow-sm' : 'bg-surface-container text-text-secondary'
+                      }`}
+                    >
+                      <Icon name="content_cut" className="text-[20px]" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md font-bold text-text-primary">Services</span>
+                      <span className="font-caption text-caption text-text-secondary mt-0.5 leading-relaxed">
+                        Manage services, pricing, packages and service deals.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Toggle Services"
+                    aria-checked={offeringsDraft.hasServices}
+                    onClick={() => handleToggleOffering('services')}
+                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                      offeringsDraft.hasServices ? 'bg-primary' : 'bg-surface-container-high'
+                    }`}
+                  >
+                    <span
+                      className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                        offeringsDraft.hasServices ? 'translate-x-6' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-border-subtle font-caption text-caption text-text-secondary">
+                <Icon name="info" className="text-primary text-[18px] shrink-0" />
+                <span>
+                  {offeringsDraft.hasProducts && offeringsDraft.hasServices
+                    ? 'Your dashboard includes both products and services.'
+                    : offeringsDraft.hasServices
+                    ? 'Your dashboard will focus on services.'
+                    : 'Your dashboard will focus on products.'}
+                </span>
+              </div>
+            </div>
+
+            {/* 4. Contact & Public Discovery Channels */}
             <div className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg flex flex-col gap-space-md">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-space-xs">
@@ -543,6 +682,49 @@ export function DesktopBusinessProfilePreviewStudioScreen({
           </div>
         </div>
       </div>
+
+      {/* Confirmation modal when disabling an offering */}
+      {confirmDisable && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface-canvas rounded-2xl p-6 max-w-md w-full shadow-2xl border border-border-subtle flex flex-col gap-4 animate-scale-in">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+              <Icon name="warning" className="text-[26px]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <h4 className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                Turn off {confirmDisable === 'products' ? 'Products' : 'Services'}?
+              </h4>
+              <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+                Your existing {confirmDisable === 'products' ? 'products, inventory, and deals' : 'services, packages, and deals'} won&apos;t be deleted. They will remain safely preserved, but won&apos;t be visible to customers until re-enabled.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDisable(null)}
+                className="px-5 h-11 rounded-xl bg-surface-container text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors"
+              >
+                Keep Active
+              </button>
+              <button
+                type="button"
+                onClick={confirmDisableOffering}
+                className="px-5 h-11 rounded-xl bg-error text-on-error font-button-primary text-button-primary hover:bg-error/90 active:scale-95 transition-all shadow-sm"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-8 right-8 z-50 px-5 py-3 rounded-xl bg-inverse-surface text-inverse-on-surface shadow-2xl flex items-center gap-2.5 font-label-sm text-label-sm animate-fade-in border border-white/10">
+          <Icon name="check_circle" className="text-[18px] text-badge-discount-text" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </MerchantPortalChrome>
   );
 }

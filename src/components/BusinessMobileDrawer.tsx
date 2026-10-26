@@ -7,6 +7,7 @@ import {
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from '../scripts/desktop/businessSidebarConfig';
+import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
 
 interface BusinessMobileDrawerProps {
   isOpen: boolean;
@@ -23,7 +24,19 @@ export function BusinessMobileDrawer({
   onSelect,
   onSignOut,
 }: BusinessMobileDrawerProps) {
+  const { offerings, mode } = useBusinessOfferings();
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
+
+  const getSubItemLabel = (subItem: BusinessSidebarSubItem) => {
+    if (subItem.key === 'business-catalog') return 'My Products';
+    if (subItem.key === 'business-services') return 'My Service';
+    if (subItem.key === 'business-deals') {
+      if (mode === 'products') return 'Product Deals';
+      if (mode === 'services') return 'Service Deals';
+      return 'Deals';
+    }
+    return subItem.label;
+  };
 
   const activeSectionHasChildren = BUSINESS_SIDEBAR_SECTIONS.some(
     (s) => s.key === activeSectionKey && s.items && s.items.length > 0
@@ -168,8 +181,14 @@ export function BusinessMobileDrawer({
 
                 {hasChildren && isOpen && (
                   <div className="flex flex-col pl-4 mt-1 space-y-1 border-l-2 border-border-subtle ml-5">
-                    {section.items!.map((subItem) => {
-                      const isSubItemActive = activeItemKey === subItem.key;
+                    {section.items!
+                      .filter((subItem) => {
+                        if (subItem.key === 'business-catalog') return offerings.hasProducts;
+                        if (subItem.key === 'business-services') return offerings.hasServices;
+                        return true;
+                      })
+                      .map((subItem) => {
+                        const isSubItemActive = activeItemKey === subItem.key;
                       return (
                         <button
                           key={subItem.key}
@@ -191,7 +210,7 @@ export function BusinessMobileDrawer({
                               />
                             )}
                             <span className="truncate font-label-sm text-label-sm">
-                              {subItem.label}
+                              {getSubItemLabel(subItem)}
                             </span>
                           </div>
 

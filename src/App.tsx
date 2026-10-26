@@ -6,6 +6,7 @@ import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
+import { BusinessOfferingsProvider } from './context/BusinessOfferingsContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
@@ -23,6 +24,7 @@ import { AccountDeletionProvider } from './context/AccountDeletionContext';
 import type { SubmittedOrder } from './context/OrdersContext';
 import { useCart } from './context/CartContext';
 import { URBAN_BUSINESS, SPA_BUSINESS, resolveBusinessPath, productPath, servicePath } from './scripts/businessData';
+import { addPaidBusinessLocation, getBusinessLocationCount } from './scripts/businessLocationsStore';
 import { CustomerInviteJoinScreen } from './scripts/CustomerInviteJoinScreen';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
 import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
@@ -164,6 +166,7 @@ import { BusinessMessagesScreen } from './scripts/BusinessMessagesScreen';
 import { BusinessOverviewScreen } from './scripts/BusinessOverviewScreen';
 import { BusinessPosMenuScreen } from './scripts/BusinessPosMenuScreen';
 import { BusinessHubScreen } from './scripts/BusinessHubScreen';
+import { BusinessAddLocationFlow } from './scripts/BusinessAddLocationFlow';
 import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
 import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
 import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
@@ -297,6 +300,7 @@ import { DesktopLoyaltyProgrammeScreen } from './scripts/desktop/DesktopLoyaltyP
 import { DesktopLoyaltyRewardsScreen } from './scripts/desktop/DesktopLoyaltyRewardsScreen';
 import { DesktopBusinessCatalogHubScreen } from './scripts/desktop/DesktopBusinessCatalogHubScreen';
 import { DesktopBusinessLocationsHubScreen } from './scripts/desktop/DesktopBusinessLocationsHubScreen';
+import { DesktopBusinessAddLocationFlow } from './scripts/desktop/DesktopBusinessAddLocationFlow';
 import { DesktopBranchDetailScreen } from './scripts/desktop/DesktopBranchDetailScreen';
 import { DesktopServicesCategoriesScreen } from './scripts/desktop/DesktopServicesCategoriesScreen';
 import { DesktopAnalyticsBusinessScreen } from './scripts/desktop/DesktopAnalyticsBusinessScreen';
@@ -407,6 +411,7 @@ type Route =
   | 'business-pos-menu'
   | 'business-hub'
   | 'hub-locations'
+  | 'business-add-location'
   | 'hub-branch-detail'
   | 'hub-catalog'
   | 'hub-services'
@@ -579,6 +584,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-pos-menu': '/business/pos/menu',
   'business-hub': '/business/hub',
   'hub-locations': '/business/hub/locations',
+  'business-add-location': '/business/hub/locations/add',
   'hub-branch-detail': '/business/hub/locations/branch',
   'hub-catalog': '/business/hub/catalog',
   'hub-services': '/business/hub/catalog/services',
@@ -841,6 +847,7 @@ export default function App() {
             <OrdersProvider>
               <ContactsProvider>
               <CampaignsProvider>
+              <BusinessOfferingsProvider>
               <BusinessBranchProvider>
                 <CartProvider>
                   <BookingProvider>
@@ -855,6 +862,7 @@ export default function App() {
                   </BookingProvider>
                 </CartProvider>
               </BusinessBranchProvider>
+              </BusinessOfferingsProvider>
               </CampaignsProvider>
               </ContactsProvider>
             </OrdersProvider>
@@ -1528,6 +1536,7 @@ function AppInner() {
     const moduleRoute: Record<HubModuleKey, Route> = {
       deals: 'hub-deals',
       catalog: 'hub-catalog',
+      services: 'hub-services',
       customers: 'hub-customers',
       loyalty: 'hub-loyalty',
       locations: 'hub-locations',
@@ -3465,6 +3474,31 @@ function AppInner() {
         setRoute(destination);
       };
       const finishOnboarding = () => {
+        // Additional-location safety net: if an older saved draft still holds
+        // extra locations that were never paid for, don't complete onboarding
+        // as if they were live — send the merchant back to the (now
+        // informational) locations step, where "Continue with Primary
+        // Location" drops anything unpaid and continues registration.
+        const setup = getBusinessSetupSnapshot();
+        const extraRaw = setup ? setup.data.extraBranches : null;
+        const paidRaw = setup ? setup.data.paidBranchIds : null;
+        const paidIds = Array.isArray(paidRaw)
+          ? paidRaw.filter((id): id is string => typeof id === 'string')
+          : [];
+        const hasUnpaidLocations =
+          Array.isArray(extraRaw) &&
+          extraRaw.some(
+            (branch) =>
+              typeof branch === 'object' &&
+              branch !== null &&
+              typeof (branch as { id?: unknown }).id === 'string' &&
+              !paidIds.includes((branch as { id: string }).id),
+          );
+        if (hasUnpaidLocations && setup) {
+          setBusinessSetupSnapshotStep('branches');
+          setRoute('business-onboarding');
+          return;
+        }
         setBusinessSetupSkipIntro(false);
         setBusinessSetupVerificationState('in-progress');
         setRoute('business-verification');
@@ -4017,11 +4051,50 @@ function AppInner() {
         return (
           <DesktopBusinessLocationsHubScreen
             onNav={businessPortalNav}
-            onAddBranch={() => setRoute('business-onboarding')}
+            onAddBranch={() => setRoute('business-add-location')}
             onOpenBranch={() => setRoute('hub-branch-detail')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} onAddLocation={() => setRoute('business-add-location')} />;
+
+    case 'business-add-location':
+      // Dashboard-only paid add-location flow: branch form → ₦2,000 checkout.
+      // The location is stored only on the simulated payment-success path.
+      if (isDesktop)
+        return (
+          <DesktopBusinessAddLocationFlow
+            businessName={URBAN_BUSINESS.name}
+            locationCount={getBusinessLocationCount()}
+            onExit={() => setRoute('hub-locations')}
+            onLocationPaid={(location, feePaid) => {
+              addPaidBusinessLocation({
+                id: `loc-${Date.now()}`,
+                name: location.name,
+                address: location.address,
+                district: location.district,
+                feePaid,
+              });
+              setRoute('hub-locations');
+            }}
+          />
+        );
+      return (
+        <BusinessAddLocationFlow
+          businessName={URBAN_BUSINESS.name}
+          locationCount={getBusinessLocationCount()}
+          onExit={() => setRoute('hub-locations')}
+          onLocationPaid={(location, feePaid) => {
+            addPaidBusinessLocation({
+              id: `loc-${Date.now()}`,
+              name: location.name,
+              address: location.address,
+              district: location.district,
+              feePaid,
+            });
+            setRoute('hub-locations');
+          }}
+        />
+      );
 
     case 'hub-branch-detail':
       if (isDesktop)
@@ -4031,7 +4104,7 @@ function AppInner() {
             onBackToLocations={() => setRoute('hub-locations')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} onAddLocation={() => setRoute('business-add-location')} />;
 
     case 'hub-catalog':
       if (isDesktop)

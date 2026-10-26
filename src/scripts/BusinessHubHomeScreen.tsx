@@ -1,11 +1,12 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
 
-export type HubModuleKey = 'deals' | 'catalog' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile' | 'referrals';
+export type HubModuleKey = 'deals' | 'catalog' | 'services' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile' | 'referrals';
 
 interface BusinessHubHomeScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -96,6 +97,55 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
   const [toast, setToast] = useState<string | null>(null);
   // Branch switching lives only in the header's MobileLocationMenu.
   const { branch } = useBusinessBranch();
+  const { offerings, mode } = useBusinessOfferings();
+
+  const menuCards = MENU_CARDS.map((card) => {
+    if (card.key === 'catalog') {
+      if (mode === 'products') {
+        return {
+          ...card,
+          title: 'My Products',
+          desc: 'Manage your product catalogue, stock & prices',
+          icon: 'inventory_2',
+          chips: [{ label: '42 Products in Stock', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
+        };
+      }
+      if (mode === 'services') {
+        return {
+          ...card,
+          title: 'My Services',
+          desc: 'Manage your service menu, pricing & booking rules',
+          icon: 'content_cut',
+          chips: [{ label: '8 Services Active', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
+        };
+      }
+    }
+    if (card.key === 'deals') {
+      if (mode === 'products') {
+        return {
+          ...card,
+          title: 'Product Deals',
+          desc: 'Create product-specific discounts & combo deals',
+          chips: [
+            { label: '3 Active Deals', chipClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' },
+            { label: '1 Scheduled', chipClass: 'bg-surface-container text-text-secondary' },
+          ],
+        };
+      }
+      if (mode === 'services') {
+        return {
+          ...card,
+          title: 'Service Deals',
+          desc: 'Create service packages, discounts & special offers',
+          chips: [
+            { label: '2 Active Deals', chipClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' },
+            { label: '1 Scheduled', chipClass: 'bg-surface-container text-text-secondary' },
+          ],
+        };
+      }
+    }
+    return card;
+  });
 
   const showToast = (message: string) => {
     setToast(message);
@@ -130,7 +180,7 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
             <div className="flex items-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-sm py-1 rounded-full shadow-sm">
               <Icon name="verified" filled className="text-[15px]" />
               <span className="font-caption text-caption font-semibold tracking-tight">
-                Verified Business â€¢ 3 Branches Active
+                Verified Business • 3 Branches Active
               </span>
             </div>
             <button
@@ -176,9 +226,57 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
           </div>
         </div>
 
+        {/* Enable Services Banner */}
+        {!offerings.hasServices && (
+          <div className="mt-space-sm p-space-md rounded-xl bg-gradient-to-r from-surface-tint-blue/80 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-space-sm min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
+                <Icon name="content_cut" className="text-[20px]" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Enable Services</h3>
+                <p className="font-body-md text-body-md text-text-secondary line-clamp-1">
+                  Also provide services? Turn this on in your business profile.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenModule('profile')}
+              className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm"
+            >
+              Turn On
+            </button>
+          </div>
+        )}
+
+        {/* Enable Products Banner */}
+        {!offerings.hasProducts && (
+          <div className="mt-space-sm p-space-md rounded-xl bg-gradient-to-r from-surface-tint-blue/80 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-space-sm min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
+                <Icon name="inventory_2" className="text-[20px]" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Enable Products</h3>
+                <p className="font-body-md text-body-md text-text-secondary line-clamp-1">
+                  Also sell products? Turn this on in your business profile.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenModule('profile')}
+              className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm"
+            >
+              Turn On
+            </button>
+          </div>
+        )}
+
         {/* Management Menu Cards */}
         <div className="flex flex-col gap-space-xs mt-space-sm">
-          {MENU_CARDS.map((card) => (
+          {menuCards.map((card) => (
             <button
               className="group relative flex items-center justify-between p-space-md rounded-xl bg-surface-container-lowest shadow-sm active:scale-[0.99] transition-all hover:shadow-md w-full text-left"
               key={card.key}

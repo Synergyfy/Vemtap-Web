@@ -6,6 +6,7 @@ import {
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from './businessSidebarConfig';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 
 interface BusinessSidebarRailProps {
   active?: string;
@@ -29,7 +30,19 @@ export function BusinessSidebarRail({
   sections = BUSINESS_SIDEBAR_SECTIONS,
   collapsed = false,
 }: BusinessSidebarRailProps) {
+  const { offerings, mode } = useBusinessOfferings();
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
+
+  const getSubItemLabel = (subItem: BusinessSidebarSubItem) => {
+    if (subItem.key === 'business-catalog') return 'My Products';
+    if (subItem.key === 'business-services') return 'My Service';
+    if (subItem.key === 'business-deals') {
+      if (mode === 'products') return 'Product Deals';
+      if (mode === 'services') return 'Service Deals';
+      return 'Deals';
+    }
+    return subItem.label;
+  };
 
   // Sections hidden from the main rail (e.g. Store Front, which moved inside POS).
   const visibleSections = sections.filter((section) => !section.hidden);
@@ -152,14 +165,20 @@ export function BusinessSidebarRail({
                     isOpen ? 'hidden lg:flex' : 'hidden'
                   }`}
                 >
-                  {section.items!.map((subItem) => {
-                    const isSubItemActive = activeItemKey === subItem.key;
+                  {section.items!
+                    .filter((subItem) => {
+                      if (subItem.key === 'business-catalog') return offerings.hasProducts;
+                      if (subItem.key === 'business-services') return offerings.hasServices;
+                      return true;
+                    })
+                    .map((subItem) => {
+                      const isSubItemActive = activeItemKey === subItem.key;
                     return (
                       <button
                         key={subItem.key}
                         type="button"
                         aria-current={isSubItemActive ? 'page' : undefined}
-                        title={subItem.label}
+                        title={getSubItemLabel(subItem)}
                         onClick={() => handleSubItemClick(subItem)}
                         className={`group/sub flex items-center justify-between w-full rounded-lg px-2.5 py-1.5 text-left transition-colors ${
                           isSubItemActive
@@ -179,7 +198,7 @@ export function BusinessSidebarRail({
                             />
                           )}
                           <span className="truncate font-label-sm text-label-sm">
-                            {subItem.label}
+                            {getSubItemLabel(subItem)}
                           </span>
                         </div>
 

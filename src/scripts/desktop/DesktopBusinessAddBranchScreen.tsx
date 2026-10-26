@@ -7,10 +7,13 @@ import {
   type StandardHours,
 } from '../../components/ui/OperatingHoursEditor';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { formatNaira, getLocationPricing } from '../locationPricing';
+import { useBusinessOfferings, type OfferingsState } from '../../context/BusinessOfferingsContext';
 
 interface DesktopBusinessAddBranchScreenProps {
   onBack: () => void;
-  onSaved: () => void;
+  /** Hands the entered branch details back so the container can add it as an unpaid additional location. */
+  onSaved: (info: { name: string; address: string; district: string; offerings?: OfferingsState }) => void;
 }
 
 const GEOFENCE_MAP_IMAGE =
@@ -31,6 +34,7 @@ const PERMITTED_MODULES: Array<{ icon: string; label: string }> = [
 ];
 
 export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusinessAddBranchScreenProps) {
+  const { offerings: businessOfferings, setBranchOfferings } = useBusinessOfferings();
   const [branchName, setBranchName] = useState('Garki District Flagship');
   const [address, setAddress] = useState('Plot 742, Tafawa Balewa Way, Area 11');
   const [landmark, setLandmark] = useState('Directly opposite Area 11 Post Office, Wing B');
@@ -43,6 +47,10 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
   const [role, setRole] = useState('Branch Manager');
   const [dashboardAccess, setDashboardAccess] = useState(true);
   const [customizeDays, setCustomizeDays] = useState(false);
+  const [branchOfferings, setBranchOfferingsState] = useState<OfferingsState>(() => ({
+    hasProducts: businessOfferings.hasProducts,
+    hasServices: businessOfferings.hasServices,
+  }));
   const [standardHours, setStandardHours] = useState<StandardHours>({
     days: [...WEEKDAYS],
     open: '8:00 AM',
@@ -54,13 +62,37 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
+  const toggleBranchOffering = (type: 'products' | 'services') => {
+    if (type === 'products') {
+      if (!businessOfferings.hasProducts) return;
+      if (branchOfferings.hasProducts && !branchOfferings.hasServices) return;
+      setBranchOfferingsState((prev) => ({ ...prev, hasProducts: !prev.hasProducts }));
+    } else {
+      if (!businessOfferings.hasServices) return;
+      if (branchOfferings.hasServices && !branchOfferings.hasProducts) return;
+      setBranchOfferingsState((prev) => ({ ...prev, hasServices: !prev.hasServices }));
+    }
+  };
+
   const handleSave = () => {
     if (status !== 'idle') return;
     setStatus('saving');
+    const finalName = branchName.trim();
+    setBranchOfferings(finalName, branchOfferings);
     timers.current.push(
       window.setTimeout(() => {
         setStatus('success');
-        timers.current.push(window.setTimeout(() => onSaved(), 800));
+        timers.current.push(
+          window.setTimeout(
+            () => onSaved({
+              name: finalName,
+              address: address.trim(),
+              district: district.trim(),
+              offerings: branchOfferings,
+            }),
+            800,
+          ),
+        );
       }, 1100),
     );
   };
@@ -86,20 +118,22 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
               Add Branch Location
             </h1>
             <p className="font-body-md text-body-md text-text-secondary">
-              Expand your customer reach and empower local store leads with one tap.
+              Expand your customer reach. Each additional location costs{' '}
+              {formatNaira(getLocationPricing().pricePerAdditionalLocation)} (one-time) — payable at checkout.
+              Enabling services later at this branch does <strong>not</strong> incur another location fee.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-md">
             <div className="flex items-center gap-space-sm bg-surface-canvas px-space-md py-space-xs rounded-lg shadow-sm">
               <div className="w-8 h-8 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary font-bold font-caption text-caption">
-                2/3
+                1/2
               </div>
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                  Setup Sequence
+                  Add Location
                 </span>
                 <span className="font-label-sm text-label-sm text-on-surface font-semibold">
-                  Branch 2 of Multi-Location Setup
+                  Step 1 of 2 · Location details
                 </span>
               </div>
             </div>
@@ -163,6 +197,74 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                 <span className="font-caption text-caption text-text-tertiary">
                   Displayed to shoppers across discovery feeds, checkout receipts, and navigation screens.
                 </span>
+              </div>
+            </div>
+
+            {/* Branch Offerings Card */}
+            <div className="bg-surface-canvas p-space-xl rounded-xl shadow-sm flex flex-col gap-space-md">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-space-xs">
+                  <Icon name="category" className="text-primary text-[22px]" />
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Branch Offerings</h2>
+                </div>
+                <span className={`px-space-xs py-0.5 rounded-full font-caption text-caption font-semibold ${
+                  branchOfferings.hasProducts && branchOfferings.hasServices
+                    ? 'bg-surface-tint-blue text-primary'
+                    : 'bg-surface-container text-text-secondary'
+                }`}>
+                  {branchOfferings.hasProducts && branchOfferings.hasServices
+                    ? 'Products & Services'
+                    : branchOfferings.hasServices ? 'Services Only' : 'Products Only'}
+                </span>
+              </div>
+              <p className="font-body-sm text-body-sm text-text-secondary leading-relaxed">
+                Select what this branch offers. The catalogue adapts automatically. Enabling services later does <strong>not</strong> incur another location fee.
+              </p>
+              <div className="grid grid-cols-2 gap-space-md pt-1">
+                <div onClick={() => toggleBranchOffering('products')} role="button" tabIndex={0}
+                  className={`p-space-md rounded-xl border-2 transition-all flex flex-col gap-space-sm ${
+                    !businessOfferings.hasProducts
+                      ? 'border-border-subtle bg-surface-subtle opacity-50 cursor-not-allowed'
+                      : branchOfferings.hasProducts
+                      ? 'border-primary bg-surface-tint-blue/30 shadow-sm cursor-pointer'
+                      : 'border-border-subtle bg-surface-subtle hover:border-border cursor-pointer'
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                      branchOfferings.hasProducts && businessOfferings.hasProducts ? 'bg-primary text-on-primary' : 'bg-surface-container text-text-tertiary'
+                    }`}><Icon name="inventory_2" className="text-[20px]" /></div>
+                    <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                      branchOfferings.hasProducts && businessOfferings.hasProducts ? 'border-primary bg-primary text-on-primary' : 'border-border-subtle'
+                    }`}>{branchOfferings.hasProducts && businessOfferings.hasProducts && <Icon name="check" className="text-[14px]" />}</span>
+                  </div>
+                  <div>
+                    <h3 className="font-label-md text-label-md text-text-primary font-bold">Products</h3>
+                    <p className="font-caption text-caption text-text-secondary mt-0.5">Physical goods, stock &amp; inventory.</p>
+                    {!businessOfferings.hasProducts && <p className="font-caption text-caption text-primary italic mt-1">Enable on Business Profile</p>}
+                  </div>
+                </div>
+                <div onClick={() => toggleBranchOffering('services')} role="button" tabIndex={0}
+                  className={`p-space-md rounded-xl border-2 transition-all flex flex-col gap-space-sm ${
+                    !businessOfferings.hasServices
+                      ? 'border-border-subtle bg-surface-subtle opacity-50 cursor-not-allowed'
+                      : branchOfferings.hasServices
+                      ? 'border-primary bg-surface-tint-blue/30 shadow-sm cursor-pointer'
+                      : 'border-border-subtle bg-surface-subtle hover:border-border cursor-pointer'
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                      branchOfferings.hasServices && businessOfferings.hasServices ? 'bg-primary text-on-primary' : 'bg-surface-container text-text-tertiary'
+                    }`}><Icon name="design_services" className="text-[20px]" /></div>
+                    <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                      branchOfferings.hasServices && businessOfferings.hasServices ? 'border-primary bg-primary text-on-primary' : 'border-border-subtle'
+                    }`}>{branchOfferings.hasServices && businessOfferings.hasServices && <Icon name="check" className="text-[14px]" />}</span>
+                  </div>
+                  <div>
+                    <h3 className="font-label-md text-label-md text-text-primary font-bold">Services</h3>
+                    <p className="font-caption text-caption text-text-secondary mt-0.5">Appointments, treatments &amp; packages.</p>
+                    {!businessOfferings.hasServices && <p className="font-caption text-caption text-primary italic mt-1">Enable on Business Profile</p>}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -575,7 +677,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
             >
               {status === 'idle' && (
                 <>
-                  <span>Save &amp; Add Branch Location</span>
+                  <span>Save &amp; Continue to Checkout</span>
                   <Icon name="arrow_forward" className="text-[20px]" />
                 </>
               )}
@@ -588,7 +690,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
               {status === 'success' && (
                 <>
                   <Icon name="check_circle" className="text-[20px]" />
-                  <span>Branch Successfully Activated!</span>
+                  <span>Location Saved</span>
                 </>
               )}
             </button>

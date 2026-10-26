@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useProfile } from '../context/ProfileContext';
-import { BusinessAddBranchScreen } from './BusinessAddBranchScreen';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
 import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
 import { BusinessAddProductImageScreen } from './BusinessAddProductImageScreen';
@@ -8,8 +7,6 @@ import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
 import { BusinessAddServiceStep1Screen } from './BusinessAddServiceStep1Screen';
 import { BusinessAddServiceStep2Screen } from './BusinessAddServiceStep2Screen';
 import { BusinessAddServiceStep3Screen } from './BusinessAddServiceStep3Screen';
-import { BusinessBranchesScreen } from './BusinessBranchesScreen';
-import type { BusinessBranch } from './BusinessBranchesScreen';
 import { BusinessBusinessQrScreen } from './BusinessBusinessQrScreen';
 import { BusinessCatalogScreen } from './BusinessCatalogScreen';
 import { BusinessDealAutoImportScreen } from './BusinessDealAutoImportScreen';
@@ -19,6 +16,8 @@ import { BusinessDealStudioStep3Screen } from './BusinessDealStudioStep3Screen';
 import { BusinessDealStudioStep4Screen } from './BusinessDealStudioStep4Screen';
 import { BusinessIntroScreen } from './BusinessIntroScreen';
 import { BusinessLocationScreen } from './BusinessLocationScreen';
+import { BusinessOfferingsScreen } from './BusinessOfferingsScreen';
+import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
 import { BusinessProductDealScreen } from './BusinessProductDealScreen';
 import { BusinessProductPublishedScreen } from './BusinessProductPublishedScreen';
 import { BusinessProductReviewScreen } from './BusinessProductReviewScreen';
@@ -57,6 +56,10 @@ export interface BusinessProfileDraft {
   whatsapp: string;
   x: string;
   prefs: { inApp: boolean; whatsapp: boolean };
+  /** Primary business location (always free) captured on the location step. */
+  primaryLocation?: { street: string; landmark: string };
+  /** Business offerings selected on the offerings onboarding step. */
+  offerings?: { hasProducts: boolean; hasServices: boolean };
 }
 
 /**
@@ -119,24 +122,6 @@ const PROFILE_STEPS: readonly BusinessOnboardingStep[] = [
   'addBranch',
 ];
 
-const NEW_BRANCH_IMAGES = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuANJsmk1CZ7kqu-LkWt0xVGy3vQvAAan2Uh7Ae-lqlm1Rb8RiLOXtVOsxfmEPOizvnkLCegPcvq3NuOtbzguW_cqVTZV7750yTTpjC89dxUFwN3hFP4roCjyXSypNYEmwIgel6-zKkx9izBn56_TuVnPMWYVUx2G_5Axi-hkLlDfm8UQlIel1tu2ulnv3nGiT3Vtm8zhh7UaXbbP83y0fenbLPpvzRNj0A7mbkLzZpE7qRna9LuP2INkg',
-    alt: 'Cozy bistro cafe storefront in a bustling commercial mall with warm ambient terrace lighting, artisan coffee counter, chalkboard specials, and potted plants under crisp modern architectural illumination.',
-  },
-];
-
-const NEW_BRANCH: BusinessBranch = {
-  id: 'garki-flagship',
-  name: '3 — Garki District Flagship',
-  subtitle: 'Urban Grill & Bistro • Garki District, FCT',
-  address: 'Plot 742, Tafawa Balewa Way, Area 11',
-  phone: '+234 809 111 4455',
-  hours: '· 8:00 AM – 10:00 PM (Mon–Sun)',
-  image: NEW_BRANCH_IMAGES[0].src,
-  imageAlt: NEW_BRANCH_IMAGES[0].alt,
-};
-
 const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
   ...INITIAL_PRODUCT_DRAFT,
   title: service.title,
@@ -179,12 +164,16 @@ export function BusinessOnboardingScreen({
   initialStep?: 'intro' | 'basic';
 }) {
   const profile = useProfile();
+  const { offerings: currentOfferings, setOfferings } = useBusinessOfferings();
   // Restore saved progress from the module snapshot (if any) so returning from
   // verification (or another route) resumes where the merchant left off.
   const stored = getBusinessSetupSnapshot();
   const [stepIndex, setStepIndex] = useState(() => {
     if (stored) {
-      const index = (STEPS as readonly string[]).indexOf(stored.step);
+      // Older drafts could pause on the (now removed) add-branch form — resume
+      // at the informational locations step instead.
+      const restored = stored.step === 'addBranch' ? 'branches' : stored.step;
+      const index = (STEPS as readonly string[]).indexOf(restored);
       if (index >= 0) return index;
     }
     return initialStep === 'basic' ? 1 : 0;
@@ -192,8 +181,14 @@ export function BusinessOnboardingScreen({
   const [draft, setDraft] = useState<BusinessProfileDraft>(
     () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
   );
-  const [extraBranches, setExtraBranches] = useState<BusinessBranch[]>(
-    () => (stored?.data.extraBranches as BusinessBranch[] | undefined) ?? [],
+  const [extraBranches] = useState<Record<string, unknown>[]>(
+    () => (stored?.data.extraBranches as Record<string, unknown>[] | undefined) ?? [],
+  );
+  // Additional locations whose simulated checkout already succeeded in an
+  // earlier run. Kept only so restoring an older saved draft still knows which
+  // entries were already paid; nothing new can be added during sign-up.
+  const [paidBranchIds] = useState<string[]>(
+    () => (stored?.data.paidBranchIds as string[] | undefined) ?? [],
   );
   const [productDraft, setProductDraft] = useState<ProductDraft>(
     () => (stored?.data.productDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
@@ -219,12 +214,13 @@ export function BusinessOnboardingScreen({
     saveBusinessSetupSnapshot(STEPS[stepIndex], {
       draft,
       extraBranches,
+      paidBranchIds,
       productDraft,
       dealDraft,
       serviceDraft,
       dealStudio,
     });
-  }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio]);
+  }, [stepIndex, draft, extraBranches, paidBranchIds, productDraft, dealDraft, serviceDraft, dealStudio]);
 
   useEffect(() => {
     setBusinessSetupVerificationState(verificationState);
@@ -323,30 +319,41 @@ export function BusinessOnboardingScreen({
         <BusinessLocationScreen
           draft={draft}
           onBack={() => setStepIndex(3)}
-          onNext={() => setStepIndex(5)}
+          onNext={(location) => {
+            updateDraft({ primaryLocation: location });
+            setStepIndex(5);
+          }}
           onSaveDraft={onBack}
         />
       );
     case 'branches':
+      // "What does your business offer?" step: merchants choose Products, Services, or Both.
       return (
-        <BusinessBranchesScreen
-          extraBranches={extraBranches}
+        <BusinessOfferingsScreen
+          businessName={draft.name}
+          initialOfferings={draft.offerings ?? currentOfferings}
           onBack={() => setStepIndex(4)}
-          onAddBranch={() => setStepIndex(6)}
-          onNext={() => setStepIndex(7)}
+          onNext={(selectedOfferings) => {
+            updateDraft({ offerings: selectedOfferings });
+            setOfferings(selectedOfferings);
+            setStepIndex(7);
+          }}
           onSaveDraft={onBack}
         />
       );
     case 'addBranch':
+      // Legacy saved-draft step: resume at the offerings step instead.
       return (
-        <BusinessAddBranchScreen
-          onBack={() => setStepIndex(5)}
-          onSaved={() => {
-            setExtraBranches((current) =>
-              current.some((branch) => branch.id === NEW_BRANCH.id) ? current : [...current, NEW_BRANCH],
-            );
-            setStepIndex(5);
+        <BusinessOfferingsScreen
+          businessName={draft.name}
+          initialOfferings={draft.offerings ?? currentOfferings}
+          onBack={() => setStepIndex(4)}
+          onNext={(selectedOfferings) => {
+            updateDraft({ offerings: selectedOfferings });
+            setOfferings(selectedOfferings);
+            setStepIndex(7);
           }}
+          onSaveDraft={onBack}
         />
       );
     case 'catalog':

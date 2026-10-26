@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
+import { useBusinessOfferings, type OfferingType } from '../context/BusinessOfferingsContext';
 
 interface BusinessProfileManageScreenProps {
   onBack: () => void;
@@ -38,6 +39,10 @@ const AMENITIES = [
 ];
 
 export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: BusinessProfileManageScreenProps) {
+  const { offerings, setOfferings } = useBusinessOfferings();
+  const [offeringsDraft, setOfferingsDraft] = useState(offerings);
+  const [confirmDisable, setConfirmDisable] = useState<OfferingType | null>(null);
+
   const [amenityState, setAmenityState] = useState<Record<string, boolean>>(
     Object.fromEntries(AMENITIES.map((amenity) => [amenity.key, true])),
   );
@@ -57,6 +62,38 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
 
+  const handleToggleOffering = (type: OfferingType) => {
+    const isCurrentlyOn = type === 'products' ? offeringsDraft.hasProducts : offeringsDraft.hasServices;
+    if (isCurrentlyOn) {
+      // Trying to disable: check if the other is also disabled
+      const otherOn = type === 'products' ? offeringsDraft.hasServices : offeringsDraft.hasProducts;
+      if (!otherOn) {
+        showToast('You must keep at least one offering active (Products, Services, or Both).');
+        return;
+      }
+      // Require confirmation before disabling
+      setConfirmDisable(type);
+    } else {
+      // Enabling: safe to enable immediately
+      setOfferingsDraft((prev) => ({
+        ...prev,
+        [type === 'products' ? 'hasProducts' : 'hasServices']: true,
+      }));
+      showToast(`${type === 'products' ? 'Products' : 'Services'} enabled! Click Save Changes to apply.`);
+    }
+  };
+
+  const confirmDisableOffering = () => {
+    if (!confirmDisable) return;
+    const type = confirmDisable;
+    setOfferingsDraft((prev) => ({
+      ...prev,
+      [type === 'products' ? 'hasProducts' : 'hasServices']: false,
+    }));
+    setConfirmDisable(null);
+    showToast(`${type === 'products' ? 'Products' : 'Services'} disabled. Existing data remains safely preserved.`);
+  };
+
   const activeCount = AMENITIES.filter((amenity) => amenityState[amenity.key]).length;
 
   /** Brand facts shown above — reused by the contextual AI prompts. */
@@ -68,7 +105,8 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
 
   const handleSave = () => {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    setToast('Profile & amenities updated successfully!');
+    setOfferings(offeringsDraft);
+    setToast('Profile, business offerings & amenities updated successfully!');
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
 
@@ -240,6 +278,109 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
           </div>
         </div>
 
+        {/* Business Offerings */}
+        <div className="px-margin mb-space-lg">
+          <div className="rounded-xl bg-surface-container-lowest p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-space-xs">
+                <div className="w-9 h-9 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                  <Icon name="tune" className="text-[18px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary">Business Offerings</h3>
+                  <p className="font-caption text-caption text-text-secondary">
+                    Choose what this business offers on VEMTAP.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-space-xs mt-1">
+              {/* Products Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-low transition-colors">
+                <div className="flex items-start gap-3 min-w-0 pr-2">
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                      offeringsDraft.hasProducts ? 'bg-primary text-on-primary' : 'bg-surface-container text-text-secondary'
+                    }`}
+                  >
+                    <Icon name="inventory_2" className="text-[16px]" />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-label-md text-label-md font-semibold text-text-primary">Products</span>
+                    <span className="font-caption text-caption text-text-secondary leading-snug">
+                      Manage products, stock, prices and product deals.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Toggle Products"
+                  aria-checked={offeringsDraft.hasProducts}
+                  onClick={() => handleToggleOffering('products')}
+                  className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${
+                    offeringsDraft.hasProducts ? 'bg-primary' : 'bg-surface-container-high'
+                  }`}
+                >
+                  <span
+                    className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                      offeringsDraft.hasProducts ? 'translate-x-6' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Services Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-low transition-colors">
+                <div className="flex items-start gap-3 min-w-0 pr-2">
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                      offeringsDraft.hasServices ? 'bg-primary text-on-primary' : 'bg-surface-container text-text-secondary'
+                    }`}
+                  >
+                    <Icon name="content_cut" className="text-[16px]" />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-label-md text-label-md font-semibold text-text-primary">Services</span>
+                    <span className="font-caption text-caption text-text-secondary leading-snug">
+                      Manage services, pricing, packages and service deals.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Toggle Services"
+                  aria-checked={offeringsDraft.hasServices}
+                  onClick={() => handleToggleOffering('services')}
+                  className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${
+                    offeringsDraft.hasServices ? 'bg-primary' : 'bg-surface-container-high'
+                  }`}
+                >
+                  <span
+                    className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                      offeringsDraft.hasServices ? 'translate-x-6' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic Status Indicator */}
+            <div className="pt-2 border-t border-border-subtle flex items-center gap-2 text-caption font-caption text-text-secondary">
+              <Icon name="info" className="text-[16px] text-primary shrink-0" />
+              <span>
+                {offeringsDraft.hasProducts && offeringsDraft.hasServices
+                  ? 'Your dashboard includes both products and services.'
+                  : offeringsDraft.hasServices
+                  ? 'Your dashboard will focus on services.'
+                  : 'Your dashboard will focus on products.'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Contact & Channels */}
         <div className="px-margin mb-space-lg">
           <div className="flex items-center justify-between mb-space-xs">
@@ -383,6 +524,41 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
           <span>Save Changes</span>
         </button>
       </div>
+
+      {/* Confirmation modal when disabling an offering */}
+      {confirmDisable && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface-canvas rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-border-subtle flex flex-col gap-4 animate-scale-in">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+              <Icon name="warning" className="text-[26px]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <h4 className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                Turn off {confirmDisable === 'products' ? 'Products' : 'Services'}?
+              </h4>
+              <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+                Your existing {confirmDisable === 'products' ? 'products, stock, and deals' : 'services, durations, and deals'} won&apos;t be deleted. They will remain safely preserved, but won&apos;t be visible to customers until re-enabled.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDisable(null)}
+                className="flex-1 h-11 rounded-xl bg-surface-container text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors"
+              >
+                Keep Active
+              </button>
+              <button
+                type="button"
+                onClick={confirmDisableOffering}
+                className="flex-1 h-11 rounded-xl bg-error text-on-error font-button-primary text-button-primary hover:bg-error/90 active:scale-95 transition-all shadow-sm"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

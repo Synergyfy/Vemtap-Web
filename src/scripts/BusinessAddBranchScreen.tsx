@@ -7,10 +7,13 @@ import {
   type CustomDayHours,
   type StandardHours,
 } from '../components/ui/OperatingHoursEditor';
+import { formatNaira, getLocationPricing } from './locationPricing';
+import { useBusinessOfferings, type OfferingsState } from '../context/BusinessOfferingsContext';
 
 interface BusinessAddBranchScreenProps {
   onBack: () => void;
-  onSaved: () => void;
+  /** Hands the entered branch details back so the container can add it as an unpaid additional location. */
+  onSaved: (info: { name: string; address: string; district: string; offerings?: OfferingsState }) => void;
 }
 
 type SaveStatus = 'idle' | 'publishing' | 'success';
@@ -25,9 +28,17 @@ const BRANCH_IMAGES = [
 const ROLE_PILLS = ['Branch Manager', 'Head Chef', 'Store Supervisor', 'Salon Director', 'Lead Host'];
 
 export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchScreenProps) {
+  const { offerings: businessOfferings, setBranchOfferings } = useBusinessOfferings();
+  const [branchName, setBranchName] = useState('Garki District Flagship');
+  const [street, setStreet] = useState('Plot 742, Tafawa Balewa Way, Area 11');
+  const [district, setDistrict] = useState('Abuja Municipal • Garki District, FCT');
   const [role, setRole] = useState('Branch Manager');
   const [grantAccess, setGrantAccess] = useState(true);
   const [customHours, setCustomHours] = useState(false);
+  const [branchOfferings, setBranchOfferingsState] = useState<OfferingsState>(() => ({
+    hasProducts: businessOfferings.hasProducts,
+    hasServices: businessOfferings.hasServices,
+  }));
   const [standardHours, setStandardHours] = useState<StandardHours>({
     days: [...WEEKDAYS],
     open: '8:00 AM',
@@ -36,12 +47,35 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
   const [customDayHours, setCustomDayHours] = useState<CustomDayHours[]>([]);
   const [status, setStatus] = useState<SaveStatus>('idle');
 
+  const toggleBranchOffering = (type: 'products' | 'services') => {
+    if (type === 'products') {
+      if (!businessOfferings.hasProducts) return;
+      if (branchOfferings.hasProducts && !branchOfferings.hasServices) return;
+      setBranchOfferingsState((prev) => ({ ...prev, hasProducts: !prev.hasProducts }));
+    } else {
+      if (!businessOfferings.hasServices) return;
+      if (branchOfferings.hasServices && !branchOfferings.hasProducts) return;
+      setBranchOfferingsState((prev) => ({ ...prev, hasServices: !prev.hasServices }));
+    }
+  };
+
   const handleSave = () => {
     if (status !== 'idle') return;
     setStatus('publishing');
+    const finalName = branchName.trim();
+    setBranchOfferings(finalName, branchOfferings);
     window.setTimeout(() => {
       setStatus('success');
-      window.setTimeout(onSaved, 900);
+      window.setTimeout(
+        () =>
+          onSaved({
+            name: finalName,
+            address: street.trim(),
+            district: district.trim(),
+            offerings: branchOfferings,
+          }),
+        900,
+      );
     }, 1100);
   };
 
@@ -113,10 +147,11 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
               <div className="relative flex items-center">
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas shadow-inner"
-                  defaultValue="Garki District Flagship"
                   id="branch-name"
                   placeholder="e.g. Garki Branch, Victoria Island Annex"
                   type="text"
+                  value={branchName}
+                  onChange={(event) => setBranchName(event.target.value)}
                 />
                 <Icon
                   className="absolute right-space-md text-text-tertiary text-[20px]"
@@ -124,6 +159,113 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 />
               </div>
             </div>
+          </div>
+
+          {/* Branch Offerings Card */}
+          <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-space-2xs">
+                <span className="w-2 h-2 rounded-full bg-primary-container" />
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Branch Offerings</h3>
+              </div>
+              <span className="font-caption text-caption text-primary bg-surface-tint-blue px-2 py-0.5 rounded-full font-semibold">
+                {branchOfferings.hasProducts && branchOfferings.hasServices
+                  ? 'Products & Services'
+                  : branchOfferings.hasServices
+                  ? 'Services Only'
+                  : 'Products Only'}
+              </span>
+            </div>
+            <p className="font-caption text-caption text-text-secondary leading-relaxed -mt-1">
+              Select what is available at this specific branch. The branch catalogue and order workflows will adapt accordingly.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              {/* Products Option */}
+              <div
+                onClick={() => toggleBranchOffering('products')}
+                className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${
+                  !businessOfferings.hasProducts
+                    ? 'border-border-subtle bg-surface-subtle opacity-50 cursor-not-allowed'
+                    : branchOfferings.hasProducts
+                    ? 'border-primary bg-surface-tint-blue/40 shadow-sm'
+                    : 'border-border-subtle bg-surface-subtle hover:border-border'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    branchOfferings.hasProducts && businessOfferings.hasProducts
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-surface-container text-text-tertiary'
+                  }`}>
+                    <Icon name="inventory_2" className="text-[18px]" />
+                  </div>
+                  <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    branchOfferings.hasProducts && businessOfferings.hasProducts
+                      ? 'border-primary bg-primary text-on-primary'
+                      : 'border-border-subtle'
+                  }`}>
+                    {branchOfferings.hasProducts && businessOfferings.hasProducts && (
+                      <Icon name="check" className="text-[13px]" />
+                    )}
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-label-md text-label-md text-text-primary font-bold">Products</h4>
+                  <p className="font-caption text-caption text-text-secondary mt-0.5 line-clamp-2">
+                    Goods, stock &amp; physical retail catalogue.
+                  </p>
+                </div>
+              </div>
+
+              {/* Services Option */}
+              <div
+                onClick={() => toggleBranchOffering('services')}
+                className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${
+                  !businessOfferings.hasServices
+                    ? 'border-border-subtle bg-surface-subtle opacity-50 cursor-not-allowed'
+                    : branchOfferings.hasServices
+                    ? 'border-primary bg-surface-tint-blue/40 shadow-sm'
+                    : 'border-border-subtle bg-surface-subtle hover:border-border'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    branchOfferings.hasServices && businessOfferings.hasServices
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-surface-container text-text-tertiary'
+                  }`}>
+                    <Icon name="design_services" className="text-[18px]" />
+                  </div>
+                  <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    branchOfferings.hasServices && businessOfferings.hasServices
+                      ? 'border-primary bg-primary text-on-primary'
+                      : 'border-border-subtle'
+                  }`}>
+                    {branchOfferings.hasServices && businessOfferings.hasServices && (
+                      <Icon name="check" className="text-[13px]" />
+                    )}
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-label-md text-label-md text-text-primary font-bold">Services</h4>
+                  <p className="font-caption text-caption text-text-secondary mt-0.5 line-clamp-2">
+                    Appointments, treatments &amp; packages.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {(!businessOfferings.hasProducts || !businessOfferings.hasServices) && (
+              <div className="p-2.5 rounded-lg bg-surface-subtle flex items-center gap-2 text-caption font-caption text-text-secondary">
+                <Icon name="info" className="text-[16px] text-primary shrink-0" />
+                <span>
+                  {!businessOfferings.hasServices
+                    ? 'Enable Services on your Business Profile to offer services at this branch.'
+                    : 'Enable Products on your Business Profile to sell products at this branch.'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-md">
@@ -143,10 +285,11 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 </label>
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="Plot 742, Tafawa Balewa Way, Area 11"
                   id="branch-street"
                   placeholder="e.g. Suite 4B, Garki Mall, Area 11"
                   type="text"
+                  value={street}
+                  onChange={(event) => setStreet(event.target.value)}
                 />
               </div>
               <div className="flex flex-col gap-space-2xs">
@@ -167,10 +310,11 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 </label>
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="Abuja Municipal • Garki District, FCT"
                   id="branch-district"
                   placeholder="e.g. Abuja Municipal • Garki District"
                   type="text"
+                  value={district}
+                  onChange={(event) => setDistrict(event.target.value)}
                 />
               </div>
             </div>
@@ -392,23 +536,26 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
             >
               {status === 'idle' && (
                 <>
-                  <span>Save &amp; Add Branch Location</span>
+                  <span>Save &amp; Continue to Checkout</span>
                   <Icon name="arrow_forward" className="text-[18px]" />
                 </>
               )}
               {status === 'publishing' && (
                 <>
                   <span className="w-5 h-5 rounded-full border-2 border-on-primary border-t-transparent animate-spin" />
-                  <span>Publishing Branch...</span>
+                  <span>Saving Location...</span>
                 </>
               )}
               {status === 'success' && (
                 <>
                   <Icon name="check_circle" className="text-[20px]" />
-                  <span>Branch Successfully Activated!</span>
+                  <span>Location Saved</span>
                 </>
               )}
             </button>
+            <p className="font-caption text-caption text-text-secondary text-center leading-relaxed px-space-md">
+              Each additional location costs {formatNaira(getLocationPricing().pricePerAdditionalLocation)} under our pricing model (one-time fee). Enabling services later does not incur another location fee.
+            </p>
             <button
               className="w-full h-[44px] flex items-center justify-center text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary active:opacity-75 transition-opacity"
               type="button"

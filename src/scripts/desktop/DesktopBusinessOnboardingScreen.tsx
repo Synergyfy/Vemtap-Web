@@ -5,8 +5,8 @@ import { DesktopBusinessProfileBasicScreen } from './DesktopBusinessProfileBasic
 import { DesktopBusinessProfileBrandingScreen } from './DesktopBusinessProfileBrandingScreen';
 import { DesktopBusinessProfileContactScreen } from './DesktopBusinessProfileContactScreen';
 import { DesktopBusinessLocationScreen } from './DesktopBusinessLocationScreen';
-import { DesktopBusinessLocationsScreen, type OnboardingBranch } from './DesktopBusinessLocationsScreen';
-import { DesktopBusinessAddBranchScreen } from './DesktopBusinessAddBranchScreen';
+import { DesktopBusinessOfferingsScreen } from './DesktopBusinessOfferingsScreen';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 import { DesktopBusinessCatalogScreen } from './DesktopBusinessCatalogScreen';
 import { DesktopAddProductStep1Screen } from './DesktopAddProductStep1Screen';
 import { DesktopAddProductStep2Screen } from './DesktopAddProductStep2Screen';
@@ -55,6 +55,10 @@ export interface BusinessProfileDraft {
   whatsapp: string;
   x: string;
   prefs: { inApp: boolean; whatsapp: boolean };
+  /** Primary business location (always free) captured on the location step. */
+  primaryLocation?: { street: string; landmark: string };
+  /** Business offerings selected on the offerings onboarding step. */
+  offerings?: { hasProducts: boolean; hasServices: boolean };
 }
 
 type BusinessOnboardingStep =
@@ -120,17 +124,6 @@ const ONBOARDING_STEPS: readonly BusinessOnboardingStep[] = [
   'dealAutoImport',
   'businessQr',
 ];
-
-/** Branch appended after "Add Branch Location" is saved (matches the form's defaults). */
-const NEW_DESKTOP_BRANCH: OnboardingBranch = {
-  id: 'garki-flagship',
-  name: 'Garki District Flagship',
-  city: 'Abuja Municipal • Garki District, FCT',
-  address: 'Plot 742, Tafawa Balewa Way, Area 11',
-  hours: 'Mon–Sun • 8:00 AM – 10:00 PM',
-  phone: '+234 809 111 4455',
-  isPrimary: false,
-};
 
 const PROFILE_STEPS: readonly BusinessOnboardingStep[] = [
   'intro',
@@ -211,12 +204,18 @@ export function DesktopBusinessOnboardingScreen({
   initialStep?: 'intro' | 'basic';
 }) {
   const profile = useProfile();
+  const { offerings: currentOfferings, setOfferings } = useBusinessOfferings();
   // Restore saved progress (if any) so returning from verification or another
   // route resumes at the correct step instead of restarting setup.
   const stored = getBusinessSetupSnapshot();
   const [step, setStep] = useState<BusinessOnboardingStep>(() => {
-    if (stored && (ONBOARDING_STEPS as readonly string[]).includes(stored.step)) {
-      return stored.step as BusinessOnboardingStep;
+    if (stored) {
+      // Older drafts could pause on the (now removed) add-branch form — resume
+      // at the informational locations step instead.
+      const restored = stored.step === 'addBranch' ? 'branches' : stored.step;
+      if ((ONBOARDING_STEPS as readonly string[]).includes(restored)) {
+        return restored as BusinessOnboardingStep;
+      }
     }
     return initialStep;
   });
@@ -238,8 +237,14 @@ export function DesktopBusinessOnboardingScreen({
   // Branches added during setup are part of the run's data: keep them in the
   // shared snapshot so they survive step changes, auth and verification
   // round-trips (mobile parity).
-  const [extraBranches, setExtraBranches] = useState<OnboardingBranch[]>(
-    () => (stored?.data.extraBranches as OnboardingBranch[] | undefined) ?? [],
+  const [extraBranches] = useState<Record<string, unknown>[]>(
+    () => (stored?.data.extraBranches as Record<string, unknown>[] | undefined) ?? [],
+  );
+  // Additional locations whose simulated checkout already succeeded in an
+  // earlier run. Kept only so restoring an older saved draft still knows which
+  // entries were already paid; nothing new can be added during sign-up.
+  const [paidBranchIds] = useState<string[]>(
+    () => (stored?.data.paidBranchIds as string[] | undefined) ?? [],
   );
   const [verificationState, setVerificationState] = useState<VerificationSectionState>(
     () => stored?.verificationState ?? 'not-started',
@@ -250,8 +255,16 @@ export function DesktopBusinessOnboardingScreen({
   }, [step]);
 
   useEffect(() => {
-    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches });
-  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches]);
+    saveBusinessSetupSnapshot(step, {
+      draft,
+      productDraft,
+      serviceDraft,
+      dealDraft,
+      dealStudio,
+      extraBranches,
+      paidBranchIds,
+    });
+  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, paidBranchIds]);
 
   useEffect(() => {
     setBusinessSetupVerificationState(verificationState);
@@ -327,32 +340,41 @@ export function DesktopBusinessOnboardingScreen({
         <DesktopBusinessLocationScreen
           draft={draft}
           onBack={() => setStep('contact')}
-          onComplete={() => setStep('branches')}
+          onComplete={(location) => {
+            updateDraft({ primaryLocation: location });
+            setStep('branches');
+          }}
           onSaveDraft={onBack}
         />
       );
     case 'branches':
+      // "What does your business offer?" step: merchants choose Products, Services, or Both.
       return (
-        <DesktopBusinessLocationsScreen
-          extraBranches={extraBranches}
+        <DesktopBusinessOfferingsScreen
+          businessName={draft.name}
+          initialOfferings={draft.offerings ?? currentOfferings}
           onBack={() => setStep('location')}
-          onAddBranch={() => setStep('addBranch')}
-          onNext={() => setStep('catalog')}
+          onNext={(selectedOfferings) => {
+            updateDraft({ offerings: selectedOfferings });
+            setOfferings(selectedOfferings);
+            setStep('catalog');
+          }}
           onSaveDraft={onBack}
         />
       );
     case 'addBranch':
+      // Legacy saved-draft step: resume at the offerings step instead.
       return (
-        <DesktopBusinessAddBranchScreen
-          onBack={() => setStep('branches')}
-          onSaved={() => {
-            setExtraBranches((current) =>
-              current.some((branch) => branch.id === NEW_DESKTOP_BRANCH.id)
-                ? current
-                : [...current, NEW_DESKTOP_BRANCH],
-            );
-            setStep('branches');
+        <DesktopBusinessOfferingsScreen
+          businessName={draft.name}
+          initialOfferings={draft.offerings ?? currentOfferings}
+          onBack={() => setStep('location')}
+          onNext={(selectedOfferings) => {
+            updateDraft({ offerings: selectedOfferings });
+            setOfferings(selectedOfferings);
+            setStep('catalog');
           }}
+          onSaveDraft={onBack}
         />
       );
     case 'catalog':
