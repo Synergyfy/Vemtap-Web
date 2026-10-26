@@ -8,6 +8,9 @@ import { PosCustomerModal } from './PosCustomerModal';
 import { PosLoyaltyPanel } from './PosLoyaltyPanel';
 import { PosAddPointsModal, PosRewardsModal } from '../PosPointsModals';
 import { usePosSettings } from '../../context/PosSettingsContext';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { apiCustomerId, setLastSale, useLivePos, usePosCheckout } from '../posLive';
 
 interface DesktopPosPaymentScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -134,8 +137,40 @@ export function DesktopPosPaymentScreen({
     // Walk-in sales can be switched off in POS Settings — a customer must then be attached.
     (allowWalkIn || customer !== null);
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const { checkout } = usePosCheckout();
+
+  /** Live: `POST /pos/sales` (or the offline queue), then hand the receipt the real sale. */
+  const completeLive = () => {
+    if (!pos.isOpen) {
+      flash('Open the register first (Till & Cash Drawer on the POS home).');
+      return;
+    }
+    setCompleting(true);
+    checkout({
+      lines: cart,
+      method: tenderMode,
+      amountPaid: tenderMode === 'cash' ? cashReceived : tenderMode === 'split' ? splitPaid : undefined,
+      split: tenderMode === 'split' ? slices.map((slice) => ({ method: slice.method, amount: slice.amount })) : undefined,
+      customerId: apiCustomerId(customer?.id),
+    })
+      .then((outcome) => {
+        setLastSale(outcome);
+        const earned = outcome.queued ? 0 : (outcome.sale.pointsEarned ?? 0);
+        if (customer && earned > 0) onCustomerChange({ ...customer, points: customer.points + earned });
+        onComplete(earned);
+      })
+      .catch((error: unknown) => flash(apiErrorMessage(error, 'Could not complete the sale.')))
+      .finally(() => setCompleting(false));
+  };
+
   const completeSale = () => {
     if (completing || !canComplete) return;
+    if (live) {
+      completeLive();
+      return;
+    }
     setCompleting(true);
     window.setTimeout(() => {
       setCompleting(false);
@@ -174,7 +209,7 @@ export function DesktopPosPaymentScreen({
               <span className="px-space-xs py-1 rounded bg-primary-container text-on-primary font-caption text-caption font-semibold tracking-wider uppercase">
                 Live Sale
               </span>
-              <span className="font-heading-sm text-heading-sm text-text-primary">Ticket #TK-108</span>
+              <span className="font-heading-sm text-heading-sm text-text-primary">{live ? `New Ticket · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Ticket #TK-108'}</span>
               <span className="text-text-tertiary">•</span>
               <span className="font-label-md text-label-md text-text-secondary">{itemCount} Line Items</span>
             </div>

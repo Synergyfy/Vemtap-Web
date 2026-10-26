@@ -1,5 +1,6 @@
+import { useSyncExternalStore } from 'react';
 import { hasApiConfig } from '../services/api/client';
-import { money, personName, type PosSale, type PosTill } from '../services/posService';
+import { money, personName, type NewSaleInput, type PosSale, type PosTill } from '../services/posService';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { usePosOffline } from '../context/PosOfflineContext';
 import { useProfile } from '../context/ProfileContext';
@@ -14,6 +15,11 @@ import {
   useZReport,
 } from '../hooks/business/usePos';
 import { formatNaira } from '../utils/format';
+import type { CatalogueItem } from '../services/catalogueItemsService';
+import { useCatalogueItems } from '../hooks/business/useCatalogueItems';
+import { isItemActive, isLowStock } from './catalogueLive';
+import type { CatalogueProduct } from './catalogueData';
+import type { PosCatalogItem } from './desktop/posTerminalData';
 
 /**
  * Live POS state shared by the POS screens: the open register session and its
@@ -153,3 +159,215 @@ export function useLivePos() {
 }
 
 export type LivePos = ReturnType<typeof useLivePos>;
+
+/** Neutral tile for items without a photo. */
+export const NO_IMAGE =
+  'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Cpath d="M11 27l6-7 4 5 3-3 5 5z" fill="%23938f99"/%3E%3Ccircle cx="25" cy="15" r="3" fill="%23938f99"/%3E%3C/svg%3E';
+
+const itemPrice = (item: CatalogueItem) => Number(item.price ?? 0) || 0;
+const itemWas = (item: CatalogueItem) => {
+  const was = Number(item.compareAtPrice ?? 0) || 0;
+  return was > itemPrice(item) ? was : undefined;
+};
+const tracksStock = (item: CatalogueItem) => item.itemType !== 'service' && typeof item.stockQuantity === 'number';
+
+/**
+ * The branch's sellable catalogue for the register, in the mobile register's
+ * product shape and the desktop terminal's catalog shape, with its categories.
+ */
+export function usePosProducts() {
+  const catalogue = useCatalogueItems();
+  const items = (catalogue.data ?? []).filter(isItemActive);
+  const categories = [
+    { key: 'all', label: 'All' },
+    ...Array.from(new Map(items.filter((item) => item.category).map((item) => [item.category!.id, item.category!.name])).entries()).map(
+      ([key, label]) => ({ key, label }),
+    ),
+  ];
+  const mobile: CatalogueProduct[] = items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    sku: item.sku ?? undefined,
+    desc: item.shortDescription ?? '',
+    category: item.category?.id ?? 'other',
+    price: itemPrice(item),
+    was: itemWas(item),
+    stock: tracksStock(item) ? (item.stockQuantity as number) : undefined,
+    image: item.mainImage || NO_IMAGE,
+    imageAlt: item.name,
+  }));
+  const desktop: PosCatalogItem[] = items.map((item) => {
+    const low = tracksStock(item) && isLowStock(item);
+    const out = tracksStock(item) && (item.stockQuantity as number) <= 0;
+    return {
+      id: item.id,
+      name: item.name,
+      desc: item.shortDescription ?? '',
+      unit: itemPrice(item),
+      was: itemWas(item),
+      mods: '',
+      img: item.mainImage || NO_IMAGE,
+      alt: item.name,
+      badge: out ? 'Out of stock' : low ? 'Low stock' : itemWas(item) ? 'Deal' : '',
+      badgeTone: out || low ? 'low' : itemWas(item) ? 'promo' : 'neutral',
+      stock: tracksStock(item) ? `${item.stockQuantity} left` : 'Not tracked',
+      stockTone: low || out ? 'low' : 'default',
+    };
+  });
+  return { items, mobile, desktop, categories, loading: catalogue.isLoading, error: catalogue.error };
+}
+
+/** A register line in its simplest form; both cart shapes carry these fields. */
+export interface BasicLine {
+  id: string;
+  name: string;
+  unit: number;
+  qty: number;
+}
+
+/** Custom keypad charges have no catalogue item, so the API cannot sell them. */
+export const isCustomLine = (line: { id: string }) => line.id.startsWith('custom-');
+
+/**
+ * Park the current ticket as a held sale, or resume the oldest held ticket
+ * (deleting it from the hold list) — the register's "Held" button.
+ */
+export function useHeldTicket() {
+  const { activeBranchId } = useBusinessBranch();
+  const held = useHeldSales();
+  const mutations = usePosMutations();
+  return {
+    count: held.data?.length ?? 0,
+    hold: (lines: BasicLine[]) => {
+      if (!activeBranchId) return Promise.reject(new Error('Pick a branch first.'));
+      return mutations.holdSale.mutateAsync({
+        branchId: activeBranchId,
+        items: lines.map((line) => ({
+          productId: line.id,
+          productName: line.name,
+          unitPrice: line.unit,
+          quantity: line.qty,
+          totalPrice: line.unit * line.qty,
+        })),
+      });
+    },
+    resume: async (): Promise<BasicLine[] | null> => {
+      const ticket = (held.data ?? [])[0];
+      if (!ticket) return null;
+      await mutations.deleteHeldSale.mutateAsync(ticket.id);
+      return (ticket.items ?? []).map((item) => ({
+        id: item.productId,
+        name: item.productName ?? 'Item',
+        unit: money(item.unitPrice),
+        qty: item.quantity,
+      }));
+    },
+  };
+}
+
+export type CheckoutMethod = 'cash' | 'card' | 'transfer' | 'split';
+
+export interface CheckoutInput {
+  lines: BasicLine[];
+  method: CheckoutMethod;
+  /** What the customer handed over (cash); defaults to the total. */
+  amountPaid?: number;
+  /** For split payments: the share each method covers. */
+  split?: { method: Exclude<CheckoutMethod, 'split'>; amount: number }[];
+  customerId?: string | null;
+  note?: string;
+}
+
+export type CheckoutResult = { sale: PosSale; queued: false } | { sale: null; queued: true; ref: string };
+
+/**
+ * Takes payment for a ticket: `POST /pos/sales` when online, otherwise the
+ * sale (with its full payload) joins the offline queue and syncs later.
+ */
+export function usePosCheckout() {
+  const { activeBranchId } = useBusinessBranch();
+  const offline = usePosOffline();
+  const { completeSale } = usePosMutations();
+
+  const checkout = async (input: CheckoutInput): Promise<CheckoutResult> => {
+    if (!activeBranchId) throw new Error('Pick a branch first.');
+    const lines = input.lines.filter((line) => !isCustomLine(line));
+    if (!lines.length) throw new Error('Add at least one catalogue item to the ticket.');
+    const total = lines.reduce((sum, line) => sum + line.unit * line.qty, 0);
+    const amountPaid = input.amountPaid ?? total;
+    const clientRef = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pos-${Date.now()}`;
+    const payload: NewSaleInput = {
+      branchId: activeBranchId,
+      items: lines.map((line) => ({ productId: line.id, quantity: line.qty })),
+      payment: {
+        method: input.method,
+        amountPaid,
+        change: input.method === 'cash' ? Math.max(0, amountPaid - total) : undefined,
+        splitDetails: input.method === 'split' ? input.split : undefined,
+      },
+      customerId: input.customerId ?? undefined,
+      notes: input.note || undefined,
+      clientRef,
+      orderedAt: new Date().toISOString(),
+    };
+    if (!offline.isOnline) {
+      const ref = `POS-${clientRef.slice(0, 6).toUpperCase()}`;
+      offline.enqueue({
+        ref,
+        total,
+        tender: methodLabel(input.method),
+        items: lines.map((line) => `${line.qty}× ${line.name}`).join(', '),
+        payload,
+      });
+      return { sale: null, queued: true, ref };
+    }
+    const sale = await completeSale.mutateAsync(payload);
+    return { sale, queued: false };
+  };
+
+  return { checkout, pending: completeSale.isPending };
+}
+
+/** A `/pos/customers` row in the register's customer-record shape. */
+export const toCustomerRecord = (customer: {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  pointsBalance?: number | null;
+  tier?: string | null;
+  totalSpent?: number | string | null;
+  totalVisits?: number | null;
+}) => ({
+  id: customer.id,
+  name: personName(customer, 'Customer'),
+  phone: customer.phone ?? '—',
+  email: customer.email ?? undefined,
+  onVemtap: true,
+  tier: customer.tier ?? 'Member',
+  tierClass: 'bg-surface-tint-blue text-primary',
+  points: customer.pointsBalance ?? 0,
+  spend: money(customer.totalSpent),
+  visits: customer.totalVisits ?? 0,
+});
+
+/* The sale just taken, so the receipt / sale-complete screens can show it. */
+let lastSale: CheckoutResult | null = null;
+const lastSaleListeners = new Set<() => void>();
+export const setLastSale = (result: CheckoutResult | null) => {
+  lastSale = result;
+  lastSaleListeners.forEach((listener) => listener());
+};
+export const useLastSale = () =>
+  useSyncExternalStore(
+    (listener) => {
+      lastSaleListeners.add(listener);
+      return () => lastSaleListeners.delete(listener);
+    },
+    () => lastSale,
+  );
+
+/** Only API customers (uuid ids) can be linked to a sale. */
+export const apiCustomerId = (id?: string | null) =>
+  id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;

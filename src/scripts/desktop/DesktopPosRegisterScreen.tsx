@@ -16,6 +16,9 @@ import { PosLoyaltyPanel } from './PosLoyaltyPanel';
 import { usePosSettings } from '../../context/PosSettingsContext';
 import { describeModifiers, modifierSurcharge, type PosCustomerRecord } from './posRegisterExtras';
 import { PosOfflineBar } from '../../components/ui/PosOfflineBar';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useHeldTicket, useLivePos, usePosProducts } from '../posLive';
 
 interface DesktopPosRegisterScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -93,6 +96,75 @@ export function DesktopPosRegisterScreen({
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [ordersPanelOpen, setOrdersPanelOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const catalogue = usePosProducts();
+  const heldTicket = useHeldTicket();
+  const [search, setSearch] = useState('');
+  const categoryList = live
+    ? catalogue.categories.map((entry) => {
+        const n = entry.key === 'all' ? catalogue.items.length : catalogue.items.filter((item) => item.category?.id === entry.key).length;
+        return `${entry.key === 'all' ? 'All Items' : entry.label} (${n})`;
+      })
+    : CATEGORIES;
+  const products = useMemo(() => {
+    if (!live) return POS_CATALOG;
+    const key = catalogue.categories[category]?.key ?? 'all';
+    const q = search.trim().toLowerCase();
+    return catalogue.desktop.filter((item, index) => {
+      const source = catalogue.items[index];
+      const inCategory = key === 'all' || source?.category?.id === key;
+      const matches = !q || item.name.toLowerCase().includes(q) || (source?.sku ?? '').toLowerCase().includes(q);
+      return inCategory && matches;
+    });
+  }, [live, catalogue.desktop, catalogue.items, catalogue.categories, category, search]);
+
+  const flash = (message: string) => {
+    setHandoffToast(message);
+    window.setTimeout(() => setHandoffToast(null), 3000);
+  };
+
+  useEffect(() => {
+    if (live && catalogue.error) flash(apiErrorMessage(catalogue.error, 'Could not load your catalogue.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogue.error]);
+
+  /** Hold / F5 — live: park the ticket as a held sale, or resume the oldest one. */
+  const holdTicket = () => {
+    setHoldPulse(true);
+    window.setTimeout(() => setHoldPulse(false), 900);
+    if (!live) return;
+    if (cart.length) {
+      heldTicket
+        .hold(cart)
+        .then(() => {
+          onCartChange([]);
+          flash('Ticket held — press Hold again to bring it back.');
+        })
+        .catch((error: unknown) => flash(apiErrorMessage(error, 'Could not hold the ticket.')));
+      return;
+    }
+    heldTicket
+      .resume()
+      .then((lines) => {
+        if (!lines) {
+          flash('No held tickets.');
+          return;
+        }
+        onCartChange(lines.map((line) => ({ ...line, mods: '' })));
+        flash('Held ticket loaded.');
+      })
+      .catch((error: unknown) => flash(apiErrorMessage(error, 'Could not load the held ticket.')));
+  };
+
+  /** Live: the server prices by product, so modifiers can't change the price yet. */
+  const openModifiers = (line: PosTerminalLine | null) => {
+    if (live) {
+      flash('Modifiers are coming soon.');
+      return;
+    }
+    setModifiersFor(line);
+  };
 
   const {
     orders,
@@ -193,6 +265,11 @@ export function DesktopPosRegisterScreen({
 
   /** Scan simulation: match a barcode/QR to a catalogue item or a store order. */
   const simulateScan = () => {
+    if (live) {
+      searchRef.current?.focus();
+      flash('Camera scanning is coming soon — type the SKU or name in search.');
+      return;
+    }
     const order = pendingOrders[0];
     const item = POS_CATALOG[Math.floor(Math.random() * POS_CATALOG.length)];
     // Alternate between a product scan and an order scan so both paths are testable.
@@ -243,8 +320,7 @@ export function DesktopPosRegisterScreen({
         }
       } else if (event.key === 'F5') {
         event.preventDefault();
-        setHoldPulse(true);
-        window.setTimeout(() => setHoldPulse(false), 900);
+        holdTicket();
       } else if (event.key === 'F6') {
         event.preventDefault();
         onSplit();
@@ -252,7 +328,8 @@ export function DesktopPosRegisterScreen({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onCharge, onSplit, onHelp, spaceCharges]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCharge, onSplit, onHelp, spaceCharges, cart, live]);
 
   const selectedLine = cart.find((line) => line.id === selectedLineId) ?? null;
 
@@ -299,10 +376,8 @@ export function DesktopPosRegisterScreen({
                 onClick={() => {
                   if (item.key === 'F1') onHelp();
                   else if (item.key === 'F3') searchRef.current?.focus();
-                  else if (item.key === 'F5') {
-                    setHoldPulse(true);
-                    window.setTimeout(() => setHoldPulse(false), 900);
-                  } else if (item.key === 'F6') onSplit();
+                  else if (item.key === 'F5') holdTicket();
+                  else if (item.key === 'F6') onSplit();
                 }}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container text-text-secondary hover:bg-surface-container-high transition-colors shrink-0"
               >
@@ -426,6 +501,8 @@ export function DesktopPosRegisterScreen({
                   id="sku-search"
                   type="text"
                   placeholder="Scan barcode or search by item name, SKU, modifier tag... [F3]"
+                  value={live ? search : undefined}
+                  onChange={live ? (event) => setSearch(event.target.value) : undefined}
                   className="w-full h-12 pl-11 pr-14 rounded-xl bg-surface text-text-primary placeholder:text-text-tertiary text-body-md font-body-md focus:bg-surface-canvas focus:outline-none focus:shadow-[0_0_0_3px_rgba(6,108,244,0.18)] transition-all"
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-surface-container-high text-primary font-caption text-caption font-bold">
@@ -444,7 +521,7 @@ export function DesktopPosRegisterScreen({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setModifiersFor(selectedLine ?? cart[cart.length - 1] ?? null)}
+                  onClick={() => openModifiers(selectedLine ?? cart[cart.length - 1] ?? null)}
                   className="h-12 px-space-md rounded-xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary flex items-center gap-1.5 hover:bg-surface-container-high transition-colors shadow-sm"
                 >
                   <Icon name="tune" className="text-[19px]" />
@@ -455,7 +532,7 @@ export function DesktopPosRegisterScreen({
 
             {/* Category Filter Pills */}
             <div className="flex items-center gap-space-xs overflow-x-auto pb-1">
-              {CATEGORIES.map((label, index) => (
+              {categoryList.map((label, index) => (
                 <button
                   key={label}
                   type="button"
@@ -473,7 +550,7 @@ export function DesktopPosRegisterScreen({
 
             {/* Catalog Product Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-space-md">
-              {POS_CATALOG.map((item) => (
+              {products.map((item) => (
                 <div
                   key={item.id}
                   className="group bg-surface-canvas rounded-xl p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
@@ -484,11 +561,13 @@ export function DesktopPosRegisterScreen({
                       src={item.img}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
+                    {item.badge && (
                     <span
                       className={`absolute top-2 left-2 px-2 py-0.5 rounded-full font-caption text-caption shadow-sm ${BADGE_TONES[item.badgeTone]}`}
                     >
                       {item.badge}
                     </span>
+                    )}
                   </div>
                   <div className="mt-2.5 flex flex-col flex-1">
                     <h4 className="font-heading-sm text-heading-sm text-text-primary truncate">{item.name}</h4>
@@ -565,10 +644,12 @@ export function DesktopPosRegisterScreen({
                     <span className="px-2 py-0.5 rounded bg-primary text-on-primary font-label-sm text-label-sm font-bold uppercase tracking-wider">
                       Dine-In
                     </span>
-                    <h3 className="font-heading-md text-heading-md text-text-primary tracking-tight">Ticket #TK-108</h3>
+                    <h3 className="font-heading-md text-heading-md text-text-primary tracking-tight">{live ? 'New Ticket' : 'Ticket #TK-108'}</h3>
                   </div>
                   <p className="font-caption text-caption text-text-tertiary mt-1">
-                    Table 04 • {customer?.name ?? 'Walk-in Guest'} • 13:42:09 WAT
+                    {live
+                      ? `${pos.isOpen ? pos.tillName : 'No till open'} • ${customer?.name ?? 'Walk-in Guest'}`
+                      : `Table 04 • ${customer?.name ?? 'Walk-in Guest'} • 13:42:09 WAT`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -706,7 +787,7 @@ export function DesktopPosRegisterScreen({
                             <button
                               type="button"
                               title="Edit modifiers"
-                              onClick={(e) => { e.stopPropagation(); setModifiersFor(line); }}
+                              onClick={(e) => { e.stopPropagation(); openModifiers(line); }}
                               className="text-text-tertiary hover:text-primary transition-colors"
                             >
                               <Icon name="tune" className="text-[17px]" />
@@ -767,10 +848,7 @@ export function DesktopPosRegisterScreen({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setHoldPulse(true);
-                      window.setTimeout(() => setHoldPulse(false), 900);
-                    }}
+                    onClick={holdTicket}
                     className={`h-11 rounded-xl font-button-secondary text-button-secondary font-semibold transition-colors flex items-center justify-center gap-1.5 ${
                       holdPulse ? 'bg-surface-tint-blue text-primary' : 'bg-surface-container hover:bg-surface-container-high text-text-primary'
                     }`}

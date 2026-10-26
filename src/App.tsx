@@ -1053,7 +1053,8 @@ function AppInner() {
   const { isOnline, enqueue } = usePosOffline();
   const queuePosSaleIfOffline = useCallback(
     (lines: Array<{ name: string; qty: number; unit: number }>, tender: string) => {
-      if (isOnline) return;
+      // Live sales queue themselves (with their API payload) in usePosCheckout.
+      if (isOnline || hasApiConfig()) return;
       const total = lines.reduce((sum, line) => sum + line.unit * line.qty, 0);
       enqueue({
         ref: `POS-${10840 + Math.floor(Math.random() * 60)}`,
@@ -5430,6 +5431,7 @@ function AppInner() {
           <BusinessPosPaymentScreen
             cart={posCart}
             customer={posCustomer}
+            customerId={posCustomerRecord?.id}
             customerBonus={posCustomerBonus}
             onAwardPoints={(points) => setPosCustomerBonus((prev) => prev + points)}
             onBack={() => setRoute('pos-cart')}
