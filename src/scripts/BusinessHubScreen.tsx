@@ -38,6 +38,7 @@ export function BusinessHubScreen({
   onOpenModule,
   onViewCustomerProfile,
   initialCustomer,
+  initialCustomerId,
   onBackCustomerProfile,
   onOpenAnalytics,
   onPreviewInvite,
@@ -48,8 +49,10 @@ export function BusinessHubScreen({
   onOpenMessages: () => void;
   onPreviewStorefront: () => void;
   onOpenModule: (module: HubModuleKey) => void;
-  onViewCustomerProfile?: (name: string) => void;
+  onViewCustomerProfile?: (name: string, userId?: string) => void;
   initialCustomer?: string;
+  /** The live customer's user id, when the profile is for a real customer. */
+  initialCustomerId?: string | null;
   onBackCustomerProfile?: () => void;
   onOpenAnalytics?: () => void;
   onPreviewInvite?: (url: string) => void;
@@ -63,6 +66,7 @@ export function BusinessHubScreen({
   const [dealGroupId, setDealGroupId] = useState<string | null>(null);
   const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
   const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? 'Michael James');
+  const [profileCustomerId, setProfileCustomerId] = useState<string | null>(initialCustomerId ?? null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -74,7 +78,8 @@ export function BusinessHubScreen({
 
   useEffect(() => {
     if (initialCustomer) setProfileCustomer(initialCustomer);
-  }, [initialCustomer]);
+    setProfileCustomerId(initialCustomerId ?? null);
+  }, [initialCustomer, initialCustomerId]);
 
   const handleTab = (tab: BusinessTabKey) => {
     onTab(tab);
@@ -164,12 +169,13 @@ export function BusinessHubScreen({
           <BusinessCustomersScreen
             onTab={handleTab}
             onMessage={onOpenMessages}
-            onViewProfile={(name) => {
+            onViewProfile={(name, userId) => {
               if (onViewCustomerProfile) {
-                onViewCustomerProfile(name);
+                onViewCustomerProfile(name, userId);
                 return;
               }
               setProfileCustomer(name);
+              setProfileCustomerId(userId ?? null);
               setStep('customerProfile');
             }}
             onOpenAnalytics={onOpenAnalytics}
@@ -180,6 +186,7 @@ export function BusinessHubScreen({
         return (
           <BusinessCustomerProfileScreen
             customerName={profileCustomer}
+            customerId={profileCustomerId}
             onBack={onBackCustomerProfile ?? (() => setStep('customers'))}
             onMessage={onOpenMessages}
           />

@@ -1733,6 +1733,7 @@ function AppInner() {
   const [boostReturnRoute, setBoostReturnRoute] = useState<Route>('business-overview');
   const [boostItem, setBoostItem] = useState<string | null>(null);
   const [hubCustomerName, setHubCustomerName] = useState('Michael James');
+  const [hubCustomerId, setHubCustomerId] = useState<string | null>(null);
   // Live deals: the catalogue item a new deal is built on, the deal being
   // viewed or priced, and a one-off catalogue message ("pick an item").
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
@@ -4785,8 +4786,9 @@ function AppInner() {
         return (
           <DesktopBusinessCustomersScreen
             onNav={businessPortalNav}
-            onViewProfile={(name) => {
+            onViewProfile={(name, userId) => {
               setHubCustomerName(name);
+              setHubCustomerId(userId ?? null);
               setRoute('hub-customer-profile');
             }}
             onPreviewInvite={(url) => {
@@ -4803,8 +4805,9 @@ function AppInner() {
           onOpenMessages={() => setRoute('business-messages')}
           onPreviewStorefront={() => setRoute('storefront')}
           onOpenModule={openHubModule}
-          onViewCustomerProfile={(name) => {
+          onViewCustomerProfile={(name, userId) => {
             setHubCustomerName(name);
+            setHubCustomerId(userId ?? null);
             setRoute('hub-customer-profile');
           }}
           onOpenAnalytics={() => setRoute('analytics-customers')}
@@ -4900,17 +4903,27 @@ function AppInner() {
 
     case 'hub-customer-profile':
       if (isDesktop)
-        return <DesktopCustomerProfileScreen onNav={businessPortalNav} onBack={() => setRoute('hub-customers')} />;
+        return (
+          <DesktopCustomerProfileScreen
+            onNav={businessPortalNav}
+            customerId={hubCustomerId}
+            onBack={() => setRoute('hub-customers')}
+          />
+        );
       return (
         <BusinessHubScreen
           initialStep="customerProfile"
           initialCustomer={hubCustomerName}
+          initialCustomerId={hubCustomerId}
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
           onOpenMessages={() => setRoute('business-messages')}
           onPreviewStorefront={() => setRoute('storefront')}
           onOpenModule={openHubModule}
-          onViewCustomerProfile={(name) => setHubCustomerName(name)}
+          onViewCustomerProfile={(name, userId) => {
+            setHubCustomerName(name);
+            setHubCustomerId(userId ?? null);
+          }}
           onBackCustomerProfile={() => setRoute('hub-customers')}
         />
       );
@@ -5735,6 +5748,7 @@ function AppInner() {
             onNav={businessPortalNav}
             onViewCustomerProfile={(name) => {
               setHubCustomerName(name);
+              setHubCustomerId(null);
               setRoute('hub-customer-profile');
             }}
           />

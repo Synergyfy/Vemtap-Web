@@ -2,9 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useCustomerDossier, useSaveCustomerNote } from '../hooks/business/useBusinessCustomers';
+import { formatNaira } from '../utils/format';
+import {
+  CUSTOMER_AVATAR,
+  averageOrder,
+  customerName as liveCustomerName,
+  dossierTimeline,
+  noteEntries,
+  segmentLabel,
+  spendLabel,
+  whenLabel,
+  withNoteLine,
+} from './customersLive';
 
 interface BusinessCustomerProfileScreenProps {
   customerName?: string;
+  /** Live: the customer's user id; the profile loads their real record. */
+  customerId?: string | null;
   onBack: () => void;
   onMessage?: () => void;
 }
@@ -25,6 +42,12 @@ const RELATIONSHIP_METRICS = [
   { label: 'Avg. Order', value: '₦22,750', icon: 'receipt_long', tone: 'text-on-surface bg-surface-container-low' },
   { label: 'Points', value: '2,450', icon: 'stars', tone: 'text-badge-discount-text bg-badge-discount-bg' },
 ];
+
+const EVENT_TONE: Record<string, { icon: string; tone: string }> = {
+  purchase: { icon: 'receipt_long', tone: 'bg-surface-tint-blue text-primary' },
+  claim: { icon: 'local_offer', tone: 'bg-badge-discount-bg text-badge-discount-text' },
+  points: { icon: 'loyalty', tone: 'bg-surface-container-low text-on-surface-variant' },
+};
 
 const INTERACTIONS = [
   {
@@ -61,10 +84,16 @@ const TRANSACTIONS = [
 ];
 
 export function BusinessCustomerProfileScreen({
-  customerName = 'Michael James',
+  customerName: sampleName = 'Michael James',
+  customerId,
   onBack,
   onMessage,
 }: BusinessCustomerProfileScreenProps) {
+  const live = hasApiConfig();
+  const dossierQuery = useCustomerDossier(live ? (customerId ?? null) : null);
+  const dossier = dossierQuery.data;
+  const saveNote = useSaveCustomerNote(customerId ?? '');
+  const customerName = live && dossier ? liveCustomerName(dossier) : sampleName;
   const [note, setNote] = useState('');
   const [notes, setNotes] = useState<{ text: string; meta: string }[]>([
     { text: 'Prefers corner booth near the window. Allergic to shellfish.', meta: 'Added by Chidi (Manager) · Sep 30, 4:10 PM' },
@@ -86,12 +115,81 @@ export function BusinessCustomerProfileScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    if (dossierQuery.error) showToast(apiErrorMessage(dossierQuery.error, 'Could not load this customer.'));
+  }, [dossierQuery.error]);
+
   const firstName = customerName.split(' ')[0];
-  const avatar = AVATARS[customerName] ?? DEFAULT_AVATAR;
+  const avatar = live ? dossier?.avatarUrl || CUSTOMER_AVATAR : (AVATARS[customerName] ?? DEFAULT_AVATAR);
+
+  const metrics = live
+    ? [
+        { ...RELATIONSHIP_METRICS[0], value: dossier ? spendLabel(dossier) : '—' },
+        { ...RELATIONSHIP_METRICS[1], value: dossier ? String(dossier.visits) : '—' },
+        { ...RELATIONSHIP_METRICS[2], value: dossier ? formatNaira(averageOrder(dossier)) : '—' },
+        { ...RELATIONSHIP_METRICS[3], value: dossier ? (dossier.pointsBalance ?? 0).toLocaleString('en-US') : '—' },
+      ]
+    : RELATIONSHIP_METRICS;
+
+  const interactions = live
+    ? dossierTimeline(dossier)
+        .slice(0, 4)
+        .map((event) => ({
+          ...EVENT_TONE[event.kind],
+          title: event.title,
+          meta: [whenLabel(event.at), event.detail, event.amount ? formatNaira(event.amount) : '']
+            .filter(Boolean)
+            .join(' · '),
+        }))
+    : INTERACTIONS;
+
+  const transactions = live
+    ? (dossier?.recentPurchases ?? []).map((purchase) => ({
+        id: `#${purchase.reference ?? purchase.id.slice(0, 8).toUpperCase()}`,
+        date: whenLabel(purchase.at),
+        amount: formatNaira(Number(purchase.total) || 0),
+        status: 'Paid',
+        tone: 'text-badge-discount-text bg-badge-discount-bg',
+      }))
+    : TRANSACTIONS;
+
+  const liveNotes = noteEntries(dossier).map((text, index) => ({
+    text,
+    meta:
+      index === 0 && dossier?.note?.updatedAt
+        ? `Added by ${dossier.note.updatedBy || 'staff'} · ${whenLabel(dossier.note.updatedAt)}`
+        : 'Earlier note',
+  }));
+  const shownNotes = live ? liveNotes : notes;
+
+  const tags = live
+    ? [dossier ? segmentLabel(dossier) : '', dossier?.preferredBranch?.name ?? ''].filter(Boolean)
+    : ['Frequent Patron', 'Top 5% Spender'];
+  const highlightTags = live ? (dossier?.note?.tags ?? []) : ['Shellfish allergy'];
+
+  const callCustomer = () => {
+    if (!live) return showToast(`Calling ${firstName}…`);
+    if (!dossier?.phone) return showToast('No phone number on file for this customer.');
+    window.location.href = `tel:${dossier.phone}`;
+  };
 
   const addNote = () => {
     const value = note.trim();
     if (!value) return;
+    if (live) {
+      if (!customerId) return;
+      saveNote.mutate(
+        { note: withNoteLine(dossier, value), tags: dossier?.note?.tags ?? [] },
+        {
+          onSuccess: () => {
+            setNote('');
+            showToast('Note added to customer record');
+          },
+          onError: (error) => showToast(apiErrorMessage(error, 'Could not save the note.')),
+        },
+      );
+      return;
+    }
     setNotes((current) => [{ text: value, meta: 'Added by You · Just now' }, ...current]);
     setNote('');
     showToast('Note added to customer record');
@@ -123,27 +221,31 @@ export function BusinessCustomerProfileScreen({
                 <h2 className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate">{customerName}</h2>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
                   <Icon name="diamond" className="text-[12px]" />
-                  VIP Tier
+                  {live ? (dossier?.tier ? `${dossier.tier} Tier` : '—') : 'VIP Tier'}
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary mt-1 flex items-center gap-1.5">
                 <Icon name="call" className="text-[13px] text-text-tertiary" />
-                +234 803 219 8831
+                {live ? dossier?.phone || '—' : '+234 803 219 8831'}
               </p>
               <p className="font-caption text-caption text-text-secondary mt-0.5 flex items-center gap-1.5">
                 <Icon name="mail" className="text-[13px] text-text-tertiary" />
-                michael.james@gmail.com
+                {live ? dossier?.email || '—' : 'michael.james@gmail.com'}
               </p>
               <div className="flex flex-wrap gap-1.5 mt-2">
-                <span className="px-2 py-0.5 rounded bg-surface-container-low text-text-secondary font-caption text-caption">
-                  Frequent Patron
-                </span>
-                <span className="px-2 py-0.5 rounded bg-surface-container-low text-text-secondary font-caption text-caption">
-                  Top 5% Spender
-                </span>
-                <span className="px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                  Shellfish allergy
-                </span>
+                {tags.map((tag) => (
+                  <span className="px-2 py-0.5 rounded bg-surface-container-low text-text-secondary font-caption text-caption" key={tag}>
+                    {tag}
+                  </span>
+                ))}
+                {highlightTags.map((tag) => (
+                  <span
+                    className="px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold"
+                    key={tag}
+                  >
+                    {tag}
+                  </span>
+                ))}
               </div>
             </div>
           </div>
@@ -154,9 +256,17 @@ export function BusinessCustomerProfileScreen({
           <div className="grid grid-cols-4 gap-space-xs">
             {[
               { icon: 'chat', label: 'Message', onClick: () => (onMessage ? onMessage() : showToast('Opening conversation…')) },
-              { icon: 'call', label: 'Call', onClick: () => showToast(`Calling ${firstName}…`) },
-              { icon: 'card_giftcard', label: 'Offer', onClick: () => showToast('VIP offer sent successfully') },
-              { icon: 'person_remove', label: 'Flag', onClick: () => showToast('Marked for review') },
+              { icon: 'call', label: 'Call', onClick: callCustomer },
+              {
+                icon: 'card_giftcard',
+                label: 'Offer',
+                onClick: () => showToast(live ? 'Sending offers to one customer is coming soon.' : 'VIP offer sent successfully'),
+              },
+              {
+                icon: 'person_remove',
+                label: 'Flag',
+                onClick: () => showToast(live ? 'Flagging customers is coming soon.' : 'Marked for review'),
+              },
             ].map((action) => (
               <button
                 className="h-14 rounded-xl bg-surface-container-low hover:bg-surface-container active:scale-95 transition-all flex flex-col items-center justify-center gap-0.5 text-on-surface-variant"
@@ -175,7 +285,7 @@ export function BusinessCustomerProfileScreen({
         <section className="px-margin pt-space-md">
           <h3 className="font-label-md text-label-md text-text-primary font-semibold">Relationship Summary</h3>
           <div className="grid grid-cols-2 gap-space-xs mt-space-xs">
-            {RELATIONSHIP_METRICS.map((metric) => (
+            {metrics.map((metric) => (
               <div className="bg-surface-canvas rounded-xl p-space-xs shadow-sm flex items-center gap-space-xs" key={metric.label}>
                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${metric.tone}`}>
                   <Icon name={metric.icon} className="text-[16px]" />
@@ -193,11 +303,11 @@ export function BusinessCustomerProfileScreen({
         <section className="px-margin pt-space-md">
           <div className="flex items-center justify-between">
             <h3 className="font-label-md text-label-md text-text-primary font-semibold">Recent Interactions</h3>
-            <span className="font-caption text-caption text-text-tertiary">Last 7 days</span>
+            <span className="font-caption text-caption text-text-tertiary">{live ? 'Latest' : 'Last 7 days'}</span>
           </div>
           <div className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm mt-space-xs divide-y divide-border-subtle">
-            {INTERACTIONS.map((item) => (
-              <div className="flex items-start gap-space-xs py-2 px-1.5" key={item.title}>
+            {interactions.map((item, index) => (
+              <div className="flex items-start gap-space-xs py-2 px-1.5" key={`${item.title}-${index}`}>
                 <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${item.tone}`}>
                   <Icon name={item.icon} className="text-[15px]" />
                 </span>
@@ -214,12 +324,12 @@ export function BusinessCustomerProfileScreen({
         <section className="px-margin pt-space-md">
           <div className="flex items-center justify-between">
             <h3 className="font-label-md text-label-md text-text-primary font-semibold">Recent Transactions</h3>
-            <button className="font-caption text-caption text-primary font-semibold" type="button" onClick={() => showToast('Opening full transaction history…')}>
+            <button className="font-caption text-caption text-primary font-semibold" type="button" onClick={() => showToast(live ? 'Full transaction history is coming soon.' : 'Opening full transaction history…')}>
               See all
             </button>
           </div>
           <div className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm mt-space-xs divide-y divide-border-subtle">
-            {TRANSACTIONS.map((tx) => (
+            {transactions.map((tx) => (
               <div className="flex items-center justify-between gap-space-xs py-2 px-1.5" key={tx.id}>
                 <div className="min-w-0">
                   <p className="font-label-sm text-label-sm text-text-primary truncate">Order {tx.id}</p>
@@ -258,7 +368,7 @@ export function BusinessCustomerProfileScreen({
               </button>
             </div>
             <div className="flex flex-col gap-space-xs">
-              {notes.map((entry, index) => (
+              {shownNotes.map((entry, index) => (
                 <div className="rounded-xl bg-surface-container-low p-space-xs" key={`${entry.text}-${index}`}>
                   <p className="font-label-sm text-label-sm text-on-surface leading-relaxed">{entry.text}</p>
                   <p className="font-caption text-caption text-text-tertiary mt-1">{entry.meta}</p>

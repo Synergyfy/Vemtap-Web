@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -8,10 +8,29 @@ import { DesktopModal, ModalCloseButton } from '../../components/desktop/Desktop
 import { AddCustomerMethodsDialog } from '../../components/customers/AddCustomerMethodsDialog';
 import { SendInviteDialog } from '../../components/customers/SendInviteDialog';
 import { downloadCsv } from '../../utils/exportCsv';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { CustomerCard, CustomerSort } from '../../services/businessCustomersService';
+import { useBusinessCustomers } from '../../hooks/business/useBusinessCustomers';
+import { formatNaira } from '../../utils/format';
+import {
+  CUSTOMER_AVATAR,
+  averageOrder,
+  customerName,
+  exportCustomers,
+  lastInteractionLabel,
+  memberRef,
+  plural,
+  pointsLabel,
+  segmentLabel,
+  spendLabel,
+  whenLabel,
+} from '../customersLive';
 
 interface DesktopBusinessCustomersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
-  onViewProfile?: (name: string) => void;
+  /** `userId` is set for live customers so the profile loads the real record. */
+  onViewProfile?: (name: string, userId?: string) => void;
   /** Opens the public invite page so staff can preview the Send Invite link. */
   onPreviewInvite?: (url: string) => void;
 }
@@ -65,6 +84,7 @@ interface PatronRow {
   lastRef: string;
   lastTag: LastTag;
   tabs: Array<'frequent' | 'returning' | 'new' | 'vip'>;
+  userId?: string;
 }
 
 const PATRONS: PatronRow[] = [
@@ -269,6 +289,63 @@ const KPIS = [
 const CONTACT_AVATAR =
   'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Ccircle cx="20" cy="15" r="7" fill="%236750a4"/%3E%3Cpath d="M8 36c0-7 5.4-11 12-11s12 4 12 11" fill="%236750a4"/%3E%3C/svg%3E';
 
+const LIVE_SEGMENT: Record<string, { className: string; icon: string }> = {
+  frequent: { className: 'bg-tertiary-fixed text-on-tertiary-fixed', icon: 'military_tech' },
+  returning: { className: 'bg-surface-container-high text-on-surface-variant', icon: 'repeat' },
+  new: { className: 'bg-primary-container/20 text-primary', icon: 'fiber_new' },
+  inactive: { className: 'bg-surface-container text-text-secondary', icon: 'bedtime' },
+  occasional: { className: 'bg-surface-container text-text-secondary', icon: 'person' },
+};
+
+/** Loyalty tiers counted as VIP on the VIP Tier tab. */
+const VIP_TIERS = ['Gold', 'Platinum', 'Diamond'];
+
+const SORT_LABEL: Record<CustomerSort, string> = {
+  recent: 'Recent interaction',
+  spend: 'Total spend',
+  visits: 'Visits',
+  name: 'Name',
+};
+const SORTS = Object.keys(SORT_LABEL) as CustomerSort[];
+
+/** A live customer in the patron table's row shape. */
+function liveToPatron(card: CustomerCard): PatronRow {
+  const name = customerName(card);
+  const style = LIVE_SEGMENT[card.segment] ?? LIVE_SEGMENT.occasional;
+  const isVip = VIP_TIERS.includes(card.tier ?? '');
+  return {
+    userId: card.userId,
+    name,
+    avatar: card.avatarUrl || CUSTOMER_AVATAR,
+    avatarAlt: `${name} profile`,
+    verified: false,
+    segment: { label: `${segmentLabel(card)}${card.tier ? ` • ${card.tier}` : ''}`, ...style },
+    phone: card.phone || '—',
+    email: card.email || '—',
+    memberId: memberRef(card),
+    metrics: [
+      { icon: 'storefront', label: plural(card.visits, 'Visit'), title: 'Visits', className: 'text-primary' },
+      { icon: 'receipt_long', label: plural(card.orders, 'Order'), title: 'Completed Orders', className: 'text-secondary' },
+    ],
+    deal: {
+      label: plural(card.claims, 'Deal'),
+      className: card.claims ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary',
+    },
+    points: pointsLabel(card.pointsBalance),
+    ltv: spendLabel(card),
+    ltvNote: plural(card.bookings, 'Booking'),
+    ltvTrend: { text: `${formatNaira(averageOrder(card))} avg / order`, className: 'text-text-tertiary' },
+    lastDot: true,
+    lastWhen: whenLabel(card.lastSeenAt),
+    lastRef: lastInteractionLabel(card),
+    lastTag: { text: segmentLabel(card), className: 'bg-surface-container text-text-secondary' },
+    tabs: [
+      ...(['frequent', 'returning', 'new'] as const).filter((tab) => tab === card.segment),
+      ...(isVip ? (['vip'] as const) : []),
+    ],
+  };
+}
+
 /** BUG-017: map a purchase-derived contact onto the patron table row. */
 function contactToPatron(contact: BusinessContact): PatronRow {
   const avg = contact.orderCount > 0 ? Math.round(contact.totalSpend / contact.orderCount) : contact.totalSpend;
@@ -341,6 +418,54 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
   const [consentGranted, setConsentGranted] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const live = hasApiConfig();
+  const [sort, setSort] = useState<CustomerSort>('recent');
+  const [limit, setLimit] = useState(10);
+  // The VIP tab has no server segment: it filters the loaded page by loyalty tier.
+  const liveSegment = activeTab === 'vip' ? 'all' : activeTab;
+  const customers = useBusinessCustomers({ search: query.trim() || undefined, segment: liveSegment, sort, page, limit });
+  const counts = customers.data?.meta.segmentCounts;
+  const insight = customers.data?.meta.insight;
+  const total = customers.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const flash = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  useEffect(() => {
+    if (customers.error) flash(apiErrorMessage(customers.error, 'Could not load your customers.'));
+  }, [customers.error]);
+
+  useEffect(() => setPage(1), [activeTab, query, sort, limit]);
+
+  const tabCount = (key: FilterTab['key'], sample: string) => {
+    if (!live) return sample;
+    if (key === 'vip') return '—';
+    return counts?.[key] ?? '—';
+  };
+
+  const share = (part?: number) =>
+    insight?.customers && part !== undefined ? `${Math.round((part / insight.customers) * 100)}%` : '—';
+
+  const kpis = live
+    ? [
+        { ...KPIS[0], value: String(insight?.customers ?? '—'), trend: null, note: 'All time' },
+        { ...KPIS[1], label: 'Frequent', value: String(insight?.frequentCustomers ?? '—'), note: `${share(insight?.frequentCustomers)} of customers` },
+        { ...KPIS[2], value: String(counts?.returning ?? '—'), note: '2+ visits' },
+        { ...KPIS[3], value: String(counts?.new ?? '—'), trend: null, note: 'First visit in 30 days' },
+        {
+          ...KPIS[4],
+          label: 'Avg Spend',
+          value: insight?.averageSpend !== undefined ? formatNaira(insight.averageSpend) : '—',
+          note: 'Per customer',
+        },
+      ]
+    : KPIS;
+
+  const pageButtons = live ? Array.from({ length: Math.min(3, totalPages) }, (_, index) => index + 1) : [1, 2, 3];
+  const lastPage = live ? (totalPages > 3 ? totalPages : null) : 49;
 
   // New Customer Form State
   const [newName, setNewName] = useState('');
@@ -352,6 +477,11 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
   const handleAddCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newPhone.trim()) return;
+    // Live customers come from real activity, so there is nowhere to store a hand-added one yet.
+    if (live) {
+      flash('Adding customers by hand is coming soon. Send them your invite link instead.');
+      return;
+    }
     // Consent is also enforced by the disabled submit button; guard here too.
     if (!consentGranted) return;
 
@@ -398,8 +528,11 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
   };
 
   // BUG-017: purchase-derived contacts first, deduped by name against seeds.
-  const purchaseRows = searchContacts(query).map(contactToPatron);
-  const unfilteredRows = [
+  const purchaseRows = live ? [] : searchContacts(query).map(contactToPatron);
+  const liveRows = (customers.data?.data ?? [])
+    .map(liveToPatron)
+    .filter((row) => activeTab !== 'vip' || row.tabs.includes('vip'));
+  const unfilteredRows = live ? liveRows : [
     ...customPatrons,
     ...purchaseRows,
     ...PATRONS.filter((patron) => {
@@ -467,6 +600,12 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
             <button
               type="button"
               onClick={() => {
+                if (live) {
+                  exportCustomers({ search: query.trim() || undefined, segment: liveSegment, sort })
+                    .then((records) => flash(`Exported ${records} patron records (CSV)`))
+                    .catch((error) => flash(apiErrorMessage(error, 'Could not export your customers.')));
+                  return;
+                }
                 downloadCsv(
                   'vemtap_customer_directory',
                   ['Name', 'Phone', 'Email', 'Member ID', 'Segment', 'LTV', 'Points', 'Last Activity'],
@@ -510,13 +649,31 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
               <Icon name="workspace_premium" className="text-primary/30 text-[36px]" />
             </div>
             <div className="my-space-md relative z-10 flex flex-col gap-space-xs">
-              <p className="font-heading-sm text-heading-sm text-text-primary leading-snug">
-                76 Frequent Patrons generate <span className="text-primary font-bold">58%</span> of repeat revenue.
-              </p>
-              <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                High loyalty engagement in Wuse Branch this month. Personalized re-engagement campaigns are showing a{' '}
-                <span className="font-semibold text-text-primary">4.2x ROAS</span>.
-              </p>
+              {live ? (
+                <>
+                  <p className="font-heading-sm text-heading-sm text-text-primary leading-snug">
+                    {insight?.frequentCustomers ?? '—'} Frequent Patrons generate{' '}
+                    <span className="text-primary font-bold">
+                      {insight ? `${Math.round(insight.frequentSpendShare * 100)}%` : '—'}
+                    </span>{' '}
+                    of customer spend.
+                  </p>
+                  <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+                    <span className="font-semibold text-text-primary">{insight?.dormant ?? '—'}</span> customers haven't
+                    visited in 90+ days.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-heading-sm text-heading-sm text-text-primary leading-snug">
+                    76 Frequent Patrons generate <span className="text-primary font-bold">58%</span> of repeat revenue.
+                  </p>
+                  <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+                    High loyalty engagement in Wuse Branch this month. Personalized re-engagement campaigns are showing a{' '}
+                    <span className="font-semibold text-text-primary">4.2x ROAS</span>.
+                  </p>
+                </>
+              )}
             </div>
             <div className="relative z-10 flex items-center justify-between pt-space-xs">
               <button
@@ -527,12 +684,12 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
                 <span>Boost VIP Perks</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
               </button>
-              <span className="font-caption text-caption text-text-tertiary">Calculated 14m ago</span>
+              <span className="font-caption text-caption text-text-tertiary">{live ? 'Live' : 'Calculated 14m ago'}</span>
             </div>
             <div className="absolute -right-12 -bottom-12 w-48 h-48 rounded-full bg-primary-container/5 pointer-events-none" />
           </div>
           <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-space-sm">
-            {KPIS.map((kpi) => (
+            {kpis.map((kpi) => (
               <div
                 key={kpi.label}
                 className={`bg-surface-canvas rounded-xl p-space-md shadow-sm flex flex-col justify-between ${
@@ -580,7 +737,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
                 >
                   {tab.label}{' '}
                   <span className={activeTab === tab.key ? 'ml-1 opacity-80' : 'ml-1 text-text-tertiary'}>
-                    ({tab.count})
+                    ({tabCount(tab.key, tab.count)})
                   </span>
                 </button>
               ))}
@@ -605,10 +762,11 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
               <button
                 type="button"
                 className="flex items-center gap-space-xs px-space-md h-10 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-primary font-label-md text-label-md transition-colors"
+                onClick={() => live && setSort((current) => SORTS[(SORTS.indexOf(current) + 1) % SORTS.length])}
               >
                 <Icon name="sort" className="text-[18px] text-text-secondary" />
                 <span>
-                  Sort by: <strong className="font-semibold">Recent interaction</strong>
+                  Sort by: <strong className="font-semibold">{SORT_LABEL[sort]}</strong>
                 </span>
                 <Icon name="expand_more" className="text-outline text-[16px]" />
               </button>
@@ -645,7 +803,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
               </thead>
               <tbody className="divide-y divide-surface-subtle text-text-primary font-body-md text-body-md">
                 {visibleRows.map((patron) => (
-                  <tr key={patron.name} className="hover:bg-surface-subtle/70 transition-colors group">
+                  <tr key={patron.userId ?? patron.name} className="hover:bg-surface-subtle/70 transition-colors group">
                     <td className="py-space-lg pl-space-lg pr-space-xs text-center align-middle">
                       <input
                         className="w-4 h-4 rounded text-primary focus:ring-0 cursor-pointer"
@@ -776,7 +934,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
                           type="button"
                           title="View Detailed Dossier"
                           className="p-1.5 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-secondary transition-colors"
-                          onClick={() => onViewProfile?.(patron.name)}
+                          onClick={() => onViewProfile?.(patron.name, patron.userId)}
                         >
                           <Icon name="person_search" className="text-[18px]" />
                         </button>
@@ -797,8 +955,15 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
           <div className="px-space-lg py-space-md bg-surface-canvas border-t-0 flex flex-col sm:flex-row items-center justify-between gap-space-md font-label-sm text-label-sm text-text-secondary">
             <div className="flex items-center gap-space-md">
               <span>
-                Showing <strong className="text-text-primary font-semibold">1-{visibleRows.length}</strong> of{' '}
-                <strong className="text-text-primary font-semibold">482</strong> records
+                Showing{' '}
+                <strong className="text-text-primary font-semibold">
+                  {live
+                    ? total
+                      ? `${(page - 1) * limit + 1}-${(page - 1) * limit + (customers.data?.data.length ?? 0)}`
+                      : '0'
+                    : `1-${visibleRows.length}`}
+                </strong>{' '}
+                of <strong className="text-text-primary font-semibold">{live ? total : 482}</strong> records
               </span>
               <span className="hidden md:inline text-text-tertiary">|</span>
               <span className="hidden md:inline px-space-xs py-0.5 rounded bg-surface-subtle text-text-secondary font-caption text-caption font-semibold">
@@ -807,7 +972,11 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
               <span className="hidden md:inline text-text-tertiary">|</span>
               <div className="flex items-center gap-space-xs">
                 <span>Rows per page:</span>
-                <select className="bg-surface-subtle rounded-lg px-2 py-1 text-text-primary font-medium focus:outline-none focus:ring-1 focus:ring-primary">
+                <select
+                  className="bg-surface-subtle rounded-lg px-2 py-1 text-text-primary font-medium focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={limit}
+                  onChange={(e) => setLimit(Number(e.target.value))}
+                >
                   <option>10</option>
                   <option>25</option>
                   <option>50</option>
@@ -817,12 +986,13 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
             <div className="flex items-center gap-space-xs">
               <button
                 type="button"
-                disabled
+                disabled={!live || page === 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
                 className="p-1.5 rounded-lg hover:bg-surface-subtle text-text-tertiary cursor-not-allowed flex items-center justify-center"
               >
                 <Icon name="chevron_left" className="text-[18px]" />
               </button>
-              {[1, 2, 3].map((n) => (
+              {pageButtons.map((n) => (
                 <button
                   key={n}
                   type="button"
@@ -836,20 +1006,25 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
                   {n}
                 </button>
               ))}
-              <span className="px-1 text-text-tertiary">…</span>
+              {lastPage !== null && (
+                <>
+                  <span className="px-1 text-text-tertiary">…</span>
+                  <button
+                    type="button"
+                    onClick={() => setPage(lastPage)}
+                    className={
+                      page === lastPage
+                        ? 'w-8 h-8 rounded-lg bg-primary-container text-on-primary-container font-semibold flex items-center justify-center'
+                        : 'w-8 h-8 rounded-lg hover:bg-surface-subtle text-text-primary flex items-center justify-center transition-colors'
+                    }
+                  >
+                    {lastPage}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
-                onClick={() => setPage(49)}
-                className={
-                  page === 49
-                    ? 'w-8 h-8 rounded-lg bg-primary-container text-on-primary-container font-semibold flex items-center justify-center'
-                    : 'w-8 h-8 rounded-lg hover:bg-surface-subtle text-text-primary flex items-center justify-center transition-colors'
-                }
-              >
-                49
-              </button>
-              <button
-                type="button"
+                onClick={() => live && setPage((current) => Math.min(totalPages, current + 1))}
                 className="p-1.5 rounded-lg hover:bg-surface-subtle text-text-primary flex items-center justify-center transition-colors"
               >
                 <Icon name="chevron_right" className="text-[18px]" />
