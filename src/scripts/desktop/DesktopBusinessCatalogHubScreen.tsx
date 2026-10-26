@@ -57,7 +57,8 @@ import type { ImportedProduct } from '../productImport/importTypes';
 
 interface DesktopBusinessCatalogHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
-  onOpenBranchPricing?: () => void;
+  /** Live: receives the item whose branch prices to edit. */
+  onOpenBranchPricing?: (itemId?: string) => void;
   onOpenServices?: () => void;
   /** Live: start a deal for this real item. */
   onMakeDeal?: (item: CatalogueItem) => void;
@@ -2502,7 +2503,7 @@ export function DesktopBusinessCatalogHubScreen({
                             <button
                               type="button"
                               title="Branch Pricing Matrix"
-                              onClick={onOpenBranchPricing}
+                              onClick={() => onOpenBranchPricing?.(live ? row.id : undefined)}
                               className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                             >
                               <Icon name="tune" className="text-[20px]" />
@@ -2765,7 +2766,7 @@ export function DesktopBusinessCatalogHubScreen({
                         <button
                           type="button"
                           title="Branch Pricing Matrix"
-                          onClick={onOpenBranchPricing}
+                          onClick={() => onOpenBranchPricing?.(live ? row.id : undefined)}
                           className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                         >
                           <Icon name="tune" className="text-[18px]" />
@@ -2900,7 +2901,7 @@ export function DesktopBusinessCatalogHubScreen({
               </p>
               <button
                 type="button"
-                onClick={onOpenBranchPricing}
+                onClick={() => onOpenBranchPricing?.(live ? productItems.data?.[0]?.id : undefined)}
                 className="inline-flex items-center gap-space-2xs text-primary font-label-sm text-label-sm font-semibold mt-space-xs hover:underline"
               >
                 <span>Configure regional price matrices</span>

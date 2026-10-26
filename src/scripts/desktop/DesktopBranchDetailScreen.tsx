@@ -3,8 +3,21 @@ import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { hasApiConfig } from '../../services/api/client';
+import { useBranchMutations, useBranches } from '../../hooks/business/useBranchesAndTeam';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { catalogueItemsService } from '../../services/catalogueItemsService';
+import { offersService } from '../../services/offersService';
+import { posService } from '../../services/posService';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { branchAddressLabel, branchOpenLabel } from '../branchLive';
+import { isLowStock } from '../catalogueLive';
 
 interface DesktopBranchDetailScreenProps {
+  /** Live: the branch to show; defaults to the active branch. */
+  branchId?: string | null;
   onNav: (key: BusinessPortalNavKey) => void;
   onBackToLocations?: () => void;
 }
@@ -66,7 +79,92 @@ const DOSSIER_ROWS: Array<{ label: string; value: string; valueClass?: string; m
   { label: 'Tax ID / TIN', value: '10984429-0001', mono: true },
 ];
 
-export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopBranchDetailScreenProps) {
+export function DesktopBranchDetailScreen({
+  branchId, onNav, onBackToLocations }: DesktopBranchDetailScreenProps) {
+  // Live: the branch's real record, catalogue, deals and tills; demo keeps the sample branch.
+  const live = hasApiConfig();
+  const { activeBranchId, switchTo } = useBusinessBranch();
+  const branchesQuery = useBranches();
+  const branch = (branchesQuery.data ?? []).find((entry) => entry.id === (branchId ?? activeBranchId));
+  const id = branch?.id ?? '';
+  const itemsQuery = useQuery({
+    queryKey: ['catalogue-items', id, 'any'],
+    queryFn: () => catalogueItemsService.list({ branchId: id, limit: 100 }),
+    enabled: live && Boolean(id),
+  });
+  const offersQuery = useQuery({ queryKey: ['offers', 'list', id], queryFn: () => offersService.list(id), enabled: live && Boolean(id) });
+  const tillsQuery = useQuery({ queryKey: ['pos', 'tills', id], queryFn: () => posService.tills(id), enabled: live && Boolean(id) });
+  const { update } = useBranchMutations();
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3500);
+  };
+  const items = itemsQuery.data ?? [];
+  const products = items.filter((item) => item.itemType !== 'service');
+  const services = items.filter((item) => item.itemType === 'service');
+  const tracked = products.filter((item) => typeof item.stockQuantity === 'number');
+  const inStock = tracked.filter((item) => (item.stockQuantity ?? 0) > 0).length;
+  const floorValue = tracked.reduce((sum, item) => sum + Number(item.price ?? 0) * (item.stockQuantity ?? 0), 0);
+  const activeDeals = (offersQuery.data ?? []).filter((offer) => offer.status === 'active');
+  const dealClaims = activeDeals.reduce((sum, offer) => sum + (offer.claimedCount ?? 0), 0);
+  const dealRedeemed = activeDeals.reduce((sum, offer) => sum + (offer.redeemedCount ?? 0), 0);
+  const money = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
+  const hours = (branch?.businessHours ?? {}) as Record<string, { open?: string; close?: string; closed?: boolean }>;
+  const dayLabel = (day: string) => {
+    const entry = hours[day];
+    if (!entry) return '—';
+    return entry.closed || !entry.open || !entry.close ? 'Closed' : `${entry.open} – ${entry.close}`;
+  };
+  const initials = (branch?.managerName ?? '').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || '—';
+  const lat = Number(branch?.latitude);
+  const lng = Number(branch?.longitude);
+  const hasGps = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+  const paused = branch?.isActive === false;
+  const metrics = live
+    ? [
+        {
+          ...INVENTORY_METRICS[0],
+          value: String(products.length),
+          valueNote: 'Products',
+          sub: tracked.length ? `${money(floorValue)} floor value` : 'Stock not tracked',
+          footerLeft: tracked.length ? `${Math.round((inStock / tracked.length) * 100)}% in-stock health` : '—',
+          footerRight: `${products.filter(isLowStock).length} low-stock alerts`,
+        },
+        { ...INVENTORY_METRICS[1], value: String(services.length), valueNote: 'Services', sub: `${services.filter((item) => item.isBookable).length} bookable online`, footerLeft: '—', footerRight: '—' },
+        {
+          ...INVENTORY_METRICS[2],
+          value: String(activeDeals.length),
+          valueNote: 'Active Deals',
+          sub: `${dealRedeemed} redemptions`,
+          footerLeft: `${dealClaims} claims`,
+          footerRight: dealClaims ? `${Math.round((dealRedeemed / dealClaims) * 100)}% redeemed` : '—',
+        },
+      ]
+    : INVENTORY_METRICS;
+  const posUnits = live
+    ? (tillsQuery.data ?? []).map((till) => ({ name: till.name, icon: 'point_of_sale', status: till.status }))
+    : POS_UNITS.map((unit) => ({ ...unit, status: 'active' as const }));
+  const dossier = live
+    ? [
+        { label: 'District', value: branch?.district || '—' },
+        { label: 'Zoning Code', value: '—' },
+        { label: 'Direct Hotline', value: branch?.phone || '—', valueClass: 'text-primary', mono: true },
+        { label: 'State Compliance', value: '—' },
+        { label: 'Tax ID / TIN', value: '—', mono: true },
+      ]
+    : DOSSIER_ROWS;
+  const setActive = (isActive: boolean) => {
+    if (!branch) return;
+    update.mutate(
+      { id: branch.id, input: { isActive } },
+      {
+        onSuccess: () => showToast(isActive ? `${branch.name} is active again.` : `${branch.name} is paused.`),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not update this branch.')),
+      },
+    );
+  };
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
   return (
     <MerchantShell activeNav="business-locations" onNav={onNav}>
       {/* Breadcrumb Bar */}
@@ -88,7 +186,7 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
           Locations & Branches
         </button>
         <Icon name="chevron_right" className="text-[14px]" />
-        <span className="text-on-surface font-label-sm text-label-sm font-semibold">Wuse Branch #01 (Flagship)</span>
+        <span className="text-on-surface font-label-sm text-label-sm font-semibold">{v(branch?.name ?? 'Branch', 'Wuse Branch #01 (Flagship)')}</span>
       </div>
 
       {/* Top Hero Banner & Command Strip */}
@@ -107,23 +205,24 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
               </button>
               <span className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                Active Terminal • Primary Hub
+                {v(`${paused ? 'Paused' : 'Active'}${branch?.isMainBranch ? ' • Main Branch' : ''}`, 'Active Terminal • Primary Hub')}
               </span>
               <span className="px-space-xs py-space-2xs rounded bg-surface-container-high text-secondary font-caption text-caption font-medium">
-                Node ID: #WSE-01-ABJ
+                {v(`Code: ${branch?.uniqueCode ?? '—'}`, 'Node ID: #WSE-01-ABJ')}
               </span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Wuse Branch #01 — Flagship Details & Operations
+              {v(`${branch?.name ?? 'Branch'} — Details & Operations`, 'Wuse Branch #01 — Flagship Details & Operations')}
             </h1>
             <p className="font-body-md text-body-md text-text-secondary flex items-center gap-space-xs">
               <Icon name="pin_drop" className="text-primary text-[18px]" />
-              Adetokunbo Ademola Corridor, Wuse II • Synced to Abuja Regional Gateway
+              {v(branch ? branchAddressLabel(branch) : '—', 'Adetokunbo Ademola Corridor, Wuse II • Synced to Abuja Regional Gateway')}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-xs">
             <button
               type="button"
+              onClick={live && branch ? () => switchTo(branch.id) : undefined}
               className="px-space-md py-space-xs rounded-xl bg-primary hover:bg-on-primary-fixed-variant text-on-primary font-button-primary text-button-primary shadow-sm hover:shadow transition-all flex items-center gap-space-2xs"
             >
               <Icon name="sync_alt" className="text-[18px]" />
@@ -138,10 +237,11 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
             </button>
             <button
               type="button"
+              onClick={live ? () => setActive(paused) : undefined}
               className="px-space-md py-space-xs rounded-xl bg-error-container hover:bg-error/20 text-on-error-container font-button-secondary text-button-secondary transition-colors flex items-center gap-space-2xs"
             >
               <Icon name="power_settings_new" className="text-[18px]" />
-              <span>Deactivate Location</span>
+              <span>{v(paused ? 'Reactivate Location' : 'Deactivate Location', 'Deactivate Location')}</span>
             </button>
           </div>
         </div>
@@ -168,7 +268,7 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                 </div>
               </div>
               <span className="px-space-xs py-space-2xs rounded bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">
-                Tier-1 Flagship
+                {v(branch?.isMainBranch ? 'Main Branch' : 'Branch', 'Tier-1 Flagship')}
               </span>
             </div>
 
@@ -180,16 +280,16 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                     Physical Location
                   </span>
                   <p className="font-label-md text-label-md font-semibold text-on-surface mt-space-2xs">
-                    Plot 12 Adetokunbo Ademola Crescent
+                    {v(branch?.address || '—', 'Plot 12 Adetokunbo Ademola Crescent')}
                   </p>
                   <p className="font-body-md text-body-md text-text-secondary">
-                    Wuse II, Abuja 900288, Federal Capital Territory
+                    {v([branch?.city, branch?.state].filter(Boolean).join(', ') || '—', 'Wuse II, Abuja 900288, Federal Capital Territory')}
                   </p>
                 </div>
                 <div className="flex items-center gap-space-xs mt-space-md pt-space-xs">
                   <Icon name="near_me" className="text-primary text-[18px]" />
                   <span className="font-caption text-caption text-on-surface-variant">
-                    Access via AP Plaza Roundabout
+                    {v(branch?.district || '—', 'Access via AP Plaza Roundabout')}
                   </span>
                 </div>
               </div>
@@ -201,20 +301,20 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                       Manager in Charge
                     </span>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                      Active On-Duty
+                      {v(branch?.managerName ? 'Branch Lead' : 'Not set', 'Active On-Duty')}
                     </span>
                   </div>
                   <div className="flex items-center gap-space-sm mt-space-xs">
                     <div className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-label-md shadow-sm">
-                      JP
+                      {v(initials, 'JP')}
                     </div>
                     <div>
-                      <h3 className="font-label-md text-label-md font-bold text-on-surface leading-tight">John Peter</h3>
+                      <h3 className="font-label-md text-label-md font-bold text-on-surface leading-tight">{v(branch?.managerName || '—', 'John Peter')}</h3>
                       <p className="font-caption text-caption text-text-secondary">
-                        Operations Director & Store Lead
+                        {v(branch?.managerEmail || '—', 'Operations Director & Store Lead')}
                       </p>
                       <p className="font-label-sm text-label-sm text-on-surface font-medium mt-0.5">
-                        +234 803 219 8831
+                        {v(branch?.managerPhone || '—', '+234 803 219 8831')}
                       </p>
                     </div>
                   </div>
@@ -222,7 +322,7 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                 <div className="flex items-center gap-space-xs mt-space-md">
                   <a
                     className="flex-1 py-space-2xs px-space-xs rounded-lg bg-surface-canvas hover:bg-surface-container-high text-primary font-button-secondary text-button-secondary text-center shadow-sm transition-colors flex items-center justify-center gap-1"
-                    href="tel:+2348032198831"
+                    href={v(branch?.managerPhone ? `tel:${branch.managerPhone.replace(/\s+/g, '')}` : undefined, 'tel:+2348032198831')}
                   >
                     <Icon name="call" className="text-[16px]" />
                     <span>Direct Call</span>
@@ -253,14 +353,14 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                       GPS Benchmark
                     </p>
                     <p className="font-label-sm text-label-sm font-semibold text-on-surface font-mono">
-                      9.0765° N, 7.4735° E
+                      {v(hasGps ? `${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E` : '—', '9.0765° N, 7.4735° E')}
                     </p>
                   </div>
                 </div>
                 <div className="pointer-events-auto bg-surface-canvas/95 backdrop-blur-md px-space-sm py-space-xs rounded-xl shadow-md flex items-center gap-space-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-ping" />
                   <span className="font-label-sm text-label-sm font-semibold text-on-surface">
-                    300m Geofence Active
+                    {v('—', '300m Geofence Active')}
                   </span>
                 </div>
               </div>
@@ -270,13 +370,16 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                   <div>
                     <p className="font-label-sm text-label-sm font-semibold text-white">Continuous Tap Radar</p>
                     <p className="font-caption text-caption text-inverse-on-surface/80">
-                      Broadcasting offers to VEMTAP mobile passes in 300m perimeter
+                      {v('Customers near this branch see its deals in discovery', 'Broadcasting offers to VEMTAP mobile passes in 300m perimeter')}
                     </p>
                   </div>
                 </div>
                 <a
                   className="px-space-sm py-space-2xs rounded-lg bg-primary-container text-on-primary font-button-secondary text-button-secondary hover:bg-primary transition-all flex items-center gap-1 shadow-sm"
-                  href="https://maps.google.com/?q=9.0765,7.4735"
+                  href={v(
+                    hasGps ? `https://maps.google.com/?q=${lat},${lng}` : `https://maps.google.com/?q=${encodeURIComponent(branch ? branchAddressLabel(branch) : '')}`,
+                    'https://maps.google.com/?q=9.0765,7.4735',
+                  )}
                   rel="noopener noreferrer"
                   target="_blank"
                 >
@@ -305,19 +408,19 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
               </div>
               <span className="flex items-center gap-1 font-label-sm text-label-sm text-badge-discount-text font-semibold">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                Currently Open (Closing in 4 hrs)
+                {v(branch ? (paused ? 'Paused' : branchOpenLabel(branch)) : '—', 'Currently Open (Closing in 4 hrs)')}
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md">
               <div className="bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between">
                 <div className="flex items-center justify-between pb-space-xs">
                   <span className="font-label-sm text-label-sm font-semibold text-on-surface">
-                    Monday – Saturday
+                    {v('Monday', 'Monday – Saturday')}
                   </span>
                   <Icon name="wb_sunny" className="text-primary text-[18px]" />
                 </div>
                 <div className="my-space-xs">
-                  <p className="font-heading-sm text-heading-sm font-bold text-on-surface">9:00 AM – 10:00 PM</p>
+                  <p className="font-heading-sm text-heading-sm font-bold text-on-surface">{v(dayLabel('monday'), '9:00 AM – 10:00 PM')}</p>
                   <p className="font-caption text-caption text-text-secondary">West Africa Time (WAT)</p>
                 </div>
                 <div className="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden mt-space-2xs">
@@ -326,11 +429,11 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
               </div>
               <div className="bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between">
                 <div className="flex items-center justify-between pb-space-xs">
-                  <span className="font-label-sm text-label-sm font-semibold text-on-surface">Sunday Trading</span>
+                  <span className="font-label-sm text-label-sm font-semibold text-on-surface">{v('Sunday', 'Sunday Trading')}</span>
                   <Icon name="bedtime" className="text-secondary text-[18px]" />
                 </div>
                 <div className="my-space-xs">
-                  <p className="font-heading-sm text-heading-sm font-bold text-on-surface">12:00 PM – 9:00 PM</p>
+                  <p className="font-heading-sm text-heading-sm font-bold text-on-surface">{v(dayLabel('sunday'), '12:00 PM – 9:00 PM')}</p>
                   <p className="font-caption text-caption text-text-secondary">West Africa Time (WAT)</p>
                 </div>
                 <div className="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden mt-space-2xs">
@@ -343,9 +446,9 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                   <Icon name="restaurant" className="text-[18px]" />
                 </div>
                 <div className="my-space-xs">
-                  <p className="font-heading-sm text-heading-sm font-bold text-primary">30 mins prior</p>
+                  <p className="font-heading-sm text-heading-sm font-bold text-primary">{v('—', '30 mins prior')}</p>
                   <p className="font-caption text-caption text-on-secondary-fixed-variant">
-                    Automatic POS lock for fresh ticketing at 9:30 PM (Mon-Sat)
+                    {v('—', 'Automatic POS lock for fresh ticketing at 9:30 PM (Mon-Sat)')}
                   </p>
                 </div>
                 <p className="font-caption text-caption text-primary font-semibold flex items-center gap-1">
@@ -381,7 +484,7 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md">
-              {INVENTORY_METRICS.map((metric) => (
+              {metrics.map((metric) => (
                 <div
                   key={metric.label}
                   className="bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between"
@@ -419,15 +522,15 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                 <div className="flex items-center gap-space-xs">
                   <div className="w-3 h-3 rounded-full bg-badge-discount-text animate-pulse" />
                   <h3 className="font-label-md text-label-md font-bold text-on-surface">
-                    Real-Time Terminal Edge Mesh (Wuse II Station)
+                    {v(`POS Terminals (${branch?.name ?? 'Branch'})`, 'Real-Time Terminal Edge Mesh (Wuse II Station)')}
                   </h3>
                 </div>
                 <span className="font-caption text-caption text-text-secondary font-mono">
-                  Gateway Ping: 12ms • Zero packet drop
+                  {v(`${posUnits.length} ${posUnits.length === 1 ? 'till' : 'tills'}`, 'Gateway Ping: 12ms • Zero packet drop')}
                 </span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-space-xs mt-space-sm">
-                {POS_UNITS.map((unit) => (
+                {posUnits.map((unit) => (
                   <div
                     key={unit.name}
                     className="bg-surface-canvas rounded-lg p-space-xs shadow-sm flex items-center gap-space-xs"
@@ -438,7 +541,7 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                         {unit.name}
                       </p>
                       <p className="font-caption text-caption text-badge-discount-text leading-tight">
-                        NFC Sync • 0s Latency
+                        {v(unit.status === 'active' ? 'Online' : unit.status === 'idle' ? 'Idle' : unit.status === 'offline' ? 'Offline' : 'Disabled', 'NFC Sync • 0s Latency')}
                       </p>
                     </div>
                   </div>
@@ -470,10 +573,10 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
             </div>
             <div className="bg-surface-container-low rounded-xl p-space-md">
               <div className="flex items-baseline justify-between">
-                <span className="font-display-hero-mobile text-display-hero-mobile font-bold text-primary">1,420</span>
+                <span className="font-display-hero-mobile text-display-hero-mobile font-bold text-primary">{v('—', '1,420')}</span>
                 <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold flex items-center">
                   <Icon name="trending_up" className="text-[16px]" />
-                  +18.4% vs last week
+                  {v('—', '+18.4% vs last week')}
                 </span>
               </div>
               <p className="font-label-sm text-label-sm font-semibold text-on-surface mt-1">
@@ -486,7 +589,7 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
             <div className="bg-surface-subtle rounded-xl p-space-sm flex flex-col gap-space-xs">
               <div className="flex items-center justify-between text-caption font-caption text-text-secondary">
                 <span className="font-semibold text-on-surface">Corridor Saturation</span>
-                <span>Amina Kano • Adetokunbo</span>
+                <span>{v('—', 'Amina Kano • Adetokunbo')}</span>
               </div>
               <div className="flex items-center gap-space-xs">
                 <svg className="w-16 h-16 shrink-0 transform -rotate-90" viewBox="0 0 36 36">
@@ -509,16 +612,16 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
                 </svg>
                 <div className="flex flex-col text-caption font-caption">
                   <span className="font-semibold text-on-surface text-label-sm font-label-sm">
-                    78% Core Catchment
+                    {v('—', '78% Core Catchment')}
                   </span>
                   <span className="text-text-secondary">
-                    Strongest density: 12:30 PM & 7:45 PM Peak commuting windows
+                    {v('No footfall data yet', 'Strongest density: 12:30 PM & 7:45 PM Peak commuting windows')}
                   </span>
                 </div>
               </div>
             </div>
             <div className="pt-space-xs flex items-center justify-between text-caption font-caption text-text-secondary">
-              <span>Beacon Radius: 300m</span>
+              <span>{v('Beacon Radius: —', 'Beacon Radius: 300m')}</span>
               <button type="button" className="text-primary font-semibold hover:underline">
                 Adjust Perimeter
               </button>
@@ -541,7 +644,7 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
               </div>
             </div>
             <div className="space-y-space-sm text-label-sm font-label-sm">
-              {DOSSIER_ROWS.map((row) => (
+              {dossier.map((row) => (
                 <div
                   key={row.label}
                   className="bg-surface-container-low rounded-lg p-space-sm flex items-center justify-between"
@@ -560,26 +663,26 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
               type="button"
               onClick={() => {
                 downloadCsv(
-                  'wuse-branch-compliance-dossier.csv',
+                  live ? `${(branch?.name ?? 'branch').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-dossier.csv` : 'wuse-branch-compliance-dossier.csv',
                   ['Field', 'Value'],
-                  DOSSIER_ROWS.map((row) => [row.label, row.value]),
+                  dossier.map((row) => [row.label, row.value]),
                 );
                 printReport(
-                  'Compliance Dossier — Wuse II Branch',
+                  v(`Compliance Dossier — ${branch?.name ?? 'Branch'}`, 'Compliance Dossier — Wuse II Branch'),
                   `${printKvTable('Outlet', [
-                    ['Branch', 'Wuse II — Apo Boulevard'],
-                    ['Jurisdiction', 'Abuja Municipal (AMAC)'],
-                    ['Status', 'Live & Accepting'],
+                    ['Branch', v(branch?.name ?? '—', 'Wuse II — Apo Boulevard')],
+                    ['Jurisdiction', v(branch?.district || '—', 'Abuja Municipal (AMAC)')],
+                    ['Status', v(paused ? 'Paused' : 'Live & Accepting', 'Live & Accepting')],
                   ])}
                    ${printKvTable(
                      'Statutory compliance',
-                     DOSSIER_ROWS.map((row) => [row.label, row.value] as [string, string]),
+                     dossier.map((row) => [row.label, row.value] as [string, string]),
                    )}
                    ${printKvTable('Inventory & POS', [
-                     ...INVENTORY_METRICS.map(
+                     ...metrics.map(
                        (metric) => [metric.label, `${metric.value} — ${metric.sub}`] as [string, string],
                      ),
-                     ['POS units', POS_UNITS.map((unit) => unit.name).join(', ')],
+                     ['POS units', posUnits.map((unit) => unit.name).join(', ') || '—'],
                    ])}
                    <p class="foot">A CSV copy of this dossier downloaded alongside the PDF.</p>`,
                 );
@@ -621,15 +724,21 @@ export function DesktopBranchDetailScreen({ onNav, onBackToLocations }: DesktopB
               </button>
               <button
                 type="button"
+                onClick={live ? () => setActive(paused) : undefined}
                 className="text-error font-label-sm text-label-sm font-semibold hover:underline flex items-center gap-1"
               >
-                <span>Deactivate Outlet</span>
+                <span>{v(paused ? 'Reactivate Outlet' : 'Deactivate Outlet', 'Deactivate Outlet')}</span>
                 <Icon name="chevron_right" className="text-[14px]" />
               </button>
             </div>
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
     </MerchantShell>
   );
 }

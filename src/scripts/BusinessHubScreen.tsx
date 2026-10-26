@@ -4,6 +4,7 @@ import type { CatalogueItem } from '../services/catalogueItemsService';
 import type { BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHomeScreen, type HubModuleKey } from './BusinessHubHomeScreen';
 import { BusinessLocationsScreen } from './BusinessLocationsScreen';
+import { BusinessAddBranchScreen } from './BusinessAddBranchScreen';
 import { BusinessHubCatalogScreen } from './BusinessHubCatalogScreen';
 import { BusinessProductAssignmentScreen } from './BusinessProductAssignmentScreen';
 import { BusinessDealsScreen } from './BusinessDealsScreen';
@@ -25,7 +26,8 @@ export type BusinessHubStep =
   | 'dealAssignment'
   | 'customers'
   | 'customerProfile'
-  | 'profile';
+  | 'profile'
+  | 'addBranch';
 
 export function BusinessHubScreen({
   initialStep = 'hub',
@@ -83,7 +85,9 @@ export function BusinessHubScreen({
       case 'hub':
         return <BusinessHubHomeScreen onTab={handleTab} onOpenModule={onOpenModule} />;
       case 'locations':
-        return <BusinessLocationsScreen onTab={handleTab} />;
+        return <BusinessLocationsScreen onTab={handleTab} onAddBranch={() => setStep('addBranch')} />;
+      case 'addBranch':
+        return <BusinessAddBranchScreen onBack={() => setStep('locations')} onSaved={() => setStep('locations')} />;
       case 'catalog':
         return (
           <BusinessHubCatalogScreen
@@ -101,7 +105,14 @@ export function BusinessHubScreen({
           />
         );
       case 'assignment':
-        return <BusinessProductAssignmentScreen onBack={() => setStep('catalog')} itemName={assignmentItem} />;
+        return (
+          <BusinessProductAssignmentScreen
+            onBack={() => setStep('catalog')}
+            itemName={assignmentItem}
+            // Live: the catalogue passes the item's id.
+            itemId={live ? assignmentItem : null}
+          />
+        );
       case 'deals':
         return (
           <BusinessDealsScreen

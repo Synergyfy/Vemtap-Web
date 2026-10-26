@@ -748,7 +748,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                     type="button"
                     onClick={() => {
                       if (importedKeys.has(item.key)) setView('importReview');
-                      else onOpenAssignment(item.name);
+                      else onOpenAssignment(live ? item.key : item.name);
                     }}
                   >
                     <Icon name={item.actionIcon} className="text-[15px]" />

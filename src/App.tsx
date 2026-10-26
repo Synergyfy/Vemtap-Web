@@ -315,6 +315,7 @@ import { DesktopLoyaltyProgrammeScreen } from './scripts/desktop/DesktopLoyaltyP
 import { DesktopLoyaltyRewardsScreen } from './scripts/desktop/DesktopLoyaltyRewardsScreen';
 import { DesktopBusinessCatalogHubScreen } from './scripts/desktop/DesktopBusinessCatalogHubScreen';
 import { DesktopBusinessLocationsHubScreen } from './scripts/desktop/DesktopBusinessLocationsHubScreen';
+import { DesktopBusinessAddBranchScreen } from './scripts/desktop/DesktopBusinessAddBranchScreen';
 import { DesktopBranchDetailScreen } from './scripts/desktop/DesktopBranchDetailScreen';
 import { DesktopServicesCategoriesScreen } from './scripts/desktop/DesktopServicesCategoriesScreen';
 import { DesktopAnalyticsBusinessScreen } from './scripts/desktop/DesktopAnalyticsBusinessScreen';
@@ -1737,6 +1738,11 @@ function AppInner() {
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
   const [dealGroupId, setDealGroupId] = useState<string | null>(null);
   const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
+  // Live branches & pricing: the branch opened from Locations, the item whose
+  // branch prices are edited, and the add-branch form shown inside Locations.
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [pricingItemId, setPricingItemId] = useState<string | null>(null);
+  const [addingBranch, setAddingBranch] = useState(false);
   /** Deals start from a real item; with none chosen, live sends the owner to the catalogue. */
   const openDealStudio = (item?: CatalogueItem | null) => {
     if (item) {
@@ -1762,6 +1768,7 @@ function AppInner() {
   };
   useEffect(() => {
     if (route !== 'hub-catalog') setCatalogNotice(null);
+    if (route !== 'hub-locations') setAddingBranch(false);
   }, [route]);
 
   const openBoost = (item?: string) => {
@@ -4635,6 +4642,7 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopBusinessBranchPricingScreen
+            itemId={pricingItemId}
             onNav={businessPortalNav}
             onBackToCatalog={() => setRoute('hub-catalog')}
           />
@@ -4665,11 +4673,19 @@ function AppInner() {
     case 'hub-locations':
       if (isDesktop)
         return (
-          <DesktopBusinessLocationsHubScreen
-            onNav={businessPortalNav}
-            onAddBranch={() => setRoute('business-onboarding')}
-            onOpenBranch={() => setRoute('hub-branch-detail')}
-          />
+          hasApiConfig() && addingBranch ? (
+            <DesktopBusinessAddBranchScreen onBack={() => setAddingBranch(false)} onSaved={() => setAddingBranch(false)} />
+          ) : (
+            <DesktopBusinessLocationsHubScreen
+              onNav={businessPortalNav}
+              // Live owners are already set up: the add-branch form opens here.
+              onAddBranch={() => (hasApiConfig() ? setAddingBranch(true) : setRoute('business-onboarding'))}
+              onOpenBranch={(branchId) => {
+                setSelectedBranchId(branchId ?? null);
+                setRoute('hub-branch-detail');
+              }}
+            />
+          )
         );
       return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
@@ -4677,6 +4693,7 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopBranchDetailScreen
+            branchId={selectedBranchId}
             onNav={businessPortalNav}
             onBackToLocations={() => setRoute('hub-locations')}
           />
@@ -4688,7 +4705,10 @@ function AppInner() {
         return (
           <DesktopBusinessCatalogHubScreen
             onNav={businessPortalNav}
-            onOpenBranchPricing={() => setRoute('business-branch-pricing')}
+            onOpenBranchPricing={(itemId) => {
+              setPricingItemId(itemId ?? null);
+              setRoute('business-branch-pricing');
+            }}
             onOpenServices={() => setRoute('hub-services')}
             onMakeDeal={(item) => openDealStudio(item)}
             notice={catalogNotice}
@@ -4733,7 +4753,10 @@ function AppInner() {
           return (
             <DesktopBusinessCatalogHubScreen
               onNav={businessPortalNav}
-              onOpenBranchPricing={() => setRoute('business-branch-pricing')}
+              onOpenBranchPricing={(itemId) => {
+              setPricingItemId(itemId ?? null);
+              setRoute('business-branch-pricing');
+            }}
               onOpenServices={() => setRoute('hub-services')}
               onMakeDeal={(item) => openDealStudio(item)}
               notice={notice}

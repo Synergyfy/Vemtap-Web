@@ -2,12 +2,23 @@ import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
+import { useQuery } from '@tanstack/react-query';
+import { hasApiConfig } from '../../services/api/client';
+import { useBranchCatalogueCounts, useBranches } from '../../hooks/business/useBranchesAndTeam';
+import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { posService } from '../../services/posService';
+import { branchAddressLabel, branchOpenLabel } from '../branchLive';
 
 interface DesktopBusinessLocationsHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onAddBranch?: () => void;
-  onOpenBranch?: () => void;
+  /** Live: receives the branch id to open. */
+  onOpenBranch?: (branchId?: string) => void;
 }
+
+const LIVE_MAP_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
 
 interface BranchCardData {
   id: string;
@@ -96,6 +107,49 @@ export function DesktopBusinessLocationsHubScreen({
   onAddBranch,
   onOpenBranch,
 }: DesktopBusinessLocationsHubScreenProps) {
+  // Live: the business's real branches, what each sells, its tills and visits; demo keeps the samples.
+  const live = hasApiConfig();
+  const branchesQuery = useBranches();
+  const liveList = branchesQuery.data ?? [];
+  const counts = useBranchCatalogueCounts(liveList.map((branch) => branch.id));
+  const tillsQuery = useQuery({ queryKey: ['pos', 'tills', 'all'], queryFn: () => posService.tills(null), enabled: live });
+  const locations = useBusinessAnalytics('locations', 30);
+  const { branch: activeBranch } = useBusinessBranch();
+  const tillCount = (branchId: string) => (tillsQuery.data ?? []).filter((till) => till.branchId === branchId).length;
+  const n = (value: number | null | undefined) => (value == null ? '—' : String(value));
+  const cards: BranchCardData[] = live
+    ? liveList.map((branch, index) => ({
+        id: branch.id,
+        index: `BRANCH #${String(index + 1).padStart(2, '0')}`,
+        indexClass: branch.isMainBranch ? 'text-primary' : 'text-secondary',
+        tag1: branch.isMainBranch ? 'Main Branch' : 'Branch',
+        tag1Class: branch.isMainBranch ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-secondary-fixed text-on-secondary-fixed',
+        tag2: branch.state || branch.city || '—',
+        tag2Class: 'bg-surface-tint-blue text-primary',
+        openLabel: branch.isActive === false ? 'Paused' : branchOpenLabel(branch),
+        name: branch.name,
+        address: branchAddressLabel(branch),
+        manager: branch.managerName || '—',
+        phone: branch.phone || '—',
+        geofence: '—',
+        metrics: [
+          { label: 'Products', value: `${n(counts[branch.id]?.products)} Items`, valueClass: 'text-on-surface' },
+          { label: 'Services', value: `${n(counts[branch.id]?.services)} Available`, valueClass: 'text-on-surface' },
+          { label: 'Active Deals', value: `${n(counts[branch.id]?.deals)} Deals`, valueClass: 'text-badge-discount-text' },
+          { label: 'POS Hardware', value: `${tillsQuery.data ? tillCount(branch.id) : '—'} Terminals`, valueClass: 'text-primary' },
+        ],
+        registerLabel: 'View Branch Register & Terminals',
+        mapImage: LIVE_MAP_PLACEHOLDER,
+        mapLocation: branchAddressLabel(branch),
+        mapBadge: branch.district || branch.city || 'Branch area',
+        mapCaption: 'Customers near this branch see its deals in discovery.',
+        beaconSize: 'w-24 h-24',
+      }))
+    : LIVE_BRANCHES;
+  const activeCount = liveList.filter((branch) => branch.isActive !== false).length;
+  const states = Array.from(new Set(liveList.map((branch) => branch.state || branch.city).filter(Boolean))) as string[];
+  const skuTotal = liveList.reduce((sum, branch) => sum + (counts[branch.id]?.products ?? 0) + (counts[branch.id]?.services ?? 0), 0);
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
   return (
     <MerchantShell activeNav="business-locations" onNav={onNav}>
       <div className="flex flex-col gap-space-2xs mb-space-lg">
@@ -128,7 +182,7 @@ export function DesktopBusinessLocationsHubScreen({
                 downloadCsv(
                   'vemtap_branch_directory',
                   ['Branch', 'Address', 'Manager', 'Phone', 'Geofence', ...LIVE_BRANCHES[0].metrics.map((metric) => metric.label)],
-                  LIVE_BRANCHES.map((branch) => [
+                  cards.map((branch) => [
                     branch.name,
                     branch.address,
                     branch.manager,
@@ -167,10 +221,10 @@ export function DesktopBusinessLocationsHubScreen({
                 Active Workspace Focus
               </span>
               <span className="text-text-tertiary">•</span>
-              <span className="font-caption text-caption text-text-secondary">Abuja Capital Metro</span>
+              <span className="font-caption text-caption text-text-secondary">{v(activeBranch.area || '—', 'Abuja Capital Metro')}</span>
             </div>
             <p className="font-heading-sm text-heading-sm text-on-surface mt-0.5">
-              Wuse Branch #01 — Flagship (Abuja, FCT)
+              {v(activeBranch.name, 'Wuse Branch #01 — Flagship (Abuja, FCT)')}
             </p>
           </div>
         </div>
@@ -204,16 +258,16 @@ export function DesktopBusinessLocationsHubScreen({
           </div>
           <div className="mt-space-md">
             <div className="flex items-baseline gap-space-2xs">
-              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">2 Live</span>
-              <span className="font-caption text-caption text-text-tertiary">/ 3 total</span>
+              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">{v(`${activeCount} Live`, '2 Live')}</span>
+              <span className="font-caption text-caption text-text-tertiary">{v(`/ ${liveList.length} total`, '/ 3 total')}</span>
             </div>
             <p className="font-caption text-caption text-text-secondary mt-1 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-error inline-block" />
-              1 Outlet Paused / Under Renovation
+              {v(`${liveList.length - activeCount} Paused`, '1 Outlet Paused / Under Renovation')}
             </p>
           </div>
           <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-space-md overflow-hidden">
-            <div className="bg-primary h-full rounded-full" style={{ width: '66.6%' }} />
+            <div className="bg-primary h-full rounded-full" style={{ width: v(liveList.length ? `${(activeCount / liveList.length) * 100}%` : '0%', '66.6%') }} />
           </div>
         </div>
 
@@ -226,17 +280,23 @@ export function DesktopBusinessLocationsHubScreen({
           </div>
           <div className="mt-space-md">
             <div className="flex items-baseline gap-space-2xs">
-              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">2 Zones</span>
+              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">
+                {v(`${states.length} ${states.length === 1 ? 'Zone' : 'Zones'}`, '2 Zones')}
+              </span>
             </div>
-            <p className="font-caption text-caption text-text-secondary mt-1">Abuja FCT (2) • Lagos Island (1)</p>
+            <p className="font-caption text-caption text-text-secondary mt-1">
+              {v(
+                states.map((state) => `${state} (${liveList.filter((branch) => (branch.state || branch.city) === state).length})`).join(' • ') || '—',
+                'Abuja FCT (2) • Lagos Island (1)',
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-1 mt-space-md">
-            <span className="px-space-xs py-0.5 rounded text-[11px] font-medium bg-surface-container text-secondary">
-              FCT Zone A
-            </span>
-            <span className="px-space-xs py-0.5 rounded text-[11px] font-medium bg-surface-container text-secondary">
-              Lagos SW
-            </span>
+            {(live ? states : ['FCT Zone A', 'Lagos SW']).map((zone) => (
+              <span key={zone} className="px-space-xs py-0.5 rounded text-[11px] font-medium bg-surface-container text-secondary">
+                {zone}
+              </span>
+            ))}
           </div>
         </div>
 
@@ -249,15 +309,25 @@ export function DesktopBusinessLocationsHubScreen({
           </div>
           <div className="mt-space-md">
             <div className="flex items-baseline gap-space-2xs">
-              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">70 SKUs</span>
+              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">{v(`${skuTotal} SKUs`, '70 SKUs')}</span>
               <span className="font-caption text-caption text-badge-discount-text font-medium">Synced</span>
             </div>
             <p className="font-caption text-caption text-text-secondary mt-1">Decentralized Stock Distribution</p>
           </div>
           <div className="flex items-center justify-between text-[11px] text-text-tertiary mt-space-md">
-            <span>42 Wuse</span>
-            <span>36 VI</span>
-            <span>0 Garki</span>
+            {live ? (
+              liveList.map((branch) => (
+                <span key={branch.id}>
+                  {n((counts[branch.id]?.products ?? 0) + (counts[branch.id]?.services ?? 0))} {branch.name}
+                </span>
+              ))
+            ) : (
+              <>
+                <span>42 Wuse</span>
+                <span>36 VI</span>
+                <span>0 Garki</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -270,8 +340,10 @@ export function DesktopBusinessLocationsHubScreen({
           </div>
           <div className="mt-space-md">
             <div className="flex items-baseline gap-space-2xs">
-              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">8,420</span>
-              <span className="font-caption text-caption text-badge-discount-text font-semibold">+14% MoM</span>
+              <span className="font-heading-lg text-heading-lg text-on-surface font-bold">
+                {v(locations.data ? locations.data.totals.visits.toLocaleString('en-US') : '—', '8,420')}
+              </span>
+              <span className="font-caption text-caption text-badge-discount-text font-semibold">{v('Last 30 days', '+14% MoM')}</span>
             </div>
             <p className="font-caption text-caption text-text-secondary mt-1">
               Monthly consumer walk-ins verified
@@ -296,7 +368,7 @@ export function DesktopBusinessLocationsHubScreen({
         <div className="flex items-center gap-space-sm">
           <h2 className="font-heading-sm text-heading-sm text-on-surface">Store Locations & Geofences</h2>
           <span className="px-space-xs py-0.5 rounded-full bg-surface-container text-text-secondary font-label-sm text-label-sm">
-            3 Registered
+            {v(`${liveList.length} Registered`, '3 Registered')}
           </span>
         </div>
         <div className="flex items-center gap-space-xs">
@@ -319,7 +391,7 @@ export function DesktopBusinessLocationsHubScreen({
 
       {/* Branch cards */}
       <div className="flex flex-col gap-space-lg mb-space-2xl">
-        {LIVE_BRANCHES.map((branch) => (
+        {cards.map((branch) => (
           <div
             key={branch.id}
             className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm hover:shadow-md transition-shadow relative overflow-hidden"
@@ -382,7 +454,7 @@ export function DesktopBusinessLocationsHubScreen({
                 <div className="flex flex-wrap items-center gap-space-xs mt-space-lg">
                   <button
                     type="button"
-                    onClick={onOpenBranch}
+                    onClick={() => onOpenBranch?.(live ? branch.id : undefined)}
                     className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5"
                   >
                     <Icon name="edit_note" className="text-[18px]" />
@@ -430,6 +502,7 @@ export function DesktopBusinessLocationsHubScreen({
         ))}
 
         {/* Garki — paused branch */}
+        {!live && (
         <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm hover:shadow-md transition-shadow relative overflow-hidden opacity-90">
           <div className="flex flex-col xl:flex-row items-start justify-between gap-space-lg">
             <div className="flex-1 w-full min-w-0">
@@ -496,6 +569,7 @@ export function DesktopBusinessLocationsHubScreen({
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Architecture card */}

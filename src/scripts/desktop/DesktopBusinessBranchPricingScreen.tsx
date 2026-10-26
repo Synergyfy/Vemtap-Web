@@ -1,10 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hasApiConfig } from '../../services/api/client';
+import { catalogueItemsService } from '../../services/catalogueItemsService';
+import { useCatalogueItems, catalogueItemKeys } from '../../hooks/business/useCatalogueItems';
+import { useBranches } from '../../hooks/business/useBranchesAndTeam';
+import { posService } from '../../services/posService';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { branchAddressLabel } from '../branchLive';
 
 interface DesktopBusinessBranchPricingScreenProps {
+  /** Live: the catalogue item whose branch prices are edited (defaults to the first product). */
+  itemId?: string | null;
   onNav: (key: BusinessPortalNavKey) => void;
   onBackToCatalog?: () => void;
 }
@@ -44,7 +54,24 @@ const BRANCH_PRICING: Array<{ branch: string; address: string; price: string; no
   },
 ];
 
-export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: DesktopBusinessBranchPricingScreenProps) {
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
+const money = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
+
+/** One branch row of the live matrix. */
+interface LiveRow {
+  branchId: string;
+  name: string;
+  address: string;
+  isMain: boolean;
+  available: boolean;
+  price: string;
+  stock: string;
+  hasOverride: boolean;
+}
+
+export function DesktopBusinessBranchPricingScreen({ itemId, onNav, onBackToCatalog }: DesktopBusinessBranchPricingScreenProps) {
   const [scope, setScope] = useState<'selected' | 'all'>('selected');
   const [pricingMode, setPricingMode] = useState<'standard' | 'custom'>('custom');
   const [branchToggles, setBranchToggles] = useState<Record<string, boolean>>({
@@ -54,6 +81,53 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
   });
   const [dirty, setDirty] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  // Live: the item's real per-branch availability, price and stock; demo keeps the samples.
+  const live = hasApiConfig();
+  const products = useCatalogueItems('product');
+  const item = (products.data ?? []).find((entry) => entry.id === itemId) ?? (itemId ? undefined : products.data?.[0]);
+  const id = item?.id ?? itemId ?? '';
+  const queryClient = useQueryClient();
+  const pricingQuery = useQuery({
+    queryKey: ['catalogue-items', 'branch-pricing', id],
+    queryFn: () => catalogueItemsService.branchPricing(id),
+    enabled: live && Boolean(id),
+  });
+  const branchesQuery = useBranches();
+  const tillsQuery = useQuery({ queryKey: ['pos', 'tills', 'all'], queryFn: () => posService.tills(null), enabled: live });
+  const savePricing = useMutation({
+    mutationFn: (input: Parameters<typeof catalogueItemsService.setBranchPricing>[1]) => catalogueItemsService.setBranchPricing(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all }),
+  });
+  const [rows, setRows] = useState<LiveRow[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const base = Number(pricingQuery.data?.basePrice ?? item?.price ?? 0);
+  useEffect(() => {
+    const pricing = pricingQuery.data;
+    if (!live || !pricing) return;
+    const addressOf = new Map((branchesQuery.data ?? []).map((branch) => [branch.id, branchAddressLabel(branch)]));
+    setRows(
+      pricing.branches.map((row) => ({
+        branchId: row.branchId,
+        name: row.branchName,
+        address: addressOf.get(row.branchId) ?? '—',
+        isMain: row.isMainBranch,
+        available: row.isAvailable,
+        price: String(Math.round(Number(row.price))),
+        stock: row.stockQuantity != null ? String(row.stockQuantity) : '',
+        hasOverride: row.hasOverride === true,
+      })),
+    );
+    setPricingMode(pricing.pricingMode === 'per_branch' ? 'custom' : 'standard');
+    setDirty(false);
+  }, [live, pricingQuery.data, branchesQuery.data]);
+  const updateRow = (branchId: string, patch: Partial<LiveRow>) => {
+    setRows((current) => current.map((row) => (row.branchId === branchId ? { ...row, ...patch } : row)));
+    setDirty(true);
+  };
+  const activeRows = rows.filter((row) => (scope === 'all' ? true : row.available));
+  const totalStock = activeRows.reduce((sum, row) => sum + (Number(row.stock) || 0), 0);
+  const tills = tillsQuery.data ?? [];
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
 
   const toggleBranch = (id: string) => {
     setBranchToggles((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -61,6 +135,12 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
   };
 
   const handleCancel = () => {
+    if (live) {
+      void pricingQuery.refetch();
+      setEditing(null);
+      setDirty(false);
+      return;
+    }
     setBranchToggles({ wuse: true, vi: true, garki: false });
     setScope('selected');
     setPricingMode('custom');
@@ -68,6 +148,32 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
   };
 
   const handleSave = () => {
+    if (live) {
+      savePricing.mutate(
+        {
+          pricingMode: pricingMode === 'custom' ? 'per_branch' : 'uniform',
+          branches: rows.map((row) => ({
+            branchId: row.branchId,
+            isAvailable: scope === 'all' ? true : row.available,
+            price: pricingMode === 'custom' && Number(row.price) ? Number(row.price) : null,
+            stockQuantity: row.stock === '' ? null : Number(row.stock),
+          })),
+        },
+        {
+          onSuccess: () => {
+            setDirty(false);
+            setEditing(null);
+            setToast('Branch availability and prices saved.');
+            window.setTimeout(() => setToast(null), 2500);
+          },
+          onError: (error) => {
+            setToast(apiErrorMessage(error, 'Could not save the branch pricing.'));
+            window.setTimeout(() => setToast(null), 3500);
+          },
+        },
+      );
+      return;
+    }
     setDirty(false);
     setToast('Location assignment saved & pushed to POS cluster.');
     window.setTimeout(() => setToast(null), 2500);
@@ -94,7 +200,7 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
         </button>
         <Icon name="chevron_right" className="text-[16px] text-text-tertiary" />
         <button type="button" onClick={goBack} className="hover:text-primary transition-colors">
-          Woodfire Grilled Lamb Chops
+          {v(item?.name ?? 'Item', 'Woodfire Grilled Lamb Chops')}
         </button>
         <Icon name="chevron_right" className="text-[16px] text-text-tertiary" />
         <span className="text-on-surface font-semibold">Location Availability &amp; Pricing</span>
@@ -104,17 +210,17 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
         <div>
           <div className="flex items-center gap-space-xs mb-space-2xs">
             <span className="px-space-xs py-space-2xs rounded bg-surface-container-high text-primary font-caption text-caption font-semibold uppercase tracking-wider">
-              SKU #VG-LAMB-02
+              {v(`SKU #${item?.sku ?? '—'}`, 'SKU #VG-LAMB-02')}
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-            <span className="font-caption text-caption text-badge-discount-text font-medium">Synced with POS Cluster</span>
+            <span className="font-caption text-caption text-badge-discount-text font-medium">{v('Live in POS', 'Synced with POS Cluster')}</span>
           </div>
           <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
             Branch Availability &amp; Location Pricing Matrix
           </h1>
           <p className="font-body-md text-body-md text-text-secondary mt-space-2xs max-w-3xl">
-            Specify which store branches stock Woodfire Grilled Lamb Chops (₦14,500 MSRP) and configure
-            location-specific price overrides.
+            Specify which store branches stock {v(`${item?.name ?? 'this item'} (${money(base)} MSRP)`, 'Woodfire Grilled Lamb Chops (₦14,500 MSRP)')} and
+            configure location-specific price overrides.
           </p>
         </div>
         <div className="flex items-center gap-space-xs shrink-0">
@@ -131,7 +237,9 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
               downloadCsv(
                 'vemtap_branch_pricing',
                 ['Branch', 'Address', 'Selling Price', 'Note'],
-                BRANCH_PRICING.map((row) => [row.branch, row.address, row.price, row.note]),
+                live
+                  ? rows.map((row) => [row.name, row.address, row.available ? money(Number(row.price) || base) : '—', row.hasOverride ? 'Branch override' : 'Standard base'])
+                  : BRANCH_PRICING.map((row) => [row.branch, row.address, row.price, row.note]),
               );
             }}
             className="px-space-md py-space-xs rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-highest transition-colors font-button-secondary text-button-secondary flex items-center gap-space-2xs"
@@ -146,7 +254,7 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
         <div className="absolute -right-12 -top-12 w-48 h-48 bg-surface-tint-blue rounded-full pointer-events-none opacity-50" />
         <div className="flex items-center gap-space-md min-w-0">
           <div className="relative w-20 h-20 rounded-xl overflow-hidden shrink-0 shadow-sm bg-surface-container">
-            <img alt={PRODUCT_ALT} className="w-full h-full object-cover" src={PRODUCT_IMAGE} />
+            <img alt={v(item?.name ?? 'Item', PRODUCT_ALT)} className="w-full h-full object-cover" src={v(item?.mainImage || LIVE_IMAGE_PLACEHOLDER, PRODUCT_IMAGE)} />
             <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-on-background/80 text-surface font-caption text-[10px] font-bold">
               HQ
             </span>
@@ -154,16 +262,16 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
           <div className="min-w-0">
             <div className="flex items-center gap-space-xs flex-wrap">
               <span className="px-space-xs py-space-2xs rounded bg-surface-container text-secondary font-label-sm text-label-sm font-medium">
-                Steaks &amp; Grills
+                {v(item?.category?.name ?? 'Uncategorised', 'Steaks & Grills')}
               </span>
               <span className="font-caption text-caption text-text-tertiary">•</span>
-              <span className="font-caption text-caption text-text-secondary">Signature Main Dish</span>
+              <span className="font-caption text-caption text-text-secondary">{v('Product', 'Signature Main Dish')}</span>
             </div>
             <h2 className="font-heading-sm text-heading-sm text-on-surface font-bold truncate mt-space-2xs">
-              Woodfire Grilled Lamb Chops (VG-LAMB-02)
+              {v(`${item?.name ?? 'Item'}${item?.sku ? ` (${item.sku})` : ''}`, 'Woodfire Grilled Lamb Chops (VG-LAMB-02)')}
             </h2>
             <p className="font-caption text-caption text-text-secondary mt-0.5">
-              Pre-marinated herb rub • Minimum 200g serving per portion
+              {v(item?.shortDescription || item?.description || '—', 'Pre-marinated herb rub • Minimum 200g serving per portion')}
             </p>
           </div>
         </div>
@@ -172,7 +280,7 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
             <p className="font-caption text-caption uppercase text-text-tertiary font-semibold tracking-wider">
               HQ Standard MSRP
             </p>
-            <p className="font-heading-md text-heading-md font-bold text-on-surface">₦14,500</p>
+            <p className="font-heading-md text-heading-md font-bold text-on-surface">{v(money(base), '₦14,500')}</p>
           </div>
           <div className="w-px h-10 bg-surface-container hidden md:block" />
           <div className="text-left md:text-right">
@@ -181,9 +289,11 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
             </p>
             <div className="flex items-center md:justify-end gap-space-2xs">
               <span className="w-2.5 h-2.5 rounded-full bg-primary-container" />
-              <p className="font-heading-md text-heading-md font-bold text-primary">35 Units</p>
+              <p className="font-heading-md text-heading-md font-bold text-primary">{v(`${totalStock} Units`, '35 Units')}</p>
             </div>
-            <p className="font-caption text-caption text-text-secondary">Across 2 Active Branches</p>
+            <p className="font-caption text-caption text-text-secondary">
+              {v(`Across ${activeRows.length} Active ${activeRows.length === 1 ? 'Branch' : 'Branches'}`, 'Across 2 Active Branches')}
+            </p>
           </div>
         </div>
       </div>
@@ -242,7 +352,7 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
                   }`}
                 >
                   <Icon name="tune" className="text-[16px]" />
-                  <span>2 of 3 branches currently allocated</span>
+                  <span>{v(`${rows.filter((row) => row.available).length} of ${rows.length} branches currently allocated`, '2 of 3 branches currently allocated')}</span>
                 </div>
               </label>
               <label
@@ -313,7 +423,7 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
                       : 'text-text-secondary hover:text-on-surface'
                   }`}
                 >
-                  Standard Base (₦14,500)
+                  Standard Base ({v(money(base), '₦14,500')})
                 </button>
                 <button
                   type="button"
@@ -343,8 +453,8 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
                   <>
                     <p className="text-on-surface font-medium">Standard Base pricing strategy is active</p>
                     <p className="text-text-secondary mt-0.5">
-                      Every stocked branch sells at the HQ standard base of ₦14,500. Switch to Custom Branch Dynamic to
-                      apply location-specific overrides.
+                      Every stocked branch sells at the HQ standard base of {v(money(base), '₦14,500')}. Switch to Custom
+                      Branch Dynamic to apply location-specific overrides.
                     </p>
                   </>
                 )}
@@ -362,9 +472,120 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
                   Granular Branch Breakdown &amp; Overrides
                 </h3>
               </div>
-              <span className="font-caption text-caption text-text-secondary">3 Registered Store Outlets</span>
+              <span className="font-caption text-caption text-text-secondary">
+                {v(`${rows.length} Registered Store ${rows.length === 1 ? 'Outlet' : 'Outlets'}`, '3 Registered Store Outlets')}
+              </span>
             </div>
 
+            {live &&
+              rows.map((row) => {
+                const on = scope === 'all' ? true : row.available;
+                const price = pricingMode === 'custom' ? Number(row.price) || base : base;
+                const diff = price - base;
+                return (
+                  <div key={row.branchId} className={`bg-surface-canvas rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow relative ${on ? '' : 'opacity-75'}`}>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+                      <div className="flex items-start gap-space-md">
+                        <div className="w-12 h-12 rounded-xl bg-surface-container-high flex items-center justify-center text-primary shrink-0">
+                          <Icon name={on ? 'storefront' : 'domain_disabled'} className="text-[26px]" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-space-xs flex-wrap">
+                            <h4 className="font-heading-sm text-heading-sm font-bold text-on-surface">{row.name}</h4>
+                            {row.isMain && (
+                              <span className="px-space-xs py-space-2xs rounded bg-surface-container-high text-primary font-caption text-caption font-semibold">
+                                Main Branch
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-caption text-caption text-text-secondary mt-1 flex items-center gap-1">
+                            <Icon name="location_on" className="text-[15px] text-text-tertiary" />
+                            {row.address}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-space-sm self-end md:self-auto shrink-0 bg-surface-subtle p-space-2xs px-space-sm rounded-xl">
+                        <span className={`font-label-sm text-label-sm font-semibold ${on ? 'text-badge-discount-text' : 'text-text-tertiary'}`}>
+                          {on ? 'Branch Active' : 'Not Stocked'}
+                        </span>
+                        <button
+                          aria-label={`Toggle ${row.name}`}
+                          onClick={() => updateRow(row.branchId, { available: !row.available })}
+                          type="button"
+                          className={`w-12 h-6 rounded-full relative transition-colors focus:outline-none p-0.5 ${on ? 'bg-primary-container' : 'bg-surface-container-highest'}`}
+                        >
+                          <span className={`block w-5 h-5 rounded-full bg-surface-canvas shadow-sm transform transition-transform ${on ? 'translate-x-6' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {on && (
+                      <div className="mt-space-lg pt-space-md grid grid-cols-1 sm:grid-cols-3 gap-space-md bg-surface-subtle p-space-md rounded-xl">
+                        <div className="flex flex-col justify-center">
+                          <span className="font-caption text-caption uppercase text-text-tertiary font-semibold tracking-wider">
+                            {diff ? 'Selling Price (Override)' : 'Selling Price'}
+                          </span>
+                          <div className="flex items-center gap-space-xs mt-1">
+                            {editing === row.branchId ? (
+                              <input
+                                autoFocus
+                                inputMode="numeric"
+                                className="w-28 bg-transparent font-heading-md text-heading-md font-bold text-on-surface outline-none border-b border-primary"
+                                value={row.price}
+                                onChange={(event) => updateRow(row.branchId, { price: event.target.value.replace(/[^\d]/g, '') })}
+                                onBlur={() => setEditing(null)}
+                                onKeyDown={(event) => event.key === 'Enter' && setEditing(null)}
+                              />
+                            ) : (
+                              <span className={`font-heading-md text-heading-md font-bold ${diff ? 'text-primary' : 'text-on-surface'}`}>{money(price)}</span>
+                            )}
+                            {!diff && (
+                              <span className="px-space-xs py-space-2xs rounded bg-surface-container text-text-secondary font-caption text-caption">Standard Base</span>
+                            )}
+                            <button
+                              className="p-1 text-text-secondary hover:text-primary transition-colors"
+                              title="Edit Selling Price"
+                              type="button"
+                              onClick={() => {
+                                setPricingMode('custom');
+                                setEditing(row.branchId);
+                              }}
+                            >
+                              <Icon name="edit" className="text-[18px]" />
+                            </button>
+                          </div>
+                          {diff !== 0 && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
+                                <Icon name={diff > 0 ? 'trending_up' : 'trending_down'} className="text-[12px]" />
+                                {diff > 0 ? '+' : '-'}
+                                {money(Math.abs(diff))} vs base
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col justify-center">
+                          <span className="font-caption text-caption uppercase text-text-tertiary font-semibold tracking-wider">Branch Stock</span>
+                          <div className="flex items-center gap-space-xs mt-1">
+                            <span className="font-heading-md text-heading-md font-bold text-primary">{row.stock === '' ? '—' : `${row.stock} Units`}</span>
+                          </div>
+                          <p className="font-caption text-caption text-text-tertiary mt-0.5">
+                            {item?.minStock != null ? `Threshold alert at ${item.minStock} units` : 'No low-stock threshold'}
+                          </p>
+                        </div>
+                        <div className="flex flex-col justify-center">
+                          <span className="font-caption text-caption uppercase text-text-tertiary font-semibold tracking-wider">Prep Lead &amp; Dining</span>
+                          <div className="flex items-center gap-space-xs mt-1">
+                            <Icon name="timer" className="text-[18px] text-text-secondary" />
+                            <span className="font-label-md text-label-md font-semibold text-on-surface">—</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            {!live && (
+              <>
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow relative">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
                 <div className="flex items-start gap-space-md">
@@ -590,6 +811,8 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
                 </p>
               </div>
             </div>
+              </>
+            )}
           </section>
         </div>
 
@@ -619,28 +842,49 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
                     stroke="currentColor"
-                    strokeDasharray="66, 100"
+                    strokeDasharray={v(`${rows.length ? Math.round((activeRows.length / rows.length) * 100) : 0}, 100`, '66, 100')}
                     strokeLinecap="round"
                     strokeWidth="3.5"
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <span className="font-label-md text-label-md font-bold text-on-surface leading-none">67%</span>
+                  <span className="font-label-md text-label-md font-bold text-on-surface leading-none">
+                  {v(rows.length ? `${Math.round((activeRows.length / rows.length) * 100)}%` : '—', '67%')}
+                </span>
                   <span className="font-caption text-[10px] text-text-tertiary">Active</span>
                 </div>
               </div>
               <div className="min-w-0">
-                <p className="font-heading-md text-heading-md font-bold text-on-surface leading-tight">35 Total Units</p>
+                <p className="font-heading-md text-heading-md font-bold text-on-surface leading-tight">{v(`${totalStock} Total Units`, '35 Total Units')}</p>
                 <p className="font-caption text-caption text-text-secondary mt-0.5">
-                  Allocated across 2 of 3 store branches
+                  {v(`Allocated across ${activeRows.length} of ${rows.length} store branches`, 'Allocated across 2 of 3 store branches')}
                 </p>
                 <div className="flex items-center gap-space-xs mt-1 text-badge-discount-text font-caption text-[11px] font-semibold">
                   <Icon name="check_circle" className="text-[14px]" />
-                  <span>Both cold chains nominal</span>
+                  <span>{v('—', 'Both cold chains nominal')}</span>
                 </div>
               </div>
             </div>
             <div className="space-y-space-xs mb-space-md">
+              {live ? (
+                activeRows.map((row, index) => {
+                  const share = totalStock ? Math.round(((Number(row.stock) || 0) / totalStock) * 100) : 0;
+                  return (
+                    <div key={row.branchId} className={index ? 'pt-1' : ''}>
+                      <div className="flex justify-between font-caption text-caption">
+                        <span className="text-text-secondary">{row.name}</span>
+                        <span className="font-semibold text-on-surface">
+                          {row.stock === '' ? '—' : `${row.stock} units (${share}%)`}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
+                        <div className={`${index % 2 ? 'bg-primary-container' : 'bg-primary'} h-full rounded-full`} style={{ width: `${share}%` }} />
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <>
               <div className="flex justify-between font-caption text-caption">
                 <span className="text-text-secondary">Wuse Branch (Abuja)</span>
                 <span className="font-semibold text-on-surface">20 units (57%)</span>
@@ -655,6 +899,8 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
               <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
                 <div className="bg-primary-container h-full rounded-full" style={{ width: '43%' }} />
               </div>
+                </>
+              )}
             </div>
             <div className="p-space-sm rounded-xl bg-surface-tint-blue flex items-start gap-space-xs">
               <Icon name="sync_alt" className="text-primary text-[18px] shrink-0 mt-0.5" />
@@ -681,7 +927,7 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
               cashier logout or application restarts.
             </p>
             <div className="space-y-space-xs bg-surface-subtle p-space-sm rounded-xl mb-space-md">
-              {TERMINALS.map((terminal) => (
+              {(live ? tills.map((till) => ({ icon: 'point_of_sale', name: till.name, status: till.status })) : TERMINALS.map((terminal) => ({ ...terminal, status: 'active' as const }))).map((terminal) => (
                 <div
                   key={terminal.name}
                   className="flex items-center justify-between p-space-2xs font-caption text-caption"
@@ -692,14 +938,14 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
                   </div>
                   <span className="text-badge-discount-text font-medium flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                    Ready
+                    {terminal.status === 'active' || terminal.status === 'idle' ? 'Ready' : 'Offline'}
                   </span>
                 </div>
               ))}
             </div>
             <div className="flex items-center justify-between text-text-secondary font-caption text-caption px-space-xs">
-              <span>6 Active Terminals</span>
-              <span className="font-semibold text-primary">Latency: ~240ms</span>
+              <span>{v(`${tills.length} ${tills.length === 1 ? 'Terminal' : 'Terminals'}`, '6 Active Terminals')}</span>
+              <span className="font-semibold text-primary">{v('—', 'Latency: ~240ms')}</span>
             </div>
           </div>
 
@@ -709,8 +955,10 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
               Pricing Policy Assurance
             </h4>
             <p className="font-caption text-caption text-text-secondary leading-relaxed">
-              Overrides are verified against VEMTAP fair-price bounds. The coastal uplift applied to VI branch
-              (₦16,500) complies within the permissible +15% regional variance policy.
+              {v(
+                'Branch prices apply to that branch only; the catalogue base price is unchanged.',
+                'Overrides are verified against VEMTAP fair-price bounds. The coastal uplift applied to VI branch (₦16,500) complies within the permissible +15% regional variance policy.',
+              )}
             </p>
           </div>
         </div>
@@ -721,7 +969,9 @@ export function DesktopBusinessBranchPricingScreen({ onNav, onBackToCatalog }: D
           <Icon name="info" className="text-primary text-[18px]" />
           <span>
             {dirty
-              ? 'Unsaved modifications: 2 location rules staged for deployment.'
+              ? live
+                ? 'Unsaved changes to this item’s branch rules.'
+                : 'Unsaved modifications: 2 location rules staged for deployment.'
               : 'All location rules synced with the HQ catalog.'}
           </span>
         </div>
