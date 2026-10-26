@@ -4,7 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { AnalyticsHeader, AnalyticsSection, type AnalyticsTabKey } from '../components/AnalyticsChrome';
 import { apiErrorMessage } from '../services/errorMessages';
-import { count, naira, periodLabel, share, signedChange, sourceShares, useLiveAnalytics } from './analyticsLive';
+import { activityHeatmap, count, naira, periodLabel, share, signedChange, sourceShares, useLiveAnalytics } from './analyticsLive';
 
 interface AnalyticsCustomersScreenProps {
   onAnalyticsTab: (tab: AnalyticsTabKey) => void;
@@ -188,6 +188,7 @@ export function AnalyticsCustomersScreen({
       })
     : SEGMENTS;
   const dormant = customers?.dormant.current ?? 0;
+  const heat = activityHeatmap(customers?.heatmap);
 
   return (
     <AppScreen>
@@ -377,6 +378,56 @@ export function AnalyticsCustomersScreen({
             </p>
           </Card>
         </AnalyticsSection>
+
+        {/* Visit rhythm heatmap (live only — the API serves the customer activity heatmap) */}
+        {live && (
+          <AnalyticsSection title="Visit Rhythm" meta="Customer activity by weekday and hour">
+            <Card>
+              <div className="grid grid-cols-2 gap-space-xs mb-space-sm">
+                <div className="bg-surface-container-low rounded-xl p-space-xs">
+                  <div className="flex items-center gap-1 text-primary">
+                    <Icon name="wb_sunny" className="text-[15px]" />
+                    <span className="font-caption text-caption font-semibold">Lunch window</span>
+                  </div>
+                  <div className="font-label-md text-label-md text-text-primary font-bold">12–2 PM</div>
+                  <span className="font-caption text-caption text-text-tertiary">{heat.lunchShare}% of day activity</span>
+                </div>
+                <div className="bg-surface-container-low rounded-xl p-space-xs">
+                  <div className="flex items-center gap-1 text-tertiary">
+                    <Icon name="nightlight" className="text-[15px]" />
+                    <span className="font-caption text-caption font-semibold">Dinner window</span>
+                  </div>
+                  <div className="font-label-md text-label-md text-text-primary font-bold">6–9 PM</div>
+                  <span className="font-caption text-caption text-text-tertiary">{heat.dinnerShare}% of day activity</span>
+                </div>
+              </div>
+
+              <div className="flex items-end justify-between gap-space-2xs h-28">
+                {!heat.total && (
+                  <span className="font-caption text-caption text-text-tertiary self-center mx-auto">No activity in this period</span>
+                )}
+                {heat.week.map((item) => (
+                  <div className="flex-1 flex flex-col items-center gap-1" key={item.day}>
+                    <div className="w-full flex items-end justify-center h-20">
+                      <div
+                        className={`w-full max-w-[24px] rounded-t-md ${
+                          item.pct === 100 ? 'bg-primary' : item.pct >= 74 ? 'bg-primary/55' : 'bg-primary/30'
+                        }`}
+                        style={{ height: `${item.pct}%` }}
+                      />
+                    </div>
+                    <span className="font-caption text-caption text-text-tertiary">{item.day}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between mt-space-xs pt-space-xs border-t border-border-subtle">
+                <span className="font-caption text-caption text-text-secondary">Busiest day</span>
+                <span className="font-label-sm text-label-sm text-text-primary font-semibold">{heat.busiest}</span>
+              </div>
+            </Card>
+          </AnalyticsSection>
+        )}
 
         {/* Segments */}
         <AnalyticsSection title="Customer Segments" meta="Automatically classified profiles">

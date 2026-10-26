@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { hasApiConfig } from '../services/api/client';
 import type {
+  ActivityCell,
   AnalyticsModule,
   DealsAnalytics,
   LocationsAnalytics,
@@ -368,26 +369,50 @@ const BRANCH_STATUS_ICONS = ['location_on', 'apartment', 'electric_moped'];
 const BRANCH_BARS = ['bg-primary', 'bg-secondary', 'bg-tertiary'];
 const BRANCH_TEXT = ['text-primary', 'text-secondary', 'text-tertiary'];
 
+/**
+ * Weekday totals and rush-window shares from an activity heatmap: the Mon→Sun
+ * bar heights (backend dow is 0 = Sunday) and the busiest day as a plain fact.
+ */
+export function activityHeatmap(heatmap?: ActivityCell[]) {
+  const cells = heatmap ?? [];
+  const dayTotals = Array.from({ length: 7 }, (_, dow) => ({
+    dow,
+    count: cells.filter((cell) => cell.dow === dow).reduce((sum, cell) => sum + cell.count, 0),
+  }));
+  const orderedDays = [...dayTotals.slice(1), dayTotals[0]];
+  const maxDay = Math.max(1, ...orderedDays.map((day) => day.count));
+  const total = cells.reduce((sum, cell) => sum + cell.count, 0);
+  const windowShare = (from: number, to: number) =>
+    total
+      ? Math.round(
+          (cells.filter((cell) => cell.hour >= from && cell.hour <= to).reduce((sum, cell) => sum + cell.count, 0) / total) * 100,
+        )
+      : 0;
+  const busiest = orderedDays.reduce<(typeof orderedDays)[number] | null>(
+    (best, day) => (!best || day.count > best.count ? day : best),
+    null,
+  );
+  return {
+    week: orderedDays.map((day) => ({
+      day: DAY_SHORT[day.dow],
+      pct: Math.round((day.count / maxDay) * 100),
+      count: day.count,
+    })),
+    lunchShare: windowShare(12, 13),
+    dinnerShare: windowShare(18, 20),
+    busiest:
+      busiest && busiest.count > 0
+        ? `${DAY_LONG[busiest.dow]} · ${count(busiest.count)} activities`
+        : 'No activity in this period',
+    total,
+  };
+}
+
 /** The locations screens' network totals, branch scorecards, share legend and weekday heatmap. */
 export function locationsView(data: LocationsAnalytics | undefined) {
   const branches = data?.branches ?? [];
   const shares = branches.map((branch) => Math.round((branch.revenueShare ?? 0) * 100));
-  const dayTotals = Array.from({ length: 7 }, (_, dow) => ({
-    dow,
-    count: (data?.heatmap ?? []).filter((cell) => cell.dow === dow).reduce((sum, cell) => sum + cell.count, 0),
-  }));
-  // The demo heatmap runs Mon→Sun; backend dow is 0 = Sunday.
-  const orderedDays = [...dayTotals.slice(1), dayTotals[0]];
-  const maxDay = Math.max(1, ...orderedDays.map((day) => day.count));
-  const total = (data?.heatmap ?? []).reduce((sum, cell) => sum + cell.count, 0);
-  const windowShare = (from: number, to: number) =>
-    total
-      ? Math.round(
-          ((data?.heatmap ?? []).filter((cell) => cell.hour >= from && cell.hour <= to).reduce((sum, cell) => sum + cell.count, 0) /
-            total) *
-            100,
-        )
-      : 0;
+  const heat = activityHeatmap(data?.heatmap);
   return {
     liveBranches: branches.length,
     pills: ['All', ...new Set(branches.map((branch) => branch.name.split(' ')[0]))],
@@ -422,8 +447,8 @@ export function locationsView(data: LocationsAnalytics | undefined) {
       shareClass: BRANCH_TEXT[index % BRANCH_TEXT.length],
       bar: BRANCH_BARS[index % BRANCH_BARS.length],
     })),
-    heatmap: orderedDays.map((day) => ({ day: DAY_SHORT[day.dow], pct: Math.round((day.count / maxDay) * 100) })),
-    lunchShare: windowShare(12, 13),
-    dinnerShare: windowShare(18, 20),
+    heatmap: heat.week.map((day) => ({ day: day.day, pct: day.pct })),
+    lunchShare: heat.lunchShare,
+    dinnerShare: heat.dinnerShare,
   };
 }

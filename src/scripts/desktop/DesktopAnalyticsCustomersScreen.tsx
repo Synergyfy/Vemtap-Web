@@ -6,7 +6,7 @@ import { downloadCsv } from '../../utils/exportCsv';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { CUSTOMER_AVATAR } from '../customersLive';
-import { count, naira, periodLabel, signedChange, useLiveAnalytics } from '../analyticsLive';
+import { activityHeatmap, count, naira, periodLabel, signedChange, useLiveAnalytics } from '../analyticsLive';
 
 interface DesktopAnalyticsCustomersScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -73,6 +73,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
   const segSpend = seg ? seg.vip.spend + seg.regular.spend + seg.new.spend + seg.lapsed.spend : 0;
   const vipShare = segSpend && seg ? Math.round((seg.vip.spend / segSpend) * 100) : 0;
   const top = customers?.topCustomers ?? [];
+  const heat = activityHeatmap(customers?.heatmap);
   const branchLabel = filter.branchId ? (branches.find((b) => b.id === filter.branchId)?.name ?? '—') : 'All branches';
   const weeks = (customers?.growth ?? []).slice(-4);
   const cohortPoints = live
@@ -406,6 +407,77 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                 </div>
               </div>
             </div>
+
+            {/* MODULE 1B: Visit Rhythm Heatmap (live only — served by the customers analytics) */}
+            {live && (
+              <div className="bg-surface-canvas rounded-2xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs pb-space-md">
+                  <div>
+                    <div className="flex items-center gap-space-xs">
+                      <h2 className="font-heading-sm text-heading-sm font-bold text-on-surface">Visit Rhythm</h2>
+                      <span className="font-caption text-caption font-semibold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
+                        {periodLabel(filter)}
+                      </span>
+                    </div>
+                    <p className="font-caption text-caption text-text-secondary mt-0.5">
+                      Customer activity by weekday and hour
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-space-sm py-1.5 rounded-xl bg-surface-tint-blue text-primary">
+                    <Icon name="schedule" className="text-[16px]" />
+                    <span className="font-caption text-caption font-bold">Busiest: {heat.busiest}</span>
+                  </div>
+                </div>
+
+                <div className="bg-surface-subtle rounded-xl p-space-md">
+                  {/* Rush-window tiles */}
+                  <div className="grid grid-cols-2 gap-space-sm mb-space-sm">
+                    <div className="bg-surface-canvas rounded-xl p-space-sm shadow-xs">
+                      <div className="flex items-center gap-1 text-primary">
+                        <Icon name="wb_sunny" className="text-[16px]" />
+                        <span className="font-caption text-caption font-semibold">Lunch window</span>
+                      </div>
+                      <div className="font-label-md text-label-md text-text-primary font-bold">12–2 PM</div>
+                      <span className="font-caption text-caption text-text-tertiary">
+                        {heat.lunchShare}% of day activity
+                      </span>
+                    </div>
+                    <div className="bg-surface-canvas rounded-xl p-space-sm shadow-xs">
+                      <div className="flex items-center gap-1 text-tertiary">
+                        <Icon name="nightlight" className="text-[16px]" />
+                        <span className="font-caption text-caption font-semibold">Dinner window</span>
+                      </div>
+                      <div className="font-label-md text-label-md text-text-primary font-bold">6–9 PM</div>
+                      <span className="font-caption text-caption text-text-tertiary">
+                        {heat.dinnerShare}% of day activity
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Weekday bars */}
+                  <div className="flex items-end justify-between gap-space-2xs h-32">
+                    {!heat.total && (
+                      <span className="font-caption text-caption text-text-tertiary self-center mx-auto">
+                        No activity in this period
+                      </span>
+                    )}
+                    {heat.week.map((item) => (
+                      <div className="flex-1 flex flex-col items-center gap-1" key={item.day}>
+                        <div className="w-full flex items-end justify-center h-24">
+                          <div
+                            className={`w-full max-w-[36px] rounded-t-sm ${
+                              item.pct === 100 ? 'bg-primary' : item.pct >= 74 ? 'bg-primary/55' : 'bg-primary/30'
+                            }`}
+                            style={{ height: `${item.pct}%` }}
+                          />
+                        </div>
+                        <span className="font-caption text-caption text-text-tertiary">{item.day}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* MODULE 2: Customer Segmentation Breakdown */}
             <div className="bg-surface-canvas rounded-2xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
