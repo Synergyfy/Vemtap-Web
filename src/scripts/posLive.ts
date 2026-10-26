@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { hasApiConfig } from '../services/api/client';
-import { money, personName, type NewSaleInput, type PosSale, type PosTill } from '../services/posService';
+import { ApiError, hasApiConfig } from '../services/api/client';
+import { money, personName, posService, type NewSaleInput, type PosSale, type PosTill } from '../services/posService';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { usePosOffline } from '../context/PosOfflineContext';
 import { useProfile } from '../context/ProfileContext';
@@ -10,6 +10,7 @@ import {
   useKitchenStream,
   usePosBranchSummary,
   usePosMutations,
+  usePosSales,
   usePosTills,
   useRegisterStatus,
   useZReport,
@@ -371,3 +372,124 @@ export const useLastSale = () =>
 /** Only API customers (uuid ids) can be linked to a sale. */
 export const apiCustomerId = (id?: string | null) =>
   id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
+
+/* The sale a ledger / lookup row opened, for the transaction detail screen. */
+let selectedSaleId: string | null = null;
+const selectedSaleListeners = new Set<() => void>();
+export const setSelectedSaleId = (id: string | null) => {
+  selectedSaleId = id;
+  selectedSaleListeners.forEach((listener) => listener());
+};
+export const useSelectedSaleId = () =>
+  useSyncExternalStore(
+    (listener) => {
+      selectedSaleListeners.add(listener);
+      return () => selectedSaleListeners.delete(listener);
+    },
+    () => selectedSaleId,
+  );
+
+/** One ledger row — a synced sale or a sale still queued on this device. */
+export interface LedgerRow {
+  /** API sale id; null for offline-queued sales. */
+  saleId: string | null;
+  ref: string;
+  at: string;
+  customer: string;
+  method: string;
+  /** Raw tender key: cash, card, transfer, split. */
+  methodKey: string;
+  orderType: string;
+  itemCount: number;
+  amount: number;
+  status: 'completed' | 'pending' | 'refunded';
+  items: string;
+  sync: string;
+  synced: boolean;
+}
+
+export const saleToLedgerRow = (sale: PosSale): LedgerRow => ({
+  saleId: sale.id,
+  ref: sale.receiptNumber,
+  at: sale.createdAt ?? '',
+  customer: saleCustomer(sale) || 'Walk-in guest',
+  method: methodLabel(sale.paymentMethod),
+  methodKey: sale.paymentMethod,
+  orderType: sale.orderType === 'takeaway' ? 'Takeaway' : 'Dine-In',
+  itemCount: sale.itemCount ?? (sale.items ?? []).reduce((sum, item) => sum + item.quantity, 0),
+  amount: money(sale.total),
+  status: sale.status === 'completed' ? 'completed' : 'refunded',
+  items: `${sale.itemCount ?? (sale.items ?? []).reduce((sum, item) => sum + item.quantity, 0)} items · ${saleItemsLine(sale)}`,
+  sync: sale.status === 'partial_refund' ? 'Part refunded' : sale.status === 'refunded' ? 'Refunded' : 'Synced',
+  synced: true,
+});
+
+/**
+ * The shift ledger: this register session's sales (or the branch's latest when
+ * no register is open), with offline-queued sales on top as "pending".
+ */
+export function usePosLedger(limit = 50, wholeBranch = false) {
+  const { session } = useLivePos();
+  const offline = usePosOffline();
+  const sales = usePosSales({ limit, sessionId: wholeBranch ? undefined : session?.id });
+  const queued: LedgerRow[] = offline.queue.map((order) => ({
+    saleId: null,
+    ref: order.ref,
+    at: new Date(order.takenAt).toISOString(),
+    customer: 'Walk-in guest',
+    method: order.tender,
+    methodKey: order.tender.toLowerCase(),
+    orderType: 'Dine-In',
+    itemCount: 0,
+    amount: order.total,
+    status: 'pending',
+    items: order.items,
+    sync: 'Queued offline',
+    synced: false,
+  }));
+  const rows = [...queued, ...(sales.data?.data ?? []).map(saleToLedgerRow)];
+  const completed = rows.filter((row) => row.status === 'completed');
+  return {
+    rows,
+    gross: completed.reduce((sum, row) => sum + row.amount, 0),
+    tickets: rows.length,
+    refunds: rows.filter((row) => row.status === 'refunded').length,
+    loading: sales.isLoading,
+    error: sales.error,
+    refetch: sales.refetch,
+  };
+}
+
+/**
+ * Refunds a sale (whole, or chosen lines). When the business requires a
+ * supervisor PIN for non-owners, the server answers 403: ask for the PIN,
+ * trade it for an override token and retry once.
+ */
+export function usePosRefund() {
+  const { refundSale } = usePosMutations();
+  const refund = async (
+    sale: PosSale,
+    options: { reason?: string; items?: { saleItemId: string; quantity: number }[]; pin?: string } = {},
+  ) => {
+    const body = {
+      id: sale.id,
+      status: options.items?.length ? ('partial_refund' as const) : ('refunded' as const),
+      reason: options.reason || undefined,
+      refundItems: options.items?.length ? options.items : undefined,
+    };
+    const withPin = async (pin: string) => {
+      const { overrideToken } = await posService.verifyOverride({ pin, action: 'refund', referenceId: sale.id, reason: options.reason });
+      return refundSale.mutateAsync({ ...body, overrideToken });
+    };
+    if (options.pin) return withPin(options.pin);
+    try {
+      return await refundSale.mutateAsync(body);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 403) throw error;
+      const pin = window.prompt('A supervisor PIN is required for refunds. Enter it to continue:');
+      if (!pin) throw new Error('Refund cancelled — no supervisor PIN entered.');
+      return withPin(pin.trim());
+    }
+  };
+  return { refund, pending: refundSale.isPending };
+}

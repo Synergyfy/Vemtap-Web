@@ -4,6 +4,10 @@ import { Icon } from '../components/ui/Icon';
 import { PosTabBar, POS_NAV_MAIN, type PosTabKey } from '../components/PosTabBar';
 import { naira } from './catalogueData';
 import { downloadCsv } from '../utils/exportCsv';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { setSelectedSaleId, timeLabel, useLivePos, usePosLedger } from './posLive';
 
 interface BusinessPosLedgerScreenProps {
   onNav: (key: PosTabKey) => void;
@@ -29,6 +33,8 @@ const STATUS_CHIP: Record<Exclude<StatusKey, 'all'>, string> = {
 
 interface TxRecord {
   id: string;
+  /** API sale id (live); null for sales still queued offline. */
+  saleId?: string | null;
   time: string;
   customer: string;
   method: string;
@@ -101,6 +107,24 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusKey>('all');
   const [detail, setDetail] = useState<TxRecord | null>(null);
+  const live = hasApiConfig();
+  const { branch } = useBusinessBranch();
+  const pos = useLivePos();
+  const ledger = usePosLedger();
+  const transactions: TxRecord[] = live
+    ? ledger.rows.map((row) => ({
+        id: row.ref,
+        saleId: row.saleId,
+        time: timeLabel(row.at),
+        customer: row.customer,
+        method: row.method,
+        amount: row.amount,
+        status: row.status,
+        items: row.items,
+        sync: row.sync,
+        synced: row.synced,
+      }))
+    : TRANSACTIONS;
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -117,17 +141,32 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    if (live && ledger.error) showToast(apiErrorMessage(ledger.error, 'Could not load the ledger.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledger.error]);
+
+  const openDetail = (tx: TxRecord) => {
+    if (live && !tx.saleId) {
+      showToast('This sale is still on this device — it opens once it syncs');
+      return;
+    }
+    setSelectedSaleId(tx.saleId ?? null);
+    setDetail(null);
+    onOpenOrder();
+  };
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return TRANSACTIONS.filter((tx) => {
+    return transactions.filter((tx) => {
       const matchesStatus = status === 'all' || tx.status === status;
       const matchesQuery =
         !q || tx.id.toLowerCase().includes(q) || tx.customer.toLowerCase().includes(q) || tx.method.toLowerCase().includes(q);
       return matchesStatus && matchesQuery;
     });
-  }, [query, status]);
+  }, [query, status, transactions]);
 
-  const gross = TRANSACTIONS.filter((tx) => tx.status === 'completed').reduce((sum, tx) => sum + tx.amount, 0);
+  const gross = transactions.filter((tx) => tx.status === 'completed').reduce((sum, tx) => sum + tx.amount, 0);
 
   return (
     <AppScreen>
@@ -136,16 +175,23 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
         <div className="px-margin pt-space-xs pb-space-2xs flex items-center justify-between gap-space-xs">
           <span className="h-7 px-space-xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center gap-1 min-w-0">
             <Icon name="storefront" className="text-[13px]" />
-            <span className="truncate">Wuse II · Till 01</span>
+            <span className="truncate">{live ? `${branch.shortName} · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse II · Till 01'}</span>
           </span>
           <span className="h-7 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1 shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-            <span>Synced</span>
+            <span>{live && pos.offline.pendingCount ? `${pos.offline.pendingCount} waiting` : 'Synced'}</span>
           </span>
           <button
             type="button"
             aria-label="Sync ledger"
-            onClick={() => showToast('Ledger re-synced · no conflicts')}
+            onClick={() => {
+              if (!live) {
+                showToast('Ledger re-synced · no conflicts');
+                return;
+              }
+              void pos.offline.syncNow();
+              void ledger.refetch().then(() => showToast('Ledger refreshed'));
+            }}
             className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0 active:scale-95 transition-transform"
           >
             <Icon name="sync" className="text-text-secondary text-[16px]" />
@@ -153,7 +199,13 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
         </div>
         <div className="px-margin pb-space-xs flex flex-col">
           <span className="font-heading-sm text-heading-sm text-on-surface leading-tight">Transactions &amp; Ledger</span>
-          <span className="font-caption text-caption text-text-secondary">Shift #2 · opened 11:04 AM by Emeka O.</span>
+          <span className="font-caption text-caption text-text-secondary">
+            {live
+              ? pos.session
+                ? `Current shift · opened ${timeLabel(pos.session.openedAt)} by ${pos.cashierName}`
+                : 'No open shift · latest sales'
+              : 'Shift #2 · opened 11:04 AM by Emeka O.'}
+          </span>
         </div>
       </header>
 
@@ -163,9 +215,13 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
           <div className="bg-surface-canvas rounded-xl px-space-xs py-space-2xs shadow-sm flex items-center justify-between gap-space-xs">
             <span className="flex items-center gap-space-2xs min-w-0">
               <Icon name="point_of_sale" className="text-primary text-[15px]" />
-              <span className="font-caption text-caption text-text-secondary truncate">Till 01 · Drawer float ₦45,000</span>
+              <span className="font-caption text-caption text-text-secondary truncate">
+                {live
+                  ? `${pos.isOpen ? pos.tillName : 'No till open'} · Drawer float ${naira(Number(pos.zReport?.openingCash ?? 0))}`
+                  : 'Till 01 · Drawer float ₦45,000'}
+              </span>
             </span>
-            <span className="font-caption text-caption text-on-surface shrink-0">42 tickets</span>
+            <span className="font-caption text-caption text-on-surface shrink-0">{live ? ledger.tickets : 42} tickets</span>
           </div>
         </div>
 
@@ -208,7 +264,7 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
                       );
                       showToast(`Exported ${rows.length} ledger entries (CSV)`);
                     })()
-                  : showToast(`${chip.label} filter applied to ledger`)
+                  : showToast(live ? `${chip.label} filter is coming soon` : `${chip.label} filter applied to ledger`)
               }
               className="h-9 px-space-xs rounded-full bg-surface-canvas border border-border-subtle font-label-sm text-label-sm text-on-surface flex items-center gap-1 whitespace-nowrap shrink-0 active:scale-95 transition-transform"
             >
@@ -224,15 +280,15 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
             <div className="flex flex-col min-w-0">
               <span className="font-caption text-caption text-text-secondary uppercase tracking-wide">Gross takings</span>
               <span className="font-heading-md text-heading-md text-on-surface font-bold tracking-tight">{naira(gross)}</span>
-              <span className="font-caption text-caption text-badge-discount-text">+8% vs yesterday</span>
+              <span className="font-caption text-caption text-badge-discount-text">{live ? 'completed sales' : '+8% vs yesterday'}</span>
             </div>
             <div className="flex gap-space-2xs shrink-0">
               <div className="bg-surface-container-low rounded-xl px-space-xs py-1.5 flex flex-col items-center min-w-[64px]">
-                <span className="font-label-md text-label-md text-on-surface font-bold">42</span>
+                <span className="font-label-md text-label-md text-on-surface font-bold">{live ? ledger.tickets : 42}</span>
                 <span className="font-caption text-caption text-text-secondary">Tickets</span>
               </div>
               <div className="bg-surface-container-low rounded-xl px-space-xs py-1.5 flex flex-col items-center min-w-[64px]">
-                <span className="font-label-md text-label-md text-on-surface font-bold">1</span>
+                <span className="font-label-md text-label-md text-on-surface font-bold">{live ? ledger.refunds : 1}</span>
                 <span className="font-caption text-caption text-text-secondary">Void</span>
               </div>
             </div>
@@ -244,7 +300,7 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
           {STATUS_TABS.map((tab) => {
             const isActive = status === tab.key;
             const count =
-              tab.key === 'all' ? TRANSACTIONS.length : TRANSACTIONS.filter((tx) => tx.status === tab.key).length;
+              tab.key === 'all' ? transactions.length : transactions.filter((tx) => tx.status === tab.key).length;
             return (
               <button
                 key={tab.key}
@@ -367,7 +423,7 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
             <div className="flex gap-space-2xs">
               <button
                 type="button"
-                onClick={() => showToast('Receipt reprinted on 80mm thermal printer')}
+                onClick={() => (live ? window.print() : showToast('Receipt reprinted on 80mm thermal printer'))}
                 className="flex-1 h-10 rounded-xl bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform"
               >
                 <Icon name="print" className="text-[15px]" />
@@ -375,7 +431,7 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
               </button>
               <button
                 type="button"
-                onClick={() => showToast('Receipt emailed to the guest')}
+                onClick={() => showToast(live ? 'Email receipts are coming soon' : 'Receipt emailed to the guest')}
                 className="flex-1 h-10 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform"
               >
                 <Icon name="mail" className="text-text-secondary text-[15px]" />
@@ -384,6 +440,10 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
               <button
                 type="button"
                 onClick={() => {
+                  if (live) {
+                    openDetail(detail);
+                    return;
+                  }
                   setDetail(null);
                   onOpenOrder();
                 }}

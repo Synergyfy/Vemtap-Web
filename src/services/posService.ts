@@ -319,7 +319,10 @@ export const posService = {
   sale: (id: string) => api.get<PosSale>(`/pos/sales/${id}`),
   completeSale: (body: NewSaleInput) => api.post<PosSale>('/pos/sales', body),
   batchSync: (body: NewSaleInput[]) => api.post<BatchSyncResult[]>('/pos/sales/batch-sync', body),
-  refundSale: (id: string, body: { status: 'refunded' | 'partial_refund'; reason?: string; refundItems?: { saleItemId: string; quantity: number }[] }) =>
+  refundSale: (
+    id: string,
+    body: { status: 'refunded' | 'partial_refund'; reason?: string; refundItems?: { saleItemId: string; quantity: number }[]; overrideToken?: string },
+  ) =>
     api.patch<PosSale>(`/pos/sales/${id}/status`, body),
   /**
    * Server totals for a ticket (tax, service charge, packaging), via the split
@@ -373,4 +376,7 @@ export const posService = {
   staffPins: () => api.get<{ data: StaffPinRow[] }>('/pos/staff-pins').then((res) => res.data ?? []),
   setStaffPin: (userId: string, body: { pin: string; isSupervisor?: boolean }) => api.put<unknown>(`/pos/staff-pins/${userId}`, body),
   removeStaffPin: (userId: string) => api.del<unknown>(`/pos/staff-pins/${userId}`),
+  /** Supervisor approval: a short-lived token for one action (refund, void…). */
+  verifyOverride: (body: { pin: string; action: 'void' | 'refund' | 'reprint' | 'drawer_open' | 'discount'; referenceId?: string; reason?: string }) =>
+    api.post<{ overrideToken: string }>('/pos/staff-pins/verify', body),
 };

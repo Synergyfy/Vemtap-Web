@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { money } from '../services/posService';
+import { usePosSale } from '../hooks/business/usePos';
+import { methodLabel, naira, saleCustomer, saleStatusLabel, useLivePos, usePosRefund, useSelectedSaleId, whenLabel } from './posLive';
 
 interface BusinessPosTransactionDetailScreenProps {
   onBack: () => void;
@@ -31,6 +36,41 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
   const [voidOpen, setVoidOpen] = useState(false);
   const [pin, setPin] = useState('');
   const toastTimer = useRef<number | null>(null);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const saleId = useSelectedSaleId();
+  const saleQuery = usePosSale(live ? saleId : null);
+  const sale = saleQuery.data ?? null;
+  const { refund, pending: refunding } = usePosRefund();
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+  const total = sale ? money(sale.total) : 0;
+  const refundable = sale ? sale.status === 'completed' || sale.status === 'partial_refund' : false;
+  const metaRows = live
+    ? [
+        { label: 'UUID', value: sale?.id ?? '—', mono: true },
+        { label: 'Timestamp', value: whenLabel(sale?.createdAt) },
+        { label: 'Cashier', value: sale?.cashierName ?? '—' },
+        { label: 'Outlet Branch', value: sale?.branch?.name ?? pos.branchName },
+        { label: 'Hardware POS', value: '—' },
+      ]
+    : META_ROWS;
+  const receiptLines = live
+    ? (sale?.items ?? []).map((item) => ({
+        qty: item.quantity,
+        name: item.productName ?? 'Item',
+        meta: item.refundedQuantity ? `${item.refundedQuantity} refunded` : item.sku ?? '',
+        price: naira(money(item.totalPrice)),
+        was: null as string | null,
+        chip: money(item.discount) ? `-${naira(money(item.discount))}` : null,
+      }))
+    : RECEIPT_LINES;
+  const calcRows = live
+    ? [
+        { label: 'Subtotal', value: naira(money(sale?.subtotal)), accent: false },
+        ...(money(sale?.discountAmount) ? [{ label: 'Discount', value: `-${naira(money(sale?.discountAmount))}`, accent: true }] : []),
+        { label: 'Tax', value: naira(money(sale?.tax)), accent: false },
+      ]
+    : CALC_ROWS;
 
   useEffect(
     () => () => {
@@ -45,7 +85,31 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    if (live && saleQuery.error) showToast(apiErrorMessage(saleQuery.error, 'Could not load this sale.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saleQuery.error]);
+
+  const openVoid = () => {
+    if (live && !refundable) {
+      showToast(sale ? `This sale is ${saleStatusLabel(sale).toLowerCase()} — nothing left to refund` : 'Open a sale from the ledger first');
+      return;
+    }
+    setVoidOpen(true);
+  };
+
   const confirmVoid = () => {
+    if (live) {
+      if (!sale || refunding) return;
+      refund(sale, { reason: 'Refunded at the till' })
+        .then(() => {
+          setVoidOpen(false);
+          setPin('');
+          showToast(`Sale #${sale.receiptNumber} refunded`);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not refund this sale.')));
+      return;
+    }
     if (pin.length < 4) {
       showToast('Enter the full 4-digit Manager PIN');
       return;
@@ -83,22 +147,22 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
           <span className="absolute -right-8 -top-8 w-28 h-28 bg-badge-discount-bg rounded-full opacity-60 pointer-events-none" />
           <span className="inline-flex items-center gap-space-2xs px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm mb-space-2xs">
             <Icon name="check_circle" filled className="text-[15px]" />
-            <span>Completed &amp; Paid</span>
+            <span>{live ? (sale ? saleStatusLabel(sale) : '—') : 'Completed & Paid'}</span>
           </span>
           <div className="flex items-baseline justify-center gap-1 my-1">
             <span className="font-heading-sm text-heading-sm text-text-secondary font-medium">₦</span>
-            <span className="font-heading-md text-heading-md text-text-primary tracking-tight font-bold">27,251</span>
+            <span className="font-heading-md text-heading-md text-text-primary tracking-tight font-bold">{v(total.toLocaleString('en-NG'), '27,251')}</span>
           </div>
-          <p className="font-label-sm text-label-sm text-text-tertiary">Gross Total Settled via Cash</p>
+          <p className="font-label-sm text-label-sm text-text-tertiary">{live ? `Gross Total Settled via ${methodLabel(sale?.paymentMethod)}` : 'Gross Total Settled via Cash'}</p>
           <div className="mt-space-sm w-full pt-space-2xs bg-surface-subtle rounded-lg px-space-sm py-space-2xs flex items-center justify-between text-left gap-space-xs">
             <span className="flex items-center gap-space-xs min-w-0">
               <Icon name="cloud_done" className="text-[17px] text-badge-discount-text shrink-0" />
               <span className="font-caption text-caption text-text-secondary truncate">
-                Cloud Sync Active • 02:45:18 PM
+                {live ? `Synced • ${whenLabel(sale?.createdAt)}` : 'Cloud Sync Active • 02:45:18 PM'}
               </span>
             </span>
             <span className="font-caption text-caption font-medium text-badge-discount-text whitespace-nowrap">
-              Node 01
+              {v('Cloud', 'Node 01')}
             </span>
           </div>
         </div>
@@ -109,15 +173,23 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
             <span className="font-label-sm text-label-sm text-text-tertiary">Transaction Record</span>
             <button
               type="button"
-              onClick={() => showToast('Copied VT-TXN-8840291')}
+              onClick={() => {
+                if (!live) {
+                  showToast('Copied VT-TXN-8840291');
+                  return;
+                }
+                if (!sale) return;
+                void navigator.clipboard?.writeText(sale.receiptNumber);
+                showToast(`Copied ${sale.receiptNumber}`);
+              }}
               className="flex items-center gap-1 font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
             >
-              <span className="font-medium">#RC-94021</span>
+              <span className="font-medium">#{v(sale?.receiptNumber ?? '—', 'RC-94021')}</span>
               <Icon name="content_copy" className="text-[15px]" />
             </button>
           </div>
           <div className="bg-surface-subtle rounded-lg p-space-sm flex flex-col gap-space-2xs">
-            {META_ROWS.map((row) => (
+            {metaRows.map((row) => (
               <div key={row.label} className="flex justify-between items-center text-left gap-space-xs">
                 <span className="font-caption text-caption text-text-tertiary shrink-0">{row.label}</span>
                 <span
@@ -149,13 +221,13 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
-                <h2 className="font-label-md text-label-md font-semibold text-text-primary truncate">Michael James</h2>
+                <h2 className="font-label-md text-label-md font-semibold text-text-primary truncate">{v(sale ? saleCustomer(sale) || 'Walk-in guest' : '—', 'Michael James')}</h2>
                 <Icon name="verified" filled className="text-[15px] text-primary" />
               </div>
-              <p className="font-caption text-caption text-text-secondary">+234 803 219 8831</p>
+              <p className="font-caption text-caption text-text-secondary">{v(sale?.customer?.phone ?? '—', '+234 803 219 8831')}</p>
               <span className="flex items-center gap-1 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                <span className="font-caption text-caption text-badge-discount-text font-medium">VEMTAP Connected</span>
+                <span className="font-caption text-caption text-badge-discount-text font-medium">{v(sale?.customerId ? 'VEMTAP Connected' : 'No customer attached', 'VEMTAP Connected')}</span>
               </span>
             </div>
           </div>
@@ -163,8 +235,10 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
             <span className="flex items-center gap-space-xs min-w-0">
               <Icon name="stars" filled className="text-[19px] text-primary shrink-0" />
               <span className="flex flex-col min-w-0">
-                <span className="font-label-sm text-label-sm font-semibold text-text-primary">+276 Points Awarded</span>
-                <span className="font-caption text-caption text-text-secondary">Balance: 1,842 pts</span>
+                <span className="font-label-sm text-label-sm font-semibold text-text-primary">
+                  {v(`+${(sale?.pointsEarned ?? 0).toLocaleString()} Points Awarded`, '+276 Points Awarded')}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">{v('Balance: —', 'Balance: 1,842 pts')}</span>
               </span>
             </span>
             <span className="font-caption text-caption text-primary font-medium shrink-0">Auto-credited</span>
@@ -174,12 +248,14 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
         {/* Itemized receipt */}
         <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
           <div className="flex items-center justify-between gap-space-xs">
-            <h2 className="font-heading-sm text-heading-sm text-text-primary">Order Items (3)</h2>
-            <span className="font-caption text-caption text-text-tertiary">Dine-In • Table 04</span>
+            <h2 className="font-heading-sm text-heading-sm text-text-primary">Order Items ({v(receiptLines.length, 3)})</h2>
+            <span className="font-caption text-caption text-text-tertiary">
+              {v(sale?.orderType === 'takeaway' ? 'Takeaway' : 'Dine-In', 'Dine-In • Table 04')}
+            </span>
           </div>
           <div className="flex flex-col gap-space-sm">
-            {RECEIPT_LINES.map((line) => (
-              <div key={line.name} className="flex items-start justify-between gap-space-xs">
+            {receiptLines.map((line, index) => (
+              <div key={`${line.name}-${index}`} className="flex items-start justify-between gap-space-xs">
                 <span className="w-7 h-7 rounded bg-surface-subtle flex items-center justify-center shrink-0 mt-0.5">
                   <span className="font-label-sm text-label-sm font-semibold text-text-secondary">{line.qty}×</span>
                 </span>
@@ -203,7 +279,7 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
           </div>
           {/* Calculation slate */}
           <div className="bg-surface-subtle rounded-lg p-space-sm flex flex-col gap-space-2xs">
-            {CALC_ROWS.map((row) => (
+            {calcRows.map((row) => (
               <div
                 key={row.label}
                 className={`flex justify-between items-center gap-space-xs ${row.accent ? 'text-badge-discount-text' : ''}`}
@@ -217,7 +293,7 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
             <div className="my-1 bg-outline-variant/30 h-[1px] w-full" />
             <div className="flex justify-between items-center pt-0.5">
               <span className="font-heading-sm text-heading-sm font-bold text-text-primary">Total Paid</span>
-              <span className="font-heading-sm text-heading-sm font-bold text-text-primary">₦27,251</span>
+              <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{v(naira(total), '₦27,251')}</span>
             </div>
           </div>
         </div>
@@ -233,20 +309,22 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
               <span className="font-caption text-caption text-text-tertiary">Payment Method</span>
               <p className="font-label-md text-label-md font-semibold text-text-primary mt-0.5 flex items-center gap-1">
                 <Icon name="point_of_sale" className="text-[15px] text-badge-discount-text" />
-                <span>Cash Tender</span>
+                <span>{v(methodLabel(sale?.paymentMethod), 'Cash Tender')}</span>
               </p>
             </div>
             <div className="bg-surface-subtle rounded-lg p-space-sm">
               <span className="font-caption text-caption text-text-tertiary">Shift Status</span>
-              <p className="font-label-md text-label-md font-semibold text-text-primary mt-0.5">Shift #402 (Active)</p>
+              <p className="font-label-md text-label-md font-semibold text-text-primary mt-0.5">
+                {v(sale && pos.session && sale.createdAt && sale.createdAt >= pos.session.openedAt ? 'This shift (Active)' : 'Closed shift', 'Shift #402 (Active)')}
+              </p>
             </div>
             <div className="bg-surface-subtle rounded-lg p-space-sm">
               <span className="font-caption text-caption text-text-tertiary">Cash Received</span>
-              <p className="font-heading-sm text-heading-sm font-bold text-text-primary mt-0.5">₦30,000</p>
+              <p className="font-heading-sm text-heading-sm font-bold text-text-primary mt-0.5">{v(naira(money(sale?.amountPaid)), '₦30,000')}</p>
             </div>
             <div className="bg-surface-subtle rounded-lg p-space-sm">
               <span className="font-caption text-caption text-text-tertiary">Change Dispensed</span>
-              <p className="font-heading-sm text-heading-sm font-bold text-badge-discount-text mt-0.5">₦2,749</p>
+              <p className="font-heading-sm text-heading-sm font-bold text-badge-discount-text mt-0.5">{v(naira(money(sale?.change)), '₦2,749')}</p>
             </div>
           </div>
         </div>
@@ -255,7 +333,7 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
         <div className="flex flex-col gap-space-2xs">
           <button
             type="button"
-            onClick={() => showToast('Sent to 80mm Counter Printer 01')}
+            onClick={() => (live ? window.print() : showToast('Sent to 80mm Counter Printer 01'))}
             className="w-full h-11 bg-primary-container active:scale-[0.98] transition-transform rounded-xl flex items-center justify-center gap-space-xs text-on-primary font-label-md text-label-md font-semibold shadow-md"
           >
             <Icon name="print" className="text-[21px]" />
@@ -264,7 +342,7 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
           <div className="grid grid-cols-2 gap-space-2xs">
             <button
               type="button"
-              onClick={() => showToast('Dispatch sent via SMS/WhatsApp')}
+              onClick={() => showToast(live ? 'WhatsApp / SMS receipts are coming soon' : 'Dispatch sent via SMS/WhatsApp')}
               className="h-10 bg-surface-container-high active:bg-surface-container-highest transition-colors rounded-xl flex items-center justify-center gap-space-2xs text-text-primary font-label-sm text-label-sm font-semibold"
             >
               <Icon name="share" className="text-[17px] text-badge-discount-text" />
@@ -272,7 +350,7 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
             </button>
             <button
               type="button"
-              onClick={() => showToast('Opening digital customer slip')}
+              onClick={() => showToast(live ? 'E-receipts are coming soon' : 'Opening digital customer slip')}
               className="h-10 bg-surface-container-high active:bg-surface-container-highest transition-colors rounded-xl flex items-center justify-center gap-space-2xs text-text-primary font-label-sm text-label-sm font-semibold"
             >
               <Icon name="receipt_long" className="text-[17px] text-primary" />
@@ -288,12 +366,13 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
             <span className="font-label-md text-label-md font-semibold">Manager Clearance Required</span>
           </div>
           <p className="font-caption text-caption text-on-surface-variant leading-relaxed">
-            Issuing a refund or voiding sale #RC-94021 prompts for a Supervisor PIN, reconciles the till change
-            register, and reverses 276 awarded loyalty points.
+            {live
+              ? `Issuing a refund on sale #${sale?.receiptNumber ?? '—'} may ask for a Supervisor PIN, reconciles the till and reverses ${sale?.pointsEarned ?? 0} awarded loyalty points.`
+              : 'Issuing a refund or voiding sale #RC-94021 prompts for a Supervisor PIN, reconciles the till change register, and reverses 276 awarded loyalty points.'}
           </p>
           <button
             type="button"
-            onClick={() => setVoidOpen(true)}
+            onClick={openVoid}
             className="mt-space-2xs w-full h-10 bg-on-error rounded-xl flex items-center justify-center gap-space-xs text-error active:bg-error-container/60 transition-colors font-label-sm text-label-sm font-semibold shadow-sm"
           >
             <Icon name="cancel" className="text-[17px]" />
@@ -333,7 +412,7 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
               </button>
             </div>
             <p className="font-body-md text-body-md text-text-secondary">
-              Enter 4-digit Manager PIN to confirm reversal of <strong className="text-text-primary">₦27,251</strong>.
+              Enter 4-digit Manager PIN to confirm reversal of <strong className="text-text-primary">{v(naira(total), '₦27,251')}</strong>.
             </p>
             <button
               type="button"
