@@ -36,7 +36,8 @@ export interface BusinessOrder {
   statusTimeline?: Partial<Record<string, string>> | null;
   source?: string | null;
   paymentStatus?: string | null;
-  payment?: { method?: string | null; amountDue?: number | null; amountReceived?: number | null } | null;
+  /** `posSaleId` is set when the order was settled through a till sale. */
+  payment?: { method?: string | null; amountDue?: number | null; amountReceived?: number | null; posSaleId?: string | null } | null;
   attendedByUser?: Person | null;
 }
 

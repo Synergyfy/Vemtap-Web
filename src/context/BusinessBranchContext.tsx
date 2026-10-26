@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Icon } from '../components/ui/Icon';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import type { ProfileBranch } from '../services/businessService';
+import { hasApiConfig } from '../services/api/client';
 
 export interface BusinessBranchData {
   key: string;
@@ -134,7 +135,13 @@ export function BusinessBranchProvider({
   );
   const isLive = liveBranches.length > 0;
   // Never mix sample branches into a live business: their keys would reach branch-scoped APIs.
-  const branches = isLive ? liveBranches : BUSINESS_BRANCHES;
+  // In API mode, until branches load (or when there are none) use an id-less placeholder so
+  // screens show empty values instead of the demo business.
+  const placeholder = useMemo<BusinessBranchData[]>(() => {
+    const label = myBusiness.isLoading ? 'Loading…' : 'No branch yet';
+    return [{ key: 'pending', name: label, shortName: label, area: '', stats: EMPTY_STATS }];
+  }, [myBusiness.isLoading]);
+  const branches = isLive ? liveBranches : hasApiConfig() ? placeholder : BUSINESS_BRANCHES;
 
   const [branchKey, setBranchKey] = useState<string>(() => readStoredBranch() ?? 'wuse-ii');
   const [switching, setSwitching] = useState(false);
