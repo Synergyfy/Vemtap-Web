@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 import {
@@ -13,6 +13,11 @@ import {
   type ShowcaseEntityType,
 } from '../clusterData';
 import { ClusterQrCode } from '../../components/ClusterQrCode';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import type { ClusterKind } from '../../services/clustersService';
+import { SHOWCASE_PREFERENCE, toCluster, useLiveCluster } from '../clusterLive';
 
 interface DesktopClusterOnboardingScreenProps {
   onComplete: () => void;
@@ -35,7 +40,18 @@ export function DesktopClusterOnboardingScreen({
     'intro' | 'detect' | 'found' | 'not_found' | 'create' | 'choose_feature' | 'success'
   >(initialStep);
 
-  const [clusterState, setClusterState] = useState(() => getClusterState());
+  const [localState, setClusterState] = useState(() => getClusterState());
+  const live = hasApiConfig();
+  const liveCluster = useLiveCluster();
+  const clusterState = live ? liveCluster.state : localState;
+  const [notice, setNotice] = useState<string | null>(null);
+  const notify = (message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(null), 3200);
+  };
+  // The detection timer reads the latest live answer, not the one at mount.
+  const liveRef = useRef(liveCluster);
+  liveRef.current = liveCluster;
   const [selectedShowcaseType, setSelectedShowcaseType] = useState<ShowcaseEntityType>(() => {
     const pref = getClusterState().showcasePreference;
     if (pref === 'product' || pref === 'service' || pref === 'profile') return pref;
@@ -70,6 +86,20 @@ export function DesktopClusterOnboardingScreen({
       const timer2 = setTimeout(() => setDetectProgress(85), 1000);
       const timer3 = setTimeout(() => {
         setDetectProgress(100);
+        if (live) {
+          const current = liveRef.current;
+          if (current.state.currentCluster) {
+            setActiveCluster(current.state.currentCluster);
+            setStep('choose_feature');
+          } else if (current.detected) {
+            setDetectedCluster(current.detected);
+            setStep('found');
+          } else {
+            if (current.detectReason) notify(current.detectReason);
+            setStep('not_found');
+          }
+          return;
+        }
         const state = getClusterState();
         if (state.scenario === 'not_found') {
           setStep('not_found');
@@ -89,6 +119,16 @@ export function DesktopClusterOnboardingScreen({
 
   const handleJoinDetected = () => {
     if (!detectedCluster) return;
+    if (live) {
+      liveCluster.join.mutate(detectedCluster.id, {
+        onSuccess: (joined) => {
+          setActiveCluster(toCluster(joined));
+          setStep('choose_feature');
+        },
+        onError: (error) => notify(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not join the cluster.')),
+      });
+      return;
+    }
     joinCluster(detectedCluster.id, unitOrSuite);
     setActiveCluster(detectedCluster);
     setClusterState(getClusterState());
@@ -105,6 +145,20 @@ export function DesktopClusterOnboardingScreen({
     }
     if (!agreedGuidelines) {
       setCreateError('Please accept the Cluster Community Guidelines.');
+      return;
+    }
+
+    if (live) {
+      liveCluster.propose.mutate(
+        { name: createName.trim(), address: createAddress, kind: createType as ClusterKind },
+        {
+          onSuccess: (created) => {
+            setActiveCluster(toCluster(created));
+            setStep('choose_feature');
+          },
+          onError: (error) => notify(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not propose the cluster.')),
+        },
+      );
       return;
     }
 
@@ -130,17 +184,32 @@ export function DesktopClusterOnboardingScreen({
   };
 
   const handleToggleItem = (itemId: string) => {
+    if (live) {
+      const item = clusterState.showcaseItems.find((entry) => entry.id === itemId);
+      if (item)
+        liveCluster.toggleItem.mutate(item, {
+          onError: (error) => notify(apiErrorMessage(error, 'Could not update the cluster showcase.')),
+        });
+      return;
+    }
     toggleItemShowInCluster(itemId);
     setClusterState(getClusterState());
   };
 
   const handleConfirmShowcase = () => {
+    if (live) {
+      liveCluster.setPreference.mutate(SHOWCASE_PREFERENCE[selectedShowcaseType] ?? 'all', {
+        onSuccess: () => setStep('success'),
+        onError: (error) => notify(apiErrorMessage(error, 'Could not save what to show.')),
+      });
+      return;
+    }
     setBusinessShowcasePreference(selectedShowcaseType);
     setStep('success');
   };
 
   const myShowcaseItems = clusterState.showcaseItems
-    .filter((i) => i.businessId === '104')
+    .filter((i) => i.businessId === (live ? 'self' : '104'))
     .filter((i) => i.entityType === selectedShowcaseType);
 
   return (
@@ -345,7 +414,8 @@ export function DesktopClusterOnboardingScreen({
               </p>
             </div>
 
-            {/* Quick test overrides */}
+            {/* Quick test overrides (demo only) */}
+            {!live && (
             <div className="pt-6 border-t border-border-subtle w-full max-w-xs flex gap-3">
               <button
                 type="button"
@@ -366,6 +436,7 @@ export function DesktopClusterOnboardingScreen({
                 Simulate None
               </button>
             </div>
+            )}
           </div>
         )}
 
@@ -406,19 +477,19 @@ export function DesktopClusterOnboardingScreen({
               <div className="grid grid-cols-3 gap-4 py-4 border-y border-border-subtle/70 text-center">
                 <div className="p-3 rounded-xl bg-surface-canvas">
                   <p className="text-xl font-extrabold text-text-primary">
-                    {detectedCluster.stats.totalBusinesses}
+                    {live ? '—' : detectedCluster.stats.totalBusinesses}
                   </p>
                   <p className="text-xs text-text-secondary mt-0.5">Member Businesses</p>
                 </div>
                 <div className="p-3 rounded-xl bg-surface-canvas">
                   <p className="text-xl font-extrabold text-emerald-600">
-                    {detectedCluster.stats.totalDealsInPool}
+                    {live ? '—' : detectedCluster.stats.totalDealsInPool}
                   </p>
                   <p className="text-xs text-text-secondary mt-0.5">Pool Deals in Rotator</p>
                 </div>
                 <div className="p-3 rounded-xl bg-surface-canvas">
                   <p className="text-xl font-extrabold text-primary">
-                    {(detectedCluster.stats.totalScans / 1000).toFixed(1)}k
+                    {live ? '—' : `${(detectedCluster.stats.totalScans / 1000).toFixed(1)}k`}
                   </p>
                   <p className="text-xs text-text-secondary mt-0.5">Total Shopper Scans</p>
                 </div>
@@ -1022,7 +1093,12 @@ export function DesktopClusterOnboardingScreen({
             </div>
           </div>
         )}
-      </main>
+      </main>      {notice && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {notice}
+        </div>
+      )}
+
     </div>
   );
 }

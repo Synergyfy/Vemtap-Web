@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
@@ -16,6 +16,10 @@ import {
   isItemBoostEligible,
 } from './clusterBoostData';
 import { ClusterQrCode } from '../components/ClusterQrCode';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useSponsoredCampaigns } from '../hooks/business/useSponsored';
+import { liveBoostHelpers, useLiveCluster } from './clusterLive';
 import { ClusterMemberProfileModal } from '../components/ClusterMemberProfileModal';
 import { ClusterMemberChatModal } from '../components/ClusterMemberChatModal';
 import { ClusterImportModal } from '../components/ClusterImportModal';
@@ -46,13 +50,24 @@ export function ClusterSystemScreen({
   onOpenBoosts,
 }: ClusterSystemScreenProps) {
   const [activeTab, setActiveTab] = useState<ClusterTab>('overview');
-  const [clusterState, setClusterState] = useState(getClusterState());
+  const live = hasApiConfig();
+  const liveCluster = useLiveCluster();
+  const sponsored = useSponsoredCampaigns();
+  const boosts = live
+    ? liveBoostHelpers(sponsored.data ?? [])
+    : { count: 0, hasActiveBoostForItem, isItemBoostEligible };
+  const [localState, setClusterState] = useState(getClusterState());
+  const clusterState = live ? liveCluster.state : localState;
   const cluster = clusterState.currentCluster;
+  /** Figures the API does not report yet show "—" when live. */
+  const fig = (value: string) => (live ? '—' : value);
+  const isMine = (item: { businessId: string }) =>
+    live ? item.businessId === 'self' || item.businessId === clusterState.memberRecord?.businessId : item.businessId === '104';
 
   // One featured paid campaign at a time, rotating with other eligible
   // campaigns via the existing rotator cadence. Computed once on mount so the
-  // page stays stable during this visit.
-  const featuredSlot = useMemo(() => getFeaturedCampaignSlot(), []);
+  // page stays stable during this visit. Live: there is no featured slot feed.
+  const featuredSlot = useMemo(() => (live ? null : getFeaturedCampaignSlot()), [live]);
 
   const handleCreateDeal = () => {
     if (onCreateDeal) onCreateDeal();
@@ -83,12 +98,8 @@ export function ClusterSystemScreen({
   const [submitToast, setSubmitToast] = useState<string | null>(null);
 
   const refreshState = () => {
-    setClusterState(getClusterState());
-  };
-
-  const handleToggleShow = (id: string) => {
-    toggleItemShowInCluster(id);
-    refreshState();
+    if (live) void liveCluster.refresh();
+    else setClusterState(getClusterState());
   };
 
   const showNotification = (msg: string) => {
@@ -96,6 +107,34 @@ export function ClusterSystemScreen({
     setTimeout(() => setSubmitToast(null), 3500);
     refreshState();
   };
+
+  // Live: every deal, product and service is listed already; import only
+  // exists for the local demo store.
+  const openImport = () => {
+    if (live) {
+      showNotification('Your deals, products and services are listed below. Switch one on to show it in the cluster.');
+      return;
+    }
+    setShowImportModal(true);
+  };
+
+  const handleToggleShow = (id: string) => {
+    if (live) {
+      const item = clusterState.showcaseItems.find((entry) => entry.id === id);
+      if (!item) return;
+      liveCluster.toggleItem.mutate(item, {
+        onError: (error) => showNotification(apiErrorMessage(error, 'Could not update the cluster showcase.')),
+      });
+      return;
+    }
+    toggleItemShowInCluster(id);
+    refreshState();
+  };
+
+  useEffect(() => {
+    if (liveCluster.error) showNotification(apiErrorMessage(liveCluster.error, 'Could not load your cluster.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveCluster.error]);
 
   // Filtered businesses
   const filteredBusinesses = clusterState.members.filter((b) => {
@@ -136,8 +175,8 @@ export function ClusterSystemScreen({
   }
 
   const analytics = cluster.analytics;
-  const myItems = clusterState.showcaseItems.filter((i) => i.businessId === '104');
-  const liveBoostCount = countLiveBoosts();
+  const myItems = clusterState.showcaseItems.filter(isMine);
+  const liveBoostCount = live ? boosts.count : countLiveBoosts();
 
   return (
     <AppScreen surface="bg-surface-canvas">
@@ -183,7 +222,7 @@ export function ClusterSystemScreen({
           type="button"
           onClick={() => {
             if (onOpenOnboarding) {
-              setClusterScenario('not_found');
+              if (!live) setClusterScenario('not_found');
               onOpenOnboarding();
             }
           }}
@@ -287,19 +326,19 @@ export function ClusterSystemScreen({
               <div className="grid grid-cols-4 gap-2 pt-2 border-t border-border-subtle/60 text-center">
                 <div className="p-2 rounded-xl bg-surface-canvas">
                   <p className="text-base font-extrabold text-text-primary">
-                    {(analytics.clusterViews / 1000).toFixed(1)}k
+                    {fig(`${(analytics.clusterViews / 1000).toFixed(1)}k`)}
                   </p>
                   <p className="text-[10px] text-text-secondary">Hub Views</p>
                 </div>
                 <div className="p-2 rounded-xl bg-surface-canvas">
                   <p className="text-base font-extrabold text-emerald-600">
-                    {(analytics.clusterImpressions / 1000).toFixed(1)}k
+                    {fig(`${(analytics.clusterImpressions / 1000).toFixed(1)}k`)}
                   </p>
                   <p className="text-[10px] text-text-secondary">Impressions</p>
                 </div>
                 <div className="p-2 rounded-xl bg-surface-canvas">
                   <p className="text-base font-extrabold text-primary">
-                    {(analytics.clusterClicks / 1000).toFixed(1)}k
+                    {fig(`${(analytics.clusterClicks / 1000).toFixed(1)}k`)}
                   </p>
                   <p className="text-[10px] text-text-secondary">Clicks/Taps</p>
                 </div>
@@ -324,7 +363,7 @@ export function ClusterSystemScreen({
                       VEMTAP Deal Rotator
                     </h3>
                     <p className="text-[11px] text-text-secondary">
-                      Rotates every {cluster.rotatorSettings.rotationIntervalSeconds}s
+                      Rotates every {fig(`${cluster.rotatorSettings.rotationIntervalSeconds}s`)}
                     </p>
                   </div>
                 </div>
@@ -346,7 +385,7 @@ export function ClusterSystemScreen({
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowImportModal(true)}
+                  onClick={openImport}
                   className="flex-1 py-2 px-3 rounded-xl bg-primary-container text-on-primary text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all"
                 >
                   <Icon name="tune" className="text-[16px]" />
@@ -424,21 +463,21 @@ export function ClusterSystemScreen({
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-2.5 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-base font-bold text-text-primary">
-                    {analytics.businessViews.toLocaleString()}
+                    {fig(analytics.businessViews.toLocaleString())}
                   </p>
                   <p className="text-[10px] text-text-secondary">Store Views</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-base font-bold text-emerald-600">
-                    {analytics.businessImpressions.toLocaleString()}
+                    {fig(analytics.businessImpressions.toLocaleString())}
                   </p>
                   <p className="text-[10px] text-text-secondary">Impressions</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-base font-bold text-primary">
-                    {analytics.businessClicks.toLocaleString()}
+                    {fig(analytics.businessClicks.toLocaleString())}
                   </p>
-                  <p className="text-[10px] text-text-secondary">Clicks ({analytics.businessCtr}%)</p>
+                  <p className="text-[10px] text-text-secondary">Clicks ({fig(`${analytics.businessCtr}%`)})</p>
                 </div>
               </div>
             </div>
@@ -513,21 +552,21 @@ export function ClusterSystemScreen({
                 <div className="p-3 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-xs text-text-tertiary">Cluster Total Views</p>
                   <p className="text-xl font-extrabold text-text-primary mt-1">
-                    {analytics.clusterViews.toLocaleString()}
+                    {fig(analytics.clusterViews.toLocaleString())}
                   </p>
                   <p className="text-[10px] text-emerald-600 mt-0.5">+14% vs last week</p>
                 </div>
                 <div className="p-3 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-xs text-text-tertiary">Total Impressions</p>
                   <p className="text-xl font-extrabold text-emerald-600 mt-1">
-                    {analytics.clusterImpressions.toLocaleString()}
+                    {fig(analytics.clusterImpressions.toLocaleString())}
                   </p>
                   <p className="text-[10px] text-text-secondary mt-0.5">Across all member slots</p>
                 </div>
                 <div className="p-3 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-xs text-text-tertiary">Customer Clicks/Taps</p>
                   <p className="text-xl font-extrabold text-primary mt-1">
-                    {analytics.clusterClicks.toLocaleString()}
+                    {fig(analytics.clusterClicks.toLocaleString())}
                   </p>
                   <p className="text-[10px] text-text-secondary mt-0.5">16.2% overall CTR</p>
                 </div>
@@ -554,7 +593,7 @@ export function ClusterSystemScreen({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowImportModal(true)}
+                  onClick={openImport}
                   className="text-xs font-semibold text-primary hover:underline"
                 >
                   Manage Items
@@ -605,23 +644,22 @@ export function ClusterSystemScreen({
                     <div className="grid grid-cols-4 gap-1 text-center pt-1 border-t border-border-subtle/50 text-[10px]">
                       <div>
                         <span className="text-text-tertiary">Views:</span>
-                        <p className="font-bold text-text-primary">{item.views}</p>
+                        <p className="font-bold text-text-primary">{fig(String(item.views))}</p>
                       </div>
                       <div>
                         <span className="text-text-tertiary">Impr:</span>
-                        <p className="font-bold text-text-primary">{item.impressions}</p>
+                        <p className="font-bold text-text-primary">{fig(String(item.impressions))}</p>
                       </div>
                       <div>
                         <span className="text-text-tertiary">Clicks:</span>
-                        <p className="font-bold text-primary">{item.clicks}</p>
+                        <p className="font-bold text-primary">{fig(String(item.clicks))}</p>
                       </div>
                       <div>
                         <span className="text-text-tertiary">CTR:</span>
                         <p className="font-bold text-emerald-600">
-                          {item.impressions > 0
-                            ? ((item.clicks / item.impressions) * 100).toFixed(1)
-                            : 0}
-                          %
+                          {live
+                            ? '—'
+                            : `${item.impressions > 0 ? ((item.clicks / item.impressions) * 100).toFixed(1) : 0}%`}
                         </p>
                       </div>
                     </div>
@@ -682,7 +720,7 @@ export function ClusterSystemScreen({
                         {b.isVerified && (
                           <Icon name="verified" className="text-[15px] text-primary" />
                         )}
-                        {b.businessId === '104' && (
+                        {isMine(b) && (
                           <span className="text-[10px] font-bold text-primary bg-surface-tint-blue px-1.5 py-0.2 rounded">
                             You
                           </span>
@@ -715,7 +753,7 @@ export function ClusterSystemScreen({
                         <span>View Profile</span>
                       </button>
 
-                      {b.businessId !== '104' && (
+                      {!isMine(b) && (
                         <button
                           type="button"
                           onClick={() => setSelectedMemberChat(b)}
@@ -774,7 +812,7 @@ export function ClusterSystemScreen({
               </div>
               <button
                 type="button"
-                onClick={() => setShowImportModal(true)}
+                onClick={openImport}
                 className="py-1.5 px-3 rounded-xl bg-primary-container text-on-primary text-xs font-semibold flex items-center gap-1 shadow-sm"
               >
                 <Icon name="tune" className="text-[16px]" />
@@ -900,7 +938,7 @@ export function ClusterSystemScreen({
                           >
                             {item.showInCluster ? 'Shown' : 'Hidden'}
                           </span>
-                          {item.businessId === '104' && hasActiveBoostForItem(item.id) && (
+                          {isMine(item) && boosts.hasActiveBoostForItem(item.id) && (
                             <span
                               className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
                                 item.entityType === 'profile'
@@ -937,30 +975,30 @@ export function ClusterSystemScreen({
 
                     <div className="flex items-center justify-between pt-1 border-t border-border-subtle/50 text-[10px] text-text-secondary gap-2">
                       <span>
-                        {item.impressions} Impr. &bull; {item.clicks} Clicks
+                        {fig(String(item.impressions))} Impr. &bull; {fig(String(item.clicks))} Clicks
                       </span>
                       <div className="flex items-center gap-2.5 shrink-0">
-                        {item.businessId === '104' && isItemBoostEligible(item).eligible && (
+                        {isMine(item) && boosts.isItemBoostEligible(item).eligible && (
                           <button
                             type="button"
-                            disabled={hasActiveBoostForItem(item.id) && item.entityType !== 'profile'}
+                            disabled={boosts.hasActiveBoostForItem(item.id) && item.entityType !== 'profile'}
                             onClick={() => onBoostItem?.(item.id)}
                             className={`font-bold hover:underline ${
-                              hasActiveBoostForItem(item.id)
+                              boosts.hasActiveBoostForItem(item.id)
                                 ? item.entityType === 'profile'
                                   ? 'text-primary'
                                   : 'text-text-tertiary no-underline cursor-not-allowed'
                                 : 'text-primary'
                             }`}
                           >
-                            {hasActiveBoostForItem(item.id)
+                            {boosts.hasActiveBoostForItem(item.id)
                               ? item.entityType === 'profile'
                                 ? 'Extend Boost'
                                 : 'Boosted'
                               : 'Boost Visibility'}
                           </button>
                         )}
-                        {item.businessId === '104' && (
+                        {isMine(item) && (
                           <button
                             type="button"
                             onClick={() => handleToggleShow(item.id)}

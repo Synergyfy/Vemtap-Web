@@ -43,6 +43,11 @@ import {
   type ClusterBoostDurationKey,
   type ClusterBoostPaymentMethod,
 } from './clusterBoostData';
+import { hasApiConfig } from '../services/api/client';
+import { adWalletService } from '../services';
+import { apiErrorMessage } from '../services/errorMessages';
+import { planErrorMessage } from '../services/planErrors';
+import { useLiveClusterBoost } from './clusterLive';
 
 interface ClusterBoostFlowProps {
   onBack: () => void;
@@ -115,10 +120,14 @@ export function ClusterBoostFlow({
   desktopNav,
 }: ClusterBoostFlowProps) {
   const isDesktop = useIsDesktop();
+  const live = hasApiConfig();
+  const liveBoost = useLiveClusterBoost();
   const clusterState = useMemo(() => getClusterState(), []);
-  const cluster = clusterState.currentCluster;
+  const cluster = live ? liveBoost.cluster : clusterState.currentCluster;
+  const hasActiveBoost = live ? liveBoost.hasActiveBoostForItem : hasActiveBoostForItem;
 
-  const eligibleItems = useMemo(() => getBoostEligibleItems(), []);
+  const localEligible = useMemo(() => getBoostEligibleItems(), []);
+  const eligibleItems = live ? liveBoost.eligibleItems : localEligible;
   // Preselection accepts a pool item id or its title (the Boost Hub passes
   // display names). When matched, the placement and item steps are skipped.
   // An already-boosted deal/product/service can't be preselected into a
@@ -128,7 +137,7 @@ export function ClusterBoostFlow({
         (item) =>
           (item.id === preselectedItemId ||
             item.title.toLowerCase() === preselectedItemId.toLowerCase()) &&
-          (!hasActiveBoostForItem(item.id) || item.entityType === 'profile')
+          (!hasActiveBoost(item.id) || item.entityType === 'profile')
       ) ?? null
     : null;
 
@@ -159,7 +168,8 @@ export function ClusterBoostFlow({
   const [startDate, setStartDate] = useState(todayIso);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [method, setMethod] = useState<ClusterBoostPaymentMethod>('wallet');
-  const [walletBalance, setWalletBalance] = useState(() => getClusterBoostWallet().balance);
+  const [localWalletBalance, setWalletBalance] = useState(() => getClusterBoostWallet().balance);
+  const walletBalance = live ? liveBoost.walletBalance : localWalletBalance;
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -182,6 +192,11 @@ export function ClusterBoostFlow({
     toastTimer.current = window.setTimeout(() => setToast(null), 3500);
   };
 
+  useEffect(() => {
+    if (liveBoost.error) showToast(apiErrorMessage(liveBoost.error, 'Could not load what you can boost.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveBoost.error]);
+
   const stepIndex = steps.indexOf(phase);
   const totalSteps = steps.length;
 
@@ -201,7 +216,8 @@ export function ClusterBoostFlow({
     if (phase === 'payment') idempotencyKey.current = makeIdempotencyKey();
   }, [phase]);
 
-  const capacity = useMemo(() => getBoostCapacity(), [phase]);
+  const localCapacity = useMemo(() => getBoostCapacity(), [phase]);
+  const capacity = live ? liveBoost.capacity : localCapacity;
   const tier = getTierByKey(tierKey);
   const duration = getDurationByKey(durationKey);
   const price = useMemo(() => computeBoostPrice(tierKey, durationKey), [tierKey, durationKey]);
@@ -225,13 +241,15 @@ export function ClusterBoostFlow({
   }, [eligibleItems]);
 
   const visibleItems = category ? eligibleItems.filter((item) => item.entityType === category) : [];
-  const selectedWarning = selectedItem ? isItemBoostEligible(selectedItem).warning : undefined;
+  const selectedWarning = selectedItem
+    ? (live ? liveBoost.isItemBoostEligible : isItemBoostEligible)(selectedItem).warning
+    : undefined;
 
   // Business profile exception: when the profile already has a live boost,
   // this purchase extends it (more days / heavier priority) instead of
   // creating a second campaign.
   const isProfileExtension = Boolean(
-    selectedItem && selectedItem.entityType === 'profile' && getLiveBoostForItem(selectedItem.id)
+    !live && selectedItem && selectedItem.entityType === 'profile' && getLiveBoostForItem(selectedItem.id)
   );
 
   const startDateInvalid = startDate < todayIso;
@@ -245,6 +263,35 @@ export function ClusterBoostFlow({
     if (submitting || !selectedItem) return;
     setSubmitting(true);
     setPaymentError(null);
+    if (live) {
+      try {
+        const result = await liveBoost.purchase.mutateAsync({
+          item: selectedItem,
+          tierKey,
+          weight: tier.weight,
+          durationKey,
+          days: duration.days,
+          startDate,
+          endDate,
+          amount: price.total,
+          paymentMethod: method,
+          estimatedSharePct: estimate.sharePct,
+          idempotencyKey: idempotencyKey.current,
+        });
+        if (result.checkoutUrl) {
+          window.location.assign(result.checkoutUrl);
+          return;
+        }
+        setCampaign(result.campaign);
+        setIsExtension(false);
+        setPhase('success');
+      } catch (error) {
+        setPaymentError(planErrorMessage(error) ?? apiErrorMessage(error, 'Payment could not be completed. Try again.'));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     try {
       const result = await submitClusterBoostPayment({
         itemId: selectedItem.id,
@@ -269,6 +316,16 @@ export function ClusterBoostFlow({
   };
 
   const handleTopUp = (amount: number) => {
+    if (live) {
+      adWalletService
+        .topUp({ amount, callbackUrl: window.location.href.split('?')[0] })
+        .then((result) => {
+          if (result.authorizationUrl) window.location.assign(result.authorizationUrl);
+          else showToast(`Top-up of ${formatNaira(amount)} started`);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not start the top-up.')));
+      return;
+    }
     const wallet = topUpClusterBoostWallet(amount);
     setWalletBalance(wallet.balance);
     setTopUpOpen(false);
@@ -434,7 +491,7 @@ export function ClusterBoostFlow({
             {
               icon: 'payments',
               label: 'Amount paid',
-              value: `${formatNaira(campaign.amount)} · ${campaign.paymentMethod === 'wallet' ? 'VEMTAP Wallet' : 'Debit/Credit Card (sandbox)'}`,
+              value: `${formatNaira(campaign.amount)} · ${campaign.paymentMethod === 'wallet' ? 'VEMTAP Wallet' : live ? 'Debit/Credit Card' : 'Debit/Credit Card (sandbox)'}`,
             },
             { icon: 'receipt_long', label: 'Payment reference', value: campaign.reference },
           ].map((row) => (
@@ -683,7 +740,7 @@ export function ClusterBoostFlow({
             <div className="space-y-2">
               {visibleItems.map((item) => {
                 const selected = selectedItem?.id === item.id;
-                const alreadyBoosted = hasActiveBoostForItem(item.id);
+                const alreadyBoosted = hasActiveBoost(item.id);
                 // Profile exception: a live profile boost can be topped up
                 // (more days / higher priority) instead of blocked.
                 const isProfileExtend = alreadyBoosted && item.entityType === 'profile';
@@ -917,7 +974,7 @@ export function ClusterBoostFlow({
           </div>
           <div className="p-2.5 rounded-xl bg-surface-canvas border border-border-subtle text-center">
             <p className="text-base font-extrabold text-text-primary">
-              {capacity.remainingBoostSlots}/{capacity.maxBoostSlots}
+              {live ? '—' : `${capacity.remainingBoostSlots}/${capacity.maxBoostSlots}`}
             </p>
             <p className="text-[10px] text-text-secondary">Cluster boost slots open</p>
           </div>
