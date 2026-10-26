@@ -59,6 +59,14 @@ export interface CustomersAnalytics {
   segments: Record<'vip' | 'regular' | 'new' | 'lapsed', { count: number; share: number; spend: number }>;
   growth: { weekStart: string; new: number; returning: number }[];
   topCustomers: { userId: string; name: string; visits: number; spend: number; lastVisitAt: string | null; tier: string | null }[];
+  /** Sales and visits by local weekday (0 = Sunday) and hour. */
+  heatmap?: ActivityCell[];
+}
+
+export interface ActivityCell {
+  dow: number;
+  hour: number;
+  count: number;
 }
 
 export interface DealsAnalytics {
@@ -81,6 +89,8 @@ export interface PosAnalytics {
   hourly: { hour: number; sales: number; tickets: number }[];
   tenders: { method: string; count: number; amount: number; share: number }[];
   topItems: { name: string; quantity: number; revenue: number; tickets: number }[];
+  drawer?: { variance: number; countedSessions: number; sessions: number };
+  cashiers?: { userId: string; name: string; role: string | null; tickets: number; sales: number; activeMinutes: number; tillName: string | null }[];
 }
 
 export interface LocationsAnalytics {
@@ -99,7 +109,16 @@ export interface LocationsAnalytics {
     rating: number | null;
     revenueShare: number;
     percentOfBest: number;
+    code?: string | null;
+    address?: string | null;
+    isActive?: boolean;
+    posTickets?: number;
+    onlineOrders?: number;
+    redemptions?: number;
+    dealViews?: number;
+    reviews?: number;
   }[];
+  heatmap?: ActivityCell[];
 }
 
 export type AnalyticsModule = 'overview' | 'customers' | 'deals' | 'pos' | 'locations';
