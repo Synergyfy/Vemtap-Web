@@ -2,13 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { naira } from './catalogueData';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useLivePos, useLiveStock, useShiftProductId } from './posLive';
 
 interface BusinessPosProductShiftScreenProps {
   onBack: () => void;
-  onAddToSale: () => void;
+  /** Live screens hand over the product so the register adds the real item. */
+  onAddToSale: (line?: { id: string; name: string; unit: number }) => void;
 }
 
 type StockState = 'in' | 'low' | 'out';
+
+const DEMO_IMAGE =
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuAeuBPQ9PDF8HJFqZbU7ZYnHtjReICQYCqWxquCZyA0eA29B75GOQjW2BsIX0p8sRTtfDpLi2hdMoi1Q-PboaBSK8_kfNzQx_F8UZAlwQZlkA4eV28w2avSNLD6KbfgdY-QCDT1tBT_Qxh-3VGysgkxM6f4Wlw8yUhWzadnR09csO0qx6RussnGks0c08-DOMezCCZb1nnAYH3RSHZaVhB3v4hUf-B60k8CS4uaFPz27Fg5bk2UZNyc2Q";
 
 const STOCK_STATES: { key: StockState; label: string; hint: string; chip: string; active: string }[] = [
   { key: 'in', label: 'In Stock', hint: 'Sells on register', chip: 'bg-badge-discount-bg text-badge-discount-text', active: 'bg-badge-discount-text text-white border-badge-discount-text' },
@@ -39,8 +46,30 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const liveStock = useLiveStock();
+  const shiftId = useShiftProductId();
+  const liveRow = live ? (liveStock.rows.find((row) => row.item.id === shiftId) ?? liveStock.rows[0] ?? null) : null;
+  const tillLabel = live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Till 01';
+  const price = liveRow ? liveRow.product.price : 14000;
+
+  // Live: start from the product's real count and state.
+  useEffect(() => {
+    if (!liveRow) return;
+    setCount(liveRow.quantity ?? 0);
+    setState(liveRow.availability);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRow?.item.id, liveRow?.quantity]);
+
+  useEffect(() => {
+    if (live && liveStock.error) showToast(apiErrorMessage(liveStock.error, 'Could not load this product.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStock.error]);
+
   const bump = (delta: number) => {
     setCount((value) => Math.max(0, value + delta));
+    if (live) return; // saved with Save
     setSaving(true);
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -50,6 +79,19 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
   };
 
   const save = () => {
+    if (live) {
+      if (!liveRow) {
+        showToast('Pick a product from the stock view first');
+        return;
+      }
+      setSaving(true);
+      liveStock
+        .setQuantity(liveRow.item.id, count, 'Till shift count')
+        .then(() => showToast(`Stock saved · ${count} on hand`))
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not save stock.')))
+        .finally(() => setSaving(false));
+      return;
+    }
     setSaving(true);
     window.setTimeout(() => {
       setSaving(false);
@@ -79,12 +121,14 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
           </button>
           <div className="flex flex-col items-center min-w-0">
             <span className="font-heading-sm text-heading-sm text-on-surface leading-tight truncate">Shift Stock Status</span>
-            <span className="font-caption text-caption text-text-secondary leading-none">Till 01 · Shift #2 Active</span>
+            <span className="font-caption text-caption text-text-secondary leading-none">
+              {live ? `${tillLabel} · ${pos.session ? 'Shift active' : 'No open shift'}` : 'Till 01 · Shift #2 Active'}
+            </span>
           </div>
           <button
             type="button"
             aria-label="Scan barcode"
-            onClick={() => showToast('Barcode scanner ready for SKU input')}
+            onClick={() => showToast(live ? 'Barcode scanning is coming soon' : 'Barcode scanner ready for SKU input')}
             className="w-8 h-8 rounded-full bg-surface-tint-blue flex items-center justify-center active:scale-95 transition-transform shrink-0"
           >
             <Icon name="barcode_scanner" className="text-primary text-[16px]" />
@@ -97,18 +141,22 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
         <div className="px-margin pt-space-xs">
           <div className="bg-surface-canvas rounded-2xl p-space-sm shadow-sm flex items-center gap-space-xs">
             <img
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuAeuBPQ9PDF8HJFqZbU7ZYnHtjReICQYCqWxquCZyA0eA29B75GOQjW2BsIX0p8sRTtfDpLi2hdMoi1Q-PboaBSK8_kfNzQx_F8UZAlwQZlkA4eV28w2avSNLD6KbfgdY-QCDT1tBT_Qxh-3VGysgkxM6f4Wlw8yUhWzadnR09csO0qx6RussnGks0c08-DOMezCCZb1nnAYH3RSHZaVhB3v4hUf-B60k8CS4uaFPz27Fg5bk2UZNyc2Q"
-              alt="Woodfire Aged Ribeye Steak"
+              src={liveRow ? liveRow.product.image : DEMO_IMAGE}
+              alt={liveRow ? liveRow.product.name : 'Woodfire Aged Ribeye Steak'}
               className="w-16 h-16 rounded-xl object-cover shrink-0 bg-surface-container"
             />
             <div className="flex flex-col min-w-0 gap-0.5">
               <span className="font-label-md text-label-md text-on-surface font-semibold truncate">
-                Woodfire Aged Ribeye Steak
+                {liveRow ? liveRow.product.name : 'Woodfire Aged Ribeye Steak'}
               </span>
-              <span className="font-caption text-caption text-text-secondary truncate">400g · Grills station · SKU WRS-400</span>
+              <span className="font-caption text-caption text-text-secondary truncate">
+                {liveRow
+                  ? `${liveRow.item.category?.name ?? 'Uncategorised'} · SKU ${liveRow.item.sku ?? '—'}`
+                  : '400g · Grills station · SKU WRS-400'}
+              </span>
               <span className="flex items-center gap-space-2xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                <span className="font-caption text-caption text-badge-discount-text">Station online · 4 sold today</span>
+                <span className="font-caption text-caption text-badge-discount-text">{live ? (pos.offline.isOnline ? 'Online' : 'Offline') : 'Station online · 4 sold today'}</span>
               </span>
             </div>
           </div>
@@ -120,8 +168,8 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
             <span className="font-label-md text-label-md text-text-secondary uppercase tracking-wider font-semibold">Pricing</span>
             <div className="flex items-end justify-between gap-space-xs">
               <div className="flex flex-col">
-                <span className="font-heading-md text-heading-md text-on-surface font-bold tracking-tight">{naira(14000)}</span>
-                <span className="font-caption text-caption text-text-secondary">Base price · member {naira(13300)}</span>
+                <span className="font-heading-md text-heading-md text-on-surface font-bold tracking-tight">{naira(price)}</span>
+                <span className="font-caption text-caption text-text-secondary">{live ? 'Base price' : <>Base price · member {naira(13300)}</>}</span>
               </div>
               <span className="h-6 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center">
                 Margin 62%
@@ -151,7 +199,7 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
               <div className="flex flex-col min-w-0">
                 <span className="font-label-sm text-label-sm text-on-surface font-semibold">Available on this register</span>
                 <span className="font-caption text-caption text-text-secondary truncate">
-                  {available ? 'Visible in Till 01 grid' : 'Hidden from Till 01 grid'}
+                  {available ? `Visible in ${tillLabel} grid` : `Hidden from ${tillLabel} grid`}
                 </span>
               </div>
             </div>
@@ -160,6 +208,10 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
               role="switch"
               aria-checked={available}
               onClick={() => {
+                if (live) {
+                  showToast('Hiding items from one register is coming soon');
+                  return;
+                }
                 setAvailable((value) => !value);
                 showToast(available ? 'Item hidden from this register' : 'Item published to this register');
               }}
@@ -189,7 +241,7 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
                   setState(item.key);
                   if (item.key === 'out') setCount(0);
                   if (item.key === 'in' && count === 0) setCount(18);
-                  showToast(`${item.label} set for this shift`);
+                  showToast(live ? `${item.label} — press Save to publish` : `${item.label} set for this shift`);
                 }}
                 className={`rounded-xl px-space-2xs py-space-xs flex flex-col items-center gap-0.5 border-2 transition-all active:scale-95 ${
                   isActive ? item.active : `bg-surface-canvas border-transparent shadow-sm ${item.chip}`
@@ -272,12 +324,12 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl border-t border-border-subtle px-margin pt-space-xs pb-[calc(env(safe-area-inset-bottom,0px)+12px)] flex gap-space-xs shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
         <button
           type="button"
-          onClick={onAddToSale}
-          disabled={!available || state === 'out'}
+          onClick={() => (liveRow ? onAddToSale({ id: liveRow.item.id, name: liveRow.product.name, unit: price }) : onAddToSale())}
+          disabled={!available || state === 'out' || (live && !liveRow)}
           className="flex-1 h-11 rounded-xl bg-primary-container text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all disabled:opacity-40"
         >
           <Icon name="add_shopping_cart" className="text-[17px]" />
-          <span>Add to Sale · {naira(14000)}</span>
+          <span>Add to Sale · {naira(price)}</span>
         </button>
         <button
           type="button"

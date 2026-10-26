@@ -5471,14 +5471,16 @@ function AppInner() {
           <DesktopPosProductShiftScreen
             onNav={posTerminalNav}
             onBack={goBackToPrevious}
-            onAddToSale={() => {
+            onAddToSale={(product) => {
               setPosTermCart((prev) => {
-                const id = 'ribeye-400g';
+                const id = product?.id ?? 'ribeye-400g';
                 const existing = prev.find((line) => line.id === id);
                 if (existing) return prev.map((line) => (line.id === id ? { ...line, qty: line.qty + 1 } : line));
                 return [
                   ...prev,
-                  { id, name: 'Woodfire Aged Ribeye Steak (400g)', mods: 'Grills Station • Made to order', unit: 14000, qty: 1 },
+                  product
+                    ? { id, name: product.name, mods: '', unit: product.unit, qty: 1 }
+                    : { id, name: 'Woodfire Aged Ribeye Steak (400g)', mods: 'Grills Station • Made to order', unit: 14000, qty: 1 },
                 ];
               });
               setRoute('pos-register');
@@ -5489,12 +5491,17 @@ function AppInner() {
         <div className="biz-flow">
           <BusinessPosProductShiftScreen
             onBack={goBackToPrevious}
-            onAddToSale={() => {
+            onAddToSale={(product) => {
               setPosCart((prev) => {
-                const id = 'woodfire-ribeye-400g';
+                const id = product?.id ?? 'woodfire-ribeye-400g';
                 const existing = prev.find((line) => line.id === id);
                 if (existing) return prev.map((line) => (line.id === id ? { ...line, qty: line.qty + 1 } : line));
-                return [...prev, { id, name: 'Woodfire Aged Ribeye Steak', unit: 14000, member: 14000, qty: 1 }];
+                return [
+                  ...prev,
+                  product
+                    ? { id, name: product.name, unit: product.unit, member: product.unit, qty: 1 }
+                    : { id, name: 'Woodfire Aged Ribeye Steak', unit: 14000, member: 14000, qty: 1 },
+                ];
               });
               setRoute('pos-register');
             }}

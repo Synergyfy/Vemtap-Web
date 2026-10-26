@@ -654,3 +654,46 @@ export function useAwardPoints() {
     return posService.awardPoints({ userId, points }, activeBranchId);
   };
 }
+
+export type StockAvailability = 'in' | 'low' | 'out';
+
+/** The branch's stock-tracked products, with their availability, for the till's stock view. */
+export function useLiveStock() {
+  const catalogue = usePosProducts();
+  const { adjustStock } = usePosMutations();
+  const rows = catalogue.items
+    .map((item, index) => ({ item, product: catalogue.mobile[index]! }))
+    .filter(({ item }) => item.itemType !== 'service')
+    .map(({ item, product }) => {
+      const quantity = typeof item.stockQuantity === 'number' ? item.stockQuantity : null;
+      const availability: StockAvailability = quantity !== null && quantity <= 0 ? 'out' : isLowStock(item) ? 'low' : 'in';
+      return { item, product, quantity, availability };
+    });
+  return {
+    rows,
+    categories: catalogue.categories,
+    loading: catalogue.loading,
+    error: catalogue.error,
+    setQuantity: (productId: string, quantity: number, reason?: string) => adjustStock.mutateAsync({ productId, quantity, reason }),
+  };
+}
+
+/** Stock chip text for a live row: "In stock · 18", "Low · 5 left", "86’d". */
+export const stockLabel = (availability: StockAvailability, quantity: number | null) =>
+  availability === 'out' ? '86’d' : availability === 'low' ? `Low · ${quantity ?? 0} left` : quantity === null ? 'In stock' : `In stock · ${quantity}`;
+
+/* The product a stock row opened in the product shift screen. */
+let shiftProductId: string | null = null;
+const shiftProductListeners = new Set<() => void>();
+export const setShiftProductId = (id: string | null) => {
+  shiftProductId = id;
+  shiftProductListeners.forEach((listener) => listener());
+};
+export const useShiftProductId = () =>
+  useSyncExternalStore(
+    (listener) => {
+      shiftProductListeners.add(listener);
+      return () => shiftProductListeners.delete(listener);
+    },
+    () => shiftProductId,
+  );
