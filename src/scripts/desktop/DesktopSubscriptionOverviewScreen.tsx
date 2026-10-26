@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { getTrialDaysLeft, hasActiveTrial } from '../../utils/trialState';
+import { hasApiConfig } from '../../services/api/client';
+import { useActiveSubscription, useSubscriptionPlans } from '../../hooks/business/useSubscription';
+import { planPrice } from '../../services/subscriptionService';
+import { featuredPlan, planPriceLine, trialDaysLeft } from '../subscriptionLive';
+import { formatNaira } from '../../utils/format';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionOverviewScreenProps {
@@ -116,10 +121,35 @@ export function DesktopSubscriptionOverviewScreen({
 }: DesktopSubscriptionOverviewScreenProps) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
   const [breakdownOpen, setBreakdownOpen] = useState(false);
-  const price = billing === 'monthly' ? '₦5,000' : '₦4,000';
+  const live = hasApiConfig();
+  const plans = useSubscriptionPlans();
+  const subscription = useActiveSubscription();
+
+  // Live mode prices the featured API plan per billing period and counts the
+  // real trial; demo keeps the scripted Growth figures + localStorage flag.
+  const featured = featuredPlan(plans.data ?? []);
+  const sub = subscription.data ?? null;
+  const planName = featured?.name ?? 'Growth';
+  const trialDays = featured?.trialDurationDays ?? 30;
+  const monthlyPrice = featured ? planPriceLine(featured, 'monthly').split(' / ')[0] : null;
+  const annualMonthlyPrice = featured ? formatNaira(Math.round(planPrice(featured, 'yearly') / 12)) : null;
+  const price = live
+    ? billing === 'monthly'
+      ? (monthlyPrice ?? '—')
+      : (annualMonthlyPrice ?? '—')
+    : billing === 'monthly'
+      ? '₦5,000'
+      : '₦4,000';
   const priceNote = billing === 'monthly' ? '/ month' : '/ month, billed annually';
-  const trialActive = hasActiveTrial();
-  const trialDaysLeft = getTrialDaysLeft();
+  const trialActive = live ? sub?.status === 'trial' : hasActiveTrial();
+  const daysLeft = live ? (trialDaysLeft(sub) ?? 0) : getTrialDaysLeft();
+  const planReady = !live || Boolean(featured);
+  const howTrialWorks = HOW_TRIAL_WORKS.map((item) => ({
+    ...item,
+    body: item.body
+      .replace('30-day', `${trialDays}-day`)
+      .replace('Growth tool', `${planName} tool`),
+  }));
 
   return (
     <SubscriptionChrome onBrand={onBack} activeNav="billing">
@@ -171,10 +201,10 @@ export function DesktopSubscriptionOverviewScreen({
                     </span>
                   </div>
                   <span className="px-space-sm py-space-2xs rounded-full bg-surface-tint-blue text-primary-container font-label-sm text-label-sm">
-                    SME Preferred
+                    {live ? (featured?.isPopular ? 'Most Popular' : 'Official Plan') : 'SME Preferred'}
                   </span>
                 </div>
-                <h2 className="font-heading-md text-heading-md text-text-primary">VEMTAP Growth</h2>
+                <h2 className="font-heading-md text-heading-md text-text-primary">VEMTAP {planName}</h2>
                 <div className="flex items-baseline gap-space-2xs mt-space-2xs">
                   <span className="font-display-hero text-display-hero text-text-primary font-bold">{price}</span>
                   <span className="font-caption text-caption text-text-secondary">{priceNote}</span>
@@ -189,7 +219,7 @@ export function DesktopSubscriptionOverviewScreen({
                   </div>
                   <div className="flex flex-col">
                     <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">
-                      Includes 30-Day Free Trial
+                      Includes {trialDays}-Day Free Trial
                     </span>
                     <span className="font-caption text-caption text-text-secondary">
                       No credit card or commitment required
@@ -263,23 +293,25 @@ export function DesktopSubscriptionOverviewScreen({
                   className="flex-1 h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
                 >
                   <Icon name="verified" filled className="text-[18px]" />
-                  <span>View My Active Trial ({trialDaysLeft} days left)</span>
+                  <span>View My Active Trial ({daysLeft} days left)</span>
                   <Icon name="arrow_forward" className="text-[18px]" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={onStartTrial}
-                  className="flex-1 h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
+                  disabled={!planReady}
+                  className="flex-1 h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <span>Start 30-Day Free Trial</span>
+                  <span>Start {trialDays}-Day Free Trial</span>
                   <Icon name="arrow_forward" className="text-[18px]" />
                 </button>
               )}
               <button
                 type="button"
                 onClick={onSubscribe}
-                className="flex-1 h-11 rounded-xl bg-surface-tint-blue text-primary-container font-button-secondary text-button-secondary active:scale-[0.98] transition-all flex items-center justify-center"
+                disabled={!planReady}
+                className="flex-1 h-11 rounded-xl bg-surface-tint-blue text-primary-container font-button-secondary text-button-secondary active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span>Subscribe Now ({price}/mo)</span>
               </button>
@@ -300,7 +332,7 @@ export function DesktopSubscriptionOverviewScreen({
                     <Icon name="rocket_launch" className="text-primary text-[18px]" />
                   </div>
                   <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">
-                    Why go Growth immediately?
+                    Why go {planName} immediately?
                   </h3>
                 </div>
                 <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shrink-0">
@@ -308,8 +340,8 @@ export function DesktopSubscriptionOverviewScreen({
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                The free trial lets you explore VEMTAP — but visibility, trust and reach only fully unlock on Growth.
-                Most Growth merchants recover the ₦5,000/mo with their first boosted sale.
+                The free trial lets you explore VEMTAP — but visibility, trust and reach only fully unlock on{' '}
+                {planName}. Most {planName} merchants recover the {price}/mo with their first boosted sale.
               </p>
             </section>
 
@@ -341,7 +373,7 @@ export function DesktopSubscriptionOverviewScreen({
             <section className="rounded-xl bg-surface-subtle p-space-lg shadow-sm">
               <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">How Trial Works</h3>
               <div className="flex flex-col gap-space-sm">
-                {HOW_TRIAL_WORKS.map((item) => (
+                {howTrialWorks.map((item) => (
                   <div className="flex items-start gap-space-sm" key={item.step}>
                     <div className="w-7 h-7 rounded-full bg-primary-container text-on-primary flex items-center justify-center shrink-0 font-label-md text-label-md font-bold">
                       {item.step}
@@ -393,9 +425,10 @@ export function DesktopSubscriptionOverviewScreen({
         {/* Free vs Growth comparison */}
         <section className="rounded-2xl bg-surface-canvas shadow-md border border-border-subtle/60 overflow-hidden">
           <div className="p-space-lg pb-space-sm flex flex-col gap-space-2xs">
-            <h2 className="font-heading-md text-heading-md text-text-primary">Free vs Growth</h2>
+            <h2 className="font-heading-md text-heading-md text-text-primary">Free vs {planName}</h2>
             <p className="font-label-sm text-label-sm text-text-secondary">
-              See exactly what you unlock when you move from the free plan to Growth — or when your 30-day trial converts.
+              See exactly what you unlock when you move from the free plan to {planName} — or when your {trialDays}-day
+              trial converts.
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -409,7 +442,7 @@ export function DesktopSubscriptionOverviewScreen({
                     Free
                   </th>
                   <th className="text-center font-label-md text-label-md text-primary-container px-space-sm py-space-sm w-1/4">
-                    Growth
+                    {planName}
                   </th>
                 </tr>
               </thead>
@@ -447,15 +480,16 @@ export function DesktopSubscriptionOverviewScreen({
           <div className="p-space-md flex flex-col sm:flex-row items-center justify-between gap-space-sm border-t border-border-subtle/60">
             <span className="font-caption text-caption text-text-secondary">
               {trialActive
-                ? `Your trial has ${trialDaysLeft} days left — subscribe anytime to keep Growth live.`
+                ? `Your trial has ${daysLeft} days left — subscribe anytime to keep ${planName} live.`
                 : 'Start free — upgrade only when you are ready. No card required to try.'}
             </span>
             <button
               type="button"
               onClick={trialActive ? onStartTrial : onSubscribe}
-              className="h-11 px-space-lg rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs shrink-0"
+              disabled={!planReady}
+              className="h-11 px-space-lg rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <span>{trialActive ? 'View My Active Trial' : 'Start 30-Day Free Trial'}</span>
+              <span>{trialActive ? 'View My Active Trial' : `Start ${trialDays}-Day Free Trial`}</span>
               <Icon name="arrow_forward" className="text-[18px]" />
             </button>
           </div>

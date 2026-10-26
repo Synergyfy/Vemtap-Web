@@ -1,5 +1,8 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { useActiveSubscription, useSubscriptionPlans } from '../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, renewalDate, trialDaysLeft } from './subscriptionLive';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionEndingScreenProps {
@@ -26,6 +29,21 @@ export function SubscriptionEndingScreen({
   onContinue,
   onReviewBusiness,
 }: SubscriptionEndingScreenProps) {
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  const plans = useSubscriptionPlans();
+
+  // Live: the real trial's countdown and plan; demo keeps the scripted
+  // "3 days left" snapshot.
+  const sub = subscription.data ?? null;
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = featured?.name ?? 'Growth';
+  const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
+  const totalDays = featured?.trialDurationDays ?? 30;
+  const daysLeft = live ? trialDaysLeft(sub) ?? 0 : 3;
+  const completed = Math.max(0, totalDays - daysLeft);
+  const endText = renewalDate(sub?.trialEndsAt ?? sub?.endDate);
+
   return (
     <AppScreen surface="bg-surface-canvas">
       <SubscriptionHeader title="Subscription Plans" onBack={onBack} />
@@ -41,18 +59,21 @@ export function SubscriptionEndingScreen({
                 Your VEMTAP trial is ending
               </span>
               <p className="font-body-md text-body-md text-on-tertiary-fixed-variant leading-relaxed mt-0.5">
-                Your free trial ends in <span className="font-bold text-tertiary">3 days</span> (Oct 21, 2024). Keep
-                your momentum going without losing store visibility.
+                Your free trial ends in <span className="font-bold text-tertiary">{daysLeft} days</span>
+                {endText ? ` (${endText})` : live ? '' : ' (Oct 21, 2024)'}. Keep your momentum going without losing
+                store visibility.
               </p>
             </div>
           </div>
           <div className="mt-2.5 pt-2 flex items-center justify-between border-t border-tertiary/10">
             <div className="flex items-center gap-1.5 text-on-tertiary-fixed-variant">
               <Icon name="event_available" className="text-[15px] text-tertiary" />
-              <span className="font-caption text-caption">Day 27 of 30 completed</span>
+              <span className="font-caption text-caption">
+                Day {live ? completed : 27} of {totalDays} completed
+              </span>
             </div>
             <span className="inline-flex items-center px-2 py-0.5 rounded-full font-caption text-caption font-bold bg-tertiary text-on-tertiary">
-              3 Days Left
+              {daysLeft} Days Left
             </span>
           </div>
         </div>
@@ -94,14 +115,16 @@ export function SubscriptionEndingScreen({
             </span>
             <div className="flex items-baseline gap-1">
               <span className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight leading-none">
-                ₦5,000
+                {priceLine ? priceLine.split(' / ')[0] : '₦5,000'}
               </span>
-              <span className="font-label-sm text-label-sm text-text-secondary font-medium">/month</span>
+              <span className="font-label-sm text-label-sm text-text-secondary font-medium">
+                /{priceLine ? priceLine.split(' / ')[1] : 'month'}
+              </span>
             </div>
           </div>
           <div className="mt-3">
             <h2 className="font-heading-md text-heading-md font-semibold text-text-primary leading-snug">
-              Continue with VEMTAP Growth
+              Continue with VEMTAP {planName}
             </h2>
             <p className="font-body-md text-body-md text-text-secondary mt-1 leading-relaxed">
               Continue using VEMTAP Growth to keep your business active on the VEMTAP network without interruption.
@@ -137,7 +160,9 @@ export function SubscriptionEndingScreen({
             type="button"
             onClick={onContinue}
           >
-            <span>Continue with Growth — ₦5,000/month</span>
+            <span>
+              Continue with {planName} — {priceLine ? priceLine.split(' / ')[0] : '₦5,000'}/month
+            </span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
           <button

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { hasActiveTrial, startTrial } from '../../utils/trialState';
+import { hasApiConfig } from '../../services/api/client';
+import { useActiveSubscription, useSubscriptionMutations, useSubscriptionPlans } from '../../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine } from '../subscriptionLive';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionTrialConfirmScreenProps {
@@ -80,6 +83,29 @@ export function DesktopSubscriptionTrialConfirmScreen({
   const [phase, setPhase] = useState<'idle' | 'activating' | 'activated'>('idle');
   const [selectedStep, setSelectedStep] = useState(0);
   const timers = useRef<number[]>([]);
+  const live = hasApiConfig();
+  const plans = useSubscriptionPlans();
+  const subscription = useActiveSubscription();
+  const { startTrial: startTrialMutation } = useSubscriptionMutations();
+
+  // Live mode trialling the API's featured plan; demo keeps the scripted copy.
+  const featured = featuredPlan(plans.data ?? []);
+  const sub = subscription.data ?? null;
+  const trialDays = featured?.trialDurationDays ?? 30;
+  const priceTag = featured ? planPriceLine(featured, 'monthly') : '₦5,000 / month';
+  const planName = featured?.name ?? 'Growth';
+  const timeline = TIMELINE_STEPS.map((step) => ({
+    ...step,
+    title:
+      step.title === 'Next 30 Days' ? `Next ${trialDays} Days` : step.title === 'Day 30' ? `Day ${trialDays}` : step.title,
+    tag: step.tag === '₦5,000 / month' ? priceTag : step.tag,
+    body: step.body.replace('Growth', planName),
+    inspector: step.inspector
+      .replace(/30 days/g, `${trialDays} days`)
+      .replace(/₦5,000\/month/g, `${priceTag.split(' / ')[0]}/month`)
+      .replace(/Growth Preview/g, `${planName} Preview`)
+      .replace(/Growth/g, planName),
+  }));
 
   useEffect(
     () => () => {
@@ -92,14 +118,29 @@ export function DesktopSubscriptionTrialConfirmScreen({
   // re-entered this screen), never allow a second activation — go straight to
   // the active-trial screen without touching the stored start date.
   useEffect(() => {
-    if (hasActiveTrial()) {
+    if (live ? sub?.status === 'trial' : hasActiveTrial()) {
       onTrialStarted();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [live, sub?.status]);
 
   const handleStartTrial = () => {
     if (phase !== 'idle') return;
+    if (live) {
+      if (!featured) return;
+      setPhase('activating');
+      startTrialMutation.mutate(
+        { planId: featured.id, billingPeriod: 'monthly' },
+        {
+          onSuccess: () => {
+            setPhase('activated');
+            timers.current.push(window.setTimeout(() => onTrialStarted(), 1200));
+          },
+          onError: () => setPhase('idle'),
+        },
+      );
+      return;
+    }
     const { fresh } = startTrial();
     if (!fresh) {
       // Trial was already started previously — do not reset the period or
@@ -129,10 +170,10 @@ export function DesktopSubscriptionTrialConfirmScreen({
               </span>
             </div>
             <span className="px-space-sm py-space-2xs rounded-full bg-surface-canvas/80 text-primary font-caption text-caption font-semibold uppercase tracking-wider border border-primary/15">
-              Tier: Growth Plan Preview
+              Tier: {planName} Plan Preview
             </span>
             <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight max-w-2xl">
-              Your 30-day trial starts now
+              Your {trialDays}-day trial starts now
             </h1>
             <p className="font-body-lg text-body-lg text-text-secondary max-w-xl">
               Explore VEMTAP, add your products and services, create deals, manage your locations and see how customers
@@ -140,7 +181,7 @@ export function DesktopSubscriptionTrialConfirmScreen({
             </p>
             <div className="flex flex-wrap items-center justify-center gap-space-xs mt-space-xs">
               {[
-                { icon: 'event_available', label: '30-Day Full Access' },
+                { icon: 'event_available', label: `${trialDays}-Day Full Access` },
                 { icon: 'credit_card_off', label: 'No Credit Card' },
                 { icon: 'bolt', label: 'Instant Activation' },
               ].map((badge) => (
@@ -168,7 +209,7 @@ export function DesktopSubscriptionTrialConfirmScreen({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-lg">
                 <div className="relative flex flex-col gap-space-md pl-space-xs">
                   <div className="absolute left-[19px] top-3 bottom-3 w-[2px] bg-secondary-container" />
-                  {TIMELINE_STEPS.map((step, index) => {
+                  {timeline.map((step, index) => {
                     const active = selectedStep === index;
                     return (
                       <button
@@ -200,20 +241,20 @@ export function DesktopSubscriptionTrialConfirmScreen({
                 <div className="rounded-xl bg-surface-canvas p-space-md shadow-sm border border-border-subtle/60 flex flex-col gap-space-xs">
                   <div className="flex items-center gap-space-xs">
                     <div
-                      className={`w-8 h-8 rounded-full ${TIMELINE_STEPS[selectedStep].circleClass} flex items-center justify-center`}
+                      className={`w-8 h-8 rounded-full ${timeline[selectedStep].circleClass} flex items-center justify-center`}
                     >
                       <Icon
-                        name={TIMELINE_STEPS[selectedStep].icon}
-                        filled={TIMELINE_STEPS[selectedStep].iconFill}
-                        className={`${TIMELINE_STEPS[selectedStep].iconClass} text-[16px]`}
+                        name={timeline[selectedStep].icon}
+                        filled={timeline[selectedStep].iconFill}
+                        className={`${timeline[selectedStep].iconClass} text-[16px]`}
                       />
                     </div>
                     <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      {TIMELINE_STEPS[selectedStep].title}
+                      {timeline[selectedStep].title}
                     </span>
                   </div>
                   <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                    {TIMELINE_STEPS[selectedStep].inspector}
+                    {timeline[selectedStep].inspector}
                   </p>
                 </div>
               </div>
@@ -305,8 +346,8 @@ export function DesktopSubscriptionTrialConfirmScreen({
               <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">Trial Summary</h3>
               <div className="flex flex-col gap-space-xs">
                 {[
-                  { label: 'Plan', value: 'Growth Preview' },
-                  { label: 'Duration', value: '30 days' },
+                  { label: 'Plan', value: live ? planName : 'Growth Preview' },
+                  { label: 'Duration', value: `${trialDays} days` },
                   { label: 'Card required', value: 'No' },
                   { label: 'Auto-charge', value: 'Never' },
                 ].map((row) => (
@@ -336,7 +377,9 @@ export function DesktopSubscriptionTrialConfirmScreen({
               className="h-11 px-space-lg rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs hover:bg-surface-tint-blue active:scale-[0.98] transition-all whitespace-nowrap"
             >
               <span>Subscribe Now</span>
-              <span className="text-text-secondary">(₦5,000/mo)</span>
+              <span className="text-text-secondary">
+                {live ? `(${priceTag.split(' / ')[0]}/mo)` : '(₦5,000/mo)'}
+              </span>
             </button>
             <button
               type="button"

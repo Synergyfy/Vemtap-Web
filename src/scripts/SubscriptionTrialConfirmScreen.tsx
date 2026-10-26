@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { hasActiveTrial, startTrial } from '../utils/trialState';
+import { hasApiConfig } from '../services/api/client';
+import { useActiveSubscription, useSubscriptionMutations, useSubscriptionPlans } from '../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine } from './subscriptionLive';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionTrialConfirmScreenProps {
@@ -70,6 +73,24 @@ export function SubscriptionTrialConfirmScreen({
 }: SubscriptionTrialConfirmScreenProps) {
   const [phase, setPhase] = useState<'idle' | 'activating' | 'activated'>('idle');
   const timers = useRef<number[]>([]);
+  const live = hasApiConfig();
+  const plans = useSubscriptionPlans();
+  const subscription = useActiveSubscription();
+  const { startTrial: startTrialMutation } = useSubscriptionMutations();
+
+  // Live mode trialling the API's featured plan; demo keeps the scripted copy.
+  const featured = featuredPlan(plans.data ?? []);
+  const sub = subscription.data ?? null;
+  const trialDays = featured?.trialDurationDays ?? 30;
+  const priceTag = featured ? planPriceLine(featured, 'monthly') : '₦5,000 / month';
+  const planName = featured?.name ?? 'Growth';
+  const timeline = TIMELINE_STEPS.map((step) => ({
+    ...step,
+    title:
+      step.title === 'Next 30 Days' ? `Next ${trialDays} Days` : step.title === 'Day 30' ? `Day ${trialDays}` : step.title,
+    tag: step.tag === '₦5,000 / month' ? priceTag : step.tag,
+    body: step.body.replace('Growth', planName),
+  }));
 
   useEffect(
     () => () => {
@@ -82,14 +103,29 @@ export function SubscriptionTrialConfirmScreen({
   // re-entered this screen), never allow a second activation — go straight to
   // the active-trial screen without touching the stored start date.
   useEffect(() => {
-    if (hasActiveTrial()) {
+    if (live ? sub?.status === 'trial' : hasActiveTrial()) {
       onTrialStarted();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [live, sub?.status]);
 
   const handleStartTrial = () => {
     if (phase !== 'idle') return;
+    if (live) {
+      if (!featured) return;
+      setPhase('activating');
+      startTrialMutation.mutate(
+        { planId: featured.id, billingPeriod: 'monthly' },
+        {
+          onSuccess: () => {
+            setPhase('activated');
+            timers.current.push(window.setTimeout(() => onTrialStarted(), 1200));
+          },
+          onError: () => setPhase('idle'),
+        },
+      );
+      return;
+    }
     const { fresh } = startTrial();
     if (!fresh) {
       // Trial was already started previously — do not reset the period or
@@ -120,7 +156,7 @@ export function SubscriptionTrialConfirmScreen({
                 </span>
               </div>
               <h2 className="font-heading-md text-heading-md text-text-primary tracking-tight">
-                Your 30-day trial starts now
+                Your {trialDays}-day trial starts now
               </h2>
               <p className="font-label-sm text-label-sm text-text-secondary mt-space-xs max-w-[320px]">
                 Explore VEMTAP, add your products and services, create deals, manage your locations and see how
@@ -146,7 +182,7 @@ export function SubscriptionTrialConfirmScreen({
             </div>
             <div className="relative flex flex-col gap-space-md pl-space-xs">
               <div className="absolute left-[19px] top-3 bottom-3 w-[2px] bg-secondary-container" />
-              {TIMELINE_STEPS.map((step) => (
+              {timeline.map((step) => (
                 <div className="relative flex items-start gap-space-sm" key={step.title}>
                   <div
                     className={`relative z-10 w-6 h-6 rounded-full ${step.circleClass} flex items-center justify-center flex-shrink-0 shadow-sm mt-0.5`}
@@ -272,7 +308,9 @@ export function SubscriptionTrialConfirmScreen({
               onClick={onSubscribeNow}
             >
               <span>Subscribe Now Instead</span>
-              <span className="text-text-secondary">(₦5,000/mo)</span>
+              <span className="text-text-secondary">
+                {live ? `(${priceTag.split(' / ')[0]}/mo)` : '(₦5,000/mo)'}
+              </span>
             </button>
             <p className="text-center font-caption text-caption text-text-tertiary mt-space-2xs">
               Tap to proceed. Instant activation in 3 seconds.

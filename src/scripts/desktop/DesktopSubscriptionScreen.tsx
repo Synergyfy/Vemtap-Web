@@ -9,6 +9,8 @@ import { DesktopSubscriptionPaymentScreen } from './DesktopSubscriptionPaymentSc
 import { DesktopSubscriptionSuccessScreen } from './DesktopSubscriptionSuccessScreen';
 import { DesktopSubscriptionAddonsScreen } from './DesktopSubscriptionAddonsScreen';
 import { hasActiveTrial } from '../../utils/trialState';
+import { hasApiConfig } from '../../services/api/client';
+import { useActiveSubscription, useVerifySubscriptionPayment } from '../../hooks/business/useSubscription';
 
 export type DesktopSubscriptionStep =
   | 'overview'
@@ -41,6 +43,14 @@ export function DesktopSubscriptionScreen({
   const [step, setStep] = useState<DesktopSubscriptionStep>(initialStep);
   const [paymentFrom, setPaymentFrom] = useState<DesktopSubscriptionStep>('overview');
   const [boostFrom, setBoostFrom] = useState<DesktopSubscriptionStep>('overview');
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  // Live: only a real API trial counts; demo keeps the localStorage flag.
+  const trialOn = live ? subscription.data?.status === 'trial' : hasActiveTrial();
+
+  // Paystack redirects back here with ?reference= — confirm it once and land
+  // on the success step instead of a blank checkout URL.
+  useVerifySubscriptionPayment(() => setStep('success'));
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -50,11 +60,11 @@ export function DesktopSubscriptionScreen({
   // again — land directly on the active-trial screen so the period can't be
   // reset or duplicated by re-entering the flow.
   useEffect(() => {
-    if (hasActiveTrial() && step === 'overview') {
+    if (trialOn && step === 'overview') {
       setStep('trialActive');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [trialOn]);
 
   const goToPayment = (from: DesktopSubscriptionStep) => {
     setPaymentFrom(from);
@@ -77,7 +87,7 @@ export function DesktopSubscriptionScreen({
         />
       );
     case 'trialConfirm':
-      if (hasActiveTrial()) {
+      if (trialOn) {
         return (
           <DesktopSubscriptionTrialActiveScreen
             onBack={() => setStep('overview')}

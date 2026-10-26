@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
 import { subscriptionService, type BillingPeriod } from '../../services/subscriptionService';
@@ -106,4 +107,56 @@ export function useCreditCheckout() {
           return result;
         }),
   });
+}
+
+/** Live price preview for one plan + period (`GET /subscriptions/price-preview`). */
+export function usePricePreview(planId?: string, billingPeriod: BillingPeriod = 'monthly') {
+  return useQuery({
+    queryKey: [...subscriptionKeys.all, 'price-preview', planId ?? 'none', billingPeriod],
+    queryFn: () => subscriptionService.pricePreview(planId!, billingPeriod),
+    enabled: hasApiConfig() && Boolean(planId),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** Paystack checkout for a subscription plan; sends the browser to the hosted page. */
+export function useSubscriptionCheckout() {
+  return useMutation({
+    mutationFn: ({ planId, billingPeriod }: { planId: string; billingPeriod: BillingPeriod }) =>
+      subscriptionService
+        .initializePayment({
+          planId,
+          billingPeriod,
+          callbackUrl: window.location.href.split('?')[0],
+        })
+        .then((result) => {
+          if (result.authorization_url) window.location.assign(result.authorization_url);
+          return result;
+        }),
+  });
+}
+
+/**
+ * Confirms a Paystack return (`?reference=` / `?trxref=`) exactly once —
+ * call from the subscription flow root so a redirect back from checkout
+ * lands on the success step. `onVerified` fires after the confirmation call
+ * completes, success or failure, so the owner is never stuck on a blank URL.
+ */
+export function useVerifySubscriptionPayment(onVerified: () => void) {
+  const live = hasApiConfig();
+  const handled = useRef(false);
+  useEffect(() => {
+    if (!live || handled.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get('reference') ?? params.get('trxref');
+    if (!reference) return;
+    handled.current = true;
+    window.history.replaceState(null, '', window.location.pathname);
+    subscriptionService.verifyPayment(reference).then(
+      () => onVerified(),
+      () => onVerified(),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live]);
 }

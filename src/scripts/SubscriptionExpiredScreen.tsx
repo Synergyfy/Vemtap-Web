@@ -1,5 +1,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useSubscriptionPlans } from '../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine } from './subscriptionLive';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionExpiredScreenProps {
@@ -40,6 +42,12 @@ export function SubscriptionExpiredScreen({
   onActivate,
   onViewBusiness,
 }: SubscriptionExpiredScreenProps) {
+  const plans = useSubscriptionPlans();
+  // Live: the API's featured plan; demo keeps the scripted Growth figures.
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = featured?.name ?? 'Growth';
+  const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
+
   return (
     <AppScreen surface="bg-surface-canvas">
       <SubscriptionHeader title="Subscription Plans" onBack={onBack} />
@@ -59,7 +67,7 @@ export function SubscriptionExpiredScreen({
             Your VEMTAP trial has ended
           </h2>
           <p className="font-label-sm text-label-sm text-text-secondary max-w-[320px]">
-            Your business information is completely safe. Subscribe to VEMTAP Growth to continue using the full
+            Your business information is completely safe. Subscribe to VEMTAP {planName} to continue using the full
             business experience.
           </p>
         </div>
@@ -103,11 +111,15 @@ export function SubscriptionExpiredScreen({
               <span className="font-caption text-caption uppercase tracking-wider text-primary font-bold">
                 Recommended Plan
               </span>
-              <h4 className="font-heading-sm text-heading-sm text-text-primary mt-0.5">VEMTAP Growth</h4>
+              <h4 className="font-heading-sm text-heading-sm text-text-primary mt-0.5">VEMTAP {planName}</h4>
             </div>
             <div className="text-right">
-              <span className="font-heading-md text-heading-md text-text-primary font-bold">₦5,000</span>
-              <span className="font-caption text-caption text-text-secondary block -mt-1">/ month</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold">
+                {priceLine ? priceLine.split(' / ')[0] : '₦5,000'}
+              </span>
+              <span className="font-caption text-caption text-text-secondary block -mt-1">
+                / {priceLine ? priceLine.split(' / ')[1] : 'month'}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-space-2xs mb-space-md">
@@ -135,7 +147,9 @@ export function SubscriptionExpiredScreen({
             type="button"
             onClick={onActivate}
           >
-            <span>Activate Growth — ₦5,000/mo</span>
+            <span>
+              Activate {planName} — {priceLine ? priceLine.split(' / ')[0] : '₦5,000'}/mo
+            </span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
           <button

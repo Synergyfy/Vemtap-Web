@@ -2,6 +2,15 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { downloadCsv } from '../utils/exportCsv';
 import { printKvTable, printReport } from '../utils/printReport';
+import { hasApiConfig } from '../services/api/client';
+import {
+  useActiveSubscription,
+  useBillingHistory,
+  usePaymentMethod,
+  useSubscriptionPlans,
+} from '../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, renewalDate } from './subscriptionLive';
+import { formatNaira } from '../utils/format';
 
 interface SubscriptionSuccessScreenProps {
   onGoDashboard: () => void;
@@ -39,26 +48,68 @@ export function SubscriptionSuccessScreen({
   onGoDashboard,
   onExploreFeatures,
 }: SubscriptionSuccessScreenProps) {
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  const plans = useSubscriptionPlans();
+  const billing = useBillingHistory();
+  const payment = usePaymentMethod();
+
+  // Live: the newest invoice + active subscription drive the receipt; demo
+  // keeps the scripted Growth receipt.
+  const sub = subscription.data ?? null;
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = sub?.plan?.name ?? featured?.name ?? 'Growth';
+  const latest = (billing.data ?? [])[0] ?? null;
+  const priceLine = featured ? planPriceLine(featured, sub?.billingPeriod ?? 'monthly') : null;
+  const paidText = latest ? formatNaira(Number(latest.amount) || 0) : priceLine ? priceLine.split(' / ')[0] : '₦5,000';
+  const card = live && payment.data?.hasCard ? payment.data.card : null;
+  const billingLabel = sub?.billingPeriod
+    ? sub.billingPeriod.charAt(0).toUpperCase() + sub.billingPeriod.slice(1)
+    : 'Monthly';
+  const receiptRows = live
+    ? [
+        { label: 'Transaction ID', value: latest?.reference ?? '—' },
+        {
+          label: 'Payment Date',
+          value: latest?.createdAt
+            ? new Date(latest.createdAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
+            : 'Today',
+        },
+        { label: 'Next Billing Date', value: renewalDate(sub?.endDate) ?? '—' },
+      ]
+    : RECEIPT_ROWS;
+  const invoiceRef = live ? (latest?.reference ?? 'VT-SUB-PENDING') : 'VT-SUB-982410';
+
   const downloadTaxInvoice = () => {
     downloadCsv(
-      'vemtap-tax-invoice-VT-SUB-982410.csv',
+      `vemtap-tax-invoice-${invoiceRef}.csv`,
       ['Field', 'Value'],
       [
-        ...RECEIPT_ROWS.map((row) => [row.label, row.value]),
-        ['Plan', 'VEMTAP Growth'],
-        ['Amount paid', '₦5,000.00'],
-        ['Payment method', 'Mastercard •••• 4128'],
+        ...receiptRows.map((row) => [row.label, row.value]),
+        ['Plan', `VEMTAP ${planName}`],
+        ['Amount paid', `${paidText}.00`],
+        [
+          'Payment method',
+          live ? (card ? `${card.brand ?? 'Card'} •••• ${card.last4}` : 'Card on file') : 'Mastercard •••• 4128',
+        ],
       ],
     );
     printReport(
-      'VEMTAP Tax Invoice — VT-SUB-982410',
-      `${printKvTable('Invoice', RECEIPT_ROWS.map((row) => [row.label, row.value] as [string, string]))}
+      `VEMTAP Tax Invoice — ${invoiceRef}`,
+      `${printKvTable('Invoice', receiptRows.map((row) => [row.label, row.value] as [string, string]))}
        ${printKvTable('Line items', [
-         ['VEMTAP Growth plan — monthly subscription', '₦4,651.16'],
-         ['VAT (7.5%)', '₦348.84'],
-         ['Amount paid', '₦5,000.00'],
+         live
+           ? [`VEMTAP ${planName} plan — ${billingLabel.toLowerCase()} subscription`, paidText]
+           : ['VEMTAP Growth plan — monthly subscription', '₦4,651.16'],
+         live ? ['VAT', 'included'] : ['VAT (7.5%)', '₦348.84'],
+         ['Amount paid', `${paidText}.00`],
        ])}
-       ${printKvTable('Payment', [['Method', 'Mastercard •••• 4128']])}
+       ${printKvTable('Payment', [
+         [
+           'Method',
+           live ? (card ? `${card.brand ?? 'Card'} •••• ${card.last4}` : 'Card on file') : 'Mastercard •••• 4128',
+         ],
+       ])}
        <p class="foot">A CSV copy of this tax invoice downloaded alongside the PDF.</p>`,
     );
   };
@@ -89,7 +140,7 @@ export function SubscriptionSuccessScreen({
             Payment Successful
           </span>
           <h1 className="font-heading-md text-heading-md font-bold text-text-primary text-center tracking-tight">
-            You're now on VEMTAP Growth
+            You're now on VEMTAP {planName}
           </h1>
           <p className="font-label-md text-label-md text-text-secondary text-center mt-1 max-w-xs">
             Your business is active and ready to grow with VEMTAP.
@@ -127,15 +178,17 @@ export function SubscriptionSuccessScreen({
             <div>
               <div className="flex items-center gap-1.5">
                 <Icon name="workspace_premium" className="text-primary text-[16px]" />
-                <span className="font-label-md text-label-md font-semibold text-text-primary">VEMTAP Growth</span>
+                <span className="font-label-md text-label-md font-semibold text-text-primary">VEMTAP {planName}</span>
               </div>
               <p className="font-caption text-caption text-text-secondary mt-0.5">Subscription Plan</p>
             </div>
             <div className="text-right">
               <span className="font-heading-md text-heading-md text-text-primary font-bold tracking-tight">
-                ₦5,000
+                {paidText}
               </span>
-              <span className="font-caption text-caption text-text-secondary">/ month</span>
+              <span className="font-caption text-caption text-text-secondary">
+                / {priceLine ? priceLine.split(' / ')[1] : 'month'}
+              </span>
             </div>
           </div>
           {/* Active Status Ribbon */}
@@ -144,11 +197,11 @@ export function SubscriptionSuccessScreen({
               <Icon name="autorenew" filled className="text-[14px]" />
               <span className="font-caption text-caption font-semibold">Active • Auto-renewing</span>
             </div>
-            <span className="font-caption text-caption uppercase tracking-wider font-semibold">Billed Monthly</span>
+            <span className="font-caption text-caption uppercase tracking-wider font-semibold">Billed {billingLabel}</span>
           </div>
           {/* Line Item Breakdown */}
           <div className="space-y-2.5 pt-0.5">
-            {RECEIPT_ROWS.map((row) => (
+            {receiptRows.map((row) => (
               <div className="flex items-center justify-between" key={row.label}>
                 <span className="font-caption text-caption text-text-secondary">{row.label}</span>
                 <span className="font-caption text-caption text-text-primary font-semibold text-right truncate max-w-[200px]">
@@ -159,10 +212,16 @@ export function SubscriptionSuccessScreen({
             <div className="flex items-center justify-between pt-1">
               <span className="font-caption text-caption text-text-secondary">Payment Method</span>
               <div className="flex items-center gap-1.5">
-                <div className="w-5 h-3.5 bg-surface-container rounded flex items-center justify-center px-0.5">
-                  <span className="text-[8px] font-extrabold text-primary tracking-tighter">MC</span>
-                </div>
-                <span className="font-caption text-caption text-text-primary font-medium">•••• 4128</span>
+                {(live ? card : true) && (
+                  <div className="w-5 h-3.5 bg-surface-container rounded flex items-center justify-center px-0.5">
+                    <span className="text-[8px] font-extrabold text-primary tracking-tighter">
+                      {live ? (card?.brand ?? 'Card').slice(0, 2).toUpperCase() : 'MC'}
+                    </span>
+                  </div>
+                )}
+                <span className="font-caption text-caption text-text-primary font-medium">
+                  {live ? (card ? `•••• ${card.last4}` : 'Card on file') : '•••• 4128'}
+                </span>
               </div>
             </div>
           </div>

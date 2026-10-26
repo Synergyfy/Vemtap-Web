@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { hasApiConfig } from '../../services/api/client';
+import { usePricePreview, useSubscriptionCheckout, useSubscriptionPlans } from '../../hooks/business/useSubscription';
+import { featuredPlan } from '../subscriptionLive';
+import { formatNaira } from '../../utils/format';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionPaymentScreenProps {
@@ -77,6 +81,19 @@ export function DesktopSubscriptionPaymentScreen({ onBack, onPaid }: DesktopSubs
   const [method, setMethod] = useState<PaymentMethod>('paystack');
   const [paying, setPaying] = useState(false);
   const timer = useRef<number | null>(null);
+  const live = hasApiConfig();
+  const plans = useSubscriptionPlans();
+  const featured = featuredPlan(plans.data ?? []);
+  const preview = usePricePreview(featured?.id, 'monthly');
+  const checkout = useSubscriptionCheckout();
+
+  // Live: the API preview drives the billing summary; demo keeps the scripted
+  // Growth figures and the simulated gateway timer.
+  const planName = featured?.name ?? 'Growth';
+  const subtotal = preview.data ? Number(preview.data.subtotal) || 0 : null;
+  const tax = preview.data ? Number(preview.data.taxAmount) || 0 : null;
+  const total = preview.data ? Number(preview.data.total) || 0 : null;
+  const totalText = total !== null ? `${formatNaira(total)}.00` : '₦5,000.00';
 
   useEffect(
     () => () => {
@@ -87,6 +104,22 @@ export function DesktopSubscriptionPaymentScreen({ onBack, onPaid }: DesktopSubs
 
   const handlePay = () => {
     if (paying) return;
+    if (live) {
+      if (!featured) return;
+      setPaying(true);
+      checkout.mutate(
+        { planId: featured.id, billingPeriod: 'monthly' },
+        {
+          onSuccess: (result) => {
+            // Without a hosted checkout URL there is nothing to redirect to —
+            // continue the flow as if paid (the backend activates on webhook).
+            if (!result.authorization_url) onPaid();
+          },
+          onError: () => setPaying(false),
+        },
+      );
+      return;
+    }
     setPaying(true);
     timer.current = window.setTimeout(() => onPaid(), 2400);
   };
@@ -111,7 +144,7 @@ export function DesktopSubscriptionPaymentScreen({ onBack, onPaid }: DesktopSubs
 
         <div>
           <h1 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight">
-            Continue with VEMTAP Growth
+            Continue with VEMTAP {planName}
           </h1>
           <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
             Activate your monthly subscription to keep your business running smoothly.
@@ -126,7 +159,7 @@ export function DesktopSubscriptionPaymentScreen({ onBack, onPaid }: DesktopSubs
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-space-xs flex-wrap">
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary">VEMTAP Growth</h2>
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">VEMTAP {planName}</h2>
                   <span className="px-space-xs py-space-2xs rounded-full bg-primary-container text-on-primary-container font-caption text-caption font-semibold">
                     OFFICIAL PLAN
                   </span>
@@ -215,10 +248,13 @@ export function DesktopSubscriptionPaymentScreen({ onBack, onPaid }: DesktopSubs
               <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">Billing Summary</h3>
               <div className="flex flex-col gap-space-xs">
                 {[
-                  { label: 'Plan', value: 'VEMTAP Growth (Monthly)' },
-                  { label: 'Subtotal', value: '₦5,000.00' },
+                  { label: 'Plan', value: `VEMTAP ${planName} (Monthly)` },
+                  { label: 'Subtotal', value: subtotal !== null ? `${formatNaira(subtotal)}.00` : '₦5,000.00' },
                   { label: 'Setup fee', value: 'Waived' },
-                  { label: 'VAT', value: 'Absorbed by VEMTAP' },
+                  {
+                    label: preview.data?.taxRule?.rate ? `VAT (${preview.data.taxRule.rate}%)` : 'VAT',
+                    value: tax !== null ? (tax ? formatNaira(tax) : 'Waived') : 'Absorbed by VEMTAP',
+                  },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between py-space-2xs">
                     <span className="font-caption text-caption text-text-secondary">{row.label}</span>
@@ -228,7 +264,7 @@ export function DesktopSubscriptionPaymentScreen({ onBack, onPaid }: DesktopSubs
               </div>
               <div className="mt-space-sm pt-space-sm border-t border-border-subtle flex items-center justify-between">
                 <span className="font-label-md text-label-md text-text-primary font-semibold">Total Due Today</span>
-                <span className="font-heading-md text-heading-md text-text-primary font-bold">₦5,000.00</span>
+                <span className="font-heading-md text-heading-md text-text-primary font-bold">{totalText}</span>
               </div>
               <button
                 type="button"
@@ -246,7 +282,9 @@ export function DesktopSubscriptionPaymentScreen({ onBack, onPaid }: DesktopSubs
                 ) : (
                   <>
                     <Icon name="lock" className="text-[18px]" />
-                    <span>Activate Growth — ₦5,000.00</span>
+                    <span>
+                      Activate {planName} — {totalText}
+                    </span>
                   </>
                 )}
               </button>
