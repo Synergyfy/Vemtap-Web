@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessQr } from '../../hooks/business/useBusinessQr';
+import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategories';
+import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
+import { toPrice } from '../../services/catalogueItemsService';
 import { getCentralCategories, URBAN_PRODUCTS } from '../catalogueData';
 
 interface DesktopStoreOrderingQrScreenProps {
@@ -59,18 +65,59 @@ function VemtapQrSvg({ size = 180 }: { size?: number }) {
 }
 
 export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrScreenProps) {
-  const { addQrCode } = useStoreOrdering();
-  const categories = getCentralCategories('product');
+  const { addQrCode, lastError, clearLastError } = useStoreOrdering();
+  const live = hasApiConfig();
+  const { branch: activeBranch, branches, isLive: branchesLoaded } = useBusinessBranch();
+  // Live: real branches (keyed by id); demo: the storefront's sample branches.
+  const branchOptions = live
+    ? (branchesLoaded ? branches : []).map((b) => ({ value: b.id ?? b.key, label: b.name }))
+    : [
+        { value: 'wuse-2', label: 'Wuse II Flagship' },
+        { value: 'maitama', label: 'Maitama Heights' },
+        { value: 'garki', label: 'Garki Branch' },
+      ];
+  // Live: the business's own storefront link, categories and products; demo keeps the samples.
+  const businessQr = useBusinessQr();
+  const liveCategories = useCatalogueCategories();
+  const liveProducts = useCatalogueItems('product');
+  const storeBase = live ? businessQr.url ?? '' : 'https://vemtap.com/business/urban-grill-bistro-104/products';
+  const withParams = (params: string) => (storeBase ? `${storeBase}${storeBase.includes('?') ? '&' : '?'}${params}` : '');
+  const storeName = live ? businessQr.name ?? 'Your business' : 'Urban Grill & Bistro';
+  const categories = live
+    ? (liveCategories.data ?? []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        icon: category.icon ?? 'category',
+        description: category.description ?? '',
+        // No per-category QR scan/order data yet: shown as "—".
+        stats: null as null | { scans: number; ordersCount: number; totalRevenue: number },
+      }))
+    : getCentralCategories('product');
+  const products = live
+    ? (liveProducts.data ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        image: item.mainImage || '',
+        imageAlt: item.name,
+        price: toPrice(item.price ?? undefined) ?? 0,
+        category: item.category?.name ?? 'Product',
+      }))
+    : URBAN_PRODUCTS;
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [primaryQrTab, setPrimaryQrTab] = useState<'store' | 'category' | 'product'>('store');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id ?? '');
   const [selectedProductId, setSelectedProductId] = useState<string>(URBAN_PRODUCTS[0]?.id ?? '');
+  // Live lists arrive after mount: keep the picked category/product one of them.
+  useEffect(() => {
+    if (live && categories.length && !categories.some((category) => category.id === selectedCategoryId)) setSelectedCategoryId(categories[0].id);
+    if (live && products.length && !products.some((product) => product.id === selectedProductId)) setSelectedProductId(products[0].id);
+  }, [live, categories, products, selectedCategoryId, selectedProductId]);
 
   // New QR form state
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<'store' | 'section' | 'product' | 'custom'>('store');
-  const [newBranch, setNewBranch] = useState('wuse-2');
+  const [newBranch, setNewBranch] = useState(live ? (activeBranch.id ?? activeBranch.key) : 'wuse-2');
   const [newDestination, setNewDestination] = useState('');
   const [newTargetLabel, setNewTargetLabel] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -80,22 +127,34 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
     window.setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // The branch list loads after first render: keep the picked branch one of the real options.
+  useEffect(() => {
+    if (live && !branchOptions.some((option) => option.value === newBranch)) {
+      setNewBranch(activeBranch.id ?? branchOptions[0]?.value ?? newBranch);
+    }
+  }, [live, branchOptions, newBranch, activeBranch.id]);
+
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
+
   const handleCreateQr = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
 
-    const branchName =
-      newBranch === 'wuse-2'
-        ? 'Wuse II Flagship'
-        : newBranch === 'maitama'
-          ? 'Maitama Heights'
-          : 'Garki Branch';
+    const branchName = branchOptions.find((option) => option.value === newBranch)?.label ?? 'Branch';
 
     // QR destinations open the storefront directly: store & custom codes land on
     // the full catalogue page, product codes land on the product detail page.
-    let defaultUrl = `https://vemtap.com/business/urban-grill-bistro-104/products?src=${newType}-qr&branch=${newBranch}`;
-    if (newType === 'product' && URBAN_PRODUCTS[0]) {
-      defaultUrl = `https://vemtap.com/business/urban-grill-bistro-104/products/${URBAN_PRODUCTS[0].id}?src=product-qr&branch=${newBranch}`;
+    let defaultUrl = live
+      ? withParams(`src=${newType}-qr&branch=${newBranch}`)
+      : `https://vemtap.com/business/urban-grill-bistro-104/products?src=${newType}-qr&branch=${newBranch}`;
+    if (newType === 'product' && products[0]) {
+      defaultUrl = live
+        ? withParams(`product=${products[0].id}&src=product-qr&branch=${newBranch}`)
+        : `https://vemtap.com/business/urban-grill-bistro-104/products/${products[0].id}?src=product-qr&branch=${newBranch}`;
     }
     if (newDestination.trim()) {
       defaultUrl = newDestination.trim();
@@ -211,11 +270,11 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 </div>
                 <div className="flex-1 flex flex-col gap-3">
                   <div>
-                    <div className="text-label-lg font-bold text-text-primary">Urban Grill &amp; Bistro — Full Storefront</div>
+                    <div className="text-label-lg font-bold text-text-primary">{storeName} — Full Storefront</div>
                     <div className="text-body-sm text-text-secondary mt-1">Opens the full storefront catalogue — every product with search &amp; category tabs. Customers browse all items and order directly.</div>
                   </div>
                   <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle font-mono text-[11px] text-text-secondary break-all">
-                    https://vemtap.com/business/urban-grill-bistro-104/products?src=store-qr
+                    {withParams('src=store-qr') || '—'}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
@@ -232,7 +291,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => { navigator.clipboard?.writeText('https://vemtap.com/business/urban-grill-bistro-104/products?src=store-qr'); showToast('Store QR link copied!'); }} className="flex-1 py-2 rounded-xl border border-border text-text-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-surface-subtle transition-colors">
+                    <button type="button" onClick={() => { navigator.clipboard?.writeText(withParams('src=store-qr')); showToast('Store QR link copied!'); }} className="flex-1 py-2 rounded-xl border border-border text-text-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-surface-subtle transition-colors">
                       <Icon name="content_copy" className="text-[16px]" /> Copy Link
                     </button>
                     <button type="button" onClick={handlePrint} className="flex-1 py-2 rounded-xl bg-primary text-on-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-primary/90 transition-colors shadow-sm">
@@ -260,7 +319,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 {(() => {
                   const cat = categories.find(c => c.id === selectedCategoryId);
                   if (!cat) return null;
-                  const catUrl = `https://vemtap.com/business/urban-grill-bistro-104/products?category=${cat.id}&src=cat-qr`;
+                  const catUrl = withParams(`category=${cat.id}&src=cat-qr`);
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -280,15 +339,15 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                         <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle font-mono text-[11px] text-text-secondary break-all">{catUrl}</div>
                         <div className="grid grid-cols-3 gap-2">
                           <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats.scans.toLocaleString()}</div>
+                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats ? cat.stats.scans.toLocaleString() : '—'}</div>
                             <div className="text-caption text-text-tertiary">Scans</div>
                           </div>
                           <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats.ordersCount}</div>
+                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats ? cat.stats.ordersCount : '—'}</div>
                             <div className="text-caption text-text-tertiary">Orders</div>
                           </div>
                           <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                            <div className="font-heading-sm font-bold text-badge-discount-text">₦{(cat.stats.totalRevenue / 1000).toFixed(0)}K</div>
+                            <div className="font-heading-sm font-bold text-badge-discount-text">{cat.stats ? `₦${(cat.stats.totalRevenue / 1000).toFixed(0)}K` : '—'}</div>
                             <div className="text-caption text-text-tertiary">Revenue</div>
                           </div>
                         </div>
@@ -316,15 +375,17 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                     onChange={(e) => setSelectedProductId(e.target.value)}
                     className="flex-1 px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
                   >
-                    {URBAN_PRODUCTS.map((p) => (
+                    {products.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                 </div>
                 {(() => {
-                  const prod = URBAN_PRODUCTS.find(p => p.id === selectedProductId);
+                  const prod = products.find(p => p.id === selectedProductId);
                   if (!prod) return null;
-                  const prodUrl = `https://vemtap.com/business/urban-grill-bistro-104/products/${prod.id}?src=prod-qr`;
+                  const prodUrl = live
+                    ? withParams(`product=${prod.id}&src=prod-qr`)
+                    : `https://vemtap.com/business/urban-grill-bistro-104/products/${prod.id}?src=prod-qr`;
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -364,6 +425,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
         </div>
 
         {/* Modal: Create New QR Code */}
+
         {createModalOpen && (
           <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">
             <div
@@ -440,9 +502,11 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                   onChange={(e) => setNewBranch(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
                 >
-                  <option value="wuse-2">Wuse II Flagship</option>
-                  <option value="maitama">Maitama Heights</option>
-                  <option value="garki">Garki Branch</option>
+                  {branchOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
