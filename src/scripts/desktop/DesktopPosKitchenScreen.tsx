@@ -3,6 +3,11 @@ import { Icon } from '../../components/ui/Icon';
 import { naira } from '../catalogueData';
 import { PUBLIC_IMAGES } from '../publicPosData';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { KitchenOrder } from '../../services/posService';
+import { useLiveKitchen, useLivePos, type KitchenLane } from '../posLive';
+import { LiveNewTicket, LiveProgressTicket } from '../BusinessPosKitchenStreamScreen';
 
 interface DesktopPosKitchenScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -63,14 +68,36 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const kitchen = useLiveKitchen();
+  const laneOrders = live ? kitchen.lane(filter) : [];
+  const where = live ? `${pos.branchName} • ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse Branch • Till #01';
+
+  useEffect(() => {
+    if (live && kitchen.error) showToast(apiErrorMessage(kitchen.error, 'Could not load the kitchen stream.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kitchen.error]);
+
+  const move = (order: KitchenOrder, to: KitchenLane, message: string) => {
+    kitchen
+      .move(order, to)
+      .then(() => showToast(message))
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not update the ticket.')));
+  };
+
   const syncKitchenDisplay = () => {
+    if (live) {
+      void kitchen.refetch().then(() => showToast(`Kitchen stream refreshed • ${kitchen.count('new')} incoming`));
+      return;
+    }
     showToast('Kitchen Display synced • Station 1 online • Live Stream (3 incoming)');
   };
 
   const showTicket1 = filter === 'new' && ticket1 !== 'rejected';
   const showTicket2 = (filter === 'preparing' && ticket2 === 'preparing') || (filter === 'ready' && ticket2 === 'ready');
-  const showEmpty = !showTicket1 && !showTicket2;
-  const visibleTickets = (showTicket1 ? 1 : 0) + (showTicket2 ? 1 : 0);
+  const showEmpty = live ? laneOrders.length === 0 : !showTicket1 && !showTicket2;
+  const visibleTickets = live ? laneOrders.length : (showTicket1 ? 1 : 0) + (showTicket2 ? 1 : 0);
 
   return (
     <PosTerminalChrome onNav={onNav} activeNav="orders">
@@ -79,10 +106,10 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
         <div className="w-full flex flex-wrap items-center justify-between gap-space-xs">
           <div className="flex items-center gap-space-xs">
             <span className="inline-block w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-pulse" />
-            <span className="font-label-md text-label-md font-semibold">Wuse Branch • Till #01</span>
+            <span className="font-label-md text-label-md font-semibold">{where}</span>
             <span className="text-text-tertiary">|</span>
             <span className="font-body-md text-body-md">
-              Live Stream (3 incoming) — tickets fire here the moment a Public POS guest checks out.
+              Live Stream ({live ? kitchen.count('new') : 3} incoming) — tickets fire here the moment a Public POS guest checks out.
             </span>
           </div>
           <div className="flex items-center gap-space-xs text-badge-discount-text font-caption text-caption uppercase tracking-wider font-semibold">
@@ -107,7 +134,7 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
             <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption uppercase tracking-wider mb-space-2xs">
               <span>Live Kitchen Operations</span>
               <span>•</span>
-              <span>Wuse Branch • Till #01</span>
+              <span>{where}</span>
             </div>
             <div className="flex items-center gap-space-sm">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Kitchen Stream</h1>
@@ -136,6 +163,7 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
         <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar">
           {FILTERS.map((item) => {
             const active = filter === item.key;
+            const liveCount = live && item.key !== 'completed' ? kitchen.count(item.key) : undefined;
             return (
               <button
                 key={item.key}
@@ -148,13 +176,17 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
                 }`}
               >
                 <span>{item.label}</span>
-                {item.count !== undefined && (
+                {(live ? liveCount !== undefined : item.count !== undefined) && (
                   <span
                     className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center ${
                       active ? 'bg-primary text-on-primary font-bold' : 'bg-surface-canvas text-text-secondary font-medium'
                     }`}
                   >
-                    {item.key === 'preparing' && ticket2 === 'ready' ? Math.max(0, item.count - 1) : item.count}
+                    {live
+                      ? liveCount
+                      : item.key === 'preparing' && ticket2 === 'ready'
+                        ? Math.max(0, (item.count ?? 0) - 1)
+                        : item.count}
                   </span>
                 )}
               </button>
@@ -177,6 +209,27 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
             </span>
           </div>
 
+          {live &&
+            laneOrders.map((order) =>
+              filter === 'new' ? (
+                <LiveNewTicket
+                  key={order.id}
+                  order={order}
+                  onAccept={() => move(order, 'preparing', `Order #${order.reference} sent to kitchen display`)}
+                  onToast={showToast}
+                />
+              ) : (
+                <LiveProgressTicket
+                  key={order.id}
+                  order={order}
+                  lane={filter}
+                  onReady={() => move(order, 'ready', `Order #${order.reference} marked ready`)}
+                />
+              ),
+            )}
+
+          {!live && (
+          <>
           {/* Card 1: Urgent incoming public POS order */}
           {showTicket1 && (
             <div className="bg-surface-canvas rounded-xl shadow-md overflow-hidden relative">
@@ -435,6 +488,9 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
             </div>
           )}
 
+          </>
+          )}
+
           {/* Empty state for filter with no matching tickets */}
           {showEmpty && (
             <div className="bg-surface-canvas rounded-xl shadow-sm p-space-lg flex flex-col items-center text-center gap-space-2xs">
@@ -469,12 +525,12 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
             <div className="p-space-sm rounded-xl bg-surface-container-lowest shadow-sm flex flex-col items-center text-center gap-space-2xs">
               <span className="font-caption text-caption text-text-secondary">Active</span>
               <span className="font-display-hero text-display-hero leading-none text-text-primary">
-                {ticket1 === 'new' || ticket1 === 'printing' ? 4 : 3}
+                {live ? kitchen.active : ticket1 === 'new' || ticket1 === 'printing' ? 4 : 3}
               </span>
             </div>
             <div className="p-space-sm rounded-xl bg-surface-container-lowest shadow-sm flex flex-col items-center text-center gap-space-2xs">
               <span className="font-caption text-caption text-text-secondary">Avg Prep</span>
-              <span className="font-display-hero text-display-hero leading-none text-primary">14m</span>
+              <span className="font-display-hero text-display-hero leading-none text-primary">{live ? (kitchen.averagePrep != null ? `${Math.round(kitchen.averagePrep)}m` : '—') : '14m'}</span>
             </div>
             <div className="p-space-sm rounded-xl bg-surface-container-lowest shadow-sm flex flex-col items-center text-center gap-space-2xs">
               <span className="font-caption text-caption text-text-secondary">Alerts</span>
@@ -502,7 +558,7 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
               <span>Return to Register (F1)</span>
             </button>
             <div className="flex items-center justify-between font-caption text-caption text-text-tertiary">
-              <span>Wuse Branch • Till #01</span>
+              <span>{where}</span>
               <span className="font-medium text-text-secondary">Live Stream (3 incoming)</span>
             </div>
           </div>

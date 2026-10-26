@@ -3,6 +3,10 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { naira } from './catalogueData';
 import { PUBLIC_IMAGES } from './publicPosData';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { money, type KitchenOrder } from '../services/posService';
+import { initials, timeLabel, useLiveKitchen, useLivePos, type KitchenLane } from './posLive';
 
 interface BusinessPosKitchenStreamScreenProps {
   onBack: () => void;
@@ -67,7 +71,23 @@ export function BusinessPosKitchenStreamScreen({
 
   const showTicket1 = filter === 'new' && ticket1 !== 'rejected';
   const showTicket2 = (filter === 'preparing' && ticket2 === 'preparing') || (filter === 'ready' && ticket2 === 'ready');
-  const showEmpty = !showTicket1 && !showTicket2;
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const kitchen = useLiveKitchen();
+  const laneOrders = live ? kitchen.lane(filter) : [];
+  const showEmpty = live ? laneOrders.length === 0 : !showTicket1 && !showTicket2;
+
+  useEffect(() => {
+    if (live && kitchen.error) showToast(apiErrorMessage(kitchen.error, 'Could not load the kitchen stream.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kitchen.error]);
+
+  const move = (order: KitchenOrder, to: KitchenLane, message: string) => {
+    kitchen
+      .move(order, to)
+      .then(() => showToast(message))
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not update the ticket.')));
+  };
 
   return (
     <AppScreen>
@@ -98,18 +118,21 @@ export function BusinessPosKitchenStreamScreen({
             <div className="flex items-center gap-space-2xs min-w-0">
               <Icon name="storefront" filled className="text-[17px] text-primary" />
               <span className="font-label-sm text-label-sm text-text-secondary truncate">
-                Wuse Branch • Till #01
+                {live ? `${pos.branchName} • ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse Branch • Till #01'}
               </span>
             </div>
             <div className="flex items-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-xs py-space-2xs rounded-full shrink-0">
               <span className="inline-block w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-              <span className="font-caption text-caption font-semibold">Live Stream (3 incoming)</span>
+              <span className="font-caption text-caption font-semibold">
+                Live Stream ({live ? kitchen.count('new') : 3} incoming)
+              </span>
             </div>
           </div>
           {/* Segmented filter chips */}
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar pt-space-2xs pb-space-2xs -mx-margin px-margin">
             {FILTERS.map((item) => {
               const active = filter === item.key;
+              const liveCount = live && item.key !== 'completed' ? kitchen.count(item.key) : undefined;
               return (
                 <button
                   key={item.key}
@@ -122,13 +145,17 @@ export function BusinessPosKitchenStreamScreen({
                   }`}
                 >
                   <span>{item.label}</span>
-                  {item.count !== undefined && (
+                  {(live ? liveCount !== undefined : item.count !== undefined) && (
                     <span
                       className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center ${
                         active ? 'bg-primary text-on-primary font-bold' : 'bg-surface-variant text-text-secondary font-medium'
                       }`}
                     >
-                      {item.key === 'preparing' && ticket2 === 'ready' ? Math.max(0, item.count - 1) : item.count}
+                      {live
+                        ? liveCount
+                        : item.key === 'preparing' && ticket2 === 'ready'
+                          ? Math.max(0, (item.count ?? 0) - 1)
+                          : item.count}
                     </span>
                   )}
                 </button>
@@ -139,6 +166,27 @@ export function BusinessPosKitchenStreamScreen({
 
         {/* Main order stream */}
         <div className="px-margin flex flex-col gap-space-md pt-space-md">
+          {live &&
+            laneOrders.map((order) =>
+              filter === 'new' ? (
+                <LiveNewTicket
+                  key={order.id}
+                  order={order}
+                  onAccept={() => move(order, 'preparing', `Order #${order.reference} sent to kitchen display`)}
+                  onToast={showToast}
+                />
+              ) : (
+                <LiveProgressTicket
+                  key={order.id}
+                  order={order}
+                  lane={filter}
+                  onReady={() => move(order, 'ready', `Order #${order.reference} marked ready`)}
+                />
+              ),
+            )}
+
+          {!live && (
+          <>
           {/* Card 1: Urgent incoming public POS order */}
           {showTicket1 && (
             <div className="bg-surface-canvas rounded-xl shadow-md overflow-hidden relative">
@@ -395,6 +443,9 @@ export function BusinessPosKitchenStreamScreen({
             </div>
           )}
 
+          </>
+          )}
+
           {/* Empty state for filter with no matching tickets */}
           {showEmpty && (
             <div className="bg-surface-canvas rounded-xl shadow-sm p-space-md flex flex-col items-center text-center gap-space-2xs">
@@ -416,12 +467,12 @@ export function BusinessPosKitchenStreamScreen({
               <div className="flex flex-col items-center p-space-2xs">
                 <span className="font-caption text-caption text-text-secondary">Active</span>
                 <span className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                  {ticket1 === 'new' || ticket1 === 'printing' ? 4 : 3}
+                  {live ? kitchen.active : ticket1 === 'new' || ticket1 === 'printing' ? 4 : 3}
                 </span>
               </div>
               <div className="flex flex-col items-center p-space-2xs">
                 <span className="font-caption text-caption text-text-secondary">Avg Prep</span>
-                <span className="font-heading-sm text-heading-sm font-bold text-primary">14m</span>
+                <span className="font-heading-sm text-heading-sm font-bold text-primary">{live ? (kitchen.averagePrep != null ? `${Math.round(kitchen.averagePrep)}m` : '—') : '14m'}</span>
               </div>
               <div className="flex flex-col items-center p-space-2xs">
                 <span className="font-caption text-caption text-text-secondary">Alerts</span>
@@ -452,5 +503,188 @@ export function BusinessPosKitchenStreamScreen({
         </div>
       )}
     </AppScreen>
+  );
+}
+
+const lineCount = (order: KitchenOrder) => (order.lines ?? []).reduce((sum, line) => sum + line.quantity, 0);
+
+/** A live "New" lane ticket — same card as the demo's incoming order. */
+export function LiveNewTicket({ order, onAccept, onToast }: { order: KitchenOrder; onAccept: () => void; onToast: (message: string) => void }) {
+  const guest = order.guestName || 'Walk-in guest';
+  return (
+    <div className="bg-surface-canvas rounded-xl shadow-md overflow-hidden relative">
+      <div className="h-1.5 w-full bg-primary-container" />
+      <div className="bg-surface-tint-blue px-space-md py-space-xs flex items-center justify-between gap-space-xs">
+        <div className="flex items-center gap-space-2xs min-w-0">
+          <Icon name="bolt" filled className="text-[17px] text-primary shrink-0" />
+          <span className="font-label-sm text-label-sm text-primary font-semibold uppercase tracking-wider truncate">New Order</span>
+        </div>
+        <span className="font-caption text-caption text-text-secondary flex items-center gap-space-2xs shrink-0">
+          <Icon name="schedule" className="text-[13px]" />
+          <span>{timeLabel(order.createdAt)}</span>
+        </span>
+      </div>
+      <div className="p-space-md flex flex-col gap-space-sm">
+        <div className="flex items-start justify-between gap-space-xs">
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-space-2xs">
+              <span className="font-heading-sm text-heading-sm text-text-primary">Order #{order.reference}</span>
+              {order.tableNumber && (
+                <span className="bg-secondary-fixed text-on-secondary-fixed font-caption text-caption px-space-xs py-space-2xs rounded-md font-semibold shrink-0">
+                  Table {order.tableNumber}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-space-2xs mt-space-2xs text-text-secondary">
+              <Icon name="restaurant" className="text-[15px] text-text-tertiary" />
+              <span className="font-caption text-caption">{order.tableNumber ? 'Dine-In' : 'Takeaway'} • Guest Order</span>
+            </div>
+          </div>
+          {order.tableNumber && (
+            <div className="w-12 h-12 rounded-xl bg-surface-container-high flex flex-col items-center justify-center text-primary shrink-0">
+              <Icon name="table_restaurant" className="text-[19px]" />
+              <span className="font-caption text-caption font-bold">T-{order.tableNumber}</span>
+            </div>
+          )}
+        </div>
+        <div className="bg-surface-container-low rounded-lg p-space-sm flex items-center justify-between gap-space-xs">
+          <div className="flex items-center gap-space-sm min-w-0">
+            <div className="w-9 h-9 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-bold font-label-md text-label-md shrink-0">
+              {initials(guest)}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-label-md text-label-md text-text-primary font-semibold truncate">{guest}</span>
+              <span className="font-caption text-caption text-text-secondary truncate">—</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-space-2xs">
+          <div className="flex items-center justify-between gap-space-xs">
+            <span className="font-label-sm text-label-sm font-semibold text-text-secondary uppercase">Order Items ({lineCount(order)})</span>
+            <span className="font-caption text-caption text-badge-discount-text bg-badge-discount-bg px-space-xs py-space-2xs rounded font-medium">
+              Auto-synced
+            </span>
+          </div>
+          {(order.lines ?? []).map((line, index) => (
+            <div key={`${line.name}-${index}`} className="flex items-center justify-between gap-space-sm bg-surface-subtle p-space-2xs rounded-lg">
+              <div className="flex items-center gap-space-2xs min-w-0">
+                <span className="w-5 h-5 rounded-full bg-primary text-on-primary font-caption text-caption font-bold flex items-center justify-center shrink-0">
+                  {line.quantity}
+                </span>
+                <span className="font-label-md text-label-md text-text-primary font-semibold truncate">{line.name}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {order.notes && (
+          <div className="bg-surface-container-high rounded-lg p-space-sm flex items-start gap-space-xs">
+            <Icon name="info" filled className="text-[17px] text-tertiary shrink-0 mt-0.5" />
+            <div className="flex flex-col min-w-0">
+              <span className="font-caption text-caption font-semibold text-text-primary">Kitchen &amp; Waiter Note</span>
+              <span className="font-caption text-caption text-text-secondary">{order.notes}</span>
+            </div>
+          </div>
+        )}
+        <div className="bg-surface-tint-blue rounded-xl p-space-sm flex items-center justify-between gap-space-xs">
+          <div className="flex flex-col">
+            <span className="font-caption text-caption text-text-secondary">Order Total Value</span>
+            <span className="font-heading-sm text-heading-sm text-primary font-bold">{naira(money(order.totalAmount))}</span>
+          </div>
+          {!order.paid && (
+            <div className="flex items-center gap-space-2xs bg-error-container text-on-error-container px-space-xs py-space-2xs rounded-md shrink-0">
+              <Icon name="schedule" className="text-[13px]" />
+              <span className="font-caption text-caption font-bold">Unpaid</span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-space-2xs pt-space-2xs">
+          <button
+            type="button"
+            onClick={onAccept}
+            className="w-full h-11 bg-primary text-on-primary rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-transform"
+          >
+            <Icon name="check_circle" className="text-[20px]" />
+            <span>Accept Order &amp; Send to Kitchen</span>
+          </button>
+          <div className="grid grid-cols-2 gap-space-2xs">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="h-11 bg-surface-container text-text-primary rounded-lg font-button-secondary text-button-secondary flex items-center justify-center gap-space-2xs active:scale-95 transition-transform"
+            >
+              <Icon name="receipt_long" className="text-[17px]" />
+              <span>Print Chit</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onToast('Rejecting kitchen tickets is coming soon')}
+              className="h-11 bg-error-container text-on-error-container rounded-lg font-button-secondary text-button-secondary flex items-center justify-center gap-space-2xs active:scale-95 transition-transform"
+            >
+              <Icon name="cancel" className="text-[17px]" />
+              <span>Reject / Out</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A live "Preparing" / "Ready" / "Completed" ticket — same card as the demo's in-progress order. */
+export function LiveProgressTicket({ order, lane, onReady }: { order: KitchenOrder; lane: KitchenLane; onReady: () => void }) {
+  if (lane !== 'preparing') {
+    return (
+      <div className="bg-surface-canvas rounded-xl shadow-sm overflow-hidden">
+        <div className="p-space-md flex items-center justify-between gap-space-xs bg-badge-discount-bg text-badge-discount-text">
+          <div className="flex items-center gap-space-xs min-w-0">
+            <Icon name={lane === 'ready' ? 'notifications_active' : 'task_alt'} className="text-[19px] shrink-0" />
+            <span className="font-label-md text-label-md font-semibold truncate">
+              Order #{order.reference} {lane === 'ready' ? 'Ready for Pickup' : 'Completed'}
+            </span>
+          </div>
+          <span className="font-caption text-caption font-bold shrink-0">{naira(money(order.totalAmount))}</span>
+        </div>
+      </div>
+    );
+  }
+  const names = (order.lines ?? []).map((line) => line.name).join(', ');
+  return (
+    <div className="bg-surface-canvas rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-surface-container px-space-md py-space-xs flex items-center justify-between gap-space-xs">
+        <div className="flex items-center gap-space-2xs min-w-0">
+          <Icon name="local_fire_department" filled className="text-[17px] text-tertiary-container shrink-0" />
+          <span className="font-label-sm text-label-sm font-semibold text-text-primary truncate">Order #{order.reference}</span>
+        </div>
+        <span className="font-caption text-caption bg-tertiary-fixed text-on-tertiary-fixed px-space-xs py-space-2xs rounded-full font-bold shrink-0">
+          Elapsed: {order.elapsedMinutes ?? 0} mins
+        </span>
+      </div>
+      <div className="p-space-md flex flex-col gap-space-2xs">
+        <div className="flex items-start justify-between gap-space-xs">
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-space-2xs">
+              <span className="font-label-md text-label-md font-semibold text-text-primary">{order.guestName || 'Walk-in guest'}</span>
+              <span className="bg-surface-container-high text-text-secondary text-[11px] px-space-xs py-0.5 rounded font-medium shrink-0">
+                {order.tableNumber ? `Table ${order.tableNumber}` : 'Takeaway'}
+              </span>
+            </div>
+            <span className="font-caption text-caption text-text-secondary mt-0.5 truncate">
+              {lineCount(order)} Items{names ? ` (${names})` : ''}
+            </span>
+          </div>
+          <span className="font-label-md text-label-md font-bold text-text-primary shrink-0">{naira(money(order.totalAmount))}</span>
+        </div>
+        <div className="flex items-center justify-end pt-space-xs gap-space-xs">
+          <button
+            type="button"
+            onClick={onReady}
+            className="h-10 px-space-md bg-primary text-on-primary rounded-lg font-button-secondary text-button-secondary flex items-center gap-space-2xs shadow-sm active:scale-95 transition-transform shrink-0"
+          >
+            <span>Mark Ready</span>
+            <Icon name="arrow_forward" className="text-[15px]" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { ApiError, hasApiConfig } from '../services/api/client';
-import { money, personName, posService, type NewSaleInput, type PosSale, type PosTill } from '../services/posService';
+import { money, personName, posService, type KitchenOrder, type KitchenStatus, type NewSaleInput, type PosSale, type PosTill } from '../services/posService';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { usePosOffline } from '../context/PosOfflineContext';
 import { useProfile } from '../context/ProfileContext';
@@ -492,4 +492,37 @@ export function usePosRefund() {
     }
   };
   return { refund, pending: refundSale.isPending };
+}
+
+/** Kitchen lanes as the screens name them; the API calls "preparing" `processing`. */
+export type KitchenLane = 'new' | 'preparing' | 'ready' | 'completed';
+const LANE_STATUS: Record<KitchenLane, KitchenStatus> = { new: 'new', preparing: 'processing', ready: 'ready', completed: 'completed' };
+
+/** Initials for a guest avatar: "Samuel Adeleke" → "SA". */
+export const initials = (name?: string | null) =>
+  (name ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]!.toUpperCase())
+    .join('') || 'G';
+
+/** The branch's kitchen stream (polled), grouped by lane, with a status mover. */
+export function useLiveKitchen() {
+  const stream = useKitchenStream();
+  const { setKitchenStatus } = usePosMutations();
+  const orders = stream.data?.data ?? [];
+  const lane = (key: KitchenLane) => orders.filter((order) => order.status === LANE_STATUS[key]);
+  const count = (key: KitchenLane) => stream.data?.counts?.[LANE_STATUS[key]] ?? lane(key).length;
+  return {
+    orders,
+    lane,
+    count,
+    active: count('new') + count('preparing') + count('ready'),
+    averagePrep: stream.data?.averagePrepMinutes ?? null,
+    error: stream.error,
+    move: (order: KitchenOrder, to: KitchenLane) => setKitchenStatus.mutateAsync({ id: order.id, status: LANE_STATUS[to] }),
+    moving: setKitchenStatus.isPending,
+    refetch: stream.refetch,
+  };
 }

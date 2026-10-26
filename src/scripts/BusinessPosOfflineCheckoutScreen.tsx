@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { useLivePos } from './posLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 
@@ -44,7 +46,17 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const queuedCount = live ? pos.offline.pendingCount : 5;
+  const tillLabel = live ? (pos.isOpen ? pos.tillName : 'this till') : 'Till #01';
+
   const completeSale = () => {
+    if (live) {
+      // The register queues sales on this device by itself while offline.
+      showToast('Ring this sale up on the register — offline sales queue on this device automatically');
+      return;
+    }
     if (saleState !== 'idle') return;
     setSaleState('saving');
     saleTimer.current = window.setTimeout(() => {
@@ -112,11 +124,11 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
                   </span>
                 </div>
                 <span className="bg-tertiary text-on-tertiary font-caption text-caption px-2 py-0.5 rounded-full font-medium shrink-0">
-                  5 queued sales
+                  {queuedCount} queued sales
                 </span>
               </div>
               <p className="font-caption text-caption text-on-tertiary-fixed-variant leading-relaxed">
-                Sales are stored encrypted on Till #01. Automatic cloud reconciliation fires the second network returns.
+                Sales are stored encrypted on {tillLabel}. Automatic cloud reconciliation fires the second network returns.
               </p>
             </div>
           </div>
@@ -129,7 +141,7 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               <span className="flex items-center gap-1.5 min-w-0">
                 <Icon name="storefront" className="text-primary text-[17px] shrink-0" />
                 <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
-                  Wuse Branch (Flagship)
+                  {live ? pos.branchName : 'Wuse Branch (Flagship)'}
                 </span>
               </span>
               <span className="inline-flex items-center gap-1 bg-error-container text-on-error-container font-caption text-caption px-2 py-0.5 rounded-full font-medium shrink-0">
@@ -138,8 +150,8 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               </span>
             </div>
             <div className="flex items-center justify-between gap-space-xs font-caption text-caption text-text-secondary pt-1">
-              <span className="truncate">Till #01 • Cashier: Emeka Okafor</span>
-              <span className="text-tertiary font-medium shrink-0">Buffer Cap: 5 / 500 Txs</span>
+              <span className="truncate">{live ? `${tillLabel} • Cashier: ${pos.cashierName}` : 'Till #01 • Cashier: Emeka Okafor'}</span>
+              <span className="text-tertiary font-medium shrink-0">Buffer Cap: {queuedCount} / 500 Txs</span>
             </div>
           </div>
 

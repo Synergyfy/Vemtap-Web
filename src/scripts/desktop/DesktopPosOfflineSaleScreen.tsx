@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useLivePos } from '../posLive';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 
@@ -83,7 +85,17 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const queuedCount = live ? pos.offline.pendingCount : 5;
+  const tillLabel = live ? (pos.isOpen ? pos.tillName : 'this till') : 'Till #01';
+
   const completeSale = () => {
+    if (live) {
+      // The register queues sales on this device by itself while offline.
+      showToast('Ring this sale up on the register — offline sales queue on this device automatically');
+      return;
+    }
     if (saleState !== 'idle') return;
     setSaleState('saving');
     saleTimer.current = window.setTimeout(() => {
@@ -131,7 +143,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
           <div className="flex flex-wrap items-center gap-space-sm shrink-0">
             <button
               type="button"
-              onClick={() => showToast('Local queue holds 5 buffered transactions pending sync')}
+              onClick={() => showToast(`Local queue holds ${queuedCount} buffered transactions pending sync`)}
               className="inline-flex items-center gap-space-xs px-space-md py-3 rounded-xl bg-surface-container-high text-on-surface font-button-secondary text-button-secondary hover:bg-surface-subtle transition-colors"
             >
               <Icon name="inventory_2" className="text-[18px]" />
@@ -158,11 +170,11 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
                 </span>
               </div>
               <span className="bg-error-container text-on-error-container font-caption text-caption px-2 py-0.5 rounded-full font-medium shrink-0">
-                5 queued sales
+                {queuedCount} queued sales
               </span>
             </div>
             <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-              Sales are stored encrypted on Till #01. Automatic cloud reconciliation fires the second network returns.
+              Sales are stored encrypted on {tillLabel}. Automatic cloud reconciliation fires the second network returns.
             </p>
           </div>
         </div>
@@ -177,7 +189,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
                   Terminal Context
                 </span>
                 <span className="font-heading-sm text-heading-sm text-on-surface mt-space-2xs">
-                  Wuse Branch (Flagship)
+                  {live ? pos.branchName : 'Wuse Branch (Flagship)'}
                 </span>
               </div>
               <div className="w-10 h-10 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary">
@@ -185,7 +197,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               </div>
             </div>
             <span className="font-label-sm text-label-sm text-text-secondary mt-space-md">
-              Till #01 • Cashier: Emeka Okafor
+              {live ? `${tillLabel} • Cashier: ${pos.cashierName}` : 'Till #01 • Cashier: Emeka Okafor'}
             </span>
           </div>
 
@@ -222,7 +234,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               <span className="font-display-hero text-display-hero text-on-surface leading-none">5 / 500</span>
               <div className="mt-space-2xs flex items-center justify-between">
                 <span className="font-label-sm text-label-sm text-text-secondary">Txs buffered</span>
-                <span className="font-caption text-caption text-primary font-medium">5 queued sales</span>
+                <span className="font-caption text-caption text-primary font-medium">{queuedCount} queued sales</span>
               </div>
             </div>
           </div>
@@ -501,7 +513,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               <SaleCta state={saleState} onClick={completeSale} className="w-full py-3" />
               <button
                 type="button"
-                onClick={() => showToast('Local queue holds 5 buffered transactions pending sync')}
+                onClick={() => showToast(`Local queue holds ${queuedCount} buffered transactions pending sync`)}
                 className="w-full py-3 flex items-center justify-center gap-1.5 font-button-secondary text-button-secondary text-text-secondary hover:text-text-primary transition-colors"
               >
                 <Icon name="inventory_2" className="text-[17px]" />
