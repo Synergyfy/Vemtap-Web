@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { DesktopBusinessBookingsScreen } from './DesktopBusinessBookingsScreen';
@@ -26,7 +26,7 @@ export function DesktopBusinessOrdersScreen({
   onNav,
   initialView = 'orders',
 }: DesktopBusinessOrdersScreenProps) {
-  const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings } = useStoreOrdering();
+  const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings, lastError, clearLastError } = useStoreOrdering();
 
   const [view, setView] = useState<'orders' | 'bookings' | 'detail'>(
     initialView === 'bookings' ? 'bookings' : 'orders'
@@ -51,31 +51,12 @@ export function DesktopBusinessOrdersScreen({
     window.setTimeout(() => setToast(null), 3000);
   };
 
-  // If viewing bookings
-  if (view === 'bookings') {
-    return (
-      <DesktopBusinessBookingsScreen
-        onNav={onNav}
-        onOpenOrders={() => {
-          setView('orders');
-          setTab('orders');
-        }}
-      />
-    );
-  }
-
-  // If viewing single order detail
-  if (view === 'detail') {
-    return (
-      <DesktopBusinessOrderDetailScreen
-        onNav={onNav}
-        order={selectedOrder || orders[0]}
-        onBack={() => setView('orders')}
-        onAccept={() => showToast(`Order accepted — sent to kitchen`)}
-        onDecline={() => showToast(`Decline flow handled`)}
-      />
-    );
-  }
+  // Live: a refused status change or payment comes back here.
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
 
   // Filter & Search Logic
   const filteredOrders = useMemo(() => {
@@ -164,6 +145,32 @@ export function DesktopBusinessOrdersScreen({
     });
     showToast(`All ${attentionOrders.length} pending orders accepted — kitchen notified`);
   };
+
+  // If viewing bookings (after every hook, so switching views keeps the hook order)
+  if (view === 'bookings') {
+    return (
+      <DesktopBusinessBookingsScreen
+        onNav={onNav}
+        onOpenOrders={() => {
+          setView('orders');
+          setTab('orders');
+        }}
+      />
+    );
+  }
+
+  // If viewing single order detail
+  if (view === 'detail') {
+    return (
+      <DesktopBusinessOrderDetailScreen
+        onNav={onNav}
+        order={selectedOrder || orders[0]}
+        onBack={() => setView('orders')}
+        onAccept={() => showToast(`Order accepted — sent to kitchen`)}
+        onDecline={() => showToast(`Decline flow handled`)}
+      />
+    );
+  }
 
   const getOriginBadge = (origin: StoreOrderOrigin) => {
     switch (origin) {

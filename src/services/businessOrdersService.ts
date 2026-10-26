@@ -25,7 +25,19 @@ export interface BusinessOrder {
   totalAmount?: number | string | null;
   bookingDate?: string | null;
   bookingTime?: string | null;
-  items?: { id?: string; quantity?: number | null; priceAtOrder?: number | string | null; item?: { name?: string | null } | null }[] | null;
+  items?: {
+    id?: string;
+    quantity?: number | null;
+    priceAtOrder?: number | string | null;
+    item?: { name?: string | null; mainImage?: string | null } | null;
+    offer?: { title?: string | null } | null;
+  }[] | null;
+  /** When each status was reached (ISO), e.g. `{ new, processing, ready }`. */
+  statusTimeline?: Partial<Record<string, string>> | null;
+  source?: string | null;
+  paymentStatus?: string | null;
+  payment?: { method?: string | null; amountDue?: number | null; amountReceived?: number | null } | null;
+  attendedByUser?: Person | null;
 }
 
 /** `GET /bookings` row (business side). */

@@ -1,8 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useBusinessOrder, useOrderStatusMutations } from '../hooks/business/useBusinessOrders';
+import { hasApiConfig } from '../services/api/client';
+import type { OrderStatus } from '../services/businessOrdersService';
+import { apiErrorMessage } from '../services/errorMessages';
+import { formatNaira, formatRelativeTime, parsePrice } from '../utils/format';
+import {
+  clockTime,
+  isOrderPaid,
+  orderPaymentLabel,
+  orderQuantity,
+  orderRef,
+  orderStatus,
+  orderTotalLabel,
+  personName,
+} from './ordersLive';
 
 interface BusinessOrderDetailScreenProps {
+  /** Live: the order to show (from the orders feed). */
+  orderId?: string;
   onBack: () => void;
 }
 
@@ -70,8 +87,10 @@ interface ToastState {
   error?: boolean;
 }
 
-export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenProps) {
-  const [accepted, setAccepted] = useState(false);
+const STEP_RANK: Record<string, number> = { new: 0, processing: 1, ready: 2, completed: 3 };
+
+export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDetailScreenProps) {
+  const [demoAccepted, setAccepted] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -88,7 +107,50 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
 
+  // Live: the real order, with status changes sent to the API.
+  const live = hasApiConfig();
+  const order = useBusinessOrder(live ? orderId : null).data;
+  const { order: statusMutation } = useOrderStatusMutations();
+  const status = order ? orderStatus(order) : 'new';
+  const rank = STEP_RANK[status] ?? 0;
+  const closed = live && STEP_RANK[status] === undefined;
+  const accepted = live ? status !== 'new' : demoAccepted;
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+  const ref = order ? orderRef(order) : '—';
+  const total = order ? orderTotalLabel(order) : '—';
+  const customer = order ? personName(order.customer) : '—';
+  const phone = order?.customer?.phone ?? '';
+  const branchName = order?.branch?.name ?? '—';
+  const liveItems: OrderItem[] = (order?.items ?? []).map((line) => {
+    const quantity = line.quantity ?? 1;
+    const unit = parsePrice(line.priceAtOrder);
+    return {
+      img: line.item?.mainImage ?? '',
+      alt: line.item?.name ?? 'Item',
+      name: line.item?.name ?? line.offer?.title ?? 'Item',
+      price: formatNaira(unit * quantity),
+      modifier: line.offer?.title ? `Deal: ${line.offer.title}` : '',
+      qty: `Qty: ${quantity}`,
+      unit: quantity > 1 ? `${formatNaira(unit)} each` : undefined,
+    };
+  });
+  const items = v(liveItems, ORDER_ITEMS);
+  const quantity = order ? orderQuantity(order) : 0;
+  const timeline = order?.statusTimeline ?? {};
+
+  const setStatus = (next: OrderStatus, message: string, icon: string) => {
+    if (!order) return;
+    statusMutation.mutate(
+      { id: order.id, status: next },
+      {
+        onSuccess: () => showToast(message, icon),
+        onError: (error) => showToast(apiErrorMessage(error), 'error', true),
+      },
+    );
+  };
+
   const handleAccept = () => {
+    if (live) return setStatus('processing', `Order ${ref} accepted`, 'restaurant');
     setAccepted(true);
     showToast('Order #VG-94021 confirmed & sent to grill!', 'restaurant');
   };
@@ -129,9 +191,9 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
         <div className="px-margin pt-space-sm pb-space-xs flex items-center justify-between">
           <div className="flex items-center gap-space-xs min-w-0">
             <span className="inline-flex items-center justify-center px-space-xs py-1 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm font-semibold shrink-0">
-              #VG-94021
+              {v(ref, '#VG-94021')}
             </span>
-            <span className="font-caption text-caption text-text-secondary truncate">Wuse II Branch</span>
+            <span className="font-caption text-caption text-text-secondary truncate">{v(branchName, 'Wuse II Branch')}</span>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
             <button
@@ -164,31 +226,52 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-tertiary-container" />
                 </span>
                 <span className="font-label-md text-label-md text-tertiary-container font-semibold tracking-wide uppercase">
-                  {accepted ? 'Accepted • In Preparation' : 'New Incoming Order'}
+                  {closed
+                    ? `Order ${status.replace('_', ' ')}`
+                    : live && rank >= 2
+                      ? status === 'completed'
+                        ? 'Completed'
+                        : 'Ready for Pickup'
+                      : accepted
+                        ? 'Accepted • In Preparation'
+                        : 'New Incoming Order'}
                 </span>
               </div>
               <div className="flex items-center gap-1 text-on-surface-variant font-caption text-caption bg-surface-container px-space-xs py-0.5 rounded-full">
                 <Icon name="schedule" className="text-[14px]" />
-                <span>4m ago</span>
+                <span>{v(formatRelativeTime(order?.createdAt), '4m ago')}</span>
               </div>
             </div>
             <div className="mt-space-xs">
               <h2 className="font-heading-md text-heading-md text-text-primary tracking-tight">
-                {accepted ? 'Kitchen Accepted & Preparing' : 'Awaiting Kitchen Acceptance'}
+                {closed
+                  ? 'This order is closed'
+                  : live && status === 'completed'
+                    ? 'Order Completed'
+                    : live && status === 'ready'
+                      ? 'Ready & Awaiting Handover'
+                      : accepted
+                        ? 'Kitchen Accepted & Preparing'
+                        : 'Awaiting Kitchen Acceptance'}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary mt-1 flex items-center gap-1.5">
                 <Icon name="timer" className="text-[18px] text-primary" />
                 Estimated pickup preparation window:
-                <span className="font-semibold text-text-primary">25 mins</span>
+                <span className="font-semibold text-text-primary">{v('—', '25 mins')}</span>
               </p>
             </div>
             {/* Hero Fast Triage Action Buttons */}
-            {!accepted && (
+            {!accepted && !closed && (
               <div className="grid grid-cols-2 gap-space-sm mt-space-md pt-space-xs">
                 <button
                   className="h-12 rounded-xl bg-error-container text-on-error-container font-button-secondary text-button-secondary font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
                   type="button"
-                  onClick={() => showToast('Decline modal opened: notify kitchen lead', 'warning', true)}
+                  disabled={statusMutation.isPending}
+                  onClick={() =>
+                    live
+                      ? setStatus('rejected', `Order ${ref} declined`, 'warning')
+                      : showToast('Decline modal opened: notify kitchen lead', 'warning', true)
+                  }
                 >
                   <Icon name="close" className="text-[20px]" />
                   Decline
@@ -196,6 +279,7 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                 <button
                   className="h-12 rounded-xl bg-primary-container text-on-primary-container font-button-primary text-button-primary font-semibold flex items-center justify-center gap-1.5 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-transform"
                   type="button"
+                  disabled={statusMutation.isPending}
                   onClick={handleAccept}
                 >
                   <Icon name="restaurant" className="text-[20px]" />
@@ -204,10 +288,10 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
               </div>
             )}
             {/* Kitchen Status Confirmation */}
-            {accepted && (
+            {accepted && !closed && (
               <div className="mt-space-sm p-space-xs rounded-lg bg-badge-discount-bg text-badge-discount-text font-label-md text-label-md flex items-center gap-space-xs justify-center text-center">
                 <Icon name="check_circle" className="text-[18px]" />
-                <span>Ticket sent to Kitchen Display #2</span>
+                <span>{v(`Status: ${status === 'processing' ? 'In preparation' : status}`, 'Ticket sent to Kitchen Display #2')}</span>
               </div>
             )}
           </div>
@@ -219,34 +303,40 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-space-sm min-w-0">
                 <div className="relative w-12 h-12 rounded-full overflow-hidden bg-surface-container-high flex-shrink-0">
-                  <img alt={CUSTOMER_ALT} className="w-full h-full object-cover" src={CUSTOMER_IMG} />
+                  {live ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Icon name="person" className="text-text-secondary text-[24px]" />
+                    </div>
+                  ) : (
+                    <img alt={CUSTOMER_ALT} className="w-full h-full object-cover" src={CUSTOMER_IMG} />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-space-2xs">
                     <h3 className="font-heading-sm text-heading-sm text-text-primary leading-tight truncate">
-                      Amina Bello
+                      {v(customer, 'Amina Bello')}
                     </h3>
                     <Icon name="verified" filled className="text-primary text-[18px]" />
                   </div>
-                  <p className="font-caption text-caption text-text-secondary">+234 803 219 8831</p>
+                  <p className="font-caption text-caption text-text-secondary">{v(phone || '—', '+234 803 219 8831')}</p>
                 </div>
               </div>
               <span className="px-space-xs py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1 shrink-0">
                 <Icon name="stars" className="text-[14px]" />
-                Loyal Tier
+                {v('—', 'Loyal Tier')}
               </span>
             </div>
             <div className="flex items-center gap-space-xs bg-surface-subtle p-space-xs rounded-lg">
               <Icon name="military_tech" className="text-primary text-[20px]" />
               <span className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                12 previous orders • 450 Tap Points accumulated
+                {v('—', '12 previous orders • 450 Tap Points accumulated')}
               </span>
             </div>
             {/* Quick Communication Buttons */}
             <div className="grid grid-cols-2 gap-space-xs pt-1">
               <a
                 className="h-11 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center gap-space-xs font-button-secondary text-button-secondary hover:bg-surface-container-highest transition-colors active:scale-[0.98]"
-                href="tel:+2348032198831"
+                href={v(phone ? `tel:${phone.replace(/\s+/g, '')}` : undefined, 'tel:+2348032198831')}
               >
                 <Icon name="call" className="text-[18px]" />
                 Call Customer
@@ -254,7 +344,7 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
               <button
                 className="h-11 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center gap-space-xs font-button-secondary text-button-secondary hover:bg-primary-fixed transition-colors active:scale-[0.98]"
                 type="button"
-                onClick={() => showToast('Opening encrypted chat with Amina...', 'chat')}
+                onClick={() => showToast(v(`Opening chat with ${customer}...`, 'Opening encrypted chat with Amina...'), 'chat')}
               >
                 <Icon name="chat" className="text-[18px]" />
                 VEMTAP Chat
@@ -268,7 +358,10 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                   Self-Pickup Instructions
                 </span>
                 <p className="font-body-md text-body-md text-text-primary mt-0.5 leading-snug">
-                  Self-Pickup at Wuse II Counter • Customer arriving in white Toyota Camry (Abuja plates).
+                  {v(
+                    order?.notes || (order?.tableNumber ? `Serve at table ${order.tableNumber}` : '—'),
+                    'Self-Pickup at Wuse II Counter • Customer arriving in white Toyota Camry (Abuja plates).',
+                  )}
                 </p>
               </div>
             </div>
@@ -281,21 +374,21 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
             <div className="flex items-center justify-between pb-space-xs">
               <div className="flex items-center gap-space-2xs min-w-0">
                 <Icon name="dinner_dining" className="text-primary text-[20px]" />
-                <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Order Items (3 items, 5 qty)</h3>
+                <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">{v(`Order Items (${items.length} items, ${quantity} qty)`, 'Order Items (3 items, 5 qty)')}</h3>
               </div>
               <span className="font-caption text-caption bg-surface-container px-space-xs py-0.5 rounded-full text-on-surface-variant font-medium shrink-0">
-                Kitchen Ready
+                {v(status === 'ready' || status === 'completed' ? 'Kitchen Ready' : 'In Queue', 'Kitchen Ready')}
               </span>
             </div>
-            {ORDER_ITEMS.map((item) => (
+            {items.map((item, index) => (
               <div
                 className={`py-space-sm flex items-start gap-space-sm ${
                   item.highlight ? 'bg-surface-subtle rounded-lg px-space-xs' : ''
                 }`}
-                key={item.name}
+                key={`${item.name}-${index}`}
               >
                 <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container">
-                  <img alt={item.alt} className="w-full h-full object-cover" src={item.img} />
+                  {item.img && <img alt={item.alt} className="w-full h-full object-cover" src={item.img} />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-space-xs">
@@ -319,9 +412,11 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
             {/* Subtotal & Ledger Breakdown */}
             <div className="mt-space-sm pt-space-sm bg-surface-container-low p-space-sm rounded-xl flex flex-col gap-1.5">
               <div className="flex items-center justify-between font-body-md text-body-md text-text-secondary">
-                <span>Subtotal (5 items)</span>
-                <span>₦34,500</span>
+                <span>{v(`Subtotal (${quantity} items)`, 'Subtotal (5 items)')}</span>
+                <span>{v(total, '₦34,500')}</span>
               </div>
+              {!live && (
+              <>
               <div className="flex items-center justify-between font-body-md text-body-md text-badge-discount-text">
                 <span className="flex items-center gap-1">
                   <Icon name="local_offer" className="text-[16px]" />
@@ -336,11 +431,13 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                 </span>
                 <span>-₦1,000</span>
               </div>
+              </>
+              )}
               <div className="mt-space-2xs pt-space-xs flex items-center justify-between">
                 <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
                   Total Payable to Merchant
                 </span>
-                <span className="font-heading-md text-heading-md text-primary font-bold">₦31,000</span>
+                <span className="font-heading-md text-heading-md text-primary font-bold">{v(total, '₦31,000')}</span>
               </div>
               {/* Direct Merchant Settlement Box */}
               <div className="mt-space-xs p-space-sm rounded-lg bg-surface-canvas border border-border-subtle flex flex-col gap-space-xs">
@@ -350,7 +447,15 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                   </span>
                   <span className="px-space-xs py-0.5 rounded-full bg-error-container text-error font-caption text-caption font-semibold flex items-center gap-1">
                     <Icon name="pending" className="text-[14px]" />
-                    {accepted ? 'Collect at Handover' : 'Pending Payment at Counter'}
+                    {live && order
+                      ? isOrderPaid(order)
+                        ? 'Settled'
+                        : accepted
+                          ? 'Collect at Handover'
+                          : 'Pending Payment at Counter'
+                      : accepted
+                        ? 'Collect at Handover'
+                        : 'Pending Payment at Counter'}
                   </span>
                 </div>
                 <div className="flex items-start justify-between gap-space-xs pt-0.5">
@@ -358,19 +463,19 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                     <Icon name="point_of_sale" className="text-primary text-[20px]" />
                     <div>
                       <p className="font-label-md text-label-md font-semibold text-text-primary">
-                        POS Terminal / Card Swipe
+                        {v(order?.payment?.method ?? 'POS, cash or transfer', 'POS Terminal / Card Swipe')}
                       </p>
                       <p className="font-caption text-caption text-text-secondary">
-                        Pay at Business Location (Counter Pickup)
+                        {v(order ? orderPaymentLabel(order) : '—', 'Pay at Business Location (Counter Pickup)')}
                       </p>
                     </div>
                   </div>
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">₦31,000</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{v(total, '₦31,000')}</span>
                 </div>
                 <div className="p-space-xs rounded bg-surface-container-low flex items-start gap-1.5 mt-0.5">
                   <Icon name="info" className="text-primary text-[16px] mt-0.5 flex-shrink-0" />
                   <p className="font-caption text-caption text-text-secondary leading-snug">
-                    VEMTAP does not process customer funds. Settle ₦31,000 directly via your store POS, cash, or bank
+                    VEMTAP does not process customer funds. Settle {v(total, '₦31,000')} directly via your store POS, cash, or bank
                     transfer upon pickup.
                   </p>
                 </div>
@@ -395,7 +500,7 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="font-label-md text-label-md font-semibold text-text-primary">Order Placed</span>
-                    <span className="font-caption text-caption text-text-secondary">1:45 PM</span>
+                    <span className="font-caption text-caption text-text-secondary">{v(clockTime(order?.createdAt), '1:45 PM')}</span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary">
                     Customer finalized order on VEMTAP Mobile
@@ -412,10 +517,12 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                     <span className="font-label-md text-label-md font-semibold text-text-primary">
                       Payment Method Selected
                     </span>
-                    <span className="font-caption text-caption text-error font-medium">Unsettled</span>
+                    <span className="font-caption text-caption text-error font-medium">
+                      {v(order && isOrderPaid(order) ? 'Settled' : 'Unsettled', 'Unsettled')}
+                    </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary">
-                    Customer selected: Pay with POS at Counter Pickup
+                    {v(order ? orderPaymentLabel(order) : '—', 'Customer selected: Pay with POS at Counter Pickup')}
                   </p>
                 </div>
               </div>
@@ -438,7 +545,7 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                     <span
                       className={`font-caption text-caption font-semibold ${accepted ? 'text-badge-discount-text' : 'text-primary'}`}
                     >
-                      {accepted ? 'Confirmed' : 'Pending Response'}
+                      {accepted ? v(clockTime(timeline.processing) || 'Confirmed', 'Confirmed') : 'Pending Response'}
                     </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary">
@@ -447,7 +554,7 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                 </div>
               </div>
               {/* Step 4 */}
-              <div className="flex items-start gap-space-sm relative opacity-60">
+              <div className={`flex items-start gap-space-sm relative ${live && rank >= 1 ? '' : 'opacity-60'}`}>
                 <div className="w-7 h-7 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center flex-shrink-0 z-10">
                   <Icon name="skillet" className="text-[16px]" />
                 </div>
@@ -455,11 +562,11 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                   <span className="font-label-md text-label-md font-medium text-text-primary">
                     Preparation & Cooking
                   </span>
-                  <p className="font-caption text-caption text-text-secondary">Target prep time ~25 minutes</p>
+                  <p className="font-caption text-caption text-text-secondary">{v('Target prep time —', 'Target prep time ~25 minutes')}</p>
                 </div>
               </div>
               {/* Step 5 */}
-              <div className="flex items-start gap-space-sm relative opacity-60">
+              <div className={`flex items-start gap-space-sm relative ${live && rank >= 2 ? '' : 'opacity-60'}`}>
                 <div className="w-7 h-7 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center flex-shrink-0 z-10">
                   <Icon name="shopping_bag" className="text-[16px]" />
                 </div>
@@ -467,11 +574,13 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                   <span className="font-label-md text-label-md font-medium text-text-primary">
                     Ready for Counter Pickup
                   </span>
-                  <p className="font-caption text-caption text-text-secondary">Wuse II Pick-up shelf #4</p>
+                  <p className="font-caption text-caption text-text-secondary">
+                    {v(clockTime(timeline.ready) || `${branchName} counter`, 'Wuse II Pick-up shelf #4')}
+                  </p>
                 </div>
               </div>
               {/* Step 6 */}
-              <div className="flex items-start gap-space-sm relative opacity-60">
+              <div className={`flex items-start gap-space-sm relative ${live && rank >= 3 ? '' : 'opacity-60'}`}>
                 <div className="w-7 h-7 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center flex-shrink-0 z-10">
                   <Icon name="payments" className="text-[16px]" />
                 </div>
@@ -480,7 +589,7 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
                     Payment Collected & Order Handover
                   </span>
                   <p className="font-caption text-caption text-text-secondary">
-                    Confirm customer payment of ₦31,000 before handing over items
+                    Confirm customer payment of {v(total, '₦31,000')} before handing over items
                   </p>
                 </div>
               </div>
@@ -495,12 +604,12 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
             <div className="grid grid-cols-2 gap-space-sm mt-1">
               <div className="bg-surface-container-low p-space-xs rounded-lg">
                 <span className="font-caption text-caption text-text-secondary block">Location / Branch</span>
-                <span className="font-label-sm text-label-sm font-semibold text-text-primary">Wuse II Flagship</span>
+                <span className="font-label-sm text-label-sm font-semibold text-text-primary">{v(branchName, 'Wuse II Flagship')}</span>
               </div>
               <div className="bg-surface-container-low p-space-xs rounded-lg">
                 <span className="font-caption text-caption text-text-secondary block">Assigned Station</span>
                 <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                  Kitchen Counter #2
+                  {v(order?.attendedByUser ? personName(order.attendedByUser) : '—', 'Kitchen Counter #2')}
                 </span>
               </div>
             </div>
@@ -516,7 +625,10 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
             <button
               className="h-11 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center gap-1.5 font-button-secondary text-button-secondary hover:bg-surface-container-highest active:scale-[0.98] transition-all"
               type="button"
-              onClick={() => showToast('Status set to Preparation', 'microwave')}
+              disabled={live && (statusMutation.isPending || status !== 'new')}
+              onClick={() =>
+                live ? setStatus('processing', 'Status set to Preparation', 'microwave') : showToast('Status set to Preparation', 'microwave')
+              }
             >
               <Icon name="microwave" className="text-[18px]" />
               Mark Processing
@@ -524,7 +636,12 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
             <button
               className="h-11 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center gap-1.5 font-button-secondary text-button-secondary hover:bg-surface-container-highest active:scale-[0.98] transition-all"
               type="button"
-              onClick={() => showToast('Customer notified for pickup!', 'notifications_active')}
+              disabled={live && (statusMutation.isPending || status !== 'processing')}
+              onClick={() =>
+                live
+                  ? setStatus('ready', 'Customer notified for pickup!', 'notifications_active')
+                  : showToast('Customer notified for pickup!', 'notifications_active')
+              }
             >
               <Icon name="inventory_2" className="text-[18px]" />
               Mark Ready
@@ -532,7 +649,12 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
             <button
               className="h-11 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center gap-1.5 font-button-secondary text-button-secondary hover:bg-surface-container-highest active:scale-[0.98] transition-all"
               type="button"
-              onClick={() => showToast('Order completed and archived', 'task_alt')}
+              disabled={live && (statusMutation.isPending || status !== 'ready')}
+              onClick={() =>
+                live
+                  ? setStatus('completed', 'Order completed and archived', 'task_alt')
+                  : showToast('Order completed and archived', 'task_alt')
+              }
             >
               <Icon name="payments" className="text-[18px]" />
               Confirm Payment & Complete

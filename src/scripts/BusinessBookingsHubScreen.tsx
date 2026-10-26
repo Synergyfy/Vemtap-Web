@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CalendarPicker } from '../components/ui/CalendarPicker';
@@ -6,6 +6,11 @@ import { SheetShell } from '../components/sheets/SheetShell';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessModeHeader } from './BusinessModeHeader';
 import { spaDateKey, spaToday } from './spaBookingData';
+import { useBusinessBookings, useBusinessOrders, useOrderStatusMutations } from '../hooks/business/useBusinessOrders';
+import { hasApiConfig } from '../services/api/client';
+import type { BusinessBooking } from '../services/businessOrdersService';
+import { apiErrorMessage } from '../services/errorMessages';
+import { bookingDate, bookingStatus, bookingTimeLabel, durationLabel, isOpenOrder, personName } from './ordersLive';
 
 interface BusinessBookingsHubScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -142,6 +147,60 @@ const BOOKING_ROWS: BookingRow[] = [
   },
 ];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Live: today and the next four days, in the quick strip's shape. */
+const liveCalendarDays = () => {
+  const start = spaToday();
+  start.setHours(0, 0, 0, 0);
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(start.getTime() + index * DAY_MS);
+    const month = date.toLocaleDateString('en-GB', { month: 'short' });
+    const weekday = date.toLocaleDateString('en-GB', { weekday: 'short' });
+    return {
+      key: spaDateKey(date),
+      top: index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : weekday,
+      day: String(date.getDate()),
+      sub: index < 2 ? `${month}, ${weekday}` : month,
+      active: index === 0,
+    };
+  });
+};
+
+const isOpenBooking = (booking: BusinessBooking) => ['booked', 'confirmed'].includes(bookingStatus(booking));
+
+/** Which status pill a live booking counts under. */
+const matchesPill = (booking: BusinessBooking, pill: BookingStatusKey) => {
+  const status = bookingStatus(booking);
+  if (pill === 'completed') return status === 'completed';
+  if (pill === 'cancelled') return status === 'cancelled';
+  if (pill === 'today') return booking.date === todayISO() && status !== 'cancelled';
+  return isOpenBooking(booking) && booking.date >= todayISO();
+};
+
+/** A live booking in the list's row shape. */
+const liveBookingRow = (booking: BusinessBooking, urgent: boolean): BookingRow & { bookingId: string; status: string } => {
+  const status = bookingStatus(booking);
+  return {
+    bookingId: booking.id,
+    status,
+    time: bookingTimeLabel(booking),
+    timeSub: durationLabel(booking.durationMinutes),
+    timeBoxClass: urgent ? 'bg-surface-tint-blue' : 'bg-surface-subtle',
+    timeSubClass: urgent ? 'text-badge-discount-text' : 'text-text-tertiary',
+    urgent,
+    customer: personName(booking.customer),
+    statusLabel: status === 'completed' ? 'Completed' : status === 'cancelled' ? 'Cancelled' : '',
+    statusClass: status === 'completed' ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-error-container text-on-error-container',
+    service: booking.itemName ?? 'Booking',
+    staff: booking.branchName ?? '',
+    chips: booking.reference ? [{ label: booking.reference, chipClass: 'bg-surface-container-low text-on-surface-variant' }] : [],
+    note: booking.notes ?? undefined,
+    noteClass: 'text-tertiary font-medium',
+    checkIn: isOpenBooking(booking) && booking.date === todayISO(),
+  };
+};
+
 export function BusinessBookingsHubScreen({
   onTab,
   onSwitchOrders,
@@ -153,6 +212,47 @@ export function BusinessBookingsHubScreen({
   // Full calendar — month grid with the booking count for every day.
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedISO, setSelectedISO] = useState<string>(() => todayISO());
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2400);
+  };
+
+  // Live: real bookings at the active branch. The day strip narrows the list
+  // once a day is tapped; Check-In confirms the guest has arrived.
+  const live = hasApiConfig();
+  const bookingsQuery = useBusinessBookings();
+  const ordersQuery = useBusinessOrders();
+  const { booking: bookingMutation } = useOrderStatusMutations();
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const bookings = bookingsQuery.data ?? [];
+  const calendarDays = live ? liveCalendarDays() : CALENDAR_DAYS;
+  const pills = live
+    ? STATUS_PILLS.map((pill) => ({ ...pill, count: `(${bookings.filter((b) => matchesPill(b, pill.key)).length})` }))
+    : STATUS_PILLS;
+  const listed = bookings
+    .filter((b) => matchesPill(b, statusPill) && (!pickedDay || b.date === pickedDay))
+    .sort((a, b) => bookingDate(a).getTime() - bookingDate(b).getTime());
+  const nextOpen = listed.find((b) => isOpenBooking(b) && bookingDate(b).getTime() >= Date.now());
+  const rows: (BookingRow & { bookingId?: string; status?: string })[] = live
+    ? listed.map((b) => liveBookingRow(b, b.id === nextOpen?.id))
+    : BOOKING_ROWS;
+  const todaysCount = bookings.filter((b) => b.date === todayISO() && b.status !== 'cancelled').length;
+  const nextIn = nextOpen ? Math.max(0, Math.round((bookingDate(nextOpen).getTime() - Date.now()) / 60_000)) : null;
+  const countOn = (iso: string) =>
+    live ? bookings.filter((b) => b.date === iso && b.status !== 'cancelled').length : bookingsForIso(iso, BOOKING_ROWS.length);
+
+  useEffect(() => {
+    if (live && bookingsQuery.isError) showToast("Couldn't load bookings. Try again shortly.");
+  }, [live, bookingsQuery.isError]);
+
+  const checkIn = (row: { bookingId?: string; customer: string }) => {
+    if (!row.bookingId) return setCheckedIn(true);
+    bookingMutation.mutate(
+      { id: row.bookingId, status: 'confirmed' },
+      { onSuccess: () => showToast(`${row.customer} checked in`), onError: (error) => showToast(apiErrorMessage(error)) },
+    );
+  };
 
   return (
     <AppScreen>
@@ -194,7 +294,7 @@ export function BusinessBookingsHubScreen({
             >
               <span>Orders</span>
               <span className="px-1.5 py-0.5 rounded-full bg-surface-container-highest text-text-secondary font-caption text-caption font-semibold">
-                4
+                {live ? (ordersQuery.data ?? []).filter(isOpenOrder).length : 4}
               </span>
             </button>
             <button
@@ -203,7 +303,7 @@ export function BusinessBookingsHubScreen({
             >
               <span>Bookings</span>
               <span className="px-1.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                5
+                {live ? bookings.filter(isOpenBooking).length : 5}
               </span>
             </button>
           </div>
@@ -212,8 +312,8 @@ export function BusinessBookingsHubScreen({
         {/* Calendar Quick Strip */}
         <div className="pt-space-2xs pb-space-sm">
           <div className="flex items-center gap-space-xs overflow-x-auto px-margin no-scrollbar">
-            {CALENDAR_DAYS.map((day) => {
-              const active = day.key === activeDay;
+            {calendarDays.map((day) => {
+              const active = live ? day.key === (pickedDay ?? todayISO()) : day.key === activeDay;
               return (
                 <button
                   className={`flex flex-col items-center justify-center min-w-[72px] py-2 px-space-xs rounded-xl shadow-sm flex-shrink-0 transition-colors ${
@@ -221,7 +321,7 @@ export function BusinessBookingsHubScreen({
                   }`}
                   key={day.key}
                   type="button"
-                  onClick={() => setActiveDay(day.key)}
+                  onClick={() => (live ? setPickedDay(day.key) : setActiveDay(day.key))}
                 >
                   <span className={`font-caption text-caption uppercase tracking-wide ${active ? 'opacity-80' : 'text-text-tertiary'}`}>
                     {day.top}
@@ -236,7 +336,7 @@ export function BusinessBookingsHubScreen({
 
         {/* Status Filter Pills */}
         <div className="px-margin py-space-2xs flex items-center gap-space-xs overflow-x-auto no-scrollbar">
-          {STATUS_PILLS.map((pill) => {
+          {pills.map((pill) => {
             const active = pill.key === statusPill;
             return (
               <button
@@ -266,26 +366,42 @@ export function BusinessBookingsHubScreen({
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-ping" />
                 <p className="font-label-md text-label-md text-on-surface font-semibold truncate">
-                  5 Bookings Scheduled Today
+                  {live ? `${todaysCount} Booking${todaysCount === 1 ? '' : 's'} Scheduled Today` : '5 Bookings Scheduled Today'}
                 </p>
               </div>
-              <p className="font-caption text-caption text-text-secondary mt-0.5">
-                Next appointment starts in <span className="font-medium text-primary">35 mins</span> (Room 2)
-              </p>
+              {live ? (
+                <p className="font-caption text-caption text-text-secondary mt-0.5">
+                  {nextOpen && nextIn !== null ? (
+                    <>
+                      Next appointment starts in <span className="font-medium text-primary">{durationLabel(nextIn || 1)}</span> (
+                      {nextOpen.itemName ?? 'Booking'})
+                    </>
+                  ) : (
+                    'No more appointments coming up'
+                  )}
+                </p>
+              ) : (
+                <p className="font-caption text-caption text-text-secondary mt-0.5">
+                  Next appointment starts in <span className="font-medium text-primary">35 mins</span> (Room 2)
+                </p>
+              )}
             </div>
           </div>
         </div>
 
         {/* Bookings List Section */}
         <div className="px-margin pt-space-xs pb-space-xl flex flex-col gap-space-xs">
-          {BOOKING_ROWS.map((row) => (
+          {live && !bookingsQuery.isLoading && !rows.length && (
+            <p className="font-caption text-caption text-text-secondary text-center py-space-md">No bookings here yet.</p>
+          )}
+          {rows.map((row) => (
             <button
               className={`w-full bg-surface-canvas rounded-xl shadow-sm p-3 flex items-center justify-between gap-2.5 active:bg-surface-container-low transition-colors text-left ${
                 row.urgent ? 'border-l-4 border-primary' : ''
               }`}
-              key={row.time}
+              key={row.bookingId ?? row.time}
               type="button"
-              onClick={onOpenBooking}
+              onClick={() => (live ? undefined : onOpenBooking())}
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div
@@ -347,21 +463,25 @@ export function BusinessBookingsHubScreen({
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                {row.checkIn ? (
-                  <button
-                    className={`h-8 px-2.5 rounded-lg font-caption text-caption font-semibold flex items-center gap-1 shadow-sm transition-colors ${
-                      checkedIn ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-primary text-on-primary'
-                    }`}
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setCheckedIn(true);
-                    }}
-                  >
-                    <Icon name={checkedIn ? 'check_circle' : 'how_to_reg'} className="text-[16px]" />
-                    <span>{checkedIn ? 'Checked In' : 'Check-In'}</span>
-                  </button>
-                ) : null}
+                {row.checkIn ? (() => {
+                  const done = row.bookingId ? row.status === 'confirmed' : checkedIn;
+                  return (
+                    <button
+                      className={`h-8 px-2.5 rounded-lg font-caption text-caption font-semibold flex items-center gap-1 shadow-sm transition-colors ${
+                        done ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-primary text-on-primary'
+                      }`}
+                      type="button"
+                      disabled={done || bookingMutation.isPending}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        checkIn(row);
+                      }}
+                    >
+                      <Icon name={done ? 'check_circle' : 'how_to_reg'} className="text-[16px]" />
+                      <span>{done ? 'Checked In' : 'Check-In'}</span>
+                    </button>
+                  );
+                })() : null}
                 <Icon name="chevron_right" className="text-text-tertiary text-[20px]" />
               </div>
             </button>
@@ -391,14 +511,17 @@ export function BusinessBookingsHubScreen({
           <div className="rounded-2xl bg-surface-container-lowest p-space-sm">
             <CalendarPicker
               valueISO={selectedISO}
-              onSelect={setSelectedISO}
+              onSelect={(iso) => {
+                setSelectedISO(iso);
+                if (live) setPickedDay(iso);
+              }}
               isDateDisabled={(date) => {
                 const start = spaToday();
                 start.setHours(0, 0, 0, 0);
                 return date.getTime() < start.getTime();
               }}
               dateNote={(iso) => {
-                const count = bookingsForIso(iso, BOOKING_ROWS.length);
+                const count = countOn(iso);
                 if (!count) return undefined;
                 return { label: `${count}`, tone: count >= 6 ? 'discount' : 'default' };
               }}
@@ -414,14 +537,19 @@ export function BusinessBookingsHubScreen({
               })}
             </span>
             <span className="font-label-sm text-label-sm text-primary shrink-0">
-              {bookingsForIso(selectedISO, BOOKING_ROWS.length)} booking
-              {bookingsForIso(selectedISO, BOOKING_ROWS.length) === 1 ? '' : 's'}
+              {countOn(selectedISO)} booking
+              {countOn(selectedISO) === 1 ? '' : 's'}
             </span>
           </div>
         </div>
       </SheetShell>
 
       <BusinessTabBar onTab={onTab} />
+      {toast && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
     </AppScreen>
   );
 }

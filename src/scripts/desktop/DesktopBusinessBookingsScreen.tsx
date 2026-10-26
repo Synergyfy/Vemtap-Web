@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { CalendarPicker } from '../../components/ui/CalendarPicker';
 import { spaDateKey, spaToday } from '../../scripts/spaBookingData';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { useBusinessBookings, useOrderStatusMutations } from '../../hooks/business/useBusinessOrders';
+import { useTeam } from '../../hooks/business/useBranchesAndTeam';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { hasApiConfig } from '../../services/api/client';
+import type { BusinessBooking } from '../../services/businessOrdersService';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { bookingDate, bookingStatus, bookingTimeLabel, personName } from '../ordersLive';
 
 interface DesktopBusinessBookingsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -128,6 +135,42 @@ const bookingsForIso = (iso: string) => {
   return Math.max(1, WEEKDAY_BOOKINGS[weekday] - swing);
 };
 
+type BookingRow = Omit<(typeof BOOKINGS)[number], 'status' | 'party'> & {
+  status: Exclude<FilterTab, 'all'>;
+  party: number | string;
+  bookingId?: string;
+};
+
+const LIVE_STATUS: Record<string, Exclude<FilterTab, 'all'>> = {
+  booked: 'upcoming',
+  confirmed: 'in-house',
+  completed: 'completed',
+  cancelled: 'no-show',
+};
+
+/** A live booking in the board's row shape. Party size and table aren't recorded. */
+const liveRow = (booking: BusinessBooking): BookingRow => {
+  const status = bookingStatus(booking);
+  return {
+    bookingId: booking.id,
+    id: booking.reference ?? booking.id.slice(0, 8).toUpperCase(),
+    guest: personName(booking.customer),
+    party: '—',
+    time: bookingTimeLabel(booking),
+    date: booking.date,
+    table: booking.itemName ?? '—',
+    notes: booking.notes ?? '—',
+    status: LIVE_STATUS[status] ?? 'upcoming',
+    source: 'VEMTAP App',
+    phone: booking.customer?.phone ?? '',
+    actions: status === 'booked' ? ['check-in'] : status === 'confirmed' ? ['seat'] : [],
+  };
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SLOT_HOURS = [12, 13, 14, 15, 16, 17, 18, 19];
+const hourLabel = (hour: number) => `${hour % 12 || 12} ${hour < 12 ? 'AM' : 'PM'}`;
+
 export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookingsScreenProps) {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
@@ -146,7 +189,82 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
     window.setTimeout(() => setToast(null), 3000);
   };
 
-  const filtered = BOOKINGS.filter((b) => {
+  // Live: real bookings at the active branch. Check-In marks the guest as
+  // in-house (confirmed); Seat Party completes the booking.
+  const live = hasApiConfig();
+  const bookingsQuery = useBusinessBookings();
+  const teamQuery = useTeam();
+  const { activeBranchId } = useBusinessBranch();
+  const { booking: bookingMutation } = useOrderStatusMutations();
+  const [pickedDay, setPickedDay] = useState<string>(() => todayISO());
+  const liveBookings = bookingsQuery.data ?? [];
+  const countOn = (iso: string) =>
+    live ? liveBookings.filter((b) => b.date === iso && b.status !== 'cancelled').length : bookingsForIso(iso);
+  const dayRows: BookingRow[] = live
+    ? liveBookings
+        .filter((b) => b.date === pickedDay)
+        .sort((a, b) => bookingDate(a).getTime() - bookingDate(b).getTime())
+        .map(liveRow)
+    : BOOKINGS;
+  const filters = live
+    ? FILTERS.map((f) => ({ ...f, count: f.key === 'all' ? dayRows.length : dayRows.filter((b) => b.status === f.key).length }))
+    : FILTERS;
+  const dateStrip = live
+    ? Array.from({ length: 5 }, (_, index) => {
+        const start = spaToday();
+        start.setHours(0, 0, 0, 0);
+        const date = new Date(start.getTime() + index * DAY_MS);
+        const iso = spaDateKey(date);
+        const count = countOn(iso);
+        return {
+          iso,
+          day: index === 0 ? 'Today' : date.toLocaleDateString('en-GB', { weekday: 'short' }),
+          date: index === 0
+            ? date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }).replace(',', '')
+            : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+          slots: `${count} booking${count === 1 ? '' : 's'}`,
+          active: iso === pickedDay,
+        };
+      })
+    : DATE_STRIP.map((d) => ({ ...d, iso: d.date, active: Boolean(d.active) }));
+  const todays = liveBookings.filter((b) => b.date === todayISO() && b.status !== 'cancelled');
+  const nextBooking = todays
+    .filter((b) => bookingStatus(b) === 'booked' && bookingDate(b).getTime() >= Date.now())
+    .sort((a, b) => bookingDate(a).getTime() - bookingDate(b).getTime())[0];
+  const nextIn = nextBooking ? Math.max(1, Math.round((bookingDate(nextBooking).getTime() - Date.now()) / 60_000)) : 0;
+  const slots = live
+    ? SLOT_HOURS.map((hour) => {
+        const count = liveBookings.filter(
+          (b) => b.date === pickedDay && b.status !== 'cancelled' && bookingDate(b).getHours() === hour,
+        ).length;
+        return { time: hourLabel(hour), bookings: count, tables: count };
+      })
+    : SLOTS;
+  const staff = live
+    ? (teamQuery.data ?? [])
+        .filter((member) => !activeBranchId || !member.branchId || member.branchId === activeBranchId)
+        .slice(0, 5)
+        .map((member) => ({
+          name: personName(member),
+          role: member.jobTitle ?? member.roleTag ?? member.role ?? '—',
+          status: member.isOnline ? 'On floor' : '—',
+          color: member.isOnline ? 'text-badge-discount-text' : 'text-on-surface-variant',
+        }))
+    : STAFF;
+
+  useEffect(() => {
+    if (live && bookingsQuery.isError) showToast("Couldn't load bookings. Try again shortly.");
+  }, [live, bookingsQuery.isError]);
+
+  const setBookingStatus = (b: BookingRow, status: 'confirmed' | 'completed', message: string) => {
+    if (!b.bookingId) return;
+    bookingMutation.mutate(
+      { id: b.bookingId, status },
+      { onSuccess: () => showToast(message), onError: (error) => showToast(apiErrorMessage(error)) },
+    );
+  };
+
+  const filtered = dayRows.filter((b) => {
     if (filter !== 'all' && b.status !== filter) return false;
     if (search && !b.guest.toLowerCase().includes(search.toLowerCase()) && !b.id.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -205,14 +323,17 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
               <div className="grid gap-space-lg lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
                 <CalendarPicker
                   valueISO={selectedISO}
-                  onSelect={setSelectedISO}
+                  onSelect={(iso) => {
+                    setSelectedISO(iso);
+                    if (live) setPickedDay(iso);
+                  }}
                   isDateDisabled={(date) => {
                     const start = spaToday();
                     start.setHours(0, 0, 0, 0);
                     return date.getTime() < start.getTime();
                   }}
                   dateNote={(iso) => {
-                    const count = bookingsForIso(iso);
+                    const count = countOn(iso);
                     if (!count) return undefined;
                     return {
                       label: `${count}`,
@@ -233,17 +354,25 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
                         })}
                       </span>
                       <span className="font-heading-sm text-heading-sm text-text-primary">
-                        {bookingsForIso(selectedISO)} booking{bookingsForIso(selectedISO) === 1 ? '' : 's'}
+                        {countOn(selectedISO)} booking{countOn(selectedISO) === 1 ? '' : 's'}
                       </span>
                     </div>
                     <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                      {bookingsForIso(selectedISO) >= 6 ? 'High demand' : bookingsForIso(selectedISO) > 0 ? 'Availability open' : 'Closed'}
+                      {live
+                        ? countOn(selectedISO) > 0
+                          ? 'Availability open'
+                          : 'No bookings yet'
+                        : bookingsForIso(selectedISO) >= 6
+                          ? 'High demand'
+                          : bookingsForIso(selectedISO) > 0
+                            ? 'Availability open'
+                            : 'Closed'}
                     </span>
                   </div>
 
-                  {selectedISO === todayISO() ? (
+                  {live || selectedISO === todayISO() ? (
                     <div className="flex flex-col gap-space-2xs">
-                      {BOOKINGS.map((booking) => (
+                      {(live ? liveBookings.filter((b) => b.date === selectedISO).map(liveRow) : BOOKINGS).map((booking) => (
                         <div
                           key={booking.id}
                           className="flex items-center justify-between gap-space-sm px-space-sm py-space-xs rounded-xl bg-surface-subtle"
@@ -253,10 +382,10 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
                               {booking.time}
                             </span>
                             <span className="font-body-sm text-body-sm text-text-secondary truncate">
-                              {booking.guest} • Party of {booking.party}
+                              {live ? `${booking.guest} • ${booking.table}` : `${booking.guest} • Party of ${booking.party}`}
                             </span>
                           </div>
-                          <span className="font-caption text-caption text-text-tertiary shrink-0">{booking.table}</span>
+                          <span className="font-caption text-caption text-text-tertiary shrink-0">{live ? booking.id : booking.table}</span>
                         </div>
                       ))}
                     </div>
@@ -276,10 +405,11 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
           )}
 
           <div className="flex items-center gap-space-sm overflow-x-auto pb-space-2xs">
-            {DATE_STRIP.map((d) => (
+            {dateStrip.map((d) => (
               <button
-                key={d.date}
+                key={d.iso}
                 type="button"
+                onClick={() => live && setPickedDay(d.iso)}
                 className={`flex-shrink-0 px-space-md py-space-xs rounded-xl border text-left transition-colors ${
                   d.active ? 'border-primary bg-surface-tint-blue' : 'border-border bg-surface hover:bg-surface-subtle'
                 }`}
@@ -299,8 +429,16 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
             <div className="flex items-center gap-space-md">
               <Icon name="event_available" filled className="text-[28px]" />
               <div>
-                <div className="font-heading-sm text-heading-sm">5 Bookings Today</div>
-                <div className="font-body-sm text-body-sm text-on-primary/90">Next seating in 35 minutes — Zainab Musa (Party of 4)</div>
+                <div className="font-heading-sm text-heading-sm">
+                  {live ? `${todays.length} Booking${todays.length === 1 ? '' : 's'} Today` : '5 Bookings Today'}
+                </div>
+                <div className="font-body-sm text-body-sm text-on-primary/90">
+                  {live
+                    ? nextBooking
+                      ? `Next seating in ${nextIn} minute${nextIn === 1 ? '' : 's'} — ${personName(nextBooking.customer)} (${nextBooking.itemName ?? 'Booking'})`
+                      : 'No more seatings coming up today'
+                    : 'Next seating in 35 minutes — Zainab Musa (Party of 4)'}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-space-sm">
@@ -324,7 +462,7 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
             <div className="xl:col-span-8 space-y-space-lg">
               <div className="flex flex-wrap items-center gap-space-sm">
                 <div className="flex items-center gap-space-xs bg-surface-subtle rounded-xl p-space-2xs">
-                  {FILTERS.map((f) => (
+                  {filters.map((f) => (
                     <button
                       key={f.key}
                       type="button"
@@ -379,10 +517,11 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (live) return setBookingStatus(b, 'confirmed', `${b.guest} checked in`);
                                     setCheckedIn((s) => ({ ...s, [b.id]: true }));
                                     showToast(`${b.guest} checked in`);
                                   }}
-                                  disabled={checkedIn[b.id]}
+                                  disabled={checkedIn[b.id] || (live && bookingMutation.isPending)}
                                   className={`px-space-xs py-space-2xs rounded-lg font-label-sm text-label-sm transition-colors ${
                                     checkedIn[b.id]
                                       ? 'bg-badge-discount-bg text-badge-discount-text cursor-default'
@@ -396,10 +535,11 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (live) return setBookingStatus(b, 'completed', `${b.guest} seated`);
                                     setSeated((s) => ({ ...s, [b.id]: true }));
                                     showToast(`Party of ${b.party} seated at ${b.table}`);
                                   }}
-                                  disabled={seated[b.id]}
+                                  disabled={seated[b.id] || (live && bookingMutation.isPending)}
                                   className={`px-space-xs py-space-2xs rounded-lg font-label-sm text-label-sm transition-colors ${
                                     seated[b.id]
                                       ? 'bg-badge-discount-bg text-badge-discount-text cursor-default'
@@ -442,15 +582,15 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
                   </table>
                 </div>
                 <div className="px-space-md py-space-sm border-t border-border flex items-center justify-between font-label-sm text-label-sm text-on-surface-variant">
-                  <span>Showing {filtered.length} of {BOOKINGS.length} bookings</span>
-                  <span>Tables seated: 2 / 14</span>
+                  <span>Showing {filtered.length} of {dayRows.length} bookings</span>
+                  <span>{live ? `In-house: ${dayRows.filter((b) => b.status === 'in-house').length}` : 'Tables seated: 2 / 14'}</span>
                 </div>
               </section>
 
               <section className="bg-surface rounded-2xl shadow-sm border border-border p-space-lg">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface mb-space-md">Hourly Slot Heatmap</h2>
                 <div className="grid grid-cols-8 gap-space-xs">
-                  {SLOTS.map((s) => {
+                  {slots.map((s) => {
                     const intensity = s.bookings === 0 ? 'bg-surface-subtle' : s.tables >= 3 ? 'bg-primary text-on-primary' : s.tables >= 2 ? 'bg-primary/60 text-on-primary' : 'bg-primary/25 text-on-surface';
                     return (
                       <div key={s.time} className={`rounded-xl p-space-xs text-center ${intensity}`}>
@@ -468,7 +608,7 @@ export function DesktopBusinessBookingsScreen({ onNav }: DesktopBusinessBookings
               <section className="bg-surface rounded-2xl shadow-sm border border-border p-space-lg">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface mb-space-md">Staff On Duty</h2>
                 <div className="space-y-space-sm">
-                  {STAFF.map((s) => (
+                  {staff.map((s) => (
                     <div key={s.name} className="flex items-center justify-between p-space-sm rounded-xl bg-surface-subtle">
                       <div>
                         <div className="font-label-md text-label-md text-on-surface font-medium">{s.name}</div>

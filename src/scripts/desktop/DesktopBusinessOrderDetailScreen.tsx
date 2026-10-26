@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { type StoreOrder } from '../../scripts/storeOrderingData';
@@ -22,7 +22,7 @@ export function DesktopBusinessOrderDetailScreen({
   onAccept,
   onDecline,
 }: DesktopBusinessOrderDetailScreenProps) {
-  const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings } = useStoreOrdering();
+  const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings, lastError, clearLastError } = useStoreOrdering();
   const [toast, setToast] = useState<string | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [printKOTOpen, setPrintKOTOpen] = useState(false);
@@ -32,6 +32,13 @@ export function DesktopBusinessOrderDetailScreen({
     setToast(msg);
     window.setTimeout(() => setToast(null), 3000);
   };
+
+  // Live: a refused status change or payment comes back here.
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
 
   // Resolve active order from store or fallback
   const currentOrder: StoreOrder =

@@ -22,6 +22,7 @@ export function BusinessOrdersScreen({
 }) {
   const [step, setStep] = useState<BusinessOrdersStep>(initialStep);
   const [detailFrom, setDetailFrom] = useState<HubStep>('orders');
+  const [orderId, setOrderId] = useState<string | undefined>();
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -31,8 +32,9 @@ export function BusinessOrdersScreen({
     setStep(initialStep);
   }, [initialStep]);
 
-  const openDetail = (from: HubStep) => {
+  const openDetail = (from: HubStep, id?: string) => {
     setDetailFrom(from);
+    setOrderId(id);
     setStep('detail');
   };
 
@@ -52,7 +54,7 @@ export function BusinessOrdersScreen({
           <BusinessOrdersHubScreen
             onTab={handleTab}
             onSwitchBookings={() => setStep('bookings')}
-            onOpenOrder={() => openDetail('orders')}
+            onOpenOrder={(id) => openDetail('orders', id)}
           />
         );
       case 'bookings':
@@ -72,7 +74,7 @@ export function BusinessOrdersScreen({
           />
         );
       case 'detail':
-        return <BusinessOrderDetailScreen onBack={() => setStep(detailFrom)} />;
+        return <BusinessOrderDetailScreen orderId={orderId} onBack={() => setStep(detailFrom)} />;
     }
   };
 
