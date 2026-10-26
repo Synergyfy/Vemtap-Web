@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { presetDays, setAnalyticsFilter, useAnalyticsFilter } from './analyticsLive';
 
 interface AnalyticsFilterScreenProps {
   onBack: () => void;
@@ -69,8 +72,11 @@ function ChipRow({
 }
 
 export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
-  const [preset, setPreset] = useState<string>('30 Days');
-  const [location, setLocation] = useState<string>('all');
+  const live = hasApiConfig();
+  const filter = useAnalyticsFilter();
+  const { branches, isLive } = useBusinessBranch();
+  const [preset, setPreset] = useState<string>(filter.preset);
+  const [location, setLocation] = useState<string>(filter.branchId ?? 'all');
   const [tab, setTab] = useState<string>('deals');
   const [dealStatuses, setDealStatuses] = useState<string[]>(['Active']);
   const [channels, setChannels] = useState<string[]>(['QR & POS', 'Storefront']);
@@ -83,6 +89,23 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
   const toastTimer = useRef<number | null>(null);
   const applyTimer = useRef<number | null>(null);
   const revertTimer = useRef<number | null>(null);
+
+  // Live businesses pick from their real branches; a configured business that
+  // has not added any branch yet can only scope to "All". Sample branch keys
+  // must never reach branch-scoped APIs (see BusinessBranchContext).
+  const locationOptions = isLive
+    ? [
+        { key: 'all', label: 'All Locations', meta: `${branches.length} outlets` },
+        // The provider only reports isLive when every branch carries an id.
+        ...branches.filter((branch) => branch.id).map((branch) => ({
+          key: branch.id as string,
+          label: branch.name,
+          meta: branch.area || (branch.isMainBranch ? 'Main branch' : 'Outlet'),
+        })),
+      ]
+    : live
+      ? [{ key: 'all', label: 'All Locations', meta: 'No branches yet' }]
+      : LOCATIONS;
 
   useEffect(
     () => () => {
@@ -111,6 +134,7 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
     setSettlements(['Card', 'Transfer']);
     setTills(['Till #01', 'Till #02']);
     setCohort('all');
+    setAnalyticsFilter({ preset: '30 Days', days: 30, branchId: null });
     showToast('Filters reset to defaults');
   };
 
@@ -120,6 +144,9 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
     applyTimer.current = window.setTimeout(() => {
       setApplying(false);
       setApplied(true);
+      // Persist the scope the analytics screens read: the preset and branch
+      // drive every module's query (and the export's range) from here on.
+      setAnalyticsFilter({ preset, days: presetDays(preset), branchId: location === 'all' ? null : location });
       showToast('Filters applied across analytics');
       revertTimer.current = window.setTimeout(() => setApplied(false), 2400);
     }, 900);
@@ -217,7 +244,7 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
             <h2 className="font-heading-sm text-heading-sm text-text-primary tracking-tight">Locations</h2>
           </div>
           <div className="bg-surface-canvas rounded-2xl border border-border-subtle overflow-hidden">
-            {LOCATIONS.map((item, index) => {
+            {locationOptions.map((item, index) => {
               const active = location === item.key;
               return (
                 <button
