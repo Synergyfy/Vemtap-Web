@@ -11,6 +11,7 @@ import {
   useKitchenStream,
   usePosBranchSummary,
   usePosMutations,
+  usePosSale,
   usePosSales,
   usePosTills,
   useRegisterStatus,
@@ -19,6 +20,7 @@ import {
 import { formatNaira } from '../utils/format';
 import type { CatalogueItem } from '../services/catalogueItemsService';
 import { useCatalogueItems } from '../hooks/business/useCatalogueItems';
+import { usePosDisplayMirror, usePosDisplayState } from '../hooks/business/usePosDisplay';
 import { isItemActive, isLowStock } from './catalogueLive';
 import type { CatalogueProduct } from './catalogueData';
 import type { PosCatalogItem } from './desktop/posTerminalData';
@@ -288,6 +290,7 @@ export type CheckoutResult = { sale: PosSale; queued: false } | { sale: null; qu
  */
 export function usePosCheckout() {
   const { activeBranchId } = useBusinessBranch();
+  const session = useRegisterStatus().data?.session ?? null;
   const offline = usePosOffline();
   const { completeSale } = usePosMutations();
 
@@ -324,6 +327,8 @@ export function usePosCheckout() {
       return { sale: null, queued: true, ref };
     }
     const sale = await completeSale.mutateAsync(payload);
+    // Thank the customer on the till's display and offer a tip for this sale.
+    if (session?.tillId) void posService.clearDisplay(session.tillId, sale.id).catch(() => undefined);
     return { sale, queued: false };
   };
 
@@ -697,3 +702,129 @@ export const useShiftProductId = () =>
     },
     () => shiftProductId,
   );
+
+/** Mirrors the register cart onto the open till's customer display (live only). */
+export function usePosCartMirror(lines: BasicLine[], customerName?: string | null) {
+  const { session } = useLivePos();
+  usePosDisplayMirror(
+    {
+      lines: lines
+        .filter((line) => !isCustomLine(line))
+        .map((line) => ({ productId: line.id, name: line.name, unitPrice: line.unit, quantity: line.qty, stock: null })),
+      customer: customerName ? { id: '', name: customerName } : null,
+      orderType: 'dine_in',
+      cartDiscount: 0,
+      note: '',
+      heldSaleId: null,
+    },
+    session?.tillId,
+  );
+}
+
+/* The sale the till just settled, as announced to its display (`payment.completed`). */
+let displayPaidSaleId: string | null = null;
+const displayPaidListeners = new Set<() => void>();
+const setDisplayPaidSaleId = (id: string | null) => {
+  displayPaidSaleId = id;
+  displayPaidListeners.forEach((listener) => listener());
+};
+export const useDisplayPaidSaleId = () =>
+  useSyncExternalStore(
+    (listener) => {
+      displayPaidListeners.add(listener);
+      return () => displayPaidListeners.delete(listener);
+    },
+    () => displayPaidSaleId,
+  );
+
+/**
+ * The customer display for the open till, shaped for the display screens:
+ * venue, the ticket being rung up, its totals, transfer details and tips.
+ */
+export function useLiveDisplay() {
+  const live = hasApiConfig();
+  const { session, branchName, businessName } = useLivePos();
+  const tillId = live ? (session?.tillId ?? null) : null;
+  const state = usePosDisplayState(tillId, (saleId) => setDisplayPaidSaleId(saleId));
+  const display = state.data ?? null;
+  const ticket = display?.ticket ?? null;
+  const total = ticket?.total ?? 0;
+  const summary = ticket
+    ? [
+        { label: 'Subtotal', value: naira(ticket.subtotal), tone: 'text-text-secondary', valueTone: 'text-on-surface' },
+        ...(ticket.discountAmount
+          ? [{ label: 'Discount', value: `-${naira(ticket.discountAmount)}`, tone: 'text-badge-discount-text', valueTone: 'text-badge-discount-text' }]
+          : []),
+        ...(ticket.serviceCharge ? [{ label: 'Service charge', value: naira(ticket.serviceCharge), tone: 'text-text-secondary', valueTone: 'text-on-surface' }] : []),
+        ...(ticket.packagingFee ? [{ label: 'Packaging', value: naira(ticket.packagingFee), tone: 'text-text-secondary', valueTone: 'text-on-surface' }] : []),
+        { label: display?.taxLabel || 'Tax', value: naira(ticket.tax), tone: 'text-text-secondary', valueTone: 'text-on-surface' },
+      ]
+    : [];
+  return {
+    live,
+    tillId,
+    loading: state.isLoading,
+    error: state.error,
+    venueName: display?.venue.name ?? businessName,
+    whereLine: `${display?.venue.branchName ?? branchName} · ${display?.till.name ?? (session ? 'Till' : 'No till open')}`,
+    customerName: ticket?.customerName ?? null,
+    ticket,
+    lines: (ticket?.lines ?? []).map((line) => ({
+      name: line.name,
+      meta: `${line.quantity} × ${naira(line.unitPrice)}`,
+      price: naira(line.lineTotal),
+    })),
+    summary,
+    total,
+    discount: ticket?.discountAmount ?? 0,
+    transfer: display?.transfer ?? null,
+    paymentMethods: display?.paymentMethods ?? null,
+    tipOptions: display?.tipOptions ?? [],
+    /** Customer picks a tip (and optionally a rating) for the settled sale. */
+    sendTip: (tipAmount: number, rating?: number) =>
+      tillId
+        ? posService.displayTipRating(tillId, { saleId: displayPaidSaleId ?? undefined, tipAmount, rating })
+        : Promise.reject(new Error('Open the register on a till first.')),
+  };
+}
+
+/** The settled sale for the receipt display: the till's announced sale, else this device's last sale. */
+export function useLiveDisplayReceipt() {
+  const live = hasApiConfig();
+  const paidId = useDisplayPaidSaleId();
+  const last = useLastSale();
+  const saleId = live ? (paidId ?? (last && !last.queued ? last.sale.id : null)) : null;
+  const query = usePosSale(saleId);
+  const sale = query.data ?? (last && !last.queued && last.sale.id === saleId ? last.sale : null);
+  const tip = money(sale?.tipAmount);
+  return {
+    live,
+    sale,
+    error: query.error,
+    ref: sale?.receiptNumber ?? '—',
+    venue: sale?.receipt?.businessName ?? null,
+    branch: sale?.branch?.name ?? null,
+    address: sale?.receipt?.address ?? sale?.branch?.address ?? null,
+    tin: sale?.receipt?.tin ?? '—',
+    when: whenLabel(sale?.createdAt),
+    cashier: sale?.cashierName ?? '—',
+    orderType: sale?.orderType === 'takeaway' ? 'Takeaway' : 'Dine-in',
+    items: (sale?.items ?? []).map((item) => ({
+      qty: `${item.quantity}×`,
+      name: item.productName ?? 'Item',
+      meta: item.sku ?? '',
+      price: `${naira(money(item.totalPrice))}.00`,
+    })),
+    breakdown: sale
+      ? [
+          { label: 'Subtotal', value: `${naira(money(sale.subtotal))}.00`, tone: 'text-text-secondary', valueTone: 'text-text-primary' },
+          { label: 'Tax', value: `${naira(money(sale.tax))}.00`, tone: 'text-text-secondary', valueTone: 'text-text-primary' },
+          ...(tip ? [{ label: 'Tip', value: `+${naira(tip)}.00`, tone: 'text-text-secondary', valueTone: 'text-text-primary font-medium' }] : []),
+        ]
+      : [],
+    discount: money(sale?.discountAmount),
+    total: money(sale?.total),
+    points: sale?.pointsEarned ?? 0,
+    method: methodLabel(sale?.paymentMethod),
+  };
+}

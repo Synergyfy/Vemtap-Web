@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useLiveDisplay } from './posLive';
 
 interface BusinessPosDisplayTipScreenProps {
   onBack: () => void;
@@ -34,7 +36,47 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
     TAGS.filter((tag) => tag.defaultOn).map((tag) => tag.label),
   );
 
-  const total = BASE_SUBTOTAL + tip.amount;
+  const display = useLiveDisplay();
+  const live = display.live;
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+  const showToast = (message: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
+  const baseSubtotal = live ? display.total : BASE_SUBTOTAL;
+  // Live: the business's tip presets, after a "No Tip" option.
+  const tipOptions = live
+    ? [
+        TIP_OPTIONS[0],
+        ...display.tipOptions.map((option, index) => ({
+          percent: option.percent,
+          label: `${option.percent}%`,
+          amount: option.amount,
+          icon: TIP_OPTIONS[Math.min(index + 1, TIP_OPTIONS.length - 1)].icon,
+          pop: index === 1,
+        })),
+      ]
+    : TIP_OPTIONS;
+
+  // Live: start with no tip selected rather than the demo's 15%.
+  useEffect(() => {
+    if (live) setTip({ percent: 0, amount: 0 });
+  }, [live]);
+
+  const total = baseSubtotal + tip.amount;
+
+  const confirm = () => {
+    if (!live || tip.amount === 0) {
+      onProceed();
+      return;
+    }
+    display
+      .sendTip(tip.amount, rating)
+      .then(onProceed)
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not save the tip.')));
+  };
 
   const toggleTag = (label: string) => {
     setActiveTags((current) =>
@@ -60,20 +102,24 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-space-2xs flex-wrap">
-                <span className="font-label-sm text-label-sm text-text-primary truncate font-semibold">Sunday M.</span>
+                <span className="font-label-sm text-label-sm text-text-primary truncate font-semibold">{live ? display.venueName : 'Sunday M.'}</span>
                 <span className="font-caption text-caption text-text-secondary">&amp; Kitchen Crew</span>
               </div>
-              <p className="font-caption text-caption text-text-secondary">Order #TK-108 · Table 04 (Dine-in)</p>
+              <p className="font-caption text-caption text-text-secondary">
+                {live
+                  ? `${display.ticket?.reference ? `Order #${display.ticket.reference}` : 'Current order'}${display.ticket?.tableNumber ? ` · Table ${display.ticket.tableNumber}` : ''}`
+                  : 'Order #TK-108 · Table 04 (Dine-in)'}
+              </p>
             </div>
             <div className="text-right shrink-0">
               <span className="font-caption text-caption text-text-tertiary block">Subtotal</span>
-              <span className="font-label-sm text-label-sm text-text-primary">₦27,628</span>
+              <span className="font-label-sm text-label-sm text-text-primary">{formatNaira(baseSubtotal)}</span>
             </div>
           </div>
           <div className="bg-surface-container-low rounded-xl px-space-xs py-space-2xs flex items-center gap-space-2xs">
             <Icon name="volunteer_activism" className="text-[16px] text-badge-discount-text shrink-0" />
             <p className="font-caption text-caption text-text-secondary leading-tight">
-              100% of staff tips go directly to Sunday and the Abuja culinary crew.
+              {live ? '100% of staff tips go directly to the team.' : '100% of staff tips go directly to Sunday and the Abuja culinary crew.'}
             </p>
           </div>
         </div>
@@ -90,7 +136,7 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
             </span>
           </div>
           <div className="grid grid-cols-2 gap-space-xs">
-            {TIP_OPTIONS.map((option) => {
+            {tipOptions.map((option) => {
               const active = tip.percent === option.percent;
               return (
                 <button
@@ -131,7 +177,16 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
           <button
             className="w-full py-space-xs px-space-sm rounded-xl bg-surface-container-low text-text-primary flex items-center justify-between transition-colors"
             type="button"
-            onClick={() => setTip({ percent: null, amount: 3000 })}
+            onClick={() => {
+              if (!live) {
+                setTip({ percent: null, amount: 3000 });
+                return;
+              }
+              const answer = window.prompt('Tip amount (₦)', String(tip.amount || ''));
+              if (answer === null) return;
+              const amount = Math.max(0, Math.round(Number(answer.replace(/[^\d.]/g, '')) || 0));
+              setTip({ percent: null, amount });
+            }}
           >
             <div className="flex items-center gap-space-2xs">
               <Icon name="dialpad" className="text-[16px] text-primary" />
@@ -144,7 +199,7 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
           <div className="bg-surface-tint-blue rounded-xl p-space-xs space-y-0.5">
             <div className="flex justify-between items-center text-text-secondary font-label-sm text-label-sm">
               <span>Meal Subtotal</span>
-              <span>₦27,628.00</span>
+              <span>{formatNaira(baseSubtotal)}.00</span>
             </div>
             <div className="flex justify-between items-center font-label-sm text-label-sm text-primary">
               <span>{tip.amount === 0 ? 'Tip Amount (Skipped)' : `Tip Amount (${tip.percent === null ? 'Custom' : `${tip.percent}%`})`}</span>
@@ -162,7 +217,7 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-label-md text-label-md text-text-primary font-semibold">Rate Your Visit</h2>
-              <p className="font-caption text-caption text-text-secondary">Urban Grill &amp; Bistro · Wuse II</p>
+              <p className="font-caption text-caption text-text-secondary">{live ? display.whereLine : 'Urban Grill & Bistro · Wuse II'}</p>
             </div>
             <span className="font-label-sm text-label-sm text-tertiary flex items-center gap-1">
               <Icon name="star" filled className="text-[16px]" />
@@ -241,7 +296,7 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
           <button
             className="w-full h-12 rounded-2xl bg-primary-container text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-transform"
             type="button"
-            onClick={onProceed}
+            onClick={confirm}
           >
             <span>Confirm &amp; Proceed to Pay ({formatNaira(total)})</span>
             <Icon name="arrow_forward" className="text-[18px]" />
@@ -251,14 +306,21 @@ export function BusinessPosDisplayTipScreen({ onBack, onProceed }: BusinessPosDi
             type="button"
             onClick={onProceed}
           >
-            <span>Skip &amp; Pay Subtotal (₦27,628)</span>
+            <span>Skip &amp; Pay Subtotal ({formatNaira(baseSubtotal)})</span>
           </button>
           <div className="flex items-center justify-center gap-space-2xs text-text-tertiary pt-space-2xs">
             <Icon name="lock" className="text-[13px]" />
-            <span className="font-caption text-caption">VEMTAP Verified CFD Terminal #01 · End-to-End Encrypted</span>
+            <span className="font-caption text-caption">
+              {live ? `VEMTAP Verified CFD · ${display.whereLine}` : 'VEMTAP Verified CFD Terminal #01 · End-to-End Encrypted'}
+            </span>
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
     </AppScreen>
   );
 }

@@ -18,7 +18,7 @@ import { describeModifiers, modifierSurcharge, type PosCustomerRecord } from './
 import { PosOfflineBar } from '../../components/ui/PosOfflineBar';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
-import { useHeldTicket, useLivePos, usePosProducts } from '../posLive';
+import { useHeldTicket, useLivePos, usePosCartMirror, usePosProducts } from '../posLive';
 
 interface DesktopPosRegisterScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -100,6 +100,7 @@ export function DesktopPosRegisterScreen({
   const pos = useLivePos();
   const catalogue = usePosProducts();
   const heldTicket = useHeldTicket();
+  usePosCartMirror(cart, customer?.name);
   const [search, setSearch] = useState('');
   const categoryList = live
     ? catalogue.categories.map((entry) => {

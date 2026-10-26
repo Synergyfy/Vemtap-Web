@@ -4,6 +4,8 @@ import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { downloadCsv } from '../utils/exportCsv';
 import { printKvTable, printReport } from '../utils/printReport';
+import { apiErrorMessage } from '../services/errorMessages';
+import { naira, useLiveDisplay, useLiveDisplayReceipt, useLivePos } from './posLive';
 
 interface BusinessPosDisplayReceiptScreenProps {
   onBack: () => void;
@@ -52,7 +54,26 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
 
+  const receipt = useLiveDisplayReceipt();
+  const display = useLiveDisplay();
+  const pos = useLivePos();
+  const live = receipt.live;
+  const items = live ? receipt.items : ITEMS;
+  const breakdown: { label: string; value: string; tone: string; valueTone: string; extra?: string }[] = live ? receipt.breakdown : BREAKDOWN;
+  const totalLabel = live ? `${naira(receipt.total)}.00` : '₦31,768.00';
+  const venue = live ? (receipt.venue ?? pos.businessName) : 'Urban Grill & Bistro';
+  const orderRef = live ? receipt.ref : 'TK-108';
+
+  useEffect(() => {
+    if (live && receipt.error) showToast(apiErrorMessage(receipt.error, 'Could not load the receipt.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipt.error]);
+
   const sendCustom = () => {
+    if (live) {
+      showToast('Sending receipts by email or WhatsApp is coming soon');
+      return;
+    }
     const value = recipient.trim();
     if (!value) {
       showToast('Please enter an email or phone number');
@@ -64,31 +85,31 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
 
   const downloadReceiptPdf = () => {
     downloadCsv(
-      'UrbanGrill_TK108.csv',
+      live ? `Receipt_${orderRef}.csv` : 'UrbanGrill_TK108.csv',
       ['Item', 'Detail', 'Price'],
-      ITEMS.map((item) => [`${item.qty} ${item.name}`, item.meta, item.price]),
+      items.map((item) => [`${item.qty} ${item.name}`, item.meta, item.price]),
     );
     printReport(
-      'VEMTAP Receipt — Order #TK-108',
+      `VEMTAP Receipt — Order #${orderRef}`,
       `${printKvTable('Payment', [
-        ['Merchant', 'Urban Grill & Bistro'],
-        ['Order', '#TK-108'],
-        ['Reference', 'VEM-REC-894210'],
-        ['Auth code', '#990214'],
+        ['Merchant', venue],
+        ['Order', `#${orderRef}`],
+        ['Reference', live ? receipt.ref : 'VEM-REC-894210'],
+        ['Auth code', live ? receipt.method : '#990214'],
       ])}
-       ${printKvTable('Items', ITEMS.map((item) => [`${item.qty} ${item.name} — ${item.meta}`, item.price]))}
+       ${printKvTable('Items', items.map((item) => [`${item.qty} ${item.name} — ${item.meta}`, item.price]))}
        ${printKvTable(
          'Totals',
          [
-           ...BREAKDOWN.map(
+           ...breakdown.map(
              (line) => [line.label, line.extra ? `${line.value} (${line.extra})` : line.value] as [string, string],
            ),
-           ['Net total paid', '₦31,768.00'],
+           ['Net total paid', totalLabel],
          ],
        )}
        <p class="foot">A CSV copy of the itemised receipt downloaded alongside this PDF.</p>`,
     );
-    showToast('PDF downloaded: UrbanGrill_TK108.pdf');
+    showToast(live ? `PDF downloaded: Receipt_${orderRef}.pdf` : 'PDF downloaded: UrbanGrill_TK108.pdf');
   };
 
   return (
@@ -100,9 +121,9 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
         <div className="flex items-center justify-between gap-space-xs">
           <div className="flex items-center gap-space-2xs min-w-0">
             <Icon name="restaurant" className="text-[16px] text-primary shrink-0" />
-            <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">Urban Grill &amp; Bistro</span>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">{venue}</span>
             <span className="text-text-tertiary">•</span>
-            <span className="font-caption text-caption text-text-secondary truncate">Order #TK-108</span>
+            <span className="font-caption text-caption text-text-secondary truncate">Order #{orderRef}</span>
           </div>
           <div className="flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text px-2 py-0.5 rounded-full shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
@@ -123,28 +144,28 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
           <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold uppercase tracking-wider mb-0.5">
             Payment Confirmed
           </span>
-          <h2 className="font-heading-md text-heading-md text-text-primary mb-0.5">₦31,768.00</h2>
+          <h2 className="font-heading-md text-heading-md text-text-primary mb-0.5">{totalLabel}</h2>
           <div className="flex items-center justify-center gap-space-2xs text-text-secondary flex-wrap">
             <Icon name="contactless" className="text-[15px] text-primary" />
-            <span className="font-caption text-caption">Contactless Card Tap</span>
+            <span className="font-caption text-caption">{live ? receipt.method : 'Contactless Card Tap'}</span>
             <span className="text-text-tertiary">·</span>
-            <span className="font-caption text-caption font-medium">Till 01 (Wuse II)</span>
+            <span className="font-caption text-caption font-medium">{live ? display.whereLine : 'Till 01 (Wuse II)'}</span>
           </div>
           <div className="bg-surface-subtle px-space-xs py-0.5 rounded-full flex items-center gap-space-2xs max-w-full mt-space-2xs">
-            <span className="font-caption text-caption text-text-tertiary truncate">Ref: VEM-REC-894210 · Auth: #990214</span>
+            <span className="font-caption text-caption text-text-tertiary truncate">{live ? `Ref: ${receipt.ref}` : 'Ref: VEM-REC-894210 · Auth: #990214'}</span>
             <button
               aria-label="Copy reference ID"
               className="text-text-secondary hover:text-primary transition-colors flex items-center shrink-0"
               type="button"
               onClick={() => {
-                navigator.clipboard?.writeText('VEM-REC-894210').catch(() => undefined);
+                navigator.clipboard?.writeText(live ? receipt.ref : 'VEM-REC-894210').catch(() => undefined);
                 showToast('Reference ID copied!');
               }}
             >
               <Icon name="content_copy" className="text-[14px]" />
             </button>
           </div>
-          <p className="font-caption text-caption text-text-tertiary mt-1">Oct 17, 2024 · 2:14 PM</p>
+          <p className="font-caption text-caption text-text-tertiary mt-1">{live ? receipt.when : 'Oct 17, 2024 · 2:14 PM'}</p>
         </div>
 
         {/* Receipt card */}
@@ -154,9 +175,9 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
             <div className="flex flex-col gap-1 pb-space-xs bg-surface-subtle -mx-space-md -mt-space-md px-space-md pt-space-md mb-space-2xs">
               <div className="flex items-start justify-between gap-space-xs">
                 <div className="min-w-0">
-                  <h3 className="font-label-md text-label-md text-text-primary font-semibold">Urban Grill &amp; Bistro</h3>
+                  <h3 className="font-label-md text-label-md text-text-primary font-semibold">{venue}</h3>
                   <p className="font-caption text-caption text-text-secondary leading-snug">
-                    Plot 12 Ademola Adetokunbo Crescent, Wuse II, Abuja
+                    {live ? (receipt.address ?? receipt.branch ?? pos.branchName) : 'Plot 12 Ademola Adetokunbo Crescent, Wuse II, Abuja'}
                   </p>
                 </div>
                 <div className="w-9 h-9 rounded-lg bg-surface-tint-blue flex items-center justify-center shrink-0">
@@ -164,8 +185,8 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
                 </div>
               </div>
               <div className="flex items-center justify-between text-text-tertiary gap-space-xs">
-                <span className="font-caption text-caption">TIN: TIN-88492019-01</span>
-                <span className="font-caption text-caption text-text-secondary">Emeka O. · Table 04 (Dine-in)</span>
+                <span className="font-caption text-caption">{live ? `TIN: ${receipt.tin}` : 'TIN: TIN-88492019-01'}</span>
+                <span className="font-caption text-caption text-text-secondary">{live ? `${receipt.cashier} · ${receipt.orderType}` : 'Emeka O. · Table 04 (Dine-in)'}</span>
               </div>
             </div>
 
@@ -177,7 +198,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
             </div>
 
             <div className="flex flex-col gap-space-xs">
-              {ITEMS.map((item) => (
+              {items.map((item) => (
                 <div className="flex items-start justify-between gap-space-xs" key={item.name}>
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-baseline gap-space-2xs">
@@ -198,7 +219,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
             </div>
 
             <div className="flex flex-col gap-space-2xs">
-              {BREAKDOWN.map((row) => (
+              {breakdown.map((row) => (
                 <div className="flex items-center justify-between gap-space-xs" key={row.label}>
                   <div className="flex items-center gap-space-2xs min-w-0">
                     <span className={`font-label-sm text-label-sm ${row.tone}`}>{row.label}</span>
@@ -209,12 +230,12 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
               ))}
               <div className="flex items-center justify-between gap-space-xs">
                 <div className="flex items-center gap-space-2xs min-w-0">
-                  <span className="font-label-sm text-label-sm text-badge-discount-text font-medium">VEMTAP Member Perk</span>
+                  <span className="font-label-sm text-label-sm text-badge-discount-text font-medium">{live ? (receipt.discount ? 'Discount' : 'No discount') : 'VEMTAP Member Perk'}</span>
                   <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-1.5 py-0.5 rounded-full font-bold">
                     5% OFF
                   </span>
                 </div>
-                <span className="font-label-sm text-label-sm text-badge-discount-text font-medium">-₦1,572.00</span>
+                <span className="font-label-sm text-label-sm text-badge-discount-text font-medium">{live ? `-${naira(receipt.discount)}.00` : '-₦1,572.00'}</span>
               </div>
 
               <div className="bg-surface-tint-blue rounded-xl p-space-sm mt-space-2xs flex items-center justify-between gap-space-xs">
@@ -224,7 +245,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
                   </span>
                   <span className="font-caption text-caption text-text-secondary">Card ending in •• 4092</span>
                 </div>
-                <span className="font-heading-sm text-heading-sm text-primary font-bold shrink-0">₦31,768.00</span>
+                <span className="font-heading-sm text-heading-sm text-primary font-bold shrink-0">{totalLabel}</span>
               </div>
             </div>
           </div>
@@ -238,9 +259,15 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
               <Icon name="stars" filled className="text-surface-canvas text-[22px]" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="font-label-md text-label-md text-surface-canvas font-bold truncate">+318 Points Credited!</span>
+              <span className="font-label-md text-label-md text-surface-canvas font-bold truncate">+{live ? receipt.points.toLocaleString() : '318'} Points Credited!</span>
               <p className="font-caption text-caption text-surface-canvas/90 truncate">
-                New Balance: <strong className="font-bold">2,768 pts</strong> · VIP Member
+                {live ? (
+                  'Points land on your VEMTAP account'
+                ) : (
+                  <>
+                    New Balance: <strong className="font-bold">2,768 pts</strong> · VIP Member
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -336,7 +363,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
             <button
               className="flex items-center justify-center gap-space-2xs h-10 bg-surface-canvas text-text-primary rounded-xl font-label-sm text-label-sm font-semibold transition-all active:scale-95 shadow-sm"
               type="button"
-              onClick={() => showToast('Receipt share link copied!')}
+              onClick={() => showToast(live ? 'Receipt share links are coming soon' : 'Receipt share link copied!')}
             >
               <Icon name="ios_share" className="text-primary text-[17px]" />
               <span>Share Receipt</span>
@@ -347,7 +374,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
         {/* Rating */}
         <div className="bg-surface-canvas rounded-xl p-space-sm shadow-sm flex flex-col items-center text-center gap-space-2xs">
           <span className="font-label-sm text-label-sm text-text-secondary">Rate your experience at</span>
-          <h4 className="font-label-md text-label-md text-text-primary font-semibold">Urban Grill &amp; Bistro</h4>
+          <h4 className="font-label-md text-label-md text-text-primary font-semibold">{venue}</h4>
           <div className="flex items-center gap-1.5 py-space-2xs">
             {[1, 2, 3, 4, 5].map((score) => (
               <button
@@ -359,7 +386,14 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
                 type="button"
                 onClick={() => {
                   setRating(score);
-                  showToast(`${score} Star Rating Recorded!`);
+                  if (!live) {
+                    showToast(`${score} Star Rating Recorded!`);
+                    return;
+                  }
+                  display
+                    .sendTip(0, score)
+                    .then(() => showToast(`${score} Star Rating Recorded!`))
+                    .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not save the rating.')));
                 }}
               >
                 <Icon name="star" filled={score <= rating} className="text-[26px]" />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessCfdHeader } from './BusinessCfdHeader';
+import { naira, useDisplayPaidSaleId, useLiveDisplay } from './posLive';
 
 interface BusinessPosDisplayPayScreenProps {
   onBack: () => void;
@@ -32,8 +33,32 @@ export function BusinessPosDisplayPayScreen({ onBack, onSplit, onPaid }: Busines
 
   const timerLabel = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
+  const display = useLiveDisplay();
+  const live = display.live;
+  const paidSaleId = useDisplayPaidSaleId();
+  const startPaid = useRef(paidSaleId);
+  const [toast, setToast] = useState<string | null>(null);
+  const totalLabel = live ? naira(display.total) : '₦27,628';
+  const accountNumber = live ? (display.transfer?.accountNumber ?? '') : '9042817290';
+
+  // Live: move on once the till settles the sale (`payment.completed`).
+  useEffect(() => {
+    if (live && paidSaleId && paidSaleId !== startPaid.current) onPaid();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paidSaleId]);
+
+  const confirmPaid = () => {
+    if (!live || (paidSaleId && paidSaleId !== startPaid.current)) {
+      onPaid();
+      return;
+    }
+    setToast('Waiting for the cashier to complete the sale on the till');
+    window.setTimeout(() => setToast(null), 2400);
+  };
+
   const copyAccount = () => {
-    navigator.clipboard?.writeText('9042817290').catch(() => undefined);
+    if (!accountNumber) return;
+    navigator.clipboard?.writeText(accountNumber).catch(() => undefined);
     setCopied(true);
     if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
     copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
@@ -52,9 +77,9 @@ export function BusinessPosDisplayPayScreen({ onBack, onSplit, onPaid }: Busines
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-label-sm text-label-sm text-on-surface font-semibold leading-tight truncate">
-                Urban Grill &amp; Bistro
+                {live ? display.venueName : 'Urban Grill & Bistro'}
               </span>
-              <span className="font-caption text-caption text-text-secondary truncate">Victoria Island · Terminal #01</span>
+              <span className="font-caption text-caption text-text-secondary truncate">{live ? display.whereLine : 'Victoria Island · Terminal #01'}</span>
             </div>
           </div>
           <div className="flex items-center gap-space-2xs bg-surface-container px-space-xs py-space-2xs rounded-full shrink-0">
@@ -70,14 +95,14 @@ export function BusinessPosDisplayPayScreen({ onBack, onSplit, onPaid }: Busines
             Total Amount Due
           </span>
           <div className="flex items-baseline gap-space-2xs mt-0.5">
-            <span className="font-heading-md text-heading-md text-on-surface font-bold">₦27,628</span>
+            <span className="font-heading-md text-heading-md text-on-surface font-bold">{totalLabel}</span>
             <span className="font-label-sm text-label-sm text-text-secondary font-medium">.00</span>
           </div>
           <div className="flex items-center gap-space-xs mt-space-2xs">
-            <span className="font-caption text-caption text-text-secondary bg-surface-subtle px-space-xs py-0.5 rounded-md">3 Items</span>
+            <span className="font-caption text-caption text-text-secondary bg-surface-subtle px-space-xs py-0.5 rounded-md">{live ? `${display.ticket?.itemCount ?? 0} Items` : '3 Items'}</span>
             <span className="w-1 h-1 rounded-full bg-outline-variant" />
             <span className="font-caption text-caption text-primary font-medium bg-surface-tint-blue px-space-xs py-0.5 rounded-md">
-              Order #TK-108
+              Order #{live ? (display.ticket?.reference ?? '—') : 'TK-108'}
             </span>
           </div>
         </div>
@@ -190,10 +215,14 @@ export function BusinessPosDisplayPayScreen({ onBack, onSplit, onPaid }: Busines
           </div>
           <div className="bg-surface-canvas rounded-lg p-space-xs flex items-center justify-between shadow-sm gap-space-xs">
             <div className="flex flex-col min-w-0">
-              <span className="font-caption text-caption text-text-secondary">Stanbic IBTC / Moniepoint</span>
-              <span className="font-heading-sm text-heading-sm text-on-surface font-bold tracking-wider">9042 817 290</span>
+              <span className="font-caption text-caption text-text-secondary">
+                {live ? (display.transfer?.bankName ?? 'Transfer not set up') : 'Stanbic IBTC / Moniepoint'}
+              </span>
+              <span className="font-heading-sm text-heading-sm text-on-surface font-bold tracking-wider">
+                {live ? (accountNumber || '—') : '9042 817 290'}
+              </span>
               <span className="font-caption text-caption text-text-secondary font-medium truncate">
-                Urban Grill &amp; Bistro Till 01
+                {live ? (display.transfer?.accountName ?? display.whereLine) : 'Urban Grill & Bistro Till 01'}
               </span>
             </div>
             <button
@@ -250,13 +279,18 @@ export function BusinessPosDisplayPayScreen({ onBack, onSplit, onPaid }: Busines
           <button
             className="w-full h-11 bg-primary text-on-primary rounded-xl font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all"
             type="button"
-            onClick={onPaid}
+            onClick={confirmPaid}
           >
-            <span>Confirm Payment Received (₦27,628)</span>
+            <span>Confirm Payment Received ({totalLabel})</span>
             <Icon name="arrow_forward" className="text-[17px]" />
           </button>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
     </AppScreen>
   );
 }

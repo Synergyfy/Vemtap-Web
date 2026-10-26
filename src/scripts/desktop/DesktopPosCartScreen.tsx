@@ -5,7 +5,7 @@ import { computeTotals, formatNaira, type PosTerminalLine } from './posTerminalD
 import { usePosSettings } from '../../context/PosSettingsContext';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
-import { useHeldTicket, useLivePos } from '../posLive';
+import { useHeldTicket, useLivePos, usePosCartMirror } from '../posLive';
 
 interface DesktopPosCartScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -83,6 +83,7 @@ export function DesktopPosCartScreen({
   const live = hasApiConfig();
   const pos = useLivePos();
   const heldTicket = useHeldTicket();
+  usePosCartMirror(cart, customer);
 
   const holdTicket = () => {
     if (live) {

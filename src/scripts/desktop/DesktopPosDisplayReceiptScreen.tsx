@@ -3,6 +3,9 @@ import { Icon } from '../../components/ui/Icon';
 import { CheckoutHubShell } from './CheckoutHubShell';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { money } from '../../services/posService';
+import { naira, useLiveDisplay, useLiveDisplayReceipt, useLivePos } from '../posLive';
 
 interface DesktopPosDisplayReceiptScreenProps {
   onDone?: () => void;
@@ -38,6 +41,24 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
   const [rating, setRating] = useState(5);
   const [starHint, setStarHint] = useState('Tap a star to leave instant praise');
   const [toast, setToast] = useState<string | null>(null);
+  const receipt = useLiveDisplayReceipt();
+  const display = useLiveDisplay();
+  const pos = useLivePos();
+  const live = receipt.live;
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+  const items = live ? receipt.items.map((item) => ({ name: `${item.qty} ${item.name}`, detail: item.meta, amount: item.price })) : RECEIPT_ITEMS;
+  const venue = v(receipt.venue ?? pos.businessName, 'Urban Grill & Bistro');
+  const orderRef = v(receipt.ref, 'TK-108');
+  const totalLabel = v(`${naira(receipt.total)}.00`, '₦31,768.00');
+  const subtotalLabel = v(`${naira(money(receipt.sale?.subtotal))}.00`, '₦29,200.00');
+  const discountLabel = v(`-${naira(receipt.discount)}.00`, '-₦1,572.00');
+  const taxLabel = v(`${naira(money(receipt.sale?.tax))}.00`, '₦2,072.00');
+  const tipLabel = v(`+${naira(money(receipt.sale?.tipAmount))}.00`, '+₦4,140.00');
+
+  useEffect(() => {
+    if (live && receipt.error) setToast(apiErrorMessage(receipt.error, 'Could not load the receipt.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipt.error]);
   const recipientRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -59,6 +80,10 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
   }, [toast]);
 
   const handleForward = () => {
+    if (live) {
+      setToast('Sending receipts by email or WhatsApp is coming soon.');
+      return;
+    }
     if (recipient.trim().length > 3) {
       setForwardSent(true);
       setRecipient('');
@@ -68,33 +93,37 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
   };
 
   const handleShareLink = () => {
+    if (live) {
+      setToast('Receipt share links are coming soon.');
+      return;
+    }
     navigator.clipboard?.writeText('https://pay.vemtap.com/r/TK-108-894210');
     setLinkCopied(true);
   };
 
   const downloadReceiptPdf = () => {
     downloadCsv(
-      'vemtap-receipt-TK-108.csv',
+      `vemtap-receipt-${orderRef}.csv`,
       ['Item', 'Detail', 'Amount'],
-      RECEIPT_ITEMS.map((item) => [item.name, item.detail, item.amount]),
+      items.map((item) => [item.name, item.detail, item.amount]),
     );
     printReport(
-      'VEMTAP Receipt — Order #TK-108',
+      `VEMTAP Receipt — Order #${orderRef}`,
       `${printKvTable('Payment', [
-        ['Merchant', 'Urban Grill & Bistro'],
-        ['Order', '#TK-108 • Till 01 (Wuse II)'],
+        ['Merchant', venue],
+        ['Order', v(`#${orderRef} • ${display.whereLine}`, '#TK-108 • Till 01 (Wuse II)')],
         ['Method', 'Contactless Card Tap • Card ending •• 4092 (Stanbic IBTC)'],
-        ['Reference', 'VEM-REC-894210'],
+        ['Reference', v(receipt.ref, 'VEM-REC-894210')],
         ['Auth code', '#990214'],
-        ['Date', 'Oct 17, 2024, 2:14 PM'],
+        ['Date', v(receipt.when, 'Oct 17, 2024, 2:14 PM')],
       ])}
-       ${printKvTable('Items', RECEIPT_ITEMS.map((item) => [`${item.name} — ${item.detail}`, item.amount]))}
+       ${printKvTable('Items', items.map((item) => [`${item.name} — ${item.detail}`, item.amount]))}
        ${printKvTable('Totals', [
-        ['Subtotal', '₦29,200.00'],
-        ['VEMTAP Member Perk (5% OFF)', '-₦1,572.00'],
-        ['VAT (7.5% Fed Inland Revenue)', '₦2,072.00'],
-        ['Staff Tip (15% to Sunday M.)', '+₦4,140.00'],
-        ['Net total paid', '₦31,768.00 — Payment Settled'],
+        ['Subtotal', subtotalLabel],
+        [v('Discount', 'VEMTAP Member Perk (5% OFF)'), discountLabel],
+        [v('Tax', 'VAT (7.5% Fed Inland Revenue)'), taxLabel],
+        [v('Tip', 'Staff Tip (15% to Sunday M.)'), tipLabel],
+        ['Net total paid', `${totalLabel} — Payment Settled`],
       ])}
        <p class="foot">A CSV copy of the itemised receipt downloaded alongside this PDF.</p>`,
     );
@@ -121,10 +150,10 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                 <div className="flex flex-col">
                   <div className="flex flex-wrap items-center gap-space-xs">
                     <span className="font-heading-sm text-heading-sm font-bold text-on-surface">
-                      Urban Grill &amp; Bistro
+                      {venue}
                     </span>
                     <span className="text-text-tertiary">•</span>
-                    <span className="font-label-md text-label-md text-text-secondary">Order #TK-108</span>
+                    <span className="font-label-md text-label-md text-text-secondary">Order #{orderRef}</span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-badge-discount-bg px-2.5 py-0.5 font-caption text-caption font-semibold text-badge-discount-text">
                       <span className="h-1.5 w-1.5 rounded-full bg-badge-discount-text animate-pulse" />
                       Paid Just Now
@@ -132,23 +161,23 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                   </div>
                   <h1 className="mt-space-2xs font-display-hero text-display-hero font-bold tracking-tight text-on-surface">
                     PAYMENT CONFIRMED <span className="text-text-tertiary font-light">—</span>{' '}
-                    <span className="text-primary">₦31,768.00</span>
+                    <span className="text-primary">{totalLabel}</span>
                   </h1>
                   <div className="mt-space-xs flex flex-wrap items-center gap-x-space-md gap-y-1 font-caption text-caption text-text-secondary">
                     <span className="inline-flex items-center gap-1">
                       <Icon name="contactless" className="text-[16px] text-primary" />
-                      Contactless Card Tap • Till 01 (Wuse II)
+                      {v(`${receipt.method} • ${display.whereLine}`, 'Contactless Card Tap • Till 01 (Wuse II)')}
                     </span>
                     <span className="text-text-tertiary">•</span>
                     <span>
-                      Ref: <strong className="font-medium text-on-surface">VEM-REC-894210</strong>
+                      Ref: <strong className="font-medium text-on-surface">{v(receipt.ref, 'VEM-REC-894210')}</strong>
                     </span>
                     <span className="text-text-tertiary">•</span>
                     <span>
                       Auth: <strong className="font-medium text-on-surface">#990214</strong>
                     </span>
                     <span className="text-text-tertiary">•</span>
-                    <span>Oct 17, 2024, 2:14 PM</span>
+                    <span>{v(receipt.when, 'Oct 17, 2024, 2:14 PM')}</span>
                   </div>
                 </div>
               </div>
@@ -197,18 +226,18 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                     </div>
                     <div>
                       <h2 className="font-heading-md text-heading-md font-bold text-on-surface">
-                        Urban Grill &amp; Bistro
+                        {venue}
                       </h2>
                       <p className="font-body-md text-body-md text-text-secondary">
-                        Plot 12 Ademola Adetokunbo Crescent, Wuse II, Abuja
+                        {v(receipt.address ?? receipt.branch ?? pos.branchName, 'Plot 12 Ademola Adetokunbo Crescent, Wuse II, Abuja')}
                       </p>
                       <div className="mt-space-2xs flex flex-wrap items-center gap-x-space-sm font-caption text-caption text-text-tertiary">
                         <span>
-                          TIN: <strong className="text-on-surface">TIN-88492019-01</strong>
+                          TIN: <strong className="text-on-surface">{v(receipt.tin, 'TIN-88492019-01')}</strong>
                         </span>
                         <span>•</span>
                         <span>
-                          Cashier: <strong className="text-on-surface">Emeka O.</strong>
+                          Cashier: <strong className="text-on-surface">{v(receipt.cashier, 'Emeka O.')}</strong>
                         </span>
                         <span>•</span>
                         <span className="rounded bg-surface-container-low px-1.5 py-0.5 text-on-surface font-medium">
@@ -233,7 +262,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                   <div className="grid grid-cols-2 gap-space-sm sm:grid-cols-4 font-caption text-caption">
                     <div>
                       <span className="text-text-tertiary">Receipt No</span>
-                      <div className="font-label-sm text-label-sm font-bold text-on-surface">TK-108-894210</div>
+                      <div className="font-label-sm text-label-sm font-bold text-on-surface">{v(receipt.ref, 'TK-108-894210')}</div>
                     </div>
                     <div>
                       <span className="text-text-tertiary">Time Placed</span>
@@ -257,7 +286,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                     <span>Amount</span>
                   </div>
                   <div className="flex flex-col gap-space-sm mt-space-xs">
-                    {RECEIPT_ITEMS.map((item) => (
+                    {items.map((item) => (
                       <div
                         key={item.name}
                         className="group flex items-start justify-between rounded-xl p-space-sm transition-colors hover:bg-surface-container-low/60"
@@ -284,25 +313,25 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                   <div className="flex flex-col gap-space-xs font-body-md text-body-md text-text-secondary">
                     <div className="flex items-center justify-between">
                       <span>Subtotal</span>
-                      <span className="font-medium text-on-surface">₦29,200.00</span>
+                      <span className="font-medium text-on-surface">{subtotalLabel}</span>
                     </div>
                     <div className="flex items-center justify-between text-badge-discount-text">
                       <span className="flex items-center gap-1 font-medium">
                         <Icon name="local_offer" className="text-[16px]" />
-                        VEMTAP Member Perk (5% OFF)
+                        {v('Discount', 'VEMTAP Member Perk (5% OFF)')}
                       </span>
-                      <span className="font-bold">-₦1,572.00</span>
+                      <span className="font-bold">{discountLabel}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>VAT (7.5% Fed Inland Revenue)</span>
-                      <span className="font-medium text-on-surface">₦2,072.00</span>
+                      <span>{v('Tax', 'VAT (7.5% Fed Inland Revenue)')}</span>
+                      <span className="font-medium text-on-surface">{taxLabel}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-1">
                         <Icon name="favorite" className="text-[16px] text-tertiary" />
-                        Staff Tip (15% to Sunday M.)
+                        {v('Tip', 'Staff Tip (15% to Sunday M.)')}
                       </span>
-                      <span className="font-medium text-on-surface">+₦4,140.00</span>
+                      <span className="font-medium text-on-surface">{tipLabel}</span>
                     </div>
                   </div>
 
@@ -320,7 +349,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                       </div>
                       <div className="text-right">
                         <div className="font-display-hero-mobile text-display-hero-mobile font-bold text-primary">
-                          ₦31,768.00
+                          {totalLabel}
                         </div>
                         <span className="font-caption text-caption text-badge-discount-text font-semibold">
                           Payment Settled
@@ -351,13 +380,16 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                       Questions regarding this meal?
                     </div>
                     <div className="font-caption text-caption text-text-secondary">
-                      Urban Grill &amp; Bistro Concierge: +234 9 291 4402 • concierge@urbangrillabj.com
+                      {v(
+                        `${venue}${receipt.sale?.receipt?.phone ? ` • ${receipt.sale.receipt.phone}` : ''}`,
+                        'Urban Grill & Bistro Concierge: +234 9 291 4402 • concierge@urbangrillabj.com',
+                      )}
                     </div>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setToast('Concierge contact card shared to your device.')}
+                  onClick={() => setToast(v('Contact cards are coming soon.', 'Concierge contact card shared to your device.'))}
                   className="rounded-lg bg-surface-canvas px-3 py-1.5 font-label-sm text-label-sm font-semibold text-on-surface shadow-sm hover:bg-surface-tint-blue"
                 >
                   Contact
@@ -377,7 +409,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                       VEMTAP Rewards Club
                     </span>
                     <div className="mt-space-xs font-heading-lg text-heading-lg font-bold text-on-primary">
-                      +318 Points Credited
+                      +{v(receipt.points.toLocaleString(), '318')} Points Credited
                     </div>
                   </div>
                   <span className="rounded-full bg-on-primary/20 px-3 py-1 font-label-sm text-label-sm font-bold backdrop-blur-md">
@@ -387,12 +419,12 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                 <div className="mt-space-md flex items-center justify-between rounded-xl bg-black/15 p-space-sm backdrop-blur-sm">
                   <div className="flex flex-col">
                     <span className="font-caption text-caption text-on-primary/80">Updated Balance</span>
-                    <span className="font-heading-sm text-heading-sm font-bold text-on-primary">2,768 pts</span>
+                    <span className="font-heading-sm text-heading-sm font-bold text-on-primary">{v('—', '2,768 pts')}</span>
                   </div>
                   <div className="text-right">
                     <span className="font-caption text-caption text-on-primary/80">Next Reward</span>
                     <span className="font-label-sm text-label-sm font-semibold text-on-primary block">
-                      Free Cocktail at 3,000 pts
+                      {v('Rewards on your VEMTAP account', 'Free Cocktail at 3,000 pts')}
                     </span>
                   </div>
                 </div>
@@ -400,7 +432,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                 <div className="mt-space-sm flex flex-col gap-1">
                   <div className="flex justify-between font-caption text-caption text-on-primary/80">
                     <span>92% to Platinum status</span>
-                    <span>232 pts needed</span>
+                    <span>{v('—', '232 pts needed')}</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-on-primary/20">
                     <div
@@ -542,7 +574,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
               <div className="rounded-2xl bg-surface-canvas p-space-lg shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-heading-sm text-heading-sm font-bold text-on-surface">Rate Urban Grill</h3>
+                    <h3 className="font-heading-sm text-heading-sm font-bold text-on-surface">Rate {v(venue, 'Urban Grill')}</h3>
                     <p className="font-caption text-caption text-text-secondary">{starHint}</p>
                   </div>
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-container-low text-tertiary-container">
@@ -558,6 +590,8 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                         onClick={() => {
                           setRating(star);
                           setStarHint('Feedback registered. Thank you!');
+                          if (live)
+                            display.sendTip(0, star).catch((error: unknown) => setToast(apiErrorMessage(error, 'Could not save the rating.')));
                         }}
                         className={`transition-transform hover:scale-110 ${
                           star <= rating ? 'text-primary' : 'text-text-tertiary'

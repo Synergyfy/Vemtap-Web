@@ -7,7 +7,7 @@ import { POS_CUSTOMERS } from './desktop/posRegisterExtras';
 import { usePosSettings } from '../context/PosSettingsContext';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
-import { isCustomLine, useHeldTicket } from './posLive';
+import { isCustomLine, useHeldTicket, usePosCartMirror } from './posLive';
 
 interface BusinessPosCartScreenProps {
   cart: PosCartLine[];
@@ -80,6 +80,7 @@ export function BusinessPosCartScreen({
 
   const live = hasApiConfig();
   const heldTicket = useHeldTicket();
+  usePosCartMirror(cart, customer);
 
   const holdTicket = () => {
     if (live) {

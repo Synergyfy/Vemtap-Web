@@ -7,7 +7,7 @@ import { PosOfflineBar } from '../components/ui/PosOfflineBar';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
-import { isCustomLine, useHeldTicket, useLivePos, usePosProducts } from './posLive';
+import { isCustomLine, useHeldTicket, useLivePos, usePosCartMirror, usePosProducts } from './posLive';
 
 interface BusinessPosRegisterScreenProps {
   cart: PosCartLine[];
@@ -68,6 +68,7 @@ export function BusinessPosRegisterScreen({
   const pos = useLivePos();
   const catalogue = usePosProducts();
   const heldTicket = useHeldTicket();
+  usePosCartMirror(cart);
   const allProducts = live ? catalogue.mobile : URBAN_PRODUCTS;
   const categories = live ? catalogue.categories : CATEGORIES;
 
