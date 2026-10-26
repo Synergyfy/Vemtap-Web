@@ -1,9 +1,12 @@
-﻿import { useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MessagesSubNav, type MessagesChannelKey } from '../components/campaigns/MessagesSubNav';
 import { MobileLocationMenu } from '../components/BusinessHeaderMenus';
+import { hasApiConfig } from '../services/api/client';
+import { useInboxRealtime } from '../hooks/business/useInbox';
+import { useInboxRows } from './messagesLive';
 import type { BusinessChatContact } from './messagesContact';
 
 interface BusinessMessagesHomeScreenProps {
@@ -34,6 +37,8 @@ interface ConversationRow {
   timePrimary?: boolean;
   online?: boolean;
   unread?: boolean;
+  /** Live rows carry the branch's unread count; demo rows hardcode the badge. */
+  unreadCount?: number;
   chipIcon: string;
   chipLabel: string;
   chipClass: string;
@@ -178,8 +183,53 @@ export function BusinessMessagesHomeScreen({
   onSelectChannel,
 }: BusinessMessagesHomeScreenProps) {
   const [chip, setChip] = useState<InboxChipKey>('all');
+  const live = hasApiConfig();
+  const socketLive = useInboxRealtime();
+  const { rows: liveRows, loading } = useInboxRows('IN_HOUSE');
 
-  const visibleConversations = CONVERSATIONS.filter((row) => {
+  // Live mode maps inbox threads onto the row shape the list renders; demo
+  // keeps the static conversations above.
+  const conversations: ConversationRow[] = useMemo(
+    () =>
+      live
+        ? liveRows.map((row) => ({
+            id: row.id,
+            img: row.avatar,
+            alt: row.name,
+            name: row.name,
+            time: row.time,
+            timePrimary: row.unread,
+            unread: row.unread,
+            unreadCount: row.unreadCount,
+            chipIcon: row.chipIcon,
+            chipLabel: row.chipLabel,
+            chipClass: row.chipClass,
+            message: row.preview,
+            messagePrimary: row.unread,
+            thread: row.kind,
+            tags: [
+              ...(row.unread ? (['unread'] as const) : []),
+              ...(row.kind === 'order' ? (['orders'] as const) : []),
+              ...(row.kind === 'deal' ? (['deals'] as const) : []),
+              ...(row.kind === 'booking' ? (['bookings'] as const) : []),
+            ],
+          }))
+        : CONVERSATIONS,
+    [live, liveRows],
+  );
+
+  const chipCount = (key: InboxChipKey): string => {
+    if (!live) return INBOX_CHIPS.find((inboxChip) => inboxChip.key === key)?.count ?? '';
+    const count =
+      key === 'all'
+        ? conversations.length
+        : key === 'unread'
+          ? conversations.filter((row) => row.unread).length
+          : conversations.filter((row) => row.tags.includes(key)).length;
+    return `(${count})`;
+  };
+
+  const visibleConversations = conversations.filter((row) => {
     if (chip === 'all') return true;
     if (chip === 'unread') return row.unread;
     return row.tags.includes(chip);
@@ -262,7 +312,7 @@ export function BusinessMessagesHomeScreen({
                 {active && inboxChip.pulse && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
                 <span>{inboxChip.label}</span>
                 <span className={`font-caption text-caption ${active ? 'opacity-80' : 'text-text-tertiary'}`}>
-                  {inboxChip.count}
+                  {chipCount(inboxChip.key)}
                 </span>
               </button>
             );
@@ -274,14 +324,26 @@ export function BusinessMessagesHomeScreen({
           <div className="flex items-center justify-between px-space-md py-2 bg-badge-discount-bg text-badge-discount-text rounded-lg shadow-sm">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-              <span className="font-caption text-caption font-semibold">Connected</span>
-              <span className="font-caption text-caption opacity-75">â€¢ Instant customer sync active</span>
+              <span className="font-caption text-caption font-semibold">
+                {live && !socketLive ? 'Reconnecting' : 'Connected'}
+              </span>
+              <span className="font-caption text-caption opacity-75">
+                {live && !socketLive ? 'â€¢ Live sync interrupted' : 'â€¢ Instant customer sync active'}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Conversation List */}
         <div className="flex flex-col px-space-xs mt-space-2xs space-y-1">
+          {live && !loading && chip === 'all' && visibleConversations.length === 0 && (
+            <div className="px-space-md py-space-lg text-center">
+              <p className="font-body-md text-body-md text-text-secondary">No conversations yet</p>
+              <p className="font-caption text-caption text-text-tertiary mt-1">
+                Customer chats will show up here as soon as they message your business.
+              </p>
+            </div>
+          )}
           {visibleConversations.map((row) => (
             <button
               className={`flex items-start gap-space-sm p-space-sm rounded-xl bg-surface-canvas transition-transform cursor-pointer text-left w-full ${
@@ -290,7 +352,13 @@ export function BusinessMessagesHomeScreen({
               key={row.id}
               type="button"
               onClick={() =>
-                onOpenConversation(row.thread, { name: row.name, avatar: row.img, isBusiness: row.isBusiness })
+                onOpenConversation(row.thread, {
+                  name: row.name,
+                  avatar: row.img,
+                  isBusiness: row.isBusiness,
+                  // Only live rows carry a real thread id; demo rows would 404.
+                  threadId: live ? row.id : undefined,
+                })
               }
             >
               <div className="relative shrink-0">
@@ -327,7 +395,7 @@ export function BusinessMessagesHomeScreen({
                   </p>
                   {row.unread && (
                     <span className="w-5 h-5 rounded-full bg-primary text-on-primary font-caption text-caption font-bold flex items-center justify-center shrink-0">
-                      {row.id === 'sarah' ? '2' : '1'}
+                      {row.unreadCount ?? (row.id === 'sarah' ? 2 : 1)}
                     </span>
                   )}
                 </div>

@@ -7,6 +7,7 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { useLiveChat } from './messagesLive';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatDealScreenProps {
@@ -16,7 +17,7 @@ interface BusinessChatDealScreenProps {
 }
 
 interface ThreadMessage {
-  id: number;
+  id: string;
   direction: 'in' | 'out';
   text: string;
   time: string;
@@ -31,28 +32,28 @@ const DEAL_ALT =
 
 const buildInitialMessages = (firstName: string): ThreadMessage[] => [
   {
-    id: 1,
+    id: '1',
     direction: 'in',
     text: "Hello! We'd like to bring a team of 4 colleagues for lunch today. Can we all claim this 20% deal on our separate VEMTAP apps?",
     time: '10:35 AM',
     showAuthor: firstName,
   },
   {
-    id: 2,
+    id: '2',
     direction: 'out',
     text: `Hi ${firstName}! Yes, absolutely! Each colleague can simply claim the voucher on their VEMTAP app and show the QR code when ordering at Table or Counter.`,
     time: '10:38 AM',
     readState: 'read',
   },
   {
-    id: 3,
+    id: '3',
     direction: 'in',
     text: 'Awesome, we are heading over now. Can we settle with POS card swipe at the table?',
     time: '10:41 AM',
     showAuthor: firstName,
   },
   {
-    id: 4,
+    id: '4',
     direction: 'out',
     text: 'Yes, our mobile POS terminal will be brought right to your table. Looking forward to hosting you!',
     time: '10:42 AM',
@@ -89,20 +90,36 @@ const formatNow = () => {
 export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScreenProps) {
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.deal;
   const firstName = contactFirstName(activeContact.name);
-  const [messages, setMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const liveChat = useLiveChat(activeContact.threadId);
   const [input, setInput] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
 
+  // Live threads stream from the inbox; demo chats keep the scripted thread.
+  const messages: ThreadMessage[] = liveChat.live
+    ? liveChat.messages.map((message) => ({
+        id: message.id,
+        direction: message.direction,
+        text: message.text,
+        time: message.time || formatNow(),
+        readState: message.read ? ('read' as const) : ('delivered' as const),
+      }))
+    : demoMessages;
+
   const handleSend = () => {
     const value = input.trim();
     if (!value) return;
-    setMessages((current) => [
-      ...current,
-      { id: Date.now(), direction: 'out', text: value, time: formatNow(), readState: 'delivered' },
-    ]);
     setInput('');
+    if (liveChat.live) {
+      liveChat.send(value);
+      return;
+    }
+    setDemoMessages((current) => [
+      ...current,
+      { id: String(Date.now()), direction: 'out', text: value, time: formatNow(), readState: 'delivered' },
+    ]);
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 

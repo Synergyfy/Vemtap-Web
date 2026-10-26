@@ -6,6 +6,8 @@ export interface BusinessChatContact {
   name: string;
   avatar?: string;
   isBusiness?: boolean;
+  /** Live inbox thread this chat opens; absent for demo contacts. */
+  threadId?: string;
 }
 
 /** Fallback contacts used when a chat screen is opened without an explicit contact. */

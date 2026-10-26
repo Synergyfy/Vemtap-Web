@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CustomerProfileDrawer, ChatOptionsSheet } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { useLiveChat } from './messagesLive';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatGeneralScreenProps {
@@ -12,7 +13,7 @@ interface BusinessChatGeneralScreenProps {
 }
 
 interface ThreadMessage {
-  id: number;
+  id: string;
   direction: 'in' | 'out';
   text: string;
   time: string;
@@ -20,17 +21,17 @@ interface ThreadMessage {
 }
 
 const buildInitialMessages = (firstName: string): ThreadMessage[] => [
-  { id: 1, direction: 'in', text: 'Good morning! Do you cater for private corporate lunches for about 25 people?', time: '10:14 AM' },
+  { id: '1', direction: 'in', text: 'Good morning! Do you cater for private corporate lunches for about 25 people?', time: '10:14 AM' },
   {
-    id: 2,
+    id: '2',
     direction: 'out',
     text: `Good morning ${firstName}! Yes, we offer tailored corporate lunch catering packages with custom menus.`,
     time: '10:18 AM',
     read: 'done_all',
   },
-  { id: 3, direction: 'in', text: 'That sounds great. Could you share your catering brochure or a sample menu with prices?', time: '10:20 AM' },
+  { id: '3', direction: 'in', text: 'That sounds great. Could you share your catering brochure or a sample menu with prices?', time: '10:20 AM' },
   {
-    id: 4,
+    id: '4',
     direction: 'out',
     text: 'Certainly! Sending our current corporate catering catalogue and banquet packages right now.',
     time: '10:22 AM',
@@ -56,18 +57,34 @@ const formatNow = () => {
 export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGeneralScreenProps) {
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.general;
   const firstName = contactFirstName(activeContact.name);
-  const [messages, setMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const liveChat = useLiveChat(activeContact.threadId);
   const [input, setInput] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
 
+  // Live threads stream from the inbox; demo chats keep the scripted thread.
+  const messages: ThreadMessage[] = liveChat.live
+    ? liveChat.messages.map((message) => ({
+        id: message.id,
+        direction: message.direction,
+        text: message.text,
+        time: message.time || formatNow(),
+        read: message.read ? 'done_all' : 'done',
+      }))
+    : demoMessages;
+
   const handleSend = () => {
     const value = input.trim();
     if (!value) return;
-    setMessages((current) => [...current, { id: Date.now(), direction: 'out', text: value, time: formatNow(), read: 'done' }]);
     setInput('');
     setSheetOpen(false);
+    if (liveChat.live) {
+      liveChat.send(value);
+      return;
+    }
+    setDemoMessages((current) => [...current, { id: String(Date.now()), direction: 'out', text: value, time: formatNow(), read: 'done' }]);
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 

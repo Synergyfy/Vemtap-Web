@@ -7,6 +7,7 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { useLiveChat } from './messagesLive';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatBookingScreenProps {
@@ -16,7 +17,7 @@ interface BusinessChatBookingScreenProps {
 }
 
 interface ThreadMessage {
-  id: number;
+  id: string;
   direction: 'in' | 'out';
   text: string;
   time: string;
@@ -33,7 +34,7 @@ const WINE_ALT =
 
 const buildInitialMessages = (contactName: string, firstName: string): ThreadMessage[] => [
   {
-    id: 1,
+    id: '1',
     direction: 'in',
     text: 'Do you have the 2018 vintage available for this weekend?',
     time: 'Oct 10, 4:18 PM',
@@ -41,7 +42,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     bubbleClass: 'bg-surface-canvas text-text-primary',
   },
   {
-    id: 2,
+    id: '2',
     direction: 'out',
     text: `Yes ${firstName}, we have 3 bottles reserved in our cellar.`,
     time: 'Oct 10, 4:21 PM',
@@ -49,7 +50,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     status: 'read',
   },
   {
-    id: 3,
+    id: '3',
     direction: 'in',
     text: 'Good morning. We have 2 additional guests joining us for our anniversary dinner on Saturday. Can we expand our Table 08 reservation to 6 seats?',
     time: '11:05 AM',
@@ -57,7 +58,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     bubbleClass: 'bg-surface-canvas text-text-primary',
   },
   {
-    id: 4,
+    id: '4',
     direction: 'out',
     text: `Good morning ${firstName}! Yes, we have merged Table 08 & 09 to comfortably seat party of 6. We look forward to celebrating with you!`,
     time: '11:08 AM',
@@ -65,7 +66,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     status: 'read',
   },
   {
-    id: 5,
+    id: '5',
     direction: 'out',
     text: "We've also chilled the reserve bottle for your arrival 🍷",
     time: '11:10 AM',
@@ -85,22 +86,38 @@ const formatNow = () => {
 export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBookingScreenProps) {
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.booking;
   const firstName = contactFirstName(activeContact.name);
-  const [messages, setMessages] = useState<ThreadMessage[]>(() =>
+  const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() =>
     buildInitialMessages(activeContact.name, firstName),
   );
+  const liveChat = useLiveChat(activeContact.threadId);
   const [input, setInput] = useState('Looking forward to seeing you!');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
 
+  // Live threads stream from the inbox; demo chats keep the scripted thread.
+  const messages: ThreadMessage[] = liveChat.live
+    ? liveChat.messages.map((message) => ({
+        id: message.id,
+        direction: message.direction,
+        text: message.text,
+        time: message.time || formatNow(),
+        status: message.direction === 'out' ? (message.read ? ('read' as const) : ('delivered' as const)) : undefined,
+      }))
+    : demoMessages;
+
   const handleSend = () => {
     const value = input.trim();
     if (!value) return;
-    setMessages((current) => [
-      ...current,
-      { id: Date.now(), direction: 'out', text: value, time: formatNow(), bubbleClass: 'bg-primary-container text-on-primary', status: 'read' },
-    ]);
     setInput('');
+    if (liveChat.live) {
+      liveChat.send(value);
+      return;
+    }
+    setDemoMessages((current) => [
+      ...current,
+      { id: String(Date.now()), direction: 'out', text: value, time: formatNow(), bubbleClass: 'bg-primary-container text-on-primary', status: 'read' },
+    ]);
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 

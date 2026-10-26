@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { MessagesAttachmentButton } from './MessagesAttachmentButton';
 import { MessagesChatActions } from './MessagesChatActions';
 import { MessagesShareAttachmentModal } from './MessagesShareAttachmentModal';
 import { MessagesSelectRecipientModal } from './MessagesSelectRecipientModal';
+import { hasApiConfig } from '../../services/api/client';
+import { useInboxRealtime, useThreadRealtime } from '../../hooks/business/useInbox';
+import { useInboxRows, useLiveChat } from '../messagesLive';
 
 export type MessagesWorkspaceView =
   | 'order-context'
@@ -35,6 +38,9 @@ interface OrderConv {
   channel: ConvFilter;
   online: boolean;
   prep: boolean;
+  /** Live rows carry the customer's contact details for the dossier. */
+  phone?: string;
+  email?: string;
 }
 
 const CONVS: OrderConv[] = [
@@ -112,6 +118,9 @@ const DOSSIER_NOTES = [
 ];
 
 export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onViewCustomerProfile }: DesktopBusinessMessagesOrderContextScreenProps) {
+  const live = hasApiConfig();
+  const socketLive = useInboxRealtime();
+  const { rows: liveRows, loading } = useInboxRows('IN_HOUSE');
   const [selectedId, setSelectedId] = useState('c1');
   const [filter, setFilter] = useState<ConvFilter>('all');
   const [search, setSearch] = useState('');
@@ -125,6 +134,32 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
   const streamRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
+
+  // Live mode maps inbox threads onto the conversation shape this screen
+  // renders; demo keeps the scripted CONVS list.
+  const conversations: OrderConv[] = useMemo(
+    () =>
+      live
+        ? liveRows.map((row) => ({
+            id: row.id,
+            name: row.name,
+            avatar: row.avatar,
+            preview: row.preview,
+            time: row.time,
+            unread: row.unreadCount,
+            status: row.chipLabel,
+            statusTone: row.chipClass,
+            tags: [],
+            channel:
+              row.kind === 'order' ? 'orders' : row.kind === 'booking' ? 'bookings' : row.kind === 'deal' ? 'deals' : 'all',
+            online: false,
+            prep: false,
+            phone: row.phone ?? undefined,
+            email: row.email ?? undefined,
+          }))
+        : CONVS,
+    [live, liveRows],
+  );
 
   // Close the message-filter menu on outside click or Escape.
   useEffect(() => {
@@ -146,7 +181,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
   /** A conversation stays unread until it is marked read from the filters menu. */
   const unreadOf = (c: OrderConv) => (readIds.has(c.id) ? 0 : c.unread);
 
-  const filtered = CONVS.filter((c) => {
+  const filtered = conversations.filter((c) => {
     if (filter === 'unread' && unreadOf(c) === 0) return false;
     if (filter === 'orders' && c.channel !== 'orders') return false;
     if (filter === 'bookings' && c.channel !== 'bookings') return false;
@@ -155,20 +190,26 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
     return true;
   });
 
-  const selected = CONVS.find((c) => c.id === selectedId) ?? CONVS[0];
+  const selected = conversations.find((c) => c.id === selectedId) ?? conversations[0];
+  const liveChat = useLiveChat(live && selected ? selected.id : null);
+  const { customerTyping } = useThreadRealtime(liveChat.live && selected ? selected.id : null);
 
   const send = () => {
     const trimmed = draft.trim();
     if (!trimmed) return;
-    setExtraMessages((prev) => [...prev, { id: `m${Date.now()}`, text: trimmed, time: 'Just now' }]);
     setDraft('');
+    if (liveChat.live) {
+      liveChat.send(trimmed);
+      return;
+    }
+    setExtraMessages((prev) => [...prev, { id: `m${Date.now()}`, text: trimmed, time: 'Just now' }]);
     window.setTimeout(() => streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }), 50);
   };
 
   /** Start a chat from the recipient picker without leaving this inbox. */
   const startChatWith = (name: string) => {
     if (!name) return;
-    const match = CONVS.find((c) => c.name.toLowerCase() === name.toLowerCase());
+    const match = conversations.find((c) => c.name.toLowerCase() === name.toLowerCase());
     if (match) {
       setFilter('all');
       setSearch('');
@@ -230,7 +271,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                   <div className="h-px bg-border-subtle my-space-2xs" />
                   <button
                     type="button"
-                    onClick={() => setReadIds(new Set(CONVS.map((c) => c.id)))}
+                    onClick={() => setReadIds(new Set(conversations.map((c) => c.id)))}
                     className="flex items-center gap-space-sm px-space-sm py-space-xs font-label-md text-label-md text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors text-left"
                   >
                     <Icon name="done_all" className="text-[18px]" />
@@ -278,7 +319,9 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
               <div className="p-space-sm border-b border-border space-y-space-xs">
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-sm text-heading-sm text-on-surface">Conversations</h2>
-                  <span className="px-space-2xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">8 Live</span>
+                  <span className="px-space-2xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                    {live ? `${conversations.length} Live` : '8 Live'}
+                  </span>
                 </div>
                 <div className="relative">
                   <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-tertiary" />
@@ -347,7 +390,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
               <div className="p-space-xs border-t border-border flex items-center justify-between font-caption text-caption text-text-tertiary">
                 <span className="flex items-center gap-space-2xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-                  Socket connected (Cluster LAG-01)
+                  {live ? (socketLive ? 'Socket connected' : 'Reconnectingâ€¦') : 'Socket connected (Cluster LAG-01)'}
                 </span>
                 <button type="button" className="flex items-center gap-space-2xs text-primary hover:underline">
                   <Icon name="refresh" className="text-[14px]" />
@@ -356,6 +399,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
               </div>
             </aside>
 
+            {selected ? (
             <section className="lg:col-span-8 xl:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
               <div className="p-space-md border-b border-border flex items-center justify-between gap-space-sm">
                 <div className="flex items-center gap-space-sm min-w-0">
@@ -366,8 +410,17 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                   <div className="min-w-0">
                     <div className="font-heading-sm text-heading-sm text-on-surface truncate">{selected.name}</div>
                     <div className="flex items-center gap-space-2xs font-caption text-caption text-on-surface-variant">
-                      <span className="px-space-2xs rounded bg-badge-discount-bg text-badge-discount-text font-semibold">Loyal VIP</span>
-                      <span>Online now</span>
+                      {live ? (
+                        <>
+                          <span className={`px-space-2xs rounded font-caption text-caption ${selected.statusTone}`}>{selected.status}</span>
+                          <span>Last active {selected.time}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="px-space-2xs rounded bg-badge-discount-bg text-badge-discount-text font-semibold">Loyal VIP</span>
+                          <span>Online now</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -380,83 +433,140 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                 </div>
               </div>
 
-              <div className="px-space-md py-space-xs border-b border-border bg-surface-tint-blue/40 flex items-center justify-between gap-space-sm">
-                <div className="flex items-center gap-space-xs min-w-0">
-                  <Icon name="receipt_long" className="text-[16px] text-primary shrink-0" />
-                  <span className="font-label-sm text-label-sm text-on-surface truncate">
-                    <span className="text-primary font-semibold">ORDER ATTACHED</span>
-                    <span className="text-on-surface-variant"> · </span>
-                    #VG-94021
-                    <span className="text-on-surface-variant"> · Pickup 9:45 AM · </span>
-                    <span className="font-semibold">₦31,000</span>
-                  </span>
+              {/* Demo screens a canned order ticket; live threads carry no displayable order ref here. */}
+              {!live && (
+                <div className="px-space-md py-space-xs border-b border-border bg-surface-tint-blue/40 flex items-center justify-between gap-space-sm">
+                  <div className="flex items-center gap-space-xs min-w-0">
+                    <Icon name="receipt_long" className="text-[16px] text-primary shrink-0" />
+                    <span className="font-label-sm text-label-sm text-on-surface truncate">
+                      <span className="text-primary font-semibold">ORDER ATTACHED</span>
+                      <span className="text-on-surface-variant"> · </span>
+                      #VG-94021
+                      <span className="text-on-surface-variant"> · Pickup 9:45 AM · </span>
+                      <span className="font-semibold">₦31,000</span>
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => onNav('orders')} className="font-label-sm text-label-sm text-primary hover:underline shrink-0">
+                    View Full Order Ticket
+                  </button>
                 </div>
-                <button type="button" onClick={() => onNav('orders')} className="font-label-sm text-label-sm text-primary hover:underline shrink-0">
-                  View Full Order Ticket
-                </button>
-              </div>
+              )}
 
               <div ref={streamRef} className="flex-1 overflow-y-auto p-space-md space-y-space-sm bg-surface-subtle/30">
                 <div className="flex justify-center">
-                  <span className="px-space-xs py-space-2xs rounded-full bg-surface border border-border font-caption text-caption text-text-tertiary">Today · Oct 11, 2025</span>
+                  <span className="px-space-xs py-space-2xs rounded-full bg-surface border border-border font-caption text-caption text-text-tertiary">
+                    {live ? 'Today' : 'Today · Oct 11, 2025'}
+                  </span>
                 </div>
 
-                <div className="flex gap-space-xs justify-start">
-                  <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
-                  <div className="max-w-[75%]">
-                    <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border text-on-surface">
-                      <p className="font-body-md text-body-md whitespace-pre-wrap">Hi! I just placed order #VG-94021 — Truffle Fries Combo with extra sauce. Can you confirm it&apos;s in the kitchen?</p>
-                    </div>
-                    <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center gap-1">9:32 AM</div>
-                  </div>
-                </div>
-
-                <div className="flex gap-space-xs justify-end">
-                  <div className="max-w-[75%]">
-                    <div className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary">
-                      <p className="font-body-md text-body-md whitespace-pre-wrap">Confirmed, Michael! Order #VG-94021 is at the Grill Station. Pickup window is 9:40–9:50 AM.</p>
-                    </div>
-                    <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center justify-end gap-1">
-                      9:34 AM
-                      <Icon name="done_all" className="text-[14px] text-primary" filled />
-                      Delivered &amp; Seen
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-space-xs justify-start">
-                  <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
-                  <div className="max-w-[75%]">
-                    <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border text-on-surface">
-                      <p className="font-body-md text-body-md whitespace-pre-wrap">Perfect — can I get extra pepper sauce? Also, is the Add-on discount still active?</p>
-                    </div>
-                    <div className="font-caption text-caption text-text-tertiary mt-1">9:36 AM</div>
-                  </div>
-                </div>
-
-                {extraMessages.map((m) => (
-                  <div key={m.id} className="flex gap-space-xs justify-end">
-                    <div className="max-w-[75%]">
-                      <div className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary">
-                        <p className="font-body-md text-body-md whitespace-pre-wrap">{m.text}</p>
-                      </div>
-                      <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center justify-end gap-1">
-                        {m.time}
-                        <Icon name="done_all" className="text-[14px] text-primary" filled />
+                {!liveChat.live && (
+                  <>
+                    <div className="flex gap-space-xs justify-start">
+                      <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
+                      <div className="max-w-[75%]">
+                        <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border text-on-surface">
+                          <p className="font-body-md text-body-md whitespace-pre-wrap">Hi! I just placed order #VG-94021 — Truffle Fries Combo with extra sauce. Can you confirm it&apos;s in the kitchen?</p>
+                        </div>
+                        <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center gap-1">9:32 AM</div>
                       </div>
                     </div>
-                  </div>
-                ))}
 
-                <div className="flex gap-space-xs justify-start">
-                  <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
-                  <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-                    <span className="font-body-sm text-body-sm text-on-surface-variant ml-1">Customer is viewing active order progress screen</span>
+                    <div className="flex gap-space-xs justify-end">
+                      <div className="max-w-[75%]">
+                        <div className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary">
+                          <p className="font-body-md text-body-md whitespace-pre-wrap">Confirmed, Michael! Order #VG-94021 is at the Grill Station. Pickup window is 9:40–9:50 AM.</p>
+                        </div>
+                        <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center justify-end gap-1">
+                          9:34 AM
+                          <Icon name="done_all" className="text-[14px] text-primary" filled />
+                          Delivered &amp; Seen
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-space-xs justify-start">
+                      <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
+                      <div className="max-w-[75%]">
+                        <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border text-on-surface">
+                          <p className="font-body-md text-body-md whitespace-pre-wrap">Perfect — can I get extra pepper sauce? Also, is the Add-on discount still active?</p>
+                        </div>
+                        <div className="font-caption text-caption text-text-tertiary mt-1">9:36 AM</div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {liveChat.live && liveChat.messages.length === 0 && (
+                  <div className="flex justify-center py-space-md font-body-md text-body-md text-on-surface-variant">
+                    No messages yet — send the first reply to start this conversation.
                   </div>
-                </div>
+                )}
+
+                {liveChat.live &&
+                  liveChat.messages.map((message) =>
+                    message.direction === 'in' ? (
+                      <div className="flex gap-space-xs justify-start" key={message.id}>
+                        <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
+                        <div className="max-w-[75%]">
+                          <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border text-on-surface">
+                            <p className="font-body-md text-body-md whitespace-pre-wrap">{message.text}</p>
+                          </div>
+                          <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center gap-1">{message.time}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-space-xs justify-end" key={message.id}>
+                        <div className="max-w-[75%]">
+                          <div className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary">
+                            <p className="font-body-md text-body-md whitespace-pre-wrap">{message.text}</p>
+                          </div>
+                          <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center justify-end gap-1">
+                            {message.time}
+                            {message.read && <Icon name="done_all" className="text-[14px] text-primary" filled />}
+                          </div>
+                        </div>
+                      </div>
+                    ),
+                  )}
+
+                {!liveChat.live &&
+                  extraMessages.map((m) => (
+                    <div key={m.id} className="flex gap-space-xs justify-end">
+                      <div className="max-w-[75%]">
+                        <div className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary">
+                          <p className="font-body-md text-body-md whitespace-pre-wrap">{m.text}</p>
+                        </div>
+                        <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center justify-end gap-1">
+                          {m.time}
+                          <Icon name="done_all" className="text-[14px] text-primary" filled />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                {liveChat.live ? (
+                  customerTyping && (
+                    <div className="flex gap-space-xs justify-start">
+                      <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
+                      <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <span className="font-body-sm text-body-sm text-on-surface-variant ml-1">{selected.name} is typing…</span>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="flex gap-space-xs justify-start">
+                    <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
+                    <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="font-body-sm text-body-sm text-on-surface-variant ml-1">Customer is viewing active order progress screen</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-space-sm border-t border-border space-y-space-xs">
@@ -497,9 +607,17 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                 </div>
               </div>
             </section>
+            ) : (
+              <section className="lg:col-span-8 xl:col-span-6 bg-surface rounded-2xl shadow-sm border border-border flex flex-col overflow-hidden">
+                <div className="flex-1 flex items-center justify-center p-space-md font-body-md text-body-md text-on-surface-variant">
+                  {loading ? 'Loading conversations…' : 'No conversation selected — pick one from the list to start messaging.'}
+                </div>
+              </section>
+            )}
 
             {/* Customer dossier: only fits beside the thread from `xl` up — below that
                 the full CRM profile opens from the chat header / dossier shortcut. */}
+            {selected && (
             <aside className="hidden xl:flex lg:col-span-3 bg-surface rounded-2xl shadow-sm border border-border flex-col overflow-hidden">
               <div className="p-space-sm border-b border-border">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Customer Dossier</h2>
@@ -515,14 +633,39 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                     </div>
                   </div>
                   <div className="mt-space-sm space-y-space-2xs font-body-sm text-body-sm text-on-surface-variant">
-                    <div className="flex items-center gap-space-xs">
-                      <Icon name="call" className="text-[14px] text-primary" />
-                      +234 803 221 7788
-                    </div>
-                    <div className="flex items-center gap-space-xs">
-                      <Icon name="mail" className="text-[14px] text-primary" />
-                      michael.james@email.com
-                    </div>
+                    {live ? (
+                      <>
+                        {selected.phone && (
+                          <div className="flex items-center gap-space-xs">
+                            <Icon name="call" className="text-[14px] text-primary" />
+                            {selected.phone}
+                          </div>
+                        )}
+                        {selected.email && (
+                          <div className="flex items-center gap-space-xs">
+                            <Icon name="mail" className="text-[14px] text-primary" />
+                            {selected.email}
+                          </div>
+                        )}
+                        {!selected.phone && !selected.email && (
+                          <div className="flex items-center gap-space-xs">
+                            <Icon name="person" className="text-[14px] text-text-tertiary" />
+                            No contact details on file
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-space-xs">
+                          <Icon name="call" className="text-[14px] text-primary" />
+                          +234 803 221 7788
+                        </div>
+                        <div className="flex items-center gap-space-xs">
+                          <Icon name="mail" className="text-[14px] text-primary" />
+                          michael.james@email.com
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -642,6 +785,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                 </button>
               </div>
             </aside>
+            )}
           </div>
         </div>
       </div>

@@ -7,6 +7,8 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { useLiveChat } from './messagesLive';
+import { useThreadRealtime } from '../hooks/business/useInbox';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, contactInitials, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatOrderScreenProps {
@@ -89,6 +91,8 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.order;
   const firstName = contactFirstName(activeContact.name);
   const initials = contactInitials(activeContact.name);
+  const liveChat = useLiveChat(activeContact.threadId);
+  const { customerTyping } = useThreadRealtime(liveChat.live && activeContact.threadId ? activeContact.threadId : null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -106,6 +110,10 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
     const value = input.trim();
     if (!value) return;
     setInput('');
+    if (liveChat.live) {
+      liveChat.send(value);
+      return;
+    }
     window.alert(`Message sent to ${firstName}: "${value}"`);
   };
 
@@ -173,38 +181,71 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
             </span>
           </div>
           {/* Customer Incoming */}
-          <div className="flex items-end gap-space-xs max-w-[85%]">
-            <div className="w-7 h-7 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-label-sm text-label-sm flex-shrink-0 font-medium">
-              {initials}
+          {!liveChat.live && (
+            <div className="flex items-end gap-space-xs max-w-[85%]">
+              <div className="w-7 h-7 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-label-sm text-label-sm flex-shrink-0 font-medium">
+                {initials}
+              </div>
+              <div className="bg-surface-container-lowest rounded-2xl rounded-bl-xs p-space-sm shadow-sm flex flex-col gap-1">
+                <p className="font-body-md text-body-md text-text-primary">
+                  Good morning, is my pickup order ready? Heading out now.
+                </p>
+                <span className="font-caption text-caption text-text-tertiary self-end">11:29 AM</span>
+              </div>
             </div>
-            <div className="bg-surface-container-lowest rounded-2xl rounded-bl-xs p-space-sm shadow-sm flex flex-col gap-1">
-              <p className="font-body-md text-body-md text-text-primary">
-                Good morning, is my pickup order ready? Heading out now.
-              </p>
-              <span className="font-caption text-caption text-text-tertiary self-end">11:29 AM</span>
-            </div>
-          </div>
+          )}
           {/* Merchant Outgoing */}
-          <div className="flex items-end gap-space-xs max-w-[85%] self-end flex-row-reverse">
-            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary font-label-sm text-label-sm flex-shrink-0 font-medium">
-              VT
+          {!liveChat.live && (
+            <div className="flex items-end gap-space-xs max-w-[85%] self-end flex-row-reverse">
+              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary font-label-sm text-label-sm flex-shrink-0 font-medium">
+                VT
+              </div>
+              <div className="bg-primary text-on-primary rounded-2xl rounded-br-xs p-space-sm shadow-sm flex flex-col gap-1">
+                <p className="font-body-md text-body-md text-on-primary">
+                  Hi {firstName}, chef just plated your ribeyes. Packing them securely in thermo-craft boxes now!
+                </p>
+                <span className="font-caption text-caption text-surface-tint-blue self-end flex items-center gap-1">
+                  11:31 AM <Icon name="done_all" className="text-[13px]" />
+                </span>
+              </div>
             </div>
-            <div className="bg-primary text-on-primary rounded-2xl rounded-br-xs p-space-sm shadow-sm flex flex-col gap-1">
-              <p className="font-body-md text-body-md text-on-primary">
-                Hi {firstName}, chef just plated your ribeyes. Packing them securely in thermo-craft boxes now!
-              </p>
-              <span className="font-caption text-caption text-surface-tint-blue self-end flex items-center gap-1">
-                11:31 AM <Icon name="done_all" className="text-[13px]" />
-              </span>
-            </div>
-          </div>
+          )}
+          {/* Live thread behind the order context */}
+          {liveChat.live &&
+            liveChat.messages.map((message) =>
+              message.direction === 'in' ? (
+                <div className="flex items-end gap-space-xs max-w-[85%]" key={message.id}>
+                  <div className="w-7 h-7 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-label-sm text-label-sm flex-shrink-0 font-medium">
+                    {initials}
+                  </div>
+                  <div className="bg-surface-container-lowest rounded-2xl rounded-bl-xs p-space-sm shadow-sm flex flex-col gap-1">
+                    <p className="font-body-md text-body-md text-text-primary">{message.text}</p>
+                    <span className="font-caption text-caption text-text-tertiary self-end">{message.time}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-end gap-space-xs max-w-[85%] self-end flex-row-reverse" key={message.id}>
+                  <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary font-label-sm text-label-sm flex-shrink-0 font-medium">
+                    VT
+                  </div>
+                  <div className="bg-primary text-on-primary rounded-2xl rounded-br-xs p-space-sm shadow-sm flex flex-col gap-1">
+                    <p className="font-body-md text-body-md text-on-primary">{message.text}</p>
+                    <span className="font-caption text-caption text-surface-tint-blue self-end flex items-center gap-1">
+                      {message.time} {message.read && <Icon name="done_all" className="text-[13px]" />}
+                    </span>
+                  </div>
+                </div>
+              ),
+            )}
           {/* Typing Indicator */}
-          <div className="flex items-center gap-2 text-text-tertiary font-caption text-caption pl-9">
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-            <span>{firstName} is typing...</span>
-          </div>
+          {(!liveChat.live || customerTyping) && (
+            <div className="flex items-center gap-2 text-text-tertiary font-caption text-caption pl-9">
+              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
+              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+              <span>{firstName} is typing...</span>
+            </div>
+          )}
         </div>
 
         {/* Drawer Backdrop */}
