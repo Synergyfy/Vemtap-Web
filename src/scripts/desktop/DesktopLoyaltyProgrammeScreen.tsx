@@ -1,7 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { useLoyaltyMutations, useLoyaltyRewards, useLoyaltyRules, useLoyaltyStats } from '../../hooks/business/useLoyalty';
+import {
+  DEFAULT_BONUS,
+  earnsOnSpend,
+  earnsOnVisit,
+  rewardStatus,
+  ruleTypeFor,
+  spendRuleLabel,
+  statChange,
+  statValue,
+} from '../loyaltyLive';
 
 interface DesktopLoyaltyProgrammeScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -60,9 +75,101 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
   const [expiryNotice, setExpiryNotice] = useState(true);
   const [passModalOpen, setPassModalOpen] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [toast, setToast] = useState<string | null>(null);
+
+  const live = hasApiConfig();
+  const business = useMyBusiness();
+  const { branch, branches } = useBusinessBranch();
+  const liveRules = useLoyaltyRules();
+  const stats = useLoyaltyStats();
+  const rewards = useLoyaltyRewards();
+  const { updateRules } = useLoyaltyMutations();
+  const data = liveRules.data;
+  const loadError = liveRules.error ?? stats.error;
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2600);
+  };
+
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.isActive);
+    // Spend, visit, deal claims (no backend rule) and birthday, in card order.
+    setRuleToggles([earnsOnSpend(data), earnsOnVisit(data), false, data.birthdayBonus > 0]);
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) showToast(apiErrorMessage(loadError, 'Could not load your loyalty programme.'));
+  }, [loadError]);
+
+  const businessName = business.data?.name ?? '—';
+  const initials =
+    businessName
+      .split(/\s+/)
+      .filter((word) => /\w/.test(word))
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase())
+      .join('') || '—';
+  const activeRewards = (rewards.data ?? []).filter((reward) => rewardStatus(reward) === 'active').length;
+  const earningRules =
+    live && data
+      ? [
+          { ...EARNING_RULES[0], formula: spendRuleLabel(data), note: 'Credited on every settled order' },
+          {
+            ...EARNING_RULES[1],
+            formula: `+${data.visitPoints} Bonus Points per Visit`,
+            note: `Max 1 check-in per ${data.visitCooldownHours} hours`,
+          },
+          { ...EARNING_RULES[2], formula: '—', note: 'Deal claim bonuses are coming soon' },
+          {
+            ...EARNING_RULES[3],
+            formula: `+${(data.birthdayBonus || DEFAULT_BONUS.birthdayBonus).toLocaleString('en-US')} Points on customer birthday week`,
+            note: 'Credited during the member birthday week',
+          },
+        ]
+      : EARNING_RULES;
+
+  const toggleEnabled = () => {
+    if (!live) {
+      setEnabled((value) => !value);
+      return;
+    }
+    updateRules.mutate(
+      { isActive: !enabled },
+      {
+        onSuccess: () => showToast(enabled ? 'Programme paused' : 'Programme activated'),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not update the programme.')),
+      },
+    );
+  };
 
   const handleSave = () => {
     if (saveState !== 'idle') return;
+    if (live) {
+      if (!data) return;
+      const ruleType = ruleTypeFor(ruleToggles[0], ruleToggles[1]);
+      if (!ruleType) {
+        showToast('Keep points on purchases or visits switched on.');
+        return;
+      }
+      setSaveState('saving');
+      updateRules.mutate(
+        { ruleType, birthdayBonus: ruleToggles[3] ? data.birthdayBonus || DEFAULT_BONUS.birthdayBonus : 0 },
+        {
+          onSuccess: () => {
+            setSaveState('saved');
+            window.setTimeout(() => setSaveState('idle'), 2200);
+          },
+          onError: (error) => {
+            setSaveState('idle');
+            showToast(apiErrorMessage(error, 'Could not save your loyalty settings.'));
+          },
+        },
+      );
+      return;
+    }
     setSaveState('saving');
     window.setTimeout(() => {
       setSaveState('saved');
@@ -71,6 +178,10 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
   };
 
   const toggleRule = (index: number) => {
+    if (live && index === 2) {
+      showToast('Deal claim bonuses are coming soon.');
+      return;
+    }
     setRuleToggles((prev) => prev.map((value, i) => (i === index ? !value : value)));
   };
 
@@ -100,7 +211,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
               </div>
               <span className="text-text-tertiary font-caption text-caption hidden sm:inline">•</span>
               <span className="text-text-secondary font-caption text-caption hidden sm:inline">
-                Auto-committing to Wuse II Terminal Core
+                {v(`Applies to ${branch.name}`, 'Auto-committing to Wuse II Terminal Core')}
               </span>
             </div>
           </div>
@@ -175,7 +286,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
               <Icon name="card_giftcard" className="text-[18px]" />
               Rewards Catalog
               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-caption text-[11px] font-semibold">
-                3 Active
+                {v(String(activeRewards), '3')} Active
               </span>
             </button>
             <button
@@ -202,15 +313,15 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                   <div>
                     <div className="flex items-center gap-space-xs">
                       <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                        Customer Club ID #NG-8842
+                        {v('Customer Club', 'Customer Club ID #NG-8842')}
                       </span>
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
                         <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                        Active • Live to Customers
+                        {enabled ? 'Active • Live to Customers' : 'Paused'}
                       </span>
                     </div>
                     <h2 className="font-heading-md text-heading-md text-text-primary mt-0.5">
-                      VEMTAP Bites &amp; Perks Club
+                      {v(`${businessName} Rewards`, 'VEMTAP Bites & Perks Club')}
                     </h2>
                   </div>
                 </div>
@@ -219,7 +330,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                     type="checkbox"
                     className="sr-only peer"
                     checked={enabled}
-                    onChange={() => setEnabled((v) => !v)}
+                    onChange={toggleEnabled}
                   />
                   <div className="w-14 h-8 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-surface-canvas after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary-container shadow-inner" />
                 </label>
@@ -231,14 +342,16 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                     Active Enrolled Members
                   </span>
                   <div className="flex items-baseline gap-space-xs">
-                    <span className="font-heading-lg text-heading-lg text-text-primary tracking-tight">1,420</span>
+                    <span className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
+                      {v(statValue(stats.data, 'Total Customers'), '1,420')}
+                    </span>
                     <span className="font-caption text-caption text-badge-discount-text font-semibold flex items-center">
                       <Icon name="trending_up" className="text-[14px]" />
-                      +14% this month
+                      {v(statChange(stats.data, 'Total Customers'), '+14% this month')}
                     </span>
                   </div>
                   <span className="font-caption text-caption text-text-tertiary">
-                    389 joined via NFC Table Tap in last 7 days
+                    {v(`${statValue(stats.data, 'Points Issued')} points issued so far`, '389 joined via NFC Table Tap in last 7 days')}
                   </span>
                 </div>
                 <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-2xs">
@@ -247,13 +360,13 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                     Patron Return Rate
                   </span>
                   <div className="flex items-baseline gap-space-xs">
-                    <span className="font-heading-lg text-heading-lg text-text-primary tracking-tight">84%</span>
+                    <span className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{v('—', '84%')}</span>
                     <span className="px-space-2xs py-0.5 rounded bg-surface-container text-on-surface-variant font-caption text-[11px] font-semibold">
                       Top Tier Loyalty
                     </span>
                   </div>
                   <span className="font-caption text-caption text-text-tertiary">
-                    Benchmark: 42% for F&amp;B Abuja Metro
+                    {v('—', 'Benchmark: 42% for F&B Abuja Metro')}
                   </span>
                 </div>
               </div>
@@ -279,7 +392,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                 </span>
               </div>
               <div className="flex flex-col gap-space-sm">
-                {EARNING_RULES.map((rule, index) => (
+                {earningRules.map((rule, index) => (
                   <div
                     key={rule.title}
                     className="bg-surface-canvas rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] p-space-md flex flex-col sm:flex-row sm:items-center justify-between gap-space-md hover:shadow-md transition-shadow"
@@ -367,7 +480,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                     name="branch_scope"
                     className="mt-1 text-primary focus:ring-0 shrink-0"
                     checked={branchScope === 'selected'}
-                    onChange={() => setBranchScope('selected')}
+                    onChange={() => (live ? showToast('Choosing branches for loyalty is coming soon.') : setBranchScope('selected'))}
                   />
                   <div className="flex flex-col gap-0.5">
                     <span className="font-label-md text-label-md font-semibold text-text-primary">
@@ -382,9 +495,21 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
               </div>
               <div className="flex flex-col gap-space-xs pt-space-xs">
                 <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                  Active Connected Outlets (3 Registered)
+                  Active Connected Outlets ({v(branches.length, 3)} Registered)
                 </span>
                 <div className="flex flex-wrap items-center gap-space-xs">
+                  {live && branches.map((outlet) => (
+                    <div
+                      className="flex items-center gap-space-2xs px-space-sm py-1.5 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold"
+                      key={outlet.key}
+                    >
+                      <Icon name="store" className="text-[16px]" />
+                      {outlet.name}
+                      <span className="ml-1 w-2 h-2 rounded-full bg-badge-discount-text" />
+                    </div>
+                  ))}
+                  {!live && (
+                  <>
                   <div className="flex items-center gap-space-2xs px-space-sm py-1.5 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
                     <Icon name="store" className="text-[16px]" />
                     Wuse II Branch (Flagship)
@@ -400,6 +525,8 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                     Garki Branch (Paused - Renovation)
                     <span className="ml-1 w-2 h-2 rounded-full bg-tertiary" />
                   </div>
+                  </>
+                  )}
                 </div>
               </div>
             </div>
@@ -425,7 +552,12 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                   </label>
                   <div className="relative">
                     <select
-                      defaultValue="12 Months from Last Activity"
+                      defaultValue={v('Never (Perpetual Balances)', '12 Months from Last Activity')}
+                      onChange={(event) => {
+                        if (!live) return;
+                        event.target.value = 'Never (Perpetual Balances)';
+                        showToast('Points expiry is coming soon. Points never expire for now.');
+                      }}
                       className="w-full h-[48px] px-space-md pr-10 rounded-xl bg-surface-subtle text-text-primary font-label-md text-label-md appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20"
                     >
                       <option>12 Months from Last Activity</option>
@@ -456,7 +588,9 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                       type="checkbox"
                       className="sr-only peer"
                       checked={expiryNotice}
-                      onChange={() => setExpiryNotice((v) => !v)}
+                      onChange={() =>
+                        live ? showToast('Expiry reminders are coming soon.') : setExpiryNotice((value) => !value)
+                      }
                     />
                     <div className="w-10 h-5 bg-surface-container rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-canvas after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-container" />
                   </label>
@@ -464,12 +598,12 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                 <div className="grid grid-cols-2 gap-space-sm">
                   <div className="p-space-sm rounded-xl bg-surface-subtle flex flex-col gap-1">
                     <span className="font-caption text-caption text-text-tertiary font-medium">Max Accrual Cap</span>
-                    <span className="font-label-md text-label-md font-bold text-text-primary">5,000 Pts / Txn</span>
+                    <span className="font-label-md text-label-md font-bold text-text-primary">{v('—', '5,000 Pts / Txn')}</span>
                     <span className="font-caption text-[11px] text-text-secondary">Safety anti-fraud limit</span>
                   </div>
                   <div className="p-space-sm rounded-xl bg-surface-subtle flex flex-col gap-1">
                     <span className="font-caption text-caption text-text-tertiary font-medium">Redemption Ratio</span>
-                    <span className="font-label-md text-label-md font-bold text-primary">1 Pt = ₦1.00 Credit</span>
+                    <span className="font-label-md text-label-md font-bold text-primary">{v('—', '1 Pt = ₦1.00 Credit')}</span>
                     <span className="font-caption text-[11px] text-text-secondary">Direct bill offset</span>
                   </div>
                 </div>
@@ -502,13 +636,13 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-space-xs">
                         <div className="w-8 h-8 rounded-full bg-surface-canvas/20 backdrop-blur-md flex items-center justify-center font-bold text-on-primary text-caption">
-                          UG
+                          {v(initials, 'UG')}
                         </div>
                         <div className="flex flex-col">
                           <span className="font-label-sm text-label-sm font-bold leading-tight">
-                            Urban Grill &amp; Bistro
+                            {v(businessName, 'Urban Grill & Bistro')}
                           </span>
-                          <span className="font-caption text-[11px] opacity-80">Wuse II • Gold Patron Tier</span>
+                          <span className="font-caption text-[11px] opacity-80">{v(`${branch.shortName} • Member Tier`, 'Wuse II • Gold Patron Tier')}</span>
                         </div>
                       </div>
                       <Icon name="contactless" className="text-on-primary/80 text-[20px]" />
@@ -519,19 +653,19 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                       </span>
                       <div className="flex items-baseline gap-space-2xs">
                         <span className="font-display-hero text-display-hero font-bold tracking-tight text-on-primary">
-                          2,450
+                          {v('—', '2,450')}
                         </span>
                         <span className="font-label-md text-label-md font-medium text-on-primary/90">pts</span>
                       </div>
                       <span className="font-caption text-[11px] text-badge-discount-bg font-medium">
-                        ≈ ₦2,450 Dining Credit Available
+                        {v('Member balance shows here', '≈ ₦2,450 Dining Credit Available')}
                       </span>
                     </div>
                     <div className="flex items-end justify-between pt-space-xs border-t border-on-primary/15">
                       <div className="flex flex-col">
                         <span className="font-caption text-[10px] uppercase text-on-primary/60">Member Patron</span>
                         <span className="font-label-sm text-label-sm font-semibold tracking-wide text-on-primary">
-                          Michael James
+                          {v('Member Name', 'Michael James')}
                         </span>
                       </div>
                       <div className="flex items-center gap-1 font-caption text-[11px] bg-surface-canvas/20 px-2 py-0.5 rounded-full font-semibold">
@@ -549,7 +683,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                       ))}
                     </div>
                     <span className="font-caption text-[11px] font-mono text-text-secondary tracking-widest">
-                      #8842-1099-2450
+                      {v('—', '#8842-1099-2450')}
                     </span>
                   </div>
                   <button
@@ -573,9 +707,9 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                 <div className="p-space-md rounded-xl bg-surface-subtle flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="font-caption text-caption text-text-secondary">Total Outstanding Liability</span>
-                    <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦142,500</span>
+                    <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{v('—', '₦142,500')}</span>
                     <span className="font-caption text-[11px] text-text-tertiary">
-                      142,500 unredeemed active points
+                      {v('—', '142,500 unredeemed active points')}
                     </span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-error-container text-on-error-container flex items-center justify-center">
@@ -586,11 +720,11 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                   <div className="flex flex-col">
                     <span className="font-caption text-caption text-text-secondary">Loyalty Patron Revenue</span>
                     <div className="flex items-baseline gap-space-2xs">
-                      <span className="font-heading-sm text-heading-sm text-primary font-bold">₦1,240,000</span>
-                      <span className="font-caption text-[11px] text-badge-discount-text font-bold">+22% MoM</span>
+                      <span className="font-heading-sm text-heading-sm text-primary font-bold">{v('—', '₦1,240,000')}</span>
+                      <span className="font-caption text-[11px] text-badge-discount-text font-bold">{v('', '+22% MoM')}</span>
                     </div>
                     <span className="font-caption text-[11px] text-text-secondary">
-                      8.7x ROI vs. loyalty liability
+                      {v('—', '8.7x ROI vs. loyalty liability')}
                     </span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-primary-container text-on-primary flex items-center justify-center">
@@ -600,14 +734,14 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                 <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-2xs">
                   <div className="flex items-center justify-between text-caption font-caption">
                     <span className="text-text-secondary">Points Redemption Cycle Velocity</span>
-                    <span className="font-bold text-text-primary">68% Active Cycle</span>
+                    <span className="font-bold text-text-primary">{v('—', '68% Active Cycle')}</span>
                   </div>
                   <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden">
-                    <div className="h-full bg-badge-discount-text rounded-full" style={{ width: '68%' }} />
+                    <div className="h-full bg-badge-discount-text rounded-full" style={{ width: v('0%', '68%') }} />
                   </div>
                   <div className="flex items-center justify-between font-caption text-[11px] text-text-tertiary">
                     <span>Healthy velocity target: 60-75%</span>
-                    <span className="text-badge-discount-text font-medium">Optimal Velocity</span>
+                    <span className="text-badge-discount-text font-medium">{v('', 'Optimal Velocity')}</span>
                   </div>
                 </div>
               </div>
@@ -646,21 +780,21 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
             <div className="flex flex-col items-center gap-space-md py-space-sm text-center">
               <div className="w-full rounded-2xl bg-gradient-to-br from-primary to-primary-container text-on-primary p-space-lg flex flex-col justify-between shadow-xl min-h-[220px]">
                 <div className="flex items-center justify-between">
-                  <span className="font-heading-sm text-heading-sm">Urban Grill &amp; Bistro</span>
+                  <span className="font-heading-sm text-heading-sm">{v(businessName, 'Urban Grill & Bistro')}</span>
                   <span className="px-2 py-1 rounded bg-surface-canvas/20 font-caption text-[11px] font-bold">
-                    GOLD CLUB
+                    {v('MEMBER', 'GOLD CLUB')}
                   </span>
                 </div>
                 <div className="my-space-md">
                   <span className="font-caption text-caption opacity-80 uppercase tracking-widest">Points Balance</span>
-                  <p className="font-display-hero text-display-hero font-bold tracking-tight">2,450 PTS</p>
+                  <p className="font-display-hero text-display-hero font-bold tracking-tight">{v('— PTS', '2,450 PTS')}</p>
                   <span className="font-caption text-caption text-badge-discount-bg font-semibold">
-                    ₦2,450.00 Redeemable Credit
+                    {v('Member balance shows here', '₦2,450.00 Redeemable Credit')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-caption border-t border-on-primary/20 pt-space-xs">
-                  <span>Michael James</span>
-                  <span className="font-mono">#8842-1099</span>
+                  <span>{v('Member Name', 'Michael James')}</span>
+                  <span className="font-mono">{v('—', '#8842-1099')}</span>
                 </div>
               </div>
               <p className="font-body-md text-body-md text-text-secondary max-w-xs">
@@ -684,6 +818,11 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
         </div>
       )}
     </EnterpriseShell>

@@ -1,7 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { LoyaltyReward } from '../../services/loyaltyService';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import {
+  useLoyaltyLogs,
+  useLoyaltyMutations,
+  useLoyaltyRewards,
+  useLoyaltyStats,
+} from '../../hooks/business/useLoyalty';
+import {
+  REWARD_CATEGORY_LABEL,
+  isRedemption,
+  logEntry,
+  pointsLabel,
+  rewardRedeemedLabel,
+  rewardStatus,
+  rewardStockLabel,
+  rewardWindowLabel,
+  statChange,
+  statValue,
+  type RewardStatus,
+} from '../loyaltyLive';
 
 interface DesktopLoyaltyRewardsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -28,6 +51,37 @@ interface RewardCard {
   metricNote: string;
   metricTag: string;
   metricTagClass: string;
+  /** Live: the reward this card shows, and whether it runs, is paused or has ended. */
+  live?: LoyaltyReward;
+  status?: RewardStatus;
+}
+
+const STATUS_LABEL: Record<RewardStatus, string> = { active: 'Active', draft: 'Paused', archived: 'Ended' };
+
+/** A live reward in the card shape, styled like the sample cards. */
+function liveRewardCard(reward: LoyaltyReward, branchName: string): RewardCard {
+  const status = rewardStatus(reward);
+  return {
+    ...REWARD_CARDS[0],
+    title: reward.name,
+    kind: REWARD_CATEGORY_LABEL[reward.category] ?? 'Reward',
+    costLabel: 'Points to redeem',
+    cost: `${pointsLabel(reward.pointsRequired)} Pts`,
+    image: reward.coverImage ?? '',
+    imageAlt: reward.name,
+    location: branchName,
+    stockIcon: reward.totalQuantity != null && reward.totalQuantity >= 0 ? 'inventory_2' : 'all_inclusive',
+    stock: rewardStockLabel(reward),
+    description: reward.description || '—',
+    metricIcon: 'redeem',
+    metricValue: rewardRedeemedLabel(reward),
+    metricNote: rewardWindowLabel(reward),
+    metricTag: STATUS_LABEL[status],
+    metricTagClass:
+      status === 'active' ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-on-surface-variant',
+    live: reward,
+    status,
+  };
 }
 
 const REWARD_CARDS: RewardCard[] = [
@@ -176,6 +230,68 @@ const STATUS_TABS: Array<{ key: StatusTab; label: string; count: string }> = [
 
 export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopLoyaltyRewardsScreenProps) {
   const [statusTab, setStatusTab] = useState<StatusTab>('active');
+  const [toast, setToast] = useState<string | null>(null);
+
+  const live = hasApiConfig();
+  const { branch } = useBusinessBranch();
+  const rewards = useLoyaltyRewards();
+  const logs = useLoyaltyLogs();
+  const stats = useLoyaltyStats();
+  const { updateReward } = useLoyaltyMutations();
+  const loadError = rewards.error ?? logs.error ?? stats.error;
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2600);
+  };
+
+  useEffect(() => {
+    if (loadError) showToast(apiErrorMessage(loadError, 'Could not load your rewards.'));
+  }, [loadError]);
+
+  const liveCards = (rewards.data ?? []).map((reward) => liveRewardCard(reward, branch.name));
+  const cards = live ? liveCards.filter((card) => card.status === statusTab) : REWARD_CARDS;
+  const tabCount = (key: StatusTab, sample: string) =>
+    live ? String(liveCards.filter((card) => card.status === key).length) : sample;
+
+  const auditRows = live
+    ? (logs.data ?? []).slice(0, 5).map((log, index) => {
+        const entry = logEntry(log);
+        return {
+          ...AUDIT_ROWS[isRedemption(log) ? 0 : 1],
+          initials: entry.member
+            .split(/\s+/)
+            .slice(0, 2)
+            .map((part) => part[0]?.toUpperCase())
+            .join(''),
+          name: entry.member,
+          tier: entry.positive ? 'Earned' : 'Redeemed',
+          entry: `${entry.delta} pts · ${entry.reason}`,
+          time: entry.date,
+          meta: entry.branch || '—',
+          key: `${log.id}-${index}`,
+        };
+      })
+    : AUDIT_ROWS.map((row) => ({ ...row, key: row.name }));
+
+  const comingSoon = (what: string) => () => showToast(`${what} on desktop is coming soon.`);
+
+  const togglePause = (card: RewardCard) => {
+    if (!card.live) return;
+    if (card.status === 'archived') {
+      showToast('This reward has ended. Create a new one to bring it back.');
+      return;
+    }
+    const resume = card.status === 'draft';
+    updateReward.mutate(
+      { id: card.live.id, isActive: resume },
+      {
+        onSuccess: () => showToast(`${card.title} ${resume ? 'resumed' : 'paused'}`),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not update the reward.')),
+      },
+    );
+  };
 
   return (
     <EnterpriseShell activeNav="business-loyalty" onNav={onNav}>
@@ -230,6 +346,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
               <button
                 type="button"
                 className="h-11 px-space-md rounded-xl bg-primary-container hover:bg-primary text-on-primary-container font-label-md text-label-md font-semibold flex items-center gap-space-2xs shadow-md transition-all active:scale-[0.98]"
+                onClick={live ? comingSoon('Creating rewards') : undefined}
               >
                 <Icon name="add_circle" className="text-[20px]" />
                 <span>+ Create New Reward</span>
@@ -258,7 +375,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                         : 'px-1.5 py-0.2 rounded-full bg-surface-container text-text-secondary text-caption font-semibold'
                     }
                   >
-                    {tab.count}
+                    {tabCount(tab.key, tab.count)}
                   </span>
                 </button>
               ))}
@@ -266,34 +383,36 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
             <div className="flex items-center gap-space-md text-text-secondary font-caption text-caption">
               <span className="flex items-center gap-1">
                 <Icon name="verified" className="text-badge-discount-text text-[16px]" />
-                POS Token Sync: Active
+                {v(`${branch.name} rewards`, 'POS Token Sync: Active')}
               </span>
               <span className="hidden md:inline">•</span>
               <span className="hidden md:flex items-center gap-1">
                 <Icon name="schedule" className="text-primary text-[16px]" />
-                Next automated cycle in 6d
+                {v('Live', 'Next automated cycle in 6d')}
               </span>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-space-lg">
-          {REWARD_CARDS.map((card) => (
+          {cards.map((card) => (
             <div
-              key={card.title}
+              key={card.live?.id ?? card.title}
               className="bg-surface-canvas rounded-xl shadow-md overflow-hidden flex flex-col group hover:shadow-xl transition-all duration-200"
             >
               <div className="relative h-48 w-full overflow-hidden bg-surface-container">
-                <img
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  alt={card.imageAlt}
-                  src={card.image}
-                />
+                {card.image && (
+                  <img
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    alt={card.imageAlt}
+                    src={card.image}
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-text-primary/70 via-transparent to-transparent" />
                 <div className="absolute top-space-xs left-space-xs flex items-center gap-1.5">
                   <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                    Active
+                    {card.status ? STATUS_LABEL[card.status] : 'Active'}
                   </span>
                   <span
                     className={`px-space-xs py-0.5 rounded-full font-caption text-caption ${card.kindClass}`}
@@ -353,6 +472,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                   <button
                     type="button"
                     className="flex-1 h-9 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 transition-colors"
+                    onClick={live ? comingSoon('Editing rewards') : undefined}
                   >
                     <Icon name="edit" className="text-[16px]" />
                     Edit Rules
@@ -360,8 +480,9 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                   <button
                     type="button"
                     className="h-9 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-secondary font-label-sm text-label-sm transition-colors"
+                    onClick={() => togglePause(card)}
                   >
-                    Pause
+                    {card.status === 'draft' ? 'Resume' : 'Pause'}
                   </button>
                   <button
                     type="button"
@@ -394,7 +515,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                   </div>
                 </div>
                 <span className="px-space-xs py-1 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shrink-0 w-fit">
-                  Active Protection Engine
+                  {v('Coming soon', 'Active Protection Engine')}
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md pt-space-2xs">
@@ -415,7 +536,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
               </div>
               <div className="pt-space-xs flex items-center justify-between">
                 <span className="font-caption text-caption text-text-tertiary">
-                  Policy hash: #RED-POL-2025-v4 • Updated yesterday by Musa Danladi
+                  {v('—', 'Policy hash: #RED-POL-2025-v4 • Updated yesterday by Musa Danladi')}
                 </span>
                 <button
                   type="button"
@@ -449,9 +570,9 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                 </span>
               </div>
               <div className="flex flex-col gap-space-xs">
-                {AUDIT_ROWS.map((row) => (
+                {auditRows.map((row) => (
                   <div
-                    key={row.name}
+                    key={row.key}
                     className="p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs"
                   >
                     <div className="flex items-center gap-space-sm">
@@ -486,6 +607,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                 <button
                   type="button"
                   className="font-label-md text-label-md text-primary font-semibold hover:underline flex items-center gap-1"
+                  onClick={live ? comingSoon('The full loyalty ledger') : undefined}
                 >
                   <span>View Complete Loyalty Ledger (Activity Tab)</span>
                   <Icon name="arrow_forward" className="text-[16px]" />
@@ -516,12 +638,12 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                 <div className="flex items-center justify-between text-text-secondary font-label-sm text-label-sm">
                   <span>Active Claim Velocity</span>
                   <span className="text-badge-discount-text font-bold flex items-center gap-0.5">
-                    <Icon name="arrow_upward" className="text-[16px]" /> +18% MoM
+                    <Icon name="arrow_upward" className="text-[16px]" /> {v(statChange(stats.data, 'Rewards Redeemed') || '—', '+18% MoM')}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-display-hero text-display-hero text-text-primary tracking-tight">79</span>
-                  <span className="font-body-md text-body-md text-text-secondary">claims this month</span>
+                  <span className="font-display-hero text-display-hero text-text-primary tracking-tight">{v(statValue(stats.data, 'Rewards Redeemed'), '79')}</span>
+                  <span className="font-body-md text-body-md text-text-secondary">{v('rewards redeemed', 'claims this month')}</span>
                 </div>
                 <div className="pt-2">
                   <svg className="w-full h-10 text-primary" fill="none" preserveAspectRatio="none" viewBox="0 0 200 40">
@@ -545,24 +667,24 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                 <div className="flex items-center justify-between text-text-secondary font-label-sm text-label-sm">
                   <span>Average Visit Interval</span>
                   <span className="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-caption text-caption font-semibold">
-                    2.6x Faster
+                    {v('—', '2.6x Faster')}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-heading-lg text-heading-lg text-text-primary">11 Days</span>
+                  <span className="font-heading-lg text-heading-lg text-text-primary">{v('—', '11 Days')}</span>
                   <span className="font-caption text-caption text-text-tertiary">between visits</span>
                 </div>
                 <div className="flex flex-col gap-1.5 pt-1">
                   <div className="flex justify-between font-caption text-caption text-text-secondary">
                     <span>Loyalty Members</span>
-                    <span className="font-semibold text-text-primary">11d</span>
+                    <span className="font-semibold text-text-primary">{v('—', '11d')}</span>
                   </div>
                   <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: '38%' }} />
+                    <div className="h-full bg-primary rounded-full" style={{ width: v('0%', '38%') }} />
                   </div>
                   <div className="flex justify-between font-caption text-caption text-text-tertiary pt-1">
                     <span>Non-Loyalty Patrons</span>
-                    <span>29d</span>
+                    <span>{v('—', '29d')}</span>
                   </div>
                   <div className="w-full h-1.5 rounded-full bg-surface-container overflow-hidden">
                     <div className="h-full bg-text-tertiary rounded-full" style={{ width: '100%' }} />
@@ -573,7 +695,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
               <div className="p-space-md rounded-xl bg-surface-subtle flex items-center justify-between">
                 <div className="flex flex-col gap-0.5">
                   <span className="font-label-sm text-label-sm text-text-secondary">Point Burnout Rate</span>
-                  <span className="font-heading-md text-heading-md text-text-primary">74%</span>
+                  <span className="font-heading-md text-heading-md text-text-primary">{v('—', '74%')}</span>
                   <span className="font-caption text-caption text-text-tertiary">Redeemed within 90 days</span>
                 </div>
                 <div className="relative w-14 h-14 flex items-center justify-center">
@@ -590,12 +712,12 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                       fill="none"
                       stroke="currentColor"
-                      strokeDasharray="74, 100"
+                      strokeDasharray={v('0, 100', '74, 100')}
                       strokeLinecap="round"
                       strokeWidth="3.5"
                     />
                   </svg>
-                  <span className="absolute text-caption font-bold text-text-primary">74%</span>
+                  <span className="absolute text-caption font-bold text-text-primary">{v('—', '74%')}</span>
                 </div>
               </div>
 
@@ -604,14 +726,14 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
                   <Icon name="verified" className="text-[24px]" />
                   <div className="flex flex-col">
                     <span className="font-label-md text-label-md font-bold leading-tight">
-                      100% Verification Score
+                      {v('Verification score', '100% Verification Score')}
                     </span>
                     <span className="font-caption text-caption opacity-90">
-                      All vouchers validated via POS QR code
+                      {v('Coming soon', 'All vouchers validated via POS QR code')}
                     </span>
                   </div>
                 </div>
-                <span className="font-heading-sm text-heading-sm font-bold">10/10</span>
+                <span className="font-heading-sm text-heading-sm font-bold">{v('—', '10/10')}</span>
               </div>
 
               <div className="p-space-sm rounded-lg bg-surface-subtle flex items-start gap-space-xs">
@@ -644,6 +766,11 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </EnterpriseShell>
   );
 }
