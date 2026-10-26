@@ -1,6 +1,12 @@
 import { useSyncExternalStore } from 'react';
 import { hasApiConfig } from '../services/api/client';
-import type { AnalyticsModule, DealsAnalytics, OverviewAnalytics } from '../services/businessAnalyticsService';
+import type {
+  AnalyticsModule,
+  DealsAnalytics,
+  LocationsAnalytics,
+  OverviewAnalytics,
+  PosAnalytics,
+} from '../services/businessAnalyticsService';
 import { useBusinessAnalytics } from '../hooks/business/useBusinessAnalytics';
 import { formatNaira } from '../utils/format';
 
@@ -269,5 +275,155 @@ export function dealsView<K extends { label: string; value: string; sub: string 
       { value: count(boosts?.audienceReached), label: 'Reach' },
       { value: count(boosts?.redemptions), label: 'Verified' },
     ],
+  };
+}
+
+const TENDER_LABEL: Record<string, string> = {
+  cash: 'Cash',
+  transfer: 'Bank Transfer',
+  card: 'Card',
+  split: 'Split Tender',
+};
+
+/** Compact "12p" / "7p" hour labels for the hourly rhythm bars. */
+export const hourCompact = (hour: number) => {
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+  return `${twelve}${hour < 12 ? 'a' : 'p'}`;
+};
+
+/** The POS analytics screens' KPIs, hourly rhythm, tenders, top items and cashier audit. */
+export function posView<K extends { label: string; value: string; sub: string; icon: string }>(
+  data: PosAnalytics | undefined,
+  kpiTemplates: K[],
+) {
+  const sales = data?.sales.current ?? 0;
+  const tickets = data?.tickets.current ?? 0;
+  const days = Math.max(1, data?.range.days ?? 30);
+  const hourly = (data?.hourly ?? []).filter((row) => row.tickets > 0 || row.sales > 0);
+  const maxSales = Math.max(1, ...hourly.map((row) => row.sales));
+  const bestHour = hourly.reduce<(typeof hourly)[number] | null>(
+    (best, row) => (!best || row.sales > best.sales ? row : best),
+    null,
+  );
+  const windowPeak = (from: number, to: number) =>
+    hourly.reduce<(typeof hourly)[number] | null>(
+      (best, row) => (row.hour >= from && row.hour <= to && (!best || row.sales > best.sales) ? row : best),
+      null,
+    );
+  const lunch = windowPeak(11, 14);
+  const dinner = windowPeak(17, 21);
+  const tenderTotal = (data?.tenders ?? []).reduce((sum, tender) => sum + tender.amount, 0);
+  const topCashier = Math.max(1, ...(data?.cashiers ?? []).map((cashier) => cashier.sales));
+  return {
+    kpis: <K[]>[
+      { ...kpiTemplates[0], value: naira(sales), sub: `${signedChange(data?.sales)} vs last` },
+      { ...kpiTemplates[1], value: count(tickets), sub: `Avg ${count(Math.round(tickets / days))} / day` },
+      { ...kpiTemplates[2], value: naira(data?.averageTicket.current), sub: `${signedChange(data?.averageTicket)} vs last` },
+      { ...kpiTemplates[3], value: count(data?.itemsSold), sub: `${data?.itemsPerTicket ?? 0} items / ticket` },
+      { ...kpiTemplates[4], value: naira(data?.tips), sub: `${percent(sales ? (data?.tips ?? 0) / sales : 0)} of sales` },
+      {
+        ...kpiTemplates[5],
+        label: 'Refunds',
+        value: naira(data?.refunds.amount ?? 0),
+        sub: `${count(data?.refunds.count)} tickets`,
+      },
+    ],
+    hours: hourly.map((row) => ({ hour: hourCompact(row.hour), pct: Math.max(2, Math.round((row.sales / maxSales) * 100)) })),
+    lunchPeak: lunch ? { value: naira(lunch.sales), label: `Lunch peak · ${hourLabel(lunch.hour)}` } : null,
+    dinnerPeak: dinner ? { value: naira(dinner.sales), label: `Dinner peak · ${hourLabel(dinner.hour)}` } : null,
+    busiest: bestHour
+      ? `${hourLabel(bestHour.hour)} · ${count(bestHour.tickets)} tickets`
+      : 'No ticket activity in this period',
+    tenderMeta: `${naira(tenderTotal)} settled across ${count(data?.tenders.length ?? 0)} methods`,
+    tenders: (data?.tenders ?? []).map((tender, index) => ({
+      name: TENDER_LABEL[tender.method] ?? tender.method,
+      pct: Math.round((tender.share ?? 0) * 100),
+      amount: naira(tender.amount),
+      bar: ['bg-primary', 'bg-secondary', 'bg-tertiary', 'bg-badge-discount-text'][index % 4],
+    })),
+    items: (data?.topItems ?? []).map((item, index) => ({
+      rank: index + 1,
+      name: item.name,
+      qty: `${count(item.quantity)} sold`,
+      amount: naira(item.revenue),
+      // Live items have no photo; the screens fall back to the tile icon.
+      image: undefined as string | undefined,
+      icon: undefined as string | undefined,
+    })),
+    staff: (data?.cashiers ?? []).map((cashier, index) => ({
+      name: cashier.name || 'Unknown cashier',
+      till: cashier.tillName ?? cashier.role ?? '—',
+      tickets: count(cashier.tickets),
+      sales: naira(cashier.sales),
+      pct: Math.max(2, Math.round((cashier.sales / topCashier) * 100)),
+      bar: ['bg-primary', 'bg-secondary', 'bg-tertiary'][index % 3],
+    })),
+    drawerLine: data?.drawer
+      ? `${data.drawer.variance === 0 ? 'Drawer balanced' : `Drawer variance ${naira(data.drawer.variance)}`} across ${count(data.drawer.countedSessions)} of ${count(data.drawer.sessions)} counted sessions`
+      : 'No drawer counts in this period',
+  };
+}
+
+const BRANCH_STATUS_ICONS = ['location_on', 'apartment', 'electric_moped'];
+const BRANCH_BARS = ['bg-primary', 'bg-secondary', 'bg-tertiary'];
+const BRANCH_TEXT = ['text-primary', 'text-secondary', 'text-tertiary'];
+
+/** The locations screens' network totals, branch scorecards, share legend and weekday heatmap. */
+export function locationsView(data: LocationsAnalytics | undefined) {
+  const branches = data?.branches ?? [];
+  const shares = branches.map((branch) => Math.round((branch.revenueShare ?? 0) * 100));
+  const dayTotals = Array.from({ length: 7 }, (_, dow) => ({
+    dow,
+    count: (data?.heatmap ?? []).filter((cell) => cell.dow === dow).reduce((sum, cell) => sum + cell.count, 0),
+  }));
+  // The demo heatmap runs Mon→Sun; backend dow is 0 = Sunday.
+  const orderedDays = [...dayTotals.slice(1), dayTotals[0]];
+  const maxDay = Math.max(1, ...orderedDays.map((day) => day.count));
+  const total = (data?.heatmap ?? []).reduce((sum, cell) => sum + cell.count, 0);
+  const windowShare = (from: number, to: number) =>
+    total
+      ? Math.round(
+          ((data?.heatmap ?? []).filter((cell) => cell.hour >= from && cell.hour <= to).reduce((sum, cell) => sum + cell.count, 0) /
+            total) *
+            100,
+        )
+      : 0;
+  return {
+    liveBranches: branches.length,
+    pills: ['All', ...new Set(branches.map((branch) => branch.name.split(' ')[0]))],
+    network: {
+      revenue: naira(data?.totals.revenue.current ?? 0),
+      outlets: count(data?.totals.branches),
+      orders: count(data?.totals.orders),
+      views: count(data?.totals.dealViews),
+      visits: count(data?.totals.visits),
+      change: signedChange(data?.totals.revenue),
+    },
+    segments: branches.slice(0, 3).map((branch, index) => ({
+      width: `${shares[index] ?? 0}%`,
+      legend: `${branch.name.split(' ')[0]} ${shares[index] ?? 0}%`,
+      share: `${shares[index] ?? 0}% share`,
+      dot: BRANCH_BARS[index % BRANCH_BARS.length],
+    })),
+    branches: branches.map((branch, index) => ({
+      name: branch.name,
+      status: branch.address ?? (branch.isMainBranch ? 'Main branch' : 'Branch'),
+      statusIcon: BRANCH_STATUS_ICONS[index % BRANCH_STATUS_ICONS.length],
+      revenue: naira(branch.revenue.current),
+      share: shares[index] ?? 0,
+      orders: count(branch.orders.current),
+      aov: naira(branch.averageOrderValue),
+      views: count(branch.dealViews),
+      customers: count(branch.customers),
+      visits: count(branch.visits),
+      claims: count(branch.claims),
+      rating: branch.rating,
+      change: signedChange(branch.revenue),
+      shareClass: BRANCH_TEXT[index % BRANCH_TEXT.length],
+      bar: BRANCH_BARS[index % BRANCH_BARS.length],
+    })),
+    heatmap: orderedDays.map((day) => ({ day: DAY_SHORT[day.dow], pct: Math.round((day.count / maxDay) * 100) })),
+    lunchShare: windowShare(12, 13),
+    dinnerShare: windowShare(18, 20),
   };
 }

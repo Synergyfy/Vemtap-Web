@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { AnalyticsHeader, AnalyticsSection, type AnalyticsTabKey } from '../components/AnalyticsChrome';
+import { apiErrorMessage } from '../services/errorMessages';
+import { locationsView, periodLabel, useLiveAnalytics } from './analyticsLive';
 
 interface AnalyticsLocationsScreenProps {
   onAnalyticsTab: (tab: AnalyticsTabKey) => void;
@@ -105,8 +107,17 @@ export function AnalyticsLocationsScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  const visibleBranches =
-    filter === 'All' ? BRANCHES : BRANCHES.filter((branch) => branch.name.startsWith(filter));
+  const { live, filter: period, data, error } = useLiveAnalytics('locations');
+  useEffect(() => {
+    if (error) showToast(apiErrorMessage(error, 'Could not load location analytics.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error]);
+
+  const view = locationsView(data);
+  const pills = live ? view.pills : BRANCH_FILTERS;
+  const branches = live ? view.branches : BRANCHES;
+  const visibleBranches = filter === 'All' ? branches : branches.filter((branch) => branch.name.startsWith(filter));
+  const heatWeek = live ? view.heatmap : HEAT_WEEK;
 
   return (
     <AppScreen>
@@ -125,13 +136,13 @@ export function AnalyticsLocationsScreen({
           </div>
           <span className="flex items-center gap-1 font-caption text-caption font-semibold px-2 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-            3 Live Syncing
+            {live ? `${view.liveBranches} Live Syncing` : '3 Live Syncing'}
           </span>
         </div>
 
         {/* Branch pills */}
         <div className="flex gap-space-2xs overflow-x-auto no-scrollbar -mx-margin px-margin">
-          {BRANCH_FILTERS.map((name) => (
+          {pills.map((name) => (
             <button
               aria-pressed={filter === name}
               className={`h-8 px-space-md rounded-full font-label-sm text-label-sm whitespace-nowrap shrink-0 transition-all active:scale-95 ${
@@ -153,45 +164,62 @@ export function AnalyticsLocationsScreen({
           <div className="flex items-center justify-between gap-space-sm">
             <div className="flex flex-col min-w-0">
               <span className="font-label-md text-label-md text-text-secondary">Network Revenue</span>
-              <span className="font-heading-md text-heading-md text-text-primary font-bold">₦4,850,000</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold">
+                {live ? view.network.revenue : '₦4,850,000'}
+              </span>
             </div>
-            <span className="font-caption text-caption text-text-secondary shrink-0">Last 30 days</span>
+            <span className="font-caption text-caption text-text-secondary shrink-0">
+              {live ? periodLabel(period) : 'Last 30 days'}
+            </span>
           </div>
           <div className="grid grid-cols-3 gap-space-xs mt-space-sm">
             <div className="bg-surface-canvas border border-border-subtle rounded-lg py-1.5 text-center">
-              <div className="font-label-md text-label-md text-text-primary font-bold">3</div>
+              <div className="font-label-md text-label-md text-text-primary font-bold">
+                {live ? view.network.outlets : '3'}
+              </div>
               <span className="font-caption text-caption text-text-tertiary">Outlets</span>
             </div>
             <div className="bg-surface-canvas border border-border-subtle rounded-lg py-1.5 text-center">
-              <div className="font-label-md text-label-md text-text-primary font-bold">512</div>
+              <div className="font-label-md text-label-md text-text-primary font-bold">
+                {live ? view.network.orders : '512'}
+              </div>
               <span className="font-caption text-caption text-text-tertiary">Orders</span>
             </div>
             <div className="bg-surface-canvas border border-border-subtle rounded-lg py-1.5 text-center">
-              <div className="font-label-md text-label-md text-text-primary font-bold">14,280</div>
+              <div className="font-label-md text-label-md text-text-primary font-bold">
+                {live ? view.network.views : '14,280'}
+              </div>
               <span className="font-caption text-caption text-text-tertiary">Views</span>
             </div>
           </div>
           <div className="h-3 rounded-full overflow-hidden flex mt-space-sm bg-surface-container-low">
-            <div className="h-full bg-primary" style={{ width: '64%' }} />
-            <div className="h-full bg-secondary" style={{ width: '28%' }} />
-            <div className="h-full bg-tertiary" style={{ width: '8%' }} />
+            {(live ? view.segments : [
+              { width: '64%', legend: 'Wuse 64%', dot: 'bg-primary' },
+              { width: '28%', legend: 'Maitama 28%', dot: 'bg-secondary' },
+              { width: '8%', legend: 'Garki 8%', dot: 'bg-tertiary' },
+            ]).map((segment) => (
+              <div className={`h-full ${segment.dot}`} key={segment.legend} style={{ width: segment.width }} />
+            ))}
           </div>
           <div className="flex items-center gap-space-sm mt-space-xs flex-wrap">
-            {[
-              { dot: 'bg-primary', label: 'Wuse 64%' },
-              { dot: 'bg-secondary', label: 'Maitama 28%' },
-              { dot: 'bg-tertiary', label: 'Garki 8%' },
-            ].map((legend) => (
-              <span className="flex items-center gap-1 font-caption text-caption text-text-secondary" key={legend.label}>
-                <span className={`w-2 h-2 rounded-full ${legend.dot}`} />
-                {legend.label}
+            {(live ? view.segments : [
+              { width: '64%', legend: 'Wuse 64%', dot: 'bg-primary' },
+              { width: '28%', legend: 'Maitama 28%', dot: 'bg-secondary' },
+              { width: '8%', legend: 'Garki 8%', dot: 'bg-tertiary' },
+            ]).map((segment) => (
+              <span className="flex items-center gap-1 font-caption text-caption text-text-secondary" key={segment.legend}>
+                <span className={`w-2 h-2 rounded-full ${segment.dot}`} />
+                {segment.legend}
               </span>
             ))}
           </div>
         </Card>
 
         {/* Branch scorecards */}
-        <AnalyticsSection title="Branch Scorecards" meta={`${visibleBranches.length} of ${BRANCHES.length} outlets shown`}>
+        <AnalyticsSection
+          title="Branch Scorecards"
+          meta={`${visibleBranches.length} of ${branches.length} outlets shown`}
+        >
           <div className="flex flex-col gap-space-sm">
             {visibleBranches.map((branch) => (
               <Card key={branch.name}>
@@ -298,7 +326,9 @@ export function AnalyticsLocationsScreen({
                   <span className="font-caption text-caption font-semibold">Lunch rush</span>
                 </div>
                 <div className="font-label-md text-label-md text-text-primary font-bold">12–2 PM</div>
-                <span className="font-caption text-caption text-text-tertiary">32% of day orders</span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  {live ? `${view.lunchShare}% of day activity` : '32% of day orders'}
+                </span>
               </div>
               <div className="bg-surface-container-low rounded-xl p-space-xs">
                 <div className="flex items-center gap-1 text-tertiary">
@@ -306,12 +336,14 @@ export function AnalyticsLocationsScreen({
                   <span className="font-caption text-caption font-semibold">Dinner rush</span>
                 </div>
                 <div className="font-label-md text-label-md text-text-primary font-bold">6–9 PM</div>
-                <span className="font-caption text-caption text-text-tertiary">48% of day orders</span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  {live ? `${view.dinnerShare}% of day activity` : '48% of day orders'}
+                </span>
               </div>
             </div>
 
             <div className="flex items-end justify-between gap-space-2xs h-28">
-              {HEAT_WEEK.map((item) => (
+              {heatWeek.map((item) => (
                 <div className="flex-1 flex flex-col items-center gap-1" key={item.day}>
                   <div className="w-full flex items-end justify-center h-20">
                     <div
