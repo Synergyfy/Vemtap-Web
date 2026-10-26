@@ -1822,9 +1822,27 @@ function AppInner() {
     desc: 'Interacted or placed 2+ orders with your local dining partner in the trailing 90 days.',
   });
 
+  // Live: the saved segment whose rules are being edited (null creates a new one).
+  const [editingSegment, setEditingSegment] = useState<SegmentRef['segment'] | null>(null);
+
   const useSegment = (segment: SegmentRef) => {
     setActiveSegment(segment);
     setRoute('segment-actions');
+  };
+
+  const viewSegment = (segment?: SegmentRef) => {
+    if (segment) setActiveSegment(segment);
+    setRoute('segment-detail');
+  };
+
+  const createSegment = () => {
+    setEditingSegment(null);
+    setRoute('segment-create');
+  };
+
+  const editSegmentRules = () => {
+    setEditingSegment(activeSegment.segment ?? null);
+    setRoute('segment-create');
   };
 
   const openHubModule = (module: HubModuleKey) => {
@@ -4438,9 +4456,9 @@ function AppInner() {
             onBack={() => setRoute('boost-hub')}
             onOpenBoost={() => openBoost()}
             onOpenCampaigns={() => setRoute('boost-hub')}
-            onCreate={() => setRoute('segment-create')}
+            onCreate={createSegment}
             onUseSegment={useSegment}
-            onViewCohort={() => setRoute('segment-detail')}
+            onViewCohort={viewSegment}
           />
         );
       return (
@@ -4449,9 +4467,9 @@ function AppInner() {
             onBack={() => setRoute('boost-hub')}
             onOpenBoost={() => openBoost()}
             onOpenCampaigns={() => setRoute('boost-hub')}
-            onCreate={() => setRoute('segment-create')}
+            onCreate={createSegment}
             onUseSegment={useSegment}
-            onViewCohort={() => setRoute('segment-detail')}
+            onViewCohort={viewSegment}
           />
         </div>
       );
@@ -4487,13 +4505,18 @@ function AppInner() {
         return (
           <DesktopSegmentCreateScreen
             onNav={businessPortalNav}
+            editing={editingSegment}
             onBack={() => setRoute('segments-hub')}
             onSaved={() => setRoute('segments-hub')}
           />
         );
       return (
         <div className="biz-flow">
-          <BusinessSegmentCreateScreen onBack={() => setRoute('segments-hub')} onSaved={() => setRoute('segments-hub')} />
+          <BusinessSegmentCreateScreen
+            editing={editingSegment}
+            onBack={() => setRoute('segments-hub')}
+            onSaved={() => setRoute('segments-hub')}
+          />
         </div>
       );
 
@@ -4502,17 +4525,19 @@ function AppInner() {
         return (
           <DesktopSegmentDetailScreen
             onNav={businessPortalNav}
+            segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onUseSegment={useSegment}
-            onEditRules={() => setRoute('segment-create')}
+            onEditRules={editSegmentRules}
           />
         );
       return (
         <div className="biz-flow">
           <BusinessSegmentDetailScreen
+            segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onUseSegment={useSegment}
-            onEditRules={() => setRoute('segment-create')}
+            onEditRules={editSegmentRules}
           />
         </div>
       );
