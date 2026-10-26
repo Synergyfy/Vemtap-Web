@@ -1762,6 +1762,15 @@ function AppInner() {
     }
     setRoute('deal-studio');
   };
+  /** Cluster "Create location": live opens the add-branch form in Locations. */
+  const openCreateLocation = () => {
+    if (hasApiConfig()) {
+      if (isDesktop) setAddingBranch(true);
+      setRoute('hub-locations');
+      return;
+    }
+    setRoute('deal-create-locations');
+  };
   const openDealGroup = (next: Route) => (id?: string) => {
     setDealGroupId(id ?? null);
     setRoute(next);
@@ -4836,6 +4845,23 @@ function AppInner() {
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'deal-create-locations':
+      // Live deals are created in the studio from a catalogue item, which has its own branch step.
+      if (hasApiConfig()) {
+        if (isDesktop)
+          return (
+            <DesktopBusinessCatalogHubScreen
+              onNav={businessPortalNav}
+              onOpenBranchPricing={(itemId) => {
+                setPricingItemId(itemId ?? null);
+                setRoute('business-branch-pricing');
+              }}
+              onOpenServices={() => setRoute('hub-services')}
+              onMakeDeal={(item) => openDealStudio(item)}
+              notice="Pick an item to make a deal from."
+            />
+          );
+        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      }
       if (isDesktop)
         return (
           <DesktopDealCreateLocationsScreen
@@ -5768,7 +5794,7 @@ function AppInner() {
             onSkip={() => setRoute('business-overview')}
             onCreateDeal={() => openDealStudio()}
             onCreateProduct={() => setRoute('hub-catalog')}
-            onCreateLocation={() => setRoute('deal-create-locations')}
+            onCreateLocation={openCreateLocation}
           />
         );
       return (
@@ -5777,7 +5803,7 @@ function AppInner() {
           onSkip={() => setRoute('business-overview')}
           onCreateDeal={() => openDealStudio()}
           onCreateProduct={() => setRoute('hub-catalog')}
-          onCreateLocation={() => setRoute('deal-create-locations')}
+          onCreateLocation={openCreateLocation}
         />
       );
 
@@ -5789,7 +5815,7 @@ function AppInner() {
             onOpenOnboarding={() => setRoute('cluster-onboarding')}
             onCreateDeal={() => openDealStudio()}
             onCreateProduct={() => setRoute('hub-catalog')}
-            onCreateLocation={() => setRoute('deal-create-locations')}
+            onCreateLocation={openCreateLocation}
             onBoostItem={openClusterBoost}
             onOpenBoosts={() => setRoute('cluster-boost')}
           />
@@ -5801,7 +5827,7 @@ function AppInner() {
           onOpenOnboarding={() => setRoute('cluster-onboarding')}
           onCreateDeal={() => openDealStudio()}
           onCreateProduct={() => setRoute('hub-catalog')}
-          onCreateLocation={() => setRoute('deal-create-locations')}
+          onCreateLocation={openCreateLocation}
           onBoostItem={openClusterBoost}
           onOpenBoosts={() => setRoute('cluster-boost')}
         />
