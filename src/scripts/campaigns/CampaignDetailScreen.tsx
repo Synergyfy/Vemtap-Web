@@ -1,4 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
+import { useQuery } from '@tanstack/react-query';
+import { hasApiConfig } from '../../services/api/client';
+import { messageCampaignsService } from '../../services/messageCampaignsService';
 import { CampaignStatusBadge } from '../../components/campaigns/CampaignStatusBadge';
 import { CampaignShell } from './CampaignShell';
 import type { BusinessTabKey } from '../../components/BusinessTabBar';
@@ -45,6 +48,26 @@ export function CampaignDetailScreen({
   onCancelScheduled,
   banner,
 }: CampaignDetailScreenProps) {
+  const live = hasApiConfig();
+  const sentOrSending = campaign.status === 'sent' || campaign.status === 'sending';
+  // Live: delivery counts come from the server (message statuses + tracked clicks).
+  const liveStats = useQuery({
+    queryKey: ['campaign-stats', campaign.id],
+    queryFn: () => messageCampaignsService.stats(campaign.id),
+    enabled: live && sentOrSending,
+    refetchInterval: 60_000,
+  });
+  const stats = liveStats.data
+    ? {
+        queued: liveStats.data.queued + liveStats.data.sent + liveStats.data.failed,
+        sent: liveStats.data.sent,
+        delivered: liveStats.data.delivered,
+        failed: liveStats.data.failed,
+        clicked: liveStats.data.clicks,
+        bounced: undefined,
+        opened: undefined,
+      }
+    : campaign.stats;
   const channel: CampaignChannel = campaign.channel;
   const segments = analyseSms(campaign.smsBody ?? '');
   const cost = estimateSmsCost(segments.segments, campaign.recipientCount);
@@ -132,7 +155,7 @@ export function CampaignDetailScreen({
           </p>
         )}
 
-        {campaign.simulatedSend && (
+        {campaign.simulatedSend && !live && (
           <p className="flex items-start gap-space-2xs rounded-xl bg-surface-tint-blue px-space-md py-space-sm font-caption text-caption text-text-secondary leading-relaxed">
             <Icon name="info" className="text-primary text-[16px] shrink-0 mt-0.5" />
             This campaign was queued locally for demonstration. Nothing left your device, and sent, delivered, opened or
@@ -163,23 +186,23 @@ export function CampaignDetailScreen({
         </div>
 
         {/* Delivery / engagement */}
-        {campaign.stats ? (
+        {stats ? (
           <section className="rounded-2xl bg-surface-canvas shadow-sm border border-border-subtle p-space-lg">
             <h2 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">
               {channel === 'sms' ? 'Delivery' : 'Delivery & engagement'}
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-space-sm">
-              <Metric label="Queued" value={campaign.stats.queued} icon="cell_tower" missing="Held in this demo" />
-              <Metric label="Sent" value={campaign.stats.sent} icon={channel === 'sms' ? 'sms' : 'mail'} missing="Awaiting provider" />
-              <Metric label="Delivered" value={campaign.stats.delivered} icon="done_all" missing="Awaiting provider" />
+              <Metric label="Queued" value={stats.queued} icon="cell_tower" missing="Held in this demo" />
+              <Metric label="Sent" value={stats.sent} icon={channel === 'sms' ? 'sms' : 'mail'} missing="Awaiting provider" />
+              <Metric label="Delivered" value={stats.delivered} icon="done_all" missing="Awaiting provider" />
               {channel === 'sms' ? (
-                <Metric label="Failed" value={campaign.stats.failed} icon="error" missing="None reported" />
+                <Metric label="Failed" value={stats.failed} icon="error" missing="None reported" />
               ) : (
                 <>
-                  <Metric label="Bounced" value={campaign.stats.bounced} icon="alternate_email" missing="None reported" />
-                  <Metric label="Opened" value={campaign.stats.opened} icon="mark_email_read" missing="Awaiting provider" />
-                  <Metric label="Clicked" value={campaign.stats.clicked} icon="mouse" missing="Awaiting provider" />
-                  <Metric label="Failed" value={campaign.stats.failed} icon="error" missing="None reported" />
+                  <Metric label="Bounced" value={stats.bounced} icon="alternate_email" missing="None reported" />
+                  <Metric label="Opened" value={stats.opened} icon="mark_email_read" missing="Awaiting provider" />
+                  <Metric label="Clicked" value={stats.clicked} icon="mouse" missing="Awaiting provider" />
+                  <Metric label="Failed" value={stats.failed} icon="error" missing="None reported" />
                 </>
               )}
             </div>

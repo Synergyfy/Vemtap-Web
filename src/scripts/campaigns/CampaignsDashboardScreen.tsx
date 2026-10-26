@@ -43,8 +43,15 @@ export function CampaignsDashboardScreen({
   onCancelScheduled,
   onDeleteDraft,
 }: CampaignsDashboardScreenProps) {
-  const { listForChannel } = useCampaigns();
+  const { listForChannel, live } = useCampaigns();
   const campaigns = listForChannel(channel);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!live?.error) return;
+    setLoadError(live.error);
+    const timer = window.setTimeout(() => setLoadError(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [live?.error]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilterKey>('all');
 
@@ -150,9 +157,10 @@ export function CampaignsDashboardScreen({
 
         {/* Demonstration notice */}
         <p className="flex items-start gap-space-2xs rounded-xl bg-surface-tint-blue px-space-md py-space-sm font-caption text-caption text-text-secondary leading-relaxed">
-          <Icon name="science" className="text-primary text-[16px] shrink-0 mt-0.5" />
-          Campaigns are stored in this browser. A connected SMS or email provider is required for real sending, scheduling
-          and delivery reports.
+          <Icon name={live ? 'info' : 'science'} className="text-primary text-[16px] shrink-0 mt-0.5" />
+          {live
+            ? 'Campaigns are saved to your business account and sent through VEMTAP using your SMS and email credits; scheduled ones go out automatically. Sent counts show once a campaign goes out — delivery and click reports are not available yet.'
+            : 'Campaigns are stored in this browser. A connected SMS or email provider is required for real sending, scheduling and delivery reports.'}
         </p>
 
         {/* Summary cards */}
@@ -290,6 +298,11 @@ export function CampaignsDashboardScreen({
           </div>
         )}
       </div>
+      {loadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {loadError}
+        </div>
+      )}
     </CampaignShell>
   );
 }
