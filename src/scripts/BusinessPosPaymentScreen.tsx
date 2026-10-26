@@ -9,13 +9,15 @@ import { usePosSettings } from '../context/PosSettingsContext';
 import { hasApiConfig } from '../services/api/client';
 import { money } from '../services/posService';
 import { apiErrorMessage } from '../services/errorMessages';
-import { apiCustomerId, setLastSale, timeLabel, useLivePos, usePosCheckout, type CheckoutResult } from './posLive';
+import { apiCustomerId, setLastSale, timeLabel, useAwardPoints, useLivePos, usePosCheckout, type CheckoutResult } from './posLive';
 
 interface BusinessPosPaymentScreenProps {
   cart: PosCartLine[];
   customer: string | null;
   /** API id of the attached customer, so the sale earns them points (live). */
   customerId?: string | null;
+  /** Live: the attached customer's points balance. */
+  customerPoints?: number;
   /** Points awarded to this customer earlier in the sale. */
   customerBonus: number;
   /** Persist manually awarded points for the attached customer. */
@@ -48,6 +50,7 @@ export function BusinessPosPaymentScreen({
   cart,
   customer,
   customerId,
+  customerPoints,
   customerBonus,
   onAwardPoints,
   onBack,
@@ -65,6 +68,7 @@ export function BusinessPosPaymentScreen({
   const pos = useLivePos();
   const { checkout, pending } = usePosCheckout();
   const [result, setResult] = useState<CheckoutResult | null>(null);
+  const awardPoints = useAwardPoints();
 
   const count = cartCount(cart);
   const { taxMode, taxRate, taxLabel, loyaltyEnabled, allowWalkIn } = usePosSettings();
@@ -72,7 +76,7 @@ export function BusinessPosPaymentScreen({
 
   // Loyalty — previous balance (directory) + anything awarded this sale + points attached to the order.
   const customerRecord = customer ? POS_CUSTOMERS.find((entry) => entry.name === customer) : undefined;
-  const previousPoints = customerRecord?.points ?? 0;
+  const previousPoints = hasApiConfig() ? (customerPoints ?? 0) : (customerRecord?.points ?? 0);
   const currentPoints = previousPoints + customerBonus;
   const orderPoints = loyaltyEnabled ? pointsForAmount(total) : 0;
   const projectedTotal = currentPoints + orderPoints;
@@ -525,9 +529,18 @@ export function BusinessPosPaymentScreen({
           suggested={orderPoints}
           onClose={() => setPointsModalOpen(false)}
           onAward={(points) => {
-            onAwardPoints(points);
-            setPointsModalOpen(false);
-            showToast(`${points.toLocaleString()} points added to ${customer}.`);
+            const done = () => {
+              onAwardPoints(points);
+              setPointsModalOpen(false);
+              showToast(`${points.toLocaleString()} points added to ${customer}.`);
+            };
+            if (!live) {
+              done();
+              return;
+            }
+            awardPoints(customerId, points)
+              .then(done)
+              .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not award points.')));
           }}
         />
       )}

@@ -376,6 +376,9 @@ export const posService = {
   staffPins: () => api.get<{ data: StaffPinRow[] }>('/pos/staff-pins').then((res) => res.data ?? []),
   setStaffPin: (userId: string, body: { pin: string; isSupervisor?: boolean }) => api.put<unknown>(`/pos/staff-pins/${userId}`, body),
   removeStaffPin: (userId: string) => api.del<unknown>(`/pos/staff-pins/${userId}`),
+  /** Owner/manager hand-awards loyalty points to a customer at a branch. */
+  awardPoints: (body: { userId: string; points: number }, branchId: string) =>
+    api.post<unknown>('/loyalty/earn/manual', body, { params: { branchId } }),
   /** Supervisor approval: a short-lived token for one action (refund, void…). */
   verifyOverride: (body: { pin: string; action: 'void' | 'refund' | 'reprint' | 'drawer_open' | 'discount'; referenceId?: string; reason?: string }) =>
     api.post<{ overrideToken: string }>('/pos/staff-pins/verify', body),

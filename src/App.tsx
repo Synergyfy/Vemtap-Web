@@ -5325,11 +5325,14 @@ function AppInner() {
             onCartChange={setPosCart}
             customer={posCustomer}
             customerBonus={posCustomerBonus}
+            customerPoints={posCustomerRecord?.points}
             onBack={() => setRoute('pos-register')}
             onCharge={() => setRoute('pos-payment')}
             onOpenCustomer={() => setRoute('pos-customer')}
             onRemoveCustomer={() => {
               setPosCustomer(null);
+              // Live: drop the API customer too, so the next sale isn't linked to them.
+              if (hasApiConfig()) setPosCustomerRecord(null);
               setPosCustomerBonus(0);
             }}
           />
@@ -5353,8 +5356,9 @@ function AppInner() {
           <DesktopPosCustomerScreen
             onNav={posTerminalNav}
             onBack={goBackToPrevious}
-            onAttach={(name) => {
+            onAttach={(name, record) => {
               setPosCustomer(name);
+              if (record) setPosCustomerRecord(record);
               setRoute('pos-cart');
             }}
             onRegisterNew={() => setRoute('hub-customers')}
@@ -5364,8 +5368,9 @@ function AppInner() {
         <div className="biz-flow">
           <BusinessPosCustomerScreen
             onBack={goBackToPrevious}
-            onAttach={(name) => {
+            onAttach={(name, record) => {
               setPosCustomer(name);
+              if (record) setPosCustomerRecord(record);
               setPosCustomerBonus(0);
               setRoute('pos-cart');
             }}
@@ -5385,6 +5390,8 @@ function AppInner() {
             onNewSale={() => {
               setPosTermCart([]);
               setPosCustomer(null);
+              // Live: drop the API customer too, so the next sale isn't linked to them.
+              if (hasApiConfig()) setPosCustomerRecord(null);
               setRoute('pos-register');
             }}
             onOpenOrders={() => setRoute('pos-order-lookup')}
@@ -5400,6 +5407,8 @@ function AppInner() {
             onNewSale={() => {
               setPosCart([]);
               setPosCustomer(null);
+              // Live: drop the API customer too, so the next sale isn't linked to them.
+              if (hasApiConfig()) setPosCustomerRecord(null);
               setPosCustomerBonus(0);
               setRoute('pos-register');
             }}
@@ -5432,6 +5441,7 @@ function AppInner() {
             cart={posCart}
             customer={posCustomer}
             customerId={posCustomerRecord?.id}
+            customerPoints={posCustomerRecord?.points}
             customerBonus={posCustomerBonus}
             onAwardPoints={(points) => setPosCustomerBonus((prev) => prev + points)}
             onBack={() => setRoute('pos-cart')}
@@ -5446,6 +5456,8 @@ function AppInner() {
             onNewSale={() => {
               setPosCart([]);
               setPosCustomer(null);
+              // Live: drop the API customer too, so the next sale isn't linked to them.
+              if (hasApiConfig()) setPosCustomerRecord(null);
               setPosCustomerBonus(0);
               setRoute('pos-register');
             }}
@@ -5523,8 +5535,9 @@ function AppInner() {
         return (
           <DesktopPosCustomerLookupScreen
             onNav={posTerminalNav}
-            onAttach={(name) => {
+            onAttach={(name, record) => {
               setPosCustomer(name);
+              if (record) setPosCustomerRecord(record);
               setRoute('pos-cart');
             }}
             onOpenDossier={(name) => {
@@ -5538,8 +5551,9 @@ function AppInner() {
         <div className="biz-flow">
           <BusinessPosCustomerLookupScreen
             onNav={posTab}
-            onAttach={(name) => {
+            onAttach={(name, record) => {
               setPosCustomer(name);
+              if (record) setPosCustomerRecord(record);
               setRoute('pos-cart');
             }}
             onOpenDossier={(name) => {
@@ -5567,8 +5581,9 @@ function AppInner() {
             onNav={posTerminalNav}
             customer={posDossierCustomer}
             onBack={goBackToPrevious}
-            onAttach={() => {
-              setPosCustomer(posDossierCustomer);
+            onAttach={(record) => {
+              setPosCustomer(record?.name ?? posDossierCustomer);
+              if (record) setPosCustomerRecord(record);
               setRoute('pos-cart');
             }}
             onOpenCrm={() => setRoute('hub-customers')}
@@ -5579,8 +5594,9 @@ function AppInner() {
           <BusinessPosCustomerDossierScreen
             customer={posDossierCustomer}
             onBack={goBackToPrevious}
-            onAttach={() => {
-              setPosCustomer(posDossierCustomer);
+            onAttach={(record) => {
+              setPosCustomer(record?.name ?? posDossierCustomer);
+              if (record) setPosCustomerRecord(record);
               setRoute('pos-cart');
             }}
             onOpenCrm={() => setRoute('hub-customers')}

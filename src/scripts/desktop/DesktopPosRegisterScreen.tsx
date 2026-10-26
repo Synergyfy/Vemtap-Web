@@ -900,6 +900,7 @@ export function DesktopPosRegisterScreen({
             {/* Loyalty panel — points balance, next reward, and manual award */}
             {customer && totals.total > 0 && loyaltyEnabled && (
               <PosLoyaltyPanel
+                onError={flash}
                 customer={customer}
                 ticketTotal={totals.total}
                 onAward={(points) => {

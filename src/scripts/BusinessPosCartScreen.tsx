@@ -15,6 +15,8 @@ interface BusinessPosCartScreenProps {
   customer: string | null;
   /** Points awarded to this customer earlier in the sale (e.g. at payment). */
   customerBonus: number;
+  /** Live: the attached customer's points balance. */
+  customerPoints?: number;
   onBack: () => void;
   onCharge: () => void;
   onOpenCustomer: () => void;
@@ -33,6 +35,7 @@ export function BusinessPosCartScreen({
   onCartChange,
   customer,
   customerBonus,
+  customerPoints,
   onBack,
   onCharge,
   onOpenCustomer,
@@ -40,7 +43,7 @@ export function BusinessPosCartScreen({
 }: BusinessPosCartScreenProps) {
   const attached = customer !== null;
   const customerRecord = customer ? POS_CUSTOMERS.find((entry) => entry.name === customer) : undefined;
-  const memberPoints = (customerRecord?.points ?? 0) + customerBonus;
+  const memberPoints = (hasApiConfig() ? (customerPoints ?? 0) : (customerRecord?.points ?? 0)) + customerBonus;
   const { taxMode, taxRate, taxLabel } = usePosSettings();
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);

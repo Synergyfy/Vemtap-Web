@@ -10,6 +10,11 @@ import {
   unlockedRewards,
   type PosCustomerRecord,
 } from './posRegisterExtras';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { posService } from '../../services/posService';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { apiCustomerId } from '../posLive';
 
 /**
  * Loyalty snapshot + point award for the customer on the current ticket.
@@ -22,6 +27,7 @@ export function PosLoyaltyPanel({
   customer,
   ticketTotal,
   onAward,
+  onError,
   compact,
 }: {
   customer: PosCustomerRecord;
@@ -29,14 +35,44 @@ export function PosLoyaltyPanel({
   ticketTotal: number;
   /** Commit the awarded points (caller persists them). */
   onAward: (points: number) => void;
+  /** Live: why an award failed (shown as the screen's toast). */
+  onError?: (message: string) => void;
   /** Tighter layout for the ticket pane. */
   compact?: boolean;
 }) {
   const suggested = pointsForAmount(ticketTotal);
   const [award, setAward] = useState(suggested);
   const [awarded, setAwarded] = useState(false);
+  const [awarding, setAwarding] = useState(false);
+  const live = hasApiConfig();
+  const { activeBranchId } = useBusinessBranch();
 
-  const tier = tierForPoints(customer.points);
+  /** Live: credit the points through the loyalty API before reporting them. */
+  const giveAward = () => {
+    if (!live) {
+      onAward(award);
+      setAwarded(true);
+      return;
+    }
+    const userId = apiCustomerId(customer.id);
+    if (!userId || !activeBranchId) {
+      onError?.('Pick a branch and a saved customer first.');
+      return;
+    }
+    setAwarding(true);
+    posService
+      .awardPoints({ userId, points: award }, activeBranchId)
+      .then(() => {
+        onAward(award);
+        setAwarded(true);
+      })
+      .catch((error: unknown) => onError?.(apiErrorMessage(error, 'Could not award points.')))
+      .finally(() => setAwarding(false));
+  };
+
+  const localTier = tierForPoints(customer.points);
+  // Live: the business's own tier name for this customer.
+  const tier = hasApiConfig() && customer.tier ? { ...localTier, name: customer.tier } : localTier;
   const upcomingTier = nextTier(customer.points);
   const upcoming = nextReward(customer.points);
   const unlocked = useMemo(() => unlockedRewards(customer.points), [customer.points]);
@@ -171,11 +207,8 @@ export function PosLoyaltyPanel({
           </div>
           <button
             type="button"
-            disabled={award <= 0 || awarded}
-            onClick={() => {
-              onAward(award);
-              setAwarded(true);
-            }}
+            disabled={award <= 0 || awarded || awarding}
+            onClick={giveAward}
             className="h-10 px-space-sm rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold flex items-center gap-1 disabled:opacity-40 transition-opacity shrink-0"
           >
             <Icon name="stars" className="text-[16px]" />

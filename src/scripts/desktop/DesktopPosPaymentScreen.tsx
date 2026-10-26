@@ -10,7 +10,7 @@ import { PosAddPointsModal, PosRewardsModal } from '../PosPointsModals';
 import { usePosSettings } from '../../context/PosSettingsContext';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
-import { apiCustomerId, setLastSale, useLivePos, usePosCheckout } from '../posLive';
+import { apiCustomerId, setLastSale, useAwardPoints, useLivePos, usePosCheckout } from '../posLive';
 
 interface DesktopPosPaymentScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -140,6 +140,7 @@ export function DesktopPosPaymentScreen({
   const live = hasApiConfig();
   const pos = useLivePos();
   const { checkout } = usePosCheckout();
+  const awardPoints = useAwardPoints();
 
   /** Live: `POST /pos/sales` (or the offline queue), then hand the receipt the real sale. */
   const completeLive = () => {
@@ -769,6 +770,7 @@ export function DesktopPosPaymentScreen({
             {/* Loyalty — points balance, next reward, and manual award at the till */}
             {customer && loyaltyEnabled && (
               <PosLoyaltyPanel
+                onError={flash}
                 customer={customer}
                 ticketTotal={due}
                 onAward={(points) => {
@@ -823,10 +825,19 @@ export function DesktopPosPaymentScreen({
           suggested={orderPoints}
           onClose={() => setPointsModalOpen(false)}
           onAward={(points) => {
-            recordAward(points);
-            onCustomerChange({ ...customer, points: customer.points + points });
-            setPointsModalOpen(false);
-            flash(`${points.toLocaleString()} points added to ${customer.name}.`);
+            const done = () => {
+              recordAward(points);
+              onCustomerChange({ ...customer, points: customer.points + points });
+              setPointsModalOpen(false);
+              flash(`${points.toLocaleString()} points added to ${customer.name}.`);
+            };
+            if (!live) {
+              done();
+              return;
+            }
+            awardPoints(customer.id, points)
+              .then(done)
+              .catch((error: unknown) => flash(apiErrorMessage(error, 'Could not award points.')));
           }}
         />
       )}

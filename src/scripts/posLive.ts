@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ApiError, hasApiConfig } from '../services/api/client';
 import { money, personName, posService, type KitchenOrder, type KitchenStatus, type NewSaleInput, type PosSale, type PosTill } from '../services/posService';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
@@ -524,5 +525,132 @@ export function useLiveKitchen() {
     move: (order: KitchenOrder, to: KitchenLane) => setKitchenStatus.mutateAsync({ id: order.id, status: LANE_STATUS[to] }),
     moving: setKitchenStatus.isPending,
     refetch: stream.refetch,
+  };
+}
+
+/** "Today", "Yesterday", "3 days ago", "Last week", "12 Oct". */
+export const lastVisitLabel = (iso?: string | null) => {
+  if (!iso) return '—';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return 'Last week';
+  return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+};
+
+const TIER_CLASS: Record<string, string> = {
+  platinum: 'bg-surface-tint-blue text-primary',
+  gold: 'bg-badge-discount-bg text-badge-discount-text',
+};
+export const tierClass = (tier?: string | null) => TIER_CLASS[(tier ?? '').toLowerCase()] ?? 'bg-surface-container text-text-secondary';
+
+/** A till customer row, plus the register record used to attach them to a sale. */
+export interface LiveLookupCustomer {
+  id: string;
+  name: string;
+  initials: string;
+  tier: string;
+  tierClass: string;
+  phone: string;
+  email: string;
+  points: string;
+  visits: string;
+  spend: string;
+  lastVisit: string;
+  lastVisitAt: string | null;
+  segments: string[];
+  record: ReturnType<typeof toCustomerRecord>;
+}
+
+/** `/pos/customers` search for the till (debounce the search before passing it in). */
+export function useLiveCustomerLookup(search: string, vipOnly = false, limit = 30) {
+  const { activeBranchId } = useBusinessBranch();
+  const live = hasApiConfig();
+  const query = useQuery({
+    queryKey: ['pos', 'customer-page', activeBranchId ?? 'all', search, vipOnly, limit],
+    queryFn: () => posService.customerPage({ search: search || undefined, segment: vipOnly ? 'vip' : undefined, branchId: activeBranchId, limit }),
+    enabled: live,
+    placeholderData: (prev) => prev,
+  });
+  const rows: LiveLookupCustomer[] = (query.data?.data ?? []).map((customer) => {
+    const record = toCustomerRecord(customer);
+    return {
+      id: customer.id,
+      name: record.name,
+      initials: initials(record.name),
+      tier: customer.tier ?? 'Member',
+      tierClass: tierClass(customer.tier),
+      phone: customer.phone ?? '—',
+      email: customer.email ?? '—',
+      points: (customer.pointsBalance ?? 0).toLocaleString(),
+      visits: String(customer.totalVisits ?? 0),
+      spend: naira(money(customer.totalSpent)),
+      lastVisit: lastVisitLabel(customer.lastVisitAt),
+      lastVisitAt: customer.lastVisitAt ?? null,
+      segments: customer.segments ?? [],
+      record,
+    };
+  });
+  return { rows, counts: query.data?.segmentCounts, total: query.data?.total ?? rows.length, loading: query.isLoading, error: query.error, refetch: query.refetch };
+}
+
+/* The customer a lookup opened in the dossier (live: their API id). */
+let dossierCustomerId: string | null = null;
+const dossierListeners = new Set<() => void>();
+export const setDossierCustomerId = (id: string | null) => {
+  dossierCustomerId = id;
+  dossierListeners.forEach((listener) => listener());
+};
+export const useDossierCustomerId = () =>
+  useSyncExternalStore(
+    (listener) => {
+      dossierListeners.add(listener);
+      return () => dossierListeners.delete(listener);
+    },
+    () => dossierCustomerId,
+  );
+
+/** The value, once it has stopped changing for `delay` ms (search boxes). */
+export function useDebounced<T>(value: T, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
+/** The dossier's customer: stats, last purchases and the rewards they can redeem. */
+export function useLiveDossier() {
+  const id = useDossierCustomerId();
+  const { activeBranchId } = useBusinessBranch();
+  const live = hasApiConfig();
+  const detail = useQuery({
+    queryKey: ['pos', 'customer', id ?? 'none'],
+    queryFn: () => posService.customer(id as string),
+    enabled: live && Boolean(id),
+  });
+  const rewards = useQuery({
+    queryKey: ['pos', 'customer-rewards', id ?? 'none', activeBranchId ?? 'all'],
+    queryFn: () => posService.customerRewards(id as string, activeBranchId),
+    enabled: live && Boolean(id),
+  });
+  const customer = detail.data ?? null;
+  return {
+    customer,
+    record: customer ? toCustomerRecord(customer) : null,
+    rewards: rewards.data?.data ?? [],
+    error: detail.error ?? rewards.error,
+  };
+}
+
+/** Hand-award loyalty points (owners / managers) at the active branch. */
+export function useAwardPoints() {
+  const { activeBranchId } = useBusinessBranch();
+  return (customerId: string | null | undefined, points: number) => {
+    const userId = apiCustomerId(customerId);
+    if (!userId || !activeBranchId) return Promise.reject(new Error('Attach a saved customer first.'));
+    return posService.awardPoints({ userId, points }, activeBranchId);
   };
 }
