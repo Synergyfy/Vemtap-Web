@@ -5,6 +5,12 @@ import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBa
 
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { useIsDesktop } from '../hooks/useIsDesktop';
+import { useBranches, useTeam, useTeamMutations } from '../hooks/business/useBranchesAndTeam';
+import { hasApiConfig } from '../services/api/client';
+import type { TeamMember } from '../services/teamService';
+import { apiErrorMessage } from '../services/errorMessages';
+import { formatRelativeTime } from '../utils/format';
+import { isOwnerMember, isPendingMember, memberName, memberRoleGroup, memberRoleLabel } from './teamLive';
 
 interface BusinessStaffScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -42,6 +48,8 @@ interface StaffMember {
   phone: string;
   joined: string;
   access: string[];
+  /** Live: the API record behind this row. */
+  member?: TeamMember;
 }
 
 const STAFF: StaffMember[] = [
@@ -125,7 +133,7 @@ const DETAILS: { label: string; value: (member: StaffMember) => string; icon: st
   { label: 'Email', value: (member) => member.email, icon: 'mail' },
   { label: 'Phone', value: (member) => member.phone, icon: 'call' },
   { label: 'Joined', value: (member) => member.joined, icon: 'event' },
-  { label: 'Status', value: () => 'Active', icon: 'verified_user' },
+  { label: 'Status', value: (member) => member.member?.status ?? 'Active', icon: 'verified_user' },
 ];
 
 const ACTIONS: { key: string; label: string; hint: string; icon: string; danger?: boolean }[] = [
@@ -136,9 +144,64 @@ const ACTIONS: { key: string; label: string; hint: string; icon: string; danger?
   { key: 'pin', label: 'Reset PIN', hint: 'Send a new PIN to their email', icon: 'pin' },
 ];
 
+/** Backend permissions behind each summary row of the permission list. */
+const PERMISSION_SOURCES: Record<string, string[]> = {
+  'Orders & POS': ['pos', 'pos:orders'],
+  'Catalog & Deals': ['inventory', 'marketing'],
+  'Bookings & Events': ['visitors'],
+  'Analytics & Reports': ['analytics'],
+  'Team & Payroll': ['staff'],
+};
+
+const ROLE_CLASS: Record<Exclude<RoleFilterKey, 'all'>, string> = {
+  owner: 'bg-surface-tint-blue text-primary',
+  manager: 'bg-primary-container text-on-primary',
+  staff: 'bg-surface-container text-on-surface-variant',
+  cashier: 'bg-badge-discount-bg text-badge-discount-text',
+};
+
+const ROLE_SCOPE: Record<Exclude<RoleFilterKey, 'all'>, string> = {
+  owner: 'Full access to every branch, billing, and team management.',
+  manager: 'Runs daily operations at their branch.',
+  staff: 'Works the pages you allowed below.',
+  cashier: 'POS checkout and the pages you allowed below.',
+};
+
+/** A live team member in the directory's row shape. */
+const liveStaffMember = (member: TeamMember, branchName: (id?: string | null) => string): StaffMember => {
+  const group = memberRoleGroup(member);
+  const roleKey = group === 'owners' ? 'owner' : group === 'managers' ? 'manager' : group === 'cashiers' ? 'cashier' : 'staff';
+  const granted = new Set(member.permissions ?? []);
+  return {
+    key: member.id,
+    name: memberName(member),
+    role: isOwnerMember(member) ? 'Owner' : memberRoleLabel(member),
+    roleKey,
+    roleClass: ROLE_CLASS[roleKey],
+    scope: ROLE_SCOPE[roleKey],
+    branches: isOwnerMember(member) ? 'All branches' : branchName(member.branchId),
+    lastActive: isPendingMember(member)
+      ? 'Invite pending'
+      : member.isOnline
+        ? 'Active now'
+        : member.lastActive
+          ? `Active ${formatRelativeTime(member.lastActive)}`
+          : '—',
+    email: member.email ?? '—',
+    phone: member.phone ?? '—',
+    joined: member.createdAt
+      ? new Date(member.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+      : '—',
+    access: isOwnerMember(member)
+      ? PERMISSION_LIST
+      : PERMISSION_LIST.filter((label) => PERMISSION_SOURCES[label].some((permission) => granted.has(permission))),
+    member,
+  };
+};
+
 export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProps) {
   const isDesktop = useIsDesktop();
-  const [members, setMembers] = useState<StaffMember[]>(STAFF);
+  const [demoMembers, setMembers] = useState<StaffMember[]>(STAFF);
   const [filter, setFilter] = useState<RoleFilterKey>('all');
   const [activeMember, setActiveMember] = useState<StaffMember | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -158,6 +221,19 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  // Live: the real team; remove and invite resends go to the API.
+  const live = hasApiConfig();
+  const team = useTeam();
+  const branchList = useBranches();
+  const { remove, resetPin } = useTeamMutations();
+  const branchName = (id?: string | null) => branchList.data?.find((branch) => branch.id === id)?.name ?? '—';
+  const members = live ? (team.data ?? []).map((member) => liveStaffMember(member, branchName)) : demoMembers;
+
+  useEffect(() => {
+    if (live && team.isError) showToast("Couldn't load your team. Try again shortly.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, team.isError]);
+
   const closeDetail = () => {
     setConfirmRemove(false);
     setActiveMember(null);
@@ -169,6 +245,21 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
   const visibleStaff = members.filter((member) => filter === 'all' || member.roleKey === filter);
 
   const removeMember = (member: StaffMember) => {
+    if (member.member) {
+      if (isOwnerMember(member.member)) return showToast('The owner cannot be removed from the team');
+      const record = member.member;
+      remove.mutate(
+        { id: record.id, branchId: record.branchId ?? undefined },
+        {
+          onSuccess: () => {
+            closeDetail();
+            showToast(`${member.name} removed from the team`);
+          },
+          onError: (error) => showToast(apiErrorMessage(error)),
+        },
+      );
+      return;
+    }
     setMembers((current) => current.filter((item) => item.key !== member.key));
     closeDetail();
     showToast(`${member.name} removed from the team`);
@@ -176,6 +267,22 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
 
   const runAction = (actionKey: string, member: StaffMember) => {
     const first = member.name.split(' ')[0];
+    if (member.member) {
+      const record = member.member;
+      if (actionKey !== 'pin') {
+        showToast(`${ACTIONS.find((action) => action.key === actionKey)?.label ?? 'This change'} is coming soon`);
+        return;
+      }
+      if (isOwnerMember(record)) {
+        showToast('Reset your own PIN with "Forgot PIN" on the sign-in screen');
+        return;
+      }
+      resetPin.mutate(
+        { id: record.id, branchId: record.branchId ?? undefined },
+        { onSuccess: () => showToast(`New PIN sent to ${member.email}`), onError: (error) => showToast(apiErrorMessage(error)) },
+      );
+      return;
+    }
     switch (actionKey) {
       case 'edit':
         showToast(`Editing ${member.name}`);

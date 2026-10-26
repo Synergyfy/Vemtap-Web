@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { URBAN_BUSINESS } from './businessData';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useTeamMutations } from '../hooks/business/useBranchesAndTeam';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { planErrorMessage } from '../services/planErrors';
+import { inviteRole, toApiPermissions } from './teamLive';
 
 interface BusinessInviteStaffScreenProps {
   onBack: () => void;
@@ -139,6 +146,17 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
 
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+
+  // Live: real branches (one per member: the backend keeps a single branch),
+  // and the invite is emailed with the PIN set here.
+  const live = hasApiConfig();
+  const { branches: liveBranches, activeBranchId } = useBusinessBranch();
+  const { invite } = useTeamMutations();
+  const businessName = useMyBusiness().data?.name;
+  const branchOptions = live ? liveBranches.map((branch) => branch.name) : BRANCHES;
+  const branchIdFor = (branchName: string) => liveBranches.find((branch) => branch.name === branchName)?.id;
+  const inviteLink = live ? window.location.origin : INVITE_LINK;
+  const lastName = name.trim().split(/\s+/).slice(1).join(' ');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -152,8 +170,8 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   const buildMessage = () => {
     const greeting = firstName || 'there';
     return [
-      `Hi ${greeting}, click the link below to join ${URBAN_BUSINESS.name} as ${roleLabel || 'a team member'}.`,
-      INVITE_LINK,
+      `Hi ${greeting}, click the link below to join ${live ? businessName ?? 'our team' : URBAN_BUSINESS.name} as ${roleLabel || 'a team member'}.`,
+      inviteLink,
       `Your PIN has been sent to your registered email ${
         email.trim() || 'your email on file'
       }. Open the link on your phone to log in.`,
@@ -187,6 +205,17 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
     [],
   );
 
+  // Live: start on the active branch once branches have loaded.
+  useEffect(() => {
+    if (!live || !liveBranches.length) return;
+    setSelectedBranches((current) => {
+      if (current.length === 1 && branchIdFor(current[0])) return current;
+      const active = liveBranches.find((branch) => branch.id === activeBranchId) ?? liveBranches[0];
+      return [active.name];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, liveBranches, activeBranchId]);
+
   const showToast = (text: string) => {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToast(text);
@@ -196,7 +225,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   const stepValid = (index: number) => {
     switch (index) {
       case 0:
-        return name.trim().length > 1 && emailOk && pin.length === 6 && pin === confirmPin;
+        return name.trim().length > 1 && (!live || lastName.length > 0) && emailOk && pin.length === 6 && pin === confirmPin;
       case 1:
         return roleMode === 'preset' || customRole.trim().length > 1;
       case 2:
@@ -213,7 +242,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   const stepHint = (index: number) => {
     switch (index) {
       case 0:
-        if (name.trim().length <= 1) return 'Enter the full name of your teammate.';
+        if (name.trim().length <= 1 || (live && !lastName)) return 'Enter the full name of your teammate.';
         if (!emailOk) return 'Enter a valid email address.';
         if (pin.length < 6) return 'Set a 6-digit PIN — you are creating it on their behalf.';
         if (pin !== confirmPin) return 'PINs do not match.';
@@ -225,6 +254,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
       case 2:
         return `${enabledCount} of ${ALL_PERMISSION_IDS.length} pages enabled.`;
       case 3:
+        if (live) return selectedBranches.length ? `Works at ${selectedBranches[0]}.` : 'Select their branch.';
         return selectedBranches.length
           ? `${selectedBranches.length} branch${selectedBranches.length > 1 ? 'es' : ''} selected.`
           : 'Select at least one branch.';
@@ -243,6 +273,37 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
     if (!stepValid(step)) return;
     if (step === STEPS.length - 1) {
       if (sending || sent) return;
+      if (live) {
+        const branchId = branchIdFor(selectedBranches[0]);
+        if (!branchId) return showToast('Choose the branch they will work at.');
+        setSending(true);
+        invite.mutate(
+          {
+            firstName: name.trim().split(/\s+/)[0],
+            lastName,
+            email: email.trim(),
+            phone: phone.trim() || undefined,
+            role: inviteRole(roleMode === 'preset' ? role : 'custom', roleLabel),
+            jobTitle: roleMode === 'custom' ? customRole.trim() : undefined,
+            permissions: toApiPermissions(Object.keys(permissions).filter((id) => permissions[id])),
+            branchId,
+            pin,
+          },
+          {
+            onSuccess: () => {
+              setSending(false);
+              setSent(true);
+              showToast(`Invitation sent to ${name.trim().split(' ')[0]} by email`);
+              window.setTimeout(onBack, 1800);
+            },
+            onError: (error) => {
+              setSending(false);
+              showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not send the invite.'));
+            },
+          },
+        );
+        return;
+      }
       setSending(true);
       window.setTimeout(() => {
         setSending(false);
@@ -274,6 +335,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   };
 
   const toggleBranch = (branch: string) => {
+    if (live) return setSelectedBranches([branch]);
     setSelectedBranches((current) =>
       current.includes(branch) ? current.filter((item) => item !== branch) : [...current, branch],
     );
@@ -281,7 +343,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(INVITE_LINK);
+      await navigator.clipboard.writeText(inviteLink);
       showToast('Invite link copied');
     } catch {
       showToast('Copy failed — select the link instead');
@@ -528,19 +590,21 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
     <div className="space-y-space-sm">
       <div className="flex items-center justify-between">
         <span className="font-caption text-caption text-text-tertiary">
-          {selectedBranches.length} of {BRANCHES.length} selected
+          {selectedBranches.length} of {branchOptions.length} selected
         </span>
-        <button
-          className="font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
-          type="button"
-          onClick={() => setSelectedBranches(selectedBranches.length === BRANCHES.length ? [] : [...BRANCHES])}
-        >
-          {selectedBranches.length === BRANCHES.length ? 'Clear all' : 'Select all'}
-        </button>
+        {!live && (
+          <button
+            className="font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
+            type="button"
+            onClick={() => setSelectedBranches(selectedBranches.length === BRANCHES.length ? [] : [...BRANCHES])}
+          >
+            {selectedBranches.length === BRANCHES.length ? 'Clear all' : 'Select all'}
+          </button>
+        )}
       </div>
       <section className={cardClass}>
         <div className="flex flex-wrap gap-1.5">
-          {BRANCHES.map((branch) => {
+          {branchOptions.map((branch) => {
             const active = selectedBranches.includes(branch);
             return (
               <button
@@ -577,7 +641,8 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
         <div className="grid grid-cols-3 gap-space-xs mt-space-xs">
           {CHANNELS.map((option) => {
             const active = channel === option.key;
-            const locked = option.key !== 'email' && !phoneOk;
+            // Live: invites go out by email only.
+            const locked = option.key !== 'email' && (live || !phoneOk);
             return (
               <button
                 className={`h-11 rounded-xl flex flex-col items-center justify-center gap-0.5 font-label-sm text-label-sm transition-all ${
@@ -605,7 +670,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
               ? `Sent to ${phone.trim()} on WhatsApp with a tap-to-login link`
               : `Texted to ${phone.trim()} with a tap-to-login link`}
         </p>
-        {!phoneOk && (
+        {!phoneOk && !live && (
           <p className="font-caption text-caption text-badge-discount-text mt-1">
             Add a phone number in step 1 to unlock WhatsApp and SMS.
           </p>
@@ -615,14 +680,14 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
       <section>
         <div className="flex items-center justify-between">
           <h3 className={stepTitleClass}>Invite link</h3>
-          <span className="font-caption text-caption text-text-tertiary">Expires in 48 hours</span>
+          <span className="font-caption text-caption text-text-tertiary">{live ? 'Sign in with email + PIN' : 'Expires in 48 hours'}</span>
         </div>
         <div className={`${cardClass} mt-space-xs flex items-center gap-space-xs`}>
           <span className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
             <Icon name="link" className="text-[16px]" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="font-label-sm text-label-sm text-text-primary block truncate">{INVITE_LINK}</span>
+            <span className="font-label-sm text-label-sm text-text-primary block truncate">{inviteLink}</span>
             <span className="font-caption text-caption text-text-tertiary block">Single use · secure sign-in</span>
           </span>
           <button

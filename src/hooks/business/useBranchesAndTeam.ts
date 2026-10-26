@@ -49,6 +49,7 @@ export function useTeamMutations() {
       onSuccess: refresh,
     }),
     resend: useMutation({ mutationFn: ({ id, branchId }: { id: string; branchId?: string }) => teamService.resendInvite(id, branchId) }),
+    resetPin: useMutation({ mutationFn: ({ id, branchId }: { id: string; branchId?: string }) => teamService.resetPin(id, branchId) }),
   };
 }
 

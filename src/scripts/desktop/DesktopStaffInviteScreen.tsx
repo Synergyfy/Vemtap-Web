@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
+import { useBranches, useTeamMutations } from '../../hooks/business/useBranchesAndTeam';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import { inviteRole, toApiPermissions } from '../teamLive';
 
 interface DesktopStaffInviteScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -150,11 +157,13 @@ const PRESET_BADGES: Record<RolePreset, string> = {
 };
 
 export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteScreenProps) {
+  // Live: a blank form, the real branches, and the invite emailed with the PIN set here.
+  const live = hasApiConfig();
   const [channel, setChannel] = useState<Channel>('email');
   const [rolePreset, setRolePreset] = useState<RolePreset>('cashier');
-  const [fullName, setFullName] = useState('Babatunde Adeleke');
-  const [workEmail, setWorkEmail] = useState('babatunde.a@example.com');
-  const [phone, setPhone] = useState('+234 809 123 4567');
+  const [fullName, setFullName] = useState(live ? '' : 'Babatunde Adeleke');
+  const [workEmail, setWorkEmail] = useState(live ? '' : 'babatunde.a@example.com');
+  const [phone, setPhone] = useState(live ? '' : '+234 809 123 4567');
   const [branchIndex, setBranchIndex] = useState(0);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
 
@@ -163,8 +172,8 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
     toPermissionMap(ROLE_PERMISSIONS.cashier),
   );
   // Preset 6-digit PIN created on the staff member's behalf — emailed to them.
-  const [pin, setPin] = useState('482913');
-  const [confirmPin, setConfirmPin] = useState('482913');
+  const [pin, setPin] = useState(live ? '' : '482913');
+  const [confirmPin, setConfirmPin] = useState(live ? '' : '482913');
   const [showPin, setShowPin] = useState(false);
   // Preset invite message — editable before sending.
   const [message, setMessage] = useState('');
@@ -174,6 +183,30 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
   const [customRoleName, setCustomRoleName] = useState('');
   const [customRoleDraft, setCustomRoleDraft] = useState('');
 
+  const branchList = useBranches();
+  const { activeBranchId } = useBusinessBranch();
+  const { invite } = useTeamMutations();
+  const businessName = useMyBusiness().data?.name;
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  const liveBranches = (branchList.data ?? []).filter((branch) => branch.isActive !== false);
+  const branchOptions = live
+    ? liveBranches.map((branch) => [branch.name, branch.address].filter(Boolean).join(' - '))
+    : BRANCH_OPTIONS;
+  const quickPresets = live ? liveBranches.slice(0, 4).map((branch) => branch.name) : QUICK_PRESETS;
+  const inviteLink = live ? window.location.origin : INVITE_LINK;
+
+  // Live: start on the active branch.
+  useEffect(() => {
+    if (!live || !liveBranches.length) return;
+    const index = liveBranches.findIndex((branch) => branch.id === activeBranchId);
+    setBranchIndex(index >= 0 ? index : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, branchList.data, activeBranchId]);
+
   const enabledCount = Object.values(permissions).filter(Boolean).length;
   const firstName = fullName.trim().split(/\s+/)[0] ?? '';
   const roleLabel =
@@ -182,8 +215,8 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
 
   const buildMessage = () =>
     [
-      `Hi ${firstName || 'there'}, click the link below to join Urban Grill & Bistro as ${roleLabel}.`,
-      INVITE_LINK,
+      `Hi ${firstName || 'there'}, click the link below to join ${live ? businessName ?? 'our team' : 'Urban Grill & Bistro'} as ${roleLabel}.`,
+      inviteLink,
       `Your 6-digit PIN has been sent to your registered email ${workEmail.trim() || 'your email on file'}. Check your email for the PIN, then open the link to log in.`,
     ].join('\n\n');
 
@@ -219,6 +252,40 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
 
   const triggerInvite = () => {
     if (submitState !== 'idle') return;
+    if (live) {
+      const [first, ...rest] = fullName.trim().split(/\s+/);
+      const branch = liveBranches[branchIndex];
+      if (!first || !rest.length) return showToast('Enter their first and last name.');
+      if (!/^\S+@\S+\.\S+$/.test(workEmail.trim())) return showToast('Enter a valid work email.');
+      if (!pinOk) return showToast(pin.length < 6 ? 'Set a 6-digit PIN for them.' : 'PINs do not match.');
+      if (!enabledCount) return showToast('Give them access to at least one page.');
+      if (!branch) return showToast('Choose the branch they will work at.');
+      setSubmitState('sending');
+      invite.mutate(
+        {
+          firstName: first,
+          lastName: rest.join(' '),
+          email: workEmail.trim(),
+          phone: phone.trim() || undefined,
+          role: inviteRole(rolePreset, roleLabel),
+          jobTitle: rolePreset === 'custom' ? roleLabel : undefined,
+          permissions: toApiPermissions(Object.keys(permissions).filter((id) => permissions[id])),
+          branchId: branch.id,
+          pin,
+        },
+        {
+          onSuccess: () => {
+            setSubmitState('sent');
+            window.setTimeout(() => onBack?.(), 1500);
+          },
+          onError: (error) => {
+            setSubmitState('idle');
+            showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not send the invite.'));
+          },
+        },
+      );
+      return;
+    }
     setSubmitState('sending');
     window.setTimeout(() => {
       setSubmitState('sent');
@@ -351,6 +418,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     </button>
                     <button
                       type="button"
+                      disabled={live}
                       onClick={() => setChannel('whatsapp')}
                       className={
                         channel === 'whatsapp'
@@ -363,7 +431,9 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     </button>
                   </div>
                   <p className="font-caption text-caption text-text-tertiary">
-                    {channel === 'email'
+                    {live
+                      ? `Invite emailed to ${workEmail.trim() || 'the work email above'} with their PIN. WhatsApp invites aren't available yet.`
+                      : channel === 'email'
                       ? `Invite link emailed to ${workEmail.trim() || 'the work email above'} — PIN goes to the same inbox.`
                       : `Invite link sent to ${phone.trim() || 'the phone above'} on WhatsApp — PIN still goes to their email.`}
                   </p>
@@ -593,7 +663,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                       value={branchIndex}
                       onChange={(event) => setBranchIndex(Number(event.target.value))}
                     >
-                      {BRANCH_OPTIONS.map((option, index) => (
+                      {branchOptions.map((option, index) => (
                         <option key={option} value={index}>
                           {option}
                         </option>
@@ -611,7 +681,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     Quick Branch Presets
                   </span>
                   <div className="flex flex-wrap items-center gap-space-xs">
-                    {QUICK_PRESETS.map((preset, index) => (
+                    {quickPresets.map((preset, index) => (
                       <button
                         key={preset}
                         type="button"
@@ -732,16 +802,16 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     <Icon name="link" className="text-[16px]" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="font-label-sm text-label-sm text-text-primary block truncate">{INVITE_LINK}</span>
+                    <span className="font-label-sm text-label-sm text-text-primary block truncate">{inviteLink}</span>
                     <span className="font-caption text-caption text-text-tertiary block">
-                      Single use · expires in 48 hours
+                      {live ? 'Sign in with email + PIN' : 'Single use · expires in 48 hours'}
                     </span>
                   </span>
                   <button
                     className="h-9 px-space-md rounded-xl bg-primary-container text-on-primary font-label-sm text-label-sm flex items-center gap-1 active:scale-95 transition-transform shrink-0"
                     type="button"
                     onClick={() => {
-                      navigator.clipboard?.writeText(INVITE_LINK).catch(() => undefined);
+                      navigator.clipboard?.writeText(inviteLink).catch(() => undefined);
                     }}
                   >
                     <Icon name="content_copy" className="text-[14px]" />
@@ -903,6 +973,11 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
               </button>
             </div>
           </form>
+        </div>
+      )}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
         </div>
       )}
     </EnterpriseShell>
