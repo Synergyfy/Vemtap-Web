@@ -379,7 +379,12 @@ export function useLiveClusterBoost() {
         budgetMode: 'total',
         budget: input.amount,
       });
-      const launched = await sponsoredCampaignsService.launch('boost', draft.id, input.paymentMethod);
+      // A launch that fails (e.g. too little in the wallet) must not leave a
+      // stray draft behind for every retry.
+      const launched = await sponsoredCampaignsService.launch('boost', draft.id, input.paymentMethod).catch(async (error) => {
+        await sponsoredCampaignsService.remove('boost', draft.id).catch(() => undefined);
+        throw error;
+      });
       const campaign: ClusterBoostCampaign = {
         id: launched.id,
         reference: launched.checkout?.reference ?? `#${launched.id.slice(0, 8).toUpperCase()}`,
