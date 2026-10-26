@@ -9,7 +9,18 @@ import { usePosSettings } from '../context/PosSettingsContext';
 import { hasApiConfig } from '../services/api/client';
 import { money } from '../services/posService';
 import { apiErrorMessage } from '../services/errorMessages';
-import { apiCustomerId, setLastSale, timeLabel, useAwardPoints, useLivePos, usePosCheckout, type CheckoutResult } from './posLive';
+import {
+  apiCustomerId,
+  rewardsUnlocked,
+  setLastSale,
+  timeLabel,
+  useAwardPoints,
+  useLivePos,
+  usePosCheckout,
+  useTillPointsRate,
+  useTillRewards,
+  type CheckoutResult,
+} from './posLive';
 
 interface BusinessPosPaymentScreenProps {
   cart: PosCartLine[];
@@ -78,9 +89,12 @@ export function BusinessPosPaymentScreen({
   const customerRecord = customer ? POS_CUSTOMERS.find((entry) => entry.name === customer) : undefined;
   const previousPoints = hasApiConfig() ? (customerPoints ?? 0) : (customerRecord?.points ?? 0);
   const currentPoints = previousPoints + customerBonus;
-  const orderPoints = loyaltyEnabled ? pointsForAmount(total) : 0;
+  // Live: the business's earn rule and rewards, not the demo rates.
+  const pointsRate = useTillPointsRate();
+  const liveRewards = useTillRewards(customerId);
+  const orderPoints = loyaltyEnabled ? (pointsRate ? pointsRate(total) : pointsForAmount(total)) : 0;
   const projectedTotal = currentPoints + orderPoints;
-  const eligibleCount = unlockedRewards(currentPoints).length;
+  const eligibleCount = (liveRewards ? rewardsUnlocked(liveRewards, currentPoints) : unlockedRewards(currentPoints)).length;
 
   useEffect(() => {
     setReceived(total);
@@ -548,6 +562,7 @@ export function BusinessPosPaymentScreen({
       {rewardsModalOpen && customer && (
         <PosRewardsModal
           customerName={customer}
+          customerId={customerId}
           points={currentPoints}
           projectedTotal={projectedTotal}
           onClose={() => setRewardsModalOpen(false)}

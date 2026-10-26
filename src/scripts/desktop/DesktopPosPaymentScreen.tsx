@@ -10,7 +10,16 @@ import { PosAddPointsModal, PosRewardsModal } from '../PosPointsModals';
 import { usePosSettings } from '../../context/PosSettingsContext';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
-import { apiCustomerId, setLastSale, useAwardPoints, useLivePos, usePosCheckout } from '../posLive';
+import {
+  apiCustomerId,
+  rewardsUnlocked,
+  setLastSale,
+  useAwardPoints,
+  useLivePos,
+  usePosCheckout,
+  useTillPointsRate,
+  useTillRewards,
+} from '../posLive';
 
 interface DesktopPosPaymentScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -118,11 +127,16 @@ export function DesktopPosPaymentScreen({
   //  - orderPoints: points attached to this order (accruing from the products' spend)
   //  - previousPoints: balance before anything awarded on this screen
   //  - projectedTotal: previous + new, once the order's points land on completion
-  const orderPoints = useMemo(() => (loyaltyEnabled ? pointsForAmount(due) : 0), [due, loyaltyEnabled]);
+  // Live: the business's earn rule and rewards, not the demo rates.
+  const pointsRate = useTillPointsRate();
+  const liveRewards = useTillRewards(customer?.id);
+  const orderPoints = loyaltyEnabled ? (pointsRate ? pointsRate(due) : pointsForAmount(due)) : 0;
   const awardedHere = awardLedger.id === customer?.id ? awardLedger.total : 0;
   const previousPoints = customer ? customer.points - awardedHere : 0;
   const projectedTotal = customer ? customer.points + orderPoints : 0;
-  const eligibleCount = customer ? unlockedRewards(customer.points).length : 0;
+  const eligibleCount = customer
+    ? (liveRewards ? rewardsUnlocked(liveRewards, customer.points) : unlockedRewards(customer.points)).length
+    : 0;
 
   const recordAward = (points: number) =>
     setAwardLedger((prev) =>
@@ -845,6 +859,7 @@ export function DesktopPosPaymentScreen({
       {rewardsModalOpen && customer && (
         <PosRewardsModal
           customerName={customer.name}
+          customerId={customer.id}
           points={customer.points}
           projectedTotal={projectedTotal}
           onClose={() => setRewardsModalOpen(false)}

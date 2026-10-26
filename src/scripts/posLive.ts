@@ -19,6 +19,7 @@ import {
 } from '../hooks/business/usePos';
 import { formatNaira } from '../utils/format';
 import type { CatalogueItem } from '../services/catalogueItemsService';
+import { loyaltyService } from '../services/loyaltyService';
 import { useCatalogueItems } from '../hooks/business/useCatalogueItems';
 import { usePosDisplayMirror, usePosDisplayState } from '../hooks/business/usePosDisplay';
 import { isItemActive, isLowStock } from './catalogueLive';
@@ -826,5 +827,61 @@ export function useLiveDisplayReceipt() {
     total: money(sale?.total),
     points: sale?.pointsEarned ?? 0,
     method: methodLabel(sale?.paymentMethod),
+  };
+}
+
+/** A reward in the till's loyalty shape: points needed, name, icon. */
+export interface TillReward {
+  points: number;
+  label: string;
+  icon: string;
+}
+
+/**
+ * The business's real rewards for a customer (`/pos/customers/:id/rewards`),
+ * cheapest first, in the shape the loyalty panel and rewards modal use.
+ * `null` while not live / no API customer, so callers keep their demo list.
+ */
+export function useTillRewards(customerId: string | null | undefined): TillReward[] | null {
+  const { activeBranchId } = useBusinessBranch();
+  const live = hasApiConfig();
+  const id = apiCustomerId(customerId);
+  const query = useQuery({
+    queryKey: ['pos', 'customer-rewards', id ?? 'none', activeBranchId ?? 'all'],
+    queryFn: () => posService.customerRewards(id as string, activeBranchId),
+    enabled: live && Boolean(id),
+  });
+  if (!live) return null;
+  return (query.data?.data ?? [])
+    .map((reward) => ({ points: reward.pointsRequired, label: reward.name, icon: 'redeem' }))
+    .sort((a, b) => a.points - b.points);
+}
+
+export const rewardsUnlocked = (rewards: TillReward[], points: number) => rewards.filter((reward) => points >= reward.points);
+export const rewardNext = (rewards: TillReward[], points: number) => rewards.find((reward) => points < reward.points) ?? null;
+
+/**
+ * Points a ticket of `amount` earns under the business's loyalty rules
+ * (`/loyalty/rules`). `null` when not live, so callers keep the demo rate.
+ */
+export function useTillPointsRate(): ((amount: number) => number) | null {
+  const { activeBranchId } = useBusinessBranch();
+  const live = hasApiConfig();
+  const rules = useQuery({
+    queryKey: ['loyalty', 'rules', activeBranchId ?? 'all'],
+    queryFn: () => loyaltyService.rules(activeBranchId),
+    enabled: live,
+    staleTime: 5 * 60_000,
+  });
+  if (!live) return null;
+  return (amount: number) => {
+    const rule = rules.data;
+    if (!rule || !rule.isActive) return 0;
+    const spending =
+      rule.ruleType !== 'visit' && rule.spendingBaseAmount > 0
+        ? Math.floor(amount / rule.spendingBaseAmount) * rule.spendingBasePoints
+        : 0;
+    const visit = rule.ruleType !== 'spending' ? rule.visitPoints : 0;
+    return spending + visit;
   };
 }
