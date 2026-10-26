@@ -1,8 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { PosOwnerHeader, PosToggle } from '../components/PosControls';
 import { usePosSettings } from '../context/PosSettingsContext';
+import { hasApiConfig } from '../services/api/client';
+import { usePosSettingsQuery, useUpdatePosSettings } from '../hooks/business/usePosSettingsApi';
 
 interface BusinessPosSettingsScreenProps {
   onBack: () => void;
@@ -140,6 +142,10 @@ function Card({ children }: { children: ReactNode }) {
  */
 export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenProps) {
   const s = usePosSettings();
+  const live = hasApiConfig();
+  const settingsQuery = usePosSettingsQuery();
+  const updateMutation = useUpdatePosSettings();
+  const hydrated = useRef(false);
   const [tab, setTab] = useState<SettingsTabKey>('business');
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -170,6 +176,41 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
     const id = window.setTimeout(() => setSaved(false), 2400);
     return () => window.clearTimeout(id);
   }, [saved]);
+
+  // Live: seed the draft — and the till context — from GET /pos/settings once,
+  // so register, cart and receipts read the saved values immediately.
+  useEffect(() => {
+    const data = settingsQuery.data;
+    if (!live || !data || hydrated.current) return;
+    hydrated.current = true;
+    setDraft((prev) => ({
+      ...prev,
+      businessAddress: data.receiptAddress ?? prev.businessAddress,
+      businessPhone: data.receiptPhone ?? prev.businessPhone,
+      receiptHeader: data.receiptHeader ?? prev.receiptHeader,
+      receiptFooter: data.receiptFooter ?? prev.receiptFooter,
+      autoPrintReceipt: data.autoPrintReceipt ?? prev.autoPrintReceipt,
+      showBusinessLogo: data.showLogo ?? prev.showBusinessLogo,
+      taxEnabled: data.taxEnabled ?? prev.taxEnabled,
+      taxRate: data.taxRate ?? prev.taxRate,
+      taxLabel: data.taxLabel ?? prev.taxLabel,
+      pricesIncludeTax: data.pricesIncludeTax ?? prev.pricesIncludeTax,
+    }));
+    if (typeof data.taxRate === 'number') setRateText(String(data.taxRate));
+    if (data.receiptAddress) s.setBusinessAddress(data.receiptAddress);
+    if (data.receiptPhone) s.setBusinessPhone(data.receiptPhone);
+    if (data.receiptHeader) s.setReceiptHeader(data.receiptHeader);
+    if (data.receiptFooter) s.setReceiptFooter(data.receiptFooter);
+    if (typeof data.autoPrintReceipt === 'boolean') s.setAutoPrintReceipt(data.autoPrintReceipt);
+    if (typeof data.showLogo === 'boolean') s.setShowBusinessLogo(data.showLogo);
+    if (typeof data.taxRate === 'number') s.setTaxRate(data.taxRate);
+    if (data.taxLabel) s.setTaxLabel(data.taxLabel);
+    // Tax flags go through the context's exclusive setters — enable-tax first,
+    // then prices-include-tax, so the last writer wins as designed.
+    if (typeof data.taxEnabled === 'boolean') s.setTaxEnabled(data.taxEnabled);
+    if (typeof data.pricesIncludeTax === 'boolean') s.setPricesIncludeTax(data.pricesIncludeTax);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, settingsQuery.data]);
 
   const update = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -212,6 +253,40 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
   };
 
   const save = () => {
+    if (live) {
+      // Only the receipt/tax fields live on the API — PATCH those, and keep
+      // business identity, alerts and loyalty in the local till context.
+      updateMutation.mutate(
+        {
+          receiptHeader: draft.receiptHeader,
+          receiptFooter: draft.receiptFooter,
+          receiptAddress: draft.businessAddress,
+          receiptPhone: draft.businessPhone,
+          autoPrintReceipt: draft.autoPrintReceipt,
+          showLogo: draft.showBusinessLogo,
+          taxEnabled: draft.taxEnabled,
+          taxRate: draft.taxRate,
+          taxLabel: draft.taxLabel,
+          pricesIncludeTax: draft.pricesIncludeTax,
+        },
+        {
+          onSuccess: () => {
+            s.setBusinessName(draft.businessName);
+            s.setBusinessAddress(draft.businessAddress);
+            s.setBusinessPhone(draft.businessPhone);
+            s.setLowStockAlerts(draft.lowStockAlerts);
+            s.setDailySalesSummary(draft.dailySalesSummary);
+            s.setNewOrderAlert(draft.newOrderAlert);
+            s.setStaffActivityAlerts(draft.staffActivityAlerts);
+            s.setLoyaltyEnabled(draft.loyaltyEnabled);
+            s.setRedemptionThreshold(draft.redemptionThreshold);
+            setDirty(false);
+            setSaved(true);
+          },
+        },
+      );
+      return;
+    }
     s.setBusinessName(draft.businessName);
     s.setBusinessAddress(draft.businessAddress);
     s.setBusinessPhone(draft.businessPhone);
@@ -418,11 +493,11 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
         <button
           type="button"
           onClick={save}
-          disabled={!dirty}
+          disabled={!dirty || updateMutation.isPending}
           className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all disabled:opacity-40 disabled:active:scale-100"
         >
           <Icon name="save" className="text-[18px]" />
-          <span>Save Changes</span>
+          <span>{updateMutation.isPending ? 'Saving...' : 'Save Changes'}</span>
         </button>
         {dirty && (
           <p className="text-center font-caption text-caption text-text-secondary pt-1">You have unsaved changes</p>
