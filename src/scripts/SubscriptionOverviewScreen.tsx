@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { getTrialDaysLeft, hasActiveTrial } from '../utils/trialState';
+import { hasApiConfig } from '../services/api/client';
+import { useActiveSubscription, useSubscriptionPlans } from '../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, trialDaysLeft } from './subscriptionLive';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionOverviewScreenProps {
@@ -79,8 +82,20 @@ export function SubscriptionOverviewScreen({
   onViewAddons,
 }: SubscriptionOverviewScreenProps) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
-  const trialActive = hasActiveTrial();
-  const trialDaysLeft = getTrialDaysLeft();
+  const live = hasApiConfig();
+  const plans = useSubscriptionPlans();
+  const subscription = useActiveSubscription();
+
+  // Live mode features the API's plan and counts a real trial; demo keeps the
+  // scripted Growth card and the localStorage trial flag.
+  const featured = featuredPlan(plans.data ?? []);
+  const sub = subscription.data ?? null;
+  const liveTrialDays = trialDaysLeft(sub);
+  const trialActive = live ? liveTrialDays !== null : hasActiveTrial();
+  const daysLeft = live ? liveTrialDays ?? 0 : getTrialDaysLeft();
+  const priceParts = featured ? planPriceLine(featured, 'monthly').split(' / ') : null;
+  const trialDays = featured?.trialDurationDays ?? null;
+  const planReady = !live || Boolean(featured);
 
   return (
     <AppScreen surface="bg-surface-canvas">
@@ -110,35 +125,45 @@ export function SubscriptionOverviewScreen({
                 Official Plan
               </span>
             </div>
-            <span className="px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary-container font-label-sm text-label-sm">
-              SME Preferred
-            </span>
+            {(!live || featured?.isPopular) && (
+              <span className="px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary-container font-label-sm text-label-sm">
+                SME Preferred
+              </span>
+            )}
           </div>
           <div className="flex flex-col mb-3">
-            <h3 className="font-heading-sm text-heading-sm text-text-primary">VEMTAP Growth</h3>
-            <div className="flex items-baseline gap-1 mt-0.5">
-              <span className="font-heading-lg text-heading-lg text-text-primary font-bold">₦5,000</span>
-              <span className="font-caption text-caption text-text-secondary">/ month</span>
-            </div>
+            <h3 className="font-heading-sm text-heading-sm text-text-primary">
+              {live ? (featured?.name ?? 'Plans unavailable') : 'VEMTAP Growth'}
+            </h3>
+            {priceParts && (
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="font-heading-lg text-heading-lg text-text-primary font-bold">{priceParts[0]}</span>
+                <span className="font-caption text-caption text-text-secondary">/ {priceParts[1]}</span>
+              </div>
+            )}
             <p className="font-label-sm text-label-sm text-text-secondary mt-1">
-              Everything you need to manage and grow your business on VEMTAP.
+              {live && !featured
+                ? 'Plans are being set up for this environment — check back soon.'
+                : 'Everything you need to manage and grow your business on VEMTAP.'}
             </p>
           </div>
 
           {/* Free Trial Banner */}
-          <div className="w-full rounded-xl bg-badge-discount-bg px-3 py-2 mb-3.5 flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <Icon name="card_membership" className="text-badge-discount-text text-[18px]" />
+          {(!live || trialDays) && (
+            <div className="w-full rounded-xl bg-badge-discount-bg px-3 py-2 mb-3.5 flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                <Icon name="card_membership" className="text-badge-discount-text text-[18px]" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">
+                  {live ? `Includes ${trialDays}-Day Free Trial` : 'Includes 30-Day Free Trial'}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">
+                  No credit card or commitment required
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">
-                Includes 30-Day Free Trial
-              </span>
-              <span className="font-caption text-caption text-text-secondary">
-                No credit card or commitment required
-              </span>
-            </div>
-          </div>
+          )}
 
           {/* Feature Checklist */}
           <div className="flex flex-col gap-2.5 mb-3.5">
@@ -239,25 +264,33 @@ export function SubscriptionOverviewScreen({
               onClick={onStartTrial}
             >
               <Icon name="verified" filled className="text-[18px]" />
-              <span>View My Active Trial ({trialDaysLeft} days left)</span>
+              <span>View My Active Trial ({daysLeft} days left)</span>
               <Icon name="arrow_forward" className="text-[18px]" />
             </button>
           ) : (
             <button
-              className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
+              disabled={!planReady}
               onClick={onStartTrial}
             >
-              <span>Start 30-Day Free Trial</span>
+              <span>{live && trialDays ? `Start ${trialDays}-Day Free Trial` : 'Start 30-Day Free Trial'}</span>
               <Icon name="arrow_forward" className="text-[18px]" />
             </button>
           )}
           <button
-            className="w-full h-11 rounded-xl bg-surface-tint-blue text-primary-container font-button-secondary text-button-secondary active:scale-[0.98] transition-all flex items-center justify-center"
+            className="w-full h-11 rounded-xl bg-surface-tint-blue text-primary-container font-button-secondary text-button-secondary active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             type="button"
+            disabled={!planReady}
             onClick={onSubscribe}
           >
-            <span>Subscribe Now (₦5,000/mo)</span>
+            <span>
+              {live
+                ? priceParts
+                  ? `Subscribe Now (${priceParts[0]}/mo)`
+                  : 'Subscribe Now'
+                : 'Subscribe Now (₦5,000/mo)'}
+            </span>
           </button>
           <div className="flex items-center justify-center gap-1.5 mt-1 text-text-secondary">
             <Icon name="lock" className="text-[15px] text-text-tertiary" />

@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { useCreditBalance, useCreditCheckout, useCreditPlans } from '../../hooks/business/useSubscription';
+import { cheapestCreditPlan, creditBundleLine } from '../subscriptionLive';
 
 interface DesktopMoreAddOnsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -14,6 +17,19 @@ interface DesktopMoreAddOnsScreenProps {
  */
 export function DesktopMoreAddOnsScreen({ onNav }: DesktopMoreAddOnsScreenProps) {
   const [waitlisted, setWaitlisted] = useState(false);
+  const live = hasApiConfig();
+  const balance = useCreditBalance();
+  const creditPlans = useCreditPlans();
+  const checkout = useCreditCheckout();
+
+  // Live bundles drive the SMS / AI cards; demo keeps the scripted prices.
+  const smsPlan = cheapestCreditPlan(creditPlans.data ?? [], 'sms');
+  const aiPlan = cheapestCreditPlan(creditPlans.data ?? [], 'ai');
+  const smsLine = creditBundleLine(smsPlan, 'sms');
+  const aiLine = creditBundleLine(aiPlan, 'ai');
+  const buyCredit = (planId?: string) => {
+    if (planId) checkout.mutate(planId);
+  };
 
   return (
     <BusinessPortalChrome activeNav="more-addons" onNav={onNav}>
@@ -34,11 +50,15 @@ export function DesktopMoreAddOnsScreen({ onNav }: DesktopMoreAddOnsScreenProps)
               <div className="flex items-center gap-space-md">
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="sms" className="text-primary text-[18px]" />
-                  <span className="font-label-md text-label-md text-text-primary font-semibold">0 SMS</span>
+                  <span className="font-label-md text-label-md text-text-primary font-semibold">
+                    {live ? balance.data?.smsCredits ?? 0 : 0} SMS
+                  </span>
                 </div>
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="auto_awesome" className="text-primary text-[18px]" />
-                  <span className="font-label-md text-label-md text-text-primary font-semibold">0 AI</span>
+                  <span className="font-label-md text-label-md text-text-primary font-semibold">
+                    {live ? balance.data?.aiCredits ?? 0 : 0} AI
+                  </span>
                 </div>
               </div>
             </div>
@@ -97,13 +117,30 @@ export function DesktopMoreAddOnsScreen({ onNav }: DesktopMoreAddOnsScreenProps)
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Bundles from</span>
                 <div className="flex items-baseline gap-space-2xs">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,500</span>
-                  <span className="font-caption text-caption text-text-secondary">/ 100 Credits</span>
+                  {live ? (
+                    smsLine ? (
+                      <>
+                        <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                          {smsLine.split(' / ')[0]}
+                        </span>
+                        <span className="font-caption text-caption text-text-secondary">/ {smsLine.split(' / ')[1]}</span>
+                      </>
+                    ) : (
+                      <span className="font-caption text-caption text-text-secondary">No bundles on sale yet</span>
+                    )
+                  ) : (
+                    <>
+                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,500</span>
+                      <span className="font-caption text-caption text-text-secondary">/ 100 Credits</span>
+                    </>
+                  )}
                 </div>
               </div>
               <button
-                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all"
+                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 type="button"
+                disabled={live && !smsPlan}
+                onClick={() => buyCredit(smsPlan?.id)}
               >
                 <span>Buy SMS Credits</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
@@ -129,13 +166,30 @@ export function DesktopMoreAddOnsScreen({ onNav }: DesktopMoreAddOnsScreenProps)
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Bundles from</span>
                 <div className="flex items-baseline gap-space-2xs">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,000</span>
-                  <span className="font-caption text-caption text-text-secondary">/ 100 Credits</span>
+                  {live ? (
+                    aiLine ? (
+                      <>
+                        <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                          {aiLine.split(' / ')[0]}
+                        </span>
+                        <span className="font-caption text-caption text-text-secondary">/ {aiLine.split(' / ')[1]}</span>
+                      </>
+                    ) : (
+                      <span className="font-caption text-caption text-text-secondary">No bundles on sale yet</span>
+                    )
+                  ) : (
+                    <>
+                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,000</span>
+                      <span className="font-caption text-caption text-text-secondary">/ 100 Credits</span>
+                    </>
+                  )}
                 </div>
               </div>
               <button
-                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all"
+                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 type="button"
+                disabled={live && !aiPlan}
+                onClick={() => buyCredit(aiPlan?.id)}
               >
                 <span>Buy AI Credits</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
