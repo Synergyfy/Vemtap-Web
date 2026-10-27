@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { hasApiConfig } from '../../services/api/client';
-import { useCreditBalance, useCreditCheckout, useCreditPlans } from '../../hooks/business/useSubscription';
+import { useActiveSubscription, useCreditBalance, useCreditCheckout, useCreditPlans } from '../../hooks/business/useSubscription';
 import { cheapestCreditPlan, creditBundleLine } from '../subscriptionLive';
 
 interface DesktopMoreAddOnsScreenProps {
@@ -18,6 +18,7 @@ interface DesktopMoreAddOnsScreenProps {
 export function DesktopMoreAddOnsScreen({ onNav }: DesktopMoreAddOnsScreenProps) {
   const [waitlisted, setWaitlisted] = useState(false);
   const live = hasApiConfig();
+  const activePlan = useActiveSubscription();
   const balance = useCreditBalance();
   const creditPlans = useCreditPlans();
   const checkout = useCreditCheckout();
@@ -234,7 +235,7 @@ export function DesktopMoreAddOnsScreen({ onNav }: DesktopMoreAddOnsScreenProps)
           <Icon name="info" className="text-primary text-[20px] shrink-0 mt-0.5" />
           <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
             Add-ons are one-time or pay-as-you-go. They never alter your base{' '}
-            <span className="text-text-primary font-semibold">₦5,000/mo Growth subscription</span>. Manage your plan
+            <span className="text-text-primary font-semibold">{live ? (activePlan.data?.plan?.name ? `${activePlan.data.plan.name} plan` : 'subscription plan') : '₦5,000/mo Growth subscription'}</span>. Manage your plan
             under{' '}
             <button
               className="text-primary font-semibold hover:underline"

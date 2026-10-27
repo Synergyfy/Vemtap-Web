@@ -332,7 +332,9 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
               >
                 <span>
                   {letterSent
-                    ? 'Verification Letter Sent to admin@urbangrillbistro.ng'
+                    ? live
+                      ? 'Official verification letters are coming soon'
+                      : 'Verification Letter Sent to admin@urbangrillbistro.ng'
                     : 'Request Official Verification Letter / Audit Proof'}
                 </span>
                 <Icon name={letterSent ? 'check_circle' : 'arrow_forward'} className="text-[16px]" filled={letterSent} />

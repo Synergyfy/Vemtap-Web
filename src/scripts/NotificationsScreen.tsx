@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { notificationService, type NotificationItem } from '../services/notificationService';
+import { hasApiConfig } from '../services/api/client';
+import { useBusinessNotificationFeed, type BusinessFeedCategory } from '../hooks/business/useHeaderNotifications';
 
 interface NotificationsScreenProps {
   onBack: () => void;
@@ -11,7 +13,17 @@ interface NotificationsScreenProps {
   onOpenRewards: () => void;
   onBrowseDeals: () => void;
   onOpenPreferences: () => void;
+  /** Business portal: show the business's feed (`GET /notifications/business`), not the shopper inbox. */
+  business?: boolean;
 }
+
+const BUSINESS_CATEGORY: Record<BusinessFeedCategory, NotificationCategory> = {
+  orders: 'bookings',
+  bookings: 'bookings',
+  payouts: 'system',
+  deals: 'deals',
+  system: 'system',
+};
 
 type NotificationCategory = 'deals' | 'bookings' | 'rewards' | 'system';
 type SectionKey = 'today' | 'earlier';
@@ -53,14 +65,34 @@ export function NotificationsScreen({
   onOpenRewards,
   onBrowseDeals,
   onOpenPreferences,
+  business = false,
 }: NotificationsScreenProps) {
-  const [items, setItems] = useState<FeedItem[]>([]);
+  const [shopperItems, setItems] = useState<FeedItem[]>([]);
   const [filter, setFilter] = useState<NotificationCategory | 'all'>('all');
   const [toast, setToast] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [shopperLoading, setLoading] = useState(true);
+  // Business portal (live): the business feed, with read state saved on the server.
+  const businessMode = business && hasApiConfig();
+  const businessFeed = useBusinessNotificationFeed(50, businessMode);
+  const items: FeedItem[] = businessMode
+    ? businessFeed.rows.map((row) => ({
+        id: row.id,
+        category: BUSINESS_CATEGORY[row.category],
+        section: row.section,
+        icon: row.icon,
+        iconClass: row.iconClass,
+        title: row.title,
+        time: row.time,
+        body: row.body,
+        unread: row.unread,
+        action: 'preferences',
+      }))
+    : shopperItems;
+  const loading = businessMode ? businessFeed.loading : shopperLoading;
 
   useEffect(() => {
     let ignore = false;
+    if (businessMode) return;
 
     const loadNotifications = async () => {
       try {
@@ -111,6 +143,10 @@ export function NotificationsScreen({
       : items.filter((item) => item.category === key && item.unread).length;
 
   const openItem = (item: FeedItem) => {
+    if (businessMode) {
+      businessFeed.markRead(item.id);
+      return;
+    }
     setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, unread: false } : entry)));
     void notificationService.markAsRead(item.id).catch(() => undefined);
     if (item.action === 'pass') onOpenPass();
@@ -123,8 +159,11 @@ export function NotificationsScreen({
 
   const markAllRead = () => {
     if (unreadCount === 0) return;
-    setItems((current) => current.map((item) => ({ ...item, unread: false })));
-    void notificationService.markAllRead().catch(() => undefined);
+    if (businessMode) businessFeed.markAllRead();
+    else {
+      setItems((current) => current.map((item) => ({ ...item, unread: false })));
+      void notificationService.markAllRead().catch(() => undefined);
+    }
     showToast('All notifications marked as read');
   };
 
