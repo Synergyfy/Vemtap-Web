@@ -1,4 +1,5 @@
 import { Icon } from '../../components/ui/Icon';
+import { useNavBadges } from '../../hooks/business/useNavBadges';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
   resolveSidebarActive,
@@ -28,6 +29,7 @@ interface MessagesNavRailProps {
  */
 export function MessagesNavRail({ active, onSelect, headerHeight = '16' }: MessagesNavRailProps) {
   const { itemKey: activeItemKey } = resolveSidebarActive(active);
+  const badgeFor = useNavBadges();
 
   return (
     <aside
@@ -67,13 +69,13 @@ export function MessagesNavRail({ active, onSelect, headerHeight = '16' }: Messa
                     >
                       {item.label}
                     </span>
-                    {item.badge && (
+                    {badgeFor(item.key, item.badge) && (
                       <span
                         className={`hidden lg:flex ml-auto px-1.5 py-0.5 rounded-full font-caption text-[10px] font-bold leading-none ${
                           isActive ? 'bg-on-primary/20 text-on-primary' : item.badgeClass || 'bg-surface-container text-text-secondary'
                         }`}
                       >
-                        {item.badge}
+                        {badgeFor(item.key, item.badge)}
                       </span>
                     )}
                   </button>

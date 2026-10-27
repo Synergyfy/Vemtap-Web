@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { naira } from './catalogueData';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { money } from '../services/posService';
+import type { PosCustomerRecord } from './desktop/posRegisterExtras';
+import { initials, useLiveDossier, useLivePos, whenLabel } from './posLive';
 
 interface BusinessPosCustomerDossierScreenProps {
   customer: string;
   onBack: () => void;
-  onAttach: () => void;
+  /** Live screens hand over the API customer so the sale can earn them points. */
+  onAttach: (record?: PosCustomerRecord) => void;
   onOpenCrm: () => void;
 }
 
@@ -27,7 +33,52 @@ const VISITS = [
   { date: '28 Sep 2026 · 1:05 PM', items: 'Jollof & Prawns, Chapman', total: 10500 },
 ];
 
-export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, onOpenCrm }: BusinessPosCustomerDossierScreenProps) {
+export function BusinessPosCustomerDossierScreen({ customer: customerName, onBack, onAttach, onOpenCrm }: BusinessPosCustomerDossierScreenProps) {
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const dossier = useLiveDossier();
+  const person = dossier.customer;
+  const customer = live ? (dossier.record?.name ?? customerName) : customerName;
+  const visits = person?.totalVisits ?? 0;
+  const spent = money(person?.totalSpent);
+  const metrics = live
+    ? [
+        { label: 'Lifetime spend', value: naira(spent), sub: person?.tier ? `${person.tier} member` : 'Member' },
+        { label: 'Visits', value: String(visits), sub: `Avg ${naira(money(person?.averageOrderValue) || (visits ? Math.round(spent / visits) : 0))} / visit` },
+        { label: 'Points', value: (person?.pointsBalance ?? 0).toLocaleString(), sub: 'Loyalty balance' },
+      ]
+    : METRICS;
+  const perks = live
+    ? dossier.rewards.map((reward) => ({
+        icon: 'redeem',
+        title: reward.name,
+        detail: reward.affordable ? `${reward.pointsRequired.toLocaleString()} pts` : `${reward.pointsShort.toLocaleString()} pts short`,
+        cta: 'Redeem',
+      }))
+    : PERKS;
+  const recentVisits = live
+    ? (person?.recentPurchases ?? []).map((purchase) => ({
+        date: whenLabel(purchase.date),
+        items: purchase.itemNames.join(', ') || `${purchase.items} items`,
+        total: purchase.total,
+      }))
+    : VISITS;
+  const contactChips = live
+    ? [
+        { icon: 'call', value: person?.phone ?? '—' },
+        { icon: 'mail', value: person?.email ?? '—' },
+      ]
+    : [
+        { icon: 'call', value: '+234 701 228 5510' },
+        { icon: 'mail', value: 'michael.j@email.com' },
+        { icon: 'cake', value: 'Birthday 14 Nov' },
+      ];
+  const notes = live
+    ? [{ icon: 'info', text: 'No notes yet' }]
+    : [
+        { icon: 'restaurant', text: 'Kitchen: no shellfish · medium rare always' },
+        { icon: 'payments', text: 'Cashier: prefers split bill, tips 10%' },
+      ];
   const [attached, setAttached] = useState(false);
   const [applied, setApplied] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
@@ -48,13 +99,22 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    if (live && dossier.error) showToast(apiErrorMessage(dossier.error, 'Could not load this customer.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dossier.error]);
+
   const attach = () => {
     setAttached(true);
     showToast(`${customer} attached to the active sale`);
-    attachTimer.current = window.setTimeout(() => onAttach(), 700);
+    attachTimer.current = window.setTimeout(() => onAttach(dossier.record ?? undefined), 700);
   };
 
   const togglePerk = (title: string) => {
+    if (live) {
+      showToast('Redeeming rewards at the till is coming soon');
+      return;
+    }
     setApplied((prev) => (prev.includes(title) ? prev.filter((item) => item !== title) : [...prev, title]));
     showToast(applied.includes(title) ? `${title} removed from ticket` : `${title} applied to ticket`);
   };
@@ -74,12 +134,14 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
           </button>
           <div className="flex flex-col items-center min-w-0">
             <span className="font-heading-sm text-heading-sm text-on-surface leading-tight truncate">Customer Dossier</span>
-            <span className="font-caption text-caption text-text-secondary leading-none">Quick view · Till 01</span>
+            <span className="font-caption text-caption text-text-secondary leading-none">
+              Quick view · {live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Till 01'}
+            </span>
           </div>
           <button
             type="button"
             aria-label="More options"
-            onClick={() => showToast('More actions: statement, block, merge')}
+            onClick={() => showToast(live ? 'More actions are coming soon' : 'More actions: statement, block, merge')}
             className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0 active:scale-95 transition-transform"
           >
             <Icon name="more_horiz" className="text-text-secondary text-[16px]" />
@@ -93,10 +155,12 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
           <div className="bg-surface-canvas rounded-2xl p-space-sm shadow-sm flex flex-col gap-space-xs">
             <div className="flex items-center gap-space-xs">
               <span className="w-14 h-14 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-heading-sm text-heading-sm font-bold shrink-0">
-                {customer
-                  .split(' ')
-                  .map((part) => part[0])
-                  .join('')}
+                {live
+                  ? initials(customer)
+                  : customer
+                      .split(' ')
+                      .map((part) => part[0])
+                      .join('')}
               </span>
               <div className="flex flex-col min-w-0">
                 <span className="flex items-center gap-1 min-w-0">
@@ -104,16 +168,14 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
                   <Icon name="verified" filled className="text-primary text-[15px] shrink-0" />
                 </span>
                 <span className="h-5 px-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold self-start flex items-center">
-                  VIP Platinum · since 2023
+                  {live
+                    ? `${person?.tier ?? 'Member'}${person?.firstVisitAt ? ` · since ${new Date(person.firstVisitAt).getFullYear()}` : ''}`
+                    : 'VIP Platinum · since 2023'}
                 </span>
               </div>
             </div>
             <div className="flex flex-wrap gap-space-2xs">
-              {[
-                { icon: 'call', value: '+234 701 228 5510' },
-                { icon: 'mail', value: 'michael.j@email.com' },
-                { icon: 'cake', value: 'Birthday 14 Nov' },
-              ].map((chip) => (
+              {contactChips.map((chip) => (
                 <span
                   key={chip.value}
                   className="h-7 px-space-xs rounded-full bg-surface-container-low font-caption text-caption text-text-secondary flex items-center gap-1"
@@ -143,7 +205,7 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
 
         {/* Metric bento */}
         <div className="px-margin pt-space-xs grid grid-cols-3 gap-space-2xs">
-          {METRICS.map((metric) => (
+          {metrics.map((metric) => (
             <div key={metric.label} className="bg-surface-canvas rounded-xl p-space-2xs shadow-sm flex flex-col gap-0.5 min-w-0">
               <span className="font-caption text-caption text-text-secondary uppercase tracking-wide truncate">{metric.label}</span>
               <span className="font-label-md text-label-md text-on-surface font-bold truncate">{metric.value}</span>
@@ -157,10 +219,10 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
           <span className="font-label-md text-label-md text-text-secondary uppercase tracking-wider font-semibold">
             Available Perks
           </span>
-          <span className="font-caption text-caption text-text-secondary">{PERKS.length} active</span>
+          <span className="font-caption text-caption text-text-secondary">{perks.length} active</span>
         </div>
         <div className="px-margin flex flex-col gap-space-2xs">
-          {PERKS.map((perk) => {
+          {perks.map((perk) => {
             const isApplied = applied.includes(perk.title);
             return (
               <div
@@ -195,10 +257,7 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
           <span className="font-label-md text-label-md text-text-secondary uppercase tracking-wider font-semibold">Notes</span>
         </div>
         <div className="px-margin flex flex-col gap-space-2xs">
-          {[
-            { icon: 'restaurant', text: 'Kitchen: no shellfish · medium rare always' },
-            { icon: 'payments', text: 'Cashier: prefers split bill, tips 10%' },
-          ].map((note) => (
+          {notes.map((note) => (
             <div key={note.text} className="bg-surface-container-low rounded-xl px-space-xs py-space-2xs flex items-start gap-space-2xs">
               <Icon name={note.icon} className="text-primary text-[15px] mt-0.5 shrink-0" />
               <span className="font-caption text-caption text-text-secondary">{note.text}</span>
@@ -211,12 +270,12 @@ export function BusinessPosCustomerDossierScreen({ customer, onBack, onAttach, o
           <span className="font-label-md text-label-md text-text-secondary uppercase tracking-wider font-semibold">
             Recent Visits
           </span>
-          <span className="font-caption text-caption text-text-secondary">{VISITS.length} of 58</span>
+          <span className="font-caption text-caption text-text-secondary">{recentVisits.length} of {live ? visits : 58}</span>
         </div>
         <div className="px-margin flex flex-col gap-space-2xs">
-          {VISITS.map((visit) => (
+          {recentVisits.map((visit, index) => (
             <div
-              key={visit.date}
+              key={`${visit.date}-${index}`}
               className="bg-surface-canvas rounded-xl px-space-xs py-space-2xs shadow-sm flex items-center justify-between gap-space-xs"
             >
               <div className="flex flex-col min-w-0">

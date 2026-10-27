@@ -4,12 +4,30 @@ import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPorta
 import type { BoostTabKey } from '../../components/BoostTabBar';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import type { CampaignKind } from '../../services/sponsoredCampaignsService';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import {
+  useBoostOptions,
+  useCampaignStats,
+  useSponsoredCampaigns,
+  useSponsoredMutations,
+} from '../../hooks/business/useSponsored';
+import { formatNaira } from '../../utils/format';
+import { metricsView } from '../boostsLive';
 
 interface DesktopBoostMetricsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onBack: () => void;
   onTab: (key: BoostTabKey) => void;
+  /** Live: the campaign to show; without one, the latest active campaign. */
+  target?: { kind: CampaignKind; id: string } | null;
 }
+
+/** Budget added by the "Add budget" action. */
+const TOP_UP = 10_000;
 
 const MODULE_TABS: { key: BoostTabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
@@ -130,9 +148,88 @@ const CLUSTERS = [
   },
 ];
 
-export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoostMetricsScreenProps) {
+export function DesktopBoostMetricsScreen({ onNav, onBack, onTab, target }: DesktopBoostMetricsScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+
+  const live = hasApiConfig();
+  const business = useMyBusiness();
+  const sponsored = useSponsoredCampaigns();
+  const options = useBoostOptions();
+  const { step, addBudget } = useSponsoredMutations();
+  const list = sponsored.data ?? [];
+  const campaign = target
+    ? list.find((row) => row.kind === target.kind && row.id === target.id)
+    : (list.find((row) => row.status === 'Active') ?? list[0]);
+  const statsQuery = useCampaignStats(live && campaign ? { kind: campaign.kind, id: campaign.id } : null);
+  const view = metricsView(statsQuery.data, campaign, options.data);
+  const merchant = business.data?.name ?? '—';
+
+  const kpis: PulseCard[] = live
+    ? [
+        {
+          ...KPIS[0],
+          value: formatNaira(view.spent),
+          sub: `Budget: ${formatNaira(view.budget)}`,
+          progress: {
+            pct: Math.min(100, view.percentConsumed),
+            label: `${view.percentConsumed}% consumed`,
+            right: `${formatNaira(view.left)} left`,
+            rightClass: 'text-badge-discount-text font-medium',
+          },
+        },
+        { ...KPIS[1], value: view.redemptions.toLocaleString('en-US'), box: { label: 'Gross Revenue', value: formatNaira(view.revenue) } },
+        { ...KPIS[2], value: view.reach.toLocaleString('en-US'), sub: 'Customers reached', trend: view.reachTrend || undefined },
+        {
+          ...KPIS[3],
+          value: view.costPerClaim == null ? '—' : formatNaira(view.costPerClaim),
+          sub: view.benchmark ? `Local Avg: ${formatNaira(view.benchmark)}` : 'Local Avg: —',
+          chip: view.cheaperChip || undefined,
+        },
+      ]
+    : KPIS;
+  const funnelStages = live
+    ? view.funnel.map((stage, index) => ({ ...FUNNEL_STAGES[Math.min(index, FUNNEL_STAGES.length - 1)], ...stage }))
+    : FUNNEL_STAGES;
+  const rhythm = live ? view.rhythm : RHYTHM;
+  const clusters = live
+    ? view.branches.map((branch, index) => ({
+        ...CLUSTERS[index % CLUSTERS.length],
+        key: branch.key,
+        name: branch.name,
+        meta: undefined,
+        pct: branch.pct,
+        diners: branch.diners,
+        note: '',
+      }))
+    : CLUSTERS;
+
+  const runStep = (stepName: 'pause' | 'resume' | 'end') => {
+    if (!campaign) return showToast('No campaign to manage yet.');
+    step.mutate(
+      { campaign, step: stepName },
+      {
+        onSuccess: () =>
+          showToast(
+            stepName === 'end'
+              ? `Campaign ended — unspent ${formatNaira(view.left)} returns to your Boost Wallet`
+              : `Campaign ${stepName === 'pause' ? 'paused' : 'resumed'}`,
+          ),
+        onError: (error) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, `Could not ${stepName} the campaign.`)),
+      },
+    );
+  };
+
+  const topUp = () => {
+    if (!campaign) return showToast('No campaign to manage yet.');
+    addBudget.mutate(
+      { campaign, amount: TOP_UP },
+      {
+        onSuccess: () => showToast(`${formatNaira(TOP_UP)} added — the campaign runs longer`),
+        onError: (error) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not add budget.')),
+      },
+    );
+  };
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -151,20 +248,25 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
     timers.current.push(timer);
   };
 
+  useEffect(() => {
+    const error = sponsored.error ?? statsQuery.error;
+    if (error) showToast(apiErrorMessage(error, 'Could not load campaign metrics.'));
+  }, [sponsored.error, statsQuery.error]);
+
   const exportReport = () => {
     downloadCsv(
-      'boost-campaign-bst-8842.csv',
+      live ? `boost-campaign-${view.idLabel.slice(1).toLowerCase()}.csv` : 'boost-campaign-bst-8842.csv',
       ['Section', 'Metric', 'Value', 'Detail'],
       [
-        ...KPIS.map((kpi) => [
+        ...kpis.map((kpi) => [
           'KPI',
           kpi.label,
           `${kpi.value}${kpi.valueSuffix ? ` ${kpi.valueSuffix}` : ''}`,
           [kpi.sub, kpi.trend, kpi.chip, kpi.box ? `${kpi.box.label}: ${kpi.box.value}` : ''].filter(Boolean).join(' • '),
         ]),
-        ...FUNNEL_STAGES.map((stage) => ['Funnel', stage.label, stage.value, `${stage.pct} of impressions`]),
-        ...RHYTHM.map((slot) => ['Redemption rhythm', slot.label, `${slot.claims} claims`, `${slot.views} views`]),
-        ...CLUSTERS.map((cluster) => [
+        ...funnelStages.map((stage) => ['Funnel', stage.label, stage.value, `${stage.pct} of impressions`]),
+        ...rhythm.map((slot) => ['Redemption rhythm', slot.label, `${slot.claims} claims`, `${slot.views} views`]),
+        ...clusters.map((cluster) => [
           'Cluster',
           cluster.name,
           `${cluster.pct}% of redemptions`,
@@ -173,28 +275,28 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
       ],
     );
     printReport(
-      'Boost Performance — Prime Lunch Combo (#BST-8842)',
+      live ? `Boost Performance — ${view.title} (${view.idLabel})` : 'Boost Performance — Prime Lunch Combo (#BST-8842)',
       `${printKvTable('Campaign', [
-        ['Campaign', 'Prime Lunch Combo'],
+        ['Campaign', live ? view.title : 'Prime Lunch Combo'],
         ['Offer', '20% OFF'],
-        ['Merchant', 'Gourmet Bites Bistro'],
-        ['Status', 'Active • Day 3 of 5 • Ending Oct 23'],
+        ['Merchant', live ? merchant : 'Gourmet Bites Bistro'],
+        ['Status', live ? view.status : 'Active • Day 3 of 5 • Ending Oct 23'],
       ])}
        ${printKvTable(
          'Key metrics',
-         KPIS.map((kpi) => [kpi.label, `${kpi.value}${kpi.valueSuffix ? ` ${kpi.valueSuffix}` : ''} — ${kpi.sub}`]),
+         kpis.map((kpi) => [kpi.label, `${kpi.value}${kpi.valueSuffix ? ` ${kpi.valueSuffix}` : ''} — ${kpi.sub}`]),
        )}
        ${printKvTable(
          'Conversion funnel',
-         FUNNEL_STAGES.map((stage) => [stage.label, `${stage.value} (${stage.pct})`]),
+         funnelStages.map((stage) => [stage.label, `${stage.value} (${stage.pct})`]),
        )}
        ${printKvTable(
          'Redemption rhythm',
-         RHYTHM.map((slot) => [slot.label, `${slot.claims} claims / ${slot.views} views`]),
+         rhythm.map((slot) => [slot.label, `${slot.claims} claims / ${slot.views} views`]),
        )}
        ${printKvTable(
          'Location clusters',
-         CLUSTERS.map((cluster) => [cluster.name, `${cluster.pct}% — ${cluster.diners}`]),
+         clusters.map((cluster) => [cluster.name, `${cluster.pct}% — ${cluster.diners}`]),
        )}
        <p class="foot">Report generated ${new Date().toLocaleString('en-NG')}.</p>`,
     );
@@ -244,14 +346,14 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
                 Campaign Analytics • Deep-Dive
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-outline-variant" />
-              <span className="font-caption text-caption text-text-tertiary">ID: #BST-8842</span>
+              <span className="font-caption text-caption text-text-tertiary">ID: {live ? view.idLabel : '#BST-8842'}</span>
               <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                20% OFF
+                {live ? view.goal : '20% OFF'}
               </span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Boost Performance</h1>
             <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-              Active Campaign • Gourmet Bites Bistro
+              {live ? `${campaign?.kind === 'promotion' ? 'Promotion' : 'Boost'} • ${merchant}` : 'Active Campaign • Gourmet Bites Bistro'}
             </p>
           </div>
 
@@ -272,12 +374,14 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
           <div className="flex flex-col gap-space-2xs">
             <div className="flex items-center gap-space-xs">
               <span className="bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-2.5 py-1 rounded-full flex items-center gap-1 font-semibold">
-                <Icon className="text-[14px]" name="local_offer" /> 20% OFF
+                <Icon className="text-[14px]" name="local_offer" /> {live ? view.goal : '20% OFF'}
               </span>
-              <span className="font-caption text-caption text-text-tertiary">ID: #BST-8842</span>
+              <span className="font-caption text-caption text-text-tertiary">ID: {live ? view.idLabel : '#BST-8842'}</span>
             </div>
-            <h2 className="font-heading-md text-heading-md text-text-primary">Prime Lunch Combo</h2>
-            <p className="font-body-md text-body-md text-text-secondary">Active Campaign • Gourmet Bites Bistro</p>
+            <h2 className="font-heading-md text-heading-md text-text-primary">{live ? view.title : 'Prime Lunch Combo'}</h2>
+            <p className="font-body-md text-body-md text-text-secondary">
+              {live ? `${campaign?.kind === 'promotion' ? 'Promotion' : 'Boost'} • ${merchant}` : 'Active Campaign • Gourmet Bites Bistro'}
+            </p>
           </div>
           <div className="bg-surface-tint-blue rounded-xl p-space-sm flex items-center gap-space-xs lg:max-w-md">
             <div className="relative flex items-center justify-center w-3 h-3 shrink-0">
@@ -285,7 +389,7 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
             </div>
             <p className="font-label-sm text-label-sm text-primary font-medium tracking-tight">
-              Campaign Active • Day 3 of 5 • Ending in 2 days (Oct 23)
+              {live ? view.status : 'Campaign Active • Day 3 of 5 • Ending in 2 days (Oct 23)'}
             </p>
           </div>
         </section>
@@ -303,7 +407,7 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md">
-            {KPIS.map((kpi) => (
+            {kpis.map((kpi) => (
               <div
                 className="bg-surface-canvas rounded-xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col justify-between gap-space-sm"
                 key={kpi.key}
@@ -380,7 +484,7 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
             </div>
 
             <div className="space-y-space-md">
-              {FUNNEL_STAGES.map((stage) => (
+              {funnelStages.map((stage) => (
                 <div className={`space-y-1 ${stage.indent}`} key={stage.label}>
                   <div className="flex justify-between items-center text-label-sm font-label-sm gap-2">
                     <span className="text-text-primary flex items-center gap-1.5 font-medium min-w-0">
@@ -411,14 +515,18 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
                       <span className="truncate">Verified POS Visits</span>
                     </span>
                     <span className="text-primary font-heading-sm text-heading-sm font-bold shrink-0">
-                      64 Redemptions
+                      {live ? view.redemptions.toLocaleString('en-US') : '64'} Redemptions
                     </span>
                   </div>
                   <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden mb-2">
-                    <div className="bg-badge-discount-text h-full rounded-full" style={{ width: '34.4%' }} />
+                    <div className="bg-badge-discount-text h-full rounded-full" style={{ width: live ? `${Math.min(100, view.redeemedShare)}%` : '34.4%' }} />
                   </div>
                   <div className="flex items-center justify-between text-caption font-caption text-badge-discount-text font-medium gap-2">
-                    <span>34.4% of claimed digital vouchers walked into your bistro!</span>
+                    <span>
+                      {live
+                        ? `${view.redeemedShare}% of claimed vouchers were redeemed in store.`
+                        : '34.4% of claimed digital vouchers walked into your bistro!'}
+                    </span>
                     <Icon className="text-[16px] shrink-0" name="celebration" />
                   </div>
                 </div>
@@ -428,8 +536,10 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
             <div className="mt-space-md p-space-sm bg-surface-subtle rounded-xl flex items-start gap-2.5">
               <Icon className="text-[18px] text-text-secondary mt-0.5 shrink-0" name="qr_code_scanner" />
               <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                <span className="font-semibold text-text-primary">Strict Factual Attribution:</span> Verified via
-                real-time cashier barcode scanner on Till #01 &amp; #02. No simulated projections.
+                <span className="font-semibold text-text-primary">Strict Factual Attribution:</span>{' '}
+                {live
+                  ? 'Redemptions count only when a voucher is redeemed at your counter. No simulated projections.'
+                  : 'Verified via real-time cashier barcode scanner on Till #01 & #02. No simulated projections.'}
               </p>
             </div>
           </section>
@@ -452,7 +562,7 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
             </div>
 
             <div className="w-full h-44 flex items-end justify-between gap-2 pt-4 pb-2 px-1">
-              {RHYTHM.map((slot) => (
+              {rhythm.map((slot) => (
                 <div
                   className={`flex-1 flex flex-col items-center gap-1 h-full justify-end ${
                     slot.peak ? 'bg-surface-tint-blue rounded-lg py-1 px-0.5' : ''
@@ -487,14 +597,18 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
                 </span>
                 <div className="min-w-0">
                   <span className="font-label-sm text-label-sm font-semibold text-text-primary block truncate">
-                    Peak Velocity: Saturday 1:30 PM
+                    {live ? `Peak Velocity: ${view.peak?.label ?? '—'}` : 'Peak Velocity: Saturday 1:30 PM'}
                   </span>
                   <span className="font-caption text-caption text-text-secondary">
-                    28 redemptions during the weekend lunch rush
+                    {live
+                      ? view.peak
+                        ? `${view.peak.claims} claims in this window`
+                        : 'No claims yet'
+                      : '28 redemptions during the weekend lunch rush'}
                   </span>
                 </div>
               </div>
-              <span className="font-label-md text-label-md font-bold text-primary shrink-0">43.7%</span>
+              <span className="font-label-md text-label-md font-bold text-primary shrink-0">{live ? (view.peak?.share ?? '—') : '43.7%'}</span>
             </div>
           </section>
 
@@ -511,7 +625,7 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
-              {CLUSTERS.map((cluster) => (
+              {clusters.map((cluster) => (
                 <div className="bg-surface-subtle p-space-sm rounded-xl" key={cluster.key}>
                   <div className="flex items-center justify-between mb-1.5 gap-2">
                     <div className="flex items-center gap-2 min-w-0">
@@ -552,27 +666,33 @@ export function DesktopBoostMetricsScreen({ onNav, onBack, onTab }: DesktopBoost
               <button
                 className="h-11 w-full bg-primary-container text-on-primary rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
                 type="button"
-                onClick={() => showToast('₦10,000 added — campaign extended by 2 days')}
+                onClick={() => (live ? topUp() : showToast('₦10,000 added — campaign extended by 2 days'))}
               >
                 <Icon className="text-[20px]" name="bolt" />
-                <span>Add ₦10,000 Budget • Extend 2 Days</span>
+                <span>{live ? `Add ${formatNaira(TOP_UP)} Budget • Run Longer` : 'Add ₦10,000 Budget • Extend 2 Days'}</span>
               </button>
               <button
                 className="h-11 w-full bg-surface-container-low text-text-primary rounded-xl font-label-md text-label-md flex items-center justify-center gap-2 hover:bg-surface-container active:scale-[0.98] transition-all"
                 type="button"
-                onClick={() => showToast('Campaign pacing paused')}
+                onClick={() => (live ? runStep(view.isPaused ? 'resume' : 'pause') : showToast('Campaign pacing paused'))}
               >
-                <Icon className="text-[18px]" name="pause_circle" />
-                <span>Pause Campaign Pacing</span>
+                <Icon className="text-[18px]" name={live && view.isPaused ? 'play_circle' : 'pause_circle'} />
+                <span>{live && view.isPaused ? 'Resume Campaign Pacing' : 'Pause Campaign Pacing'}</span>
               </button>
               <div className="pt-space-sm text-center">
                 <button
                   className="font-caption text-caption text-error hover:underline inline-flex items-center gap-1 active:opacity-75 transition-opacity"
                   type="button"
-                  onClick={() => showToast('Campaign ended — ₦7,550 refunded to your Boost Wallet')}
+                  onClick={() =>
+                    live ? runStep('end') : showToast('Campaign ended — ₦7,550 refunded to your Boost Wallet')
+                  }
                 >
                   <Icon className="text-[15px]" name="cancel" />
-                  <span>End Campaign &amp; Refund Unspent ₦7,550 to Wallet</span>
+                  <span>
+                    {live
+                      ? `End Campaign & Refund Unspent ${formatNaira(view.left)} to Wallet`
+                      : 'End Campaign & Refund Unspent ₦7,550 to Wallet'}
+                  </span>
                 </button>
               </div>
             </div>

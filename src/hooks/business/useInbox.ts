@@ -10,6 +10,9 @@ export const inboxKeys = {
   all: ['inbox'] as const,
   threads: (branchId: string | undefined, channel: InboxChannel) => [...inboxKeys.all, 'threads', branchId ?? 'none', channel] as const,
   messages: (threadId: string) => [...inboxKeys.all, 'messages', threadId] as const,
+  // Under `threads` so every inbox socket event refreshes it too.
+  unreadSummary: (channel: InboxChannel) => [...inboxKeys.all, 'threads', 'unread-summary', channel] as const,
+  context: (threadId: string) => [...inboxKeys.all, 'context', threadId] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -156,6 +159,36 @@ export function useInboxThreads(channel: InboxChannel = 'IN_HOUSE') {
     enabled: Boolean(activeBranchId) && hasApiConfig(),
     // Socket events drive updates; a slow refresh guards against missed events.
     refetchInterval: live ? 60_000 : 15_000,
+  });
+}
+
+/** Unread counts per branch, for the branch switcher and the nav badges. */
+export function useInboxUnreadSummary(channel: InboxChannel = 'IN_HOUSE') {
+  const { authed } = useAuth();
+  const live = useInboxRealtime();
+  const query = useQuery({
+    queryKey: inboxKeys.unreadSummary(channel),
+    queryFn: () => businessMessagingService.unreadSummary(channel),
+    enabled: authed && hasApiConfig(),
+    refetchInterval: live ? 60_000 : 20_000,
+  });
+  const byBranch = new Map((query.data ?? []).map((row) => [row.branchId, row]));
+  return {
+    rows: query.data ?? [],
+    unreadFor: (branchId?: string | null) => (branchId ? (byBranch.get(branchId)?.unread ?? 0) : 0),
+    total: (query.data ?? []).reduce((sum, row) => sum + row.unread, 0),
+    loaded: query.data !== undefined,
+  };
+}
+
+/** The order / booking / deal claim behind a thread. */
+export function useThreadContext(threadId: string | null | undefined) {
+  const { activeBranchId } = useBusinessBranch();
+  return useQuery({
+    queryKey: inboxKeys.context(threadId ?? 'none'),
+    queryFn: () => businessMessagingService.threadContext(threadId as string, activeBranchId as string),
+    enabled: hasApiConfig() && Boolean(threadId && activeBranchId),
+    staleTime: 60_000,
   });
 }
 

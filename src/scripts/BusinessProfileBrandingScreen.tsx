@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { hasApiConfig } from '../services/api/client';
 import { pickAndUploadImage } from '../services/uploadService';
 import { useLiveBranding } from '../hooks/business/useLiveBranding';
@@ -60,6 +60,12 @@ export function BusinessProfileBrandingScreen({
   const [gallery, setGallery] = useState<GalleryPhoto[]>(live ? [] : GALLERY_POOL.slice(0, 2));
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Upload and save failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!uploadError) return;
+    const timer = window.setTimeout(() => setUploadError(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [uploadError]);
   const branding = useLiveBranding((saved) => {
     if (saved.logoUrl) {
       setLogoUrl(saved.logoUrl);
@@ -161,12 +167,7 @@ export function BusinessProfileBrandingScreen({
       </header>
 
       <div className="flex flex-col w-full">
-        {uploadError ? (
-            <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
-              {uploadError}
-            </p>
-          ) : null}
-          <section className="px-margin pt-space-md pb-space-sm">
+        <section className="px-margin pt-space-md pb-space-sm">
           <div className="bg-surface-container-low rounded-xl p-space-md shadow-sm">
             <div className="flex items-center justify-between mb-space-xs">
               <div className="flex items-center gap-space-2xs">
@@ -436,6 +437,11 @@ export function BusinessProfileBrandingScreen({
           </div>
         </div>
       </div>
+      {uploadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {uploadError}
+        </div>
+      )}
     </AppScreen>
   );
 }

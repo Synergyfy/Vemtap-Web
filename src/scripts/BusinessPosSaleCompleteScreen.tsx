@@ -7,6 +7,9 @@ import { cartCount, cartTotals, formatReceiptText, type PosCartLine } from './po
 import { usePosSettings } from '../context/PosSettingsContext';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { usePosOffline } from '../context/PosOfflineContext';
+import { hasApiConfig } from '../services/api/client';
+import { money } from '../services/posService';
+import { methodLabel, timeLabel, useLastSale, useLivePos, whenLabel } from './posLive';
 
 interface BusinessPosSaleCompleteScreenProps {
   cart: PosCartLine[];
@@ -49,7 +52,7 @@ export function BusinessPosSaleCompleteScreen({
 
   useEffect(() => {
     // Auto-print receipt — controlled from POS Settings.
-    if (autoPrintReceipt) showToast('Receipt printed on counter printer');
+    if (autoPrintReceipt && !hasApiConfig()) showToast('Receipt printed on counter printer');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -69,9 +72,36 @@ export function BusinessPosSaleCompleteScreen({
   } = usePosSettings();
   const { branch } = useBusinessBranch();
   const { isOnline } = usePosOffline();
-  const { subtotal, discount, vat, total } = cartTotals(cart, taxMode, taxRate / 100);
-  const receiptLines = cart.length > 0 ? cart : [];
-  const paidTotal = cart.length > 0 ? total : 27251;
+  const { subtotal: cartSubtotal, discount: cartDiscount, vat: cartVat, total } = cartTotals(cart, taxMode, taxRate / 100);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const last = useLastSale();
+  const sale = live && last && !last.queued ? last.sale : null;
+  // Live: the receipt the server priced; offline-queued sales fall back to the cart.
+  const receiptLines = sale
+    ? (sale.items ?? []).map((item) => ({
+        id: item.id,
+        name: item.productName ?? 'Item',
+        qty: item.quantity,
+        member: item.quantity ? money(item.totalPrice) / item.quantity : 0,
+      }))
+    : cart.length > 0
+      ? cart
+      : [];
+  const subtotal = sale ? money(sale.subtotal) : cartSubtotal;
+  const discount = sale ? money(sale.discountAmount) : cartDiscount;
+  const vat = sale ? money(sale.tax) : cartVat;
+  const paidTotal = sale ? money(sale.total) : cart.length > 0 || live ? total : 27251;
+  const ticketRef = live ? (sale ? `#${sale.receiptNumber}` : last?.queued ? last.ref : '—') : '#POS-1049';
+
+  const runAction = (key: string) => {
+    if (!live) {
+      showToast(actionLabel[key]);
+      return;
+    }
+    if (key === 'print') window.print();
+    else showToast(`${key === 'sms' ? 'SMS' : key === 'email' ? 'Email' : 'Wallet'} receipts are coming soon.`);
+  };
 
   const actionLabel: Record<string, string> = {
     print: 'Receipt sent to counter printer',
@@ -97,7 +127,7 @@ export function BusinessPosSaleCompleteScreen({
             <span className="font-heading-sm text-heading-sm text-on-surface leading-tight truncate">
               Sale Completed
             </span>
-            <span className="font-caption text-caption text-text-secondary leading-none">Ticket #POS-1049</span>
+            <span className="font-caption text-caption text-text-secondary leading-none">Ticket {ticketRef}</span>
           </div>
           <span className="w-8 h-8 rounded-full bg-badge-discount-bg flex items-center justify-center shrink-0">
             <Icon name="task_alt" filled className="text-badge-discount-text text-[16px]" />
@@ -121,7 +151,11 @@ export function BusinessPosSaleCompleteScreen({
             {naira(paidTotal)}
           </span>
           <span className="font-caption text-caption text-text-secondary">
-            Card ····4821 approved · 12:42 PM · Ref VEM-90482
+            {live
+              ? sale
+                ? `${methodLabel(sale.paymentMethod)} · ${timeLabel(sale.createdAt)} · Ref ${sale.receiptNumber}`
+                : 'Saved on this device · syncs when back online'
+              : 'Card ····4821 approved · 12:42 PM · Ref VEM-90482'}
           </span>
           {!isOnline && (
             <span className="mt-2 w-full rounded-badge bg-badge-warning-bg border border-badge-warning/40 px-space-sm py-space-2xs flex items-start gap-2 text-left">
@@ -168,8 +202,12 @@ export function BusinessPosSaleCompleteScreen({
               <span className="font-caption text-caption text-text-secondary">{businessAddress}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="font-caption text-caption text-text-secondary">Cashier: Emeka O.</span>
-              <span className="font-caption text-caption text-text-secondary">10 Oct 2026 · 12:42</span>
+              <span className="font-caption text-caption text-text-secondary">
+                Cashier: {live ? (sale?.cashierName ?? pos.cashierName) : 'Emeka O.'}
+              </span>
+              <span className="font-caption text-caption text-text-secondary">
+                {live ? whenLabel(sale?.createdAt ?? new Date().toISOString()) : '10 Oct 2026 · 12:42'}
+              </span>
             </div>
 
             <div className="h-px border-t border-dashed border-border-subtle my-0.5" />
@@ -184,7 +222,7 @@ export function BusinessPosSaleCompleteScreen({
                 </span>
               </div>
             ))}
-            {receiptLines.length === 0 && (
+            {receiptLines.length === 0 && !live && (
               <span className="font-caption text-caption text-text-secondary text-center py-1">
                 4 items · walk-in ticket
               </span>
@@ -194,10 +232,10 @@ export function BusinessPosSaleCompleteScreen({
 
             <div className="flex justify-between">
               <span className="font-caption text-caption text-text-secondary">
-                Subtotal {receiptLines.length > 0 ? `(${count} items)` : '(4 items)'}
+                Subtotal {receiptLines.length > 0 || live ? `(${sale?.itemCount ?? count} items)` : '(4 items)'}
               </span>
               <span className="font-caption text-caption text-text-secondary">
-                {naira(receiptLines.length > 0 ? subtotal : 29700)}
+                {naira(receiptLines.length > 0 || live ? subtotal : 29700)}
               </span>
             </div>
             {discount > 0 && (
@@ -212,7 +250,7 @@ export function BusinessPosSaleCompleteScreen({
                   {taxLabel} ({taxRate}%){taxMode === 'inclusive' && ' · included'}
                 </span>
                 <span className="font-caption text-caption text-text-secondary">
-                  {naira(receiptLines.length > 0 ? vat : 2073)}
+                  {naira(receiptLines.length > 0 || live ? vat : 2073)}
                 </span>
               </div>
             )}
@@ -268,7 +306,7 @@ export function BusinessPosSaleCompleteScreen({
             <button
               key={action.key}
               type="button"
-              onClick={() => showToast(actionLabel[action.key])}
+              onClick={() => runAction(action.key)}
               className="h-16 rounded-xl bg-surface-canvas border border-border-subtle shadow-sm flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform"
             >
               <Icon name={action.icon} className="text-primary text-[18px]" />
@@ -298,7 +336,7 @@ export function BusinessPosSaleCompleteScreen({
             </button>
             <button
               type="button"
-              onClick={() => showToast('Order #POS-1049 opened in history')}
+              onClick={() => showToast(live ? `Sale ${ticketRef} is in the shift ledger` : 'Order #POS-1049 opened in history')}
               className="flex-1 h-10 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs"
             >
               <Icon name="receipt_long" className="text-text-secondary text-[16px]" />

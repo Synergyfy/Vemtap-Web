@@ -4,6 +4,9 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { AnalyticsHeader, AnalyticsSection, type AnalyticsTabKey } from '../components/AnalyticsChrome';
 import { PUBLIC_IMAGES } from './publicPosData';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useSponsoredSummary } from '../hooks/business/useSponsored';
+import { count, dealsView, naira, useLiveAnalytics } from './analyticsLive';
 
 interface AnalyticsDealsScreenProps {
   onAnalyticsTab: (tab: AnalyticsTabKey) => void;
@@ -104,6 +107,19 @@ export function AnalyticsDealsScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const { live, data, error } = useLiveAnalytics('deals');
+  const boosts = useSponsoredSummary();
+  useEffect(() => {
+    if (error) showToast(apiErrorMessage(error, 'Could not load deal analytics.'));
+  }, [error]);
+
+  const view = dealsView(data, boosts.data, KPIS);
+  const totals = data?.totals;
+  const kpis = live ? view.kpis : KPIS;
+  const deals = live ? view.deals : DEALS;
+  const funnelSteps = live ? view.funnel : FUNNEL;
+  const benchmark = live ? view.benchmark : BENCHMARK;
+
   return (
     <AppScreen>
       <AnalyticsHeader active="deals" onTab={onAnalyticsTab} onOpenFilter={onOpenFilter} onOpenExport={onOpenExport} />
@@ -121,13 +137,13 @@ export function AnalyticsDealsScreen({
           </div>
           <span className="flex items-center gap-1 font-caption text-caption font-semibold px-2 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-            4 Live Deals
+            {live ? `${count(totals?.live)} Live Deals` : '4 Live Deals'}
           </span>
         </div>
 
         {/* KPI grid */}
         <div className="grid grid-cols-2 gap-space-xs">
-          {KPIS.map((kpi) => (
+          {kpis.map((kpi) => (
             <Card key={kpi.label}>
               <div className="flex items-center gap-1 text-primary">
                 <Icon name={kpi.icon} className="text-[15px]" />
@@ -142,7 +158,10 @@ export function AnalyticsDealsScreen({
         {/* Per-deal cards */}
         <AnalyticsSection title="Deal-by-Deal Performance" meta="Views → claims → attributed orders">
           <div className="flex flex-col gap-space-sm">
-            {DEALS.map((deal) => (
+            {live && !deals.length && (
+              <span className="font-caption text-caption text-text-tertiary">No deal activity in this period</span>
+            )}
+            {deals.map((deal) => (
               <Card key={deal.name}>
                 <div className="flex items-start gap-space-sm">
                   <img
@@ -186,7 +205,7 @@ export function AnalyticsDealsScreen({
                       <div className="h-full rounded-full bg-primary" style={{ width: `${deal.progress}%` }} />
                     </div>
                     <span className="font-caption text-caption text-text-secondary shrink-0">
-                      {deal.progress}% of cap
+                      {live ? `${deal.progress}% of top deal` : `${deal.progress}% of cap`}
                     </span>
                   </div>
                   <span className="font-label-sm text-label-sm text-text-primary font-semibold shrink-0">
@@ -197,7 +216,7 @@ export function AnalyticsDealsScreen({
                 <button
                   className="w-full h-10 mt-space-sm rounded-xl border border-border-subtle bg-surface-container-low font-label-sm text-label-sm text-primary font-semibold flex items-center justify-center gap-space-2xs active:scale-95 transition-transform"
                   type="button"
-                  onClick={() => showToast(`${deal.name} — details opened`)}
+                  onClick={() => (live ? onManageDeals() : showToast(`${deal.name} — details opened`))}
                 >
                   <span>View deal detail</span>
                   <Icon name="arrow_forward" className="text-[15px]" />
@@ -211,11 +230,13 @@ export function AnalyticsDealsScreen({
         <AnalyticsSection title="Comparative Benchmark" meta="Claim rate vs market">
           <Card>
             <div className="flex flex-col gap-space-sm">
-              {BENCHMARK.map((row) => (
+              {benchmark.map((row) => (
                 <div className="flex flex-col gap-1" key={row.name}>
                   <div className="flex items-center justify-between">
                     <span className="font-label-sm text-label-sm text-on-surface">{row.name}</span>
-                    <span className="font-label-sm text-label-sm text-text-primary font-semibold">{row.pct}%</span>
+                    <span className="font-label-sm text-label-sm text-text-primary font-semibold">
+                      {row.pct == null ? '—' : `${row.pct}%`}
+                    </span>
                   </div>
                   <div className="h-2.5 rounded-full bg-surface-container-low overflow-hidden">
                     <div className={`h-full rounded-full ${row.bar}`} style={{ width: row.width }} />
@@ -239,10 +260,13 @@ export function AnalyticsDealsScreen({
         </AnalyticsSection>
 
         {/* Funnel */}
-        <AnalyticsSection title="Conversion Funnel" meta="8,420 impressions → 186 repeat orders">
+        <AnalyticsSection
+          title="Conversion Funnel"
+          meta={live ? view.funnelMeta : '8,420 impressions → 186 repeat orders'}
+        >
           <Card>
             <div className="flex flex-col gap-space-xs">
-              {FUNNEL.map((step) => (
+              {funnelSteps.map((step) => (
                 <div className="flex flex-col gap-0.5" key={step.step}>
                   <div className="flex items-center justify-between gap-space-xs">
                     <span className="font-caption text-caption text-text-secondary">{step.step}</span>
@@ -275,21 +299,21 @@ export function AnalyticsDealsScreen({
             <div className="flex flex-col min-w-0 gap-1">
               <span className="font-heading-sm text-heading-sm text-text-primary font-bold">Boost Performance</span>
               <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                ₦15,000 promotion spend reached 5,200 profiles and drove 58 verified redemptions last month.
+                {live ? view.boostLine : '₦15,000 promotion spend reached 5,200 profiles and drove 58 verified redemptions last month.'}
               </p>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-space-xs mt-space-sm">
             <div className="bg-surface-canvas border border-border-subtle rounded-lg py-1.5 text-center">
-              <div className="font-label-md text-label-md text-text-primary font-bold">₦15,000</div>
+              <div className="font-label-md text-label-md text-text-primary font-bold">{live ? naira(boosts.data?.totalSpent) : '₦15,000'}</div>
               <span className="font-caption text-caption text-text-tertiary">Spent</span>
             </div>
             <div className="bg-surface-canvas border border-border-subtle rounded-lg py-1.5 text-center">
-              <div className="font-label-md text-label-md text-text-primary font-bold">5,200</div>
+              <div className="font-label-md text-label-md text-text-primary font-bold">{live ? count(boosts.data?.audienceReached) : '5,200'}</div>
               <span className="font-caption text-caption text-text-tertiary">Reach</span>
             </div>
             <div className="bg-surface-canvas border border-border-subtle rounded-lg py-1.5 text-center">
-              <div className="font-label-md text-label-md text-text-primary font-bold">58</div>
+              <div className="font-label-md text-label-md text-text-primary font-bold">{live ? count(boosts.data?.redemptions) : '58'}</div>
               <span className="font-caption text-caption text-text-tertiary">Verified</span>
             </div>
           </div>

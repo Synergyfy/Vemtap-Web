@@ -1,7 +1,12 @@
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { AnalyticsShell } from './AnalyticsShell';
 import { downloadCsv } from '../../utils/exportCsv';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { CUSTOMER_AVATAR } from '../customersLive';
+import { activityHeatmap, count, naira, periodLabel, signedChange, useLiveAnalytics } from '../analyticsLive';
 
 interface DesktopAnalyticsCustomersScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -48,7 +53,38 @@ const COHORT_POINTS: Array<{ week: string; value: string; note: string; noteClas
   },
 ];
 
+const pct = (fraction?: number) => `${Math.round((fraction ?? 0) * 1000) / 10}%`;
+
 export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCustomersScreenProps) {
+  const { live, filter, data: customers, error } = useLiveAnalytics('customers');
+  const { branches } = useBusinessBranch();
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  useEffect(() => {
+    if (error) showToast(apiErrorMessage(error, 'Could not load customer analytics.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error]);
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+
+  const seg = customers?.segments;
+  const segSpend = seg ? seg.vip.spend + seg.regular.spend + seg.new.spend + seg.lapsed.spend : 0;
+  const vipShare = segSpend && seg ? Math.round((seg.vip.spend / segSpend) * 100) : 0;
+  const top = customers?.topCustomers ?? [];
+  const heat = activityHeatmap(customers?.heatmap);
+  const branchLabel = filter.branchId ? (branches.find((b) => b.id === filter.branchId)?.name ?? '—') : 'All branches';
+  const weeks = (customers?.growth ?? []).slice(-4);
+  const cohortPoints = live
+    ? weeks.map((week, index) => ({
+        ...COHORT_POINTS[Math.min(index, COHORT_POINTS.length - 1)],
+        week: `Wk of ${new Date(`${week.weekStart.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        value: count(week.new + week.returning),
+        note: `${week.new} new · ${week.returning} back`,
+      }))
+    : COHORT_POINTS;
+
   return (
     <AnalyticsShell activeNav="analytics" onNav={onNav}>
       {/* Top Command & Action Canvas */}
@@ -80,7 +116,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
               <div className="flex flex-col text-left">
                 <span className="font-caption text-caption text-text-tertiary leading-none">Branch Hub</span>
                 <span className="font-label-sm text-label-sm font-semibold text-on-surface leading-tight mt-0.5">
-                  Downtown Hub / Wuse II
+                  {v(branchLabel, 'Downtown Hub / Wuse II')}
                 </span>
               </div>
               <Icon name="expand_more" className="text-outline text-[18px] ml-1" />
@@ -88,7 +124,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
             {/* Period Selector */}
             <div className="relative bg-surface-canvas rounded-xl shadow-sm px-space-sm py-2 flex items-center gap-space-xs cursor-pointer hover:bg-surface-subtle transition-all">
               <Icon name="calendar_today" className="text-outline text-[18px]" />
-              <span className="font-label-sm text-label-sm font-semibold text-on-surface">Last 30 Days</span>
+              <span className="font-label-sm text-label-sm font-semibold text-on-surface">{v(periodLabel(filter), 'Last 30 Days')}</span>
               <Icon name="expand_more" className="text-outline text-[18px]" />
             </div>
             {/* Secondary CTA: CSV Export */}
@@ -99,12 +135,21 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                 downloadCsv(
                   'vemtap_customer_intelligence',
                   ['Metric', 'Value', 'Note'],
-                  [
-                    ['Avg Lifetime Value', '₦38,400', '+8.4% vs benchmark'],
-                    ['VIP Rev Share', '₦13.8M', 'High frequency, high basket'],
-                    ['At-Risk Churn Value', '₦950k', 'No visit in 45+ days'],
-                    ...COHORT_POINTS.map((point) => [`Cohort ${point.week}`, point.value, point.note]),
-                  ],
+                  live
+                    ? [
+                        ['Customers', count(customers?.total.current), signedChange(customers?.total)],
+                        ['Repeat rate', pct(customers?.repeatRate.current), signedChange(customers?.repeatRate)],
+                        ['Avg spend', naira(customers?.averageSpend), 'Per active customer'],
+                        ['VIP spend share', `${vipShare}%`, `${count(seg?.vip.count)} VIP customers`],
+                        ['Lapsed customers', count(seg?.lapsed.count), naira(seg?.lapsed.spend)],
+                        ...top.map((customer) => [customer.name || 'Customer', naira(customer.spend), `${customer.visits} visits`]),
+                      ]
+                    : [
+                        ['Avg Lifetime Value', '₦38,400', '+8.4% vs benchmark'],
+                        ['VIP Rev Share', '₦13.8M', 'High frequency, high basket'],
+                        ['At-Risk Churn Value', '₦950k', 'No visit in 45+ days'],
+                        ...COHORT_POINTS.map((point) => [`Cohort ${point.week}`, point.value, point.note]),
+                      ],
                 );
               }}
             >
@@ -154,8 +199,18 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                 <span className="font-caption text-caption text-badge-discount-text font-semibold">Active Engine</span>
               </div>
               <p className="font-heading-sm text-heading-sm font-semibold text-on-surface mt-0.5">
-                Patron Retention is Up <span className="text-badge-discount-text font-bold">+18%</span> — 76 VIP regulars
-                generated over 58% of gross revenue in Abuja Downtown this cycle.
+                {live ? (
+                  <>
+                    Repeat rate is{' '}
+                    <span className="text-badge-discount-text font-bold">{pct(customers?.repeatRate.current)}</span> —{' '}
+                    {count(seg?.vip.count)} VIP customers generated {vipShare}% of customer spend this period.
+                  </>
+                ) : (
+                  <>
+                    Patron Retention is Up <span className="text-badge-discount-text font-bold">+18%</span> — 76 VIP regulars
+                    generated over 58% of gross revenue in Abuja Downtown this cycle.
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -180,15 +235,15 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
             </div>
             <div className="mt-space-sm">
               <div className="flex items-baseline gap-space-xs">
-                <span className="font-display-hero text-display-hero font-bold text-on-surface">1,842</span>
+                <span className="font-display-hero text-display-hero font-bold text-on-surface">{v(count(customers?.total.current), '1,842')}</span>
                 <span className="font-caption text-caption text-badge-discount-text font-semibold bg-badge-discount-bg px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                  <Icon name="trending_up" className="text-[12px]" /> +142 this mo
+                  <Icon name="trending_up" className="text-[12px]" /> {v(`+${count(customers?.new.current)} new`, '+142 this mo')}
                 </span>
               </div>
-              <p className="font-caption text-caption text-text-tertiary mt-1">Unique diners tied via POS Tap &amp; QR</p>
+              <p className="font-caption text-caption text-text-tertiary mt-1">{v('Customers with any visit, order or claim', 'Unique diners tied via POS Tap & QR')}</p>
             </div>
             <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-space-sm overflow-hidden">
-              <div className="bg-primary h-full rounded-full" style={{ width: '78%' }} />
+              <div className="bg-primary h-full rounded-full" style={{ width: v(pct(customers?.total.current ? (customers.active.current / customers.total.current) : 0), '78%') }} />
             </div>
           </div>
 
@@ -202,35 +257,35 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
             </div>
             <div className="mt-space-sm">
               <div className="flex items-baseline gap-space-xs">
-                <span className="font-display-hero text-display-hero font-bold text-on-surface">58%</span>
+                <span className="font-display-hero text-display-hero font-bold text-on-surface">{v(pct(customers?.repeatRate.current), '58%')}</span>
                 <span className="font-caption text-caption text-primary font-semibold bg-surface-tint-blue px-2 py-0.5 rounded-full">
-                  Optimal
+                  {v(signedChange(customers?.repeatRate), 'Optimal')}
                 </span>
               </div>
-              <p className="font-caption text-caption text-text-tertiary mt-1">76 patrons power bulk gross volume</p>
+              <p className="font-caption text-caption text-text-tertiary mt-1">{v(`${count(customers?.returning)} returning customers`, '76 patrons power bulk gross volume')}</p>
             </div>
             <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-space-sm overflow-hidden">
-              <div className="bg-badge-discount-text h-full rounded-full" style={{ width: '58%' }} />
+              <div className="bg-badge-discount-text h-full rounded-full" style={{ width: v(pct(customers?.repeatRate.current), '58%') }} />
             </div>
           </div>
 
           {/* Metric 3 */}
           <div className="bg-surface-canvas rounded-2xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="font-label-sm text-label-sm font-medium text-text-secondary">Avg Lifetime Value (CLV)</span>
+              <span className="font-label-sm text-label-sm font-medium text-text-secondary">{v('Avg Spend', 'Avg Lifetime Value (CLV)')}</span>
               <span className="w-8 h-8 rounded-lg bg-surface-container-low text-primary flex items-center justify-center">
                 <Icon name="payments" className="text-[18px]" />
               </span>
             </div>
             <div className="mt-space-sm">
               <div className="flex items-baseline gap-space-xs">
-                <span className="font-display-hero text-display-hero font-bold text-on-surface">₦38,400</span>
+                <span className="font-display-hero text-display-hero font-bold text-on-surface">{v(naira(customers?.averageSpend), '₦38,400')}</span>
                 <span className="font-caption text-caption text-badge-discount-text font-semibold bg-badge-discount-bg px-2 py-0.5 rounded-full">
-                  +8.4%
+                  {v('', '+8.4%')}
                 </span>
               </div>
               <p className="font-caption text-caption text-text-tertiary mt-1">
-                Benchmarked against FCT upscale dining
+                {v('Per active customer this period', 'Benchmarked against FCT upscale dining')}
               </p>
             </div>
             <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-space-sm overflow-hidden">
@@ -241,18 +296,20 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
           {/* Metric 4 */}
           <div className="bg-surface-canvas rounded-2xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="font-label-sm text-label-sm font-medium text-text-secondary">VEMTAP Velocity</span>
+              <span className="font-label-sm text-label-sm font-medium text-text-secondary">{v('Visit Frequency', 'VEMTAP Velocity')}</span>
               <span className="w-8 h-8 rounded-lg bg-surface-container-low text-primary-container flex items-center justify-center">
                 <Icon name="speed" className="text-[18px]" />
               </span>
             </div>
             <div className="mt-space-sm">
               <div className="flex items-baseline gap-space-xs">
-                <span className="font-display-hero text-display-hero font-bold text-on-surface">+34</span>
-                <span className="font-caption text-caption text-text-secondary font-medium">walk-ins / wk</span>
+                <span className="font-display-hero text-display-hero font-bold text-on-surface">
+                  {v((customers?.visitsPerActiveCustomer ?? 0).toFixed(1), '+34')}
+                </span>
+                <span className="font-caption text-caption text-text-secondary font-medium">{v('visits', 'walk-ins / wk')}</span>
               </div>
               <p className="font-caption text-caption text-text-tertiary mt-1">
-                Conversions straight via proximity pass
+                {v('Per active customer', 'Conversions straight via proximity pass')}
               </p>
             </div>
             <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-space-sm overflow-hidden">
@@ -276,18 +333,18 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                       Patron Comeback Frequency
                     </h2>
                     <span className="font-caption text-caption font-semibold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
-                      Cohort 2024
+                      {v(periodLabel(filter), 'Cohort 2024')}
                     </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    8-Week post-discovery retention baseline tracking repeat dining frequency
+                    {v('New and returning customers by week', '8-Week post-discovery retention baseline tracking repeat dining frequency')}
                   </p>
                 </div>
                 {/* Comparison Badge */}
                 <div className="inline-flex items-center gap-1.5 px-space-sm py-1.5 rounded-xl bg-badge-discount-bg text-badge-discount-text">
                   <Icon name="verified" className="text-[16px]" />
                   <span className="font-caption text-caption font-bold">
-                    Local Abuja food &amp; drink standard: 28% at W8 (+10% Outperform)
+                    {v('Local benchmark: —', 'Local Abuja food & drink standard: 28% at W8 (+10% Outperform)')}
                   </span>
                 </div>
               </div>
@@ -295,6 +352,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
               {/* Cohort Visualization Graphic (SVG Chart + Milestones) */}
               <div className="mt-space-sm bg-surface-subtle rounded-xl p-space-md">
                 {/* SVG Retention Line & Area */}
+                {live ? null : (
                 <div className="h-44 w-full relative">
                   <svg className="w-full h-full overflow-visible" fill="none" preserveAspectRatio="none" viewBox="0 0 600 140">
                     {/* Grid Lines */}
@@ -329,10 +387,14 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                     <circle cx="570" cy="87" fill="#066CF4" r="6" stroke="#FFFFFF" strokeWidth="2.5" />
                   </svg>
                 </div>
+                )}
 
                 {/* Cohort Data Points Strip */}
                 <div className="grid grid-cols-4 gap-space-xs mt-space-sm pt-space-sm border-t-0 bg-surface-canvas rounded-xl p-space-sm shadow-xs">
-                  {COHORT_POINTS.map((point) => (
+                  {live && !cohortPoints.length && (
+                    <span className="col-span-4 text-center font-caption text-caption text-text-tertiary">No customer activity yet</span>
+                  )}
+                  {cohortPoints.map((point) => (
                     <div
                       key={point.week}
                       className={point.boxClass ?? 'flex flex-col items-center text-center'}
@@ -346,6 +408,77 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
               </div>
             </div>
 
+            {/* MODULE 1B: Visit Rhythm Heatmap (live only — served by the customers analytics) */}
+            {live && (
+              <div className="bg-surface-canvas rounded-2xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs pb-space-md">
+                  <div>
+                    <div className="flex items-center gap-space-xs">
+                      <h2 className="font-heading-sm text-heading-sm font-bold text-on-surface">Visit Rhythm</h2>
+                      <span className="font-caption text-caption font-semibold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
+                        {periodLabel(filter)}
+                      </span>
+                    </div>
+                    <p className="font-caption text-caption text-text-secondary mt-0.5">
+                      Customer activity by weekday and hour
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-space-sm py-1.5 rounded-xl bg-surface-tint-blue text-primary">
+                    <Icon name="schedule" className="text-[16px]" />
+                    <span className="font-caption text-caption font-bold">Busiest: {heat.busiest}</span>
+                  </div>
+                </div>
+
+                <div className="bg-surface-subtle rounded-xl p-space-md">
+                  {/* Rush-window tiles */}
+                  <div className="grid grid-cols-2 gap-space-sm mb-space-sm">
+                    <div className="bg-surface-canvas rounded-xl p-space-sm shadow-xs">
+                      <div className="flex items-center gap-1 text-primary">
+                        <Icon name="wb_sunny" className="text-[16px]" />
+                        <span className="font-caption text-caption font-semibold">Lunch window</span>
+                      </div>
+                      <div className="font-label-md text-label-md text-text-primary font-bold">12–2 PM</div>
+                      <span className="font-caption text-caption text-text-tertiary">
+                        {heat.lunchShare}% of day activity
+                      </span>
+                    </div>
+                    <div className="bg-surface-canvas rounded-xl p-space-sm shadow-xs">
+                      <div className="flex items-center gap-1 text-tertiary">
+                        <Icon name="nightlight" className="text-[16px]" />
+                        <span className="font-caption text-caption font-semibold">Dinner window</span>
+                      </div>
+                      <div className="font-label-md text-label-md text-text-primary font-bold">6–9 PM</div>
+                      <span className="font-caption text-caption text-text-tertiary">
+                        {heat.dinnerShare}% of day activity
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Weekday bars */}
+                  <div className="flex items-end justify-between gap-space-2xs h-32">
+                    {!heat.total && (
+                      <span className="font-caption text-caption text-text-tertiary self-center mx-auto">
+                        No activity in this period
+                      </span>
+                    )}
+                    {heat.week.map((item) => (
+                      <div className="flex-1 flex flex-col items-center gap-1" key={item.day}>
+                        <div className="w-full flex items-end justify-center h-24">
+                          <div
+                            className={`w-full max-w-[36px] rounded-t-sm ${
+                              item.pct === 100 ? 'bg-primary' : item.pct >= 74 ? 'bg-primary/55' : 'bg-primary/30'
+                            }`}
+                            style={{ height: `${item.pct}%` }}
+                          />
+                        </div>
+                        <span className="font-caption text-caption text-text-tertiary">{item.day}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* MODULE 2: Customer Segmentation Breakdown */}
             <div className="bg-surface-canvas rounded-2xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
               <div className="flex items-center justify-between pb-space-md">
@@ -358,7 +491,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                   </p>
                 </div>
                 <span className="font-caption text-caption font-semibold text-text-secondary bg-surface-container-high px-2.5 py-1 rounded-full">
-                  4 Distinct Cohorts
+                  {v(`${count(customers?.total.current)} customers`, '4 Distinct Cohorts')}
                 </span>
               </div>
 
@@ -378,16 +511,16 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                         </span>
                       </div>
                       <p className="font-caption text-caption text-text-secondary mt-0.5">
-                        High frequency, high basket • ₦150k+ spend threshold
+                        {v(`${naira(seg?.vip.spend)} spend`, 'High frequency, high basket • ₦150k+ spend threshold')}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-space-lg justify-between md:justify-end">
                     <div className="text-right">
                       <div className="font-heading-sm text-heading-sm font-bold text-on-surface">
-                        92 <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
+                        {v(count(seg?.vip.count), '92')} <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
                       </div>
-                      <div className="font-caption text-caption text-primary font-semibold">₦13.8M Rev Share</div>
+                      <div className="font-caption text-caption text-primary font-semibold">{v(`${pct(seg?.vip.share)} of customers`, '₦13.8M Rev Share')}</div>
                     </div>
                     <button
                       className="px-space-sm py-2 rounded-lg bg-surface-canvas hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold shadow-xs transition-colors"
@@ -412,16 +545,16 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                         </span>
                       </div>
                       <p className="font-caption text-caption text-text-secondary mt-0.5">
-                        Steady rhythm • 3 to 5 visits per calendar month
+                        {v(`${naira(seg?.regular.spend)} spend`, 'Steady rhythm • 3 to 5 visits per calendar month')}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-space-lg justify-between md:justify-end">
                     <div className="text-right">
                       <div className="font-heading-sm text-heading-sm font-bold text-on-surface">
-                        482 <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
+                        {v(count(seg?.regular.count), '482')} <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
                       </div>
-                      <div className="font-caption text-caption text-text-secondary font-semibold">26.1% Total Share</div>
+                      <div className="font-caption text-caption text-text-secondary font-semibold">{v(`${pct(seg?.regular.share)} Total Share`, '26.1% Total Share')}</div>
                     </div>
                     <button
                       className="px-space-sm py-2 rounded-lg bg-surface-canvas hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold shadow-xs transition-colors"
@@ -440,22 +573,22 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                     </div>
                     <div>
                       <div className="flex items-center gap-space-2xs">
-                        <span className="font-label-md text-label-md font-bold text-on-surface">Deal Explorers</span>
+                        <span className="font-label-md text-label-md font-bold text-on-surface">{v('New Customers', 'Deal Explorers')}</span>
                         <span className="font-caption text-caption font-semibold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
                           Promotion Driven
                         </span>
                       </div>
                       <p className="font-caption text-caption text-text-secondary mt-0.5">
-                        Price sensitive • 1-2 visits (voucher led discovery)
+                        {v(`${naira(seg?.new.spend)} spend`, 'Price sensitive • 1-2 visits (voucher led discovery)')}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-space-lg justify-between md:justify-end">
                     <div className="text-right">
                       <div className="font-heading-sm text-heading-sm font-bold text-on-surface">
-                        640 <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
+                        {v(count(seg?.new.count), '640')} <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
                       </div>
-                      <div className="font-caption text-caption text-text-secondary font-semibold">34.7% Total Share</div>
+                      <div className="font-caption text-caption text-text-secondary font-semibold">{v(`${pct(seg?.new.share)} Total Share`, '34.7% Total Share')}</div>
                     </div>
                     <button
                       className="px-space-sm py-2 rounded-lg bg-surface-canvas hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold shadow-xs transition-colors"
@@ -482,14 +615,14 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                         </span>
                       </div>
                       <p className="font-caption text-caption text-error font-medium mt-0.5">
-                        No registered visit in 45+ days • Churn Risk: ₦950k
+                        {v(`No recent visit • Past spend: ${naira(seg?.lapsed.spend)}`, 'No registered visit in 45+ days • Churn Risk: ₦950k')}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-space-lg justify-between md:justify-end">
                     <div className="text-right">
                       <div className="font-heading-sm text-heading-sm font-bold text-error">
-                        124 <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
+                        {v(count(seg?.lapsed.count), '124')} <span className="font-caption text-caption text-text-tertiary font-normal">patrons</span>
                       </div>
                       <div className="font-caption text-caption text-text-secondary font-semibold">Lapsed Pipeline</div>
                     </div>
@@ -534,7 +667,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-primary animate-ping" />
                     <span className="font-caption text-caption font-bold text-on-surface">
-                      Epicenter: Wuse II Flagship
+                      {v('Epicenter: —', 'Epicenter: Wuse II Flagship')}
                     </span>
                   </div>
                   <span className="font-caption text-caption text-primary font-bold">Primary 5km Core</span>
@@ -544,17 +677,17 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
               {/* Catchment Distribution Bars */}
               <div className="mt-space-md space-y-space-xs">
                 <div className="flex justify-between items-center font-label-sm text-label-sm">
-                  <span className="text-on-surface font-semibold">5km Downtown Core (Wuse 2, Maitama, Central)</span>
-                  <span className="text-primary font-bold">82%</span>
+                  <span className="text-on-surface font-semibold">{v('5km Core', '5km Downtown Core (Wuse 2, Maitama, Central)')}</span>
+                  <span className="text-primary font-bold">{v('—', '82%')}</span>
                 </div>
                 {/* Progress Split */}
                 <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden flex">
-                  <div className="bg-primary h-full" style={{ width: '82%' }} />
-                  <div className="bg-outline-variant h-full" style={{ width: '18%' }} />
+                  <div className="bg-primary h-full" style={{ width: v('0%', '82%') }} />
+                  <div className="bg-outline-variant h-full" style={{ width: v('0%', '18%') }} />
                 </div>
                 <div className="flex justify-between text-text-tertiary font-caption text-caption">
-                  <span>82% Hyper-Local Catchment</span>
-                  <span>18% Cross-Town (Garki / Apo)</span>
+                  <span>{v('Where customers travel from isn’t tracked yet', '82% Hyper-Local Catchment')}</span>
+                  <span>{v('', '18% Cross-Town (Garki / Apo)')}</span>
                 </div>
               </div>
 
@@ -565,8 +698,8 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                     <Icon name="table_restaurant" className="text-[18px]" />
                   </div>
                   <div>
-                    <div className="font-label-sm text-label-sm font-bold text-on-surface">Dine-In 74%</div>
-                    <div className="font-caption text-caption text-text-tertiary">Avg 52m dwell time</div>
+                    <div className="font-label-sm text-label-sm font-bold text-on-surface">{v('Dine-In —', 'Dine-In 74%')}</div>
+                    <div className="font-caption text-caption text-text-tertiary">{v('Dwell time —', 'Avg 52m dwell time')}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-space-xs">
@@ -574,7 +707,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                     <Icon name="takeout_dining" className="text-[18px]" />
                   </div>
                   <div>
-                    <div className="font-label-sm text-label-sm font-bold text-on-surface">Takeout 26%</div>
+                    <div className="font-label-sm text-label-sm font-bold text-on-surface">{v('Takeout —', 'Takeout 26%')}</div>
                     <div className="font-caption text-caption text-text-tertiary">Tap &amp; pick speed</div>
                   </div>
                 </div>
@@ -600,7 +733,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                       <img
                         className="w-12 h-12 rounded-full object-cover"
                         alt="Portrait of a sophisticated West African professional male diner wearing clean modern business casual attire smiling in Abuja upscale dining lounge with warm soft ambient lighting"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOYAjP73ox3oOVHbWhD7w1D9VmweMC7F2b_b9EhIBDpIMs3mSZVM3a3BHNUZdlwuX4Pz1ixYftL_3hDeNbW_R7XJQNMALJ6Q7Mw5I-86706EGYWk0tSoO995c6ECCrzlxWODcjhcfPUbDu9L6UNKv7E6jV6R9Tmm-atK_BadHafPYMNE9zLOM1-7JTFKjHy3mxWpdNLT9Hue_u_Xj1k0tB9rJxQL75OpR1hQGGucR4VbwLAqHmDOuQ-Q"
+                        src={v(CUSTOMER_AVATAR, "https://lh3.googleusercontent.com/aida-public/AB6AXuBOYAjP73ox3oOVHbWhD7w1D9VmweMC7F2b_b9EhIBDpIMs3mSZVM3a3BHNUZdlwuX4Pz1ixYftL_3hDeNbW_R7XJQNMALJ6Q7Mw5I-86706EGYWk0tSoO995c6ECCrzlxWODcjhcfPUbDu9L6UNKv7E6jV6R9Tmm-atK_BadHafPYMNE9zLOM1-7JTFKjHy3mxWpdNLT9Hue_u_Xj1k0tB9rJxQL75OpR1hQGGucR4VbwLAqHmDOuQ-Q")}
                       />
                       <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center font-caption text-caption font-bold shadow-xs">
                         #1
@@ -608,19 +741,19 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-label-md text-label-md font-bold text-on-surface">Michael James</span>
+                        <span className="font-label-md text-label-md font-bold text-on-surface">{v(top[0]?.name || '—', 'Michael James')}</span>
                         <span className="px-1.5 py-0.2 rounded font-caption text-caption bg-amber-100 text-amber-800 font-bold">
-                          VIP Gold
+                          {v(top[0]?.tier ? `${top[0].tier}` : '—', 'VIP Gold')}
                         </span>
                       </div>
                       <div className="font-caption text-caption text-text-secondary flex items-center gap-1 mt-0.5">
                         <Icon name="location_on" className="text-[14px] text-text-tertiary" />
-                        <span>Maitama local • 14 visits logged</span>
+                        <span>{v(top[0] ? `${top[0].visits} visits logged` : '—', 'Maitama local • 14 visits logged')}</span>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-label-md text-label-md font-bold text-primary">₦184,200</div>
+                    <div className="font-label-md text-label-md font-bold text-primary">{v(top[0] ? naira(top[0].spend) : '—', '₦184,200')}</div>
                     <div className="font-caption text-caption text-text-tertiary">Gross Spend</div>
                   </div>
                 </div>
@@ -632,7 +765,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                       <img
                         className="w-12 h-12 rounded-full object-cover"
                         alt="Portrait of a modern young Nigerian woman smiling joyfully holding a beverage at a chic modern cafe restaurant in Abuja with bright natural daylight"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuAadt9PRxWMRd6zM1f1VdTplyPG1ODc3if4sBDs9sKrL4u0LrvUc28BrJn30Tv1EEzZ7wvZdbTq4izrebat5RnA3xgh1gnPJITYHy5-XjQ2oqC2nlnyPTImnhCKWDb26QwwdUvYJhggGLeGX7G_616AEiNPc_nKB1t6_6CHTONr1-3h7a_KQ4_qT0ZjMsjQ6l6SGFU-YXhwOGc69Q04JL1WAPXVNlhrd6KAl6V-BAQuelOCa0sG9Qxuow"
+                        src={v(CUSTOMER_AVATAR, "https://lh3.googleusercontent.com/aida-public/AB6AXuAadt9PRxWMRd6zM1f1VdTplyPG1ODc3if4sBDs9sKrL4u0LrvUc28BrJn30Tv1EEzZ7wvZdbTq4izrebat5RnA3xgh1gnPJITYHy5-XjQ2oqC2nlnyPTImnhCKWDb26QwwdUvYJhggGLeGX7G_616AEiNPc_nKB1t6_6CHTONr1-3h7a_KQ4_qT0ZjMsjQ6l6SGFU-YXhwOGc69Q04JL1WAPXVNlhrd6KAl6V-BAQuelOCa0sG9Qxuow")}
                       />
                       <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-badge-discount-text text-white flex items-center justify-center font-caption text-caption font-bold shadow-xs">
                         #2
@@ -640,19 +773,19 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-label-md text-label-md font-bold text-on-surface">Sarah Adams</span>
+                        <span className="font-label-md text-label-md font-bold text-on-surface">{v(top[1]?.name || '—', 'Sarah Adams')}</span>
                         <span className="px-1.5 py-0.2 rounded font-caption text-caption bg-badge-discount-bg text-badge-discount-text font-bold">
-                          Deal Champion
+                          {v(top[1]?.tier ? `${top[1].tier}` : '—', 'Deal Champion')}
                         </span>
                       </div>
                       <div className="font-caption text-caption text-text-secondary flex items-center gap-1 mt-0.5">
                         <Icon name="confirmation_number" className="text-[14px] text-text-tertiary" />
-                        <span>5 deals unlocked • 8 visits</span>
+                        <span>{v(top[1] ? `${top[1].visits} visits logged` : '—', '5 deals unlocked • 8 visits')}</span>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-label-md text-label-md font-bold text-on-surface">₦78,500</div>
+                    <div className="font-label-md text-label-md font-bold text-on-surface">{v(top[1] ? naira(top[1].spend) : '—', '₦78,500')}</div>
                     <div className="font-caption text-caption text-text-tertiary">Gross Spend</div>
                   </div>
                 </div>
@@ -682,6 +815,11 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </AnalyticsShell>
   );
 }

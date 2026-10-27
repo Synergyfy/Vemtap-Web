@@ -9,11 +9,26 @@ import { SheetShell } from '../components/sheets/SheetShell';
 import { AddCustomerMethodsDialog } from '../components/customers/AddCustomerMethodsDialog';
 import { SendInviteDialog } from '../components/customers/SendInviteDialog';
 import { downloadCsv } from '../utils/exportCsv';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import type { CustomerCard } from '../services/businessCustomersService';
+import { useBusinessCustomers } from '../hooks/business/useBusinessCustomers';
+import {
+  customerContact,
+  customerName,
+  exportCustomers,
+  lastInteractionLabel,
+  plural,
+  segmentLabel,
+  dayLabel,
+  spendLabel,
+} from './customersLive';
 
 interface BusinessCustomersScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onMessage: (name: string) => void;
-  onViewProfile?: (name: string) => void;
+  /** `userId` is set for live customers so the profile loads the real record. */
+  onViewProfile?: (name: string, userId?: string) => void;
   onOpenAnalytics?: () => void;
   /** Opens the public invite page so staff can preview the Send Invite link. */
   onPreviewInvite?: (url: string) => void;
@@ -44,6 +59,7 @@ interface CustomerRow {
   historyIcon: string;
   historyParts: { text: string; strong: string; strongClass: string }[];
   category: string;
+  userId?: string;
 }
 
 const CUSTOMERS: CustomerRow[] = [
@@ -149,6 +165,45 @@ const lastActivity = (customer: CustomerRow) =>
 const CONTACT_AVATAR =
   'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Ccircle cx="20" cy="15" r="7" fill="%236750a4"/%3E%3Cpath d="M8 36c0-7 5.4-11 12-11s12 4 12 11" fill="%236750a4"/%3E%3C/svg%3E';
 
+const LIVE_TIER: Record<string, { icon: string; className: string }> = {
+  frequent: { icon: 'diamond', className: 'bg-surface-tint-blue text-primary' },
+  returning: { icon: 'repeat', className: 'bg-surface-container text-text-secondary' },
+  new: { icon: 'fiber_new', className: 'bg-badge-discount-bg text-badge-discount-text' },
+  inactive: { icon: 'bedtime', className: 'bg-surface-container text-text-secondary' },
+  occasional: { icon: 'person', className: 'bg-surface-container text-text-secondary' },
+};
+
+/** A live customer in this screen's row shape. */
+const liveRow = (card: CustomerCard): CustomerRow => {
+  const name = customerName(card);
+  const tier = LIVE_TIER[card.segment] ?? LIVE_TIER.occasional;
+  return {
+    key: card.userId,
+    userId: card.userId,
+    name,
+    img: card.avatarUrl || CONTACT_AVATAR,
+    alt: `${name} profile`,
+    tierIcon: tier.icon,
+    tierLabel: `${segmentLabel(card)}${card.tier ? ` • ${card.tier} Tier` : ''}`,
+    tierClass: tier.className,
+    contact: customerContact(card),
+    activityLine: {
+      leading: plural(card.visits, 'Visit'),
+      segments: [
+        { text: plural(card.orders, 'Order'), class: '' },
+        { text: `${plural(card.claims, 'Deal')} Claimed`, class: 'text-badge-discount-text font-medium' },
+      ],
+    },
+    activityTag: `${spendLabel(card)} spend`,
+    historyIcon: 'schedule',
+    historyParts: [
+      { text: 'First visited: ', strong: dayLabel(card.firstSeenAt), strongClass: 'text-text-primary font-medium' },
+      { text: 'Last: ', strong: lastInteractionLabel(card), strongClass: 'text-primary font-medium' },
+    ],
+    category: card.segment,
+  };
+};
+
 export function BusinessCustomersScreen({
   onTab,
   onMessage,
@@ -157,9 +212,13 @@ export function BusinessCustomersScreen({
   onPreviewInvite,
 }: BusinessCustomersScreenProps) {
   const isDesktop = useIsDesktop();
+  const live = hasApiConfig();
   const { search: searchContacts } = useContacts();
-  const [filter, setFilter] = useState<CrmFilterKey>('frequent');
+  const [filter, setFilter] = useState<CrmFilterKey>(live ? 'all' : 'frequent');
   const [search, setSearch] = useState('');
+  const customers = useBusinessCustomers({ search: search.trim() || undefined, segment: filter, sort: 'recent', limit: 50 });
+  const counts = customers.data?.meta.segmentCounts;
+  const insight = customers.data?.meta.insight;
   const [drawerCustomer, setDrawerCustomer] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -191,6 +250,10 @@ export function BusinessCustomersScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    if (customers.error) showToast(apiErrorMessage(customers.error, 'Could not load your customers.'));
+  }, [customers.error]);
+
   const closeManualSheet = () => {
     setAddView(null);
     setAddError(null);
@@ -199,6 +262,11 @@ export function BusinessCustomersScreen({
 
   const handleManualAdd = (event: FormEvent) => {
     event.preventDefault();
+    // Live customers come from real activity, so there is nowhere to store a hand-added one yet.
+    if (live) {
+      showToast('Adding customers by hand is coming soon. Send them your invite link instead.');
+      return;
+    }
     if (!newName.trim()) {
       setAddError('Enter the customer\'s full name.');
       return;
@@ -253,6 +321,7 @@ export function BusinessCustomersScreen({
   };
 
   const visibleCustomers = (() => {
+    if (live) return (customers.data?.data ?? []).map(liveRow);
     // BUG-017: purchase-derived contacts first, deduped against the seeded
     // CRM rows by name so a returning patron never appears twice.
     const purchaseRows: CustomerRow[] = searchContacts(search).map((contact) => ({
@@ -310,7 +379,7 @@ export function BusinessCustomersScreen({
 
   const openCustomer = (customer: CustomerRow) => {
     if (onViewProfile) {
-      onViewProfile(customer.name);
+      onViewProfile(customer.name, customer.userId);
       return;
     }
     setDrawerCustomer(customer.name);
@@ -318,7 +387,7 @@ export function BusinessCustomersScreen({
 
   const drawer = drawerCustomer
     ? (visibleCustomers.find((customer) => customer.name === drawerCustomer) ??
-      CUSTOMERS.find((customer) => customer.name === drawerCustomer))
+      (live ? undefined : CUSTOMERS.find((customer) => customer.name === drawerCustomer)))
     : undefined;
 
   return (
@@ -396,7 +465,7 @@ export function BusinessCustomersScreen({
                       active ? 'bg-white/20' : 'bg-surface-canvas text-text-secondary'
                     }`}
                   >
-                    {crmFilter.count}
+                    {live ? (counts?.[crmFilter.key] ?? '—') : crmFilter.count}
                   </span>
                 </button>
               );
@@ -414,7 +483,11 @@ export function BusinessCustomersScreen({
               <div className="min-w-0">
                 <p className="font-label-sm text-label-sm text-primary font-semibold">Active Patron Directory</p>
                 <p className="font-caption text-caption text-text-secondary truncate">
-                  76 frequent patrons account for 48% of monthly repeat revenue
+                  {live
+                    ? insight
+                      ? `${insight.frequentCustomers} frequent patrons account for ${Math.round(insight.frequentSpendShare * 100)}% of customer spend`
+                      : '—'
+                    : '76 frequent patrons account for 48% of monthly repeat revenue'}
                 </p>
               </div>
             </div>
@@ -423,6 +496,12 @@ export function BusinessCustomersScreen({
               title="Export Segment"
               type="button"
               onClick={() => {
+                if (live) {
+                  exportCustomers({ search: search.trim() || undefined, segment: filter, sort: 'recent' })
+                    .then((records) => showToast(`Exported ${records} patron records (CSV)`))
+                    .catch((error) => showToast(apiErrorMessage(error, 'Could not export your customers.')));
+                  return;
+                }
                 downloadCsv(
                   'vemtap_customer_segment',
                   ['Name', 'Tier', 'Contact', 'Activity', 'Category'],
@@ -639,7 +718,7 @@ export function BusinessCustomersScreen({
               <div className="min-w-0">
                 <p className="font-label-sm text-label-sm text-primary font-semibold truncate">{drawer.tierLabel}</p>
                 <p className="font-caption text-caption text-text-secondary">
-                  Loyalty score 98/100 • Zero dispute or chargeback flags
+                  {live ? drawer.activityTag : 'Loyalty score 98/100 • Zero dispute or chargeback flags'}
                 </p>
               </div>
             </div>
@@ -651,7 +730,7 @@ export function BusinessCustomersScreen({
               </div>
               <div className="p-space-xs rounded-xl bg-surface-container-low min-w-0">
                 <p className="font-caption text-caption text-text-secondary">Average ticket</p>
-                <p className="font-label-sm text-label-sm text-text-primary font-medium truncate">₦22,750</p>
+                <p className="font-label-sm text-label-sm text-text-primary font-medium truncate">{live ? '—' : '₦22,750'}</p>
               </div>
             </div>
 
@@ -671,7 +750,7 @@ export function BusinessCustomersScreen({
             <div className="flex flex-col gap-1">
               <h4 className="font-label-sm text-label-sm text-text-primary font-semibold">Favorite items</h4>
               <div className="flex flex-wrap gap-1.5">
-                {['Chargrilled Ribeye', 'Hibiscus Cooler', 'Truffle Parm Fries'].map((favorite) => (
+                {(live ? ['—'] : ['Chargrilled Ribeye', 'Hibiscus Cooler', 'Truffle Parm Fries']).map((favorite) => (
                   <span
                     className="px-2 py-1 rounded-lg bg-surface-container text-text-secondary font-caption text-caption"
                     key={favorite}
@@ -699,7 +778,11 @@ export function BusinessCustomersScreen({
                 type="button"
                 onClick={() => {
                   setDrawerCustomer(null);
-                  showToast(`Exclusive VIP offer sent to ${drawer.name.split(' ')[0]}!`);
+                  showToast(
+                    live
+                      ? 'Sending offers to one customer is coming soon.'
+                      : `Exclusive VIP offer sent to ${drawer.name.split(' ')[0]}!`,
+                  );
                 }}
               >
                 <Icon name="card_giftcard" className="text-[18px]" />

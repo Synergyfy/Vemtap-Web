@@ -225,6 +225,7 @@ export function DesktopBusinessProfileStorefrontScreen({
       };
   const brandInitial = (profile.form.name || BRAND_NAME).charAt(0).toUpperCase();
   const [toastVisible, setToastVisible] = useState(false);
+  const [toastText, setToastText] = useState('Your business profile and public storefront are updated.');
   const [copied, setCopied] = useState(false);
 
   /** Brand facts shown on this screen — reused by the contextual AI prompts. */
@@ -298,16 +299,24 @@ export function DesktopBusinessProfileStorefrontScreen({
     });
     profile.save.mutate(
       { ...profile.form, socials, whatsappNumber, amenities: activeAmenities },
-      { onSuccess: showSavedToast },
+      {
+        onSuccess: () => showToast('Your business profile and public storefront are updated.'),
+        onError: (error) => showToast(`Could not save your profile: ${apiErrorMessage(error)}`),
+      },
     );
   };
 
-  const showSavedToast = () => {
+  const showToast = (text: string) => {
+    setToastText(text);
     setToastVisible(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToastVisible(false), 5000);
   };
+
+  useEffect(() => {
+    if (profile.loadError) showToast(`Could not load your business profile: ${(profile.loadError as Error).message}`);
+  }, [profile.loadError]);
 
   const handleCopy = () => {
     if (!view.url) return;
@@ -320,6 +329,21 @@ export function DesktopBusinessProfileStorefrontScreen({
   const handlePreview = () => {
     if (view.url) window.open(view.url, '_blank');
   };
+
+  /** Live: uploads a new logo / cover and saves it to the business right away. */
+  const changeImage = (kind: 'logo' | 'cover') => {
+    if (!preview.live) {
+      showToast(kind === 'logo' ? 'Logo upload opened' : 'Cover photo picker opened');
+      return;
+    }
+    profile.uploadImage.mutate(kind, {
+      onSuccess: (url) => {
+        if (url) showToast(kind === 'logo' ? 'Logo updated on your storefront.' : 'Cover photo updated on your storefront.');
+      },
+      onError: (error) => showToast(`Could not update the ${kind === 'logo' ? 'logo' : 'cover photo'}: ${apiErrorMessage(error)}`),
+    });
+  };
+  const uploadingKind = profile.uploadImage.isPending ? profile.uploadImage.variables : null;
 
   return (
     <MerchantWorkspaceChrome activeNav="business-profile" onNav={onNav}>
@@ -348,7 +372,7 @@ export function DesktopBusinessProfileStorefrontScreen({
               </h1>
               <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                Live On Discovery
+                {preview.live && !profile.form.isVisible ? 'Hidden From Discovery' : 'Live On Discovery'}
               </span>
             </div>
             <p className="font-body-md text-body-md text-text-secondary max-w-3xl">
@@ -393,7 +417,7 @@ export function DesktopBusinessProfileStorefrontScreen({
           <div className="flex items-center gap-space-sm">
             <Icon name="verified" className="text-[20px]" />
             <span className="font-label-md text-label-md font-medium">
-              Your business profile and public storefront are updated.
+              {toastText}
             </span>
           </div>
           <button
@@ -406,13 +430,6 @@ export function DesktopBusinessProfileStorefrontScreen({
           </button>
         </div>
 
-        {profile.save.isError || profile.loadError ? (
-          <div role="alert" className="w-full p-space-md rounded-xl bg-error-container text-on-error-container font-label-md text-label-md">
-            {profile.save.isError
-              ? `Could not save your profile: ${apiErrorMessage(profile.save.error)}`
-              : `Could not load your business profile: ${(profile.loadError as Error).message}`}
-          </div>
-        ) : null}
 
         {/* Main 2-Column Responsive Layout (12 cols: 7 Left, 5 Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
@@ -440,10 +457,12 @@ export function DesktopBusinessProfileStorefrontScreen({
                 <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-black/20" />
                 <button
                   type="button"
-                  className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-canvas/90 backdrop-blur-md text-text-primary hover:bg-surface-canvas text-label-sm font-label-sm font-medium shadow-md transition-all"
+                  onClick={() => changeImage('cover')}
+                  disabled={uploadingKind === 'cover'}
+                  className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-canvas/90 backdrop-blur-md text-text-primary hover:bg-surface-canvas text-label-sm font-label-sm font-medium shadow-md transition-all disabled:opacity-70"
                 >
                   <Icon name="photo_camera" className="text-[16px] text-primary-container" />
-                  <span>Change Cover Photo</span>
+                  <span>{uploadingKind === 'cover' ? 'Uploading…' : preview.live && !view.cover ? 'Add Cover Photo' : 'Change Cover Photo'}</span>
                 </button>
                 <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-inverse-surface/80 backdrop-blur-md text-surface-bright font-caption text-caption">
                   16:9 Display Aspect • Rec. 1920×1080
@@ -464,9 +483,11 @@ export function DesktopBusinessProfileStorefrontScreen({
                   <button
                     type="button"
                     aria-label="Edit logo"
-                    className="absolute bottom-0 right-0 p-1.5 rounded-full bg-primary-container text-on-primary hover:bg-primary shadow transition-transform hover:scale-110"
+                    onClick={() => changeImage('logo')}
+                    disabled={uploadingKind === 'logo'}
+                    className="absolute bottom-0 right-0 p-1.5 rounded-full bg-primary-container text-on-primary hover:bg-primary shadow transition-transform hover:scale-110 disabled:opacity-70"
                   >
-                    <Icon name="edit" className="text-[16px]" />
+                    <Icon name={uploadingKind === 'logo' ? 'progress_activity' : 'edit'} className={`text-[16px] ${uploadingKind === 'logo' ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
                 <div className="flex flex-col pt-2 sm:pt-6">
@@ -642,9 +663,11 @@ export function DesktopBusinessProfileStorefrontScreen({
                       value={profile.form.phone}
                       onChange={(event) => profile.set('phone', event.target.value)}
                     />
-                    <span className="absolute right-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1">
-                      <Icon name="check_circle" className="text-[12px]" /> Verified
-                    </span>
+                    {!preview.live && (
+                      <span className="absolute right-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1">
+                        <Icon name="check_circle" className="text-[12px]" /> Verified
+                      </span>
+                    )}
                   </div>
                 </div>
                 {/* Email */}
@@ -883,8 +906,8 @@ export function DesktopBusinessProfileStorefrontScreen({
                     {view.category && <span className="font-medium text-text-primary">{view.category}</span>}
                     {view.category && <span>•</span>}
                     {view.location && <span className="truncate">{view.location}</span>}
-                    {view.location && <span>•</span>}
-                    <span className="text-badge-discount-text font-semibold">Open Now</span>
+                    {view.location && !preview.live && <span>•</span>}
+                    {!preview.live && <span className="text-badge-discount-text font-semibold">Open Now</span>}
                   </div>
                   <p className="font-caption text-caption text-text-secondary line-clamp-2">
                     {preview.live
@@ -909,6 +932,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                     </button>
                     <button
                       type="button"
+                      onClick={() => onNav('business-catalog')}
                       className="py-2 rounded-xl bg-surface-tint-blue text-primary-container flex flex-col items-center justify-center gap-0.5 hover:bg-secondary-container transition-colors"
                     >
                       <Icon name="menu_book" className="text-[18px]" />
@@ -916,6 +940,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                     </button>
                     <button
                       type="button"
+                      onClick={() => onNav('business-deals')}
                       className="py-2 rounded-xl bg-badge-discount-bg text-badge-discount-text flex flex-col items-center justify-center gap-0.5 hover:opacity-90 transition-opacity"
                     >
                       <Icon name="loyalty" className="text-[18px]" />
@@ -926,15 +951,23 @@ export function DesktopBusinessProfileStorefrontScreen({
                   <div className="pt-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <span className="font-label-sm text-label-sm font-bold text-text-primary">Featured Today</span>
-                      <span className="font-caption text-caption text-primary-container font-semibold cursor-pointer">
+                      <button
+                        type="button"
+                        onClick={() => onNav('business-catalog')}
+                        className="font-caption text-caption text-primary-container font-semibold cursor-pointer hover:underline"
+                      >
                         {view.itemCount != null ? `View All (${view.itemCount})` : 'View All'}
-                      </span>
+                      </button>
                     </div>
                     <div className="flex flex-col gap-2">
                       {view.featured.length === 0 && (
-                        <p className="p-2 rounded-xl bg-surface-canvas font-caption text-caption text-text-tertiary">
-                          Your active products and services appear here.
-                        </p>
+                        <button
+                          type="button"
+                          onClick={() => onNav('business-catalog')}
+                          className="p-2 rounded-xl bg-surface-canvas font-caption text-caption text-text-tertiary text-left hover:text-primary transition-colors"
+                        >
+                          Your active products and services appear here. <span className="text-primary font-semibold">Add one →</span>
+                        </button>
                       )}
                       {view.featured.map((item) => (
                         <div

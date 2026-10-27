@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
-import { useOrders, type SubmittedOrder } from '../context/OrdersContext';
+import { type SubmittedOrder } from '../context/OrdersContext';
+import { useLookupOrders } from './posOrderLookupLive';
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -32,7 +33,7 @@ const money = (value: number) => `₦${value.toLocaleString('en-US')}`;
  * Payment may only be marked via `markPaid` (the "Payment Verified" action).
  */
 export function BusinessPosOrderLookupScreen({ onBack }: BusinessPosOrderLookupScreenProps) {
-  const orders = useOrders();
+  const orders = useLookupOrders();
   const [mode, setMode] = useState<LookupMode>('qr');
   const [input, setInput] = useState('');
   const [searched, setSearched] = useState(false);

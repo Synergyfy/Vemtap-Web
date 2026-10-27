@@ -3,8 +3,10 @@ import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { BoostTabKey } from '../../components/BoostTabBar';
-import { hasApiConfig } from '../../lib/api';
 import { adWalletService } from '../../services';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { useLiveWallet } from '../walletLive';
 import type { AdWalletSummary, AdWalletTransaction } from '../../services/types';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
@@ -168,6 +170,7 @@ const toLedgerEntry = (transaction: AdWalletTransaction) => {
     amountClass: amount >= 0 ? 'text-badge-discount-text' : 'text-text-primary',
     status,
     statusClass: status === 'completed' || status === 'credited' ? 'text-badge-discount-text' : 'text-secondary',
+    refClass: undefined as string | undefined,
   };
 };
 
@@ -176,9 +179,21 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
   const [autoReload, setAutoReload] = useState(true);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [walletSummary, setWalletSummary] = useState<AdWalletSummary>(DEFAULT_WALLET_SUMMARY);
-  const [ledger, setLedger] = useState(LEDGER);
   const [entryStatus, setEntryStatus] = useState('');
+  const wallet = useLiveWallet((message) => showToast(message));
+  const live = wallet.live;
+  const business = useMyBusiness();
+  const merchant = business.data?.name ?? '—';
+  const walletSummary: AdWalletSummary = live
+    ? (wallet.summary ?? { balance: 0, reserved: 0, spendable: 0 })
+    : DEFAULT_WALLET_SUMMARY;
+  const money = (value: number) => (live && !wallet.summary ? '—' : formatCurrency(value));
+  const ledger = live ? wallet.transactions.map(toLedgerEntry) : LEDGER;
+  const autoReloadOn = live ? wallet.autoReloadOn : autoReload;
+  const walletRef = live ? (walletSummary.walletRef ?? '—') : 'VEM-WAL-709';
+  const packs = live
+    ? TOP_UP_PACKS.map((entry) => (entry.custom ? entry : { ...entry, bonus: wallet.bonusFor(entry.amount) || '—' }))
+    : TOP_UP_PACKS;
   const timers = useRef<number[]>([]);
 
   const statusChoices = [
@@ -191,36 +206,6 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
 
   const visibleLedger =
     entryStatus === '' ? ledger : ledger.filter((entry) => entry.status === entryStatus);
-
-  useEffect(() => {
-    if (!hasApiConfig()) return;
-
-    let ignore = false;
-
-    const hydrate = async () => {
-      try {
-        const [summary, transactions] = await Promise.all([
-          adWalletService.getSummary(),
-          adWalletService.getTransactions({ limit: 4 }),
-        ]);
-
-        if (ignore) return;
-
-        setWalletSummary({ ...DEFAULT_WALLET_SUMMARY, ...summary });
-
-        if (Array.isArray(transactions) && transactions.length > 0) {
-          setLedger(transactions.map(toLedgerEntry));
-        }
-      } catch {
-        // Keep the curated UI fallback when the backend is unavailable.
-      }
-    };
-
-    void hydrate();
-    return () => {
-      ignore = true;
-    };
-  }, []);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -239,33 +224,68 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
     timers.current.push(timer);
   };
 
-  const accountNumber = walletSummary.virtualAccount?.number ?? DEFAULT_WALLET_SUMMARY.virtualAccount?.number ?? '9940284411';
+  const accountNumber = live
+    ? (walletSummary.virtualAccount?.number ?? '—')
+    : (walletSummary.virtualAccount?.number ?? DEFAULT_WALLET_SUMMARY.virtualAccount?.number ?? '9940284411');
   /** September VAT invoice — real PDF (print → save) + CSV ledger attachment. */
   const downloadVatInvoice = () => {
-    const vatRows = LEDGER.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]);
-    downloadCsv('vemtap-boost-vat-september.csv', ['Date', 'Description', 'Reference', 'Amount', 'Status'], vatRows);
+    const vatRows = ledger.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]);
+    downloadCsv(
+      live ? 'vemtap-boost-wallet-ledger.csv' : 'vemtap-boost-vat-september.csv',
+      ['Date', 'Description', 'Reference', 'Amount', 'Status'],
+      vatRows,
+    );
     printReport(
-      'VEMTAP Boost Wallet — VAT Invoice (September)',
-      `${printKvTable('Merchant', [
-        ['Registered name', 'Gourmet Bites Bistro'],
-        ['TIN', 'TIN-8894102-NG'],
-        ['NDPR status', 'Active'],
-        ['FIRS verification', 'Verified'],
-      ])}
-       ${printKvTable('VAT summary', [
-        ['Billing period', 'September 1 – 30, 2026'],
-        ['Standard rated spend', '₦382,000.00'],
-        ['VAT @ 7.5%', '₦28,650.00'],
-        ['Total charged', '₦410,650.00'],
-      ])}
+      live ? 'VEMTAP Boost Wallet — Transaction Statement' : 'VEMTAP Boost Wallet — VAT Invoice (September)',
+      `${printKvTable(
+        'Merchant',
+        live
+          ? [['Registered name', merchant], ['Wallet ref', walletRef]]
+          : [
+              ['Registered name', 'Gourmet Bites Bistro'],
+              ['TIN', 'TIN-8894102-NG'],
+              ['NDPR status', 'Active'],
+              ['FIRS verification', 'Verified'],
+            ],
+      )}
+       ${
+         live
+           ? ''
+           : printKvTable('VAT summary', [
+               ['Billing period', 'September 1 – 30, 2026'],
+               ['Standard rated spend', '₦382,000.00'],
+               ['VAT @ 7.5%', '₦28,650.00'],
+               ['Total charged', '₦410,650.00'],
+             ])
+       }
        ${printKvTable('Wallet transactions', vatRows.map((row) => [`${row[0]} — ${row[1]}`, `${row[3]} (${row[4]}) · ${row[2]}`]))}
        <p class="foot">A CSV copy of the transaction ledger downloaded alongside this invoice.</p>`,
     );
-    showToast('September VAT invoice + CSV ledger downloaded');
+    showToast(live ? 'Wallet statement + CSV ledger downloaded' : 'September VAT invoice + CSV ledger downloaded');
   };
 
   /** Historical VAT archive — CSV of prior periods. */
   const openVatArchive = () => {
+    if (live) {
+      adWalletService
+        .getInvoices({ limit: 100 })
+        .then((invoices) => {
+          downloadCsv(
+            'vemtap-boost-invoices.csv',
+            ['Date', 'Invoice', 'Campaign', 'Amount', 'Status'],
+            invoices.map((invoice) => [
+              new Date(invoice.date).toLocaleDateString('en-GB'),
+              invoice.invoiceNo ?? invoice.id,
+              invoice.campaign?.name ?? '—',
+              formatCurrency(Number(invoice.amount) || 0),
+              invoice.status,
+            ]),
+          );
+          showToast(`${invoices.length} invoice${invoices.length === 1 ? '' : 's'} downloaded as CSV`);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not load your invoices.')));
+      return;
+    }
     downloadCsv(
       'vemtap-boost-vat-archive.csv',
       ['Period', 'Standard rated spend', 'VAT @ 7.5%', 'Total charged', 'Status'],
@@ -284,18 +304,18 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
     downloadCsv(
       'boost-wallet-statement-history.csv',
       ['Date', 'Description', 'Reference', 'Amount', 'Status'],
-      LEDGER.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]),
+      ledger.map((entry) => [entry.date, entry.title, entry.ref, entry.amount, entry.status]),
     );
     printReport(
-      'Boost Wallet Statement History — VEM-WAL-709',
+      `Boost Wallet Statement History — ${walletRef}`,
       `${printKvTable('Wallet', [
-        ['Wallet ref', 'VEM-WAL-709'],
-        ['Merchant', 'Gourmet Bites Bistro'],
+        ['Wallet ref', walletRef],
+        ['Merchant', live ? merchant : 'Gourmet Bites Bistro'],
         ['Protection', 'Tier-1 Escrow Protected'],
       ])}
        ${printKvTable(
          'Transactions',
-         LEDGER.map((entry) => [`${entry.date} — ${entry.title}`, `${entry.amount} • ${entry.status} • ${entry.ref}`]),
+         ledger.map((entry) => [`${entry.date} — ${entry.title}`, `${entry.amount} • ${entry.status} • ${entry.ref}`]),
        )}
        <p class="foot">A CSV copy of this statement downloaded alongside the PDF.</p>`,
     );
@@ -303,6 +323,10 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
   };
 
   const copyAccount = () => {
+    if (live && !walletSummary.virtualAccount?.number) {
+      showToast('Bank transfer top-ups are coming soon. Top up by card for now.');
+      return;
+    }
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(accountNumber).catch(() => undefined);
     }
@@ -319,6 +343,11 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
       showToast('Enter a custom top-up amount to continue');
       return;
     }
+    if (live) {
+      const prepack = wallet.prepacks.find((entry) => Number(entry.amount) === selected.amount);
+      wallet.topUp.mutate(prepack ? { prepackId: prepack.id } : { amount: selected.amount });
+      return;
+    }
     showToast(`Top-up of ₦${selected.amount.toLocaleString('en-US')} initiated`);
   };
 
@@ -327,7 +356,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
       key: 'balance',
       label: 'Available Balance',
       icon: 'account_balance_wallet',
-      value: '₦25,000.00',
+      value: live ? money(walletSummary.balance) : '₦25,000.00',
       delta: undefined,
       note: 'Available Advertising Balance',
     },
@@ -335,7 +364,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
       key: 'reserved',
       label: 'Reserved Boosts',
       icon: 'lock_clock',
-      value: '₦14,350.00',
+      value: live ? money(walletSummary.reserved) : '₦14,350.00',
       delta: undefined,
       note: 'Locked for scheduled & running boosts',
     },
@@ -343,7 +372,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
       key: 'spendable',
       label: 'Net Spendable',
       icon: 'bolt',
-      value: '₦10,650.00',
+      value: live ? money(walletSummary.spendable) : '₦10,650.00',
       delta: 'Ready to deploy',
       note: 'Instant ad liquidity across all branches',
     },
@@ -402,7 +431,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
               <span className="w-1.5 h-1.5 rounded-full bg-outline-variant" />
               <span className="font-caption text-caption text-text-tertiary flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text inline-block" />
-                Ref: VEM-WAL-709
+                Ref: {walletRef}
               </span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Boost Wallet &amp; Billing</h1>
@@ -473,7 +502,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                       Tier-1 Escrow Protected
                     </span>
                   </div>
-                  <span className="font-caption text-caption text-on-primary/80">Ref: VEM-WAL-709</span>
+                  <span className="font-caption text-caption text-on-primary/80">Ref: {walletRef}</span>
                 </div>
                 <div className="mt-4">
                   <p className="font-label-md text-label-md text-on-primary/80 font-medium">
@@ -481,7 +510,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                   </p>
                   <div className="flex items-baseline gap-1 mt-1">
                     <span className="font-heading-lg text-heading-lg font-bold tracking-tight">
-                      {formatCurrency(walletSummary.balance)}
+                      {money(walletSummary.balance)}
                     </span>
                   </div>
                 </div>
@@ -492,7 +521,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                       <span>Reserved Boosts</span>
                     </div>
                     <p className="font-heading-sm text-heading-sm font-semibold mt-0.5 text-on-primary">
-                      {formatCurrency(walletSummary.reserved)}
+                      {money(walletSummary.reserved)}
                     </p>
                   </div>
                   <div>
@@ -501,7 +530,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                       <span>Net Spendable</span>
                     </div>
                     <p className="font-heading-sm text-heading-sm font-semibold mt-0.5 text-badge-discount-bg">
-                      {formatCurrency(walletSummary.spendable)}
+                      {money(walletSummary.spendable)}
                     </p>
                   </div>
                 </div>
@@ -541,7 +570,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
-                {TOP_UP_PACKS.map((entry) => {
+                {packs.map((entry) => {
                   const active = pack === entry.key;
                   return (
                     <button
@@ -610,7 +639,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                     </div>
                     <div className="min-w-0">
                       <p className="font-caption text-caption text-text-secondary">
-                        {walletSummary.virtualAccount?.bank ?? 'Wema Bank'} • VEMTAP Advertising
+                        {walletSummary.virtualAccount?.bank ?? (live ? '—' : 'Wema Bank')} • VEMTAP Advertising
                       </p>
                       <div className="flex items-center gap-2">
                         <span className="font-heading-sm text-heading-sm font-semibold tracking-wider text-text-primary">
@@ -649,7 +678,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
             {/* Auto-reload guard */}
             <div
               className={`rounded-2xl bg-surface-container-lowest p-space-md shadow-sm transition-opacity ${
-                autoReload ? '' : 'opacity-70'
+                autoReloadOn ? '' : 'opacity-70'
               }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -661,27 +690,34 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-heading-sm text-heading-sm text-text-primary">Auto-Reload Safety Guard</h3>
                       <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                        {autoReload ? 'Active' : 'Off'}
+                        {autoReloadOn ? 'Active' : 'Off'}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-secondary mt-1">
-                      Automatically reload <span className="font-semibold text-text-primary">₦10,000</span> whenever
-                      wallet balance drops below <span className="font-semibold text-text-primary">₦3,000</span>.
+                      Automatically reload{' '}
+                      <span className="font-semibold text-text-primary">
+                        {live ? formatCurrency(wallet.autoReloadAmount).replace(/\.00$/, '') : '₦10,000'}
+                      </span>{' '}
+                      whenever wallet balance drops below{' '}
+                      <span className="font-semibold text-text-primary">
+                        {live ? formatCurrency(wallet.autoReloadThreshold).replace(/\.00$/, '') : '₦3,000'}
+                      </span>
+                      .
                     </p>
                   </div>
                 </div>
                 <button
                   aria-label="Toggle auto-reload"
-                  aria-pressed={autoReload}
+                  aria-pressed={autoReloadOn}
                   className={`w-12 h-7 rounded-full relative shrink-0 mt-1 transition-colors ${
-                    autoReload ? 'bg-primary-container' : 'bg-surface-container-highest'
+                    autoReloadOn ? 'bg-primary-container' : 'bg-surface-container-highest'
                   }`}
                   type="button"
-                  onClick={() => setAutoReload((value) => !value)}
+                  onClick={() => (live ? wallet.autoReload.mutate(!autoReloadOn) : setAutoReload((value) => !value))}
                 >
                   <span
                     className={`absolute top-0.5 w-6 h-6 bg-surface-canvas rounded-full shadow-md transition-transform ${
-                      autoReload ? 'left-[22px]' : 'left-0.5'
+                      autoReloadOn ? 'left-[22px]' : 'left-0.5'
                     }`}
                   />
                 </button>
@@ -759,7 +795,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
               <button
                 className="w-full py-3 rounded-xl bg-surface-container-low text-secondary font-button-secondary text-button-secondary hover:bg-surface-container transition-colors text-center"
                 type="button"
-                onClick={() => showToast('Complete transaction ledger opened')}
+                onClick={() => (live ? openStatementHistory() : showToast('Complete transaction ledger opened'))}
               >
                 View Complete Transaction Ledger
               </button>
@@ -773,7 +809,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                   <h3 className="font-heading-sm text-heading-sm text-text-primary">NDPR &amp; Tax Compliance</h3>
                 </div>
                 <span className="px-2 py-0.5 rounded-full bg-surface-container text-secondary text-[11px] font-semibold shrink-0">
-                  FIRS Verified
+                  {live ? '—' : 'FIRS Verified'}
                 </span>
               </div>
               <p className="font-body-md text-body-md text-text-secondary">
@@ -785,7 +821,7 @@ export function DesktopBoostWalletScreen({ onNav, onBack, onTab }: DesktopBoostW
                     Registered Merchant TIN
                   </span>
                   <span className="font-heading-sm text-heading-sm font-semibold tracking-wider text-text-primary">
-                    TIN-8894102-NG
+                    {live ? '—' : 'TIN-8894102-NG'}
                   </span>
                 </div>
                 <div className="flex items-center gap-1 text-badge-discount-text font-caption text-caption font-semibold shrink-0">

@@ -3,17 +3,28 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BoostTabBar, type BoostTabKey } from '../components/BoostTabBar';
 import { hasApiConfig } from '../services/api/client';
-import { catalogueService } from '../services/catalogueService';
+import { apiErrorMessage } from '../services/errorMessages';
+import { planErrorMessage } from '../services/planErrors';
+import type { CampaignKind } from '../services/sponsoredCampaignsService';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import {
+  useBoostOptions,
+  useEligibleAssets,
+  useSponsoredCampaigns,
+  useSponsoredMutations,
+  useSponsoredSummary,
+  type KindedCampaign,
+} from '../hooks/business/useSponsored';
 import { PUBLIC_IMAGES } from './publicPosData';
+import { STEP_DONE, compactCount, liveHubCard, manageAction } from './boostsLive';
 
 interface BusinessBoostHubScreenProps {
   onBack: () => void;
   onTab: (tab: BoostTabKey) => void;
   onBoost: (item?: string) => void;
-  onOpenMetrics: () => void;
+  /** Live: the campaign whose insights to open. */
+  onOpenMetrics: (target?: { kind: CampaignKind; id: string }) => void;
   onOpenSegments: () => void;
-  /** Opens the 6-step Create Campaign wizard; falls back to Boost studio. */
-  onCreateCampaign?: () => void;
 }
 
 type HubStatusTab = 'active' | 'scheduled' | 'completed' | 'draft';
@@ -40,6 +51,8 @@ interface HubCampaign {
   kpis: { label: string; value: string; valueClass?: string }[];
   manageLabel: string;
   manageIcon: string;
+  /** Live: the boost or promotion this card shows. */
+  live?: KindedCampaign;
 }
 
 const CAMPAIGNS: HubCampaign[] = [
@@ -325,73 +338,18 @@ const STATUS_TABS: { key: HubStatusTab; label: (count: number) => string }[] = [
   { key: 'draft', label: (count) => `Drafts ${count}` },
 ];
 
-const getOfferImage = (offer: Record<string, unknown>) => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const fallback = item?.mainImage ?? item?.image ?? offer.image ?? offer.coverImage ?? offer.heroImage ?? PUBLIC_IMAGES.hero;
-  return typeof fallback === 'string' && fallback.trim() ? fallback : PUBLIC_IMAGES.hero;
-};
-
-const getOfferBusinessName = (offer: Record<string, unknown>) => {
-  const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
-  const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? business.name ?? 'Local business';
-  return typeof value === 'string' && value.trim() ? value : 'Local business';
-};
-
-const getOfferTitle = (offer: Record<string, unknown>) => {
-  const value = offer.title ?? offer.name ?? offer.offerTitle ?? 'Local offer';
-  return typeof value === 'string' && value.trim() ? value : 'Local offer';
-};
-
-const buildCampaignFromOffer = (offer: Record<string, unknown>, index: number): HubCampaign => {
-  const businessName = getOfferBusinessName(offer);
-  const title = getOfferTitle(offer);
-  const isActive = index % 2 === 0;
-  const status: HubStatusTab = isActive ? 'active' : 'scheduled';
-  const spent = 15000 + index * 3500;
-  const total = 35000 + index * 8000;
-
-  return {
-    key: String(offer.id ?? `${businessName}-${index}`),
-    status,
-    statusLabel: status === 'active' ? `Active • ${Math.max(1, 5 - index)} days left` : `Scheduled • Starts ${index + 1}d`,
-    image: getOfferImage(offer),
-    goal: index % 3 === 0 ? 'Drive Orders & Deals' : index % 3 === 1 ? 'Get More Customers' : 'Promote Products',
-    goalIcon: index % 3 === 0 ? 'shopping_bag' : index % 3 === 1 ? 'group_add' : 'restaurant',
-    goalClass: index % 2 === 0 ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-secondary',
-    title: `${title} Campaign`,
-    contentName: title,
-    contentSub: `${businessName} • live catalogue item`,
-    contentIcon: 'local_offer',
-    contentIconBoxClass: index % 2 === 0 ? 'bg-primary-fixed text-primary' : 'bg-secondary-fixed text-on-secondary-fixed-variant',
-    meta: [
-      { icon: 'groups', text: `${businessName} • ${index + 1} km nearby reach` },
-      { icon: 'store', text: 'Live storefront inventory' },
-      { icon: 'schedule', text: 'Backend-managed campaign slot' },
-    ],
-    spent,
-    total,
-    pctLabel: 'deployed',
-    pacingPrefix: 'Pacing',
-    barClass: 'bg-primary',
-    kpis: [
-      { label: 'Reach', value: `${(index + 1) * 1200}` },
-      { label: 'Clicks', value: `${(index + 1) * 180}` },
-      { label: 'Orders', value: `${(index + 1) * 14}`, valueClass: 'text-primary' },
-      { label: 'Conv.', value: `${(5 + index * 1.2).toFixed(1)}%`, valueClass: 'text-badge-discount-text' },
-    ],
-    manageLabel: 'Manage',
-    manageIcon: 'tune',
-  };
-};
-
 const fmt = (value: number) => Math.round(value).toLocaleString('en-US');
 
-export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, onOpenSegments, onCreateCampaign }: BusinessBoostHubScreenProps) {
+export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, onOpenSegments }: BusinessBoostHubScreenProps) {
   const [statusTab, setStatusTab] = useState<HubStatusTab>('active');
   const [toast, setToast] = useState<string | null>(null);
-  const [liveCampaigns, setLiveCampaigns] = useState<HubCampaign[]>([]);
+  const live = hasApiConfig();
+  const { branch, branches } = useBusinessBranch();
+  const sponsored = useSponsoredCampaigns();
+  const summary = useSponsoredSummary();
+  const options = useBoostOptions();
+  const assets = useEligibleAssets();
+  const { step } = useSponsoredMutations();
   const timers = useRef<number[]>([]);
 
   useEffect(() => {
@@ -406,27 +364,9 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
   );
 
   useEffect(() => {
-    let ignore = false;
-
-    const loadOffers = async () => {
-      if (!hasApiConfig()) {
-        if (!ignore) setLiveCampaigns([]);
-        return;
-      }
-
-      try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 5 });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        const mapped = rows.map((offer, index) => buildCampaignFromOffer(offer as Record<string, unknown>, index));
-        if (!ignore) setLiveCampaigns(mapped);
-      } catch {
-        if (!ignore) setLiveCampaigns([]);
-      }
-    };
-
-    loadOffers();
-    return () => { ignore = true; };
-  }, []);
+    const error = sponsored.error ?? summary.error;
+    if (error) showToast(apiErrorMessage(error, 'Could not load your campaigns.'));
+  }, [sponsored.error, summary.error]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -434,7 +374,35 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
     timers.current.push(timer);
   };
 
-  const campaigns = liveCampaigns.length > 0 ? liveCampaigns : CAMPAIGNS;
+  const branchName = (id: string) => branches.find((entry) => entry.id === id)?.name;
+  const liveCard = (campaign: KindedCampaign): HubCampaign =>
+    liveHubCard(CAMPAIGNS[0], campaign, {
+      options: options.data,
+      assets: assets.data,
+      branchName,
+      fallbackImage: PUBLIC_IMAGES.hero,
+    });
+
+  const runManage = (campaign: HubCampaign) => {
+    const target = campaign.live;
+    if (!target) return;
+    const action = manageAction(target);
+    if (!action.step) {
+      showToast(`${campaign.title} is ${action.label.toLowerCase()}.`);
+      return;
+    }
+    const stepName = action.step;
+    step.mutate(
+      { campaign: target, step: stepName },
+      {
+        onSuccess: () => showToast(`${campaign.title} ${STEP_DONE[stepName]}`),
+        onError: (error) =>
+          showToast(planErrorMessage(error) ?? apiErrorMessage(error, `Could not ${stepName} the campaign.`)),
+      },
+    );
+  };
+
+  const campaigns = live ? (sponsored.data ?? []).map(liveCard) : CAMPAIGNS;
   const visibleCampaigns = campaigns.filter((entry) => entry.status === statusTab);
   const activeCampaigns = campaigns.filter((entry) => entry.status === 'active');
   const activeSpend = activeCampaigns.reduce((sum, entry) => sum + entry.spent, 0);
@@ -442,7 +410,11 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
     const raw = entry.kpis.find((kpi) => kpi.label === 'Reach')?.value ?? '0';
     return sum + Number(raw.replace(/[^\d]/g, '') || 0);
   }, 0);
-  const reachLabel = reachTotal >= 1000 ? `${(reachTotal / 1000).toFixed(1)}k` : fmt(reachTotal);
+  const reachLabel = live
+    ? compactCount(summary.data?.audienceReached ?? 0)
+    : reachTotal >= 1000
+      ? `${(reachTotal / 1000).toFixed(1)}k`
+      : fmt(reachTotal);
 
   const countFor = (key: HubStatusTab) => campaigns.filter((entry) => entry.status === key).length;
 
@@ -504,7 +476,7 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
             </div>
             <div className="flex items-center gap-space-2xs bg-surface-container px-space-xs py-space-2xs rounded-full shrink-0">
               <Icon className="text-primary text-[16px]" name="location_on" />
-              <span className="font-caption text-caption text-on-surface-variant font-medium">Wuse II, Abuja</span>
+              <span className="font-caption text-caption text-on-surface-variant font-medium">{live ? branch.area || branch.name : 'Wuse II, Abuja'}</span>
             </div>
           </div>
 
@@ -532,7 +504,7 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
           <button
             className="w-full h-11 bg-primary-container hover:bg-primary active:scale-[0.98] text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs transition-all shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)]"
             type="button"
-            onClick={() => (onCreateCampaign ? onCreateCampaign() : onBoost())}
+            onClick={() => onBoost()}
           >
             <Icon className="text-[20px]" name="add_circle" />
             <span>Create Campaign</span>
@@ -566,7 +538,7 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
         {/* Campaign list */}
         <div className="px-margin flex flex-col gap-space-md pb-space-lg">
           {visibleCampaigns.map((campaign) => {
-            const pct = Math.round((campaign.spent / campaign.total) * 100);
+            const pct = campaign.total ? Math.round((campaign.spent / campaign.total) * 100) : 0;
             return (
               <div
                 className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04),0_2px_6px_-1px_rgba(13,37,76,0.02)] overflow-hidden"
@@ -669,7 +641,9 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
                     <button
                       className="flex-1 h-10 bg-surface-tint-blue hover:bg-secondary-fixed text-primary font-button-secondary text-button-secondary rounded-lg flex items-center justify-center gap-1 transition-colors"
                       type="button"
-                      onClick={onOpenMetrics}
+                      onClick={() =>
+                        onOpenMetrics(campaign.live ? { kind: campaign.live.kind, id: campaign.live.id } : undefined)
+                      }
                     >
                       <Icon className="text-[18px]" name="query_stats" />
                       <span>View Insights</span>
@@ -678,11 +652,13 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
                       className="h-10 px-space-sm bg-surface-container-low hover:bg-surface-container text-text-secondary font-label-md text-label-md rounded-lg flex items-center justify-center gap-1 transition-colors"
                       type="button"
                       onClick={() =>
-                        showToast(
-                          campaign.status === 'active'
-                            ? `${campaign.title} — manage controls opened`
-                            : `${campaign.title} — ${campaign.manageLabel.toLowerCase()}`,
-                        )
+                        live
+                          ? runManage(campaign)
+                          : showToast(
+                              campaign.status === 'active'
+                                ? `${campaign.title} — manage controls opened`
+                                : `${campaign.title} — ${campaign.manageLabel.toLowerCase()}`,
+                            )
                       }
                     >
                       <Icon className="text-[18px]" name={campaign.manageIcon} />

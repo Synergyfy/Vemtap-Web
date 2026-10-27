@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useLiveRecipients } from '../messagesLive';
 
 interface MessagesSelectRecipientModalProps {
   onClose: () => void;
-  onStartChat?: (name: string) => void;
+  /** Live: also hands over the customer's user id so the chat can be opened. */
+  onStartChat?: (name: string, customerId?: string) => void;
 }
 
 type RecipientCategory = 'all' | 'customers' | 'staff' | 'segments';
@@ -15,6 +17,8 @@ interface Recipient {
   avatar?: string;
   initials: string;
   chip: string;
+  /** Live: the customer's user id. */
+  customerId?: string;
 }
 
 const RECIPIENTS: Recipient[] = [
@@ -38,17 +42,38 @@ export function MessagesSelectRecipientModal({ onClose, onStartChat }: MessagesS
   const [category, setCategory] = useState<RecipientCategory>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Live: the business's customers (search runs on the server). Staff chats
+  // and segment broadcasts have no in-app thread, so those tabs are empty.
+  const liveList = useLiveRecipients(search);
+  const live = liveList.live;
+  const recipients: Recipient[] = useMemo(
+    () =>
+      live
+        ? liveList.recipients.map((row) => ({
+            id: row.customerId,
+            customerId: row.customerId,
+            name: row.name,
+            meta: `${row.phone} · ${row.tagLabel}`,
+            avatar: row.avatar,
+            initials: row.initials,
+            chip: row.category === 'loyalty' ? 'Returning' : row.category.charAt(0).toUpperCase() + row.category.slice(1),
+          }))
+        : RECIPIENTS,
+    [live, liveList.recipients],
+  );
+
   const filtered = useMemo(() => {
-    return RECIPIENTS.filter((r) => {
+    return recipients.filter((r) => {
+      if (live) return category === 'all' || category === 'customers';
       if (category === 'customers' && r.chip === 'Staff') return false;
       if (category === 'staff' && r.chip !== 'Staff') return false;
       if (category === 'segments' && r.chip === 'Staff') return false;
       if (search && !r.name.toLowerCase().includes(search.toLowerCase()) && !r.meta.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [category, search]);
+  }, [category, search, recipients, live]);
 
-  const selected = RECIPIENTS.find((r) => r.id === selectedId);
+  const selected = recipients.find((r) => r.id === selectedId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-space-md" role="dialog" aria-modal="true" aria-label="Select Recipient">
@@ -144,7 +169,7 @@ export function MessagesSelectRecipientModal({ onClose, onStartChat }: MessagesS
             <button
               type="button"
               onClick={() => {
-                if (selected) onStartChat?.(selected.name);
+                if (selected) onStartChat?.(selected.name, selected.customerId);
                 else onStartChat?.('');
                 onClose();
               }}

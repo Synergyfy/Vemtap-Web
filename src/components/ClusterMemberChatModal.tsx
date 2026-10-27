@@ -6,6 +6,8 @@ import {
   type ClusterBusinessMember,
   type ClusterChatMessage,
 } from '../scripts/clusterData';
+import { hasApiConfig } from '../services/api/client';
+import { useClusterChat } from '../scripts/clusterLive';
 
 interface ClusterMemberChatModalProps {
   member: ClusterBusinessMember;
@@ -13,9 +15,13 @@ interface ClusterMemberChatModalProps {
 }
 
 export function ClusterMemberChatModal({ member, onClose }: ClusterMemberChatModalProps) {
-  const [messages, setMessages] = useState<ClusterChatMessage[]>(() =>
-    getClusterMessages(member.businessId)
+  const live = hasApiConfig();
+  // Live: `member.businessId` is the other member's branch id.
+  const chat = useClusterChat(live ? member.clusterId : undefined, member.businessId, member.businessName);
+  const [localMessages, setMessages] = useState<ClusterChatMessage[]>(() =>
+    live ? [] : getClusterMessages(member.businessId)
   );
+  const messages = live ? chat.messages : localMessages;
   const [text, setText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -31,6 +37,12 @@ export function ClusterMemberChatModal({ member, onClose }: ClusterMemberChatMod
   const handleSend = (textToSend?: string) => {
     const content = (textToSend ?? text).trim();
     if (!content) return;
+
+    if (live) {
+      setText('');
+      chat.send.mutate(content, { onError: () => setText(content) });
+      return;
+    }
 
     const newMsg = sendClusterMessage(member.businessId, member.businessName, content);
     setMessages((prev) => [...prev, newMsg]);

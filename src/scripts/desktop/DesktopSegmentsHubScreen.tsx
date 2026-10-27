@@ -4,6 +4,18 @@ import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { SegmentRef } from '../BusinessSegmentsHubScreen';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useBusinessCustomers } from '../../hooks/business/useBusinessCustomers';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import {
+  useSegmentCriteriaOptions,
+  useSegmentInsights,
+  useSegmentMutations,
+  useSegments,
+} from '../../hooks/business/useSegments';
+import { liveSegmentCards, optionNames } from '../segmentsLive';
 
 interface DesktopSegmentsHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -12,7 +24,7 @@ interface DesktopSegmentsHubScreenProps {
   onOpenCampaigns: () => void;
   onCreate: () => void;
   onUseSegment: (segment: SegmentRef) => void;
-  onViewCohort: () => void;
+  onViewCohort: (segment?: SegmentRef) => void;
 }
 
 type SegmentCategory = 'default' | 'custom';
@@ -281,14 +293,46 @@ export function DesktopSegmentsHubScreen({
     timers.current.push(timer);
   };
 
-  const visibleSegments = SEGMENTS.filter((entry) => filter === 'all' || entry.category === filter);
-  const defaultCount = SEGMENTS.filter((entry) => entry.category === 'default').length;
-  const customCount = SEGMENTS.filter((entry) => entry.category === 'custom').length;
+  const live = hasApiConfig();
+  const business = useMyBusiness();
+  const { branch } = useBusinessBranch();
+  const directory = useBusinessCustomers({ limit: 1 });
+  const saved = useSegments();
+  const options = useSegmentCriteriaOptions();
+  const returning = useSegmentInsights(live ? { systemKey: 'returning' } : null);
+  const { remove } = useSegmentMutations();
+  const loadError = directory.error ?? saved.error;
+
+  useEffect(() => {
+    if (loadError) showToast(apiErrorMessage(loadError, 'Could not load your segments.'));
+  }, [loadError]);
+
+  const cards = live
+    ? liveSegmentCards(SEGMENTS, directory.data, saved.data ?? [], optionNames(options.data), returning.data)
+    : SEGMENTS;
+  const businessLabel = live
+    ? [business.data?.name, branch.shortName].filter(Boolean).join(' • ') || '—'
+    : 'Urban Grill & Bistro • Wuse II';
+
+  const deleteSegment = (entry: SegmentCard) => {
+    if (!entry.ref.id || !window.confirm(`Delete the segment "${entry.title}"?`)) return;
+    remove.mutate(
+      { id: entry.ref.id },
+      {
+        onSuccess: () => showToast(`Deleted ${entry.title}`),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not delete the segment.')),
+      },
+    );
+  };
+
+  const visibleSegments = cards.filter((entry) => filter === 'all' || entry.category === filter);
+  const defaultCount = cards.filter((entry) => entry.category === 'default').length;
+  const customCount = cards.filter((entry) => entry.category === 'custom').length;
   const showDefaultSection = filter !== 'custom';
   const showCustomSection = filter !== 'default';
 
   const FILTER_TABS: { key: 'all' | 'default' | 'custom'; label: string }[] = [
-    { key: 'all', label: `All Segments (${SEGMENTS.length})` },
+    { key: 'all', label: `All Segments (${cards.length})` },
     { key: 'default', label: `Default (${defaultCount})` },
     { key: 'custom', label: `Custom (${customCount})` },
   ];
@@ -351,7 +395,7 @@ export function DesktopSegmentsHubScreen({
           <button
             className="h-10 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary font-medium transition-colors"
             type="button"
-            onClick={onViewCohort}
+            onClick={() => onViewCohort(entry.ref)}
           >
             View Cohort
           </button>
@@ -373,7 +417,7 @@ export function DesktopSegmentsHubScreen({
             aria-label={`More options for ${entry.title}`}
             className="w-10 h-10 rounded-lg bg-surface-subtle hover:bg-surface-container flex items-center justify-center text-text-secondary transition-colors shrink-0"
             type="button"
-            onClick={() => showToast(`${entry.title} — options menu opened`)}
+            onClick={() => (live ? deleteSegment(entry) : showToast(`${entry.title} — options menu opened`))}
           >
             <Icon name="more_horiz" className="text-[20px]" />
           </button>
@@ -412,7 +456,7 @@ export function DesktopSegmentsHubScreen({
             <div className="flex items-center gap-space-xs">
               <Icon name="verified" className="text-primary text-[18px]" />
               <span className="font-label-sm text-label-sm text-text-secondary font-medium">
-                Urban Grill &amp; Bistro • Wuse II
+                {businessLabel}
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-outline-variant" />
               <span className="text-caption font-caption text-text-tertiary">NDPR Compliant</span>
@@ -455,8 +499,10 @@ export function DesktopSegmentsHubScreen({
               <Icon name="group" className="text-[18px] text-primary" />
             </div>
             <div className="mt-space-2xs flex items-baseline gap-1.5">
-              <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">1,482</span>
-              <span className="text-caption font-caption text-badge-discount-text font-medium">+14%</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">
+                {live ? (directory.data?.meta.insight?.customers.toLocaleString('en-US') ?? '—') : '1,482'}
+              </span>
+              <span className="text-caption font-caption text-badge-discount-text font-medium">{live ? '' : '+14%'}</span>
             </div>
           </div>
           <div className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-md flex flex-col justify-between">
@@ -466,7 +512,7 @@ export function DesktopSegmentsHubScreen({
             </div>
             <div className="mt-space-2xs flex items-baseline gap-1.5">
               <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">
-                {SEGMENTS.length}
+                {cards.length}
               </span>
               <span className="text-caption font-caption text-text-tertiary">Total</span>
             </div>
@@ -482,7 +528,7 @@ export function DesktopSegmentsHubScreen({
               </span>
             </div>
             <span className="text-caption font-caption text-text-secondary mt-1">
-              Updated 3m ago • Continuous federation with the Customers CRM directory
+              {live ? 'Live' : 'Updated 3m ago'} • Continuous federation with the Customers CRM directory
             </span>
           </div>
         </div>
@@ -611,7 +657,7 @@ export function DesktopSegmentsHubScreen({
                 <button
                   className="inline-flex items-center gap-1 text-label-sm font-label-sm text-primary font-semibold hover:underline"
                   type="button"
-                  onClick={() => showToast('Opening Customer CRM directory...')}
+                  onClick={() => showToast(live ? 'Open Customers from the Business Hub to manage profiles.' : 'Opening Customer CRM directory...')}
                 >
                   <span>Manage Profiles in Customer CRM</span>
                   <Icon name="north_east" className="text-[16px]" />
@@ -678,7 +724,7 @@ export function DesktopSegmentsHubScreen({
                 type="button"
                 onClick={() => {
                   setDrawerSegment(null);
-                  showToast('Direct in-app message composer opened');
+                  showToast(live ? 'Messaging a whole segment is coming soon.' : 'Direct in-app message composer opened');
                 }}
               >
                 <div className="w-11 h-11 rounded-xl bg-badge-discount-bg flex items-center justify-center text-badge-discount-text shrink-0">
@@ -699,7 +745,7 @@ export function DesktopSegmentsHubScreen({
                 type="button"
                 onClick={() => {
                   setDrawerSegment(null);
-                  showToast('VIP voucher drop generated');
+                  showToast(live ? 'Voucher drops are coming soon.' : 'VIP voucher drop generated');
                 }}
               >
                 <div className="w-11 h-11 rounded-xl bg-tertiary-fixed flex items-center justify-center text-tertiary shrink-0">

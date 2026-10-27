@@ -159,12 +159,10 @@ function InviteBody({ onClose, onPreviewInvite }: Omit<SendInviteDialogProps, 'o
               </button>
             </div>
 
-            {state.invite.isPlaceholder && (
-              <span className="flex items-center gap-space-2xs font-caption text-caption text-text-tertiary">
-                <Icon name="info" className="text-[13px]" />
-                Development placeholder link — pending backend invite service.
-              </span>
-            )}
+            <span className="flex items-center gap-space-2xs font-caption text-caption text-text-tertiary">
+              <Icon name="info" className="text-[13px]" />
+              Development placeholder link — pending backend invite service.
+            </span>
 
             <div className="flex justify-center pt-space-2xs">
               <CustomerInviteQrCode url={state.invite.url} businessName={state.invite.businessName} />

@@ -1,7 +1,6 @@
-import { LiveAvailabilityStep } from '../components/business/LiveItemSteps';
-import { hasApiConfig } from '../services/api/client';
-import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { resolveServiceSector, getServiceSectorPreset } from './serviceClassification';
@@ -17,7 +16,7 @@ interface BusinessAddServiceStep3ScreenProps {
 }
 
 interface OutletCard {
-  key: 'maitama' | 'wuseII';
+  key: string;
   name: string;
   badge?: string;
   address: string;
@@ -43,7 +42,7 @@ const OUTLETS: OutletCard[] = [
 const LEAD_OPTIONS = ['Same day (2 hrs)', '12 hrs ahead', '24 hrs ahead'];
 const HORIZON_OPTIONS = ['14 days', '30 days in advance', '60 days'];
 
-function DemoBusinessAddServiceStep3Screen({
+export function BusinessAddServiceStep3Screen({
   draft,
   onDraftChange,
   onBack,
@@ -107,16 +106,48 @@ function DemoBusinessAddServiceStep3Screen({
   const sector = resolveServiceSector([draft.primaryCategory], [draft.subCategory]);
   const preset = getServiceSectorPreset(sector);
 
-  const allSelected = draft.branches.maitama && draft.branches.wuseII;
+  // Live: the business's real branches; the choice is kept in `locations` (branch ids).
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const outlets: OutletCard[] = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main' : undefined,
+          address: branch.area || '—',
+          rooms: '—',
+        }))
+    : OUTLETS;
+  const isOutletOn = (key: string) =>
+    live ? draft.locations.includes(key) : Boolean(draft.branches[key as 'maitama' | 'wuseII']);
+
+  const allSelected = live
+    ? outlets.length > 0 && outlets.every((outlet) => draft.locations.includes(outlet.key))
+    : draft.branches.maitama && draft.branches.wuseII;
 
   const toggleAll = () => {
+    if (live) {
+      onDraftChange({ locations: allSelected ? [] : outlets.map((outlet) => outlet.key) });
+      return;
+    }
     onDraftChange({
       branches: { ...draft.branches, maitama: !allSelected, wuseII: !allSelected },
     });
   };
 
-  const toggleOutlet = (key: 'maitama' | 'wuseII') => {
-    onDraftChange({ branches: { ...draft.branches, [key]: !draft.branches[key] } });
+  const toggleOutlet = (key: string) => {
+    if (live) {
+      onDraftChange({
+        locations: draft.locations.includes(key)
+          ? draft.locations.filter((id) => id !== key)
+          : [...draft.locations, key],
+      });
+      return;
+    }
+    const demoKey = key as 'maitama' | 'wuseII';
+    onDraftChange({ branches: { ...draft.branches, [demoKey]: !draft.branches[demoKey] } });
   };
 
   return (
@@ -189,8 +220,8 @@ function DemoBusinessAddServiceStep3Screen({
               </button>
             </div>
             <div className="flex flex-col gap-space-sm">
-              {OUTLETS.map((outlet) => {
-                const checked = draft.branches[outlet.key];
+              {outlets.map((outlet) => {
+                const checked = isOutletOn(outlet.key);
                 return (
                   <div
                     key={outlet.key}
@@ -619,31 +650,5 @@ function DemoBusinessAddServiceStep3Screen({
         </div>
       </div>
     </AppScreen>
-  );
-}
-
-/** Live: the business's real branches and item; demo keeps the designed screen. */
-export function BusinessAddServiceStep3Screen(props: BusinessAddServiceStep3ScreenProps) {
-  if (!hasApiConfig()) return <DemoBusinessAddServiceStep3Screen {...props} />;
-  return (
-    <BusinessSubScreen title="Where it sells" onBack={props.onBack}>
-      <LiveAvailabilityStep
-        item={{
-    kind: 'service',
-    title: props.draft.title,
-    image: /^https?:\/\//.test(props.draft.image) ? props.draft.image : undefined,
-    category: props.draft.subCategory,
-    description: props.draft.description,
-    price: props.draft.standardPrice || props.draft.basePrice,
-    was: props.draft.comparePrice,
-    details: [['Duration', `${props.draft.durationMins} mins`]],
-  }}
-        selected={props.draft.locations ?? []}
-        onChange={(ids) => props.onDraftChange({ locations: ids })}
-        onBack={props.onBack}
-        onNext={props.onNext}
-        nextLabel="Review & publish"
-      />
-    </BusinessSubScreen>
   );
 }

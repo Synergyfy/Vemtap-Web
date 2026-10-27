@@ -1,7 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Icon } from '../../components/ui/Icon';
-import { OrdersPanel } from '../../components/business/OrdersPanel';
-import { hasApiConfig } from '../../services/api/client';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { DesktopBusinessBookingsScreen } from './DesktopBusinessBookingsScreen';
 import { DesktopBusinessOrderDetailScreen } from './DesktopBusinessOrderDetailScreen';
@@ -28,7 +26,7 @@ export function DesktopBusinessOrdersScreen({
   onNav,
   initialView = 'orders',
 }: DesktopBusinessOrdersScreenProps) {
-  const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings } = useStoreOrdering();
+  const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings, lastError, clearLastError } = useStoreOrdering();
 
   const [view, setView] = useState<'orders' | 'bookings' | 'detail'>(
     initialView === 'bookings' ? 'bookings' : 'orders'
@@ -53,31 +51,12 @@ export function DesktopBusinessOrdersScreen({
     window.setTimeout(() => setToast(null), 3000);
   };
 
-  // If viewing bookings (demo board; live mode uses OrdersPanel's bookings view below)
-  if (view === 'bookings' && !hasApiConfig()) {
-    return (
-      <DesktopBusinessBookingsScreen
-        onNav={onNav}
-        onOpenOrders={() => {
-          setView('orders');
-          setTab('orders');
-        }}
-      />
-    );
-  }
-
-  // If viewing single order detail
-  if (view === 'detail') {
-    return (
-      <DesktopBusinessOrderDetailScreen
-        onNav={onNav}
-        order={selectedOrder || orders[0]}
-        onBack={() => setView('orders')}
-        onAccept={() => showToast(`Order accepted — sent to kitchen`)}
-        onDecline={() => showToast(`Decline flow handled`)}
-      />
-    );
-  }
+  // Live: a refused status change or payment comes back here.
+  useEffect(() => {
+    if (!lastError) return;
+    showToast(lastError);
+    clearLastError();
+  }, [lastError, clearLastError]);
 
   // Filter & Search Logic
   const filteredOrders = useMemo(() => {
@@ -167,6 +146,32 @@ export function DesktopBusinessOrdersScreen({
     showToast(`All ${attentionOrders.length} pending orders accepted — kitchen notified`);
   };
 
+  // If viewing bookings (after every hook, so switching views keeps the hook order)
+  if (view === 'bookings') {
+    return (
+      <DesktopBusinessBookingsScreen
+        onNav={onNav}
+        onOpenOrders={() => {
+          setView('orders');
+          setTab('orders');
+        }}
+      />
+    );
+  }
+
+  // If viewing single order detail
+  if (view === 'detail') {
+    return (
+      <DesktopBusinessOrderDetailScreen
+        onNav={onNav}
+        order={selectedOrder || orders[0]}
+        onBack={() => setView('orders')}
+        onAccept={() => showToast(`Order accepted — sent to kitchen`)}
+        onDecline={() => showToast(`Decline flow handled`)}
+      />
+    );
+  }
+
   const getOriginBadge = (origin: StoreOrderOrigin) => {
     switch (origin) {
       case 'Storefront':
@@ -193,21 +198,6 @@ export function DesktopBusinessOrdersScreen({
         return { label: origin, icon: 'receipt', className: 'bg-surface-subtle text-text-secondary' };
     }
   };
-
-  // Live: real orders and bookings for the active branch; the designed board below is the demo.
-  if (hasApiConfig()) {
-    return (
-      <BusinessPortalChrome activeNav={initialView === 'bookings' ? 'orders-bookings' : 'orders-all'} onNav={onNav}>
-        <div className="w-full py-space-xl flex flex-col gap-space-lg">
-          <div className="flex flex-col gap-1">
-            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Orders &amp; Bookings</h1>
-            <p className="font-body-md text-body-md text-text-secondary">Accept, prepare and complete orders; confirm and close bookings.</p>
-          </div>
-          <OrdersPanel key={initialView} initialView={initialView} />
-        </div>
-      </BusinessPortalChrome>
-    );
-  }
 
   return (
     <BusinessPortalChrome activeNav="orders-all" onNav={onNav}>

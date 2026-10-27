@@ -1,7 +1,18 @@
-import { useState } from 'react';
-import { TeamPanel } from '../../components/business/TeamPanels';
-import { hasApiConfig } from '../../services/api/client';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useBranches, useTeam, useTeamMutations } from '../../hooks/business/useBranchesAndTeam';
+import { hasApiConfig } from '../../services/api/client';
+import type { TeamMember } from '../../services/teamService';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { formatRelativeTime } from '../../utils/format';
+import {
+  isOwnerMember,
+  isPendingMember,
+  memberInitials,
+  memberName,
+  memberRoleGroup,
+  memberRoleLabel,
+} from '../teamLive';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
 
@@ -144,6 +155,228 @@ function MatrixButton() {
   );
 }
 
+const CARD_CLASS =
+  'rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden transition-all hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)]';
+
+/** Live: the role description shown in a member's permissions panel. */
+const roleCapabilities = (member: TeamMember) => {
+  const group = memberRoleGroup(member);
+  if (group === 'managers') return 'Runs daily operations at their branch: catalogue, deals, orders and the team on shift.';
+  const areas = (member.permissions ?? []).filter((permission) => !permission.includes(':'));
+  return areas.length ? `Can open: ${areas.join(', ')}.` : 'No pages allowed yet.';
+};
+
+function MemberAvatar({ member, children }: { member: TeamMember; children?: React.ReactNode }) {
+  return (
+    <div className="relative shrink-0">
+      {member.avatar ? (
+        <img className="w-14 h-14 rounded-2xl object-cover shadow-sm" alt={memberName(member)} src={member.avatar} />
+      ) : (
+        <div className="w-14 h-14 rounded-2xl bg-surface-container-high flex items-center justify-center text-text-secondary font-heading-sm text-heading-sm font-semibold">
+          {memberInitials(member)}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/** One live team member, in the directory card used for that kind of member. */
+function LiveMemberCard({
+  member,
+  branchName,
+  onResend,
+  onCancel,
+  busy,
+}: {
+  member: TeamMember;
+  branchName: string;
+  onResend: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const name = memberName(member);
+  if (isOwnerMember(member)) {
+    return (
+      <div className={CARD_CLASS}>
+        <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-tertiary" />
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-space-md pl-space-xs">
+          <div className="flex items-start gap-space-md min-w-0">
+            <MemberAvatar member={member}>
+              <span
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center text-[10px] font-bold shadow-sm"
+                title="Root Authority"
+              >
+                <Icon name="shield_person" className="text-[13px]" />
+              </span>
+            </MemberAvatar>
+            <div className="flex flex-col min-w-0">
+              <div className="flex flex-wrap items-center gap-space-xs">
+                <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">{name}</h3>
+                <span className="px-space-xs py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed font-caption text-caption font-semibold uppercase tracking-wider">
+                  Owner
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-space-sm mt-1 text-text-secondary font-label-sm text-label-sm">
+                <span className="flex items-center gap-1 text-text-secondary">
+                  <Icon name="mail" className="text-[16px] text-text-tertiary" />
+                  {member.email ?? '—'}
+                </span>
+                <span className="text-text-tertiary">•</span>
+                <span className="flex items-center gap-1 text-badge-discount-text font-medium">
+                  <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                  Active • Primary
+                </span>
+              </div>
+              <div className="mt-space-xs flex items-center gap-space-xs text-text-secondary font-caption text-caption">
+                <Icon name="storefront" className="text-[16px] text-primary" />
+                <span className="font-semibold text-text-primary">All Locations (Master)</span>
+                <span className="text-text-tertiary">• Root Account</span>
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 flex items-center">
+            <span className="px-space-sm py-1.5 rounded-lg bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm font-medium flex items-center gap-1.5">
+              <Icon name="lock" className="text-[16px] text-primary" />
+              Protected Root Account
+            </span>
+          </div>
+        </div>
+        <PermissionsPanel
+          icon="key"
+          iconClass="text-tertiary"
+          title="Assigned Operational Permissions"
+          body="Full business control, billing & payout ledger, branch creation, API integrations, and staff credential management."
+        />
+      </div>
+    );
+  }
+
+  if (isPendingMember(member)) {
+    return (
+      <div className={`${CARD_CLASS} bg-gradient-to-r from-tertiary-fixed/20 via-surface-canvas to-surface-canvas`}>
+        <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-tertiary-container" />
+        <div className="mb-space-sm pl-space-xs flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-tertiary-fixed text-on-tertiary-fixed font-caption text-caption font-semibold">
+          <Icon name="schedule" className="text-[18px] text-tertiary" />
+          <span>Pending Invite Acceptance</span>
+        </div>
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-space-md pl-space-xs">
+          <div className="flex items-start gap-space-md min-w-0">
+            <MemberAvatar member={member} />
+            <div className="flex flex-col min-w-0">
+              <div className="flex flex-wrap items-center gap-space-xs">
+                <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">{name}</h3>
+                <span className="px-space-xs py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-caption text-caption font-semibold uppercase tracking-wider">
+                  {memberRoleLabel(member)}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-space-sm mt-1 text-text-secondary font-label-sm text-label-sm">
+                <span className="flex items-center gap-1 text-text-secondary">
+                  <Icon name="mail" className="text-[16px] text-text-tertiary" />
+                  {member.email ?? '—'}
+                </span>
+              </div>
+              <div className="mt-space-xs flex items-center gap-space-xs text-text-secondary font-caption text-caption">
+                <Icon name="schedule_send" className="text-[16px] text-tertiary" />
+                <span>
+                  Invitation email sent {formatRelativeTime(member.createdAt).toLowerCase()} for assignment to {branchName}.
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 flex items-center gap-space-xs">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onResend}
+              className="h-9 px-space-md rounded-lg bg-primary hover:bg-primary-container text-on-primary font-label-md text-label-md font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <Icon name="forward_to_inbox" className="text-[16px]" />
+              <span>Resend Invite</span>
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onCancel}
+              className="h-9 px-space-sm rounded-lg bg-error-container text-on-error-container hover:bg-error/20 font-label-sm text-label-sm font-medium transition-colors"
+            >
+              Cancel Invite
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const manager = memberRoleGroup(member) === 'managers';
+  return (
+    <div className={CARD_CLASS}>
+      <div className={`absolute top-0 left-0 bottom-0 w-1.5 ${manager ? 'bg-primary' : 'bg-secondary'}`} />
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-space-md pl-space-xs">
+        <div className="flex items-start gap-space-md min-w-0">
+          <MemberAvatar member={member}>
+            {member.isOnline && (
+              <span
+                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-badge-discount-text text-on-secondary flex items-center justify-center text-[10px] font-bold shadow-sm"
+                title="Active On-Duty"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+              </span>
+            )}
+          </MemberAvatar>
+          <div className="flex flex-col min-w-0">
+            <div className="flex flex-wrap items-center gap-space-xs">
+              <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">{name}</h3>
+              <span
+                className={`px-space-xs py-0.5 rounded-full font-caption text-caption font-semibold uppercase tracking-wider ${
+                  manager ? 'bg-surface-tint-blue text-primary' : 'bg-surface-container text-secondary'
+                }`}
+              >
+                {memberRoleLabel(member)}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-space-sm mt-1 text-text-secondary font-label-sm text-label-sm">
+              <span className="flex items-center gap-1 text-text-secondary">
+                <Icon name={member.phone ? 'call' : 'mail'} className="text-[16px] text-text-tertiary" />
+                {member.phone ?? member.email ?? '—'}
+              </span>
+              <span className="text-text-tertiary">•</span>
+              <span
+                className={`flex items-center gap-1 font-medium ${
+                  member.status === 'Suspended' || member.status === 'Inactive' ? 'text-text-tertiary' : 'text-badge-discount-text'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                {member.isOnline ? 'Active On-Duty' : member.status ?? 'Active'}
+              </span>
+            </div>
+            <div className="mt-space-xs flex items-center gap-space-xs text-text-secondary font-caption text-caption">
+              <Icon name="location_on" className="text-[16px] text-primary" />
+              <span className="font-semibold text-text-primary">{branchName}</span>
+              {member.lastActive && (
+                <span className="text-text-tertiary">• Last active {formatRelativeTime(member.lastActive).toLowerCase()}</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <AssignBranchActions />
+      </div>
+      <PermissionsPanel
+        icon={manager ? 'verified_user' : 'point_of_sale'}
+        iconClass={manager ? 'text-primary' : 'text-secondary'}
+        title="Role Capabilities"
+        body={roleCapabilities(member)}
+      />
+      <div className="mt-space-md flex flex-wrap items-center justify-between gap-space-sm pt-space-xs ml-space-xs">
+        <span className="font-caption text-caption text-text-tertiary">
+          Joined {member.createdAt ? new Date(member.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+        </span>
+        <MatrixButton />
+      </div>
+    </div>
+  );
+}
+
 export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDirectoryScreenProps) {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [query, setQuery] = useState('');
@@ -157,20 +390,57 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
   const showTunde = (roleFilter === 'all' || roleFilter === 'cashiers') && matches('tunde bakare vem-csh-094 wuse branch terminal 1 cashier');
   const showKemi = (roleFilter === 'all' || roleFilter === 'pending') && matches('kemi davies kemi.d@example.com pending invite wuse branch');
 
-  // Live: the real team from the API; the designed directory below is the demo.
-  if (hasApiConfig()) {
-    return (
-      <EnterpriseShell activeNav="business-staff" onNav={onNav}>
-        <div className="w-full py-space-xl flex flex-col gap-space-lg">
-          <div className="flex flex-col gap-1">
-            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Staff &amp; Permissions</h1>
-            <p className="font-body-md text-body-md text-text-secondary">Who works at your branches and what they can do.</p>
-          </div>
-          <TeamPanel onInvite={() => onInvite?.()} />
-        </div>
-      </EnterpriseShell>
+  // Live: the real team in the directory's cards, with live metrics and filters.
+  const live = hasApiConfig();
+  const team = useTeam();
+  const branchList = useBranches();
+  const { resend, remove } = useTeamMutations();
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  useEffect(() => {
+    if (live && team.isError) showToast("Couldn't load your team. Try again shortly.");
+  }, [live, team.isError]);
+  const members = team.data ?? [];
+  const branchName = (member: TeamMember) =>
+    branchList.data?.find((branch) => branch.id === member.branchId)?.name ?? '—';
+  const inFilter = (member: TeamMember, key: RoleFilter) => {
+    if (key === 'all') return true;
+    if (key === 'pending') return isPendingMember(member);
+    if (isPendingMember(member)) return false;
+    const group = memberRoleGroup(member);
+    return key === 'cashiers' ? group === 'cashiers' || group === 'staff' : group === key;
+  };
+  const visibleMembers = members.filter(
+    (member) =>
+      inFilter(member, roleFilter) &&
+      matches([memberName(member), member.email, member.phone, branchName(member), memberRoleLabel(member)].join(' ')),
+  );
+  const pending = members.filter(isPendingMember).length;
+  const online = members.filter((member) => member.isOnline).length;
+  const profiles = new Set(members.map((member) => memberRoleLabel(member).toLowerCase())).size;
+  const branchCount = (branchList.data ?? []).filter((branch) => branch.isActive !== false).length;
+  const pills = live ? ROLE_PILLS.map((pill) => ({ ...pill, count: String(members.filter((m) => inFilter(m, pill.key)).length) })) : ROLE_PILLS;
+  const metrics = live
+    ? [
+        { ...METRICS[0], value: `${members.length} Member${members.length === 1 ? '' : 's'}`, note: `${branchCount} Active Store${branchCount === 1 ? '' : 's'}` },
+        { ...METRICS[1], value: `${online} Staff Live`, note: '—' },
+        { ...METRICS[2], value: `${profiles} Profile${profiles === 1 ? '' : 's'}` },
+        { ...METRICS[3], value: `${pending} Invite${pending === 1 ? '' : 's'}`, note: '—' },
+      ]
+    : METRICS;
+  const resendInvite = (member: TeamMember) =>
+    resend.mutate(
+      { id: member.id, branchId: member.branchId ?? undefined },
+      { onSuccess: () => showToast(`Invite sent again to ${member.email}`), onError: (error) => showToast(apiErrorMessage(error)) },
     );
-  }
+  const cancelInvite = (member: TeamMember) =>
+    remove.mutate(
+      { id: member.id, branchId: member.branchId ?? undefined },
+      { onSuccess: () => showToast(`Invite for ${memberName(member)} cancelled`), onError: (error) => showToast(apiErrorMessage(error)) },
+    );
 
   return (
     <EnterpriseShell activeNav="business-staff" onNav={onNav}>
@@ -221,7 +491,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-space-md">
-          {METRICS.map((metric) => (
+          {metrics.map((metric) => (
             <div
               key={metric.label}
               className="p-space-md rounded-xl bg-surface-canvas shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex items-center justify-between"
@@ -248,7 +518,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md p-space-xs rounded-xl bg-surface-canvas shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
           <div className="flex flex-wrap items-center gap-space-2xs">
-            {ROLE_PILLS.map((pill) => (
+            {pills.map((pill) => (
               <button
                 key={pill.key}
                 type="button"
@@ -296,7 +566,21 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start">
           <div className="lg:col-span-8 flex flex-col gap-space-md">
-            {showOwner && (
+            {live &&
+              visibleMembers.map((member) => (
+                <LiveMemberCard
+                  key={member.id}
+                  member={member}
+                  branchName={branchName(member)}
+                  busy={resend.isPending || remove.isPending}
+                  onResend={() => resendInvite(member)}
+                  onCancel={() => cancelInvite(member)}
+                />
+              ))}
+            {live && !team.isLoading && !visibleMembers.length && (
+              <p className="font-body-md text-body-md text-text-secondary text-center py-space-lg">No team members here yet.</p>
+            )}
+            {!live && showOwner && (
               <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden transition-all hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)]">
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-tertiary" />
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-space-md pl-space-xs">
@@ -372,7 +656,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
               </div>
             )}
 
-            {showJohn && (
+            {!live && showJohn && (
               <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden transition-all hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)]">
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-primary" />
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-space-md pl-space-xs">
@@ -435,7 +719,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
               </div>
             )}
 
-            {showAmara && (
+            {!live && showAmara && (
               <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden transition-all hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)]">
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-primary" />
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-space-md pl-space-xs">
@@ -494,7 +778,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
               </div>
             )}
 
-            {showTunde && (
+            {!live && showTunde && (
               <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden transition-all hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)]">
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-secondary" />
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-space-md pl-space-xs">
@@ -556,7 +840,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
               </div>
             )}
 
-            {showKemi && (
+            {!live && showKemi && (
               <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden transition-all hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)] bg-gradient-to-r from-tertiary-fixed/20 via-surface-canvas to-surface-canvas">
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-tertiary-container" />
                 <div className="mb-space-sm pl-space-xs flex items-center gap-space-xs px-space-sm py-1.5 rounded-lg bg-tertiary-fixed text-on-tertiary-fixed font-caption text-caption font-semibold">
@@ -724,6 +1008,11 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </EnterpriseShell>
   );
 }

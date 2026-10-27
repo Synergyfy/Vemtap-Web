@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
@@ -40,12 +41,18 @@ const PRODUCT_IMAGES = [
  * information here; the draft stays mounted in the container meanwhile.
  */
 export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDraft, onDraftChange }: BusinessAddProductImageScreenProps) {
-  // Live: a real photo upload instead of the sample gallery.
+  // Live: the photo tiles upload a real image into the draft's `mainImage`.
   const editor = useLiveItemEditor('product');
   const changePhoto = async () => {
+    if (!editor.live || editor.uploading) return;
     const url = await editor.uploadPhoto();
     if (url) onDraftChange?.({ mainImage: url });
   };
+  useEffect(() => {
+    if (!editor.uploadError) return;
+    const timer = window.setTimeout(editor.clearUploadError, 4000);
+    return () => window.clearTimeout(timer);
+  }, [editor.uploadError]);
   /** Product facts from the draft — business facts come from setup state. */
   const aiProductContext: AiPromptContext = {
     itemName: draft.title,
@@ -130,38 +137,14 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
                 Guidelines
               </span>
             </div>
-            {editor.live ? (
-              <div className="flex flex-col gap-space-xs">
-                <button
-                  type="button"
-                  onClick={changePhoto}
-                  disabled={editor.uploading}
-                  className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low flex flex-col items-center justify-center gap-space-xs text-text-secondary hover:text-primary disabled:opacity-60"
-                >
-                  {draft.mainImage ? (
-                    <img alt={draft.title || 'Product photo'} className="absolute inset-0 w-full h-full object-cover" src={draft.mainImage} />
-                  ) : (
-                    <>
-                      <Icon name="add_a_photo" className="text-[40px] text-primary" />
-                      <span className="font-label-md text-label-md font-semibold">{editor.uploading ? 'Uploading…' : 'Add a product photo'}</span>
-                    </>
-                  )}
-                  {draft.mainImage ? (
-                    <span className="absolute bottom-3 right-3 bg-surface-container-lowest/95 text-text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm font-label-sm text-label-sm font-semibold">
-                      <Icon name="add_a_photo" className="text-[16px] text-primary" /> {editor.uploading ? 'Uploading…' : 'Change'}
-                    </span>
-                  ) : null}
-                </button>
-                {editor.uploadError ? <span className="font-caption text-caption text-red-600">{editor.uploadError}</span> : null}
-              </div>
-            ) : (
-              <>
             <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low group shadow-inner">
-              <img
-                alt={PRODUCT_IMAGES[0].alt}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                src={PRODUCT_IMAGES[0].src}
-              />
+              {(!editor.live || draft.mainImage) && (
+                <img
+                  alt={editor.live ? draft.title || 'Product photo' : PRODUCT_IMAGES[0].alt}
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  src={editor.live ? draft.mainImage : PRODUCT_IMAGES[0].src}
+                />
+              )}
               <div className="absolute top-3 left-3 bg-inverse-surface/85 backdrop-blur-md text-inverse-on-surface px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                 <Icon className="text-[14px] text-badge-discount-bg" filled name="star" />
                 <span className="font-caption text-caption font-semibold">Cover Photo</span>
@@ -173,12 +156,15 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
               <button
                 className="absolute bottom-3 right-3 bg-surface-container-lowest/95 backdrop-blur-md text-text-primary hover:text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
                 type="button"
+                onClick={changePhoto}
               >
                 <Icon name="add_a_photo" className="text-[16px] text-primary" />
-                <span className="font-label-sm text-label-sm font-semibold">Change</span>
+                <span className="font-label-sm text-label-sm font-semibold">{editor.uploading ? 'Uploading…' : 'Change'}</span>
               </button>
             </div>
             <div className="grid grid-cols-5 gap-space-2xs mt-1">
+              {!editor.live && (
+                <>
               <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm cursor-pointer ring-2 ring-primary-container">
                 <img alt={PRODUCT_IMAGES[1].alt} className="w-full h-full object-cover" src={PRODUCT_IMAGES[1].src} />
                 <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
@@ -197,9 +183,12 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
                   3
                 </span>
               </div>
+                </>
+              )}
               <button
                 className="aspect-square rounded-lg bg-surface-container-low hover:bg-surface-container flex flex-col items-center justify-center text-primary active:scale-95 transition-all"
                 type="button"
+                onClick={changePhoto}
               >
                 <Icon name="add" className="text-[20px]" />
                 <span className="text-[10px] font-medium text-text-secondary mt-0.5">Add</span>
@@ -208,8 +197,6 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
                 <Icon name="photo_camera" className="text-[18px]" />
               </div>
             </div>
-              </>
-            )}
             <div className="flex items-start gap-space-xs p-space-sm bg-surface-tint-blue rounded-xl text-primary">
               <Icon className="text-[20px] text-primary-container shrink-0 mt-0.5" filled name="lightbulb" />
               <p className="font-caption text-caption text-on-secondary-container leading-relaxed">
@@ -273,6 +260,11 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
           </button>
         </div>
       </div>
+      {editor.uploadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {editor.uploadError}
+        </div>
+      )}
     </AppScreen>
   );
 }

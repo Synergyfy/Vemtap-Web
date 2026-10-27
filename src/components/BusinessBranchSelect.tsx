@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from './ui/Icon';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useInboxUnreadSummary } from '../hooks/business/useInbox';
 
 interface BusinessBranchSelectProps {
   leading?: 'storefront' | 'location' | 'dot';
@@ -20,6 +21,9 @@ export function BusinessBranchSelect({
 }: BusinessBranchSelectProps) {
   const { branch, branches, switchTo } = useBusinessBranch();
   const [open, setOpen] = useState(false);
+  // Live: unread customer messages per branch, so chats waiting elsewhere are visible.
+  const unread = useInboxUnreadSummary('IN_HOUSE');
+  const unreadElsewhere = branches.some((option) => option.key !== branch.key && unread.unreadFor(option.id) > 0);
 
   return (
     <div className="relative">
@@ -38,6 +42,9 @@ export function BusinessBranchSelect({
         type="button"
         onClick={() => setOpen((current) => !current)}
       >
+        {unreadElsewhere && (
+          <span className="sr-only">Another location has unread messages.</span>
+        )}
         {leading === 'storefront' && <Icon name="storefront" className={`text-primary shrink-0 ${iconOnly ? 'text-[18px]' : 'text-[16px]'}`} />}
         {leading === 'location' && <Icon name="location_on" className="text-[16px] text-primary shrink-0" />}
         {leading === 'dot' && <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text shrink-0" />}
@@ -48,6 +55,7 @@ export function BusinessBranchSelect({
             {branch.name}
           </span>
         )}
+        {unreadElsewhere && <span className="w-2 h-2 rounded-full bg-tertiary-container shrink-0" aria-hidden="true" />}
         {!iconOnly && (
           <Icon
             name={leading === 'location' ? 'arrow_drop_down' : leading === 'dot' ? 'expand_more' : 'keyboard_arrow_down'}
@@ -85,7 +93,17 @@ export function BusinessBranchSelect({
                 />
                 <span className="truncate">{option.name}</span>
               </span>
-              {option.key === branch.key && <Icon name="check" className="text-primary text-[16px] shrink-0" />}
+              <span className="flex items-center gap-1 shrink-0">
+                {unread.unreadFor(option.id) > 0 && (
+                  <span
+                    className="min-w-[18px] h-[18px] px-1 rounded-full bg-tertiary-container text-on-tertiary text-[10px] font-bold flex items-center justify-center"
+                    title={`${unread.unreadFor(option.id)} unread messages`}
+                  >
+                    {unread.unreadFor(option.id) > 99 ? '99+' : unread.unreadFor(option.id)}
+                  </span>
+                )}
+                {option.key === branch.key && <Icon name="check" className="text-primary text-[16px] shrink-0" />}
+              </span>
             </button>
           ))}
         </div>

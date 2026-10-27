@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { money } from '../../services/posService';
+import type { PosCustomerRecord } from './posRegisterExtras';
+import { initials, naira as nairaLabel, useLiveDossier, useLivePos, whenLabel } from '../posLive';
 
 interface DesktopPosCustomerDossierScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
   customer: string;
   onBack: () => void;
-  onAttach: () => void;
+  /** Live screens hand over the API customer so the sale can earn them points. */
+  onAttach: (record?: PosCustomerRecord) => void;
   onOpenCrm: () => void;
 }
 
@@ -44,11 +50,51 @@ function naira(value: number): string {
 
 export function DesktopPosCustomerDossierScreen({
   onNav,
-  customer,
+  customer: customerName,
   onBack,
   onAttach,
   onOpenCrm,
 }: DesktopPosCustomerDossierScreenProps) {
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const dossier = useLiveDossier();
+  const person = dossier.customer;
+  const customer = live ? (dossier.record?.name ?? customerName) : customerName;
+  const visits = person?.totalVisits ?? 0;
+  const spent = money(person?.totalSpent);
+  const tillLabel = live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Till 01';
+  const metrics = live
+    ? [
+        { label: 'Lifetime spend', value: nairaLabel(spent), sub: person?.tier ? `${person.tier} member` : 'Member' },
+        { label: 'Visits', value: String(visits), sub: `Avg ${nairaLabel(money(person?.averageOrderValue) || (visits ? Math.round(spent / visits) : 0))} / visit` },
+        { label: 'Points', value: (person?.pointsBalance ?? 0).toLocaleString(), sub: 'Loyalty balance' },
+      ]
+    : METRICS;
+  const perks = live
+    ? dossier.rewards.map((reward) => ({
+        icon: 'redeem',
+        title: reward.name,
+        detail: reward.affordable ? `${reward.pointsRequired.toLocaleString()} pts` : `${reward.pointsShort.toLocaleString()} pts short`,
+        cta: 'Redeem',
+      }))
+    : PERKS;
+  const recentVisits = live
+    ? (person?.recentPurchases ?? []).map((purchase) => ({
+        date: whenLabel(purchase.date),
+        items: purchase.itemNames.join(', ') || `${purchase.items} items`,
+        total: purchase.total,
+      }))
+    : VISITS;
+  const contactChips = live
+    ? [
+        { icon: 'call', value: person?.phone ?? '—' },
+        { icon: 'mail', value: person?.email ?? '—' },
+      ]
+    : CONTACT_CHIPS;
+  const notes = live ? [{ icon: 'info', text: 'No notes yet' }] : NOTES;
+  const tierLine = live
+    ? `${person?.tier ?? 'Member'}${person?.firstVisitAt ? ` · since ${new Date(person.firstVisitAt).getFullYear()}` : ''}`
+    : 'VIP Platinum · since 2023';
   const [attached, setAttached] = useState(false);
   const [applied, setApplied] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
@@ -72,10 +118,19 @@ export function DesktopPosCustomerDossierScreen({
   const attach = () => {
     setAttached(true);
     showToast(`${customer} attached to the active sale`);
-    attachTimer.current = window.setTimeout(() => onAttach(), 700);
+    attachTimer.current = window.setTimeout(() => onAttach(dossier.record ?? undefined), 700);
   };
 
+  useEffect(() => {
+    if (live && dossier.error) showToast(apiErrorMessage(dossier.error, 'Could not load this customer.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dossier.error]);
+
   const togglePerk = (title: string) => {
+    if (live) {
+      showToast('Redeeming rewards at the till is coming soon');
+      return;
+    }
     setApplied((prev) => (prev.includes(title) ? prev.filter((item) => item !== title) : [...prev, title]));
     showToast(applied.includes(title) ? `${title} removed from ticket` : `${title} applied to ticket`);
   };
@@ -97,21 +152,23 @@ export function DesktopPosCustomerDossierScreen({
             <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption uppercase tracking-wider mb-space-2xs">
               <span>Customer Dossier</span>
               <span>•</span>
-              <span>Quick view · Till 01</span>
+              <span>Quick view · {tillLabel}</span>
             </div>
             <div className="flex items-center gap-space-sm">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{customer}</h1>
               <Icon name="verified" filled className="text-primary text-[22px] shrink-0" />
             </div>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              VIP Platinum member since 2023 · 58 visits · ₦412,900 lifetime spend
+              {live
+                ? `${tierLine} · ${visits} visits · ${nairaLabel(spent)} lifetime spend`
+                : 'VIP Platinum member since 2023 · 58 visits · ₦412,900 lifetime spend'}
             </p>
           </div>
           <div className="flex items-center gap-space-xs">
             <button
               type="button"
               aria-label="More options"
-              onClick={() => showToast('More actions: statement, block, merge')}
+              onClick={() => showToast(live ? 'More actions are coming soon' : 'More actions: statement, block, merge')}
               className="w-11 h-11 rounded-xl bg-surface-container text-text-secondary flex items-center justify-center hover:bg-surface-container-high transition-colors shrink-0"
             >
               <Icon name="more_horiz" className="text-[18px]" />
@@ -134,20 +191,22 @@ export function DesktopPosCustomerDossierScreen({
         <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-md min-w-0">
             <span className="w-16 h-16 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-heading-sm text-heading-sm font-bold shrink-0">
-              {customer
-                .split(' ')
-                .map((part) => part[0])
-                .join('')}
+              {live
+                ? initials(customer)
+                : customer
+                    .split(' ')
+                    .map((part) => part[0])
+                    .join('')}
             </span>
             <div className="flex flex-col min-w-0 gap-space-2xs">
               <span className="flex items-center gap-1 min-w-0">
                 <span className="font-heading-sm text-heading-sm text-on-surface font-bold truncate">{customer}</span>
                 <span className="h-5 px-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center">
-                  VIP Platinum · since 2023
+                  {tierLine}
                 </span>
               </span>
               <div className="flex flex-wrap gap-space-2xs">
-                {CONTACT_CHIPS.map((chip) => (
+                {contactChips.map((chip) => (
                   <span
                     key={chip.value}
                     className="h-7 px-space-xs rounded-full bg-surface-container-low font-caption text-caption text-text-secondary flex items-center gap-1"
@@ -163,7 +222,7 @@ export function DesktopPosCustomerDossierScreen({
 
         {/* Metric bento */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md">
-          {METRICS.map((metric) => (
+          {metrics.map((metric) => (
             <div
               key={metric.label}
               className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between"
@@ -188,10 +247,10 @@ export function DesktopPosCustomerDossierScreen({
             </div>
             <div className="flex flex-col mt-space-xs">
               <span className="font-label-md text-label-md text-on-surface font-semibold truncate">
-                Urban Grill &amp; Bistro
+                {live ? pos.businessName : 'Urban Grill & Bistro'}
               </span>
               <span className="font-caption text-caption text-text-secondary truncate">
-                Wuse II · 41 of 58 visits here
+                {live ? `${pos.branchName} · ${visits} visits` : 'Wuse II · 41 of 58 visits here'}
               </span>
             </div>
           </div>
@@ -206,10 +265,10 @@ export function DesktopPosCustomerDossierScreen({
                 <span className="font-label-md text-label-md text-text-secondary uppercase tracking-wider font-semibold">
                   Available Perks
                 </span>
-                <span className="font-caption text-caption text-text-secondary">{PERKS.length} active</span>
+                <span className="font-caption text-caption text-text-secondary">{perks.length} active</span>
               </div>
               <div className="p-space-md flex flex-col gap-space-xs">
-                {PERKS.map((perk) => {
+                {perks.map((perk) => {
                   const isApplied = applied.includes(perk.title);
                   return (
                     <div
@@ -250,7 +309,7 @@ export function DesktopPosCustomerDossierScreen({
                 </span>
               </div>
               <div className="p-space-md flex flex-col gap-space-xs">
-                {NOTES.map((note) => (
+                {notes.map((note) => (
                   <div
                     key={note.text}
                     className="bg-surface-container-low rounded-lg px-space-sm py-space-xs flex items-start gap-space-sm"
@@ -268,12 +327,12 @@ export function DesktopPosCustomerDossierScreen({
                 <span className="font-label-md text-label-md text-text-secondary uppercase tracking-wider font-semibold">
                   Recent Visits
                 </span>
-                <span className="font-caption text-caption text-text-secondary">{VISITS.length} of 58</span>
+                <span className="font-caption text-caption text-text-secondary">{recentVisits.length} of {live ? visits : 58}</span>
               </div>
               <div>
-                {VISITS.map((visit) => (
+                {recentVisits.map((visit, index) => (
                   <div
-                    key={visit.date}
+                    key={`${visit.date}-${index}`}
                     className="px-space-lg py-space-sm flex items-center justify-between gap-space-sm border-b border-border-subtle last:border-b-0 hover:bg-surface transition-colors"
                   >
                     <div className="flex flex-col min-w-0">
@@ -326,7 +385,7 @@ export function DesktopPosCustomerDossierScreen({
               </div>
               <div className="w-full h-px bg-surface-container" />
               <span className="font-caption text-caption text-text-tertiary">
-                Perks applied here sync to the open ticket at Till 01 in real time.
+                Perks applied here sync to the open ticket at {tillLabel} in real time.
               </span>
             </div>
           </div>

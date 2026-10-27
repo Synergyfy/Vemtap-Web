@@ -1,9 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
-import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
 import { messageCampaignsService } from '../../services/messageCampaignsService';
-import { apiErrorMessage } from '../../services/errorMessages';
 import { CampaignStatusBadge } from '../../components/campaigns/CampaignStatusBadge';
 import { CampaignShell } from './CampaignShell';
 import type { BusinessTabKey } from '../../components/BusinessTabBar';
@@ -66,16 +64,10 @@ export function CampaignDetailScreen({
         delivered: liveStats.data.delivered,
         failed: liveStats.data.failed,
         clicked: liveStats.data.clicks,
+        bounced: undefined,
+        opened: undefined,
       }
     : campaign.stats;
-  const [testNotice, setTestNotice] = useState<string | null>(null);
-  const testSend = useMutation({
-    mutationFn: () => messageCampaignsService.sendTest(campaign.id),
-    onSuccess: (result) =>
-      setTestNotice(result.status === 'failed' ? `The test to ${result.to} could not be sent.` : `Test sent to ${result.to}.`),
-    onError: (error) => setTestNotice(apiErrorMessage(error, 'Could not send the test.')),
-  });
-  const canTest = live && (campaign.status === 'draft' || campaign.status === 'scheduled');
   const channel: CampaignChannel = campaign.channel;
   const segments = analyseSms(campaign.smsBody ?? '');
   const cost = estimateSmsCost(segments.segments, campaign.recipientCount);
@@ -122,17 +114,6 @@ export function CampaignDetailScreen({
             <span>Cancel scheduled send</span>
           </button>
         )}
-        {canTest && (
-          <button
-            type="button"
-            onClick={() => testSend.mutate()}
-            disabled={testSend.isPending}
-            className="h-11 px-space-md rounded-xl border border-border-subtle bg-surface-canvas font-button-secondary text-button-secondary text-on-surface-variant hover:bg-surface-subtle flex items-center gap-space-2xs transition-colors disabled:opacity-60"
-          >
-            <Icon name="send" className="text-[18px]" />
-            <span>{testSend.isPending ? 'Sending test…' : 'Send test to me'}</span>
-          </button>
-        )}
         <button
           type="button"
           onClick={() => onDuplicate(campaign.id)}
@@ -174,31 +155,11 @@ export function CampaignDetailScreen({
           </p>
         )}
 
-        {testNotice && (
-          <p className="flex items-start gap-space-2xs rounded-xl bg-surface-tint-blue px-space-md py-space-sm font-label-md text-label-md text-text-primary">
-            <Icon name="info" className="text-primary text-[18px] shrink-0 mt-0.5" />
-            {testNotice}
-          </p>
-        )}
-
-        {canTest && (
-          <button
-            type="button"
-            onClick={() => testSend.mutate()}
-            disabled={testSend.isPending}
-            className="md:hidden h-11 rounded-xl border border-border-subtle bg-surface-canvas font-button-secondary text-button-secondary text-on-surface-variant flex items-center justify-center gap-space-2xs disabled:opacity-60"
-          >
-            <Icon name="send" className="text-[18px]" />
-            <span>{testSend.isPending ? 'Sending test…' : 'Send test to me (1 credit)'}</span>
-          </button>
-        )}
-
         {campaign.simulatedSend && !live && (
           <p className="flex items-start gap-space-2xs rounded-xl bg-surface-tint-blue px-space-md py-space-sm font-caption text-caption text-text-secondary leading-relaxed">
             <Icon name="info" className="text-primary text-[16px] shrink-0 mt-0.5" />
-            {hasApiConfig()
-              ? 'This campaign is saved and queued, but VEMTAP does not deliver SMS or email campaigns yet, so nothing has been sent. Sent, delivered, opened and clicked numbers appear once delivery is switched on.'
-              : 'This campaign was queued locally for demonstration. Nothing left your device, and sent, delivered, opened or clicked numbers will only appear once an SMS or email provider reports them.'}
+            This campaign was queued locally for demonstration. Nothing left your device, and sent, delivered, opened or
+            clicked numbers will only appear once an SMS or email provider reports them.
           </p>
         )}
 
@@ -235,10 +196,7 @@ export function CampaignDetailScreen({
               <Metric label="Sent" value={stats.sent} icon={channel === 'sms' ? 'sms' : 'mail'} missing="Awaiting provider" />
               <Metric label="Delivered" value={stats.delivered} icon="done_all" missing="Awaiting provider" />
               {channel === 'sms' ? (
-                <>
-                  <Metric label="Failed" value={stats.failed} icon="error" missing="None reported" />
-                  {campaign.smsLink ? <Metric label="Link clicks" value={stats.clicked} icon="mouse" missing="No clicks yet" /> : null}
-                </>
+                <Metric label="Failed" value={stats.failed} icon="error" missing="None reported" />
               ) : (
                 <>
                   <Metric label="Bounced" value={stats.bounced} icon="alternate_email" missing="None reported" />

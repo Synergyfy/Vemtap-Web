@@ -9,6 +9,8 @@ interface DesktopVerifyEmailScreenProps {
   onBusinessSetup: () => void;
   email?: string;
   onResend?: (email: string) => Promise<void> | void;
+  /** Digits in the emailed code — business owner sign-up sends 4. */
+  codeLength?: number;
 }
 
 const OTP_LENGTH = 6;
@@ -30,15 +32,16 @@ export function DesktopVerifyEmailScreen({
   onBusinessSetup,
   email = '',
   onResend,
+  codeLength = OTP_LENGTH,
 }: DesktopVerifyEmailScreenProps) {
-  const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(''));
+  const [digits, setDigits] = useState<string[]>(Array(codeLength).fill(''));
   const [seconds, setSeconds] = useState(RESEND_SECONDS);
   const [status, setStatus] = useState<'idle' | 'verifying'>('idle');
   const [error, setError] = useState<string | null>(null);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
 
   const code = digits.join('');
-  const complete = code.length === OTP_LENGTH;
+  const complete = code.length === codeLength;
 
   useEffect(() => {
     if (seconds <= 0) return;
@@ -53,7 +56,7 @@ export function DesktopVerifyEmailScreen({
       next[index] = value;
       return next;
     });
-    if (value && index < OTP_LENGTH - 1) inputsRef.current[index + 1]?.focus();
+    if (value && index < codeLength - 1) inputsRef.current[index + 1]?.focus();
   };
 
   const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
@@ -61,19 +64,19 @@ export function DesktopVerifyEmailScreen({
       inputsRef.current[index - 1]?.focus();
     }
     if (event.key === 'ArrowLeft' && index > 0) inputsRef.current[index - 1]?.focus();
-    if (event.key === 'ArrowRight' && index < OTP_LENGTH - 1) inputsRef.current[index + 1]?.focus();
+    if (event.key === 'ArrowRight' && index < codeLength - 1) inputsRef.current[index + 1]?.focus();
   };
 
   const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     event.preventDefault();
-    const pasted = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+    const pasted = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, codeLength);
     if (!pasted) return;
-    const next = Array(OTP_LENGTH).fill('');
+    const next = Array(codeLength).fill('');
     pasted.split('').forEach((char, index) => {
       next[index] = char;
     });
     setDigits(next);
-    inputsRef.current[Math.min(pasted.length, OTP_LENGTH - 1)]?.focus();
+    inputsRef.current[Math.min(pasted.length, codeLength - 1)]?.focus();
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -94,7 +97,7 @@ export function DesktopVerifyEmailScreen({
     if (seconds > 0) return;
     setError(null);
     setSeconds(RESEND_SECONDS);
-    setDigits(Array(OTP_LENGTH).fill(''));
+    setDigits(Array(codeLength).fill(''));
     inputsRef.current[0]?.focus();
     if (onResend && email) {
       try {
@@ -210,7 +213,7 @@ export function DesktopVerifyEmailScreen({
                   <div className="flex flex-col gap-space-2xs">
                     <h2 className="font-heading-lg text-heading-lg text-text-primary">Verify your email</h2>
                     <div className="flex items-center flex-wrap gap-2 text-text-secondary font-body-md text-body-md">
-                      <span>We sent a 6-digit verification code to</span>
+                      <span>We sent a {codeLength}-digit verification code to</span>
                       <span className="font-semibold text-text-primary bg-surface-subtle px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 shadow-sm">
                         {email ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : 'your email'}
                         <button
@@ -233,9 +236,9 @@ export function DesktopVerifyEmailScreen({
                   <form className="pt-space-md flex flex-col gap-space-lg" onSubmit={handleSubmit}>
                     <div>
                       <label className="block font-label-md text-label-md text-text-primary mb-space-sm">
-                        Enter 6-digit confirmation code
+                        Enter {codeLength}-digit confirmation code
                       </label>
-                      <div className="grid grid-cols-6 gap-2 sm:gap-space-sm" onPaste={handlePaste}>
+                      <div className={`grid ${codeLength === 4 ? 'grid-cols-4' : 'grid-cols-6'} gap-2 sm:gap-space-sm`} onPaste={handlePaste}>
                         {digits.map((digit, index) => (
                           <input
                             key={index}

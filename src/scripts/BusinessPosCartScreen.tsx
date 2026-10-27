@@ -5,6 +5,9 @@ import { naira } from './catalogueData';
 import { cartCount, cartTotals, type PosCartLine } from './posCartData';
 import { POS_CUSTOMERS } from './desktop/posRegisterExtras';
 import { usePosSettings } from '../context/PosSettingsContext';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { isCustomLine, useHeldTicket, usePosCartMirror } from './posLive';
 
 interface BusinessPosCartScreenProps {
   cart: PosCartLine[];
@@ -12,6 +15,8 @@ interface BusinessPosCartScreenProps {
   customer: string | null;
   /** Points awarded to this customer earlier in the sale (e.g. at payment). */
   customerBonus: number;
+  /** Live: the attached customer's points balance. */
+  customerPoints?: number;
   onBack: () => void;
   onCharge: () => void;
   onOpenCustomer: () => void;
@@ -30,6 +35,7 @@ export function BusinessPosCartScreen({
   onCartChange,
   customer,
   customerBonus,
+  customerPoints,
   onBack,
   onCharge,
   onOpenCustomer,
@@ -37,7 +43,7 @@ export function BusinessPosCartScreen({
 }: BusinessPosCartScreenProps) {
   const attached = customer !== null;
   const customerRecord = customer ? POS_CUSTOMERS.find((entry) => entry.name === customer) : undefined;
-  const memberPoints = (customerRecord?.points ?? 0) + customerBonus;
+  const memberPoints = (hasApiConfig() ? (customerPoints ?? 0) : (customerRecord?.points ?? 0)) + customerBonus;
   const { taxMode, taxRate, taxLabel } = usePosSettings();
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -72,7 +78,27 @@ export function BusinessPosCartScreen({
     showToast(`${line?.name ?? 'Item'} removed from ticket`);
   };
 
+  const live = hasApiConfig();
+  const heldTicket = useHeldTicket();
+  usePosCartMirror(cart, customer);
+
   const holdTicket = () => {
+    if (live) {
+      const lines = cart.filter((line) => !isCustomLine(line));
+      if (!lines.length) {
+        showToast('Add an item before holding the ticket');
+        return;
+      }
+      heldTicket
+        .hold(lines)
+        .then(() => {
+          onCartChange([]);
+          showToast('Ticket held — resume it from Held on the register');
+          window.setTimeout(onBack, 700);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not hold the ticket.')));
+      return;
+    }
     showToast('Ticket parked safely to Tab 04');
     window.setTimeout(onBack, 700);
   };
@@ -106,7 +132,7 @@ export function BusinessPosCartScreen({
           <button
             type="button"
             aria-label="More ticket options"
-            onClick={() => showToast('Ticket options opened')}
+            onClick={() => showToast(live ? 'Ticket options are coming soon.' : 'Ticket options opened')}
             className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center active:scale-95 transition-transform shrink-0"
           >
             <Icon name="more_vert" className="text-on-surface-variant text-[17px]" />
@@ -117,7 +143,7 @@ export function BusinessPosCartScreen({
         <div className="px-margin pb-space-xs flex items-center gap-space-2xs overflow-x-auto no-scrollbar">
           <span className="h-6 px-space-xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center gap-1 shrink-0">
             <Icon name="receipt_long" className="text-[13px]" />
-            <span>Ticket #POS-1049</span>
+            <span>{live ? 'New ticket' : 'Ticket #POS-1049'}</span>
           </span>
           <span className="h-6 px-space-xs rounded-full bg-surface-container text-text-secondary font-caption text-caption flex items-center shrink-0">
             Walk-in · Dine-in
@@ -283,7 +309,7 @@ export function BusinessPosCartScreen({
                 <button
                   key={action.key}
                   type="button"
-                  onClick={() => showToast(actionToast[action.key])}
+                  onClick={() => showToast(live ? `${action.label} is coming soon.` : actionToast[action.key])}
                   className="h-16 rounded-xl bg-surface-canvas border border-border-subtle shadow-sm flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform"
                 >
                   <Icon name={action.icon} className="text-primary text-[18px]" />
@@ -360,7 +386,7 @@ export function BusinessPosCartScreen({
           </button>
           <button
             type="button"
-            onClick={() => showToast('Split bill opened for this ticket')}
+            onClick={() => showToast(live ? 'Split bill is coming soon.' : 'Split bill opened for this ticket')}
             disabled={cart.length === 0}
             className="flex-1 h-10 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs disabled:opacity-40"
           >

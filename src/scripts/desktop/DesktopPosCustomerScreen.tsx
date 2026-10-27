@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { PosCustomerRecord } from './posRegisterExtras';
+import { useDebounced, useLiveCustomerLookup, useLivePos } from '../posLive';
 
 interface DesktopPosCustomerScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
   onBack: () => void;
-  onAttach: (name: string) => void;
+  /** Live screens also hand over the API customer, so the sale can earn them points. */
+  onAttach: (name: string, record?: PosCustomerRecord) => void;
   onRegisterNew: () => void;
 }
 
 interface CustomerRecord {
   id: string;
+  record?: PosCustomerRecord;
   name: string;
   phone: string;
   tier: string;
@@ -85,13 +91,31 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const search = useDebounced(query.trim());
+  const lookup = useLiveCustomerLookup(search, false, 10);
+  const ticketLabel = live ? 'New ticket' : 'Ticket #POS-1049';
+  const tillLabel = live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Till 01';
+
+  useEffect(() => {
+    if (live && lookup.error) showToast(apiErrorMessage(lookup.error, 'Could not load customers.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookup.error]);
+
+  // Live: the first match is picked until the cashier clicks another.
+  useEffect(() => {
+    if (live && lookup.rows.length && !lookup.rows.some((row) => row.id === selectedId)) setSelectedId(lookup.rows[0].id);
+  }, [live, lookup.rows, selectedId]);
+
   const results = useMemo(() => {
+    if (live) return lookup.rows.map<CustomerRecord>((row) => ({ ...row, note: `Last visit ${row.lastVisit}` }));
     const q = query.trim().toLowerCase();
     if (!q) return CUSTOMERS;
     return CUSTOMERS.filter(
       (item) => item.name.toLowerCase().includes(q) || item.phone.replace(/\s/g, '').includes(q.replace(/\s/g, '')),
     );
-  }, [query]);
+  }, [query, live, lookup.rows]);
 
   const selected = results.find((item) => item.id === selectedId) ?? null;
 
@@ -100,7 +124,7 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
     setAttaching(true);
     if (attachTimer.current !== null) window.clearTimeout(attachTimer.current);
     attachTimer.current = window.setTimeout(() => {
-      onAttach(selected.name);
+      onAttach(selected.name, selected.record);
     }, 700);
   };
 
@@ -113,7 +137,7 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
             <Icon name="loyalty" className="text-primary text-[17px]" />
             <span className="uppercase tracking-wider font-semibold">Loyalty Directory</span>
             <span className="text-text-tertiary">•</span>
-            <span>Ticket #POS-1049 · Till 01</span>
+            <span>{ticketLabel} · {tillLabel}</span>
           </div>
           <div className="relative w-full sm:w-80">
             <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-[18px]" />
@@ -156,9 +180,9 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
             <div className="flex flex-wrap items-center gap-space-xs text-text-tertiary font-caption text-caption uppercase tracking-wider mb-space-2xs">
               <span>Attach Customer</span>
               <span>•</span>
-              <span>Ticket #POS-1049</span>
+              <span>{ticketLabel}</span>
               <span>•</span>
-              <span>Till 01</span>
+              <span>{tillLabel}</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Attach Customer</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
@@ -170,7 +194,7 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
             <button
               type="button"
               aria-label="Scan loyalty card"
-              onClick={() => showToast('Loyalty QR scanner ready')}
+              onClick={() => showToast(live ? 'Loyalty QR scanning is coming soon' : 'Loyalty QR scanner ready')}
               className="w-11 h-11 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary hover:bg-surface-container-high transition-colors shadow-sm"
             >
               <Icon name="qr_code_scanner" className="text-[20px]" />
@@ -212,7 +236,7 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
                   <button
                     key={item.label}
                     type="button"
-                    onClick={() => showToast(`${item.label} — available at checkout`)}
+                    onClick={() => showToast(live ? `${item.label} is coming soon` : `${item.label} — available at checkout`)}
                     className="h-9 px-space-sm rounded-full bg-surface-canvas border border-border-subtle font-caption text-caption text-on-surface flex items-center gap-1 whitespace-nowrap shadow-sm hover:bg-surface-tint-blue hover:text-primary transition-colors"
                   >
                     <Icon name={item.icon} className="text-primary text-[14px]" />
@@ -307,7 +331,7 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
                 <h2 className="font-heading-md text-heading-md text-on-surface">Member Profile</h2>
               </div>
               <span className="font-caption text-caption px-space-xs py-1 rounded-full bg-surface-container-high font-medium text-text-secondary">
-                Ticket #POS-1049
+                {ticketLabel}
               </span>
             </div>
 
@@ -353,7 +377,7 @@ export function DesktopPosCustomerScreen({ onNav, onBack, onAttach, onRegisterNe
                 <div className="flex items-start gap-space-2xs bg-badge-discount-bg rounded-lg px-space-xs py-1">
                   <Icon name="stars" filled className="text-badge-discount-text text-[14px] mt-0.5 shrink-0" />
                   <span className="font-caption text-caption text-badge-discount-text">
-                    5% member pricing + 2× points on grills this week. {selected.note}
+                    {live ? selected.note : `5% member pricing + 2× points on grills this week. ${selected.note}`}
                   </span>
                 </div>
               </div>

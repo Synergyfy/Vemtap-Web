@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
 import { businessService, type MyBusiness } from '../../services/businessService';
+import { pickAndUploadImage } from '../../services/uploadService';
 import { myBusinessKeys, useMyBusiness } from './useMyBusiness';
 
 /** The storefront fields the owner edits in the Business Profile studio. */
@@ -55,13 +56,17 @@ export function useBusinessProfileForm() {
   const business = useMyBusiness();
   const [saved, setSaved] = useState<BusinessProfileForm>(DEMO_PROFILE);
   const [form, setForm] = useState<BusinessProfileForm>(DEMO_PROFILE);
+  const savedRef = useRef<BusinessProfileForm>(DEMO_PROFILE);
 
-  // Reset the form whenever a fresh copy of the business arrives.
+  // Reset the form whenever a fresh copy of the business arrives — unless the
+  // owner has unsaved edits (e.g. a logo upload refetched the business mid-edit).
   useEffect(() => {
     if (!business.data) return;
     const next = fromBusiness(business.data);
+    const previous = savedRef.current;
+    savedRef.current = next;
     setSaved(next);
-    setForm(next);
+    setForm((current) => (same(current, previous) ? next : current));
   }, [business.data]);
 
   const diff = (next: BusinessProfileForm) => {
@@ -82,9 +87,26 @@ export function useBusinessProfileForm() {
       return updated ? fromBusiness({ ...(business.data as MyBusiness), ...updated }) : next;
     },
     onSuccess: (next) => {
+      savedRef.current = next;
       setSaved(next);
       setForm(next);
       if (live) void queryClient.invalidateQueries({ queryKey: myBusinessKeys.all });
+    },
+  });
+
+  /**
+   * Picks an image, uploads it (`POST /uploads`) and saves it straight to the
+   * business as its logo or cover. Resolves with the hosted URL, or null when
+   * the picker was cancelled. Demo: a local preview URL, nothing saved.
+   */
+  const uploadImage = useMutation({
+    mutationFn: async (kind: 'logo' | 'cover') => {
+      const url = await pickAndUploadImage();
+      if (!url || !live) return url;
+      const patch: Partial<MyBusiness> = kind === 'logo' ? { logoUrl: url } : { coverImage: url };
+      await businessService.updateMyBusiness(patch);
+      queryClient.setQueryData<MyBusiness>(myBusinessKeys.all, (current) => (current ? { ...current, ...patch } : current));
+      return url;
     },
   });
 
@@ -94,6 +116,7 @@ export function useBusinessProfileForm() {
     dirty: Object.keys(changes).length > 0,
     reset: () => setForm(saved),
     save,
+    uploadImage,
     isLoading: live && business.isLoading,
     loadError: live ? business.error : null,
     category: business.data

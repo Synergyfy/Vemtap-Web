@@ -240,7 +240,7 @@ export function DesktopProductPublishedScreen({
                   Instant One-Tap Import
                 </p>
                 <p className="font-body-md text-body-md text-text-secondary max-w-xl mb-space-lg">
-                  Transform {draft.title || 'this item'} into a featured promotional voucher. Photos, pricing, and branches
+                  Transform this Ribeye Steak into a featured promotional voucher. Photos, pricing, and branches
                   will pre-fill into Deal Studio automatically.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-space-sm mb-space-lg">
@@ -292,7 +292,7 @@ export function DesktopProductPublishedScreen({
                       <span className="font-caption text-caption text-text-secondary">Flash Weekend Voucher</span>
                     </div>
                     <p className="font-label-md text-label-md text-on-surface font-semibold truncate mt-1">
-                      {draft.title || 'Your item'} Voucher
+                      Woodfire Aged Ribeye Steak Tasting Voucher
                     </p>
                     <p className="font-caption text-caption text-text-secondary">
                       Target price: ₦15,600 (Save ₦3,900)

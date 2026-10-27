@@ -9,6 +9,8 @@ import { SubscriptionSuccessScreen } from './SubscriptionSuccessScreen';
 import { SubscriptionAddonsScreen } from './SubscriptionAddonsScreen';
 import { ClusterBoostFlow } from './ClusterBoostFlow';
 import { hasActiveTrial } from '../utils/trialState';
+import { hasApiConfig } from '../services/api/client';
+import { useActiveSubscription, useVerifySubscriptionPayment } from '../hooks/business/useSubscription';
 
 export type SubscriptionStep =
   | 'overview'
@@ -39,6 +41,14 @@ export function SubscriptionScreen({
   const [step, setStep] = useState<SubscriptionStep>(initialStep);
   const [paymentFrom, setPaymentFrom] = useState<SubscriptionStep>('overview');
   const [boostFrom, setBoostFrom] = useState<SubscriptionStep>('overview');
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  // Live: only a real API trial counts; demo keeps the localStorage flag.
+  const trialOn = live ? subscription.data?.status === 'trial' : hasActiveTrial();
+
+  // Paystack redirects back here with ?reference= — confirm it once and land
+  // on the success step instead of a blank checkout URL.
+  useVerifySubscriptionPayment(() => setStep('success'));
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -48,11 +58,11 @@ export function SubscriptionScreen({
   // again — land directly on the active-trial screen so the period can't be
   // reset or duplicated by re-entering the flow.
   useEffect(() => {
-    if (hasActiveTrial() && step === 'overview') {
+    if (trialOn && step === 'overview') {
       setStep('trialActive');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [trialOn]);
 
   const goToPayment = (from: SubscriptionStep) => {
     setPaymentFrom(from);
@@ -76,7 +86,7 @@ export function SubscriptionScreen({
           />
         );
       case 'trialConfirm':
-        if (hasActiveTrial()) {
+        if (trialOn) {
           return (
             <SubscriptionTrialActiveScreen
               onBack={() => setStep('overview')}

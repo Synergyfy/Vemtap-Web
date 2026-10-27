@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { CheckoutHubShell } from './CheckoutHubShell';
+import { naira, useLiveDisplay } from '../posLive';
 
 const ORDER_ITEMS: Array<{ qty: string; name: string; mods: string; price: string }> = [
   { qty: '1×', name: 'Woodfire Ribeye 250g', mods: 'Medium rare · peppercorn sauce', price: '₦16,000' },
@@ -84,8 +85,18 @@ export function DesktopPosDisplayOrderScreen() {
     return () => clearTimeout(timeout);
   }, [perksApplied]);
 
+  const display = useLiveDisplay();
+  const live = display.live;
+  const items = live
+    ? (display.ticket?.lines ?? []).map((line) => ({ qty: `${line.quantity}×`, name: line.name, mods: `${naira(line.unitPrice)} each`, price: naira(line.lineTotal) }))
+    : ORDER_ITEMS;
+  const ticket = display.ticket;
+  const money = (value: number | undefined, demo: string) => (live ? naira(value ?? 0) : demo);
+  const accountNumber = live ? (display.transfer?.accountNumber ?? '') : '1018492041';
+
   const handleCopy = () => {
-    navigator.clipboard?.writeText('1018492041');
+    if (!accountNumber) return;
+    navigator.clipboard?.writeText(accountNumber);
     setCopied(true);
   };
 
@@ -100,10 +111,10 @@ export function DesktopPosDisplayOrderScreen() {
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-space-xs">
-                <span className="font-heading-sm text-heading-sm text-text-primary font-bold">Urban Grill &amp; Bistro</span>
+                <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? display.venueName : 'Urban Grill & Bistro'}</span>
                 <Icon name="verified" className="text-primary text-[18px]" filled />
                 <span className="px-space-xs py-0.5 rounded-full bg-surface-container text-text-secondary font-label-sm text-label-sm font-medium">
-                  Till 01 · Wuse II
+                  {live ? display.whereLine : 'Till 01 · Wuse II'}
                 </span>
               </div>
               <span className="font-caption text-caption text-text-tertiary">
@@ -118,13 +129,13 @@ export function DesktopPosDisplayOrderScreen() {
             </div>
             <div className="flex items-center gap-space-sm pl-space-sm bg-surface-container-low rounded-full py-1 pr-1">
               <div className="flex items-center gap-space-2xs text-text-primary">
-                <span className="font-label-md text-label-md font-semibold">Hello Michael J. 👋</span>
+                <span className="font-label-md text-label-md font-semibold">Hello {live ? (display.customerName ?? 'there') : 'Michael J.'} 👋</span>
                 <span className="text-text-tertiary">·</span>
                 <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-label-sm text-label-sm font-bold">
-                  VIP Member
+                  {live ? (display.customerName ? 'Member' : 'Guest') : 'VIP Member'}
                 </span>
                 <span className="font-caption text-caption text-text-secondary ml-1">
-                  <strong className="text-text-primary">2,450</strong> pts
+                  <strong className="text-text-primary">{live ? '—' : '2,450'}</strong> pts
                 </span>
               </div>
               <button
@@ -158,9 +169,9 @@ export function DesktopPosDisplayOrderScreen() {
 
               {/* Items Stream */}
               <div className="flex flex-col gap-space-sm">
-                {ORDER_ITEMS.map((item) => (
+                {items.map((item, index) => (
                   <div
-                    key={item.name}
+                    key={`${item.name}-${index}`}
                     className="p-space-sm rounded-xl bg-surface-subtle flex items-start justify-between gap-space-sm hover:shadow-sm transition-all"
                   >
                     <div className="flex items-start gap-space-sm min-w-0">
@@ -185,24 +196,24 @@ export function DesktopPosDisplayOrderScreen() {
               <div className="mt-space-md p-space-sm rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-between">
                 <div className="flex items-center gap-space-xs">
                   <Icon name="celebration" className="text-[20px]" />
-                  <span className="font-label-sm text-label-sm font-semibold">VEMTAP Prime Lunch Active 🎉</span>
+                  <span className="font-label-sm text-label-sm font-semibold">{live ? (display.discount ? 'Discount applied 🎉' : 'No discount on this ticket') : 'VEMTAP Prime Lunch Active 🎉'}</span>
                 </div>
-                <span className="font-label-md text-label-md font-bold">-₦1,572</span>
+                <span className="font-label-md text-label-md font-bold">{live ? `-${naira(display.discount)}` : '-₦1,572'}</span>
               </div>
 
               {/* Accounting Breakdown */}
               <div className="mt-space-md pt-space-xs flex flex-col gap-space-xs">
                 <div className="flex justify-between items-center text-text-secondary font-label-sm text-label-sm">
                   <span>Subtotal</span>
-                  <span className="text-text-primary font-medium">₦29,200</span>
+                  <span className="text-text-primary font-medium">{money(ticket?.subtotal, '₦29,200')}</span>
                 </div>
                 <div className="flex justify-between items-center text-badge-discount-text font-label-sm text-label-sm">
                   <span>Member Deal Savings</span>
-                  <span className="font-medium">-₦1,572</span>
+                  <span className="font-medium">{live ? `-${naira(display.discount)}` : '-₦1,572'}</span>
                 </div>
                 <div className="flex justify-between items-center text-text-secondary font-label-sm text-label-sm">
-                  <span>VAT (7.5%)</span>
-                  <span className="text-text-primary font-medium">₦2,072</span>
+                  <span>{live ? (display.summary[display.summary.length - 1]?.label ?? 'Tax') : 'VAT (7.5%)'}</span>
+                  <span className="text-text-primary font-medium">{money(ticket?.tax, '₦2,072')}</span>
                 </div>
               </div>
 
@@ -217,7 +228,7 @@ export function DesktopPosDisplayOrderScreen() {
                   </span>
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="font-display-hero text-display-hero font-bold tracking-tight">₦29,700</span>
+                  <span className="font-display-hero text-display-hero font-bold tracking-tight">{money(display.total, '₦29,700')}</span>
                 </div>
               </div>
             </div>
@@ -283,10 +294,14 @@ export function DesktopPosDisplayOrderScreen() {
                   </div>
                   <div className="flex flex-col min-w-0">
                     <span className="font-label-sm text-label-sm font-bold text-text-primary">
-                      Zenith Bank · 1018492041
+                      {live
+                        ? display.transfer?.accountNumber
+                          ? `${display.transfer.bankName ?? 'Bank'} · ${display.transfer.accountNumber}`
+                          : 'Not set up'
+                        : 'Zenith Bank · 1018492041'}
                     </span>
                     <span className="font-caption text-caption text-text-secondary truncate">
-                      Urban Grill Ltd (Auto-matched)
+                      {live ? (display.transfer?.accountName ?? '—') : 'Urban Grill Ltd (Auto-matched)'}
                     </span>
                   </div>
                 </div>

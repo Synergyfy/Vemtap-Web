@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { pickAndUploadImage } from '../../services/uploadService';
 import { useLiveBranding } from '../../hooks/business/useLiveBranding';
@@ -103,6 +103,12 @@ export function DesktopBusinessProfileBrandingScreen({
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<'logo' | 'cover' | 'gallery' | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Upload and save failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!uploadError) return;
+    const timer = window.setTimeout(() => setUploadError(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [uploadError]);
   const [coverIndex, setCoverIndex] = useState(0);
   const [gallery, setGallery] = useState<GalleryItem[]>(live ? [] : INITIAL_GALLERY);
   const [nextGalleryId, setNextGalleryId] = useState(3);
@@ -198,14 +204,6 @@ export function DesktopBusinessProfileBrandingScreen({
   return (
     <BusinessSetupChrome activeNav="profile">
       <div className="max-w-7xl mx-auto w-full px-6 lg:px-12 py-space-xl">
-        {uploadError ? (
-          <div role="alert" className="mb-space-md rounded-xl bg-error-container text-on-error-container px-space-md py-space-sm font-label-md text-label-md flex items-center justify-between gap-space-sm">
-            <span>{uploadError}</span>
-            <button type="button" className="underline" onClick={() => setUploadError(null)}>
-              Dismiss
-            </button>
-          </div>
-        ) : null}
         <div className="mb-space-xl bg-surface-canvas rounded-xl shadow-sm p-space-lg flex flex-col md:flex-row md:items-center md:justify-between gap-space-md">
           <div className="flex flex-col gap-space-2xs">
             <div className="flex items-center gap-space-xs">
@@ -662,6 +660,11 @@ export function DesktopBusinessProfileBrandingScreen({
           </div>
         </div>
       </div>
+      {uploadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {uploadError}
+        </div>
+      )}
     </BusinessSetupChrome>
   );
 }

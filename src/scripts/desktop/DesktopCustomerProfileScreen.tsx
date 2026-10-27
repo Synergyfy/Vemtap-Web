@@ -1,11 +1,32 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useCustomerDossier, useSaveCustomerNote } from '../../hooks/business/useBusinessCustomers';
+import { formatNaira } from '../../utils/format';
+import {
+  CUSTOMER_AVATAR,
+  customerName,
+  dayLabel,
+  interactionLabel,
+  memberRef,
+  nextTierLabel,
+  noteEntries,
+  plural,
+  pointsLabel,
+  segmentLabel,
+  spendLabel,
+  whenLabel,
+  withNoteLine,
+} from '../customersLive';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
 
 interface DesktopCustomerProfileScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onBack?: () => void;
+  /** Live: the customer's user id; the dossier loads their real record. */
+  customerId?: string | null;
 }
 
 const KPI_CARDS = [
@@ -197,16 +218,130 @@ const VISIT_WINDOWS = [
   { icon: 'nightlight', iconClass: 'text-secondary', label: 'Saturday Dinner Service', time: '7:30 PM – 9:45 PM' },
 ];
 
-export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerProfileScreenProps) {
+export function DesktopCustomerProfileScreen({ onNav, onBack, customerId }: DesktopCustomerProfileScreenProps) {
   const [note, setNote] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const live = hasApiConfig();
+  const dossierQuery = useCustomerDossier(live ? (customerId ?? null) : null);
+  const d = dossierQuery.data;
+  const saveNote = useSaveCustomerNote(customerId ?? '');
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
 
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 3200);
   };
 
+  useEffect(() => {
+    if (dossierQuery.error) showToast(apiErrorMessage(dossierQuery.error, 'Could not load this customer.'));
+  }, [dossierQuery.error]);
+
+  const name = d ? customerName(d) : '—';
+  const notes = noteEntries(d);
+
+  const kpiCards = live
+    ? [
+        { ...KPI_CARDS[0], value: d ? String(d.visits) : '—', note: d?.metrics ? `Avg ${d.metrics.visitsPerMonth} visits / mo` : '—' },
+        { ...KPI_CARDS[1], value: d ? String(d.orders) : '—', note: d ? `${spendLabel(d)} Lifetime` : '—' },
+        {
+          ...KPI_CARDS[2],
+          value: d ? `${d.claims} Claimed` : '—',
+          note: d?.metrics ? `${Math.round(d.metrics.redemptionRate * 100)}% redemption rate` : '—',
+          footer: d?.metrics ? `${plural(d.metrics.redeemed, 'voucher')} redeemed` : '—',
+        },
+        {
+          ...KPI_CARDS[3],
+          value: d ? pointsLabel(d.pointsBalance) : '—',
+          note: d?.tier ? `${d.tier} Tier` : '—',
+          footer: d ? nextTierLabel(d.pointsBalance) : '—',
+        },
+      ]
+    : KPI_CARDS;
+
+  const ledgerItems: LedgerItem[] = live
+    ? [
+        ...(d?.recentPurchases ?? []).map((purchase) => ({
+          at: purchase.at,
+          item: {
+            icon: 'receipt_long',
+            iconBox: 'bg-primary-fixed text-primary',
+            title: `${purchase.kind === 'pos' ? 'Sale' : 'Order'} #${purchase.reference ?? purchase.id.slice(0, 8).toUpperCase()}`,
+            badge: purchase.paymentMethod ? `Paid via ${purchase.paymentMethod}` : purchase.kind === 'pos' ? 'POS' : 'Order',
+            badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+            time: whenLabel(purchase.at),
+            description: purchase.items || '—',
+            meta: purchase.branchName ?? '',
+            metaClass: 'text-text-tertiary',
+            amount: formatNaira(Number(purchase.total) || 0),
+            amountClass: 'text-text-primary',
+            link: 'View in Orders Hub →',
+            rowClass: 'bg-surface-subtle hover:bg-surface-container-low',
+          },
+        })),
+        ...(d?.recentClaims ?? []).map((claim) => ({
+          at: claim.redeemedAt ?? claim.claimedAt,
+          item: {
+            icon: 'confirmation_number',
+            iconBox: 'bg-badge-discount-bg text-badge-discount-text',
+            title: claim.claimCode ? `Deal Voucher #${claim.claimCode}` : 'Deal Voucher',
+            badge: claim.redeemedAt ? 'Redeemed Voucher' : 'Claimed',
+            badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+            time: whenLabel(claim.redeemedAt ?? claim.claimedAt),
+            description: [claim.offerName, claim.branchName].filter(Boolean).join(' • '),
+            meta: Number(claim.saved) ? `Patron Saved ${formatNaira(Number(claim.saved))}` : '',
+            metaClass: 'text-badge-discount-text font-medium',
+            amount: Number(claim.saved) ? `-${formatNaira(Number(claim.saved))}` : '—',
+            amountClass: 'text-badge-discount-text',
+            link: 'View Deal Voucher →',
+            rowClass: 'bg-badge-discount-bg/40 hover:bg-badge-discount-bg/60',
+          },
+        })),
+      ]
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+        .map(({ item }) => item)
+    : LEDGER_ITEMS;
+
+  const pointsEntries: PointsEntry[] = live
+    ? (d?.loyaltyLedger ?? []).map((entry) => ({
+        op: entry.points < 0 ? 'remove' : 'add',
+        title: entry.reason || (entry.points < 0 ? 'Points redeemed' : 'Points earned'),
+        meta: whenLabel(entry.at),
+        delta: `${entry.points < 0 ? '-' : '+'}${pointsLabel(Math.abs(entry.points))}`,
+        deltaClass: entry.points < 0 ? 'text-error' : 'text-badge-discount-text',
+        iconBox:
+          entry.points < 0 ? 'bg-error-container text-on-error-container' : 'bg-badge-discount-bg text-badge-discount-text',
+      }))
+    : POINTS_ENTRIES;
+
+  const dietaryTags = live
+    ? (d?.note?.tags ?? []).map((label) => ({
+        label,
+        icon: 'sell',
+        iconClass: 'text-primary',
+        className: 'bg-surface-subtle text-text-primary',
+      }))
+    : DIETARY_TAGS;
+
+  const placeholderRow = { name: '—', meta: 'Not tracked yet', image: '', alt: '' };
+  const favorites = live ? [placeholderRow] : FAVORITES;
+  const visitWindows = live ? [{ icon: 'schedule', iconClass: 'text-text-tertiary', label: '—', time: '—' }] : VISIT_WINDOWS;
+
   const submitNote = () => {
+    if (live) {
+      const value = note.trim();
+      if (!value || !customerId) return;
+      saveNote.mutate(
+        { note: withNoteLine(d, value), tags: d?.note?.tags ?? [] },
+        {
+          onSuccess: () => {
+            setNote('');
+            showToast(`Staff note saved to ${name}'s dossier.`);
+          },
+          onError: (error) => showToast(apiErrorMessage(error, 'Could not save the note.')),
+        },
+      );
+      return;
+    }
     if (note.trim()) {
       showToast('Staff note logged successfully to Michael James dossier.');
       setNote('');
@@ -228,7 +363,7 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
               <span className="hover:text-primary transition-colors cursor-pointer">Customer Directory</span>
               <Icon name="chevron_right" className="text-[13px]" />
               <span className="text-text-primary font-medium bg-surface-container px-2 py-0.5 rounded text-on-surface-variant">
-                Michael James (#VEM-882049)
+                {v(d ? `${name} (${memberRef(d)})` : '—', 'Michael James (#VEM-882049)')}
               </span>
             </nav>
             <div className="flex items-center gap-space-sm mt-1">
@@ -241,7 +376,10 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                 <span>Back to CRM Directory</span>
               </button>
               <span className="w-1.5 h-1.5 rounded-full bg-border-subtle" />
-              <span className="text-text-tertiary font-caption text-caption">Active Session #NG-ABJ-8910</span>
+              <span className="text-text-tertiary font-caption text-caption">{v(
+                d ? `Member since ${dayLabel(d.memberSince)}` : '—',
+                'Active Session #NG-ABJ-8910',
+              )}</span>
             </div>
           </div>
           <div className="flex items-center gap-space-xs flex-wrap">
@@ -274,7 +412,9 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
               className="w-10 h-10 rounded-lg bg-surface-canvas hover:bg-surface-subtle text-text-secondary flex items-center justify-center shadow-sm transition-colors"
               onClick={() =>
                 showToast(
-                  'Patron Actions:\n- Edit Customer Profile Details\n- Merge Duplicate Dossier\n- Restrict Loyalty Redemption\n- Export NDPR Subject Access Archive\n- Archive Patron Record',
+                  live
+                    ? 'More patron actions are coming soon.'
+                    : 'Patron Actions:\n- Edit Customer Profile Details\n- Merge Duplicate Dossier\n- Restrict Loyalty Redemption\n- Export NDPR Subject Access Archive\n- Archive Patron Record',
                 )
               }
             >
@@ -292,8 +432,8 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                   <div className="relative shrink-0">
                     <img
                       className="w-20 h-20 md:w-24 md:h-24 rounded-2xl object-cover shadow-sm ring-4 ring-surface-canvas"
-                      alt="High-contrast modern portrait photograph of a confident 35-year-old Nigerian gentleman wearing an indigo linen blazer against clean soft studio lighting, crisp focus, hyper-realistic, sophisticated urban styling"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4pP5DeLuqz8v5Wtl3BqcL8pxRw56M-uOfFpVkuI38vM9ZHsfOeAYR_w1c13IgD3OcVwsytv8i6s5TiUrPQg_2uHfucw9CKqdJJpO_FcdKhUW7bZ0CsBjhz-MnezWnzDoT-AQiZ8OW6vOjfmmWUJcdsPEm28fmGWitfflMkmlkR4UZaBocdTvjw1-z4aK2XgeIxYHDPstZ9K3i15aGV_0k8ZAccr8JEvVa3TrPh2Fj_C48G2xx_FsFEQ"
+                      alt={v(`${name} profile`, "High-contrast modern portrait photograph of a confident 35-year-old Nigerian gentleman wearing an indigo linen blazer against clean soft studio lighting, crisp focus, hyper-realistic, sophisticated urban styling")}
+                      src={live ? d?.avatarUrl || CUSTOMER_AVATAR : "https://lh3.googleusercontent.com/aida-public/AB6AXuB4pP5DeLuqz8v5Wtl3BqcL8pxRw56M-uOfFpVkuI38vM9ZHsfOeAYR_w1c13IgD3OcVwsytv8i6s5TiUrPQg_2uHfucw9CKqdJJpO_FcdKhUW7bZ0CsBjhz-MnezWnzDoT-AQiZ8OW6vOjfmmWUJcdsPEm28fmGWitfflMkmlkR4UZaBocdTvjw1-z4aK2XgeIxYHDPstZ9K3i15aGV_0k8ZAccr8JEvVa3TrPh2Fj_C48G2xx_FsFEQ"}
                     />
                     <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md ring-2 ring-surface-canvas">
                       <Icon name="verified" filled className="text-[15px]" />
@@ -301,26 +441,31 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                   </div>
                   <div className="flex flex-col gap-1 min-w-0">
                     <div className="flex items-center gap-space-xs flex-wrap">
-                      <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Michael James</h1>
+                      <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{v(name, 'Michael James')}</h1>
                       <span className="px-space-xs py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed font-caption text-caption font-semibold flex items-center gap-1">
                         <Icon name="star" filled className="text-[13px]" />
-                        VIP Gold Member
+                        {v(d?.tier ? `${d.tier} Member` : '—', 'VIP Gold Member')}
                       </span>
                     </div>
                     <p className="font-label-sm text-label-sm text-text-secondary flex items-center gap-2 flex-wrap">
-                      <span>Frequent Patron</span>
+                      <span>{v(d ? segmentLabel(d) : '—', 'Frequent Patron')}</span>
                       <span className="w-1 h-1 rounded-full bg-outline-variant" />
-                      <span className="text-tertiary-container font-semibold">Top 5% Spender (F&amp;B Category)</span>
+                      <span className="text-tertiary-container font-semibold">
+                        {v(d ? `${spendLabel(d)} lifetime spend` : '—', 'Top 5% Spender (F&B Category)')}
+                      </span>
                       <span className="w-1 h-1 rounded-full bg-outline-variant" />
-                      <span className="font-mono text-caption text-text-tertiary">ID: #VEM-882049</span>
+                      <span className="font-mono text-caption text-text-tertiary">ID: {v(d ? memberRef(d) : '—', '#VEM-882049')}</span>
                     </p>
                     <div className="flex flex-wrap items-center gap-space-xs mt-2">
                       <div className="flex items-center gap-1 bg-surface-subtle px-2.5 py-1 rounded-lg">
                         <Icon name="call" className="text-primary text-[15px]" />
-                        <span className="font-label-sm text-label-sm text-text-primary">+234 803 219 8831</span>
+                        <span className="font-label-sm text-label-sm text-text-primary">{v(d?.phone || '—', '+234 803 219 8831')}</span>
                         <button
                           type="button"
                           title="Direct Click to Call"
+                          onClick={() => {
+                            if (live && d?.phone) window.location.href = `tel:${d.phone}`;
+                          }}
                           className="text-primary hover:text-primary-container ml-1 flex items-center"
                         >
                           <Icon name="phone_forwarded" className="text-[14px]" />
@@ -328,12 +473,12 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                       </div>
                       <div className="flex items-center gap-1 bg-surface-subtle px-2.5 py-1 rounded-lg">
                         <Icon name="mail" className="text-primary text-[15px]" />
-                        <span className="font-label-sm text-label-sm text-text-primary">michael.j@example.com</span>
+                        <span className="font-label-sm text-label-sm text-text-primary">{v(d?.email || '—', 'michael.j@example.com')}</span>
                         <button
                           type="button"
                           title="Copy Email"
                           className="text-text-tertiary hover:text-text-primary ml-1 flex items-center"
-                          onClick={() => navigator.clipboard?.writeText('michael.j@example.com')}
+                          onClick={() => navigator.clipboard?.writeText(v(d?.email ?? '', 'michael.j@example.com'))}
                         >
                           <Icon name="content_copy" className="text-[14px]" />
                         </button>
@@ -341,7 +486,7 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                       <div className="flex items-center gap-1 bg-surface-subtle px-2.5 py-1 rounded-lg">
                         <Icon name="storefront" className="text-secondary text-[15px]" />
                         <span className="font-label-sm text-label-sm text-text-secondary">
-                          Wuse Branch (Abuja Flagship)
+                          {v(d?.preferredBranch?.name ?? '—', 'Wuse Branch (Abuja Flagship)')}
                         </span>
                       </div>
                     </div>
@@ -356,10 +501,12 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                   </div>
                   <div className="my-2">
                     <span className="text-caption text-text-tertiary block">Token Tier</span>
-                    <span className="font-heading-sm text-heading-sm text-text-primary">VIP Gold 2,450 pts</span>
+                    <span className="font-heading-sm text-heading-sm text-text-primary">
+                      {v(d ? `${d.tier ?? ''} ${pointsLabel(d.pointsBalance)}`.trim() : '—', 'VIP Gold 2,450 pts')}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-caption font-mono text-text-secondary pt-1">
-                    <span>EXP: 12/26</span>
+                    <span>{v('EXP: —', 'EXP: 12/26')}</span>
                     <span className="text-badge-discount-text font-semibold flex items-center gap-0.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
                       Active
@@ -371,20 +518,32 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                 <div className="flex items-center gap-space-xs">
                   <Icon name="how_to_reg" className="text-primary text-[16px]" />
                   <span>
-                    <strong>First Interaction:</strong> June 12, 2024 (Walk-in acquisition via VEMTAP Table QR)
+                    <strong>First Interaction:</strong>{' '}
+                    {v(
+                      d?.firstInteraction
+                        ? `${dayLabel(d.firstInteraction.at)} (${interactionLabel(d.firstInteraction.kind)})`
+                        : '—',
+                      'June 12, 2024 (Walk-in acquisition via VEMTAP Table QR)',
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center gap-space-xs">
                   <Icon name="schedule" className="text-badge-discount-text text-[16px]" />
                   <span>
-                    <strong>Latest:</strong> Today, 9:24 AM (Order #VG-94021 • Woodfire Ribeye)
+                    <strong>Latest:</strong>{' '}
+                    {v(
+                      d
+                        ? `${whenLabel(d.lastSeenAt)} (${interactionLabel(d.lastInteraction?.kind)}${d.lastInteraction?.reference ? ` • ${d.lastInteraction.reference}` : ''})`
+                        : '—',
+                      'Today, 9:24 AM (Order #VG-94021 • Woodfire Ribeye)',
+                    )}
                   </span>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-space-md">
-              {KPI_CARDS.map((kpi) => (
+              {kpiCards.map((kpi) => (
                 <div
                   key={kpi.label}
                   className="bg-surface-canvas rounded-xl p-space-md shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
@@ -436,9 +595,9 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                 </div>
               </div>
               <div className="flex flex-col gap-space-sm">
-                {LEDGER_ITEMS.map((item) => (
+                {ledgerItems.map((item, index) => (
                   <div
-                    key={item.title}
+                    key={`${item.title}-${index}`}
                     className={`${item.rowClass} transition-colors rounded-xl p-space-md flex flex-col md:flex-row md:items-center justify-between gap-space-md`}
                   >
                     <div className="flex items-start gap-space-md min-w-0">
@@ -493,14 +652,14 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                 <div className="flex items-center gap-space-xs">
                   <span className="text-caption font-caption text-text-secondary">Current Balance:</span>
                   <span className="px-2.5 py-1 rounded bg-tertiary-fixed text-on-tertiary-fixed font-bold font-mono text-label-sm">
-                    2,450 pts
+                    {v(d ? pointsLabel(d.pointsBalance) : '—', '2,450 pts')}
                   </span>
                 </div>
               </div>
               <div className="flex flex-col gap-3">
-                {POINTS_ENTRIES.map((entry) => (
+                {pointsEntries.map((entry, index) => (
                   <div
-                    key={entry.title}
+                    key={`${entry.title}-${index}`}
                     className="flex items-center justify-between p-3 rounded-lg bg-surface-subtle hover:bg-surface-container-low transition-colors"
                   >
                     <div className="flex items-center gap-3">
@@ -525,7 +684,10 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                   <span className="font-caption text-caption text-text-secondary font-semibold">
                     Tier Progress Trajectory
                   </span>
-                  <span className="text-caption text-text-tertiary">Only 550 pts until VIP Platinum Status</span>
+                  <span className="text-caption text-text-tertiary">{v(
+                    d ? nextTierLabel(d.pointsBalance) : '—',
+                    'Only 550 pts until VIP Platinum Status',
+                  )}</span>
                 </div>
                 <div className="w-36 h-8 shrink-0">
                   <svg className="w-full h-full overflow-visible text-primary" viewBox="0 0 144 32">
@@ -564,16 +726,24 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                     <Icon name="push_pin" filled className="text-[15px]" />
                     VIP Preference Dossier
                   </span>
-                  <span className="text-text-tertiary font-normal">Sep 28</span>
+                  <span className="text-text-tertiary font-normal">
+                    {v(d?.note?.updatedAt ? dayLabel(d.note.updatedAt) : '—', 'Sep 28')}
+                  </span>
                 </div>
                 <p className="font-body-md text-body-md text-text-primary leading-relaxed">
-                  “Prefers quiet booth seating near patio. Medium-rare steak. Always orders red wine pairings. Wife’s
-                  birthday on <strong className="text-primary">Nov 14</strong> — prepare complimentary champagne toast.”
+                  {live ? (
+                    notes.length ? `“${notes.join(' · ')}”` : 'No staff notes yet.'
+                  ) : (
+                    <>
+                      “Prefers quiet booth seating near patio. Medium-rare steak. Always orders red wine pairings. Wife’s
+                      birthday on <strong className="text-primary">Nov 14</strong> — prepare complimentary champagne toast.”
+                    </>
+                  )}
                 </p>
                 <div className="pt-2 text-caption text-text-secondary flex items-center justify-between">
-                  <span>Logged by: Head Sommelier (Tariq E.)</span>
+                  <span>Logged by: {v(d?.note?.updatedBy || '—', 'Head Sommelier (Tariq E.)')}</span>
                   <span className="text-badge-discount-text font-semibold flex items-center gap-1">
-                    <Icon name="done_all" className="text-[14px]" /> Verified
+                    <Icon name="done_all" className="text-[14px]" /> {v('Saved', 'Verified')}
                   </span>
                 </div>
               </div>
@@ -610,11 +780,11 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                   <h2 className="font-heading-sm text-heading-sm font-bold">Dietary &amp; Culinary Profile</h2>
                 </div>
                 <span className="text-caption text-badge-discount-text font-semibold bg-badge-discount-bg px-2 py-0.5 rounded-full">
-                  High Affinity
+                  {v('Staff tags', 'High Affinity')}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {DIETARY_TAGS.map((tag) => (
+                {dietaryTags.map((tag) => (
                   <span
                     key={tag.label}
                     className={`px-3 py-1 rounded-full font-caption text-caption font-semibold flex items-center gap-1 ${tag.className}`}
@@ -628,13 +798,15 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                 <span className="font-label-sm text-label-sm text-text-secondary font-medium">
                   Frequent Favorite Selections
                 </span>
-                {FAVORITES.map((fav) => (
+                {favorites.map((fav) => (
                   <div key={fav.name} className="flex items-center gap-space-sm p-2 rounded-lg bg-surface-subtle">
-                    <img
-                      className="w-12 h-12 rounded-lg object-cover shrink-0 shadow-sm"
-                      alt={fav.alt}
-                      src={fav.image}
-                    />
+                    {fav.image && (
+                      <img
+                        className="w-12 h-12 rounded-lg object-cover shrink-0 shadow-sm"
+                        alt={fav.alt}
+                        src={fav.image}
+                      />
+                    )}
                     <div className="flex flex-col min-w-0">
                       <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
                         {fav.name}
@@ -652,7 +824,7 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                   <Icon name="near_me" className="text-primary text-[20px]" />
                   <h2 className="font-heading-sm text-heading-sm font-bold">Catchment &amp; Visit Rhythm</h2>
                 </div>
-                <span className="text-caption font-mono text-text-secondary">Radius 1.2km</span>
+                <span className="text-caption font-mono text-text-secondary">{v('Radius —', 'Radius 1.2km')}</span>
               </div>
               <div
                 className="w-full h-36 bg-cover bg-center rounded-xl relative overflow-hidden shadow-inner flex flex-col justify-end p-space-sm"
@@ -665,17 +837,17 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Icon name="location_on" className="text-primary text-[18px]" />
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">
-                      Living District: Wuse II, Abuja
+                      Living District: {v('—', 'Wuse II, Abuja')}
                     </span>
                   </div>
-                  <span className="text-caption text-badge-discount-text font-bold shrink-0">Within 1.2km</span>
+                  <span className="text-caption text-badge-discount-text font-bold shrink-0">{v('—', 'Within 1.2km')}</span>
                 </div>
               </div>
               <div className="flex flex-col gap-2">
                 <span className="font-label-sm text-label-sm text-text-secondary font-medium">
                   Predictable Visit Windows
                 </span>
-                {VISIT_WINDOWS.map((window_) => (
+                {visitWindows.map((window_) => (
                   <div
                     key={window_.label}
                     className="flex items-center justify-between text-body-md bg-surface-subtle px-3 py-2 rounded-lg"
@@ -691,7 +863,7 @@ export function DesktopCustomerProfileScreen({ onNav, onBack }: DesktopCustomerP
               <div className="bg-surface-container-low rounded-lg p-space-sm flex items-center justify-between">
                 <div className="flex flex-col">
                   <span className="text-caption text-text-secondary font-medium">Return Probability (Next 7 Days)</span>
-                  <span className="font-heading-sm text-heading-sm text-primary font-bold">88.4% Likelihood</span>
+                  <span className="font-heading-sm text-heading-sm text-primary font-bold">{v('—', '88.4% Likelihood')}</span>
                 </div>
                 <Icon name="trending_up" className="text-primary text-[28px]" />
               </div>

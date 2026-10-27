@@ -1,9 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { naira, setSelectedSaleId, timeLabel, useLivePos, usePosLedger } from '../posLive';
+
+const LIVE_TENDER: Record<string, TenderType> = { cash: 'Cash', card: 'POS Card', transfer: 'Transfer', split: 'Split' };
+const LIVE_BARS = ['bg-primary-container', 'bg-badge-discount-text', 'bg-secondary', 'bg-tertiary'];
 
 
 interface DesktopPosLedgerScreenProps {
@@ -16,6 +22,8 @@ type TenderType = 'Cash' | 'POS Card' | 'Transfer' | 'VEMTAP QR' | 'Split';
 
 interface TxnRow {
   id: string;
+  /** API sale id (live); null while a sale is queued offline. */
+  saleId?: string | null;
   time: string;
   receipt: string;
   ticket: string;
@@ -42,7 +50,7 @@ const TENDER_META: Record<TenderType, { icon: string; tone: string }> = {
   Split: { icon: 'call_split', tone: 'text-primary' },
 };
 
-const TXNS: TxnRow[] = [
+const DEMO_TXNS: TxnRow[] = [
   { id: 't1', time: '13:42', receipt: 'RC-10842', ticket: 'TK-108', type: 'Dine-In', customer: 'Michael James', items: 3, tender: 'Cash', amount: 27251, status: 'settled' },
   { id: 't2', time: '13:36', receipt: 'RC-10841', ticket: 'TK-107', type: 'Takeaway', customer: 'Walk-in', items: 2, tender: 'POS Card', amount: 13475, status: 'settled' },
   { id: 't3', time: '13:28', receipt: 'RC-10840', ticket: 'TK-106', type: 'Dine-In', customer: 'Fatima Bello', items: 5, tender: 'VEMTAP QR', amount: 41800, status: 'settled' },
@@ -57,7 +65,7 @@ const TXNS: TxnRow[] = [
   { id: 't12', time: '12:02', receipt: 'RC-10831', ticket: 'TK-097', type: 'Dine-In', customer: 'Walk-in', items: 2, tender: 'Cash', amount: 8350, status: 'parked' },
 ];
 
-const TENDER_SPLIT = [
+const DEMO_TENDER_SPLIT = [
   { label: 'POS Card / NFC', value: 214000, pct: 62.4, txns: 94, bar: 'bg-primary-container', dot: 'bg-primary-container' },
   { label: 'Cash Tender', value: 92400, pct: 26.9, txns: 36, bar: 'bg-badge-discount-text', dot: 'bg-badge-discount-text' },
   { label: 'VEMTAP Direct QR / NIP', value: 36450, pct: 10.7, txns: 12, bar: 'bg-secondary', dot: 'bg-secondary' },
@@ -108,6 +116,56 @@ function Barcode({ value }: { value: string }) {
 export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerScreenProps) {
   const [range, setRange] = useState<'shift' | 'today' | 'week'>('shift');
   const [statusFilter, setStatusFilter] = useState<TxnStatus | ''>('');
+  const [toast, setToast] = useState<string | null>(null);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  // Live: "This Shift" is the open register session; the wider ranges show the branch's latest sales.
+  const ledger = usePosLedger(100, range !== 'shift');
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  useEffect(() => {
+    if (live && ledger.error) showToast(apiErrorMessage(ledger.error, 'Could not load the ledger.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledger.error]);
+  const TXNS: TxnRow[] = live
+    ? ledger.rows.map((row, index) => ({
+        id: row.saleId ?? `queued-${index}`,
+        saleId: row.saleId,
+        time: timeLabel(row.at),
+        receipt: row.ref,
+        ticket: row.synced ? '—' : 'Offline',
+        type: row.orderType,
+        customer: row.customer,
+        items: row.itemCount,
+        tender: LIVE_TENDER[row.methodKey] ?? 'Cash',
+        amount: row.amount,
+        status: row.status === 'completed' ? 'settled' : row.status === 'pending' ? 'parked' : 'refunded',
+      }))
+    : DEMO_TXNS;
+  const TENDER_SPLIT = live
+    ? pos.breakdown.map((row, index) => ({
+        label: row.label,
+        value: row.amount,
+        pct: row.share,
+        txns: ledger.rows.filter((entry) => entry.methodKey === row.method).length,
+        bar: LIVE_BARS[index % LIVE_BARS.length],
+        dot: LIVE_BARS[index % LIVE_BARS.length],
+      }))
+    : DEMO_TENDER_SPLIT;
+  const openTxn = (txn: TxnRow) => {
+    if (live && !txn.saleId) {
+      showToast('This sale is still on this device — it opens once it syncs.');
+      return;
+    }
+    setSelectedSaleId(txn.saleId ?? null);
+    onOpenOrder();
+  };
+  const z = pos.zReport;
+  const zNum = (value: unknown) => (value == null ? null : Number(value) || 0);
+  const cardTotal = zNum(z?.paymentBreakdown?.card);
+  const transferTotal = zNum(z?.paymentBreakdown?.transfer);
 
   // Statuses are pulled from the metadata table, so the menu can never offer a
   // status the ledger does not actually render.
@@ -150,7 +208,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
       `${printKvTable('Shift', [
         ['Range', rangeLabel],
         ['Date', new Date().toLocaleDateString('en-NG')],
-        ['Till', 'Till 01 (Wuse II)'],
+        ['Till', live ? (pos.isOpen ? `${pos.tillName} (${pos.branchName})` : '—') : 'Till 01 (Wuse II)'],
       ])}
        ${printKvTable(
          'Summary',
@@ -161,12 +219,19 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
          TENDER_SPLIT.map((item) => [item.label, `${money(item.value)} • ${item.pct}% • ${item.txns} txns`] as [string, string]),
        )}
        ${printKvTable('Transactions', TXNS.map((txn) => [`${txn.time} ${txn.receipt}`, `${txn.customer} • ${money(txn.amount)} • ${txn.tender} • ${STATUS_META[txn.status].label}`] as [string, string]))}
-       <p class="foot">Z-Report generated for reconciliation. Net realized ₦309,450.</p>`,
+       <p class="foot">Z-Report generated for reconciliation. Net realized ${live ? naira(ledger.gross) : '₦309,450'}.</p>`,
     );
   };
 
   const summary = useMemo(
-    () => [
+    () => live ? [
+      { label: 'Gross Shift Volume', value: naira(ledger.gross), meta: `${ledger.tickets} tickets`, icon: 'trending_up', tone: 'text-primary' },
+      { label: 'Transactions', value: String(ledger.tickets), meta: `${ledger.refunds} refunds`, icon: 'receipt_long', tone: 'text-text-primary' },
+      { label: 'Average Ticket', value: naira(ledger.tickets ? Math.round(ledger.gross / Math.max(1, ledger.tickets - ledger.refunds)) : 0), meta: 'per sale', icon: 'analytics', tone: 'text-badge-discount-text' },
+      { label: 'VAT Collected (7.5%)', value: '—', meta: 'FIRS remittance', icon: 'account_balance', tone: 'text-text-primary' },
+      { label: 'Discounts Applied', value: '—', meta: 'loyalty perks', icon: 'loyalty', tone: 'text-tertiary' },
+      { label: 'Tips Collected', value: '—', meta: 'Payout queue', icon: 'volunteer_activism', tone: 'text-badge-discount-text' },
+    ] : [
       { label: 'Gross Shift Volume', value: '₦342,850', meta: 'Net realized ₦309,450', icon: 'trending_up', tone: 'text-primary' },
       { label: 'Transactions', value: '142', meta: '0 voids • 0 returns', icon: 'receipt_long', tone: 'text-text-primary' },
       { label: 'Average Ticket', value: '₦2,414', meta: '+4.2% vs yesterday', icon: 'analytics', tone: 'text-badge-discount-text' },
@@ -174,7 +239,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
       { label: 'Discounts Applied', value: '₦18,200', meta: '18 loyalty perks', icon: 'loyalty', tone: 'text-tertiary' },
       { label: 'Tips Collected', value: '₦9,650', meta: 'Payout queue', icon: 'volunteer_activism', tone: 'text-badge-discount-text' },
     ],
-    [],
+    [live, ledger.gross, ledger.tickets, ledger.refunds],
   );
 
   const totalSettled = TENDER_SPLIT.reduce((sum, row) => sum + row.value, 0);
@@ -196,7 +261,11 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
               </span>
             </div>
             <p className="font-caption text-caption text-text-secondary mt-0.5">
-              Shift #SH-4092 • Emeka Okafor • Till #01 • Opened 08:30 AM WAT
+              {live
+                ? pos.session
+                  ? `Shift #${pos.session.id.slice(0, 6).toUpperCase()} • ${pos.cashierName} • ${pos.tillName} • Opened ${timeLabel(pos.session.openedAt)}`
+                  : `No open shift • ${pos.cashierName}`
+                : 'Shift #SH-4092 • Emeka Okafor • Till #01 • Opened 08:30 AM WAT'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-xs">
@@ -311,20 +380,20 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
                 </span>
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary">Opening Float</span>
-                  <span className="font-semibold text-text-primary">₦50,000</span>
+                  <span className="font-semibold text-text-primary">{live ? naira(zNum(z?.openingCash)) : '₦50,000'}</span>
                 </div>
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary">Cash Sales</span>
-                  <span className="font-semibold text-text-primary">₦92,400</span>
+                  <span className="font-semibold text-text-primary">{live ? naira(zNum(z?.cashSales)) : '₦92,400'}</span>
                 </div>
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary">Tips (Cash)</span>
-                  <span className="font-semibold text-text-primary">₦4,250</span>
+                  <span className="font-semibold text-text-primary">{live ? '—' : '₦4,250'}</span>
                 </div>
                 <div className="h-px bg-surface-container my-0.5" />
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary font-semibold">Expected Drawer</span>
-                  <span className="font-bold text-badge-discount-text">₦146,650</span>
+                  <span className="font-bold text-badge-discount-text">{live ? naira(zNum(z?.expectedCash)) : '₦146,650'}</span>
                 </div>
               </div>
 
@@ -334,20 +403,20 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
                 </span>
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary">Card Batches</span>
-                  <span className="font-semibold text-text-primary">₦214,000</span>
+                  <span className="font-semibold text-text-primary">{live ? naira(cardTotal) : '₦214,000'}</span>
                 </div>
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary">Instant Transfers</span>
-                  <span className="font-semibold text-text-primary">₦36,450</span>
+                  <span className="font-semibold text-text-primary">{live ? naira(transferTotal) : '₦36,450'}</span>
                 </div>
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary">VAT Owed</span>
-                  <span className="font-semibold text-text-primary">₦21,594</span>
+                  <span className="font-semibold text-text-primary">{live ? '—' : '₦21,594'}</span>
                 </div>
                 <div className="h-px bg-surface-container my-0.5" />
                 <div className="flex justify-between font-label-md text-label-md">
                   <span className="text-text-secondary font-semibold">Net Remittance</span>
-                  <span className="font-bold text-primary">₦309,450</span>
+                  <span className="font-bold text-primary">{live ? naira(zNum(z?.totalSales)) : '₦309,450'}</span>
                 </div>
               </div>
             </div>
@@ -358,13 +427,13 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
                   Shift Ledger Seal
                 </span>
                 <span className="font-label-sm text-label-sm text-text-primary font-mono">
-                  NODE #WUSE2-01 · HASH #9A24C
+                  {live ? (pos.session ? `SESSION #${pos.session.id.slice(0, 8).toUpperCase()}` : '—') : 'NODE #WUSE2-01 · HASH #9A24C'}
                 </span>
                 <span className="font-caption text-caption text-text-tertiary">
-                  142 tickets ledgered • 18ms sync latency
+                  {live ? `${ledger.tickets} tickets ledgered • ${pos.offline.pendingCount} waiting to sync` : '142 tickets ledgered • 18ms sync latency'}
                 </span>
               </div>
-              <Barcode value="SH4092-342850-004" />
+              <Barcode value={live ? (pos.session?.id.slice(0, 18).toUpperCase() ?? 'NO-SHIFT') : 'SH4092-342850-004'} />
             </div>
           </div>
         </div>
@@ -458,7 +527,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
                       <td className="px-space-md py-3 text-right">
                         <button
                           type="button"
-                          onClick={onOpenOrder}
+                          onClick={() => openTxn(txn)}
                           className="inline-flex items-center gap-1 font-caption text-caption font-semibold text-primary hover:text-primary-container transition-colors"
                         >
                           <span>Open</span>
@@ -494,6 +563,11 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
           </div>
         </div>
       </section>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </PosTerminalChrome>
   );
 }

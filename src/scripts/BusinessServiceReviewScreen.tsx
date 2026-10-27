@@ -1,7 +1,6 @@
-import { LiveReviewStep } from '../components/business/LiveItemSteps';
-import { hasApiConfig } from '../services/api/client';
-import { BusinessSubScreen } from '../components/business/BusinessSubScreen';
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ServiceDraft } from './serviceDraft';
@@ -31,7 +30,7 @@ const TIER_COPY: Record<string, { name: string; note: string }> = {
 const HIGHLIGHT_PILLS = ['Sensitive Skin Safe', 'Organic Botanicals', 'LED Therapy Booster', 'Unisex (All Welcome)'];
 
 const REVIEW_BRANCHES: Array<{
-  key: 'maitama' | 'wuseII';
+  key: string;
   name: string;
   badge: string;
   rooms: string;
@@ -40,11 +39,15 @@ const REVIEW_BRANCHES: Array<{
   { key: 'wuseII', name: 'Wuse II Sanctuary', badge: 'Secondary', rooms: '2 Treatment Rooms available' },
 ];
 
+/** Neutral tile until a live service has a photo. */
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
 const parseAmount = (value: string) => Number(value.replace(/[^0-9]/g, '')) || 0;
 
 const formatAmount = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-function DemoBusinessServiceReviewScreen({
+export function BusinessServiceReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -101,7 +104,19 @@ function DemoBusinessServiceReviewScreen({
   const basePrice = parseAmount(draft.basePrice);
   const comparePrice = parseAmount(draft.comparePrice);
   const savings = comparePrice - basePrice;
-  const activeBranches = REVIEW_BRANCHES.filter((branch) => draft.branches[branch.key]);
+  // Live: the real branches chosen in the previous step (`locations`).
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const activeBranches = live
+    ? liveBranches
+        .filter((branch) => branch.id && draft.locations.includes(branch.id))
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main' : 'Branch',
+          rooms: '—',
+        }))
+    : REVIEW_BRANCHES.filter((branch) => draft.branches[branch.key as 'maitama' | 'wuseII']);
   const activeBranchCount = activeBranches.length;
 
   return (
@@ -163,7 +178,7 @@ function DemoBusinessServiceReviewScreen({
 
           <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
             <div className="relative w-full h-52 bg-surface-container">
-              <img className="w-full h-full object-cover" alt={REVIEW_IMAGE.alt} src={draft.image || REVIEW_IMAGE.src} />
+              <img className="w-full h-full object-cover" alt={live ? draft.title || 'Service photo' : REVIEW_IMAGE.alt} src={draft.image || (live ? LIVE_IMAGE_PLACEHOLDER : REVIEW_IMAGE.src)} />
               <div className="absolute top-space-sm left-space-sm flex flex-wrap gap-space-2xs">
                 <div className="flex items-center space-x-1 bg-surface-canvas/90 backdrop-blur-md px-space-xs py-1 rounded-full shadow-sm">
                   <Icon className="text-[14px] text-text-primary" name="photo_library" />
@@ -480,33 +495,5 @@ function DemoBusinessServiceReviewScreen({
         </div>
       </div>
     </AppScreen>
-  );
-}
-
-/** Live: the business's real branches and item; demo keeps the designed screen. */
-export function BusinessServiceReviewScreen(props: BusinessServiceReviewScreenProps) {
-  if (!hasApiConfig()) return <DemoBusinessServiceReviewScreen {...props} />;
-  return (
-    <BusinessSubScreen title="Review & publish" onBack={props.onBack}>
-      <LiveReviewStep
-        item={{
-    kind: 'service',
-    title: props.draft.title,
-    image: /^https?:\/\//.test(props.draft.image) ? props.draft.image : undefined,
-    category: props.draft.subCategory,
-    description: props.draft.description,
-    price: props.draft.standardPrice || props.draft.basePrice,
-    was: props.draft.comparePrice,
-    details: [['Duration', `${props.draft.durationMins} mins`]],
-  }}
-        branchIds={props.draft.locations ?? []}
-        onBack={props.onBack}
-        onEditBasics={props.onEditBasics}
-        onEditPricing={props.onEditPricing}
-        onEditBranches={props.onEditBranches}
-        onPublish={props.onPublish}
-        onSaveDraft={props.onSaveDraft}
-      />
-    </BusinessSubScreen>
   );
 }

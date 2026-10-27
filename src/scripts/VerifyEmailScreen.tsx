@@ -10,6 +10,8 @@ interface VerifyEmailScreenProps {
   onResend?: (email: string) => Promise<void> | void;
   /** "Set up your business on VEMTAP" shortcut (desktop parity). */
   onBusinessSetup?: () => void;
+  /** Digits in the emailed code — business owner sign-up sends 4. */
+  codeLength?: number;
 }
 
 const CODE_LENGTH = 6;
@@ -17,8 +19,8 @@ const RESEND_SECONDS = 45;
 
 type Status = 'idle' | 'verifying';
 
-export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '', onResend, onBusinessSetup }: VerifyEmailScreenProps) {
-  const [digits, setDigits] = useState<string[]>(() => Array(CODE_LENGTH).fill(''));
+export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '', onResend, onBusinessSetup, codeLength = CODE_LENGTH }: VerifyEmailScreenProps) {
+  const [digits, setDigits] = useState<string[]>(() => Array(codeLength).fill(''));
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState<Status>('idle');
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
@@ -35,10 +37,10 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '',
   }, [secondsLeft]);
 
   const code = digits.join('');
-  const isComplete = code.length === CODE_LENGTH;
+  const isComplete = code.length === codeLength;
 
   const focusInput = (index: number) => {
-    const next = Math.max(0, Math.min(index, CODE_LENGTH - 1));
+    const next = Math.max(0, Math.min(index, codeLength - 1));
     inputsRef.current[next]?.focus();
     setActiveIndex(next);
   };
@@ -56,7 +58,7 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '',
 
     next[index] = value.slice(-1);
     setDigits(next);
-    const landing = index < CODE_LENGTH - 1 ? index + 1 : index;
+    const landing = index < codeLength - 1 ? index + 1 : index;
     window.setTimeout(() => focusInput(landing), 0);
   };
 
@@ -69,7 +71,7 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '',
       event.preventDefault();
       focusInput(index - 1);
     }
-    if (event.key === 'ArrowRight' && index < CODE_LENGTH - 1) {
+    if (event.key === 'ArrowRight' && index < codeLength - 1) {
       event.preventDefault();
       focusInput(index + 1);
     }
@@ -77,20 +79,20 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '',
 
   const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     event.preventDefault();
-    const pasted = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, CODE_LENGTH);
+    const pasted = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, codeLength);
     if (!pasted) return;
-    const next = Array(CODE_LENGTH).fill('');
+    const next = Array(codeLength).fill('');
     pasted.split('').forEach((char, index) => {
       next[index] = char;
     });
     setDigits(next);
-    window.setTimeout(() => focusInput(Math.min(pasted.length, CODE_LENGTH - 1)), 0);
+    window.setTimeout(() => focusInput(Math.min(pasted.length, codeLength - 1)), 0);
   };
 
   const handleResend = async () => {
     if (secondsLeft > 0) return;
     setError(null);
-    setDigits(Array(CODE_LENGTH).fill(''));
+    setDigits(Array(codeLength).fill(''));
     setSecondsLeft(RESEND_SECONDS);
     window.setTimeout(() => focusInput(0), 0);
     if (onResend && email) {
@@ -149,7 +151,7 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '',
             Verify your email
           </h2>
           <p className="font-body-md text-body-md text-text-secondary max-w-[280px]">
-            We sent a 6-digit verification code to
+            We sent a {codeLength}-digit verification code to
           </p>
 
           <div className="mt-space-xs inline-flex items-center gap-space-xs px-space-sm py-1.5 rounded-full bg-surface-subtle shadow-sm">
@@ -178,7 +180,7 @@ export function VerifyEmailScreen({ onBack, onContinue, onEditEmail, email = '',
                   aria-label={`Verification digit ${index + 1}`}
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  maxLength={CODE_LENGTH}
+                  maxLength={codeLength}
                   value={digit}
                   onFocus={() => setActiveIndex(index)}
                   onChange={(event) => handleChange(index, event.target.value)}

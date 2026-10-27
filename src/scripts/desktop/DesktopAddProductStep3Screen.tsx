@@ -1,6 +1,6 @@
-import { LiveAvailabilityStep } from '../../components/business/LiveItemSteps';
-import { hasApiConfig } from '../../services/api/client';
 import { useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -77,7 +77,7 @@ const PEAK_BARS: Array<{ x: number; y: number; height: number; opacity: number }
   { x: 170, y: 2, height: 30, opacity: 1 },
 ];
 
-function DemoDesktopAddProductStep3Screen({
+export function DesktopAddProductStep3Screen({
   draft,
   onDraftChange,
   onBack,
@@ -88,11 +88,33 @@ function DemoDesktopAddProductStep3Screen({
   const [pickup, setPickup] = useState(true);
   const [delivery, setDelivery] = useState(true);
 
+  // Live: the business's real branches, keyed by branch id; demo keeps the samples.
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const activeBranches = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main Branch' : 'Branch',
+          badgeClass: branch.isMainBranch ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary',
+          address: branch.area || '—',
+          units: '—',
+          radius: '—',
+          price: draft.basePrice ? `₦${draft.basePrice}` : '—',
+        }))
+    : ACTIVE_BRANCHES;
+
   const toggleBranch = (key: string, checked: boolean) => {
     onDraftChange({ branches: { ...draft.branches, [key]: checked } });
   };
 
   const selectAllActive = () => {
+    if (live) {
+      onDraftChange({ branches: { ...draft.branches, ...Object.fromEntries(activeBranches.map((branch) => [branch.key, true])) } });
+      return;
+    }
     onDraftChange({ branches: { ...draft.branches, wuse: true, garki: true } });
   };
 
@@ -155,7 +177,7 @@ function DemoDesktopAddProductStep3Screen({
                 </button>
               </div>
               <div className="flex flex-col gap-space-sm">
-                {ACTIVE_BRANCHES.map((branch) => (
+                {activeBranches.map((branch) => (
                   <label
                     key={branch.key}
                     className="group relative flex flex-col sm:flex-row sm:items-center justify-between p-space-md rounded-xl bg-surface-subtle hover:bg-surface-tint-blue/40 transition-all cursor-pointer"
@@ -610,35 +632,6 @@ function DemoDesktopAddProductStep3Screen({
             </button>
           </div>
         </div>
-      </div>
-    </Shell>
-  );
-}
-
-/** Live: the business's real branches and item; demo keeps the designed screen. */
-export function DesktopAddProductStep3Screen(props: DesktopAddProductStep3ScreenProps) {
-  if (!hasApiConfig()) return <DemoDesktopAddProductStep3Screen {...props} />;
-  const Shell = props.onNav ? MerchantShell : BusinessSetupChrome;
-  return (
-    <Shell activeNav="catalog" onNav={props.onNav}>
-      <div className="max-w-4xl mx-auto w-full px-6 py-space-xl">
-      <LiveAvailabilityStep
-        item={{
-    kind: 'product',
-    title: props.draft.title,
-    image: props.draft.mainImage,
-    category: props.draft.subCategory,
-    description: props.draft.description,
-    price: props.draft.basePrice,
-    was: props.draft.comparePrice,
-    details: props.draft.lowStock ? [['Low-stock alert', `${props.draft.lowStock} units`]] : [],
-  }}
-        selected={Object.keys(props.draft.branches ?? {}).filter((id) => props.draft.branches[id])}
-        onChange={(ids) => props.onDraftChange({ branches: Object.fromEntries(ids.map((id) => [id, true])) })}
-        onBack={props.onBack}
-        onNext={props.onNext}
-        nextLabel="Review & publish"
-      />
       </div>
     </Shell>
   );

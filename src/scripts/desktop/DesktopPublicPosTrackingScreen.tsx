@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { naira } from '../catalogueData';
 import { publicCartTotals, type PublicCartLine } from '../publicPosData';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { GUEST_NO_IMAGE, trackingSteps, useGuestTracking } from '../publicPosLive';
 
 interface DesktopPublicPosTrackingScreenProps {
   cart: PublicCartLine[];
@@ -29,7 +31,40 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
   const [toast, setToast] = useState<string | null>(null);
   const callTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const tracking = useGuestTracking();
+  const live = tracking.live;
+  const order = tracking.order;
   const totals = publicCartTotals(cart);
+  const steps = live && order ? trackingSteps(order, STEPS) : STEPS;
+  const tableLabel = live ? (order?.tableNumber ?? 'your table') : 'Table 04';
+  const venue = live ? (order?.venue.businessName ?? order?.venue.branchName ?? 'The venue') : 'Urban Grill & Bistro';
+  const orderRef = live ? (order?.reference ?? '—') : '#UG-1085';
+  const lines = live
+    ? (order?.lines ?? []).map((line, index) => ({
+        id: `${line.name}-${index}`,
+        name: line.name,
+        qty: line.quantity,
+        price: line.unitPrice,
+        image: GUEST_NO_IMAGE,
+        note: undefined as string | undefined,
+      }))
+    : cart;
+  const totalPayable = live ? (order?.totalAmount ?? 0) : totals.total;
+
+  useEffect(() => {
+    if (!live) return;
+    const message = !tracking.trackingToken
+      ? 'Place an order from your table to track it here'
+      : tracking.error
+        ? apiErrorMessage(tracking.error, 'Could not load your order.')
+        : order?.cancelled
+          ? 'This order was cancelled — please ask a server'
+          : null;
+    if (!message) return;
+    setToast(message);
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3200);
+  }, [live, tracking.trackingToken, tracking.error, order?.cancelled]);
 
   useEffect(
     () => () => {
@@ -42,7 +77,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
   const callWaiter = () => {
     if (calling) return;
     setCalling(true);
-    setToast('Attendant alerted for Table 04!');
+    setToast(live ? 'Calling a server is coming soon — please wave to the team' : 'Attendant alerted for Table 04!');
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 3200);
     callTimer.current = window.setTimeout(() => setCalling(false), 3200);
@@ -67,18 +102,18 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
             </span>
             <div className="flex flex-col min-w-0">
               <h1 className="font-heading-sm text-heading-sm text-text-primary leading-tight truncate">
-                Urban Grill &amp; Bistro
+                {venue}
               </h1>
               <div className="flex items-center gap-space-2xs">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                <span className="font-caption text-caption text-text-secondary">Table 04 • Dine-in</span>
+                <span className="font-caption text-caption text-text-secondary">{live ? `${tableLabel} • Dine-in` : 'Table 04 • Dine-in'}</span>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
             <span className="hidden sm:inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
               <Icon name="table_restaurant" className="text-[16px]" />
-              <span>Table 04</span>
+              <span>{live ? tableLabel : 'Table 04'}</span>
             </span>
             <span className="inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
@@ -95,7 +130,9 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
             Public POS Order Tracking
           </h2>
           <p className="font-caption text-caption text-text-tertiary mt-0.5">
-            Order #UG-1085 • Table 04 • Server: Emeka O.
+            {live
+              ? `Order ${orderRef} • ${tableLabel}${order?.server ? ` • Server: ${order.server.firstName}` : ''}`
+              : 'Order #UG-1085 • Table 04 • Server: Emeka O.'}
           </p>
         </div>
 
@@ -112,10 +149,12 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
               </span>
             </span>
             <div className="min-w-0">
-              <h3 className="font-heading-md text-heading-md text-text-primary">Order Sent to Kitchen!</h3>
+              <h3 className="font-heading-md text-heading-md text-text-primary">
+                {live && order?.status === 'ready' ? 'Your Order is Ready!' : live && order?.status === 'completed' ? 'Enjoy Your Meal!' : 'Order Sent to Kitchen!'}
+              </h3>
               <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-                Urban Grill &amp; Bistro has received your ticket for{' '}
-                <span className="font-label-md text-label-md text-text-primary">Table 04</span>.
+                {venue} has received your ticket for{' '}
+                <span className="font-label-md text-label-md text-text-primary">{tableLabel}</span>.
               </p>
             </div>
           </div>
@@ -123,7 +162,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
           <span className="relative inline-flex items-center gap-space-2xs px-space-md py-space-xs rounded-full bg-surface-canvas shadow-sm self-start md:self-auto shrink-0">
             <Icon name="timer" className="text-primary text-[17px]" />
             <span className="font-caption text-caption text-text-secondary">Estimated Prep Time:</span>
-            <span className="font-label-md text-label-md text-primary font-bold">15 - 20 mins</span>
+            <span className="font-label-md text-label-md text-primary font-bold">{live ? `${order?.prepMinutes ?? 15} mins` : '15 - 20 mins'}</span>
           </span>
         </section>
 
@@ -140,8 +179,8 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
           </div>
 
           <ol className="flex flex-col gap-space-md lg:flex-row lg:gap-0 lg:items-start">
-            {STEPS.map((step, index) => {
-              const isLast = index === STEPS.length - 1;
+            {steps.map((step, index) => {
+              const isLast = index === steps.length - 1;
               return (
                 <li key={step.title} className="flex-1 flex flex-col items-center gap-space-2xs text-center relative px-space-xs">
                   {!isLast && (
@@ -221,7 +260,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
             <div className="flex items-center justify-between gap-space-xs pb-space-2xs">
               <div className="min-w-0">
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Summary</h3>
-                <p className="font-caption text-caption text-text-tertiary">Order #UG-1085 • Table 04</p>
+                <p className="font-caption text-caption text-text-tertiary">{live ? `Order ${orderRef} • ${tableLabel}` : 'Order #UG-1085 • Table 04'}</p>
               </div>
               <span className="font-caption text-caption px-space-xs py-space-2xs rounded-lg bg-surface-subtle text-text-secondary shrink-0">
                 Server: Emeka O.
@@ -229,7 +268,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-space-2xs">
-              {cart.map((line) => (
+              {lines.map((line) => (
                 <div key={line.id} className="flex items-center gap-space-sm p-space-2xs rounded-xl bg-surface-subtle">
                   <img
                     src={line.image}
@@ -252,7 +291,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
                   </div>
                 </div>
               ))}
-              {cart.length === 0 && (
+              {lines.length === 0 && (
                 <p className="font-caption text-caption text-text-tertiary text-center py-space-sm xl:col-span-2">
                   No items left on this ticket.
                 </p>
@@ -262,7 +301,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
             <div className="rounded-xl bg-surface-container-low p-space-md flex flex-col gap-space-2xs">
               <div className="flex justify-between items-center gap-space-xs">
                 <span className="font-body-md text-body-md text-text-secondary">Total Payable</span>
-                <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{naira(totals.total)}</span>
+                <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{naira(totalPayable)}</span>
               </div>
               <p className="font-caption text-caption text-text-tertiary">
                 Direct settlement at table / counter upon completion
@@ -287,7 +326,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
               ) : (
                 <>
                   <Icon name="notifications_active" filled className="text-[19px]" />
-                  <span>Call Waiter to Table 04</span>
+                  <span>Call Waiter to {live ? tableLabel : 'Table 04'}</span>
                 </>
               )}
             </button>
@@ -316,7 +355,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
               <Icon name="check_circle" filled className="text-inverse-primary text-[20px] shrink-0" />
               <span className="font-label-sm text-label-sm text-inverse-on-surface truncate">{toast}</span>
             </span>
-            <span className="font-caption text-caption text-inverse-primary shrink-0">On the way</span>
+            {!live && <span className="font-caption text-caption text-inverse-primary shrink-0">On the way</span>}
           </div>
         </div>
       )}

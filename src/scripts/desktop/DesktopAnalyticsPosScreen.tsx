@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { AnalyticsShell } from './AnalyticsShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { AnalyticsTabKey } from '../../components/AnalyticsChrome';
 import { PUBLIC_IMAGES } from '../publicPosData';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { posView, useLiveAnalytics } from '../analyticsLive';
 
 interface DesktopAnalyticsPosScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -129,6 +132,20 @@ export function DesktopAnalyticsPosScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const { live, data, error } = useLiveAnalytics('pos');
+  useEffect(() => {
+    if (error) showToast(apiErrorMessage(error, 'Could not load POS analytics.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error]);
+
+  const view = posView(data, SALES);
+  const salesTiles = live ? view.kpis : SALES;
+  const hours = live ? view.hours : HOURS;
+  const tenders = live ? view.tenders : TENDERS;
+  const items = live ? view.items : TOP_ITEMS;
+  const staff = live ? view.staff : STAFF;
+  const { branch } = useBusinessBranch();
+
   const handleTab = (tab: AnalyticsTabKey) => {
     setDomainTab(tab);
     onAnalyticsTab(tab);
@@ -151,7 +168,7 @@ export function DesktopAnalyticsPosScreen({
           </nav>
           <div className="inline-flex items-center gap-space-xs px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
             <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-            <span>Wuse #01 · #02</span>
+            <span>{live ? `${branch.name} tills` : 'Wuse #01 · #02'}</span>
           </div>
         </div>
 
@@ -241,7 +258,7 @@ export function DesktopAnalyticsPosScreen({
 
         {/* Sales Metric Bento Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md mb-space-xl">
-          {SALES.map((item, index) => (
+          {salesTiles.map((item, index) => (
             <div
               key={item.label}
               className={`bg-surface-canvas rounded-2xl border border-border-subtle p-space-lg shadow-sm flex flex-col justify-between ${
@@ -290,17 +307,25 @@ export function DesktopAnalyticsPosScreen({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs mb-space-sm">
                 <div className="bg-badge-discount-bg rounded-xl px-space-sm py-1.5">
-                  <div className="font-label-md text-label-md text-badge-discount-text font-bold">₦684k</div>
-                  <span className="font-caption text-caption text-badge-discount-text">Lunch peak · 1 PM</span>
+                  <div className="font-label-md text-label-md text-badge-discount-text font-bold">
+                    {live ? (view.lunchPeak?.value ?? '—') : '₦684k'}
+                  </div>
+                  <span className="font-caption text-caption text-badge-discount-text">
+                    {live ? (view.lunchPeak?.label ?? 'No lunch activity') : 'Lunch peak · 1 PM'}
+                  </span>
                 </div>
                 <div className="bg-surface-tint-blue rounded-xl px-space-sm py-1.5">
-                  <div className="font-label-md text-label-md text-primary font-bold">₦812k</div>
-                  <span className="font-caption text-caption text-primary">Dinner peak · 7 PM</span>
+                  <div className="font-label-md text-label-md text-primary font-bold">
+                    {live ? (view.dinnerPeak?.value ?? '—') : '₦812k'}
+                  </div>
+                  <span className="font-caption text-caption text-primary">
+                    {live ? (view.dinnerPeak?.label ?? 'No dinner activity') : 'Dinner peak · 7 PM'}
+                  </span>
                 </div>
               </div>
 
               <div className="flex items-end justify-between gap-space-2xs h-28">
-                {HOURS.map((item) => (
+                {hours.map((item) => (
                   <div className="flex-1 flex flex-col items-center gap-1" key={item.hour}>
                     <div className="w-full flex items-end justify-center h-20">
                       <div
@@ -316,19 +341,21 @@ export function DesktopAnalyticsPosScreen({
               </div>
               <div className="flex items-center justify-between mt-space-xs pt-space-xs border-t border-border-subtle">
                 <span className="font-caption text-caption text-text-secondary">Busiest hour</span>
-                <span className="font-label-sm text-label-sm text-text-primary font-semibold">7–8 PM · 96 tickets</span>
+                <span className="font-label-sm text-label-sm text-text-primary font-semibold">
+                  {live ? view.busiest : '7–8 PM · 96 tickets'}
+                </span>
               </div>
             </Panel>
 
             {/* Payment Tender Breakdown */}
-            <Panel title="Payment Tender Breakdown" meta="₦3,480,250 settled across 4 methods">
+            <Panel title="Payment Tender Breakdown" meta={live ? view.tenderMeta : '₦3,480,250 settled across 4 methods'}>
               <div className="h-3 rounded-full overflow-hidden flex bg-surface-container-low mb-space-sm">
-                {TENDERS.map((tender) => (
+                {tenders.map((tender) => (
                   <div className={`h-full ${tender.bar}`} key={tender.name} style={{ width: `${tender.pct}%` }} />
                 ))}
               </div>
               <div className="flex flex-col">
-                {TENDERS.map((tender, index) => (
+                {tenders.map((tender, index) => (
                   <div
                     className={`flex items-center justify-between gap-space-xs py-space-xs ${
                       index > 0 ? 'border-t border-border-subtle' : ''
@@ -369,7 +396,10 @@ export function DesktopAnalyticsPosScreen({
               }
             >
               <div className="flex flex-col">
-                {TOP_ITEMS.map((item, index) => (
+                {live && !items.length && (
+                  <span className="font-caption text-caption text-text-tertiary">No item sales in this period</span>
+                )}
+                {items.map((item, index) => (
                   <button
                     className={`flex items-center gap-space-sm py-space-xs text-left hover:bg-surface-container-low/40 transition-colors ${
                       index > 0 ? 'border-t border-border-subtle' : ''
@@ -413,7 +443,10 @@ export function DesktopAnalyticsPosScreen({
             {/* Staff Cashier Audit */}
             <Panel title="Staff Cashier Audit" meta="Per-till performance & PIN tracking">
               <div className="flex flex-col gap-space-sm">
-                {STAFF.map((person) => (
+                {live && !staff.length && (
+                  <span className="font-caption text-caption text-text-tertiary">No cashier activity in this period</span>
+                )}
+                {staff.map((person) => (
                   <div className="flex flex-col gap-1" key={person.name}>
                     <div className="flex items-center justify-between gap-space-xs">
                       <div className="flex items-center gap-space-xs min-w-0">
@@ -440,7 +473,7 @@ export function DesktopAnalyticsPosScreen({
               <div className="flex items-center gap-space-2xs bg-surface-tint-blue rounded-xl px-space-sm py-space-xs mt-space-sm">
                 <Icon name="admin_panel_settings" className="text-primary text-[15px] shrink-0" />
                 <span className="font-caption text-caption text-on-surface">
-                  Manager PIN override used twice this week — review in permissions.
+                  {live ? view.drawerLine : 'Manager PIN override used twice this week — review in permissions.'}
                 </span>
               </div>
             </Panel>

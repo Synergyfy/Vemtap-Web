@@ -8,6 +8,18 @@ import { PosCustomerModal } from './PosCustomerModal';
 import { PosLoyaltyPanel } from './PosLoyaltyPanel';
 import { PosAddPointsModal, PosRewardsModal } from '../PosPointsModals';
 import { usePosSettings } from '../../context/PosSettingsContext';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import {
+  apiCustomerId,
+  rewardsUnlocked,
+  setLastSale,
+  useAwardPoints,
+  useLivePos,
+  usePosCheckout,
+  useTillPointsRate,
+  useTillRewards,
+} from '../posLive';
 
 interface DesktopPosPaymentScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -115,11 +127,16 @@ export function DesktopPosPaymentScreen({
   //  - orderPoints: points attached to this order (accruing from the products' spend)
   //  - previousPoints: balance before anything awarded on this screen
   //  - projectedTotal: previous + new, once the order's points land on completion
-  const orderPoints = useMemo(() => (loyaltyEnabled ? pointsForAmount(due) : 0), [due, loyaltyEnabled]);
+  // Live: the business's earn rule and rewards, not the demo rates.
+  const pointsRate = useTillPointsRate();
+  const liveRewards = useTillRewards(customer?.id);
+  const orderPoints = loyaltyEnabled ? (pointsRate ? pointsRate(due) : pointsForAmount(due)) : 0;
   const awardedHere = awardLedger.id === customer?.id ? awardLedger.total : 0;
   const previousPoints = customer ? customer.points - awardedHere : 0;
   const projectedTotal = customer ? customer.points + orderPoints : 0;
-  const eligibleCount = customer ? unlockedRewards(customer.points).length : 0;
+  const eligibleCount = customer
+    ? (liveRewards ? rewardsUnlocked(liveRewards, customer.points) : unlockedRewards(customer.points)).length
+    : 0;
 
   const recordAward = (points: number) =>
     setAwardLedger((prev) =>
@@ -134,8 +151,41 @@ export function DesktopPosPaymentScreen({
     // Walk-in sales can be switched off in POS Settings — a customer must then be attached.
     (allowWalkIn || customer !== null);
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const { checkout } = usePosCheckout();
+  const awardPoints = useAwardPoints();
+
+  /** Live: `POST /pos/sales` (or the offline queue), then hand the receipt the real sale. */
+  const completeLive = () => {
+    if (!pos.isOpen) {
+      flash('Open the register first (Till & Cash Drawer on the POS home).');
+      return;
+    }
+    setCompleting(true);
+    checkout({
+      lines: cart,
+      method: tenderMode,
+      amountPaid: tenderMode === 'cash' ? cashReceived : tenderMode === 'split' ? splitPaid : undefined,
+      split: tenderMode === 'split' ? slices.map((slice) => ({ method: slice.method, amount: slice.amount })) : undefined,
+      customerId: apiCustomerId(customer?.id),
+    })
+      .then((outcome) => {
+        setLastSale(outcome);
+        const earned = outcome.queued ? 0 : (outcome.sale.pointsEarned ?? 0);
+        if (customer && earned > 0) onCustomerChange({ ...customer, points: customer.points + earned });
+        onComplete(earned);
+      })
+      .catch((error: unknown) => flash(apiErrorMessage(error, 'Could not complete the sale.')))
+      .finally(() => setCompleting(false));
+  };
+
   const completeSale = () => {
     if (completing || !canComplete) return;
+    if (live) {
+      completeLive();
+      return;
+    }
     setCompleting(true);
     window.setTimeout(() => {
       setCompleting(false);
@@ -174,7 +224,7 @@ export function DesktopPosPaymentScreen({
               <span className="px-space-xs py-1 rounded bg-primary-container text-on-primary font-caption text-caption font-semibold tracking-wider uppercase">
                 Live Sale
               </span>
-              <span className="font-heading-sm text-heading-sm text-text-primary">Ticket #TK-108</span>
+              <span className="font-heading-sm text-heading-sm text-text-primary">{live ? `New Ticket · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Ticket #TK-108'}</span>
               <span className="text-text-tertiary">•</span>
               <span className="font-label-md text-label-md text-text-secondary">{itemCount} Line Items</span>
             </div>
@@ -734,6 +784,7 @@ export function DesktopPosPaymentScreen({
             {/* Loyalty — points balance, next reward, and manual award at the till */}
             {customer && loyaltyEnabled && (
               <PosLoyaltyPanel
+                onError={flash}
                 customer={customer}
                 ticketTotal={due}
                 onAward={(points) => {
@@ -788,10 +839,19 @@ export function DesktopPosPaymentScreen({
           suggested={orderPoints}
           onClose={() => setPointsModalOpen(false)}
           onAward={(points) => {
-            recordAward(points);
-            onCustomerChange({ ...customer, points: customer.points + points });
-            setPointsModalOpen(false);
-            flash(`${points.toLocaleString()} points added to ${customer.name}.`);
+            const done = () => {
+              recordAward(points);
+              onCustomerChange({ ...customer, points: customer.points + points });
+              setPointsModalOpen(false);
+              flash(`${points.toLocaleString()} points added to ${customer.name}.`);
+            };
+            if (!live) {
+              done();
+              return;
+            }
+            awardPoints(customer.id, points)
+              .then(done)
+              .catch((error: unknown) => flash(apiErrorMessage(error, 'Could not award points.')));
           }}
         />
       )}
@@ -799,6 +859,7 @@ export function DesktopPosPaymentScreen({
       {rewardsModalOpen && customer && (
         <PosRewardsModal
           customerName={customer.name}
+          customerId={customer.id}
           points={customer.points}
           projectedTotal={projectedTotal}
           onClose={() => setRewardsModalOpen(false)}

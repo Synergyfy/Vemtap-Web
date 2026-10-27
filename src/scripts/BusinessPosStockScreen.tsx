@@ -3,6 +3,9 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { PosTabBar, POS_NAV_STOCK, type PosTabKey } from '../components/PosTabBar';
 import { URBAN_PRODUCTS, naira, type CatalogueProduct } from './catalogueData';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { setShiftProductId, stockLabel, timeLabel, useLivePos, useLiveStock } from './posLive';
 
 interface BusinessPosStockScreenProps {
   onNav: (key: PosTabKey) => void;
@@ -30,6 +33,8 @@ const AVAILABILITY_META: Record<Availability, { label: string; chip: string }> =
 interface StockRow {
   product: CatalogueProduct;
   availability: Availability;
+  /** Live: on-hand quantity (null when stock isn't tracked). */
+  quantity?: number | null;
 }
 
 const INITIAL_STOCK: StockRow[] = [
@@ -63,19 +68,59 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const liveStock = useLiveStock();
+  const allStock: StockRow[] = live
+    ? liveStock.rows.map(({ product, availability, quantity }) => ({ product, availability, quantity }))
+    : stock;
+  const categories = live ? liveStock.categories : CATEGORIES;
+  const chipLabel = (row: StockRow) => (live ? stockLabel(row.availability, row.quantity ?? null) : AVAILABILITY_META[row.availability].label);
+
+  useEffect(() => {
+    if (live && liveStock.error) showToast(apiErrorMessage(liveStock.error, 'Could not load stock.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStock.error]);
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return stock.filter(({ product, availability }) => {
+    return allStock.filter(({ product, availability }) => {
       const inCategory = category === 'all' || product.category === category;
-      const matches = !q || product.name.toLowerCase().includes(q) || product.id.includes(q);
+      const matches = !q || product.name.toLowerCase().includes(q) || product.id.includes(q) || (product.sku ?? '').toLowerCase().includes(q);
       const matchesLow = !lowOnly || availability !== 'in';
       return inCategory && matches && matchesLow;
     });
-  }, [stock, query, category, lowOnly]);
+  }, [allStock, query, category, lowOnly]);
 
-  const lowCount = stock.filter((row) => row.availability !== 'in').length;
+  const lowCount = allStock.filter((row) => row.availability !== 'in').length;
+
+  /** Live: 86 sets the quantity to 0; in / low ask for the new on-hand count. */
+  const applyLive = (row: StockRow, availability: Availability) => {
+    let quantity = 0;
+    if (availability !== 'out') {
+      const answer = window.prompt(`New on-hand quantity for ${row.product.name}:`, String(Math.max(row.quantity ?? 0, availability === 'low' ? 1 : 10)));
+      if (answer === null) return;
+      quantity = Math.floor(Number(answer));
+      if (!Number.isFinite(quantity) || quantity < 0) {
+        showToast('Enter a whole number of 0 or more');
+        return;
+      }
+    }
+    liveStock
+      .setQuantity(row.product.id, quantity, availability === 'out' ? '86’d at the till' : 'Till stock count')
+      .then(() => {
+        setModal(null);
+        showToast(`${row.product.name} · ${quantity} on hand`);
+      })
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not update stock.')));
+  };
 
   const applyAvailability = (id: string, availability: Availability) => {
+    if (live) {
+      const row = allStock.find((entry) => entry.product.id === id);
+      if (row) applyLive(row, availability);
+      return;
+    }
     setStock((prev) => prev.map((row) => (row.product.id === id ? { ...row, availability } : row)));
     setModal(null);
     showToast(`${AVAILABILITY_META[availability].label} published to register`);
@@ -88,16 +133,16 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
         <div className="px-margin pt-space-xs pb-space-2xs flex items-center justify-between gap-space-xs">
           <span className="h-7 px-space-xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center gap-1 min-w-0">
             <Icon name="storefront" className="text-[13px]" />
-            <span className="truncate">Wuse II · Till 01</span>
+            <span className="truncate">{live ? `${pos.branchName} · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse II · Till 01'}</span>
           </span>
           <span className="h-7 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1 shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-            <span>Online</span>
+            <span>{live && !pos.offline.isOnline ? 'Offline' : 'Online'}</span>
           </span>
           <button
             type="button"
             aria-label="Open register menu"
-            onClick={() => showToast('Register menu opened')}
+            onClick={() => showToast(live ? 'Register menu is coming soon' : 'Register menu opened')}
             className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0 active:scale-95 transition-transform"
           >
             <Icon name="tune" className="text-text-secondary text-[16px]" />
@@ -105,7 +150,7 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
         </div>
         <div className="px-margin pb-space-xs flex flex-col">
           <span className="font-heading-sm text-heading-sm text-on-surface leading-tight">Products &amp; Stock View</span>
-          <span className="font-caption text-caption text-text-secondary">Live till inventory · synced 2m ago</span>
+          <span className="font-caption text-caption text-text-secondary">{live ? `Live till inventory · ${timeLabel(new Date().toISOString())}` : 'Live till inventory · synced 2m ago'}</span>
         </div>
       </header>
 
@@ -114,7 +159,9 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
         <div className="px-margin pt-space-2xs">
           <div className="bg-surface-canvas rounded-xl px-space-xs py-space-2xs shadow-sm flex items-center justify-between gap-space-xs">
             <span className="font-caption text-caption text-text-secondary truncate">
-              Urban Grill &amp; Bistro · 148 items · 6 shown
+              {live
+                ? `${pos.businessName} · ${allStock.length} items · ${rows.length} shown`
+                : 'Urban Grill & Bistro · 148 items · 6 shown'}
             </span>
             <span className="font-caption text-caption text-badge-discount-text shrink-0">{lowCount} need attention</span>
           </div>
@@ -141,7 +188,7 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
           <button
             type="button"
             aria-label="Scan barcode"
-            onClick={() => showToast('Barcode scanned · SKU WRS-400 matched')}
+            onClick={() => showToast(live ? 'Barcode scanning is coming soon — search by SKU instead' : 'Barcode scanned · SKU WRS-400 matched')}
             className="w-11 h-11 rounded-xl bg-surface-container flex items-center justify-center active:scale-95 transition-transform shrink-0"
           >
             <Icon name="barcode_scanner" className="text-primary text-[19px]" />
@@ -150,7 +197,7 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
 
         {/* Category chips */}
         <div className="pt-space-xs flex gap-space-2xs overflow-x-auto no-scrollbar px-margin pb-space-2xs">
-          {CATEGORIES.map((item) => {
+          {categories.map((item) => {
             const isActive = category === item.key && !lowOnly;
             return (
               <button
@@ -204,14 +251,20 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
 
         {/* Product cards */}
         <div className="px-margin flex flex-col gap-space-2xs">
-          {rows.map(({ product, availability }) => (
+          {rows.map(({ product, availability, quantity }) => (
             <div
               key={product.id}
               role="button"
               tabIndex={0}
-              onClick={onOpenProduct}
+              onClick={() => {
+                if (live) setShiftProductId(product.id);
+                onOpenProduct();
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') onOpenProduct();
+                if (e.key === 'Enter') {
+                  if (live) setShiftProductId(product.id);
+                  onOpenProduct();
+                }
               }}
               className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm flex gap-space-xs items-center cursor-pointer active:scale-[0.99] transition-transform"
             >
@@ -223,11 +276,11 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
               <div className="flex flex-col min-w-0 flex-1 gap-0.5">
                 <span className="font-label-sm text-label-sm text-on-surface font-semibold truncate">{product.name}</span>
                 <span className="font-caption text-caption text-text-secondary truncate">
-                  {naira(product.price)} · SKU {product.id.slice(0, 10).toUpperCase()}
+                  {naira(product.price)} · SKU {live ? (product.sku ?? '—') : product.id.slice(0, 10).toUpperCase()}
                 </span>
                 <span className="flex items-center gap-space-2xs">
                   <span className={`h-5 px-1.5 rounded-full font-caption text-caption font-semibold ${AVAILABILITY_META[availability].chip}`}>
-                    {AVAILABILITY_META[availability].label}
+                    {chipLabel({ product, availability, quantity })}
                   </span>
                   <span className="font-caption text-caption text-text-tertiary">Shift ready</span>
                 </span>
@@ -237,7 +290,7 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    showToast(`${product.name} added to active sale`);
+                    showToast(live ? 'Add items to a sale from the register' : `${product.name} added to active sale`);
                   }}
                   className="h-8 px-space-xs rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold active:scale-95 transition-transform"
                 >
@@ -247,7 +300,7 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setModal({ product, availability });
+                    setModal({ product, availability, quantity });
                   }}
                   className="h-8 px-space-xs rounded-lg bg-surface-container-low text-on-surface font-caption text-caption font-semibold flex items-center justify-center gap-1 active:scale-95 transition-transform"
                 >
@@ -333,12 +386,16 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
                   }`}
                 >
                   <span>{key === 'in' ? 'Mark in stock' : key === 'low' ? 'Mark low stock' : '86 item (sold out)'}</span>
-                  <span className={`h-5 px-1.5 rounded-full font-caption text-caption ${meta.chip}`}>{meta.label}</span>
+                  <span className={`h-5 px-1.5 rounded-full font-caption text-caption ${meta.chip}`}>
+                    {live ? (key === modal.availability ? chipLabel(modal) : key === 'out' ? '86’d' : 'Set count') : meta.label}
+                  </span>
                 </button>
               );
             })}
             <span className="font-caption text-caption text-text-secondary">
-              Availability changes publish to Till 01 instantly and log against Shift #2.
+              {live
+                ? `Stock changes publish to ${pos.isOpen ? pos.tillName : 'the register'} instantly.`
+                : 'Availability changes publish to Till 01 instantly and log against Shift #2.'}
             </span>
           </div>
         </div>
@@ -349,7 +406,13 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
         active="products"
         onSelect={(key) => {
           if (key === 'drawer') {
-            showToast('Cash drawer opened · ₦45,000 float');
+            showToast(
+              live
+                ? pos.isOpen
+                  ? `Register open on ${pos.tillName} · ${naira(Number(pos.zReport?.openingCash ?? 0))} float`
+                  : 'No register open'
+                : 'Cash drawer opened · ₦45,000 float',
+            );
             return;
           }
           onNav(key);

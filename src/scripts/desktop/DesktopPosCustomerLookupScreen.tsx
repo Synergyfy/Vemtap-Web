@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { PosCustomerRecord } from './posRegisterExtras';
+import { setDossierCustomerId, useDebounced, useLiveCustomerLookup, useLivePos } from '../posLive';
 
 interface DesktopPosCustomerLookupScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
-  onAttach: (name: string) => void;
+  /** Live screens also hand over the API customer, so the sale can earn them points. */
+  onAttach: (name: string, record?: PosCustomerRecord) => void;
   onOpenDossier: (name: string) => void;
   onRegisterNew: () => void;
 }
@@ -18,6 +23,7 @@ const FILTERS = [
 
 interface LookupCustomer {
   id: string;
+  record?: PosCustomerRecord;
   name: string;
   initials: string;
   tier: string;
@@ -122,7 +128,25 @@ export function DesktopPosCustomerLookupScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const search = useDebounced(query.trim());
+  const lookup = useLiveCustomerLookup(search, filter === 'vip');
+  const memberCount = live ? lookup.total : CUSTOMERS.length;
+
+  useEffect(() => {
+    if (live && lookup.error) showToast(apiErrorMessage(lookup.error, 'Could not load customers.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookup.error]);
+
   const results = useMemo(() => {
+    if (live) {
+      // VIP and the search run on the server; "Recent" is the last 7 days.
+      const week = Date.now() - 7 * 86_400_000;
+      return lookup.rows
+        .filter((row) => filter !== 'recent' || (row.lastVisitAt && new Date(row.lastVisitAt).getTime() >= week))
+        .map<LookupCustomer>((row) => ({ ...row, tags: row.segments, perk: '—' }));
+    }
     const q = query.trim().toLowerCase();
     return CUSTOMERS.filter((item) => {
       const matchesFilter = filter === 'all' || item.tags.includes(filter);
@@ -133,13 +157,13 @@ export function DesktopPosCustomerLookupScreen({
         item.email.toLowerCase().includes(q);
       return matchesFilter && matchesQuery;
     });
-  }, [query, filter]);
+  }, [query, filter, live, lookup.rows]);
 
   const attach = (item: LookupCustomer) => {
     if (attachTimer.current !== null) window.clearTimeout(attachTimer.current);
     setAttachedId(item.id);
     attachTimer.current = window.setTimeout(() => {
-      onAttach(item.name);
+      onAttach(item.name, item.record);
     }, 700);
   };
 
@@ -162,7 +186,7 @@ export function DesktopPosCustomerLookupScreen({
             <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption uppercase tracking-wider mb-space-2xs">
               <span className="h-7 px-space-xs rounded-full bg-surface-tint-blue text-primary font-semibold flex items-center gap-1 normal-case tracking-normal">
                 <Icon name="storefront" className="text-[13px]" />
-                <span>Wuse II · Till 01</span>
+                <span>{live ? `${pos.branchName} · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse II · Till 01'}</span>
               </span>
               <span className="h-7 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-semibold flex items-center gap-1 normal-case tracking-normal">
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
@@ -171,7 +195,7 @@ export function DesktopPosCustomerLookupScreen({
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Customer Lookup</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              {CUSTOMERS.length} members on this till today — search by name, phone or email, or scan a loyalty QR at the
+              {live ? `${memberCount} customers on record` : `${memberCount} members on this till today`} — search by name, phone or email, or scan a loyalty QR at the
               counter.
             </p>
           </div>
@@ -179,7 +203,7 @@ export function DesktopPosCustomerLookupScreen({
             <button
               type="button"
               aria-label="Scan loyalty QR"
-              onClick={() => showToast('Loyalty QR scanner ready')}
+              onClick={() => showToast(live ? 'Loyalty QR scanning is coming soon' : 'Loyalty QR scanner ready')}
               className="h-11 px-space-md rounded-xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-semibold flex items-center gap-space-xs hover:bg-surface-container-high transition-colors"
             >
               <Icon name="qr_code_scanner" className="text-[18px]" />
@@ -221,7 +245,13 @@ export function DesktopPosCustomerLookupScreen({
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => setFilter(item.key)}
+                  onClick={() => {
+                    if (live && item.key === 'deals') {
+                      showToast('Deal filters are coming soon');
+                      return;
+                    }
+                    setFilter(item.key);
+                  }}
                   className={`h-9 px-space-sm rounded-full font-label-sm text-label-sm font-semibold whitespace-nowrap transition-colors ${
                     isActive ? 'bg-primary text-on-primary' : 'bg-surface-canvas border border-border-subtle text-on-surface hover:bg-surface-subtle'
                   }`}
@@ -243,7 +273,7 @@ export function DesktopPosCustomerLookupScreen({
                   Member Directory
                 </span>
                 <span className="font-caption text-caption text-text-secondary">
-                  {results.length} of {CUSTOMERS.length} members shown
+                  {results.length} of {memberCount} members shown
                 </span>
               </div>
             )}
@@ -325,7 +355,10 @@ export function DesktopPosCustomerLookupScreen({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onOpenDossier(item.name)}
+                        onClick={() => {
+                          if (live) setDossierCustomerId(item.id);
+                          onOpenDossier(item.name);
+                        }}
                         className="h-10 px-space-sm rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors shrink-0"
                       >
                         <Icon name="badge" className="text-text-secondary text-[15px]" />
@@ -371,14 +404,14 @@ export function DesktopPosCustomerLookupScreen({
                     <Icon name="person" className="text-on-primary text-[18px]" />
                   </span>
                   <div className="flex flex-col min-w-0">
-                    <span className="font-label-md text-label-md font-semibold text-on-surface">Emeka O.</span>
+                    <span className="font-label-md text-label-md font-semibold text-on-surface">{live ? pos.cashierName : 'Emeka O.'}</span>
                     <span className="font-caption text-caption text-text-secondary">Cashier · Till 01</span>
                   </div>
                 </div>
                 <button
                   type="button"
                   aria-label="Customer profile"
-                  onClick={() => showToast('Signed in as Emeka O. · Cashier')}
+                  onClick={() => showToast(live ? `Signed in as ${pos.cashierName}` : 'Signed in as Emeka O. · Cashier')}
                   className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center hover:bg-surface-container-high transition-colors shrink-0"
                 >
                   <Icon name="person" className="text-text-secondary text-[16px]" />
@@ -390,12 +423,12 @@ export function DesktopPosCustomerLookupScreen({
                   <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary">
                     Members on this till today
                   </span>
-                  <span className="font-heading-sm text-heading-sm text-on-surface">{CUSTOMERS.length}</span>
+                  <span className="font-heading-sm text-heading-sm text-on-surface">{memberCount}</span>
                 </div>
                 <button
                   type="button"
                   aria-label="Sync customers"
-                  onClick={() => showToast('Customer list re-synced')}
+                  onClick={() => (live ? void lookup.refetch().then(() => showToast('Customer list refreshed')) : showToast('Customer list re-synced'))}
                   className="h-9 px-space-sm rounded-lg bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-semibold flex items-center gap-1 hover:bg-surface-container-high transition-colors"
                 >
                   <Icon name="sync" className="text-[16px]" />

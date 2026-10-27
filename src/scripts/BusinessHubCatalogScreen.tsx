@@ -1,11 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { FilterMenu } from '../components/FilterMenu';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
-import { CatalogueItemsPanel } from '../components/business/CatalogueItemsPanel';
-import { hasApiConfig } from '../services/api/client';
 import { AddProductMethodsDialog } from '../components/import/AddProductMethodsDialog';
 import { ProductImportWizard } from '../components/import/ProductImportWizard';
 import { ImportedProductsReview } from '../components/import/ImportedProductsReview';
@@ -19,7 +17,25 @@ import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
 import { BusinessAddProductImageScreen } from './BusinessAddProductImageScreen';
 import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
 import { BusinessProductReviewScreen } from './BusinessProductReviewScreen';
-import { INITIAL_PRODUCT_DRAFT } from './productDraft';
+import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
+import { hasApiConfig } from '../services/api/client';
+import { useCatalogueItemMutations, useCatalogueItems } from '../hooks/business/useCatalogueItems';
+import { useOffers } from '../hooks/business/useOffers';
+import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { apiErrorMessage } from '../services/errorMessages';
+import type { CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
+import type { BusinessOffer } from '../services/offersService';
+import {
+  activeDealFor,
+  availabilityLabel,
+  dealBadgeLabel,
+  isItemActive,
+  isLowStock,
+  itemComparePriceLabel,
+  itemPriceLabel,
+  stockLabel,
+} from './catalogueLive';
 import type { ProductDraft } from './productDraft';
 
 /** Neutral placeholder shown for imported products without an image. */
@@ -30,6 +46,10 @@ interface BusinessHubCatalogScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onOpenAssignment: (itemName: string) => void;
   onBoost: (itemName: string) => void;
+  /** Live: start a deal for this real item. */
+  onMakeDeal?: (item: LiveCatalogueItem) => void;
+  /** A message to show once when the screen opens (e.g. "pick an item"). */
+  notice?: string | null;
 }
 
 interface CatalogItem {
@@ -191,7 +211,48 @@ function importedToItem(product: ImportedProduct): CatalogItem {
   };
 }
 
-export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: BusinessHubCatalogScreenProps) {
+/** Maps a live catalogue item onto the mobile catalogue card model. */
+function liveToItem(item: LiveCatalogueItem, offers: BusinessOffer[], branchCount: number): CatalogItem {
+  const active = isItemActive(item);
+  const deal = activeDealFor(item, offers);
+  const low = isLowStock(item);
+  return {
+    key: item.id,
+    category: item.category?.name || (item.itemType === 'service' ? 'Service' : 'Product'),
+    sku: item.sku || '—',
+    statusLabel: active ? 'Active & Published' : 'Hidden',
+    statusDot: active ? 'bg-badge-discount-text' : 'bg-outline',
+    statusClass: active ? 'text-badge-discount-text' : 'text-text-secondary',
+    name: item.name,
+    price: itemPriceLabel(item),
+    comparePrice: itemComparePriceLabel(item),
+    img: item.mainImage || getCategoryImageByName(item.category?.name ?? '') || PLACEHOLDER_IMG,
+    alt: item.name,
+    thumbOverlay: !active,
+    dealBadge: deal ? `Deal Active • ${dealBadgeLabel(deal)}` : undefined,
+    note: low ? stockLabel(item) : undefined,
+    noteIcon: low ? 'warning' : undefined,
+    noteClass: low ? 'text-error' : undefined,
+    availabilityPill: availabilityLabel(item, branchCount),
+    pillIcon: 'apartment',
+    pillClass: 'bg-surface-tint-blue text-primary',
+    stockLabel: stockLabel(item),
+    stockOn: active,
+    actionLabel: 'Pricing',
+    actionIcon: 'price_change',
+  };
+}
+
+export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onMakeDeal, notice }: BusinessHubCatalogScreenProps) {
+  // Live: the active branch's real catalogue; demo keeps the sample cards.
+  const live = hasApiConfig();
+  const itemsQuery = useCatalogueItems();
+  const offersQuery = useOffers();
+  const { branches } = useBusinessBranch();
+  const { create, update } = useCatalogueItemMutations();
+  const sync = useOnboardingSync();
+  const liveItems = itemsQuery.data ?? [];
+  const liveById = new Map(liveItems.map((item) => [item.id, item]));
   const [addOpen, setAddOpen] = useState(false);
   const [tab, setTab] = useState('products');
   const [chip, setChip] = useState('All Status');
@@ -201,6 +262,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
     Object.fromEntries(CATALOG_ITEMS.map((item) => [item.key, item.stockOn])),
   );
   const [sheetItem, setSheetItem] = useState<string | null>(null);
+  const [sheetKey, setSheetKey] = useState<string | null>(null);
 
   // Bulk import state (shared wizard + review used across the whole app)
   const importedProducts = useImportedProducts();
@@ -215,12 +277,60 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
 
   const importedItems = importedProducts.map(importedToItem);
   const importedKeys = new Set(importedProducts.map((product) => product.id));
-  const allItems = [...importedItems, ...CATALOG_ITEMS];
-  const draftImportCount = importedProducts.filter((product) => product.status === 'draft').length;
+  const catalogItems = live
+    ? liveItems
+        .filter((item) => (tab === 'services' ? item.itemType === 'service' : item.itemType !== 'service'))
+        .map((item) => liveToItem(item, offersQuery.data ?? [], branches.filter((branch) => branch.id).length))
+    : CATALOG_ITEMS;
+  const allItems = live ? catalogItems : [...importedItems, ...catalogItems];
+  const liveCount = (type: 'product' | 'service') =>
+    liveItems.filter((item) => (type === 'service' ? item.itemType === 'service' : item.itemType !== 'service')).length;
+  const liveDealCount = (offersQuery.data ?? []).filter((offer) => offer.status === 'active').length;
+  const filterChips = live
+    ? ['All Status', `Active Deals (${liveDealCount})`, 'Low Stock', 'Dine-In & Takeaway']
+    : FILTER_CHIPS;
+
+  /** Live: shelf on/off is the item's active status. */
+  const toggleLiveItem = (id: string) => {
+    const item = liveById.get(id);
+    if (!item) return false;
+    update.mutate(
+      { id, input: { status: isItemActive(item) ? 'inactive' : 'active' } },
+      { onError: (error) => showToast(apiErrorMessage(error, 'Could not update this item.')) },
+    );
+    return true;
+  };
+  const draftImportCount = live ? 0 : importedProducts.filter((product) => product.status === 'draft').length;
 
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 3500);
+  };
+
+  useEffect(() => {
+    if (notice) showToast(notice);
+  }, [notice]);
+
+  /** Live: a copy of the item at the active branch, hidden until reviewed. */
+  const duplicateLiveItem = (item: LiveCatalogueItem) => {
+    const branchId = item.branches?.[0]?.id;
+    if (!branchId) return showToast('This item is not assigned to a branch yet.');
+    create.mutate(
+      {
+        name: `${item.name} (copy)`,
+        description: item.description || item.name,
+        price: Number(item.price ?? 0),
+        ...(item.compareAtPrice ? { compareAtPrice: Number(item.compareAtPrice) } : {}),
+        ...(item.mainImage ? { mainImage: item.mainImage } : {}),
+        ...(item.categoryId ? { categoryId: item.categoryId } : {}),
+        itemType: item.itemType === 'service' ? 'service' : 'product',
+        branchId,
+      },
+      {
+        onSuccess: () => showToast(`Copy of “${item.name}” added.`),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not duplicate this item.')),
+      },
+    );
   };
 
   const categoryChoices = [
@@ -258,6 +368,15 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
     const changeManualDraft = (patch: Partial<ProductDraft>) =>
       setManualDraft((previous) => ({ ...previous, ...patch }));
     const handleManualPublish = () => {
+      if (live) {
+        // Live: the same publish as setup — the active branch plus any branches ticked.
+        sync.publishProduct(manualDraft, () => {
+          setManualStep(0);
+          setManualDraft({ ...BLANK_PRODUCT_DRAFT });
+          showToast(`“${manualDraft.title || 'Product'}” published to your catalogue.`);
+        });
+        return;
+      }
       const { saved } = saveImportedProducts(
         { batchId: 'manual', fileName: 'manual-entry', importedAt: Date.now() },
         [
@@ -341,20 +460,11 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
             onSaveDraft={() => setManualStep(0)}
           />
         )}
-      </AppScreen>
-    );
-  }
-
-  // Live: the branch's real catalogue; the designed list below is the demo.
-  if (hasApiConfig()) {
-    return (
-      <AppScreen>
-        <BusinessHubHeader />
-        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28 gap-space-md">
-          <h1 className="font-heading-md text-heading-md text-text-primary">Products &amp; Services</h1>
-          <CatalogueItemsPanel />
-        </div>
-        <BusinessTabBar active="business" onTab={onTab} />
+        {sync.error && (
+          <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
+            {sync.error}
+          </div>
+        )}
       </AppScreen>
     );
   }
@@ -408,8 +518,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
         <div className="px-margin mb-space-sm">
           <div className="flex items-center bg-surface-container-high p-[3px] rounded-full">
             {[
-              { key: 'products', label: 'Products (28)' },
-              { key: 'services', label: 'Services (14)' },
+              { key: 'products', label: live ? `Products (${liveCount('product')})` : 'Products (28)' },
+              { key: 'services', label: live ? `Services (${liveCount('service')})` : 'Services (14)' },
               { key: 'categories', label: 'Categories (6)' },
             ].map((catalogTab) => {
               const active = tab === catalogTab.key;
@@ -478,7 +588,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
             />
           </div>
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-space-2xs">
-            {FILTER_CHIPS.map((filterChip) => {
+            {filterChips.map((filterChip) => {
               const active = chip === filterChip;
               return (
                 <button
@@ -581,7 +691,10 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                   aria-label={`${item.name} options`}
                   className="text-on-surface-variant hover:text-text-primary p-1 -mr-1 rounded-full transition-colors"
                   type="button"
-                  onClick={() => setSheetItem(item.name)}
+                  onClick={() => {
+                    setSheetItem(item.name);
+                    setSheetKey(item.key);
+                  }}
                 >
                   <Icon name="more_vert" className="text-[20px]" />
                 </button>
@@ -603,19 +716,22 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                 <div className="flex items-center gap-2">
                   <button
                     aria-label={`Toggle stock for ${item.name}`}
-                    className={`w-9 h-5 rounded-full transition-colors ${stock[item.key] ?? item.stockOn ? 'bg-primary-container' : 'bg-surface-dim'}`}
+                    className={`w-9 h-5 rounded-full transition-colors ${(live ? item.stockOn : stock[item.key] ?? item.stockOn) ? 'bg-primary-container' : 'bg-surface-dim'}`}
                     role="switch"
                     type="button"
-                    onClick={() => setStock((current) => ({ ...current, [item.key]: !(current[item.key] ?? item.stockOn) }))}
+                    onClick={() => {
+                      if (live && toggleLiveItem(item.key)) return;
+                      setStock((current) => ({ ...current, [item.key]: !(current[item.key] ?? item.stockOn) }));
+                    }}
                   >
                     <span
                       className={`block w-4 h-4 rounded-full bg-surface-canvas shadow transition-transform ${
-                        stock[item.key] ?? item.stockOn ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                        (live ? item.stockOn : stock[item.key] ?? item.stockOn) ? 'translate-x-[18px]' : 'translate-x-[2px]'
                       }`}
                     />
                   </button>
                   <span className="font-label-sm text-label-sm text-text-secondary">
-                    {(stock[item.key] ?? item.stockOn) ? item.stockLabel : 'Off Shelf'}
+                    {(live ? item.stockOn : stock[item.key] ?? item.stockOn) ? item.stockLabel : 'Off Shelf'}
                   </span>
                 </div>
                 <div className="flex items-center gap-space-2xs">
@@ -632,7 +748,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                     type="button"
                     onClick={() => {
                       if (importedKeys.has(item.key)) setView('importReview');
-                      else onOpenAssignment(item.name);
+                      else onOpenAssignment(live ? item.key : item.name);
                     }}
                   >
                     <Icon name={item.actionIcon} className="text-[15px]" />
@@ -692,6 +808,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
               </button>
             </div>
             {[
+              ...(live ? [{ icon: 'local_offer', iconClass: 'text-badge-discount-text', label: 'Make a Deal' }] : []),
               { icon: 'content_copy', iconClass: 'text-primary', label: 'Duplicate Product' },
               { icon: 'price_change', iconClass: 'text-primary-container', label: 'Manage Location Pricing' },
               { icon: 'qr_code_2', iconClass: 'text-secondary', label: 'View Table Order QR' },
@@ -704,9 +821,25 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
                 key={action.label}
                 type="button"
                 onClick={() => {
+                  const liveItem = live && sheetKey ? liveById.get(sheetKey) : undefined;
                   if (action.label === 'Manage Location Pricing') {
                     setSheetItem(null);
-                    onOpenAssignment(sheetItem);
+                    onOpenAssignment(liveItem ? liveItem.id : sheetItem);
+                  } else if (liveItem && action.label === 'Make a Deal') {
+                    setSheetItem(null);
+                    onMakeDeal?.(liveItem);
+                  } else if (liveItem && action.label === 'Duplicate Product') {
+                    setSheetItem(null);
+                    duplicateLiveItem(liveItem);
+                  } else if (liveItem && action.danger) {
+                    setSheetItem(null);
+                    update.mutate(
+                      { id: liveItem.id, input: { status: 'archived' } },
+                      {
+                        onSuccess: () => showToast(`“${liveItem.name}” archived.`),
+                        onError: (error) => showToast(apiErrorMessage(error, 'Could not archive this item.')),
+                      },
+                    );
                   } else {
                     setSheetItem(null);
                   }
@@ -749,7 +882,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost }: B
         onClose={() => setAddMethodsOpen(false)}
         onAddManually={() => {
           setAddMethodsOpen(false);
-          setManualDraft({ ...INITIAL_PRODUCT_DRAFT });
+          setManualDraft({ ...(live ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT) });
           setManualStep(1);
         }}
         onBulkImport={() => {

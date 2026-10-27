@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Icon } from './ui/Icon';
 import { Logo } from './ui/Logo';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import {
+  BUSINESS_SIDEBAR_SECTIONS,
   resolveSidebarActive,
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from '../scripts/desktop/businessSidebarConfig';
-import { useSidebarSections } from '../hooks/business/useSidebarSections';
 
 interface BusinessMobileDrawerProps {
   isOpen: boolean;
@@ -23,10 +24,10 @@ export function BusinessMobileDrawer({
   onSelect,
   onSignOut,
 }: BusinessMobileDrawerProps) {
+  const { branch, isLive } = useBusinessBranch();
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
-  const sections = useSidebarSections();
 
-  const activeSectionHasChildren = sections.some(
+  const activeSectionHasChildren = BUSINESS_SIDEBAR_SECTIONS.some(
     (s) => s.key === activeSectionKey && s.items && s.items.length > 0
   );
 
@@ -111,7 +112,7 @@ export function BusinessMobileDrawer({
           <div className="flex items-center gap-2 min-w-0">
             <Icon name="store" className="text-primary text-[16px] shrink-0" />
             <span className="font-caption text-caption text-text-secondary truncate">
-              Wuse II Branch, Abuja
+              {isLive ? [branch.name, branch.area].filter(Boolean).join(', ') : 'Wuse II Branch, Abuja'}
             </span>
           </div>
           <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />
@@ -119,7 +120,7 @@ export function BusinessMobileDrawer({
 
         {/* Scrollable Navigation List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          {sections.map((section) => {
+          {BUSINESS_SIDEBAR_SECTIONS.map((section) => {
             const hasChildren = Boolean(section.items && section.items.length > 0);
             const isSectionActive = activeSectionKey === section.key;
             const isOpen = openSectionKey === section.key;

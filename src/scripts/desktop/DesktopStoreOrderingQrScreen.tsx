@@ -4,7 +4,10 @@ import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { hasApiConfig } from '../../services/api/client';
-import { formatNaira } from '../../utils/format';
+import { useBusinessQr } from '../../hooks/business/useBusinessQr';
+import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategories';
+import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
+import { toPrice } from '../../services/catalogueItemsService';
 import { getCentralCategories, URBAN_PRODUCTS } from '../catalogueData';
 
 interface DesktopStoreOrderingQrScreenProps {
@@ -62,8 +65,13 @@ function VemtapQrSvg({ size = 180 }: { size?: number }) {
 }
 
 export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrScreenProps) {
-  const { addQrCode, qrCodes, toggleQrActive, lastError, clearLastError } = useStoreOrdering();
+  const { addQrCode, lastError, clearLastError, orders } = useStoreOrdering();
   const live = hasApiConfig();
+  // Live: orders placed through the store QR; scans aren't tracked per QR yet.
+  const storeQrOrders = orders.filter((order) => order.origin === 'Store QR' && order.status !== 'cancelled');
+  const storeQrRevenue = storeQrOrders.reduce((sum, order) => sum + (order.confirmedTotal || order.estimatedTotal || 0), 0);
+  const compactNaira = (value: number) =>
+    value >= 1_000_000 ? `₦${(value / 1_000_000).toFixed(1)}M` : value >= 1_000 ? `₦${Math.round(value / 1_000)}k` : `₦${value.toLocaleString('en-NG')}`;
   const { branch: activeBranch, branches, isLive: branchesLoaded } = useBusinessBranch();
   // Live: real branches (keyed by id); demo: the storefront's sample branches.
   const branchOptions = live
@@ -73,12 +81,43 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
         { value: 'maitama', label: 'Maitama Heights' },
         { value: 'garki', label: 'Garki Branch' },
       ];
-  const categories = getCentralCategories('product');
+  // Live: the business's own storefront link, categories and products; demo keeps the samples.
+  const businessQr = useBusinessQr();
+  const liveCategories = useCatalogueCategories();
+  const liveProducts = useCatalogueItems('product');
+  const storeBase = live ? businessQr.url ?? '' : 'https://vemtap.com/business/urban-grill-bistro-104/products';
+  const withParams = (params: string) => (storeBase ? `${storeBase}${storeBase.includes('?') ? '&' : '?'}${params}` : '');
+  const storeName = live ? businessQr.name ?? 'Your business' : 'Urban Grill & Bistro';
+  const categories = live
+    ? (liveCategories.data ?? []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        icon: category.icon ?? 'category',
+        description: category.description ?? '',
+        // No per-category QR scan/order data yet: shown as "—".
+        stats: null as null | { scans: number; ordersCount: number; totalRevenue: number },
+      }))
+    : getCentralCategories('product');
+  const products = live
+    ? (liveProducts.data ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        image: item.mainImage || '',
+        imageAlt: item.name,
+        price: toPrice(item.price ?? undefined) ?? 0,
+        category: item.category?.name ?? 'Product',
+      }))
+    : URBAN_PRODUCTS;
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [primaryQrTab, setPrimaryQrTab] = useState<'store' | 'category' | 'product'>('store');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id ?? '');
   const [selectedProductId, setSelectedProductId] = useState<string>(URBAN_PRODUCTS[0]?.id ?? '');
+  // Live lists arrive after mount: keep the picked category/product one of them.
+  useEffect(() => {
+    if (live && categories.length && !categories.some((category) => category.id === selectedCategoryId)) setSelectedCategoryId(categories[0].id);
+    if (live && products.length && !products.some((product) => product.id === selectedProductId)) setSelectedProductId(products[0].id);
+  }, [live, categories, products, selectedCategoryId, selectedProductId]);
 
   // New QR form state
   const [newName, setNewName] = useState('');
@@ -114,9 +153,13 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
 
     // QR destinations open the storefront directly: store & custom codes land on
     // the full catalogue page, product codes land on the product detail page.
-    let defaultUrl = `https://vemtap.com/business/urban-grill-bistro-104/products?src=${newType}-qr&branch=${newBranch}`;
-    if (newType === 'product' && URBAN_PRODUCTS[0]) {
-      defaultUrl = `https://vemtap.com/business/urban-grill-bistro-104/products/${URBAN_PRODUCTS[0].id}?src=product-qr&branch=${newBranch}`;
+    let defaultUrl = live
+      ? withParams(`src=${newType}-qr&branch=${newBranch}`)
+      : `https://vemtap.com/business/urban-grill-bistro-104/products?src=${newType}-qr&branch=${newBranch}`;
+    if (newType === 'product' && products[0]) {
+      defaultUrl = live
+        ? withParams(`product=${products[0].id}&src=product-qr&branch=${newBranch}`)
+        : `https://vemtap.com/business/urban-grill-bistro-104/products/${products[0].id}?src=product-qr&branch=${newBranch}`;
     }
     if (newDestination.trim()) {
       defaultUrl = newDestination.trim();
@@ -188,8 +231,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
           </div>
         </div>
 
-        {/* Primary QR Destinations — Store, Category, Product (demo storefront only; live QR codes are listed below) */}
-        {!live && (
+        {/* Primary QR Destinations — Store, Category, Product */}
         <div className="bg-surface-canvas border border-border-subtle rounded-2xl shadow-xs overflow-hidden">
           <div className="px-space-xl pt-space-xl pb-space-md">
             <div className="flex items-center gap-2 mb-1">
@@ -227,34 +269,38 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
               <div className="flex flex-col md:flex-row items-center gap-space-xl">
                 <div className="flex flex-col items-center gap-3 shrink-0">
                   <div className="p-4 bg-white rounded-2xl shadow-md border border-border-subtle">
-                    <VemtapQrSvg size={140} />
+                    {live && businessQr.qrImage ? (
+                      <img alt={`${storeName} store QR code`} className="w-[140px] h-[140px]" src={businessQr.qrImage} />
+                    ) : (
+                      <VemtapQrSvg size={140} />
+                    )}
                   </div>
                   <span className="text-caption text-text-tertiary font-mono">Store QR</span>
                 </div>
                 <div className="flex-1 flex flex-col gap-3">
                   <div>
-                    <div className="text-label-lg font-bold text-text-primary">Urban Grill &amp; Bistro — Full Storefront</div>
+                    <div className="text-label-lg font-bold text-text-primary">{storeName} — Full Storefront</div>
                     <div className="text-body-sm text-text-secondary mt-1">Opens the full storefront catalogue — every product with search &amp; category tabs. Customers browse all items and order directly.</div>
                   </div>
                   <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle font-mono text-[11px] text-text-secondary break-all">
-                    https://vemtap.com/business/urban-grill-bistro-104/products?src=store-qr
+                    {withParams('src=store-qr') || '—'}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                      <div className="font-heading-sm font-bold text-text-primary">1,240</div>
+                      <div className="font-heading-sm font-bold text-text-primary">{live ? '—' : '1,240'}</div>
                       <div className="text-caption text-text-tertiary">Total Scans</div>
                     </div>
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                      <div className="font-heading-sm font-bold text-text-primary">382</div>
+                      <div className="font-heading-sm font-bold text-text-primary">{live ? storeQrOrders.length : '382'}</div>
                       <div className="text-caption text-text-tertiary">Orders</div>
                     </div>
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                      <div className="font-heading-sm font-bold text-badge-discount-text">₦5.1M</div>
+                      <div className="font-heading-sm font-bold text-badge-discount-text">{live ? compactNaira(storeQrRevenue) : '₦5.1M'}</div>
                       <div className="text-caption text-text-tertiary">Revenue</div>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => { navigator.clipboard?.writeText('https://vemtap.com/business/urban-grill-bistro-104/products?src=store-qr'); showToast('Store QR link copied!'); }} className="flex-1 py-2 rounded-xl border border-border text-text-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-surface-subtle transition-colors">
+                    <button type="button" onClick={() => { navigator.clipboard?.writeText(withParams('src=store-qr')); showToast('Store QR link copied!'); }} className="flex-1 py-2 rounded-xl border border-border text-text-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-surface-subtle transition-colors">
                       <Icon name="content_copy" className="text-[16px]" /> Copy Link
                     </button>
                     <button type="button" onClick={handlePrint} className="flex-1 py-2 rounded-xl bg-primary text-on-primary font-semibold text-label-md flex items-center justify-center gap-1.5 hover:bg-primary/90 transition-colors shadow-sm">
@@ -282,7 +328,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 {(() => {
                   const cat = categories.find(c => c.id === selectedCategoryId);
                   if (!cat) return null;
-                  const catUrl = `https://vemtap.com/business/urban-grill-bistro-104/products?category=${cat.id}&src=cat-qr`;
+                  const catUrl = withParams(`category=${cat.id}&src=cat-qr`);
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -302,15 +348,15 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                         <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle font-mono text-[11px] text-text-secondary break-all">{catUrl}</div>
                         <div className="grid grid-cols-3 gap-2">
                           <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats.scans.toLocaleString()}</div>
+                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats ? cat.stats.scans.toLocaleString() : '—'}</div>
                             <div className="text-caption text-text-tertiary">Scans</div>
                           </div>
                           <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats.ordersCount}</div>
+                            <div className="font-heading-sm font-bold text-text-primary">{cat.stats ? cat.stats.ordersCount : '—'}</div>
                             <div className="text-caption text-text-tertiary">Orders</div>
                           </div>
                           <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                            <div className="font-heading-sm font-bold text-badge-discount-text">₦{(cat.stats.totalRevenue / 1000).toFixed(0)}K</div>
+                            <div className="font-heading-sm font-bold text-badge-discount-text">{cat.stats ? `₦${(cat.stats.totalRevenue / 1000).toFixed(0)}K` : '—'}</div>
                             <div className="text-caption text-text-tertiary">Revenue</div>
                           </div>
                         </div>
@@ -338,15 +384,17 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                     onChange={(e) => setSelectedProductId(e.target.value)}
                     className="flex-1 px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
                   >
-                    {URBAN_PRODUCTS.map((p) => (
+                    {products.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                 </div>
                 {(() => {
-                  const prod = URBAN_PRODUCTS.find(p => p.id === selectedProductId);
+                  const prod = products.find(p => p.id === selectedProductId);
                   if (!prod) return null;
-                  const prodUrl = `https://vemtap.com/business/urban-grill-bistro-104/products/${prod.id}?src=prod-qr`;
+                  const prodUrl = live
+                    ? withParams(`product=${prod.id}&src=prod-qr`)
+                    : `https://vemtap.com/business/urban-grill-bistro-104/products/${prod.id}?src=prod-qr`;
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -384,60 +432,8 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
             )}
           </div>
         </div>
-        )}
 
         {/* Modal: Create New QR Code */}
-        {/* Every placement QR with its scans, orders and paid revenue */}
-        <section className="rounded-2xl bg-surface-canvas border border-border-subtle shadow-sm p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-heading-sm text-heading-sm text-on-surface">Your ordering QR codes</h2>
-            <span className="text-caption text-text-secondary">{qrCodes.filter((qr) => qr.active).length} active</span>
-          </div>
-          {qrCodes.length === 0 ? (
-            <p className="text-body-md text-text-secondary">No QR codes yet. Create one for a table, section or product.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-body-md">
-                <thead className="text-caption text-text-secondary">
-                  <tr>
-                    <th className="py-2 pr-4 font-medium">Name</th>
-                    <th className="py-2 pr-4 font-medium">Branch</th>
-                    <th className="py-2 pr-4 font-medium">Scans</th>
-                    <th className="py-2 pr-4 font-medium">Orders</th>
-                    <th className="py-2 pr-4 font-medium">Revenue</th>
-                    <th className="py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {qrCodes.map((qr) => (
-                    <tr key={qr.id} className="border-t border-border-subtle">
-                      <td className="py-2 pr-4">
-                        <span className="font-semibold text-on-surface">{qr.name}</span>
-                        <span className="block text-caption text-text-tertiary truncate max-w-[260px]">{qr.destinationUrl}</span>
-                      </td>
-                      <td className="py-2 pr-4 text-text-secondary">{qr.branchName}</td>
-                      <td className="py-2 pr-4">{qr.scansCount}</td>
-                      <td className="py-2 pr-4">{qr.ordersCount}</td>
-                      <td className="py-2 pr-4">{formatNaira(qr.revenueGenerated)}</td>
-                      <td className="py-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleQrActive(qr.id)}
-                          disabled={qr.id.startsWith('pending-')}
-                          className={`px-3 py-1 rounded-full text-caption font-semibold ${
-                            qr.active ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-subtle text-text-secondary'
-                          }`}
-                        >
-                          {qr.active ? 'Active' : 'Paused'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
 
         {createModalOpen && (
           <div className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center p-4">

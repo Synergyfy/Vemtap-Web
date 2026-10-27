@@ -93,6 +93,24 @@ export const catalogueItemsService = {
       .then(asList)
       .then((items) => (query.itemType ? items.filter((item) => (item.itemType ?? 'product') === query.itemType) : items)),
   create: (input: CatalogueItemInput) => api.post<CatalogueItem>('/catalogue/items', input),
+  /** `POST /catalogue/items/bulk` — creates many items at a branch; per-row success / error. */
+  bulkCreate: (body: {
+    branchId: string;
+    items: {
+      name: string;
+      price: number;
+      shortDescription?: string;
+      description?: string;
+      category?: string;
+      stockQuantity?: number;
+      sku?: string;
+      barcode?: string;
+    }[];
+  }) =>
+    api.post<{ created: number; failed: number; results: { row: number; success: boolean; itemId?: string; error?: string }[] }>(
+      '/catalogue/items/bulk',
+      body,
+    ),
   update: (id: string, input: CatalogueItemUpdate) => api.patch<CatalogueItem>(`/catalogue/items/${id}`, input),
   /** Permanent delete everywhere; the backend needs `applyGlobally` (or a branchId). */
   remove: (id: string) => api.del<unknown>(`/catalogue/items/${id}`, { params: { applyGlobally: true } }),

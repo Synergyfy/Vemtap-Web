@@ -19,6 +19,11 @@ export interface Branch {
   logoUrl?: string | null;
   about?: string | null;
   businessHours?: Record<string, unknown> | null;
+  /** Manager contact and district from the add-branch form. */
+  managerName?: string | null;
+  managerEmail?: string | null;
+  managerPhone?: string | null;
+  district?: string | null;
   createdAt?: string;
 }
 
@@ -31,6 +36,10 @@ export interface CreateBranchInput {
   state?: string;
   phone?: string;
   officialEmail?: string;
+  managerName?: string;
+  managerEmail?: string;
+  managerPhone?: string;
+  district?: string;
 }
 
 /** Mirrors `UpdateBranchDto`; `isActive: true` reactivates a paused location. */
@@ -41,6 +50,8 @@ export interface UpdateBranchInput extends Partial<CreateBranchInput> {
   longitude?: number;
   isMainBranch?: boolean;
   isActive?: boolean;
+  /** Per-day `{ open: 'HH:mm', close: 'HH:mm' }` or `{ closed: true }`, keyed by weekday. */
+  businessHours?: Record<string, { open?: string; close?: string; closed?: boolean }>;
 }
 
 export const branchService = {

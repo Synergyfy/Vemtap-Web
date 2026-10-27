@@ -7,6 +7,7 @@ export { notificationService } from './notificationService';
 export { messageService } from './messageService';
 export { reviewService } from './reviewService';
 export { commentService } from './commentService';
+export { dealEngagementService } from './dealEngagementService';
 export { supportService } from './supportService';
 export { messagingSocket, getMessagingSocket, disposeMessagingSocket, setActiveThread, getActiveThread, joinThread, leaveThread, emitTyping, markRead, markDelivered } from './messagingSocket';
 export { socketService } from './socketService';

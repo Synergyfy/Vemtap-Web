@@ -1,4 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
+import { hasApiConfig } from '../../services/api/client';
+import { useActiveSubscription, useSubscriptionPlans } from '../../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, renewalDate, trialDaysLeft } from '../subscriptionLive';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionTrialActiveScreenProps {
@@ -44,6 +47,26 @@ export function DesktopSubscriptionTrialActiveScreen({
   onSubscribe,
   onCreateCampaign,
 }: DesktopSubscriptionTrialActiveScreenProps) {
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  const plans = useSubscriptionPlans();
+
+  // Live: the real trial subscription drives the timeline; demo keeps the
+  // scripted "day 7 of 30" snapshot.
+  const sub = subscription.data ?? null;
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = sub?.plan?.name ?? featured?.name ?? 'Growth';
+  const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
+  const totalDays = featured?.trialDurationDays ?? 30;
+  const daysLeft = live ? (trialDaysLeft(sub) ?? 0) : 23;
+  const elapsed = Math.max(0, totalDays - daysLeft);
+  const widthPct = totalDays ? Math.round((elapsed / totalDays) * 1000) / 10 : 0;
+  const ringPct = live ? widthPct / 100 : RING_PCT;
+  const startText = sub?.startDate
+    ? new Date(sub.startDate).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+  const endText = renewalDate(sub?.trialEndsAt ?? sub?.endDate);
+
   return (
     <SubscriptionChrome
       onBrand={onBack}
@@ -63,13 +86,15 @@ export function DesktopSubscriptionTrialActiveScreen({
                     Live Subscription
                   </span>
                 </span>
-                <span className="font-caption text-caption text-text-tertiary">Merchant ID #VEM-88204</span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  Merchant ID {live && sub?.id ? `#VEM-${sub.id.replace(/-/g, '').slice(0, 6).toUpperCase()}` : '#VEM-88204'}
+                </span>
               </div>
               <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
-                VEMTAP Growth Trial Active
+                {planName} Trial Active
               </h1>
               <p className="font-body-lg text-body-lg text-text-secondary">
-                You're currently exploring VEMTAP Growth for free.
+                You're currently exploring VEMTAP {planName} for free.
               </p>
             </div>
             <div className="flex items-center gap-space-xs px-space-sm py-space-2xs rounded-full bg-surface-canvas/80 border border-border-subtle/60 shadow-sm">
@@ -89,7 +114,7 @@ export function DesktopSubscriptionTrialActiveScreen({
                     Plan Timeline
                   </span>
                   <div className="flex items-baseline gap-space-2xs mt-space-2xs">
-                    <span className="font-heading-lg text-heading-lg text-primary-container font-bold">23</span>
+                    <span className="font-heading-lg text-heading-lg text-primary-container font-bold">{daysLeft}</span>
                     <span className="font-label-md text-label-md text-text-primary font-semibold">days remaining</span>
                   </div>
                 </div>
@@ -103,35 +128,39 @@ export function DesktopSubscriptionTrialActiveScreen({
                       fill="none"
                       stroke="currentColor"
                       className="text-primary-container"
-                      strokeDasharray={`${RING_PCT * RING_C} ${RING_C}`}
+                      strokeDasharray={`${ringPct * RING_C} ${RING_C}`}
                       strokeLinecap="round"
                       strokeWidth="6"
                     />
                   </svg>
                   <span className="absolute inset-0 flex items-center justify-center font-label-md text-label-md text-primary-container font-bold">
-                    23%
+                    {live ? widthPct : 23}%
                   </span>
                 </div>
               </div>
               <div className="relative z-10 flex flex-col gap-space-2xs mb-space-md">
                 <div className="w-full bg-surface-container rounded-full h-2.5 overflow-hidden flex gap-0.5 p-0.5">
-                  <div className="bg-primary-container h-full rounded-full" style={{ width: '23.33%' }} />
+                  <div className="bg-primary-container h-full rounded-full" style={{ width: `${live ? widthPct : 23.33}%` }} />
                   <div className="bg-border-active/40 h-full flex-1 rounded-full" />
                 </div>
                 <div className="flex justify-between items-center text-text-secondary">
-                  <span className="font-caption text-caption">Day 7 of 30 used</span>
-                  <span className="font-caption text-caption font-medium text-text-primary">23% elapsed</span>
+                  <span className="font-caption text-caption">
+                    Day {live ? elapsed : 7} of {totalDays} used
+                  </span>
+                  <span className="font-caption text-caption font-medium text-text-primary">
+                    {live ? widthPct : 23}% elapsed
+                  </span>
                 </div>
               </div>
               <div className="relative z-10 flex items-center justify-between pt-space-xs text-text-secondary bg-surface-canvas/60 rounded-xl px-space-sm py-space-2xs">
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="calendar_today" className="text-[15px] text-text-tertiary" />
-                  <span className="font-caption text-caption">Oct 18, 2024</span>
+                  <span className="font-caption text-caption">{startText ?? 'Oct 18, 2024'}</span>
                 </div>
                 <span className="font-caption text-caption text-text-tertiary">•</span>
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="event_available" className="text-[15px] text-text-tertiary" />
-                  <span className="font-caption text-caption font-medium text-text-primary">Nov 17, 2024</span>
+                  <span className="font-caption text-caption font-medium text-text-primary">{endText ?? 'Nov 17, 2024'}</span>
                 </div>
               </div>
             </section>
@@ -143,7 +172,7 @@ export function DesktopSubscriptionTrialActiveScreen({
                 </div>
                 <div className="min-w-0">
                   <p className="font-label-md text-label-md font-semibold text-text-primary">
-                    Get seen 3.4x more with Growth
+                    Get seen 3.4x more with {planName}
                   </p>
                   <p className="font-caption text-caption text-text-secondary mt-space-2xs leading-snug">
                     Your trial keeps the lights on — Growth puts you at the top of neighborhood discovery with priority
@@ -178,7 +207,10 @@ export function DesktopSubscriptionTrialActiveScreen({
                 onClick={onSubscribe}
               >
                 <Icon name="verified" className="text-[18px]" />
-                <span>Subscribe Now &amp; Lock In Growth (₦5,000/mo)</span>
+                <span>
+                  Subscribe Now &amp; Lock In {planName}
+                  {priceLine ? ` (${priceLine.split(' / ')[0]}/mo)` : ' (₦5,000/mo)'}
+                </span>
               </button>
             </section>
 

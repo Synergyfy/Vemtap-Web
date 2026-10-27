@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useSessionUser } from '../hooks/useSessionUser';
 import type { ProfileBranch } from '../services/businessService';
+import { hasApiConfig } from '../services/api/client';
 
 export interface BusinessBranchData {
   key: string;
@@ -128,13 +130,25 @@ export function BusinessBranchProvider({
   canSwitchLocations?: boolean;
 }) {
   const myBusiness = useMyBusiness();
+  const session = useSessionUser().data;
+  // Owners see every branch; managers and staff only the branch their account belongs to.
+  const scopedBranchId = session && session.role !== 'Owner' ? session.branchId ?? null : null;
   const liveBranches = useMemo(
-    () => (myBusiness.data?.branches ?? []).filter((b) => b.id && b.isActive !== false).map(toBranchData),
-    [myBusiness.data],
+    () =>
+      (myBusiness.data?.branches ?? [])
+        .filter((b) => b.id && b.isActive !== false && (!scopedBranchId || b.id === scopedBranchId))
+        .map(toBranchData),
+    [myBusiness.data, scopedBranchId],
   );
   const isLive = liveBranches.length > 0;
   // Never mix sample branches into a live business: their keys would reach branch-scoped APIs.
-  const branches = isLive ? liveBranches : BUSINESS_BRANCHES;
+  // In API mode, until branches load (or when there are none) use an id-less placeholder so
+  // screens show empty values instead of the demo business.
+  const placeholder = useMemo<BusinessBranchData[]>(() => {
+    const label = myBusiness.isLoading ? 'Loading…' : 'No branch yet';
+    return [{ key: 'pending', name: label, shortName: label, area: '', stats: EMPTY_STATS }];
+  }, [myBusiness.isLoading]);
+  const branches = isLive ? liveBranches : hasApiConfig() ? placeholder : BUSINESS_BRANCHES;
 
   const [branchKey, setBranchKey] = useState<string>(() => readStoredBranch() ?? 'wuse-ii');
   const [switching, setSwitching] = useState(false);
@@ -161,7 +175,15 @@ export function BusinessBranchProvider({
 
   return (
     <BusinessBranchContext.Provider
-      value={{ branch, branches, switching, canSwitchLocations, switchTo, activeBranchId: branch.id, isLive }}
+      value={{
+        branch,
+        branches,
+        switching,
+        canSwitchLocations: canSwitchLocations && !scopedBranchId,
+        switchTo,
+        activeBranchId: branch.id,
+        isLive,
+      }}
     >
       {children}
     </BusinessBranchContext.Provider>

@@ -2,6 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { runExportCenter } from '../utils/exportCenter';
+import { downloadBase64 } from '../utils/exportCsv';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { businessAnalyticsService, type ExportModule } from '../services/businessAnalyticsService';
+import { analyticsRange } from '../hooks/business/useBusinessAnalytics';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { periodLabel, useAnalyticsFilter } from './analyticsLive';
 
 interface AnalyticsExportScreenProps {
   onBack: () => void;
@@ -41,6 +48,22 @@ const DELIVERY = [
 
 type ExportState = 'idle' | 'loading' | 'done';
 
+/**
+ * The screen's module keys vs the backend's report sections: sales/inventory
+ * both draw on `overview` (top items cover units sold), and staff spans the
+ * POS cashier table plus the supervisor audit log.
+ */
+const MODULE_SECTIONS: Record<string, ExportModule[]> = {
+  sales: ['overview'],
+  customers: ['customers'],
+  deals: ['deals'],
+  locations: ['locations'],
+  inventory: ['overview'],
+  staff: ['pos', 'audit'],
+};
+
+const toSections = (keys: string[]) => [...new Set(keys.flatMap((key) => MODULE_SECTIONS[key] ?? []))];
+
 function Row({
   children,
   className = '',
@@ -69,16 +92,32 @@ export function AnalyticsExportScreen({ onBack }: AnalyticsExportScreenProps) {
   });
   const [delivery, setDelivery] = useState<string>('download');
   const [state, setState] = useState<ExportState>('idle');
+  const [toast, setToast] = useState<string | null>(null);
   const stateTimer = useRef<number | null>(null);
   const resetTimer = useRef<number | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  const live = hasApiConfig();
+  const filter = useAnalyticsFilter();
+  const { branches } = useBusinessBranch();
+  const branchLabel = filter.branchId
+    ? (branches.find((branch) => branch.id === filter.branchId)?.name ?? 'All locations')
+    : 'All locations';
 
   useEffect(
     () => () => {
       if (stateTimer.current !== null) window.clearTimeout(stateTimer.current);
       if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     },
     [],
   );
+
+  const showToast = (message: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+  };
 
   const selectedCount = MODULES.filter((module) => checked[module.key]).length;
   const allSelected = selectedCount === MODULES.length;
@@ -88,19 +127,42 @@ export function AnalyticsExportScreen({ onBack }: AnalyticsExportScreenProps) {
     setChecked(Object.fromEntries(MODULES.map((module) => [module.key, next])));
   };
 
+  const selectedKeys = MODULES.filter((module) => checked[module.key]).map((module) => module.key as string);
+
   const generate = () => {
     if (state !== 'idle' || selectedCount === 0) return;
     setState('loading');
-    stateTimer.current = window.setTimeout(() => {
-      runExportCenter({
+
+    if (!live) {
+      stateTimer.current = window.setTimeout(() => {
+        runExportCenter({
+          format,
+          selectedKeys,
+          timeframe: 'Sep 10 – Oct 10, 2026',
+          branchFilter: 'All Locations (3)',
+        });
+        setState('done');
+        resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
+      }, 1400);
+      return;
+    }
+
+    businessAnalyticsService
+      .export({
         format,
-        selectedKeys: MODULES.filter((module) => checked[module.key]).map((module) => module.key as string),
-        timeframe: 'Sep 10 – Oct 10, 2026',
-        branchFilter: 'All Locations (3)',
+        modules: toSections(selectedKeys),
+        ...analyticsRange(filter.days),
+        branchId: filter.branchId ?? undefined,
+      })
+      .then((file) => {
+        downloadBase64(file.filename, file.mimeType, file.contentBase64);
+        setState('done');
+        resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
+      })
+      .catch((error: unknown) => {
+        showToast(apiErrorMessage(error, 'Could not generate the report.'));
+        setState('idle');
       });
-      setState('done');
-      resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
-    }, 1400);
   };
 
   const buttonLabel =
@@ -141,20 +203,22 @@ export function AnalyticsExportScreen({ onBack }: AnalyticsExportScreenProps) {
               <div className="flex items-center justify-between gap-space-xs">
                 <span className="font-caption text-caption text-text-secondary">Timeframe</span>
                 <span className="font-label-sm text-label-sm text-text-primary font-semibold">
-                  Sep 10 – Oct 10, 2026
+                  {live ? periodLabel(filter) : 'Sep 10 – Oct 10, 2026'}
                 </span>
               </div>
             </Row>
             <Row>
               <div className="flex items-center justify-between gap-space-xs">
                 <span className="font-caption text-caption text-text-secondary">Branch filter</span>
-                <span className="font-label-sm text-label-sm text-text-primary font-semibold">All Locations (3)</span>
+                <span className="font-label-sm text-label-sm text-text-primary font-semibold">
+                  {live ? branchLabel : 'All Locations (3)'}
+                </span>
               </div>
             </Row>
             <div className="px-space-sm py-space-xs border-t border-border-subtle flex items-center justify-between">
               <span className="font-caption text-caption text-text-secondary">Estimated volume</span>
               <span className="font-label-sm text-label-sm text-text-primary font-semibold">
-                512 orders · 1,482 customers
+                {live ? `${selectedCount} of ${MODULES.length} modules` : '512 orders · 1,482 customers'}
               </span>
             </div>
           </div>
@@ -313,6 +377,15 @@ export function AnalyticsExportScreen({ onBack }: AnalyticsExportScreenProps) {
           </div>
         </section>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100%-32px)]">
+          <div className="bg-inverse-surface text-inverse-on-surface font-label-sm text-label-sm px-space-md py-space-xs rounded-full shadow-lg flex items-center gap-space-2xs whitespace-nowrap">
+            <Icon name="error" className="text-[16px] text-badge-discount-text" />
+            <span className="truncate">{toast}</span>
+          </div>
+        </div>
+      )}
     </AppScreen>
   );
 }

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { exportEncryptedBackup, printOfflineXTape } from '../utils/posOffline';
+import { hasApiConfig } from '../services/api/client';
+import { timeLabel, useLivePos } from './posLive';
 
 interface BusinessPosOfflineBufferScreenProps {
   onBack: () => void;
@@ -99,6 +101,38 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
   const [backupState, setBackupState] = useState<ActionState>('idle');
   const [toast, setToast] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  // Live: the sales actually waiting on this device (PosOfflineContext).
+  const queued: QueuedTxn[] = live
+    ? pos.offline.queue.map((order, index, list) => {
+        const cash = order.tender.toLowerCase().includes('cash');
+        return {
+          id: order.ref,
+          time: `${timeLabel(new Date(order.takenAt).toISOString())}${index === list.length - 1 ? ' (First offline ticket)' : ''}`,
+          first: index === list.length - 1,
+          amount: order.total,
+          type: cash ? 'cash' : 'card',
+          method: order.tender,
+          items: order.items,
+          meta: `Cashier: ${pos.cashierName}`,
+          metaAccent: false,
+          metaMono: false,
+        };
+      })
+    : QUEUED_TXNS;
+  const queuedCash = queued.filter((txn) => txn.type === 'cash').length;
+  const queueTabs = live
+    ? [
+        { key: 'all' as const, label: `All Queued (${queued.length})` },
+        { key: 'cash' as const, label: `Cash Sales (${queuedCash})` },
+        { key: 'card' as const, label: `Card Swipes (${queued.length - queuedCash})` },
+        { key: 'audit' as const, label: 'Audit Trail' },
+      ]
+    : QUEUE_TABS;
+  const where = live ? `${pos.branchName} • ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse Branch • Till #01';
+  const tillMetaLabel = live ? `${pos.isOpen ? pos.tillName : 'No till'} (${pos.branchName})` : 'Till 01 (Wuse II)';
+  const cashierLabel = live ? pos.cashierName : 'Emeka Okafor';
   const toastTimer = useRef<number | null>(null);
 
   useEffect(
@@ -135,17 +169,17 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
 
   /** Real AES-GCM vault dump of the offline queue. */
   const exportVault = () =>
-    exportEncryptedBackup(QUEUED_TXNS, { till: 'Till 01 (Wuse II)', cashier: 'Emeka Okafor' });
+    exportEncryptedBackup(queued, { till: tillMetaLabel, cashier: cashierLabel });
 
   /** Local X-tape summary printed straight from the till. */
   const printXTape = () =>
-    printOfflineXTape(QUEUED_TXNS, {
-      till: 'Till 01 (Wuse II)',
-      cashier: 'Emeka Okafor',
+    printOfflineXTape(queued, {
+      till: tillMetaLabel,
+      cashier: cashierLabel,
       networkNote: 'Offline — transactions buffered locally',
     });
 
-  const rows = QUEUED_TXNS.filter((txn) => tab === 'all' || tab === 'audit' || txn.type === tab);
+  const rows = queued.filter((txn) => tab === 'all' || tab === 'audit' || txn.type === tab);
 
   return (
     <AppScreen>
@@ -189,10 +223,10 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
               <Icon name="cloud_off" className="text-tertiary text-[19px] shrink-0 animate-pulse" />
               <div className="flex flex-col min-w-0">
                 <span className="font-label-md text-label-md text-on-tertiary-fixed font-semibold truncate">
-                  Wuse Branch • Till #01
+                  {where}
                 </span>
                 <span className="font-caption text-caption text-on-tertiary-fixed-variant truncate">
-                  Offline (Encrypted Local Storage Active)
+                  {live && pos.offline.isOnline ? 'Online — queued sales sync automatically' : 'Offline (Encrypted Local Storage Active)'}
                 </span>
               </div>
             </div>
@@ -212,13 +246,15 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
                 <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
                   Device Queue
                 </span>
-                <h2 className="font-heading-md text-heading-md text-text-primary mt-0.5 font-bold">5 Pending</h2>
+                <h2 className="font-heading-md text-heading-md text-text-primary mt-0.5 font-bold">{live ? queued.length : 5} Pending</h2>
               </div>
               <div className="text-right min-w-0">
                 <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
                   Queued Volume
                 </span>
-                <p className="font-heading-md text-heading-md text-primary font-bold mt-0.5">₦68,450.00</p>
+                <p className="font-heading-md text-heading-md text-primary font-bold mt-0.5">
+                  {live ? amountLabel(queued.reduce((sum, txn) => sum + txn.amount, 0)) : '₦68,450.00'}
+                </p>
               </div>
             </div>
 
@@ -253,7 +289,7 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
         {/* Filter tabs */}
         <div className="px-margin pt-space-xs pb-space-sm">
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-0.5">
-            {QUEUE_TABS.map((item) => {
+            {queueTabs.map((item) => {
               const isActive = tab === item.key;
               return (
                 <button

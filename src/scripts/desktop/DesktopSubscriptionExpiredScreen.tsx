@@ -1,4 +1,6 @@
 import { Icon } from '../../components/ui/Icon';
+import { useSubscriptionPlans } from '../../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine } from '../subscriptionLive';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionExpiredScreenProps {
@@ -41,6 +43,12 @@ export function DesktopSubscriptionExpiredScreen({
   onActivate,
   onViewBusiness,
 }: DesktopSubscriptionExpiredScreenProps) {
+  const plans = useSubscriptionPlans();
+  // Live: the API's featured plan; demo keeps the scripted Growth figures.
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = featured?.name ?? 'Growth';
+  const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
+
   return (
     <SubscriptionChrome activeNav="billing" breadcrumb="Trial Expired">
       <div className="max-w-6xl mx-auto px-margin py-space-xl w-full flex flex-col gap-space-xl">
@@ -59,7 +67,7 @@ export function DesktopSubscriptionExpiredScreen({
               Your VEMTAP trial has ended
             </h1>
             <p className="font-body-lg text-body-lg text-text-secondary max-w-lg">
-              Your business information is completely safe. Subscribe to VEMTAP Growth to continue using the full
+              Your business information is completely safe. Subscribe to VEMTAP {planName} to continue using the full
               business experience.
             </p>
             <div className="flex items-center gap-space-xs mt-space-xs">
@@ -130,10 +138,14 @@ export function DesktopSubscriptionExpiredScreen({
                 Official Plan
               </span>
             </div>
-            <h2 className="font-heading-md text-heading-md text-text-primary">VEMTAP Growth</h2>
+            <h2 className="font-heading-md text-heading-md text-text-primary">VEMTAP {planName}</h2>
             <div className="flex items-baseline gap-space-2xs mt-space-2xs mb-space-md">
-              <span className="font-heading-lg text-heading-lg text-text-primary font-bold">₦5,000</span>
-              <span className="font-caption text-caption text-text-secondary">/ month</span>
+              <span className="font-heading-lg text-heading-lg text-text-primary font-bold">
+                {priceLine ? priceLine.split(' / ')[0] : '₦5,000'}
+              </span>
+              <span className="font-caption text-caption text-text-secondary">
+                / {priceLine ? priceLine.split(' / ')[1] : 'month'}
+              </span>
             </div>
 
             <div className="flex flex-col gap-space-xs mb-space-md">
@@ -153,7 +165,7 @@ export function DesktopSubscriptionExpiredScreen({
               className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md flex items-center justify-center gap-space-xs hover:bg-primary active:scale-[0.98] transition-all"
             >
               <Icon name="bolt" filled className="text-[18px]" />
-              <span>Activate Growth</span>
+              <span>Activate {planName}</span>
             </button>
             <p className="text-center font-caption text-caption text-text-tertiary mt-space-xs">
               Instant reactivation — everything restores in seconds.

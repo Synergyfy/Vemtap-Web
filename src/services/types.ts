@@ -83,6 +83,8 @@ export interface SegmentCriteria {
     offerIds?: string[];
     redeemedAtLeast?: number;
     withinDays?: number;
+    /** Saved to their wallet but never redeemed. */
+    savedNotRedeemed?: boolean;
   };
   menu?: {
     itemIds?: string[];
@@ -91,11 +93,14 @@ export interface SegmentCriteria {
   location?: {
     branchIds?: string[];
     radiusKm?: number;
+    homeDistrictIds?: string[];
   };
   recency?: {
     visitedWithinDays?: number;
     notVisitedForDays?: number;
     minVisits?: number;
+    /** Any touch (incl. chat) in the last N days. */
+    interactedWithinDays?: number;
   };
   spend?: {
     minTotal?: number;

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useLiveRecipients } from './messagesLive';
 
 interface BusinessNewMessageScreenProps {
   onBack: () => void;
-  onRecipientSelected: (name: string, context: string) => void;
+  /** Live: also hands over the customer's user id so the chat can be opened. */
+  onRecipientSelected: (name: string, context: string, customerId?: string) => void;
 }
 
 type AudienceChipKey = 'recent' | 'orders' | 'bookings' | 'deals' | 'all';
@@ -33,9 +36,91 @@ interface Recipient {
   status: string;
   statusPrimary?: boolean;
   category: 'orders' | 'bookings' | 'deals' | 'loyalty' | 'inquiry';
+  /** Live: the customer's user id. */
+  customerId?: string;
 }
 
-const RECIPIENTS: Recipient[] = [];
+const RECIPIENTS: Recipient[] = [
+  {
+    id: 'michael',
+    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAp9wIOf7dV37VydYMTjjIgoKYwSkhRJGoOu8nxGxPnVlUHvddoEnpra8-9J3YlCuQkYELJEdIz90dSsFZs74Q66vn5tA7dFzTH9pkhN6Bx4DPxcVRu1Zp6TI0eJ9wJO5ambAAm9weXp3XBwh8tJYZFHVWSFi_FV885dltx2DHAVPRXctclhhH4e0hMQNt8MB82dolNUCfiQdlPK04dGnW8t-dosllyuve9UsTS7yQ8anXGnvhEeThcgg',
+    alt: 'Modern close up headshot portrait of a smiling young African male customer with warm studio lighting wearing a casual navy jacket against an elegant blurred background',
+    name: 'Michael James',
+    verified: true,
+    tagIcon: 'receipt_long',
+    tagLabel: 'Order #VG-94021 • Ribeye Steak',
+    tagClass: 'bg-surface-tint-blue text-primary-container',
+    phone: '+234 803 219 8831',
+    status: 'Active 15m ago',
+    statusPrimary: true,
+    category: 'orders',
+  },
+  {
+    id: 'sarah',
+    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBryqAQ9o6KnQCxV2VoFSjIaIdatam1027D1atdZ3FhUCBUhPW5niR960DOMzIHpzkiEFBKG-wQgWK4XA__rx1Pudg8VkY08jpydlDmXqPe8pRlVpGsKCL78k0r5pKvQRJY3UefNeoqYC34vYnvdftTc7SCZzlm_GOrHSPgZH0ih8FupjOB_a92Ztx0w--YzyXqpPj4Wet4OWJwT0Ux0-J3ONBqG0AwgFY5i6hjNgG8az9_Yk8IqCb4AQ',
+    alt: 'Vibrant daylight outdoor portrait of an energetic young professional woman with natural hair and bright genuine expression wearing minimal chic accessories',
+    name: 'Sarah Adams',
+    verified: true,
+    tagIcon: 'local_offer',
+    tagLabel: 'Claimed 20% Lunch Combo',
+    tagClass: 'bg-badge-discount-bg text-badge-discount-text',
+    phone: '+234 812 443 0912',
+    status: 'Today, 10:15 AM',
+    category: 'deals',
+  },
+  {
+    id: 'chidi',
+    initials: 'CO',
+    initialsClass: 'bg-secondary-container text-on-secondary-container',
+    name: 'Dr. Chidi Okafor',
+    verified: true,
+    tagIcon: 'calendar_month',
+    tagLabel: 'Booking #BK-77402 • Table of 4',
+    tagClass: 'bg-surface-container-high text-on-surface',
+    phone: '+234 802 771 9044',
+    status: 'Reserved: Sat Oct 19',
+    category: 'bookings',
+  },
+  {
+    id: 'amaka',
+    img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDCH5ef6YqvI2KCikW9eTZwKvPltBvM5XVF45qSvdyzEnq51JZW3iDWn1TwaDphUHueTkrB1m3awi3aNLZajkqSWvLPcDFgnuDvZ0kY_KU3s_0HieUefg4C4GNYenJ4x7zu9H-HW8GaVbeKnIFOoJV-tVhE02igH5BYQ7117ELiRZ1ZmVrhpi_ih8l0Q_TLDbMNjkP8nC8_fLVYjusJDamMYMFjlhiH8aGlXxD1lEtsT2m9wxY_jdxI-w',
+    alt: 'Minimalist clean aesthetics product display studio portrait of organic wellness items and warm skin cosmetics on soft pastel background with pleasant lighting',
+    name: 'Amaka Beauty & Wellness',
+    verified: true,
+    tagIcon: 'inventory_2',
+    tagLabel: 'Product Inquiry • Glow Serum',
+    tagClass: 'bg-tertiary-fixed text-on-tertiary-fixed',
+    phone: '+234 818 902 3341',
+    status: 'Inquired 1h ago',
+    category: 'inquiry',
+  },
+  {
+    id: 'halima',
+    initials: 'HY',
+    initialsClass: 'bg-primary-fixed text-on-primary-fixed',
+    name: 'Halima Yusuf',
+    verified: true,
+    tagIcon: 'star',
+    tagLabel: 'Past Customer • 3 Orders',
+    tagClass: 'bg-surface-subtle text-text-primary',
+    tagIconFill: true,
+    phone: '+234 805 112 7890',
+    status: 'Repeat Patron',
+    category: 'loyalty',
+  },
+  {
+    id: 'tunde',
+    initials: 'TB',
+    initialsClass: 'bg-surface-dim text-on-surface-variant',
+    name: 'Tunde Bakare',
+    tagIcon: 'corporate_fare',
+    tagLabel: 'Corporate Catering Inquiry',
+    tagClass: 'bg-surface-tint-blue text-primary',
+    phone: '+234 803 555 1204',
+    status: 'New Lead',
+    category: 'inquiry',
+  },
+];
 
 export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: BusinessNewMessageScreenProps) {
   const [query, setQuery] = useState('');
@@ -61,7 +146,10 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
   const handleSelect = (recipient: Recipient) => {
     showToast(`Connecting to ${recipient.name}...`);
     if (selectTimer.current !== null) window.clearTimeout(selectTimer.current);
-    selectTimer.current = window.setTimeout(() => onRecipientSelected(recipient.name, recipient.tagLabel), 1200);
+    selectTimer.current = window.setTimeout(
+      () => onRecipientSelected(recipient.name, recipient.tagLabel, recipient.customerId),
+      live ? 300 : 1200,
+    );
   };
 
   const matchesChip = (recipient: Recipient) => {
@@ -72,10 +160,35 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
     return true;
   };
 
-  const visibleRecipients = RECIPIENTS.filter(
+  // Live: the business's customers (search runs on the server).
+  const liveList = useLiveRecipients(query);
+  const live = liveList.live;
+  useEffect(() => {
+    if (live && liveList.error) showToast(apiErrorMessage(liveList.error, 'Could not load customers.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveList.error]);
+  const recipients: Recipient[] = live
+    ? liveList.recipients.map((row) => ({
+        id: row.customerId,
+        customerId: row.customerId,
+        img: row.avatar,
+        alt: row.name,
+        initials: row.initials,
+        initialsClass: 'bg-secondary-container text-on-secondary-container',
+        name: row.name,
+        tagIcon: row.tagIcon,
+        tagLabel: row.tagLabel,
+        tagClass: 'bg-surface-tint-blue text-primary-container',
+        phone: row.phone,
+        status: row.status,
+        category: row.category,
+      }))
+    : RECIPIENTS;
+
+  const visibleRecipients = recipients.filter(
     (recipient) =>
       matchesChip(recipient) &&
-      (query.trim() === '' || recipient.name.toLowerCase().includes(query.trim().toLowerCase())),
+      (live || query.trim() === '' || recipient.name.toLowerCase().includes(query.trim().toLowerCase())),
   );
 
   return (
@@ -198,68 +311,62 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
         </div>
 
         {/* Recipient List Stack */}
-        {visibleRecipients.length === 0 ? (
-          <div className="px-margin pt-space-sm">
-            <div className="w-full bg-surface-container-low rounded-xl p-space-lg text-center shadow-sm">
-              <div className="w-14 h-14 mx-auto mb-space-sm rounded-full bg-surface-tint-blue flex items-center justify-center">
-                <Icon name="people" className="text-primary text-[28px]" />
+        <div className="px-margin flex flex-col gap-space-xs">
+          {live && !liveList.loading && !visibleRecipients.length && (
+            <p className="font-caption text-caption text-text-secondary px-1 py-2">
+              {query.trim() ? 'No customers match your search.' : 'No customers yet — they appear here after their first visit or order.'}
+            </p>
+          )}
+          {visibleRecipients.map((recipient) => (
+            <button
+              className="customer-card relative flex items-center gap-space-sm p-3.5 bg-surface-canvas rounded-xl shadow-sm hover:shadow-md active:bg-surface-subtle transition-all cursor-pointer text-left w-full"
+              key={recipient.id}
+              type="button"
+              onClick={() => handleSelect(recipient)}
+            >
+              <div className="relative w-12 h-12 shrink-0">
+                {recipient.img ? (
+                  <img alt={recipient.alt} className="w-12 h-12 rounded-full object-cover shadow-sm" src={recipient.img} />
+                ) : (
+                  <div
+                    className={`w-12 h-12 rounded-full flex items-center justify-center font-label-md font-semibold shadow-sm ${recipient.initialsClass}`}
+                  >
+                    {recipient.initials}
+                  </div>
+                )}
+                {!live && recipient.id === 'michael' && (
+                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-badge-discount-text ring-2 ring-surface-canvas" />
+                )}
               </div>
-              <h4 className="font-heading-sm text-heading-sm text-on-surface mb-1">No customer threads yet</h4>
-              <p className="font-body-md text-body-md text-text-secondary max-w-xs mx-auto">
-                Customer conversations and live leads will appear here once the backend starts returning real chat data.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="px-margin flex flex-col gap-space-xs">
-            {visibleRecipients.map((recipient) => (
-              <button
-                className="customer-card relative flex items-center gap-space-sm p-3.5 bg-surface-canvas rounded-xl shadow-sm hover:shadow-md active:bg-surface-subtle transition-all cursor-pointer text-left w-full"
-                key={recipient.id}
-                type="button"
-                onClick={() => handleSelect(recipient)}
-              >
-                <div className="relative w-12 h-12 shrink-0">
-                  {recipient.img ? (
-                    <img alt={recipient.alt} className="w-12 h-12 rounded-full object-cover shadow-sm" src={recipient.img} />
-                  ) : (
-                    <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center font-label-md font-semibold shadow-sm ${recipient.initialsClass}`}
-                    >
-                      {recipient.initials}
-                    </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
+                    {recipient.name}
+                  </span>
+                  {recipient.verified && (
+                    <Icon name="verified" filled className="text-primary-container text-[16px] shrink-0" />
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                      {recipient.name}
-                    </span>
-                    {recipient.verified && (
-                      <Icon name="verified" filled className="text-primary-container text-[16px] shrink-0" />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-caption text-caption font-medium max-w-full ${recipient.tagClass}`}
-                    >
-                      <Icon name={recipient.tagIcon} filled={recipient.tagIconFill} className="text-[13px] shrink-0" />
-                      <span className="truncate">{recipient.tagLabel}</span>
-                    </span>
-                  </div>
-                  <p className="font-caption text-caption text-text-secondary mt-1 flex items-center gap-1.5 truncate">
-                    <span>{recipient.phone}</span>
-                    <span className="w-1 h-1 rounded-full bg-outline-variant shrink-0" />
-                    <span className={recipient.statusPrimary ? 'text-primary-container font-medium' : ''}>
-                      {recipient.status}
-                    </span>
-                  </p>
+                <div className="flex items-center gap-1 mt-1">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-caption text-caption font-medium max-w-full ${recipient.tagClass}`}
+                  >
+                    <Icon name={recipient.tagIcon} filled={recipient.tagIconFill} className="text-[13px] shrink-0" />
+                    <span className="truncate">{recipient.tagLabel}</span>
+                  </span>
                 </div>
-                <Icon name="chevron_right" className="text-outline-variant text-[20px] shrink-0" />
-              </button>
-            ))}
-          </div>
-        )}
+                <p className="font-caption text-caption text-text-secondary mt-1 flex items-center gap-1.5 truncate">
+                  <span>{recipient.phone}</span>
+                  <span className="w-1 h-1 rounded-full bg-outline-variant shrink-0" />
+                  <span className={recipient.statusPrimary ? 'text-primary-container font-medium' : ''}>
+                    {recipient.status}
+                  </span>
+                </p>
+              </div>
+              <Icon name="chevron_right" className="text-outline-variant text-[20px] shrink-0" />
+            </button>
+          ))}
+        </div>
 
         {/* Smart Helper Floating Card */}
         <div className="px-margin pt-space-lg">

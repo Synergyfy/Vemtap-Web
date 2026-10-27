@@ -1,4 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { catalogueItemsService } from '../../services/catalogueItemsService';
+import { offersService } from '../../services/offersService';
 import { hasApiConfig } from '../../services/api/client';
 import { branchService, type CreateBranchInput, type UpdateBranchInput } from '../../services/branchService';
 import { teamService, type InviteStaffInput, type UpdateStaffInput } from '../../services/teamService';
@@ -47,5 +49,39 @@ export function useTeamMutations() {
       onSuccess: refresh,
     }),
     resend: useMutation({ mutationFn: ({ id, branchId }: { id: string; branchId?: string }) => teamService.resendInvite(id, branchId) }),
+    resetPin: useMutation({ mutationFn: ({ id, branchId }: { id: string; branchId?: string }) => teamService.resetPin(id, branchId) }),
   };
+}
+
+/** Products, services and active deals at each branch (one query per branch). */
+export function useBranchCatalogueCounts(branchIds: string[]) {
+  const live = hasApiConfig();
+  const items = useQueries({
+    queries: branchIds.map((branchId) => ({
+      queryKey: ['catalogue-items', branchId, 'any'],
+      queryFn: () => catalogueItemsService.list({ branchId, limit: 100 }),
+      enabled: live,
+    })),
+  });
+  const offers = useQueries({
+    queries: branchIds.map((branchId) => ({
+      queryKey: ['offers', 'list', branchId],
+      queryFn: () => offersService.list(branchId),
+      enabled: live,
+    })),
+  });
+  return Object.fromEntries(
+    branchIds.map((branchId, index) => {
+      const list = items[index]?.data;
+      const deals = offers[index]?.data;
+      return [
+        branchId,
+        {
+          products: list ? list.filter((item) => item.itemType !== 'service').length : null,
+          services: list ? list.filter((item) => item.itemType === 'service').length : null,
+          deals: deals ? deals.filter((offer) => offer.status === 'active').length : null,
+        },
+      ];
+    }),
+  ) as Record<string, { products: number | null; services: number | null; deals: number | null }>;
 }

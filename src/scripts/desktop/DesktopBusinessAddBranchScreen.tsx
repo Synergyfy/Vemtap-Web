@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useBranchMutations, useTeamMutations } from '../../hooks/business/useBranchesAndTeam';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import type { Branch } from '../../services/branchService';
 import { Icon } from '../../components/ui/Icon';
 import {
   OperatingHoursEditor,
@@ -10,8 +15,18 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 
 interface DesktopBusinessAddBranchScreenProps {
   onBack: () => void;
-  onSaved: () => void;
+  /** Live: receives the branch the API created. */
+  onSaved: (branch?: Branch) => void;
 }
+
+/** "8:00 AM" → "08:00" for the API's opening hours. */
+const to24h = (value: string) => {
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value.trim());
+  if (!match) return value;
+  let hour = Number(match[1]) % 12;
+  if (match[3].toUpperCase() === 'PM') hour += 12;
+  return `${String(hour).padStart(2, '0')}:${match[2]}`;
+};
 
 const GEOFENCE_MAP_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCBgb7jXvULnbCHh2Cc7OFg3W48zRxM7y56f8tsnMLP0iGJtOeFD_NjS5v2LKAw8N3o3P1TBBV4_ll9oE-EPHf2Bt9wKNxnxA_ZKu3ZvtLGobsTOqQ0TvZE51c1P9UTHQ1jgpINOc5iugRVQ64mlkGYP58qte-cJ8kRnJ-NeWFAL2GPOd6Vo3TOMSpVFV1vsybN8BiVOYQLpMKxYYHpC7gKmux6ZvjXxvFcI7aCYfG4';
@@ -31,16 +46,25 @@ const PERMITTED_MODULES: Array<{ icon: string; label: string }> = [
 ];
 
 export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusinessAddBranchScreenProps) {
-  const [branchName, setBranchName] = useState('Garki District Flagship');
-  const [address, setAddress] = useState('Plot 742, Tafawa Balewa Way, Area 11');
-  const [landmark, setLandmark] = useState('Directly opposite Area 11 Post Office, Wing B');
-  const [district, setDistrict] = useState('Abuja Municipal • Garki District, FCT');
-  const [branchPhone, setBranchPhone] = useState('+234 809 111 4455');
-  const [branchEmail, setBranchEmail] = useState('garki.store@urbangrill.ng');
-  const [leadName, setLeadName] = useState('Chidinma Okafor');
-  const [leadEmail, setLeadEmail] = useState('chidinma@urbangrill.ng');
-  const [leadWhatsapp, setLeadWhatsapp] = useState('+234 803 762 9901');
+  const [branchName, setBranchName] = useState(hasApiConfig() ? '' : 'Garki District Flagship');
+  const [address, setAddress] = useState(hasApiConfig() ? '' : 'Plot 742, Tafawa Balewa Way, Area 11');
+  const [landmark, setLandmark] = useState(hasApiConfig() ? '' : 'Directly opposite Area 11 Post Office, Wing B');
+  const [district, setDistrict] = useState(hasApiConfig() ? '' : 'Abuja Municipal • Garki District, FCT');
+  const [branchPhone, setBranchPhone] = useState(hasApiConfig() ? '' : '+234 809 111 4455');
+  const [branchEmail, setBranchEmail] = useState(hasApiConfig() ? '' : 'garki.store@urbangrill.ng');
+  const [leadName, setLeadName] = useState(hasApiConfig() ? '' : 'Chidinma Okafor');
+  const [leadEmail, setLeadEmail] = useState(hasApiConfig() ? '' : 'chidinma@urbangrill.ng');
+  const [leadWhatsapp, setLeadWhatsapp] = useState(hasApiConfig() ? '' : '+234 803 762 9901');
   const [role, setRole] = useState('Branch Manager');
+  // Live: the preview cards reflect what has been typed; there is no map / reach data yet.
+  const live = hasApiConfig();
+  const leadInitials =
+    leadName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]!.toUpperCase())
+      .join('') || '—';
   const [dashboardAccess, setDashboardAccess] = useState(true);
   const [customizeDays, setCustomizeDays] = useState(false);
   const [standardHours, setStandardHours] = useState<StandardHours>({
@@ -54,8 +78,63 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
+  // Live: the form creates a real branch (and invites its lead when access is granted).
+  const { create, update } = useBranchMutations();
+  const { invite } = useTeamMutations();
+  const [error, setError] = useState<string | null>(null);
+  const saveLive = async () => {
+    if (!branchName.trim()) {
+      setError('Give the branch a name.');
+      return;
+    }
+    const hours = Object.fromEntries(
+      WEEKDAYS.map((day) => {
+        const custom = customizeDays ? customDayHours.find((entry) => entry.day === day) : undefined;
+        const open = custom ? custom.open : standardHours.days.includes(day) ? standardHours.open : '';
+        const close = custom ? custom.close : standardHours.days.includes(day) ? standardHours.close : '';
+        return [day.toLowerCase(), open && close ? { open: to24h(open), close: to24h(close) } : { closed: true }];
+      }),
+    );
+    setStatus('saving');
+    setError(null);
+    try {
+      const branch = await create.mutateAsync({
+        name: branchName.trim(),
+        address: [address.trim(), landmark.trim()].filter(Boolean).join(' — ') || undefined,
+        district: district.trim() || undefined,
+        phone: branchPhone.trim() || undefined,
+        officialEmail: branchEmail.trim() || undefined,
+        managerName: leadName.trim() || undefined,
+        managerEmail: leadEmail.trim() || undefined,
+        managerPhone: leadWhatsapp.trim() || undefined,
+      });
+      await update.mutateAsync({ id: branch.id, input: { businessHours: hours } });
+      if (dashboardAccess && leadName.trim() && leadEmail.trim()) {
+        const [firstName, ...rest] = leadName.trim().split(/\s+/);
+        await invite
+          .mutateAsync({ firstName, lastName: rest.join(' ') || firstName, email: leadEmail.trim(), phone: leadWhatsapp.trim() || undefined, role: 'Manager', jobTitle: role, branchId: branch.id })
+          .catch(() => setError('Branch saved, but the lead invite could not be sent. Invite them from Staff.'));
+      }
+      setStatus('success');
+      timers.current.push(window.setTimeout(() => onSaved(branch), 800));
+    } catch (e) {
+      setStatus('idle');
+      setError(planErrorMessage(e) ?? apiErrorMessage(e, 'Could not add the branch.'));
+    }
+  };
+
+  useEffect(() => {
+    if (!error) return undefined;
+    const timer = window.setTimeout(() => setError(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   const handleSave = () => {
     if (status !== 'idle') return;
+    if (hasApiConfig()) {
+      void saveLive();
+      return;
+    }
     setStatus('saving');
     timers.current.push(
       window.setTimeout(() => {
@@ -455,7 +534,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                 <div
                   className="w-full h-full bg-cover bg-center"
                   data-location="Plot 742 Tafawa Balewa Way Garki Abuja Nigeria"
-                  style={{ backgroundImage: `url('${GEOFENCE_MAP_IMAGE}')` }}
+                  style={live ? undefined : { backgroundImage: `url('${GEOFENCE_MAP_IMAGE}')` }}
                 />
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="w-52 h-52 rounded-full border-2 border-primary/40 bg-primary/10 flex items-center justify-center animate-pulse">
@@ -465,35 +544,37 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-none drop-shadow-lg">
                   <div className="bg-on-surface text-on-primary px-space-sm py-1 rounded-full font-caption text-caption font-semibold flex items-center gap-space-2xs whitespace-nowrap shadow-md">
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    <span>Urban Grill (Garki Branch)</span>
+                    <span>{live ? branchName.trim() || 'New branch' : 'Urban Grill (Garki Branch)'}</span>
                   </div>
                   <Icon name="location_on" filled className="text-primary text-[38px] -mt-1" />
                 </div>
                 <div className="absolute bottom-3 left-3 right-3 bg-surface-canvas/90 backdrop-blur-md p-space-xs px-space-sm rounded-lg flex items-center justify-between text-on-surface shadow-sm">
                   <div className="flex items-center gap-space-xs font-caption text-caption text-text-secondary font-mono">
                     <Icon name="explore" className="text-[15px] text-primary" />
-                    <span>9.0348° N, 7.4891° E</span>
+                    <span>{live ? address.trim() || 'Pinned from the address you enter' : '9.0348° N, 7.4891° E'}</span>
                   </div>
-                  <div className="flex items-center gap-space-2xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                    <span className="font-caption text-caption text-badge-discount-text font-semibold">
-                      ±3m Accuracy
-                    </span>
-                  </div>
+                  {!live && (
+                    <div className="flex items-center gap-space-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
+                      <span className="font-caption text-caption text-badge-discount-text font-semibold">
+                        ±3m Accuracy
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="p-space-md grid grid-cols-3 gap-space-xs text-center bg-surface-subtle">
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary">Catchment Radius</span>
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">3.0 km</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{live ? '—' : '3.0 km'}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary">Est. Shoppers Reach</span>
-                  <span className="font-heading-sm text-heading-sm font-bold text-primary">~18,400</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-primary">{live ? '—' : '~18,400'}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary">Delivery Timeband</span>
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">12-25 min</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{live ? '—' : '12-25 min'}</span>
                 </div>
               </div>
             </div>
@@ -508,20 +589,26 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                 </span>
               </div>
               <div className="p-space-md rounded-xl bg-surface-container-low flex items-start gap-space-md">
-                <img
-                  className="w-14 h-14 rounded-full object-cover shadow-sm shrink-0"
-                  alt={LEAD_PORTRAIT_ALT}
-                  src={LEAD_PORTRAIT}
-                />
+                {live ? (
+                  <span className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-heading-sm text-heading-sm font-bold shadow-sm shrink-0">
+                    {leadInitials}
+                  </span>
+                ) : (
+                  <img
+                    className="w-14 h-14 rounded-full object-cover shadow-sm shrink-0"
+                    alt={LEAD_PORTRAIT_ALT}
+                    src={LEAD_PORTRAIT}
+                  />
+                )}
                 <div className="flex flex-col gap-space-2xs min-w-0">
                   <div className="flex items-center gap-space-xs">
                     <h4 className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">
-                      {leadName}
+                      {live ? leadName.trim() || 'Branch lead' : leadName}
                     </h4>
                     <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
                   </div>
-                  <p className="font-caption text-caption text-primary font-semibold">{role} • Garki Flagship</p>
-                  <p className="font-caption text-caption text-text-secondary truncate">{leadEmail}</p>
+                  <p className="font-caption text-caption text-primary font-semibold">{role} • {live ? branchName.trim() || 'New branch' : 'Garki Flagship'}</p>
+                  <p className="font-caption text-caption text-text-secondary truncate">{live ? leadEmail.trim() || '—' : leadEmail}</p>
                 </div>
               </div>
               <div className="flex flex-col gap-space-xs pt-space-2xs">
@@ -529,7 +616,12 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                   Permitted Modules
                 </span>
                 <div className="flex flex-wrap gap-space-2xs">
-                  {PERMITTED_MODULES.map((entry) => (
+                  {(live
+                    ? dashboardAccess
+                      ? PERMITTED_MODULES.map((entry) => (entry.label === 'Till 02 operations' ? { ...entry, label: 'POS operations' } : entry))
+                      : []
+                    : PERMITTED_MODULES
+                  ).map((entry) => (
                     <span
                       key={entry.label}
                       className="px-space-xs py-1 rounded-md bg-surface-subtle text-on-surface-variant font-caption text-caption flex items-center gap-space-2xs"
@@ -595,6 +687,11 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
           </div>
         </div>
       </div>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </BusinessSetupChrome>
   );
 }

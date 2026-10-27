@@ -7,6 +7,8 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { statusLabel, useChatCustomer, useLiveChat } from './messagesLive';
+import { NO_IMAGE } from './posLive';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatDealScreenProps {
@@ -16,7 +18,7 @@ interface BusinessChatDealScreenProps {
 }
 
 interface ThreadMessage {
-  id: number;
+  id: string;
   direction: 'in' | 'out';
   text: string;
   time: string;
@@ -31,28 +33,28 @@ const DEAL_ALT =
 
 const buildInitialMessages = (firstName: string): ThreadMessage[] => [
   {
-    id: 1,
+    id: '1',
     direction: 'in',
     text: "Hello! We'd like to bring a team of 4 colleagues for lunch today. Can we all claim this 20% deal on our separate VEMTAP apps?",
     time: '10:35 AM',
     showAuthor: firstName,
   },
   {
-    id: 2,
+    id: '2',
     direction: 'out',
     text: `Hi ${firstName}! Yes, absolutely! Each colleague can simply claim the voucher on their VEMTAP app and show the QR code when ordering at Table or Counter.`,
     time: '10:38 AM',
     readState: 'read',
   },
   {
-    id: 3,
+    id: '3',
     direction: 'in',
     text: 'Awesome, we are heading over now. Can we settle with POS card swipe at the table?',
     time: '10:41 AM',
     showAuthor: firstName,
   },
   {
-    id: 4,
+    id: '4',
     direction: 'out',
     text: 'Yes, our mobile POS terminal will be brought right to your table. Looking forward to hosting you!',
     time: '10:42 AM',
@@ -89,20 +91,47 @@ const formatNow = () => {
 export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScreenProps) {
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.deal;
   const firstName = contactFirstName(activeContact.name);
-  const [messages, setMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const liveChat = useLiveChat(activeContact.threadId);
+
+  // Live: the customer's CRM record and what this chat is about.
+  const chat = useChatCustomer(activeContact.threadId, activeContact.customerId);
+  const live = chat.live;
+  const phone = live ? (chat.phone ?? '—') : '+234 812 443 0912';
+  const callCustomer = () => {
+    if (live && !chat.phone) return;
+    window.location.href = `tel:${live ? chat.phone : '+2348124430912'}`;
+  };
+  const claim = chat.claim;
+  const shortDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short' }) : '—');
   const [input, setInput] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
 
+  // Live threads stream from the inbox; demo chats keep the scripted thread.
+  const messages: ThreadMessage[] = liveChat.live
+    ? liveChat.messages.map((message) => ({
+        id: message.id,
+        direction: message.direction,
+        text: message.text,
+        time: message.time || formatNow(),
+        readState: message.read ? ('read' as const) : ('delivered' as const),
+      }))
+    : demoMessages;
+
   const handleSend = () => {
     const value = input.trim();
     if (!value) return;
-    setMessages((current) => [
-      ...current,
-      { id: Date.now(), direction: 'out', text: value, time: formatNow(), readState: 'delivered' },
-    ]);
     setInput('');
+    if (liveChat.live) {
+      liveChat.send(value);
+      return;
+    }
+    setDemoMessages((current) => [
+      ...current,
+      { id: String(Date.now()), direction: 'out', text: value, time: formatNow(), readState: 'delivered' },
+    ]);
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 
@@ -113,12 +142,12 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
         title={activeContact.name}
         avatar={activeContact.avatar}
         isBusiness={activeContact.isBusiness}
-        subtitle="Active inquiry • Deal #VT-48F261"
+        subtitle={live ? chat.subtitle : 'Active inquiry • Deal #VT-48F261'}
         onAvatar={() => setDrawerOpen(true)}
-        onCall={() => (window.location.href = 'tel:+2348124430912')}
+        onCall={callCustomer}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 812 443 0912" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone={phone} stats={chat.drawer} />
       <AttachmentSheet open={attachOpen} onClose={() => setAttachOpen(false)} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
@@ -135,27 +164,43 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
                   <Icon name="local_offer" filled className="text-[13px]" />
                   DEAL CONTEXT
                 </span>
-                <span className="font-caption text-caption text-text-tertiary">#VT-48F261</span>
+                <span className="font-caption text-caption text-text-tertiary">{live ? (claim ? claim.claimCode : '—') : '#VT-48F261'}</span>
               </div>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container font-caption text-caption text-text-secondary">
-                Active Campaign
+                {live ? (claim ? statusLabel(claim.status) : 'No linked deal') : 'Active Campaign'}
               </span>
             </div>
             <div className="flex items-center gap-space-sm pt-space-2xs">
               <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container">
-                <img alt={DEAL_ALT} className="w-full h-full object-cover" src={DEAL_IMG} />
+                <img
+                  alt={live ? (claim?.offer?.name ?? 'Deal') : DEAL_ALT}
+                  className="w-full h-full object-cover"
+                  src={live ? (claim?.offer?.mainImage || NO_IMAGE) : DEAL_IMG}
+                />
               </div>
               <div className="flex flex-col min-w-0 flex-1">
-                <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">20% Off Prime Lunch Combo</h2>
+                <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
+                  {live ? (claim?.offer?.name ?? 'This chat is not linked to a deal') : '20% Off Prime Lunch Combo'}
+                </h2>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-label-sm text-label-sm text-primary font-semibold">₦9,600</span>
-                  <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>
+                  <span className="font-label-sm text-label-sm text-primary font-semibold">
+                    {live ? (claim?.offer?.price != null ? `₦${claim.offer.price.toLocaleString('en-NG')}` : '—') : '₦9,600'}
+                  </span>
+                  {!live && <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>}
                   <span className="w-1 h-1 rounded-full bg-text-tertiary" />
-                  <span className="font-caption text-caption text-text-secondary">Mon-Fri 12–4 PM</span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    {live ? (claim?.expiresAt ? `Expires ${shortDate(claim.expiresAt)}` : '—') : 'Mon-Fri 12–4 PM'}
+                  </span>
                 </div>
                 <div className="mt-space-2xs flex items-center justify-between">
                   <span className="font-caption text-caption text-badge-discount-text font-medium">
-                    Valid for separate redemption
+                    {live
+                      ? claim
+                        ? claim.redeemedAt
+                          ? `Redeemed ${shortDate(claim.redeemedAt)}`
+                          : `Claimed ${shortDate(claim.claimedAt)}`
+                        : '—'
+                      : 'Valid for separate redemption'}
                   </span>
                   <button
                     aria-label="View complete deal details"
@@ -176,7 +221,7 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
           {/* Timeline Date Stamp */}
           <div className="flex items-center justify-center my-space-2xs">
             <span className="px-space-sm py-1 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption font-medium shadow-sm">
-              TODAY, OCT 18
+              {live ? 'CONVERSATION' : 'TODAY, OCT 18'}
             </span>
           </div>
 

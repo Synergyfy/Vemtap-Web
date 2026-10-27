@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { apiErrorMessage } from '../services/errorMessages';
+import { formatRelativeTime } from '../utils/format';
+import { naira, useLivePos } from './posLive';
 
 interface BusinessPosHomeScreenProps {
   initialOffline?: boolean;
@@ -91,7 +94,18 @@ export function BusinessPosHomeScreen({
   onOpenOrderLookup,
 }: BusinessPosHomeScreenProps) {
   const { branch } = useBusinessBranch();
-  const [offline, setOffline] = useState(initialOffline);
+  const pos = useLivePos();
+  const live = pos.live;
+  const [demoOffline, setOffline] = useState(initialOffline);
+  // Live: offline follows the real connection, not a toggle.
+  const offline = live ? !pos.offline.isOnline : demoOffline;
+  const pending = pos.offline.queue.filter((order) => !order.syncedAt);
+  const pendingTotal = pending.reduce((sum, order) => sum + order.total, 0);
+  const lastSync = pos.offline.lastSyncedAt ? formatRelativeTime(new Date(pos.offline.lastSyncedAt).toISOString()) : 'never';
+  const expectedCash = pos.zReport?.expectedCash != null ? Number(pos.zReport.expectedCash) : null;
+  const identity = live
+    ? `${branch.area || branch.name} · ${pos.isOpen ? pos.tillName : 'No till open'} · ${pos.cashierName}`
+    : null;
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -108,7 +122,45 @@ export function BusinessPosHomeScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    if (pos.error) showToast(apiErrorMessage(pos.error, 'Could not load the register.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pos.error]);
+
+  /** Live: a sale needs an open register on a till. */
+  const startSale = () => {
+    if (live && !pos.isOpen) {
+      showToast('Open a till first — pick one in Switch Branch & Till.');
+      onSwitchTill();
+      return;
+    }
+    onNewSale();
+  };
+
+  /** Live: the drawer button closes the open register (end of shift). */
+  const closeDrawer = () => {
+    if (!pos.isOpen) {
+      showToast('No register is open. Open a till from Switch Branch & Till.');
+      return;
+    }
+    if (!window.confirm(`Close the register on ${pos.tillName} and end this shift?`)) return;
+    pos.mutations.closeRegister.mutate(
+      {},
+      {
+        onSuccess: (session) =>
+          showToast(`Register closed · ${naira(Number(session.totalSales) || 0)} in ${session.transactionCount ?? 0} sales`),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not close the register.')),
+      },
+    );
+  };
+
+  const hardwareSoon = () => showToast('Hardware status is coming soon.');
+
   const toggleOffline = () => {
+    if (live) {
+      showToast(offline ? 'Offline — sales are saved here and sync when you reconnect.' : 'Offline mode turns on by itself if the connection drops.');
+      return;
+    }
     setOffline((prev) => {
       showToast(prev ? 'Back online — syncing queued sales' : 'Offline mode enabled for this register');
       return !prev;
@@ -117,13 +169,16 @@ export function BusinessPosHomeScreen({
 
   const onNav = (key: (typeof NAV_ITEMS)[number]['key']) => {
     if (key === 'register') {
-      if (offline) showToast('Register already open');
-      else onNewSale();
+      if (offline && !live) showToast('Register already open');
+      else startSale();
       return;
     }
     if (key === 'orders') onOpenOrders();
     else if (key === 'customers') onOpenCustomers();
-    else if (key === 'drawer') showToast('Cash drawer opened · ₦45,000 float');
+    else if (key === 'drawer') {
+      if (live) closeDrawer();
+      else showToast('Cash drawer opened · ₦45,000 float');
+    }
     else onNavMore();
   };
 
@@ -186,7 +241,7 @@ export function BusinessPosHomeScreen({
                     Sales are stored on this device and will sync automatically once you reconnect.
                   </span>
                   <span className="mt-1 self-start bg-error text-on-error font-caption text-caption px-space-xs py-0.5 rounded-full">
-                    4 orders queued
+                    {live ? `${pending.length} orders queued` : '4 orders queued'}
                   </span>
                 </div>
               </div>
@@ -200,9 +255,9 @@ export function BusinessPosHomeScreen({
                     <Icon name="storefront" className="text-primary text-[20px]" />
                   </span>
                   <div className="flex flex-col min-w-0">
-                    <span className="font-label-sm text-label-sm text-on-surface truncate">Urban Grill &amp; Bistro</span>
+                    <span className="font-label-sm text-label-sm text-on-surface truncate">{live ? pos.businessName : 'Urban Grill & Bistro'}</span>
                     <span className="font-caption text-caption text-text-secondary truncate">
-                      {branch.area} · Till 01 · Emeka O.
+                      {identity ?? `${branch.area} · Till 01 · Emeka O.`}
                     </span>
                   </div>
                 </div>
@@ -222,13 +277,19 @@ export function BusinessPosHomeScreen({
                   <div className="flex flex-col min-w-0">
                     <span className="font-label-sm text-label-sm text-on-surface">Sync pending</span>
                     <span className="font-caption text-caption text-text-secondary truncate">
-                      4 sales · 12 items · last sync 18m ago
+                      {live ? `${pending.length} sales · last sync ${lastSync}` : '4 sales · 12 items · last sync 18m ago'}
                     </span>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast('Connection still unavailable — will retry')}
+                  onClick={() => {
+                    if (!live) {
+                      showToast('Connection still unavailable — will retry');
+                      return;
+                    }
+                    void pos.offline.syncNow().then(() => showToast(pos.offline.isOnline ? 'Sync finished' : 'Still offline — will retry'));
+                  }}
                   className="h-8 px-space-xs rounded-lg bg-surface-canvas border border-border-subtle font-caption text-caption text-on-surface active:scale-95 transition-transform shrink-0"
                 >
                   Retry
@@ -245,7 +306,7 @@ export function BusinessPosHomeScreen({
             <div className="px-margin flex flex-col gap-space-xs pb-space-xs">
               <button
                 type="button"
-                onClick={onNewSale}
+                onClick={startSale}
                 className="w-full h-11 bg-primary-container text-on-primary rounded-xl font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all"
               >
                 <Icon name="add_shopping_cart" className="text-[17px]" />
@@ -256,14 +317,14 @@ export function BusinessPosHomeScreen({
                 title="Cash Sale"
                 meta="Ring up and store locally"
                 trailing={<Icon name="chevron_right" className="text-[18px]" />}
-                onClick={onNewSale}
+                onClick={startSale}
               />
               <ControlRow
                 icon="pause_circle"
                 title="Held Tickets"
-                meta="2 tickets held on this device"
-                trailing={<span className="font-caption text-caption text-primary">2</span>}
-                onClick={() => showToast('2 held tickets loaded from device cache')}
+                meta={live ? `${pos.heldCount} tickets held` : '2 tickets held on this device'}
+                trailing={<span className="font-caption text-caption text-primary">{live ? pos.heldCount : 2}</span>}
+                onClick={() => (live ? startSale() : showToast('2 held tickets loaded from device cache'))}
               />
               <ControlRow
                 icon="barcode_scanning"
@@ -282,7 +343,7 @@ export function BusinessPosHomeScreen({
               <ControlRow
                 icon="database"
                 title="Local Buffer & Queue"
-                meta="5 pending sales · ₦68,450 unsynced"
+                meta={live ? `${pending.length} pending sales · ${naira(pendingTotal)} unsynced` : '5 pending sales · ₦68,450 unsynced'}
                 trailing={<span className="font-caption text-caption text-primary">View</span>}
                 onClick={onOpenQueue ?? (() => showToast('Local queue opened'))}
               />
@@ -302,10 +363,10 @@ export function BusinessPosHomeScreen({
               </span>
             </div>
             <div className="px-margin grid grid-cols-2 gap-space-xs pb-space-xs">
-              <StatTile label="Offline Sales" value="₦86,400" sub="Unsynced" />
-              <StatTile label="Orders" value="17" sub="On device" />
-              <StatTile label="Cash Drawer" value="₦45,000" />
-              <StatTile label="Held Tickets" value="2" />
+              <StatTile label="Offline Sales" value={live ? naira(pendingTotal) : '₦86,400'} sub="Unsynced" />
+              <StatTile label="Orders" value={live ? String(pending.length) : '17'} sub="On device" />
+              <StatTile label="Cash Drawer" value={live ? naira(expectedCash) : '₦45,000'} />
+              <StatTile label="Held Tickets" value={live ? String(pos.heldCount) : '2'} />
             </div>
 
             {/* Hardware health */}
@@ -318,23 +379,31 @@ export function BusinessPosHomeScreen({
               <ControlRow
                 icon="print"
                 title="Receipt Printer"
-                meta="80mm thermal · paper ok"
-                trailing={<span className="font-caption text-caption text-badge-discount-text">Ready</span>}
-                onClick={() => showToast('Test receipt printed')}
+                meta={live ? '—' : '80mm thermal · paper ok'}
+                trailing={<span className="font-caption text-caption text-badge-discount-text">{live ? '' : 'Ready'}</span>}
+                onClick={live ? hardwareSoon : () => showToast('Test receipt printed')}
               />
               <ControlRow
                 icon="credit_card"
                 title="Card Terminal"
-                meta="Terminal 01 · battery 62%"
-                trailing={<span className="font-caption text-caption text-badge-discount-text">Paired</span>}
-                onClick={() => showToast('Card terminal re-pairing queued')}
+                meta={live ? '—' : 'Terminal 01 · battery 62%'}
+                trailing={<span className="font-caption text-caption text-badge-discount-text">{live ? '' : 'Paired'}</span>}
+                onClick={live ? hardwareSoon : () => showToast('Card terminal re-pairing queued')}
               />
               <ControlRow
                 icon="inventory_2"
                 title="Cash Drawer"
-                meta="Closed · ₦45,000 float"
-                trailing={<span className="font-caption text-caption text-text-secondary">Idle</span>}
-                onClick={() => showToast('Cash drawer opened')}
+                meta={
+                  live
+                    ? pos.isOpen
+                      ? `Open on ${pos.tillName} · ${naira(expectedCash)} expected`
+                      : 'No register open'
+                    : 'Closed · ₦45,000 float'
+                }
+                trailing={
+                  <span className="font-caption text-caption text-text-secondary">{live ? (pos.isOpen ? 'Close' : 'Closed') : 'Idle'}</span>
+                }
+                onClick={live ? closeDrawer : () => showToast('Cash drawer opened')}
               />
             </div>
           </>
@@ -348,9 +417,9 @@ export function BusinessPosHomeScreen({
                     <Icon name="restaurant" className="text-on-primary text-[20px]" />
                   </span>
                   <div className="flex flex-col min-w-0">
-                    <span className="font-label-sm text-label-sm text-on-surface truncate">Urban Grill &amp; Bistro</span>
+                    <span className="font-label-sm text-label-sm text-on-surface truncate">{live ? pos.businessName : 'Urban Grill & Bistro'}</span>
                     <span className="font-caption text-caption text-text-secondary truncate">
-                      {branch.area} · Till 01 · Emeka O. (Cashier)
+                      {identity ?? `${branch.area} · Till 01 · Emeka O. (Cashier)`}
                     </span>
                   </div>
                 </div>
@@ -374,15 +443,15 @@ export function BusinessPosHomeScreen({
               >
                 <Icon name="cloud_done" filled className="text-badge-discount-text text-[18px]" />
                 <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">
-                  All sales synced
+                  {live && pending.length ? `${pending.length} sales waiting to sync` : 'All sales synced'}
                 </span>
-                <span className="font-caption text-caption text-badge-discount-text ml-auto">2m ago</span>
+                <span className="font-caption text-caption text-badge-discount-text ml-auto">{live ? lastSync : '2m ago'}</span>
                 <Icon name="chevron_right" className="text-badge-discount-text text-[16px]" />
               </button>
               <div className="bg-surface-container-low rounded-xl px-space-sm py-space-xs flex items-center gap-space-xs">
                 <Icon name="verified_user" className="text-primary text-[17px]" />
                 <span className="font-caption text-caption text-text-secondary">
-                  Offline protection ready · last backup 09:42
+                  {live ? 'Offline protection ready' : 'Offline protection ready · last backup 09:42'}
                 </span>
               </div>
             </div>
@@ -396,7 +465,7 @@ export function BusinessPosHomeScreen({
             <div className="px-margin grid grid-cols-2 gap-space-xs pb-space-xs">
               <button
                 type="button"
-                onClick={onNewSale}
+                onClick={startSale}
                 className="h-14 rounded-xl bg-primary-container text-on-primary shadow-md flex flex-col items-center justify-center gap-0.5 active:scale-[0.98] transition-all"
               >
                 <Icon name="add_shopping_cart" className="text-[20px]" />
@@ -435,10 +504,10 @@ export function BusinessPosHomeScreen({
               </span>
             </div>
             <div className="px-margin grid grid-cols-2 gap-space-xs pb-space-xs">
-              <StatTile label="Net Sales" value="₦271,450" sub="+12% vs yesterday" />
-              <StatTile label="Orders" value="68" />
-              <StatTile label="Avg Ticket" value="₦3,992" />
-              <StatTile label="Tips" value="₦12,350" />
+              <StatTile label="Net Sales" value={live ? naira(pos.todaySales) : '₦271,450'} sub={live ? undefined : '+12% vs yesterday'} />
+              <StatTile label="Orders" value={live ? String(pos.todayCount) : '68'} />
+              <StatTile label="Avg Ticket" value={live ? naira(pos.averageTicket) : '₦3,992'} />
+              <StatTile label="Tips" value={live ? '—' : '₦12,350'} />
             </div>
 
             {/* Register controls */}
@@ -458,7 +527,7 @@ export function BusinessPosHomeScreen({
               <ControlRow
                 icon="swap_horiz"
                 title="Switch Branch & Till"
-                meta={`Active: ${branch.shortName} · Till 01`}
+                meta={`Active: ${branch.shortName} · ${live ? pos.tillName : 'Till 01'}`}
                 trailing={<Icon name="chevron_right" className="text-[18px]" />}
                 onClick={onSwitchTill}
               />
@@ -472,16 +541,24 @@ export function BusinessPosHomeScreen({
               <ControlRow
                 icon="print"
                 title="Receipt Printer"
-                meta="80mm thermal · connected"
-                trailing={<span className="font-caption text-caption text-badge-discount-text">Ready</span>}
-                onClick={() => showToast('Test receipt printed')}
+                meta={live ? '—' : '80mm thermal · connected'}
+                trailing={<span className="font-caption text-caption text-badge-discount-text">{live ? '' : 'Ready'}</span>}
+                onClick={live ? hardwareSoon : () => showToast('Test receipt printed')}
               />
               <ControlRow
                 icon="inventory_2"
                 title="Cash Drawer"
-                meta="Closed · ₦45,000 float"
-                trailing={<span className="font-caption text-caption text-text-secondary">Idle</span>}
-                onClick={() => showToast('Cash drawer opened')}
+                meta={
+                  live
+                    ? pos.isOpen
+                      ? `Open on ${pos.tillName} · ${naira(expectedCash)} expected`
+                      : 'No register open'
+                    : 'Closed · ₦45,000 float'
+                }
+                trailing={
+                  <span className="font-caption text-caption text-text-secondary">{live ? (pos.isOpen ? 'Close' : 'Closed') : 'Idle'}</span>
+                }
+                onClick={live ? closeDrawer : () => showToast('Cash drawer opened')}
               />
             </div>
           </>

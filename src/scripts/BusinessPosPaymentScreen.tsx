@@ -6,10 +6,29 @@ import { cartCount, cartTotals, type PosCartLine } from './posCartData';
 import { POS_CUSTOMERS, pointsForAmount, unlockedRewards } from './desktop/posRegisterExtras';
 import { PosAddPointsModal, PosRewardsModal } from './PosPointsModals';
 import { usePosSettings } from '../context/PosSettingsContext';
+import { hasApiConfig } from '../services/api/client';
+import { money } from '../services/posService';
+import { apiErrorMessage } from '../services/errorMessages';
+import {
+  apiCustomerId,
+  rewardsUnlocked,
+  setLastSale,
+  timeLabel,
+  useAwardPoints,
+  useLivePos,
+  usePosCheckout,
+  useTillPointsRate,
+  useTillRewards,
+  type CheckoutResult,
+} from './posLive';
 
 interface BusinessPosPaymentScreenProps {
   cart: PosCartLine[];
   customer: string | null;
+  /** API id of the attached customer, so the sale earns them points (live). */
+  customerId?: string | null;
+  /** Live: the attached customer's points balance. */
+  customerPoints?: number;
   /** Points awarded to this customer earlier in the sale. */
   customerBonus: number;
   /** Persist manually awarded points for the attached customer. */
@@ -41,6 +60,8 @@ const MODE_LABEL: Record<TenderMode, string> = {
 export function BusinessPosPaymentScreen({
   cart,
   customer,
+  customerId,
+  customerPoints,
   customerBonus,
   onAwardPoints,
   onBack,
@@ -54,6 +75,11 @@ export function BusinessPosPaymentScreen({
   const [pointsModalOpen, setPointsModalOpen] = useState(false);
   const [rewardsModalOpen, setRewardsModalOpen] = useState(false);
   const toastTimer = useRef<number | null>(null);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const { checkout, pending } = usePosCheckout();
+  const [result, setResult] = useState<CheckoutResult | null>(null);
+  const awardPoints = useAwardPoints();
 
   const count = cartCount(cart);
   const { taxMode, taxRate, taxLabel, loyaltyEnabled, allowWalkIn } = usePosSettings();
@@ -61,11 +87,14 @@ export function BusinessPosPaymentScreen({
 
   // Loyalty — previous balance (directory) + anything awarded this sale + points attached to the order.
   const customerRecord = customer ? POS_CUSTOMERS.find((entry) => entry.name === customer) : undefined;
-  const previousPoints = customerRecord?.points ?? 0;
+  const previousPoints = hasApiConfig() ? (customerPoints ?? 0) : (customerRecord?.points ?? 0);
   const currentPoints = previousPoints + customerBonus;
-  const orderPoints = loyaltyEnabled ? pointsForAmount(total) : 0;
+  // Live: the business's earn rule and rewards, not the demo rates.
+  const pointsRate = useTillPointsRate();
+  const liveRewards = useTillRewards(customerId);
+  const orderPoints = loyaltyEnabled ? (pointsRate ? pointsRate(total) : pointsForAmount(total)) : 0;
   const projectedTotal = currentPoints + orderPoints;
-  const eligibleCount = unlockedRewards(currentPoints).length;
+  const eligibleCount = (liveRewards ? rewardsUnlocked(liveRewards, currentPoints) : unlockedRewards(currentPoints)).length;
 
   useEffect(() => {
     setReceived(total);
@@ -96,8 +125,36 @@ export function BusinessPosPaymentScreen({
       showToast('Cash received is below the amount due');
       return;
     }
+    if (live) {
+      if (result) {
+        setDone(true);
+        return;
+      }
+      if (mode === 'vemtap' || mode === 'split') {
+        showToast(`${mode === 'vemtap' ? 'VEMTAP QR' : 'Split payment'} at the till is coming soon.`);
+        return;
+      }
+      if (!pos.isOpen) {
+        showToast('Open the register first (Switch Till on the POS home).');
+        return;
+      }
+      if (pending) return;
+      checkout({ lines: cart, method: mode, amountPaid: mode === 'cash' ? received : undefined, customerId: apiCustomerId(customerId) })
+        .then((outcome) => {
+          setResult(outcome);
+          setLastSale(outcome);
+          if (outcome.queued) showToast('Offline — sale saved on this device and will sync');
+          setDone(true);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not complete the sale.')));
+      return;
+    }
     setDone(true);
   };
+
+  const sale = result && !result.queued ? result.sale : null;
+  const paidTotal = sale ? money(sale.total) : total;
+  const earnedPoints = live ? (sale?.pointsEarned ?? 0) : orderPoints + customerBonus;
 
   return (
     <AppScreen>
@@ -114,7 +171,9 @@ export function BusinessPosPaymentScreen({
           </button>
           <div className="flex flex-col items-center min-w-0">
             <span className="font-heading-sm text-heading-sm text-on-surface leading-tight truncate">Take Payment</span>
-            <span className="font-caption text-caption text-text-secondary leading-none">Ticket #TK-204 · Till 01</span>
+            <span className="font-caption text-caption text-text-secondary leading-none">
+              {live ? `New ticket · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Ticket #TK-204 · Till 01'}
+            </span>
           </div>
           <span className="w-8 h-8 rounded-full bg-surface-tint-blue flex items-center justify-center shrink-0">
             <Icon name="lock" className="text-primary text-[15px]" />
@@ -391,7 +450,7 @@ export function BusinessPosPaymentScreen({
           className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all"
         >
           <Icon name="check_circle" className="text-[17px]" />
-          <span>Complete Sale · {naira(total)}</span>
+          <span>{live && pending ? 'Completing sale…' : `Complete Sale · ${naira(total)}`}</span>
         </button>
         <button
           type="button"
@@ -418,9 +477,10 @@ export function BusinessPosPaymentScreen({
                 <Icon name="task_alt" filled className="text-badge-discount-text text-[28px]" />
               </span>
               <span className="font-heading-sm text-heading-sm text-on-surface font-bold">Payment Captured</span>
-              <span className="font-heading-md text-heading-md text-primary font-bold">{naira(total)}</span>
+              <span className="font-heading-md text-heading-md text-primary font-bold">{naira(paidTotal)}</span>
               <span className="font-caption text-caption text-text-secondary">
-                {MODE_LABEL[mode]} · {customer ?? 'Walk-in guest'} · 12:42 PM
+                {MODE_LABEL[mode]} · {customer ?? 'Walk-in guest'} ·{' '}
+                {live ? (sale ? `#${sale.receiptNumber} · ${timeLabel(sale.createdAt)}` : 'saved offline') : '12:42 PM'}
               </span>
             </div>
 
@@ -433,13 +493,15 @@ export function BusinessPosPaymentScreen({
                 <div className="flex justify-between">
                   <span className="font-caption text-caption text-text-secondary">Loyalty</span>
                   <span className="font-caption text-caption text-badge-discount-text">
-                    +{(orderPoints + customerBonus).toLocaleString()} points earned
+                    +{earnedPoints.toLocaleString()} points earned
                   </span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span className="font-caption text-caption text-text-secondary">Change due</span>
-                <span className="font-caption text-caption text-on-surface">{mode === 'cash' ? naira(change) : '—'}</span>
+                <span className="font-caption text-caption text-on-surface">
+                  {mode === 'cash' ? naira(sale ? money(sale.change) : change) : '—'}
+                </span>
               </div>
             </div>
 
@@ -454,7 +516,7 @@ export function BusinessPosPaymentScreen({
             <div className="flex gap-space-xs">
               <button
                 type="button"
-                onClick={() => onReceipt(orderPoints + customerBonus)}
+                onClick={() => onReceipt(earnedPoints)}
                 className="flex-1 h-10 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs"
               >
                 <Icon name="receipt_long" className="text-text-secondary text-[16px]" />
@@ -462,7 +524,7 @@ export function BusinessPosPaymentScreen({
               </button>
               <button
                 type="button"
-                onClick={() => showToast('Receipt printed on 80mm thermal printer')}
+                onClick={() => (live ? window.print() : showToast('Receipt printed on 80mm thermal printer'))}
                 className="flex-1 h-10 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs"
               >
                 <Icon name="print" className="text-text-secondary text-[16px]" />
@@ -481,9 +543,18 @@ export function BusinessPosPaymentScreen({
           suggested={orderPoints}
           onClose={() => setPointsModalOpen(false)}
           onAward={(points) => {
-            onAwardPoints(points);
-            setPointsModalOpen(false);
-            showToast(`${points.toLocaleString()} points added to ${customer}.`);
+            const done = () => {
+              onAwardPoints(points);
+              setPointsModalOpen(false);
+              showToast(`${points.toLocaleString()} points added to ${customer}.`);
+            };
+            if (!live) {
+              done();
+              return;
+            }
+            awardPoints(customerId, points)
+              .then(done)
+              .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not award points.')));
           }}
         />
       )}
@@ -491,6 +562,7 @@ export function BusinessPosPaymentScreen({
       {rewardsModalOpen && customer && (
         <PosRewardsModal
           customerName={customer}
+          customerId={customerId}
           points={currentPoints}
           projectedTotal={projectedTotal}
           onClose={() => setRewardsModalOpen(false)}

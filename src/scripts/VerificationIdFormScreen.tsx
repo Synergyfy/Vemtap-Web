@@ -17,6 +17,12 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<'selfie' | 'checking' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Verification failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!error) return;
+    const timeout = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
   const verification = useVerificationActions();
   const [infoOpen, setInfoOpen] = useState(false);
   const [uploaded, setUploaded] = useState(false);
@@ -211,12 +217,6 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
               your sensitive ID records.
             </p>
           </div>
-
-          {error ? (
-            <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
-              {error}
-            </p>
-          ) : null}
           {/* Action Section */}
           <div className="mt-auto pt-space-sm flex flex-col gap-space-xs">
             <button
@@ -256,6 +256,11 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
           </div>
         )}
       </div>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </AppScreen>
   );
 }

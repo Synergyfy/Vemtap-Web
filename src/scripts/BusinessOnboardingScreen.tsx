@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
 import { useLiveDealPublish } from '../hooks/business/useLiveDealPublish';
-import { DealItemPicker } from '../components/business/DealItemPicker';
-import { DealPublishError } from '../components/business/DealPublishError';
 import { toPrice, type CatalogueItem } from '../services/catalogueItemsService';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { hasApiConfig } from '../services/api/client';
@@ -300,6 +298,18 @@ export function BusinessOnboardingScreen({
     if (name) setDraft((prev) => (prev.name ? prev : { ...prev, name }));
   }, [myBusiness.data?.name]);
 
+  // Live: save and publish failures show in the flow's toast, then clear.
+  const apiError =
+    sync.error ?? (liveDeal.error && liveDeal.needsSource ? 'Publish a product or service first, then make a deal from it.' : liveDeal.error);
+  useEffect(() => {
+    if (!apiError) return;
+    const timer = window.setTimeout(() => {
+      sync.clearError();
+      liveDeal.clearError();
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [apiError]);
+
   const updateDraft = (patch: Partial<BusinessProfileDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   };
@@ -339,19 +349,6 @@ export function BusinessOnboardingScreen({
   };
 
   const renderStep = () => {
-    // Live deals need a real item; resuming mid-studio without one asks again.
-    if (liveDeal.needsSource && ['dealStudio1', 'dealStudio2', 'dealStudio3', 'dealStudio4'].includes(step))
-      return (
-        <DealItemPicker
-          exitLabel="Back to catalogue"
-          onExit={() => setStepIndex(7)}
-          onPick={(item) => {
-            startLiveDeal(item);
-            setStepIndex(20);
-          }}
-          onSkip={() => setStepIndex(25)}
-        />
-      );
     switch (step) {
     case 'intro':
       return <BusinessIntroScreen onBack={onBack} onNext={onStartSignup ?? (() => setStepIndex(1))} />;
@@ -407,10 +404,13 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessAddBranchScreen
           onBack={() => setStepIndex(5)}
-          onSaved={() => {
-            setExtraBranches((current) =>
-              current.some((branch) => branch.id === NEW_BRANCH.id) ? current : [...current, NEW_BRANCH],
-            );
+          onSaved={(saved) => {
+            // Live branches come from the API; the sample new branch is demo-only.
+            if (!saved) {
+              setExtraBranches((current) =>
+                current.some((branch) => branch.id === NEW_BRANCH.id) ? current : [...current, NEW_BRANCH],
+              );
+            }
             setStepIndex(5);
           }}
         />
@@ -594,20 +594,17 @@ export function BusinessOnboardingScreen({
       );
     case 'dealStudio4':
       return (
-        <>
-          <DealPublishError message={liveDeal.error} onDismiss={liveDeal.clearError} />
-          <BusinessDealStudioStep4Screen
-            draft={dealDraft}
-            studio={dealStudio}
-            onBack={() => setStepIndex(22)}
-            onEditOffer={() => setStepIndex(20)}
-            onEditRules={() => setStepIndex(21)}
-            onEditLocations={() => setStepIndex(22)}
-            onPublish={() => setStepIndex(25)}
-            livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
-            onSaveDraft={() => setStepIndex(7)}
-          />
-        </>
+        <BusinessDealStudioStep4Screen
+          draft={dealDraft}
+          studio={dealStudio}
+          onBack={() => setStepIndex(22)}
+          onEditOffer={() => setStepIndex(20)}
+          onEditRules={() => setStepIndex(21)}
+          onEditLocations={() => setStepIndex(22)}
+          onPublish={() => setStepIndex(25)}
+          livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
+          onSaveDraft={() => setStepIndex(7)}
+        />
       );
     case 'dealAutoImport':
       return (
@@ -633,14 +630,11 @@ export function BusinessOnboardingScreen({
           <BusinessSetupProgress {...progressSnapshot} variant="mobile" onSelectSection={handleSelectSection} />
         </div>
       )}
-      {sync.error ? (
-        <div role="alert" className="fixed top-4 left-1/2 -translate-x-1/2 z-[90] w-[min(92vw,560px)] rounded-xl bg-error-container text-on-error-container px-space-md py-space-sm shadow-lg flex items-start gap-space-xs">
-          <span className="flex-1 font-label-md text-label-md">{sync.error}</span>
-          <button type="button" onClick={sync.clearError} className="font-label-md text-label-md underline">
-            Dismiss
-          </button>
+      {apiError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {apiError}
         </div>
-      ) : null}
+      )}
       {renderStep()}
     </div>
   );

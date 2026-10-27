@@ -12,6 +12,8 @@ export interface ClaimDealSummary {
   oldPrice?: number | string;
   discountLabel?: string;
   image?: string;
+  commentCount?: number | string;
+  commentsCount?: number | string;
 }
 
 export interface ClaimIdentityModalProps {

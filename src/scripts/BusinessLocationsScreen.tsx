@@ -3,12 +3,18 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
-import { BranchesPanel } from '../components/business/BranchesPanel';
 import { hasApiConfig } from '../services/api/client';
+import { useBranchCatalogueCounts, useBranches } from '../hooks/business/useBranchesAndTeam';
+import { branchAddressLabel, branchHoursLabel, branchOpenLabel } from './branchLive';
 
 interface BusinessLocationsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
+  /** Live: opens the add-branch form. */
+  onAddBranch?: () => void;
 }
+
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
 
 interface BranchMetric {
   products: string;
@@ -65,7 +71,35 @@ const BRANCHES: {
   },
 ];
 
-export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps) {
+export function BusinessLocationsScreen({ onTab, onAddBranch }: BusinessLocationsScreenProps) {
+  // Live: the business's real branches and what each one sells; demo keeps the samples.
+  const live = hasApiConfig();
+  const branchesQuery = useBranches();
+  const liveList = branchesQuery.data ?? [];
+  const counts = useBranchCatalogueCounts(liveList.map((branch) => branch.id));
+  const count = (value: number | null | undefined) => (value == null ? '—' : String(value));
+  const branches: typeof BRANCHES = live
+    ? liveList.map((branch, index) => ({
+        id: branch.id,
+        name: branch.name,
+        badge: branch.isMainBranch ? `Branch #${index + 1} • Main` : `Branch #${index + 1}`,
+        badgeClass: branch.isMainBranch ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface',
+        address: branchAddressLabel(branch),
+        phone: branch.phone || '—',
+        hours: branchHoursLabel(branch),
+        status: branch.isActive === false ? 'Paused' : `Active • ${branchOpenLabel(branch)}`,
+        cluster: branch.district || [branch.city, branch.state].filter(Boolean).join(', ') || '—',
+        img: branch.logoUrl || LIVE_IMAGE_PLACEHOLDER,
+        alt: branch.name,
+        imgHeight: index === 0 ? 'h-32' : 'h-28',
+        pulse: branch.isActive !== false,
+        metrics: {
+          products: count(counts[branch.id]?.products),
+          services: count(counts[branch.id]?.services),
+          deals: count(counts[branch.id]?.deals),
+        },
+      }))
+    : BRANCHES;
   const [dismissed, setDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -82,19 +116,6 @@ export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps)
     setToast(message);
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
-
-  // Live: real branches from the API; the designed list below is the demo.
-  if (hasApiConfig()) {
-    return (
-      <AppScreen>
-        <BusinessHubHeader />
-        <div className="flex flex-col w-full flex-1 px-margin pt-space-sm pb-28">
-          <BranchesPanel />
-        </div>
-        <BusinessTabBar active="business" onTab={onTab} />
-      </AppScreen>
-    );
-  }
 
   return (
     <AppScreen>
@@ -113,7 +134,7 @@ export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps)
           <button
             className="shrink-0 h-[42px] px-space-md bg-primary-container text-on-primary font-button-secondary text-button-secondary rounded-xl flex items-center gap-space-2xs shadow-[0_4px_14px_rgba(6,108,244,0.22)] active:scale-95 transition-all"
             type="button"
-            onClick={() => showToast('New branch wizard opening...')}
+            onClick={() => (live && onAddBranch ? onAddBranch() : showToast('New branch wizard opening...'))}
           >
             <Icon name="add_location_alt" className="text-[19px]" />
             <span>Add Location</span>
@@ -122,7 +143,7 @@ export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps)
 
         {/* Branch Card List */}
         <section className="px-margin flex flex-col gap-space-md">
-          {BRANCHES.map((branch) => (
+          {branches.map((branch) => (
             <article
               className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.06)] overflow-hidden"
               key={branch.id}
@@ -225,7 +246,7 @@ export function BusinessLocationsScreen({ onTab }: BusinessLocationsScreenProps)
           ))}
 
           {/* Garki Express Hub (Draft) */}
-          {!dismissed && (
+          {!live && !dismissed && (
             <article className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-md opacity-90">
               <div className="flex items-start justify-between gap-space-xs mb-space-xs">
                 <div>

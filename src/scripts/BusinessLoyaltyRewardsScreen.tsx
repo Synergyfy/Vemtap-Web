@@ -2,6 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { planErrorMessage } from '../services/planErrors';
+import type { LoyaltyReward } from '../services/loyaltyService';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useLoyaltyLogs, useLoyaltyMutations, useLoyaltyRewards } from '../hooks/business/useLoyalty';
+import {
+  isRedemption,
+  logEntry,
+  logPoints,
+  newRewardDefaults,
+  pointsLabel,
+  rewardRedeemedLabel,
+  rewardStatus,
+  rewardWindowLabel,
+} from './loyaltyLive';
 
 interface BusinessLoyaltyRewardsScreenProps {
   onBack: () => void;
@@ -18,6 +34,8 @@ interface Reward {
   expiry: string;
   redeemed: string;
   status: StatusTab;
+  /** Live: the reward this row shows. */
+  live?: LoyaltyReward;
 }
 
 const REWARDS: Reward[] = [
@@ -96,6 +114,39 @@ export function BusinessLoyaltyRewardsScreen({ onBack }: BusinessLoyaltyRewardsS
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
+  const live = hasApiConfig();
+  const { branch, activeBranchId } = useBusinessBranch();
+  const rewards = useLoyaltyRewards();
+  const logs = useLoyaltyLogs();
+  const { createReward, updateReward } = useLoyaltyMutations();
+  // Live: the reward open in the edit sheet.
+  const [editing, setEditing] = useState<LoyaltyReward | null>(null);
+  const loadError = rewards.error ?? logs.error;
+
+  useEffect(() => {
+    if (loadError) showToast(apiErrorMessage(loadError, 'Could not load your rewards.'));
+  }, [loadError]);
+
+  const allRewards: Reward[] = live
+    ? (rewards.data ?? []).map((reward) => ({
+        key: reward.id,
+        name: reward.name,
+        cost: pointsLabel(reward.pointsRequired),
+        desc: reward.description || '—',
+        branches: branch.name,
+        expiry: rewardWindowLabel(reward),
+        redeemed: rewardRedeemedLabel(reward),
+        status: rewardStatus(reward),
+        live: reward,
+      }))
+    : REWARDS;
+  const redemptions = live
+    ? (logs.data ?? []).filter(isRedemption).slice(0, 5).map((log) => {
+        const entry = logEntry(log);
+        return { member: entry.member, reward: entry.reason, points: pointsLabel(logPoints(log)), branch: entry.branch || '—', when: entry.date };
+      })
+    : REDEMPTIONS;
+
   useEffect(
     () => () => {
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -110,26 +161,63 @@ export function BusinessLoyaltyRewardsScreen({ onBack }: BusinessLoyaltyRewardsS
   };
 
   const toggleSafeguard = (key: string) => {
+    if (live) {
+      showToast('Redemption safeguards are coming soon.');
+      return;
+    }
     setSafeguards((current) =>
       current.map((safeguard) => (safeguard.key === key ? { ...safeguard, enabled: !safeguard.enabled } : safeguard)),
     );
   };
 
-  const visibleRewards = REWARDS.filter((reward) => reward.status === tab);
+  const visibleRewards = allRewards.filter((reward) => reward.status === tab);
+  const shownSafeguards = live ? safeguards.map((safeguard) => ({ ...safeguard, enabled: false })) : safeguards;
 
   const openCreate = () => {
+    setEditing(null);
     setModalName('');
     setModalCost('500');
     setModal('create');
   };
 
-  const openEdit = (reward: Reward) => {
+  const openEdit = (reward: Reward | undefined) => {
+    if (!reward) {
+      openCreate();
+      return;
+    }
+    setEditing(reward.live ?? null);
     setModalName(reward.name);
     setModalCost(reward.cost.replace(/,/g, ''));
     setModal('edit');
   };
 
   const saveModal = () => {
+    if (live) {
+      const name = modalName.trim();
+      const points = Number(modalCost);
+      if (!name || !points) {
+        showToast('Add a reward name and the points it costs.');
+        return;
+      }
+      const done = (message: string) => () => {
+        setModal(null);
+        showToast(message);
+      };
+      const failed = (error: unknown) =>
+        showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not save the reward.'));
+      if (modal === 'edit' && editing) {
+        updateReward.mutate(
+          { id: editing.id, name, pointsRequired: points },
+          { onSuccess: done(`${name} rules updated`), onError: failed },
+        );
+      } else if (activeBranchId) {
+        createReward.mutate(newRewardDefaults(name, points, activeBranchId), {
+          onSuccess: done('Reward created'),
+          onError: failed,
+        });
+      }
+      return;
+    }
     const label = modal === 'create' ? 'Reward created' : `${modalName || 'Reward'} rules updated`;
     setModal(null);
     showToast(label);
@@ -220,16 +308,36 @@ export function BusinessLoyaltyRewardsScreen({ onBack }: BusinessLoyaltyRewardsS
                 <button
                   className="h-9 rounded-xl bg-surface-container-low text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1.5 hover:bg-surface-container transition-all"
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    if (reward.live) {
+                      if (reward.status === 'archived') {
+                        showToast('This reward has ended. Create a new one to bring it back.');
+                        return;
+                      }
+                      const resume = reward.status === 'draft';
+                      updateReward.mutate(
+                        { id: reward.live.id, isActive: resume },
+                        {
+                          onSuccess: () => showToast(`${reward.name} ${resume ? 'resumed' : 'paused'}`),
+                          onError: (error) => showToast(apiErrorMessage(error, 'Could not update the reward.')),
+                        },
+                      );
+                      return;
+                    }
                     showToast(
                       reward.status === 'archived'
                         ? `${reward.name} restored to drafts`
                         : `${reward.name} paused`,
-                    )
-                  }
+                    );
+                  }}
                 >
-                  <Icon name={reward.status === 'archived' ? 'restart_alt' : 'pause'} className="text-[15px]" />
-                  <span>{reward.status === 'archived' ? 'Restore' : 'Pause'}</span>
+                  <Icon
+                    name={reward.status === 'archived' ? 'restart_alt' : live && reward.status === 'draft' ? 'play_arrow' : 'pause'}
+                    className="text-[15px]"
+                  />
+                  <span>
+                    {reward.status === 'archived' ? 'Restore' : live && reward.status === 'draft' ? 'Resume' : 'Pause'}
+                  </span>
                 </button>
               </div>
             </article>
@@ -265,7 +373,7 @@ export function BusinessLoyaltyRewardsScreen({ onBack }: BusinessLoyaltyRewardsS
               </div>
             </div>
             <div className="mt-space-xs divide-y divide-border-subtle">
-              {safeguards.map((safeguard) => (
+              {shownSafeguards.map((safeguard) => (
                 <button
                   className="w-full flex items-center justify-between gap-space-xs py-2 px-1.5 text-left"
                   key={safeguard.key}
@@ -297,12 +405,12 @@ export function BusinessLoyaltyRewardsScreen({ onBack }: BusinessLoyaltyRewardsS
         <section className="px-margin pt-space-md">
           <div className="flex items-center justify-between">
             <h3 className="font-label-md text-label-md text-text-primary font-semibold">Recent Member Redemptions</h3>
-            <button className="font-caption text-caption text-primary font-semibold" type="button" onClick={() => showToast('Opening full redemption ledger…')}>
+            <button className="font-caption text-caption text-primary font-semibold" type="button" onClick={() => showToast(live ? 'The full redemption ledger is coming soon.' : 'Opening full redemption ledger…')}>
               See all
             </button>
           </div>
           <div className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm mt-space-xs divide-y divide-border-subtle">
-            {REDEMPTIONS.map((item) => (
+            {redemptions.map((item) => (
               <div className="flex items-center justify-between gap-space-xs py-2 px-1.5" key={`${item.member}-${item.when}`}>
                 <div className="min-w-0">
                   <p className="font-label-sm text-label-sm text-text-primary truncate">{item.member}</p>
@@ -323,7 +431,7 @@ export function BusinessLoyaltyRewardsScreen({ onBack }: BusinessLoyaltyRewardsS
           <button
             className="h-11 rounded-xl bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold flex items-center justify-center gap-1.5 hover:bg-surface-container transition-all"
             type="button"
-            onClick={() => openEdit(visibleRewards[0] ?? REWARDS[0])}
+            onClick={() => openEdit(visibleRewards[0] ?? (live ? undefined : REWARDS[0]))}
           >
             <Icon name="tune" className="text-[16px]" />
             <span>Edit Rules</span>

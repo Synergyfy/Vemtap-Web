@@ -3,11 +3,19 @@ import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import type { SegmentSummary } from '../../services/types';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { percentOf, rulesFromCriteria, useLiveSegmentRules } from '../segmentsLive';
 
 interface DesktopSegmentCreateScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onBack: () => void;
   onSaved: () => void;
+  /** Live: the saved segment whose rules are being edited; null creates one. */
+  editing?: SegmentSummary | null;
 }
 
 const PRODUCT_CHIPS = [
@@ -24,23 +32,44 @@ const DEAL_OPTIONS = [
   { key: 'bogo-cocktails', label: 'Late Night Cocktails BOGO' },
 ];
 
-export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSegmentCreateScreenProps) {
-  const [name, setName] = useState('Weekend Dinner Patrons');
-  const [memo, setMemo] = useState("Targeting guests who ordered dry-aged steaks and claimed weekend specials.");
-  const [chkClaimedDeal, setChkClaimedDeal] = useState(true);
+export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved, editing }: DesktopSegmentCreateScreenProps) {
+  const live = hasApiConfig();
+  // Live forms start blank, or from the segment being edited.
+  const start = rulesFromCriteria(editing?.criteria);
+  const [name, setName] = useState(live ? (editing?.name ?? '') : 'Weekend Dinner Patrons');
+  const [memo, setMemo] = useState(
+    live ? (editing?.description ?? '') : "Targeting guests who ordered dry-aged steaks and claimed weekend specials.",
+  );
+  const [chkClaimedDeal, setChkClaimedDeal] = useState(live ? start.flags.claimedDeal : true);
   const [dealKey, setDealKey] = useState('weekend-glow');
-  const [chkSavedDeal, setChkSavedDeal] = useState(false);
-  const [chkProduct, setChkProduct] = useState(true);
+  const [chkSavedDeal, setChkSavedDeal] = useState(live ? start.flags.savedDeal : false);
+  const [chkProduct, setChkProduct] = useState(live ? start.flags.product : true);
   const [selectedProducts, setSelectedProducts] = useState<string[]>(['ribeye']);
-  const [chkHighSpend, setChkHighSpend] = useState(false);
-  const [chkBranch, setChkBranch] = useState(true);
+  const [chkHighSpend, setChkHighSpend] = useState(live ? start.flags.highSpend : false);
+  const [chkBranch, setChkBranch] = useState(live ? start.flags.branch : true);
   const [wuseSelected, setWuseSelected] = useState(true);
   const [maitamaSelected, setMaitamaSelected] = useState(false);
   const [chkDistrict, setChkDistrict] = useState(false);
-  const [chkRecency, setChkRecency] = useState(true);
-  const [recency, setRecency] = useState(60);
-  const [chkChat, setChkChat] = useState(false);
-  const [chkLoyalty, setChkLoyalty] = useState(false);
+  const [chkRecency, setChkRecency] = useState(live ? start.flags.recency : true);
+  const [recency, setRecency] = useState(start.recencyDays);
+  const [chkChat, setChkChat] = useState(live ? start.flags.chat : false);
+  const [chkLoyalty, setChkLoyalty] = useState(live ? start.flags.loyalty : false);
+  const rules = useLiveSegmentRules(
+    editing,
+    {
+      claimedDeal: chkClaimedDeal,
+      savedDeal: chkSavedDeal,
+      product: chkProduct,
+      highSpend: chkHighSpend,
+      branch: chkBranch,
+      district: chkDistrict,
+      recency: chkRecency,
+      chat: chkChat,
+      loyalty: chkLoyalty,
+    },
+    recency,
+  );
+  const business = useMyBusiness();
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
@@ -58,7 +87,7 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
     timers.current.push(timer);
   };
 
-  const { total, pushCount, dmCount } = useMemo(() => {
+  const sample = useMemo(() => {
     let base = 85;
     if (chkClaimedDeal) base += 45;
     if (chkSavedDeal) base += 32;
@@ -87,7 +116,46 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
     chkLoyalty,
   ]);
 
+  const { total, pushCount, dmCount } = live
+    ? { total: rules.reach?.size ?? 0, pushCount: rules.reach?.reachableByPush ?? 0, dmCount: rules.reach?.reachableBySms ?? 0 }
+    : sample;
+
+  useEffect(() => {
+    const error = rules.optionsError ?? rules.reachError;
+    if (error) showToast(apiErrorMessage(error, 'Could not load the segment builder.'));
+  }, [rules.optionsError, rules.reachError]);
+
+  const dealOptions = live ? (rules.options?.deals ?? []).map((deal) => ({ key: deal.id, label: deal.name })) : DEAL_OPTIONS;
+  const productChips = live
+    ? (rules.options?.menuItems ?? []).map((item) => ({ key: item.id, label: item.name }))
+    : PRODUCT_CHIPS;
+  const pickedProducts = live ? rules.itemIds : selectedProducts;
+  const branchCount = rules.options?.branches.length ?? 0;
+  const dataNote = live
+    ? `Customer data across ${branchCount} branch${branchCount === 1 ? '' : 'es'}.`
+    : 'POS receipts & member data across Wuse II & Maitama.';
+
+  const toggleDistrict = () => {
+    if (live) {
+      showToast('District targeting is coming soon.');
+      return;
+    }
+    setChkDistrict((prev) => !prev);
+  };
+
+  const deleteSegment = () => {
+    if (!editing || !window.confirm(`Delete the segment "${editing.name}"?`)) return;
+    rules
+      .remove()
+      .then(() => onSaved())
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not delete the segment.')));
+  };
+
   const toggleProduct = (key: string) => {
+    if (live) {
+      rules.toggleItem(key);
+      return;
+    }
     setSelectedProducts((prev) => (prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key]));
   };
 
@@ -104,12 +172,26 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
     setChkRecency(false);
     setChkChat(false);
     setChkLoyalty(false);
+    rules.clearPicks();
     showToast('All filters cleared');
   };
 
   const handleSave = () => {
     if (!name.trim()) {
       showToast('Segment name is required');
+      return;
+    }
+    if (live) {
+      rules
+        .save(name, memo)
+        .then(() => {
+          setSaving(true);
+          showToast(`${editing ? 'Updated' : 'Created'} '${name.trim()}' (${total} diners)!`);
+          onSaved();
+        })
+        .catch((error: unknown) =>
+          showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not save the segment.')),
+        );
       return;
     }
     setSaving(true);
@@ -167,7 +249,7 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
               Customer Segments
             </button>
             <Icon name="chevron_right" className="text-outline text-[16px]" />
-            <span className="text-text-primary font-semibold">Create Custom Segment</span>
+            <span className="text-text-primary font-semibold">{editing ? 'Edit Segment' : 'Create Custom Segment'}</span>
           </div>
           <button
             type="button"
@@ -185,7 +267,7 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
               <span className="inline-flex items-center gap-space-xs px-space-sm py-1 rounded-full bg-surface-container-high text-on-surface-variant">
                 <Icon name="storefront" className="text-[16px] text-primary" filled />
                 <span className="font-caption text-caption tracking-wide uppercase font-semibold">
-                  Urban Grill &amp; Bistro
+                  {live ? business.data?.name || '—' : 'Urban Grill & Bistro'}
                 </span>
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-outline-variant" />
@@ -194,7 +276,7 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
               </span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Create Custom Segment
+              {editing ? 'Edit Segment' : 'Create Custom Segment'}
             </h1>
             <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
               Build a targeted audience based on factual dining habits, deal redemptions, and branch location data.
@@ -244,7 +326,7 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
             <div className="mt-space-xs flex items-center gap-space-2xs text-text-secondary">
               <Icon name="verified" className="text-[15px] text-outline" />
               <span className="font-caption text-caption">
-                POS receipts &amp; member data across Wuse II &amp; Maitama.
+                {dataNote}
               </span>
             </div>
           </div>
@@ -257,11 +339,11 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
               <div className="mt-1 flex items-baseline gap-1">
                 <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{pushCount}</span>
                 <span className="font-caption text-caption text-text-secondary">
-                  ({Math.round((pushCount / total) * 100)}%)
+                  ({percentOf(pushCount, total)}%)
                 </span>
               </div>
               <div className="w-full bg-surface-container rounded-full h-1 mt-2 overflow-hidden">
-                <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((pushCount / total) * 100)}%` }} />
+                <div className="h-full rounded-full bg-primary" style={{ width: `${percentOf(pushCount, total)}%` }} />
               </div>
             </div>
           </div>
@@ -274,11 +356,11 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
               <div className="mt-1 flex items-baseline gap-1">
                 <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{dmCount}</span>
                 <span className="font-caption text-caption text-text-secondary">
-                  ({Math.round((dmCount / total) * 100)}%)
+                  ({percentOf(dmCount, total)}%)
                 </span>
               </div>
               <div className="w-full bg-surface-container rounded-full h-1 mt-2 overflow-hidden">
-                <div className="h-full rounded-full bg-secondary" style={{ width: `${Math.round((dmCount / total) * 100)}%` }} />
+                <div className="h-full rounded-full bg-secondary" style={{ width: `${percentOf(dmCount, total)}%` }} />
               </div>
             </div>
           </div>
@@ -362,10 +444,11 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
                   'VEMTAP verified barcode or in-app code redemption',
                   <select
                     className="w-full h-11 px-space-sm bg-surface-canvas text-text-primary font-label-sm text-label-sm rounded-lg outline-none cursor-pointer shadow-sm"
-                    value={dealKey}
-                    onChange={(event) => setDealKey(event.target.value)}
+                    value={live ? rules.dealId : dealKey}
+                    onChange={(event) => (live ? rules.setDealId(event.target.value) : setDealKey(event.target.value))}
                   >
-                    {DEAL_OPTIONS.map((option) => (
+                    {live && !dealOptions.length && <option value="">No deals yet</option>}
+                    {dealOptions.map((option) => (
                       <option key={option.key} value={option.key}>
                         {option.label}
                       </option>
@@ -398,8 +481,11 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
                   'Ordered specific signature dishes',
                   'Dine-in or pre-ordered takeout tickets',
                   <div className="flex flex-wrap gap-1.5">
-                    {PRODUCT_CHIPS.map((chip) => {
-                      const active = selectedProducts.includes(chip.key);
+                    {live && !productChips.length && (
+                      <span className="font-caption text-caption text-text-secondary">No catalogue items yet</span>
+                    )}
+                    {productChips.map((chip) => {
+                      const active = pickedProducts.includes(chip.key);
                       return (
                         <button
                           className={`px-space-sm py-1.5 rounded-full font-caption text-caption font-medium transition-colors ${
@@ -444,6 +530,33 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
                   'Dined at specific branch',
                   'Check-in at table QR or verified point of sale',
                   <div className="flex flex-col gap-2">
+                    {live && (rules.options?.branches ?? []).map((branch) => {
+                      const selected = rules.branchIds.includes(branch.id);
+                      return (
+                        <button
+                          className={`flex items-center justify-between p-2 rounded-lg bg-surface-canvas shadow-sm cursor-pointer w-full ${
+                            selected ? '' : 'opacity-80'
+                          }`}
+                          key={branch.id}
+                          type="button"
+                          onClick={() => rules.toggleBranch(branch.id)}
+                        >
+                          <div className="flex items-center gap-space-xs">
+                            <Icon name="store" className={`text-[18px] ${selected ? 'text-primary' : 'text-outline'}`} />
+                            <span className="font-label-sm text-label-sm text-text-primary font-medium">{branch.name}</span>
+                          </div>
+                          <div
+                            className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                              selected ? 'bg-primary-container' : 'border border-border-subtle'
+                            }`}
+                          >
+                            {selected && <Icon name="check" className="text-on-primary text-[12px]" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {!live && (
+                    <>
                     <button
                       className="flex items-center justify-between p-2 rounded-lg bg-surface-canvas shadow-sm cursor-pointer w-full"
                       type="button"
@@ -482,11 +595,13 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
                         {maitamaSelected && <Icon name="check" className="text-on-primary text-[12px]" />}
                       </div>
                     </button>
+                    </>
+                    )}
                   </div>,
                 )}
                 {filterRow(
                   chkDistrict,
-                  () => setChkDistrict((prev) => !prev),
+                  toggleDistrict,
                   'Customers residing within district cluster',
                   'Derived from verified delivery & default radius',
                 )}
@@ -583,8 +698,8 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
                   <span className="font-label-md text-label-md text-text-primary font-semibold">verified diners</span>
                 </div>
                 <span className="font-caption text-caption text-text-secondary">
-                  {Math.round((pushCount / total) * 100)}% reachable via Push &amp; Feeds •{' '}
-                  {Math.round((dmCount / total) * 100)}% via Direct SMS / DM
+                  {percentOf(pushCount, total)}% reachable via Push &amp; Feeds •{' '}
+                  {percentOf(dmCount, total)}% via Direct SMS / DM
                 </span>
               </div>
 
@@ -601,20 +716,20 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
                   <span className="font-label-sm text-label-sm text-text-primary font-semibold">{pushCount}</span>
                 </div>
                 <div className="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((pushCount / total) * 100)}%` }} />
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${percentOf(pushCount, total)}%` }} />
                 </div>
                 <div className="flex items-center justify-between pt-space-xs">
                   <span className="font-caption text-caption text-text-secondary">Direct SMS / DM</span>
                   <span className="font-label-sm text-label-sm text-text-primary font-semibold">{dmCount}</span>
                 </div>
                 <div className="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
-                  <div className="h-full rounded-full bg-secondary" style={{ width: `${Math.round((dmCount / total) * 100)}%` }} />
+                  <div className="h-full rounded-full bg-secondary" style={{ width: `${percentOf(dmCount, total)}%` }} />
                 </div>
               </div>
 
               <div className="flex items-center gap-space-2xs text-text-secondary bg-surface-container-low rounded-lg p-space-xs">
                 <Icon name="verified" className="text-[15px] text-outline" />
-                <span className="font-caption text-caption">POS receipts &amp; member data across Wuse II &amp; Maitama.</span>
+                <span className="font-caption text-caption">{dataNote}</span>
               </div>
 
               <div className="flex flex-col gap-space-xs">
@@ -633,9 +748,9 @@ export function DesktopSegmentCreateScreen({ onNav, onBack, onSaved }: DesktopSe
                 <button
                   className="w-full h-11 flex items-center justify-center font-button-secondary text-button-secondary text-text-secondary hover:text-text-primary transition-colors"
                   type="button"
-                  onClick={onBack}
+                  onClick={editing ? deleteSegment : onBack}
                 >
-                  Cancel &amp; Discard
+                  {editing ? 'Delete Segment' : 'Cancel & Discard'}
                 </button>
               </div>
             </div>

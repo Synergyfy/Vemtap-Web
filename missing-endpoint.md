@@ -1,0 +1,29 @@
+- /ad-wallet/prepacks
+- /boosts/forecast
+- /boosts/options
+- /catalogue/offers/admin
+- /catalogue/offers/summary
+- /loyalty/me/redemptions
+- /loyalty/me/wallet
+- /loyalty/points/balance
+- /loyalty/points/logs
+- /loyalty/points/tier
+- /loyalty/rewards
+- /me/activity
+- /me/activity/summary
+- /me/saved/services
+- /me/savings/categories
+- /me/savings/export
+- /notifications/preferences
+- /promotions/eligible-assets
+- /promotions/forecast
+- /promotions/summary
+- /public/loyalty/rewards
+- /public/search
+- /public/stats
+- /segments/criteria-options
+- /segments/preview
+- /support/bot/query
+- /support/escalate
+/deals/reviews
+/deals/community

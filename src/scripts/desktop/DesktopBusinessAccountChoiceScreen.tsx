@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { useProfile } from '../../context/ProfileContext';
-import { hasApiConfig } from '../../lib/api';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 
 interface DesktopBusinessAccountChoiceScreenProps {
   onBack: () => void;
-  onContinueWithAccount: () => void;
+  /** Receives the confirmed PIN when `confirmation` is `pin`. */
+  onContinueWithAccount: (pin?: string) => Promise<void> | void;
   onUseNewAccount: () => void;
+  /** `demo-code`: sample email code (demo); `pin`: confirm the sign-in PIN; `none`: no extra step. */
+  confirmation?: 'demo-code' | 'pin' | 'none';
 }
 
 const OTP_LENGTH = 6;
@@ -39,6 +41,7 @@ export function DesktopBusinessAccountChoiceScreen({
   onBack,
   onContinueWithAccount,
   onUseNewAccount,
+  confirmation = 'demo-code',
 }: DesktopBusinessAccountChoiceScreenProps) {
   const profile = useProfile();
   const [confirming, setConfirming] = useState(false);
@@ -48,11 +51,32 @@ export function DesktopBusinessAccountChoiceScreen({
   const [otpSending, setOtpSending] = useState(true);
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const otpInputs = useRef<Array<HTMLInputElement | null>>([]);
+  // Live: a PIN account confirms its PIN to add a business (`POST /auth/upgrade-to-owner`);
+  // Google accounts have no PIN and continue straight away. Demo keeps the sample email code.
+  const pinMode = confirmation === 'pin';
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!error) return undefined;
+    const timeout = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
+  const continueWithAccount = (pin?: string) => {
+    if (submitting) return;
+    setSubmitting(true);
+    Promise.resolve(onContinueWithAccount(pin))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not add a business to this account.'))
+      .finally(() => setSubmitting(false));
+  };
 
   // Frontend stub: "send" the OTP when the step opens, then run the resend
   // window. The real dispatch/verification hooks up to the backend later.
   useEffect(() => {
     if (!verifying) return undefined;
+    if (pinMode) {
+      setOtpSending(false);
+      return undefined;
+    }
     setOtpSending(true);
     setSecondsLeft(RESEND_SECONDS);
     const sendTimer = window.setTimeout(() => setOtpSending(false), SEND_DELAY_MS);
@@ -63,7 +87,7 @@ export function DesktopBusinessAccountChoiceScreen({
       window.clearTimeout(sendTimer);
       window.clearInterval(interval);
     };
-  }, [verifying]);
+  }, [verifying, pinMode]);
 
   const handleResend = () => {
     if (secondsLeft > 0 || otpSending) return;
@@ -143,7 +167,7 @@ export function DesktopBusinessAccountChoiceScreen({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <button
                   type="button"
-                  onClick={() => (hasApiConfig() ? onContinueWithAccount() : setConfirming(true))}
+                  onClick={() => setConfirming(true)}
                   className="group w-full p-6 rounded-2xl bg-surface-canvas border-2 border-surface-subtle hover:border-primary shadow-sm transition-all text-left active:scale-[0.99]"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
@@ -174,20 +198,24 @@ export function DesktopBusinessAccountChoiceScreen({
             <div className="flex flex-col items-center text-center gap-6">
               <div className="relative flex items-center justify-center w-24 h-24 rounded-full bg-surface-container-low shadow-sm">
                 <div className="w-16 h-16 rounded-full bg-surface-canvas flex items-center justify-center text-primary shadow-sm">
-                  <Icon name="mark_email_read" className="text-[34px]" />
+                  <Icon name={pinMode ? 'lock' : 'mark_email_read'} className="text-[34px]" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary shadow-md">
                   <Icon name="verified_user" className="text-[18px]" />
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold">Verify your email</h1>
+                <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold">{pinMode ? 'Confirm your PIN' : 'Verify your email'}</h1>
                 <p className="font-body-md text-body-md text-text-secondary max-w-md">
-                  To protect your business account, we sent a 6-digit verification code to
+                  {pinMode
+                    ? 'Enter the 6-digit PIN you sign in with to add a business to this account.'
+                    : 'To protect your business account, we sent a 6-digit verification code to'}
                 </p>
-                <span className="font-label-lg text-label-lg text-text-primary font-semibold">
-                  {profile.email ? maskEmail(profile.email) : 'your registered email'}
-                </span>
+                {!pinMode && (
+                  <span className="font-label-lg text-label-lg text-text-primary font-semibold">
+                    {profile.email ? maskEmail(profile.email) : 'your registered email'}
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center justify-between gap-3 w-full max-w-md">
@@ -199,9 +227,10 @@ export function DesktopBusinessAccountChoiceScreen({
                       ref={(element) => {
                         otpInputs.current[index] = element;
                       }}
-                      aria-label={`Verification digit ${index + 1}`}
+                      aria-label={`${pinMode ? 'PIN' : 'Verification'} digit ${index + 1}`}
+                      type={pinMode ? 'password' : 'text'}
                       inputMode="numeric"
-                      autoComplete="one-time-code"
+                      autoComplete={pinMode ? 'off' : 'one-time-code'}
                       maxLength={OTP_LENGTH}
                       value={digit}
                       onFocus={() => setOtpActiveIndex(index)}
@@ -219,6 +248,7 @@ export function DesktopBusinessAccountChoiceScreen({
                 })}
               </div>
 
+              {!pinMode && (
               <p className="font-caption text-caption text-text-secondary -mt-3">
                 {otpSending ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -241,15 +271,16 @@ export function DesktopBusinessAccountChoiceScreen({
                   </>
                 )}
               </p>
+              )}
 
               <div className="w-full max-w-md flex flex-col gap-3">
                 <button
                   type="button"
-                  disabled={!otpComplete || otpSending}
-                  onClick={onContinueWithAccount}
+                  disabled={!otpComplete || otpSending || submitting}
+                  onClick={() => continueWithAccount(pinMode ? otpDigits.join('') : undefined)}
                   className="w-full h-14 rounded-2xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100"
                 >
-                  <span>Verify &amp; Continue</span>
+                  <span>{submitting ? 'Confirming…' : pinMode ? 'Confirm & Continue' : 'Verify & Continue'}</span>
                   <Icon name="arrow_forward" className="text-[20px]" />
                 </button>
                 <button
@@ -261,9 +292,11 @@ export function DesktopBusinessAccountChoiceScreen({
                 </button>
               </div>
 
-              <p className="font-caption text-caption text-text-tertiary max-w-sm">
-                Demo mode: any 6-digit code is accepted until the OTP service is connected.
-              </p>
+              {!pinMode && (
+                <p className="font-caption text-caption text-text-tertiary max-w-sm">
+                  Demo mode: any 6-digit code is accepted until the OTP service is connected.
+                </p>
+              )}
             </div>
           ) : (
 <div className="flex flex-col items-center text-center gap-6">
@@ -304,7 +337,7 @@ export function DesktopBusinessAccountChoiceScreen({
               <div className="w-full max-w-md flex flex-col gap-3">
                 <button
                   type="button"
-                  onClick={() => setVerifying(true)}
+                  onClick={() => (confirmation === 'none' ? continueWithAccount() : setVerifying(true))}
                   className="w-full h-14 rounded-2xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-transform"
                 >
                   <span>Confirm &amp; Continue</span>
@@ -322,6 +355,11 @@ export function DesktopBusinessAccountChoiceScreen({
           )}
         </div>
       </section>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </BusinessSetupChrome>
   );
 }

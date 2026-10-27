@@ -149,14 +149,14 @@ const FILTER_CHIPS: Array<{ label: string; count: string; icon?: string }> = [
   { label: 'Fast Service', count: '(58)' },
 ];
 
-const TABS: Array<{ key: Tab; icon: string; label: string }> = [
-  { key: 'overview', icon: 'info', label: 'Deal Overview' },
-  { key: 'rules', icon: 'rule', label: 'How It Works & Rules' },
-  { key: 'reviews', icon: 'reviews', label: 'Reviews (4.9 ★ • 184)' },
-  { key: 'comments', icon: 'chat_bubble_outline', label: 'Community Q&A (32)' },
-];
-
 export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }: DesktopDealDetailScreenProps) {
+  const commentCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
+  const TABS: Array<{ key: Tab; icon: string; label: string }> = [
+    { key: 'overview', icon: 'info', label: 'Deal Overview' },
+    { key: 'rules', icon: 'rule', label: 'How It Works & Rules' },
+    { key: 'reviews', icon: 'reviews', label: 'Reviews (4.9 ★ • 184)' },
+    { key: 'comments', icon: 'chat_bubble_outline', label: `Community Q&A (${commentCount})` },
+  ];
   const { authed, claimed, signIn, markClaimed } = useAuth();
   const claims = useClaims();
   const profile = useProfile();
@@ -215,26 +215,39 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     setDialog(step);
   };
 
-  const completeClaim = () => {
+  const completeClaim = async () => {
     const kind: ClaimKind =
       dialog === 'giftConfirm' ? 'gift' : dialog === 'summary' ? 'someone-else' : 'self';
-    const record = claims.recordClaim({
-      kind,
-      sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
-    });
-    markClaimed();
-    setDialog(null);
-    setClaimRecipient(null);
-    if (onClaimComplete) {
-      onClaimComplete(record);
-      return;
+
+    try {
+      const record = await claims.recordClaim({
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        kind,
+        dealTitle: selectedDeal?.title ?? dealTitle,
+        dealBusiness: selectedDeal?.business ?? dealBusiness,
+        dealImage: selectedDeal?.image ?? MAIN_IMAGE,
+        dealLocation: selectedDeal?.location ?? dealLocation,
+        dealPrice: parsePrice(selectedDeal?.price),
+        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        discountLabel: selectedDeal?.discountLabel ?? 'Save on this deal',
+        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
+      });
+      markClaimed();
+      setDialog(null);
+      setClaimRecipient(null);
+      if (onClaimComplete) {
+        onClaimComplete(record);
+        return;
+      }
+      showToast(
+        kind === 'gift'
+          ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
+          : `Deal claimed! Present ${record.ref} at the local merchant.`,
+      );
+    } catch {
+      // Do not show a success state until the backend confirms the claim.
     }
-    showToast(
-      kind === 'gift'
-        ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
-        : `Deal claimed! Present ${record.ref} at the local merchant.`,
-    );
   };
 
   const copyDealLink = () => {

@@ -1,10 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { PUBLIC_IMAGES } from './publicPosData';
 import type { SegmentRef } from './BusinessSegmentsHubScreen';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useSegmentInsights } from '../hooks/business/useSegments';
+import { segmentDetail } from './segmentsLive';
 
 interface BusinessSegmentDetailScreenProps {
+  /** Live: the segment to show; demo shows the sample Returning cohort. */
+  segment?: SegmentRef;
   onBack: () => void;
   onUseSegment: (segment: SegmentRef) => void;
   onEditRules: () => void;
@@ -66,10 +72,36 @@ const PATRONS = [
   { name: 'Zainab M.', visits: '5 visits', spend: '₦74,600', initial: 'Z' },
 ];
 
-export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules }: BusinessSegmentDetailScreenProps) {
+export function BusinessSegmentDetailScreen({ segment, onBack, onUseSegment, onEditRules }: BusinessSegmentDetailScreenProps) {
+  const live = hasApiConfig();
+  const ref = live && segment ? segment : RETURNING_REF;
+  const insights = useSegmentInsights(live ? segment : null);
+  const detail = segmentDetail(insights.data, ref);
+  const [toast, setToast] = useState<string | null>(null);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  useEffect(() => {
+    if (!insights.error) return;
+    setToast(apiErrorMessage(insights.error, 'Could not load this segment.'));
+    const timer = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [insights.error]);
+
+  const tags = live ? detail.tags : TAGS;
+  const stats = live
+    ? [
+        { ...STAT_CARDS[0], value: detail.stats.totalSpend, sub: 'All time' },
+        { ...STAT_CARDS[1], value: detail.stats.avgBasket, sub: 'Per purchase' },
+        { ...STAT_CARDS[2], value: detail.stats.frequency, sub: 'Visits per diner' },
+      ]
+    : STAT_CARDS;
+  const branchSplit = live ? detail.branchSplit : BRANCH_SPLIT;
+  const reachability = live ? detail.reachability : REACHABILITY;
+  const favorites = live ? detail.favourites : FAVORITES;
+  const patrons = live ? detail.patrons : PATRONS;
 
   return (
     <AppScreen surface="bg-surface">
@@ -113,19 +145,20 @@ export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules 
             <span className="inline-flex items-center px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption uppercase tracking-wider font-semibold">
               Cohort Snapshot
             </span>
-            <span className="text-caption font-caption text-text-tertiary">Sync: Continuous • 3m ago</span>
+            <span className="text-caption font-caption text-text-tertiary">{live ? 'Live' : 'Sync: Continuous • 3m ago'}</span>
           </div>
-          <h2 className="text-heading-md font-heading-md text-text-primary tracking-tight">Returning Customers</h2>
+          <h2 className="text-heading-md font-heading-md text-text-primary tracking-tight">{ref.name}</h2>
           <div className="flex items-baseline gap-space-2xs">
-            <span className="text-heading-md font-heading-md text-primary font-bold">294</span>
+            <span className="text-heading-md font-heading-md text-primary font-bold">{live ? detail.count : '294'}</span>
             <span className="text-label-md font-label-md text-text-secondary">verified diners</span>
           </div>
           <p className="text-body-md font-body-md text-text-secondary leading-relaxed">
-            Customers who have interacted or ordered from a local dining partner 2 or more times in the trailing 90
-            days.
+            {live
+              ? ref.desc
+              : 'Customers who have interacted or ordered from a local dining partner 2 or more times in the trailing 90 days.'}
           </p>
           <div className="flex flex-wrap gap-1.5 pt-space-2xs">
-            {TAGS.map((tag) => (
+            {tags.map((tag) => (
               <span
                 className="px-space-xs py-1 rounded-full bg-surface-subtle text-text-secondary font-caption text-caption font-medium"
                 key={tag}
@@ -137,7 +170,7 @@ export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules 
         </div>
 
         <div className="px-margin mb-space-md grid grid-cols-3 gap-space-xs">
-          {STAT_CARDS.map((stat) => (
+          {stats.map((stat) => (
             <div className="rounded-xl bg-surface-canvas p-space-xs shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-1" key={stat.label}>
               <div className="flex items-center justify-between">
                 <span className="text-caption font-caption text-text-secondary">{stat.label}</span>
@@ -157,7 +190,7 @@ export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules 
               <h3 className="text-label-md font-label-md font-semibold text-text-primary">Branch Footprint Split</h3>
               <span className="text-caption font-caption text-text-tertiary">POS verified</span>
             </div>
-            {BRANCH_SPLIT.map((branch) => (
+            {branchSplit.map((branch) => (
               <div className="flex flex-col gap-1" key={branch.name}>
                 <div className="flex items-center justify-between font-caption text-caption">
                   <span className="text-text-secondary">{branch.name}</span>
@@ -177,7 +210,7 @@ export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules 
               <h3 className="text-label-md font-label-md font-semibold text-text-primary">Reachability</h3>
               <span className="text-caption font-caption text-text-tertiary">Consent checked</span>
             </div>
-            {REACHABILITY.map((reach) => (
+            {reachability.map((reach) => (
               <div className="flex flex-col gap-1" key={reach.label}>
                 <div className="flex items-center justify-between font-caption text-caption">
                   <span className="text-text-secondary">{reach.label}</span>
@@ -199,12 +232,12 @@ export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules 
             <span className="text-caption font-caption text-text-tertiary">POS line items</span>
           </div>
           <div className="flex flex-col gap-space-xs">
-            {FAVORITES.map((item) => (
+            {favorites.map((item) => (
               <div
                 className="rounded-xl bg-surface-canvas p-space-xs shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex items-center gap-space-sm"
                 key={item.name}
               >
-                <img alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" src={item.img} />
+                {item.img && <img alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" src={item.img} />}
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className="text-label-md font-label-md text-text-primary font-semibold truncate">
                     {item.name}
@@ -220,10 +253,10 @@ export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules 
         <div className="px-margin mb-space-md">
           <div className="flex items-center justify-between mb-space-xs">
             <h3 className="text-label-md font-label-md font-semibold text-text-primary">Sample Patrons</h3>
-            <span className="text-caption font-caption text-text-tertiary">Top 3 of 294</span>
+            <span className="text-caption font-caption text-text-tertiary">{live ? detail.sampleLabel : 'Top 3 of 294'}</span>
           </div>
           <div className="flex flex-col gap-space-xs">
-            {PATRONS.map((patron) => (
+            {patrons.map((patron) => (
               <div
                 className="rounded-xl bg-surface-canvas p-space-sm shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex items-center gap-space-sm"
                 key={patron.name}
@@ -262,13 +295,18 @@ export function BusinessSegmentDetailScreen({ onBack, onUseSegment, onEditRules 
           <button
             className="flex-[1.4] h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] active:scale-[0.98] transition-transform flex items-center justify-center gap-space-xs"
             type="button"
-            onClick={() => onUseSegment(RETURNING_REF)}
+            onClick={() => onUseSegment(live ? { ...ref, count: detail.count } : RETURNING_REF)}
           >
             <span>Use This Segment</span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
     </AppScreen>
   );
 }

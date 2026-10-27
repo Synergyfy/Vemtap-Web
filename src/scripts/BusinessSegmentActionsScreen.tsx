@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { SegmentRef } from './BusinessSegmentsHubScreen';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useSegmentInsights } from '../hooks/business/useSegments';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { compactNaira } from './segmentsLive';
 
 interface BusinessSegmentActionsScreenProps {
   segment: SegmentRef;
@@ -39,6 +44,21 @@ export function BusinessSegmentActionsScreen({
     const timer = window.setTimeout(() => setToast(null), 2600);
     timers.current.push(timer);
   };
+
+  const live = hasApiConfig();
+  const insights = useSegmentInsights(live ? segment : null);
+  const business = useMyBusiness();
+  const totalSpend = live ? (insights.data ? compactNaira(insights.data.totalSpend) : '—') : '₦3.28M';
+  const pushReady = live
+    ? `${insights.data ? (insights.data.reachableByPush ?? 0).toLocaleString('en-US') : '—'} Push/Feed ready`
+    : segment.count === '294'
+      ? '264 Push/Feed ready'
+      : 'Push/Feed ready';
+  const businessName = live ? business.data?.name || '—' : 'Urban Grill & Bistro';
+
+  useEffect(() => {
+    if (insights.error) showToast(apiErrorMessage(insights.error, 'Could not load this segment.'));
+  }, [insights.error]);
 
   return (
     <AppScreen surface="bg-surface">
@@ -116,19 +136,19 @@ export function BusinessSegmentActionsScreen({
                   <h3 className="text-label-md font-label-md font-semibold text-text-primary truncate">
                     {segment.name}
                   </h3>
-                  <p className="text-caption font-caption text-text-secondary">Urban Grill & Bistro</p>
+                  <p className="text-caption font-caption text-text-secondary">{businessName}</p>
                 </div>
               </div>
               <div className="text-right shrink-0">
                 <span className="text-caption font-caption text-text-secondary block">Total Spend</span>
-                <span className="text-label-md font-label-md font-semibold text-text-primary">₦3.28M</span>
+                <span className="text-label-md font-label-md font-semibold text-text-primary">{totalSpend}</span>
               </div>
             </div>
             <p className="text-body-md font-body-md text-text-secondary leading-snug mb-space-sm">{segment.desc}</p>
             <div className="flex items-center gap-space-xs pt-space-xs bg-surface-canvas/60 p-space-xs rounded-lg">
               <Icon name="cell_tower" className="text-[16px] text-primary" filled />
               <span className="text-caption font-caption text-text-primary font-medium">
-                {segment.count === '294' ? '264 Push/Feed ready' : 'Push/Feed ready'}{' '}
+                {pushReady}{' '}
                 <span className="text-text-tertiary mx-1">•</span> In-App Message ready
               </span>
             </div>

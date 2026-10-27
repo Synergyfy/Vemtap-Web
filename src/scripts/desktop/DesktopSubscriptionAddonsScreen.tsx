@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useActiveSubscription, useCreditBalance, useCreditCheckout, useCreditPlans } from '../../hooks/business/useSubscription';
+import { hasApiConfig } from '../../services/api/client';
+import { cheapestCreditPlan, creditBundleLine } from '../subscriptionLive';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionAddonsScreenProps {
@@ -28,6 +31,24 @@ const POS_ALT =
 
 export function DesktopSubscriptionAddonsScreen({ onBack, onBoost }: DesktopSubscriptionAddonsScreenProps) {
   const [waitlisted, setWaitlisted] = useState(false);
+  const balance = useCreditBalance();
+  const creditPlans = useCreditPlans();
+  const checkout = useCreditCheckout();
+  const live = hasApiConfig();
+  const activePlan = useActiveSubscription();
+
+  // Live: real balances + the cheapest live bundle per credit type; demo
+  // keeps the scripted "0 SMS / 0 AI" figures.
+  const smsBalance = balance.data?.smsCredits ?? 0;
+  const aiBalance = balance.data?.aiCredits ?? 0;
+  const smsPlan = cheapestCreditPlan(creditPlans.data ?? [], 'sms');
+  const aiPlan = cheapestCreditPlan(creditPlans.data ?? [], 'ai');
+  const smsLine = creditBundleLine(smsPlan, 'sms');
+  const aiLine = creditBundleLine(aiPlan, 'ai');
+
+  const buyCredit = (planId?: string) => {
+    if (planId) checkout.mutate(planId);
+  };
 
   return (
     <SubscriptionChrome onBrand={onBack} activeNav="billing" breadcrumb="Paid Add-Ons">
@@ -56,11 +77,11 @@ export function DesktopSubscriptionAddonsScreen({ onBack, onBoost }: DesktopSubs
               <div className="flex items-center gap-space-md">
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="sms" className="text-primary text-[18px]" />
-                  <span className="font-label-md text-label-md text-text-primary font-semibold">0 SMS</span>
+                  <span className="font-label-md text-label-md text-text-primary font-semibold">{smsBalance} SMS</span>
                 </div>
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="auto_awesome" className="text-primary text-[18px]" />
-                  <span className="font-label-md text-label-md text-text-primary font-semibold">0 AI</span>
+                  <span className="font-label-md text-label-md text-text-primary font-semibold">{aiBalance} AI</span>
                 </div>
               </div>
               <button
@@ -185,14 +206,22 @@ export function DesktopSubscriptionAddonsScreen({ onBack, onBoost }: DesktopSubs
             <div className="flex items-center justify-between pt-space-2xs mt-auto">
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Bundles from</span>
-                <div className="flex items-baseline gap-space-2xs">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,500</span>
-                  <span className="font-caption text-caption text-text-secondary">/ 250 SMS</span>
-                </div>
+                {smsLine ? (
+                  <div className="flex items-baseline gap-space-2xs">
+                    <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                      {smsLine.split(' / ')[0]}
+                    </span>
+                    <span className="font-caption text-caption text-text-secondary">/ {smsLine.split(' / ')[1]}</span>
+                  </div>
+                ) : (
+                  <span className="font-label-sm text-label-sm text-text-secondary">No bundles on sale yet</span>
+                )}
               </div>
               <button
-                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all"
+                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 type="button"
+                disabled={!smsPlan}
+                onClick={() => buyCredit(smsPlan?.id)}
               >
                 <span>Buy SMS Credits</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
@@ -231,14 +260,22 @@ export function DesktopSubscriptionAddonsScreen({ onBack, onBoost }: DesktopSubs
             <div className="flex items-center justify-between pt-space-2xs mt-auto">
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Bundles from</span>
-                <div className="flex items-baseline gap-space-2xs">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,000</span>
-                  <span className="font-caption text-caption text-text-secondary">/ 100 Credits</span>
-                </div>
+                {aiLine ? (
+                  <div className="flex items-baseline gap-space-2xs">
+                    <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                      {aiLine.split(' / ')[0]}
+                    </span>
+                    <span className="font-caption text-caption text-text-secondary">/ {aiLine.split(' / ')[1]}</span>
+                  </div>
+                ) : (
+                  <span className="font-label-sm text-label-sm text-text-secondary">No bundles on sale yet</span>
+                )}
               </div>
               <button
-                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all"
+                className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 type="button"
+                disabled={!aiPlan}
+                onClick={() => buyCredit(aiPlan?.id)}
               >
                 <span>Buy AI Credits</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
@@ -304,7 +341,7 @@ export function DesktopSubscriptionAddonsScreen({ onBack, onBoost }: DesktopSubs
           <Icon name="info" className="text-primary text-[20px] flex-shrink-0 mt-0.5" />
           <p className="font-body-md text-body-md text-text-secondary leading-normal">
             Add-ons are one-time or pay-as-you-go. They never alter your base{' '}
-            <span className="text-text-primary font-semibold">₦5,000/mo Growth subscription</span>.
+            <span className="text-text-primary font-semibold">{live ? (activePlan.data?.plan?.name ? `${activePlan.data.plan.name} plan` : 'subscription plan') : '₦5,000/mo Growth subscription'}</span>.
           </p>
         </section>
       </div>

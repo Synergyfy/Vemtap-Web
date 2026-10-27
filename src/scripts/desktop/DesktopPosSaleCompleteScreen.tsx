@@ -8,6 +8,9 @@ import { usePosSettings } from '../../context/PosSettingsContext';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { usePosOffline } from '../../context/PosOfflineContext';
 import { printKvTable, printReport } from '../../utils/printReport';
+import { hasApiConfig } from '../../services/api/client';
+import { money } from '../../services/posService';
+import { methodLabel, timeLabel, useLastSale, useLivePos, whenLabel } from '../posLive';
 
 interface DesktopPosSaleCompleteScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -70,7 +73,7 @@ function useChime() {
 
 export function DesktopPosSaleCompleteScreen({
   onNav,
-  cart,
+  cart: ticketCart,
   customer,
   awardedPoints,
   onNewSale,
@@ -91,13 +94,49 @@ export function DesktopPosSaleCompleteScreen({
   } = usePosSettings();
   const { branch } = useBusinessBranch();
   const { isOnline } = usePosOffline();
-  const totals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const last = useLastSale();
+  const sale = live && last && !last.queued ? last.sale : null;
+  // Live: the lines and totals the server charged; offline-queued sales fall back to the ticket.
+  const cart: PosTerminalLine[] = sale
+    ? (sale.items ?? []).map((item) => ({
+        id: item.id,
+        name: item.productName ?? 'Item',
+        mods: '',
+        unit: money(item.unitPrice),
+        promo: item.quantity && money(item.discount) ? money(item.discount) / item.quantity : undefined,
+        qty: item.quantity,
+      }))
+    : ticketCart;
+  const cartTotals = useMemo(() => computeTotals(cart, taxMode, taxRate / 100), [cart, taxMode, taxRate]);
+  const totals = sale
+    ? {
+        ...cartTotals,
+        discount: money(sale.discountAmount),
+        vat: money(sale.tax),
+        total: money(sale.total),
+        itemCount: sale.itemCount ?? cartTotals.itemCount,
+      }
+    : cartTotals;
   const { muted, setMuted, play } = useChime();
-  const [phone, setPhone] = useState('+234 803 219 8831');
-  const [email, setEmail] = useState('michael.james@email.com');
+  const [phone, setPhone] = useState(live ? '' : '+234 803 219 8831');
+  const [email, setEmail] = useState(live ? '' : 'michael.james@email.com');
   const [flash, setFlash] = useState<string | null>(null);
-
-  const receiptNo = 'RC-10842';
+  const receiptNo = live ? (sale?.receiptNumber ?? (last?.queued ? last.ref : '—')) : 'RC-10842';
+  const cashierName = live ? (sale?.cashierName ?? pos.cashierName) : 'Emeka Okafor';
+  const tender = sale ? methodLabel(sale.paymentMethod) : 'Cash';
+  const cashReceived = sale ? money(sale.amountPaid) : 30000;
+  const changeGiven = sale ? money(sale.change) : 30000 - totals.total;
+  /** Live: print the page; SMS / email / portal receipts have no backend yet. */
+  const liveAction = (message: string, print = false) => {
+    if (!live) {
+      flashMessage(message);
+      return;
+    }
+    if (print) window.print();
+    else flashMessage('Digital receipts are coming soon.');
+  };
 
   const flashMessage = (message: string) => {
     setFlash(message);
@@ -160,7 +199,7 @@ export function DesktopPosSaleCompleteScreen({
 
   useEffect(() => {
     // Auto-print receipt — controlled from POS Settings.
-    if (autoPrintReceipt) flashMessage('Receipt printed on Epson TM-T20 [USB/001]');
+    if (autoPrintReceipt && !live) flashMessage('Receipt printed on Epson TM-T20 [USB/001]');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,9 +228,13 @@ export function DesktopPosSaleCompleteScreen({
                   Receipt #{receiptNo}
                 </span>
                 <span className="text-outline-variant">•</span>
-                <span>Ticket #TK-108 • Table 04</span>
+                <span>{live ? (sale ? methodLabel(sale.paymentMethod) : 'Saved offline') : 'Ticket #TK-108 • Table 04'}</span>
                 <span className="text-outline-variant">•</span>
-                <span>13:42:47 WAT • Emeka Okafor • Till #01</span>
+                <span>
+                  {live
+                    ? `${timeLabel(sale?.createdAt ?? new Date().toISOString())} • ${cashierName} • ${pos.tillName}`
+                    : '13:42:47 WAT • Emeka Okafor • Till #01'}
+                </span>
               </div>
             </div>
           </div>
@@ -275,19 +318,21 @@ export function DesktopPosSaleCompleteScreen({
                   </div>
                   <div className="flex justify-between">
                     <span>Ticket</span>
-                    <span className="font-bold">#TK-108</span>
+                    <span className="font-bold">{live ? `#${receiptNo}` : '#TK-108'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Cashier</span>
-                    <span className="font-bold">Emeka Okafor</span>
+                    <span className="font-bold">{cashierName}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Date</span>
-                    <span className="font-bold">12/10/2026 13:42 WAT</span>
+                    <span className="font-bold">
+                      {live ? whenLabel(sale?.createdAt ?? new Date().toISOString()) : '12/10/2026 13:42 WAT'}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>Patron</span>
-                    <span className="font-bold">{customer ?? 'Michael James'}</span>
+                    <span className="font-bold">{customer ?? (live ? (sale?.customerName ?? 'Walk-in') : 'Michael James')}</span>
                   </div>
 
                   <div className="my-3 border-t border-dashed border-outline-variant" />
@@ -342,15 +387,15 @@ export function DesktopPosSaleCompleteScreen({
 
                   <div className="flex justify-between">
                     <span>Tender</span>
-                    <span className="font-bold">Cash</span>
+                    <span className="font-bold">{tender}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Cash Received</span>
-                    <span>{formatNaira(30000)}</span>
+                    <span>{formatNaira(cashReceived)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Change</span>
-                    <span>{formatNaira(30000 - totals.total)}</span>
+                    <span>{formatNaira(changeGiven)}</span>
                   </div>
 
                   <div className="my-3 border-t border-dashed border-outline-variant" />
@@ -431,7 +476,7 @@ export function DesktopPosSaleCompleteScreen({
               <div className="grid grid-cols-2 gap-space-sm">
                 <button
                   type="button"
-                  onClick={() => flashMessage('Printing full thermal receipt…')}
+                  onClick={() => liveAction('Printing full thermal receipt…', true)}
                   className="p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-low text-left flex flex-col gap-1.5 shadow-sm transition-colors"
                 >
                   <Icon name="print" className="text-primary text-[22px]" />
@@ -442,7 +487,7 @@ export function DesktopPosSaleCompleteScreen({
                 </button>
                 <button
                   type="button"
-                  onClick={() => flashMessage('Printing quick slip…')}
+                  onClick={() => liveAction('Printing quick slip…', true)}
                   className="p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-low text-left flex flex-col gap-1.5 shadow-sm transition-colors"
                 >
                   <Icon name="receipt" className="text-primary text-[22px]" />
@@ -451,7 +496,7 @@ export function DesktopPosSaleCompleteScreen({
                 </button>
                 <button
                   type="button"
-                  onClick={() => flashMessage('E-receipt dispatched to web portal…')}
+                  onClick={() => liveAction('E-receipt dispatched to web portal…')}
                   className="p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-low text-left flex flex-col gap-1.5 shadow-sm transition-colors"
                 >
                   <Icon name="language" className="text-primary text-[22px]" />
@@ -493,7 +538,7 @@ export function DesktopPosSaleCompleteScreen({
                   </div>
                   <button
                     type="button"
-                    onClick={() => flashMessage(`Digital slip resent to ${phone}`)}
+                    onClick={() => liveAction(`Digital slip resent to ${phone}`)}
                     className="h-11 px-space-md rounded-lg bg-primary-container hover:bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold transition-colors shrink-0"
                   >
                     Resend
@@ -530,7 +575,7 @@ export function DesktopPosSaleCompleteScreen({
               <div className="grid grid-cols-2 gap-space-sm">
                 <button
                   type="button"
-                  onClick={() => flashMessage('Re-printing last thermal receipt…')}
+                  onClick={() => liveAction('Re-printing last thermal receipt…', true)}
                   className="h-11 rounded-lg bg-surface-subtle hover:bg-surface-container-high text-text-secondary font-button-secondary text-button-secondary font-semibold transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Icon name="print" className="text-[18px]" />

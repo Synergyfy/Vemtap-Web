@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { AnalyticsHeader, AnalyticsSection, type AnalyticsTabKey } from '../components/AnalyticsChrome';
+import { apiErrorMessage } from '../services/errorMessages';
+import { activityHeatmap, count, naira, periodLabel, share, signedChange, sourceShares, useLiveAnalytics } from './analyticsLive';
 
 interface AnalyticsCustomersScreenProps {
   onAnalyticsTab: (tab: AnalyticsTabKey) => void;
@@ -41,6 +43,9 @@ const CHANNELS = [
   { name: 'Social Profile Link', pct: 8, count: '119 customers', bar: 'bg-tertiary' },
   { name: 'Referral Codes', pct: 4, count: '59 customers', bar: 'bg-surface-tint-blue' },
 ];
+
+const CHANNEL_BARS = ['bg-primary', 'bg-badge-discount-text', 'bg-secondary', 'bg-tertiary', 'bg-surface-tint-blue'];
+const pct = (fraction?: number) => `${Math.round((fraction ?? 0) * 1000) / 10}%`;
 
 const SEGMENTS = [
   {
@@ -115,6 +120,76 @@ export function AnalyticsCustomersScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const { live, filter, data: customers, error } = useLiveAnalytics('customers');
+  const { data: overview } = useLiveAnalytics('overview');
+  useEffect(() => {
+    if (error) showToast(apiErrorMessage(error, 'Could not load customer analytics.'));
+  }, [error]);
+
+  const total = customers?.total.current ?? 0;
+  const metrics = live
+    ? [
+        { ...METRICS[0], value: count(total), sub: `${signedChange(customers?.total)} vs previous` },
+        { ...METRICS[1], value: count(customers?.active.current), sub: `${share(customers?.active.current ?? 0, total)}% of base` },
+        { ...METRICS[2], value: count(customers?.new.current), sub: `${signedChange(customers?.new)} vs last` },
+        { ...METRICS[3], value: count(customers?.returning), sub: `${pct(customers?.repeatRate.current)} repeat rate` },
+      ]
+    : METRICS;
+  const growth = (customers?.growth ?? []).slice(-4);
+  const growthMax = Math.max(1, ...growth.flatMap((week) => [week.new, week.returning]));
+  const growthWeeks = live
+    ? growth.map((week, index) => ({
+        week: `W${index + 1}`,
+        fresh: Math.round((week.new / growthMax) * 100),
+        repeat: Math.round((week.returning / growthMax) * 100),
+        raw: week,
+      }))
+    : GROWTH_WEEKS.map((week) => ({ ...week, raw: null }));
+  const peakWeek = growthWeeks.reduce<(typeof growthWeeks)[number] | null>(
+    (best, week) => (week.raw && (!best?.raw || week.raw.new + week.raw.returning > best.raw.new + best.raw.returning) ? week : best),
+    null,
+  );
+  const touchpoints = live
+    ? [
+        { ...TOUCHPOINTS[0], label: 'Store Visits', icon: 'storefront', value: count(overview?.activity.visits) },
+        { ...TOUCHPOINTS[1], label: 'Deal Views', value: count(overview?.activity.dealViews) },
+        { ...TOUCHPOINTS[2], value: count(overview?.activity.claims) },
+        { ...TOUCHPOINTS[3], value: count(overview?.orders.current) },
+        { ...TOUCHPOINTS[4], value: count(overview?.activity.chats) },
+        { ...TOUCHPOINTS[5], label: 'Deals Redeemed', icon: 'redeem', value: count(overview?.activity.redemptions) },
+      ]
+    : TOUCHPOINTS;
+  const channels = live
+    ? sourceShares(overview).map((source, index) => ({
+        name: source.name,
+        pct: source.pct,
+        count: `${source.count.toLocaleString('en-US')} interactions`,
+        bar: CHANNEL_BARS[index % CHANNEL_BARS.length],
+      }))
+    : CHANNELS;
+  const segmentData = customers?.segments;
+  const segments = live
+    ? (
+        [
+          ['vip', 'VIP Customers'],
+          ['regular', 'Regular Customers'],
+          ['new', 'New Customers'],
+          ['lapsed', 'At Risk (lapsed)'],
+        ] as const
+      ).map(([key, title], index) => {
+        const segment = segmentData?.[key];
+        return {
+          ...SEGMENTS[index],
+          title,
+          meta: `${count(segment?.count)} customers • ${naira(segment?.spend)} spend`,
+          badge: pct(segment?.share),
+          width: `${Math.round((segment?.share ?? 0) * 100)}%`,
+        };
+      })
+    : SEGMENTS;
+  const dormant = customers?.dormant.current ?? 0;
+  const heat = activityHeatmap(customers?.heatmap);
+
   return (
     <AppScreen>
       <AnalyticsHeader active="customers" onTab={onAnalyticsTab} onOpenFilter={onOpenFilter} onOpenExport={onOpenExport} />
@@ -138,7 +213,7 @@ export function AnalyticsCustomersScreen({
 
         {/* Metric grid */}
         <div className="grid grid-cols-2 gap-space-xs">
-          {METRICS.map((item) => (
+          {metrics.map((item) => (
             <Card key={item.label}>
               <div className={`flex items-center gap-1 ${item.iconClass}`}>
                 <Icon name={item.icon} className="text-[15px]" />
@@ -157,14 +232,20 @@ export function AnalyticsCustomersScreen({
               <Icon name="notifications_paused" className="text-[17px]" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="font-label-md text-label-md text-on-surface font-semibold">186 inactive customers</span>
-              <span className="font-caption text-caption text-text-secondary">No visit in 60+ days</span>
+              <span className="font-label-md text-label-md text-on-surface font-semibold">
+                {live ? `${count(dormant)} inactive customers` : '186 inactive customers'}
+              </span>
+              <span className="font-caption text-caption text-text-secondary">
+                {live ? 'No recent visit' : 'No visit in 60+ days'}
+              </span>
             </div>
           </div>
           <button
             className="h-10 px-space-sm rounded-xl bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold shrink-0 active:scale-95 transition-transform"
             type="button"
-            onClick={() => showToast('Re-engagement campaign queued for 186 customers')}
+            onClick={() =>
+              showToast(live ? 'Re-engage them from Segments → Inactive Customers.' : 'Re-engagement campaign queued for 186 customers')
+            }
           >
             Re-engage
           </button>
@@ -174,7 +255,10 @@ export function AnalyticsCustomersScreen({
         <AnalyticsSection title="Growth Trend" meta="New vs returning customers by week">
           <Card>
             <div className="flex items-end justify-between gap-space-sm h-32">
-              {GROWTH_WEEKS.map((week) => (
+              {live && !growthWeeks.length && (
+                <span className="font-caption text-caption text-text-tertiary self-center mx-auto">No customer activity yet</span>
+              )}
+              {growthWeeks.map((week) => (
                 <div className="flex-1 flex flex-col items-center gap-1" key={week.week}>
                   <div className="w-full flex items-end justify-center gap-1 h-24">
                     <div className="w-3 rounded-t-md bg-primary" style={{ height: `${week.fresh}%` }} />
@@ -195,7 +279,20 @@ export function AnalyticsCustomersScreen({
               </span>
             </div>
             <div className="mt-space-xs bg-surface-container-low rounded-xl px-space-sm py-space-xs font-caption text-caption text-text-secondary">
-              <span className="text-text-primary font-semibold">W4 peak:</span> 62 new + 84 returning — your best week yet.
+              {live ? (
+                peakWeek?.raw ? (
+                  <>
+                    <span className="text-text-primary font-semibold">{peakWeek.week} peak:</span> {peakWeek.raw.new} new +{' '}
+                    {peakWeek.raw.returning} returning.
+                  </>
+                ) : (
+                  `No weekly data for ${periodLabel(filter).toLowerCase()}.`
+                )
+              ) : (
+                <>
+                  <span className="text-text-primary font-semibold">W4 peak:</span> 62 new + 84 returning — your best week yet.
+                </>
+              )}
             </div>
           </Card>
         </AnalyticsSection>
@@ -203,7 +300,7 @@ export function AnalyticsCustomersScreen({
         {/* Engagement touchpoints */}
         <AnalyticsSection title="Engagement Touchpoints" meta="Actions logged against customer profiles">
           <div className="grid grid-cols-2 gap-space-xs">
-            {TOUCHPOINTS.map((item) => (
+            {touchpoints.map((item) => (
               <button
                 className="bg-surface-canvas border border-border-subtle rounded-xl p-space-sm flex flex-col items-start gap-1 text-left active:scale-95 transition-transform"
                 key={item.label}
@@ -221,15 +318,15 @@ export function AnalyticsCustomersScreen({
         </AnalyticsSection>
 
         {/* Inbound channels */}
-        <AnalyticsSection title="Inbound Channels" meta="How customers first found you">
+        <AnalyticsSection title="Inbound Channels" meta={live ? 'Where customer activity came from' : 'How customers first found you'}>
           <Card>
             <div className="h-3 rounded-full overflow-hidden flex bg-surface-container-low mb-space-sm">
-              {CHANNELS.map((channel) => (
+              {channels.map((channel) => (
                 <div className={`h-full ${channel.bar}`} key={channel.name} style={{ width: `${channel.pct}%` }} />
               ))}
             </div>
             <div className="flex flex-col">
-              {CHANNELS.map((channel, index) => (
+              {channels.map((channel, index) => (
                 <div
                   className={`flex items-center justify-between gap-space-xs py-space-xs ${
                     index > 0 ? 'border-t border-border-subtle' : ''
@@ -257,31 +354,85 @@ export function AnalyticsCustomersScreen({
           <Card>
             <div className="grid grid-cols-3 gap-space-xs text-center">
               <div className="flex flex-col gap-0.5">
-                <span className="font-heading-md text-heading-md text-text-primary font-bold">218</span>
+                <span className="font-heading-md text-heading-md text-text-primary font-bold">{live ? count(customers?.returning) : '218'}</span>
                 <span className="font-caption text-caption text-text-secondary">Repeat buyers</span>
               </div>
               <div className="flex flex-col gap-0.5 border-x border-border-subtle">
-                <span className="font-heading-md text-heading-md text-text-primary font-bold">68.2%</span>
+                <span className="font-heading-md text-heading-md text-text-primary font-bold">{live ? pct(customers?.repeatRate.current) : '68.2%'}</span>
                 <span className="font-caption text-caption text-text-secondary">Retention</span>
               </div>
               <div className="flex flex-col gap-0.5">
-                <span className="font-heading-md text-heading-md text-text-primary font-bold">2.4</span>
-                <span className="font-caption text-caption text-text-secondary">Visits / month</span>
+                <span className="font-heading-md text-heading-md text-text-primary font-bold">
+                  {live ? (customers?.visitsPerActiveCustomer ?? 0).toFixed(1) : '2.4'}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">{live ? 'Visits / customer' : 'Visits / month'}</span>
               </div>
             </div>
             <div className="mt-space-sm h-2 rounded-full bg-surface-container-low overflow-hidden">
-              <div className="h-full bg-primary rounded-full" style={{ width: '68.2%' }} />
+              <div className="h-full bg-primary rounded-full" style={{ width: live ? pct(customers?.repeatRate.current) : '68.2%' }} />
             </div>
             <p className="font-caption text-caption text-text-secondary mt-space-xs leading-relaxed">
-              Customers acquired through deals return 1.7× more often than walk-ins within 30 days.
+              {live
+                ? `Average spend per active customer: ${naira(customers?.averageSpend)}.`
+                : 'Customers acquired through deals return 1.7× more often than walk-ins within 30 days.'}
             </p>
           </Card>
         </AnalyticsSection>
 
+        {/* Visit rhythm heatmap (live only — the API serves the customer activity heatmap) */}
+        {live && (
+          <AnalyticsSection title="Visit Rhythm" meta="Customer activity by weekday and hour">
+            <Card>
+              <div className="grid grid-cols-2 gap-space-xs mb-space-sm">
+                <div className="bg-surface-container-low rounded-xl p-space-xs">
+                  <div className="flex items-center gap-1 text-primary">
+                    <Icon name="wb_sunny" className="text-[15px]" />
+                    <span className="font-caption text-caption font-semibold">Lunch window</span>
+                  </div>
+                  <div className="font-label-md text-label-md text-text-primary font-bold">12–2 PM</div>
+                  <span className="font-caption text-caption text-text-tertiary">{heat.lunchShare}% of day activity</span>
+                </div>
+                <div className="bg-surface-container-low rounded-xl p-space-xs">
+                  <div className="flex items-center gap-1 text-tertiary">
+                    <Icon name="nightlight" className="text-[15px]" />
+                    <span className="font-caption text-caption font-semibold">Dinner window</span>
+                  </div>
+                  <div className="font-label-md text-label-md text-text-primary font-bold">6–9 PM</div>
+                  <span className="font-caption text-caption text-text-tertiary">{heat.dinnerShare}% of day activity</span>
+                </div>
+              </div>
+
+              <div className="flex items-end justify-between gap-space-2xs h-28">
+                {!heat.total && (
+                  <span className="font-caption text-caption text-text-tertiary self-center mx-auto">No activity in this period</span>
+                )}
+                {heat.week.map((item) => (
+                  <div className="flex-1 flex flex-col items-center gap-1" key={item.day}>
+                    <div className="w-full flex items-end justify-center h-20">
+                      <div
+                        className={`w-full max-w-[24px] rounded-t-md ${
+                          item.pct === 100 ? 'bg-primary' : item.pct >= 74 ? 'bg-primary/55' : 'bg-primary/30'
+                        }`}
+                        style={{ height: `${item.pct}%` }}
+                      />
+                    </div>
+                    <span className="font-caption text-caption text-text-tertiary">{item.day}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between mt-space-xs pt-space-xs border-t border-border-subtle">
+                <span className="font-caption text-caption text-text-secondary">Busiest day</span>
+                <span className="font-label-sm text-label-sm text-text-primary font-semibold">{heat.busiest}</span>
+              </div>
+            </Card>
+          </AnalyticsSection>
+        )}
+
         {/* Segments */}
         <AnalyticsSection title="Customer Segments" meta="Automatically classified profiles">
           <div className="flex flex-col gap-space-xs">
-            {SEGMENTS.map((segment) => (
+            {segments.map((segment) => (
               <Card key={segment.title}>
                 <div className="flex items-center justify-between gap-space-xs">
                   <div className="flex items-center gap-space-sm min-w-0">

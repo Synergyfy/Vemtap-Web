@@ -30,18 +30,19 @@ export interface CustomersPage {
   hasNextPage: boolean;
   meta: {
     segmentCounts: Record<CustomerSegment, number>;
-    insight?: { customers: number; frequentCustomers: number; frequentSpendShare: number; dormant: number };
+    insight?: { customers: number; frequentCustomers: number; frequentSpendShare: number; dormant: number; averageSpend?: number };
   };
 }
 
 export interface CustomerDossier extends CustomerCard {
   memberSince?: string | null;
+  firstInteraction?: { kind: string; at: string } | null;
   preferredBranch?: { id: string; name: string } | null;
   metrics?: { visitsPerMonth: number; averageOrder: number | string; redeemed: number; redemptionRate: number };
-  recentPurchases?: { id: string; kind: 'pos' | 'order'; reference?: string | null; total: number | string; paymentMethod?: string | null; items?: number; at: string; branchName?: string | null }[];
+  recentPurchases?: { id: string; kind: 'pos' | 'order'; reference?: string | null; total: number | string; paymentMethod?: string | null; items?: string; at: string; branchName?: string | null }[];
   recentClaims?: { id: string; offerName: string; status: string; claimCode?: string | null; saved?: number | string | null; claimedAt: string; redeemedAt?: string | null; branchName?: string | null }[];
   loyaltyLedger?: { id: string; points: number; reason: string; at: string }[];
-  note?: { note?: string | null; tags?: string[] | null; updatedAt?: string | null } | null;
+  note?: { note?: string | null; tags?: string[] | null; updatedAt?: string | null; updatedBy?: string | null } | null;
 }
 
 export interface CustomersQuery {

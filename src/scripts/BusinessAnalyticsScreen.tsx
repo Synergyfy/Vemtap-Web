@@ -3,6 +3,11 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { downloadCsv } from '../utils/exportCsv';
 import { printReport, printKvTable } from '../utils/printReport';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useBusinessAnalytics } from '../hooks/business/useBusinessAnalytics';
+import { CUSTOMER_AVATAR } from './customersLive';
+import { DAY_LONG, change, changeLabel, hourLabel, isUp, share, useAnalyticsFilter } from './analyticsLive';
 
 export type AnalyticsTab = 'overview' | 'audience';
 
@@ -27,6 +32,20 @@ const NAV_ITEMS: { key: NavKey; icon: string; label: string }[] = [
 const PERIODS: PeriodKey[] = ['Today', '7D', '30D', 'Custom'];
 
 const PERIOD_SCALE: Record<PeriodKey, number> = { Today: 0.033, '7D': 0.233, '30D': 1, Custom: 1 };
+/** Days each period chip queries when live (Custom uses the analytics filter's period). */
+const PERIOD_DAYS: Record<Exclude<PeriodKey, 'Custom'>, number> = { Today: 1, '7D': 7, '30D': 30 };
+const CHANNEL_STYLES = [
+  { dot: 'bg-primary', shareClass: 'text-text-secondary' },
+  { dot: 'bg-primary-container', shareClass: 'text-badge-discount-text' },
+  { dot: 'bg-secondary-container', shareClass: 'text-text-secondary' },
+];
+const pct = (fraction: number) => `${Math.round(fraction * 1000) / 10}%`;
+const deltaText = (comparison?: { current: number; previous: number }) => {
+  const value = change(comparison);
+  return value == null ? '—' : `${value >= 0 ? '+' : '-'}${Math.abs(value).toFixed(1)}%`;
+};
+const deltaClassFor = (comparison?: { current: number; previous: number }) =>
+  (change(comparison) ?? 0) >= 0 ? 'text-badge-discount-text' : 'text-error';
 
 const naira = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
 const countFmt = (value: number) => Math.round(value).toLocaleString('en-US');
@@ -194,6 +213,121 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const filter = useAnalyticsFilter();
+  const days = dateRange === 'Custom' ? filter.days : PERIOD_DAYS[dateRange];
+  const branchId = filter.branchId ?? undefined;
+  const overviewQuery = useBusinessAnalytics('overview', days, branchId);
+  const overviewData = overviewQuery.data;
+  const dealsData = useBusinessAnalytics('deals', days, branchId).data;
+  const posData = useBusinessAnalytics('pos', days, branchId).data;
+  const customersQuery = useBusinessAnalytics('customers', days, branchId);
+  const customersData = customersQuery.data;
+  const overviewError = overviewQuery.error ?? customersQuery.error;
+
+  useEffect(() => {
+    if (live && overviewError) showToast(apiErrorMessage(overviewError, 'Could not load your analytics.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overviewError]);
+
+  /** Live: the hero, metrics and channel split for the chosen domain, in the config's shape. */
+  const liveConfig = (key: 'business' | 'deals' | 'pos'): (typeof OVERVIEW_CONFIG)['business'] => {
+    if (key === 'deals') {
+      const totals = dealsData?.totals;
+      const topDeals = [...(dealsData?.deals ?? [])].sort((a, b) => b.revenue - a.revenue).slice(0, 3);
+      const dealRevenue = topDeals.reduce((sum, deal) => sum + deal.revenue, 0);
+      return {
+        heroLabel: 'Deal Revenue Attributed',
+        heroBase: totals?.revenue ?? 0,
+        heroFmt: naira,
+        heroDelta: changeLabel(totals?.claims),
+        heroDeltaUp: isUp(totals?.claims),
+        heroNote: `${countFmt(totals?.claims.current ?? 0)} claims`,
+        metrics: [
+          { label: 'Redeemed', fixedValue: countFmt(totals?.redeemed ?? 0), delta: deltaText(totals?.claims), deltaClass: deltaClassFor(totals?.claims) },
+          { label: 'Claim Rate', fixedValue: pct(totals?.claimRate ?? 0), delta: 'of views', deltaClass: 'text-primary' },
+          { label: 'Live Deals', fixedValue: countFmt(totals?.live ?? 0), delta: `${countFmt(totals?.ended ?? 0)} ended`, deltaClass: 'text-primary' },
+        ],
+        channels: topDeals.map((deal, index) => ({
+          name: deal.name,
+          meta: `${countFmt(deal.claims)} claims • ${countFmt(deal.redeemed)} redeemed`,
+          base: deal.revenue,
+          sharePct: Math.round(share(deal.revenue, dealRevenue)),
+          ...CHANNEL_STYLES[index],
+        })),
+      };
+    }
+    if (key === 'pos') {
+      const tenders = [...(posData?.tenders ?? [])].sort((a, b) => b.amount - a.amount).slice(0, 3);
+      return {
+        heroLabel: 'Terminal Gross Intake',
+        heroBase: posData?.sales.current ?? 0,
+        heroFmt: naira,
+        heroDelta: changeLabel(posData?.sales),
+        heroDeltaUp: isUp(posData?.sales),
+        heroNote: `${countFmt(posData?.tickets.current ?? 0)} tickets`,
+        metrics: [
+          { label: 'Tickets', fixedValue: countFmt(posData?.tickets.current ?? 0), delta: deltaText(posData?.tickets), deltaClass: deltaClassFor(posData?.tickets) },
+          { label: 'Avg Ticket', fixedValue: naira(posData?.averageTicket.current ?? 0), delta: deltaText(posData?.averageTicket), deltaClass: deltaClassFor(posData?.averageTicket) },
+          { label: 'Refunds', fixedValue: pct(posData?.refunds.rate ?? 0), delta: `${countFmt(posData?.refunds.count ?? 0)} refunds`, deltaClass: 'text-primary' },
+        ],
+        channels: tenders.map((tender, index) => ({
+          name: tender.method.charAt(0).toUpperCase() + tender.method.slice(1),
+          meta: `${countFmt(tender.count)} payments`,
+          base: tender.amount,
+          sharePct: Math.round(tender.share * 100),
+          ...CHANNEL_STYLES[index],
+        })),
+      };
+    }
+    const channels = overviewData?.channels ?? [];
+    const channelRevenue = channels.reduce((sum, channel) => sum + channel.revenue, 0);
+    return {
+      heroLabel: 'Gross Sales Volume',
+      heroBase: overviewData?.revenue.current ?? 0,
+      heroFmt: naira,
+      heroDelta: changeLabel(overviewData?.revenue),
+      heroDeltaUp: isUp(overviewData?.revenue),
+      heroNote: `${countFmt(overviewData?.interactions.current ?? 0)} interactions`,
+      metrics: [
+        { label: 'Orders', fixedValue: countFmt(overviewData?.orders.current ?? 0), delta: deltaText(overviewData?.orders), deltaClass: deltaClassFor(overviewData?.orders) },
+        { label: 'Avg Ticket', fixedValue: naira(overviewData?.averageOrderValue.current ?? 0), delta: deltaText(overviewData?.averageOrderValue), deltaClass: deltaClassFor(overviewData?.averageOrderValue) },
+        { label: 'Retention', fixedValue: pct(overviewData?.customers.repeatRate ?? 0), delta: 'Repeat', deltaClass: 'text-primary' },
+      ],
+      channels: channels.map((channel, index) => ({
+        name: channel.id === 'pos' ? 'In-Store POS' : 'Online Orders',
+        meta: `${countFmt(channel.orders)} ${channel.id === 'pos' ? 'tickets' : 'orders'}`,
+        base: channel.revenue,
+        sharePct: Math.round(share(channel.revenue, channelRevenue)),
+        ...CHANNEL_STYLES[index % CHANNEL_STYLES.length],
+      })),
+    };
+  };
+
+  /** Live: the period split into up to four buckets, current vs previous revenue. */
+  const liveTrend = () => {
+    if (days <= 1) {
+      const windows = [0, 1, 2, 3].map((index) => {
+        const hours = (overviewData?.hourly ?? []).filter((row) => Math.floor(row.hour / 6) === index);
+        return { label: hourLabel(index * 6).replace(' ', ''), amount: hours.reduce((sum, row) => sum + row.revenue, 0), previous: 0 };
+      });
+      return windows;
+    }
+    const series = overviewData?.series ?? [];
+    const size = Math.max(1, Math.ceil(series.length / 4));
+    return [0, 1, 2, 3]
+      .map((index) => series.slice(index * size, (index + 1) * size))
+      .filter((chunk) => chunk.length)
+      .map((chunk, index) => ({
+        label:
+          days <= 7
+            ? new Date(`${chunk[0].date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' })
+            : `W${index + 1}`,
+        amount: chunk.reduce((sum, row) => sum + row.revenue, 0),
+        previous: chunk.reduce((sum, row) => sum + row.previousRevenue, 0),
+      }));
+  };
+
   const handleExportReport = () => {
     printReport(
       `VEMTAP Analytics Report — ${activeChip.label} (${dateRange})`,
@@ -204,7 +338,7 @@ export function BusinessAnalyticsScreen({ initialTab, onExit, onNavigate }: Busi
         ),
       ])}
 ${printKvTable('Sales Channels', overview.channels.map((channel) => [channel.name, `${naira(channel.base * periodScale)} — ${channel.sharePct}% share`] as [string, string]))}
-${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket.label, naira(bucket.amount * periodScale)] as [string, string]))}`,
+${printKvTable('Revenue Trend', trendBuckets.map((bucket) => [bucket.label, naira(bucket.amount * periodScale)] as [string, string]))}`,
     );
     showToast('Report ready — choose "Save as PDF" in the print dialog.');
   };
@@ -222,7 +356,7 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
         naira(channel.base * periodScale),
         `${channel.sharePct}% share`,
       ]),
-      ...TREND_BUCKETS[dateRange].map((bucket) => [`Trend ${bucket.label}`, naira(bucket.amount * periodScale), '']),
+      ...trendBuckets.map((bucket) => [`Trend ${bucket.label}`, naira(bucket.amount * periodScale), '']),
     ];
     downloadCsv(`vemtap_analytics_${overviewKey}_${dateRange.toLowerCase()}`, ['Metric', 'Value', 'Change'], rows);
     showToast(`Exported ${rows.length} rows to CSV`);
@@ -265,8 +399,99 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
   ];
   const activeChip = chips.find((item) => item.key === chip) ?? chips[0];
   const overviewKey: 'business' | 'deals' | 'pos' = chip === 'deals' || chip === 'pos' ? chip : 'business';
-  const overview = OVERVIEW_CONFIG[overviewKey];
-  const periodScale = PERIOD_SCALE[dateRange];
+  const overview = live ? liveConfig(overviewKey) : OVERVIEW_CONFIG[overviewKey];
+  const periodScale = live ? 1 : PERIOD_SCALE[dateRange];
+  const trendBuckets = live ? liveTrend() : TREND_BUCKETS[dateRange].map((bucket) => ({ ...bucket, previous: 0 }));
+  const trendMax = Math.max(1, ...trendBuckets.flatMap((bucket) => [bucket.amount, bucket.previous]));
+  const trendDelta = (overviewData?.revenue.current ?? 0) - (overviewData?.revenue.previous ?? 0);
+  const bestDay = (overviewData?.weekdays ?? []).reduce<{ dow: number; revenue: number } | null>(
+    (best, day) => (!best || day.revenue > best.revenue ? day : best),
+    null,
+  );
+  const bestHour = (overviewData?.hourly ?? []).reduce<{ hour: number; revenue: number } | null>(
+    (best, hour) => (!best || hour.revenue > best.revenue ? hour : best),
+    null,
+  );
+  const topItemMax = Math.max(1, ...(overviewData?.topItems ?? []).map((item) => item.revenue));
+  const topItems = live
+    ? (overviewData?.topItems ?? []).slice(0, 3).map((item) => ({
+        name: item.name,
+        meta: `${countFmt(item.quantity)} sold`,
+        amount: naira(item.revenue),
+        delta: `${Math.round(item.dealShare * 100)}% via deals`,
+        width: `${Math.round((item.revenue / topItemMax) * 100)}%`,
+      }))
+    : TOP_ITEMS;
+  const segmentsData = customersData?.segments;
+  const segmentSpend = segmentsData
+    ? segmentsData.vip.spend + segmentsData.regular.spend + segmentsData.new.spend + segmentsData.lapsed.spend
+    : 0;
+  const segments = live
+    ? (
+        [
+          ['vip', 'VIP Customers'],
+          ['regular', 'Regular Customers'],
+          ['new', 'New Customers'],
+        ] as const
+      ).map(([key, title], index) => {
+        const segment = segmentsData?.[key];
+        return {
+          ...SEGMENTS[index],
+          title,
+          meta: `${countFmt(segment?.count ?? 0)} customers • ${naira(segment?.spend ?? 0)} spend`,
+          badge: pct(segment?.share ?? 0),
+          width: `${Math.round((segment?.share ?? 0) * 100)}%`,
+        };
+      })
+    : SEGMENTS;
+  const patrons = live
+    ? (customersData?.topCustomers ?? []).slice(0, 3).map((customer, index) => ({
+        ...PATRONS[index % PATRONS.length],
+        name: customer.name || 'Customer',
+        meta: `${countFmt(customer.visits)} visits`,
+        amount: naira(customer.spend),
+        tag: customer.tier ? `${customer.tier} Tier` : index === 0 ? 'Top spender' : 'Top customer',
+        avatar: CUSTOMER_AVATAR,
+      }))
+    : PATRONS;
+  const vipShare = segmentSpend && segmentsData ? Math.round((segmentsData.vip.spend / segmentSpend) * 100) : 0;
+  const audienceMetrics = live
+    ? [
+        {
+          label: 'Customers',
+          icon: 'person_pin',
+          value: countFmt(customersData?.total.current ?? 0),
+          delta: `+${countFmt(customersData?.new.current ?? 0)} new this period`,
+          deltaClass: 'text-badge-discount-text',
+        },
+        {
+          label: 'Repeat Rate',
+          icon: 'repeat',
+          value: pct(customersData?.repeatRate.current ?? 0),
+          delta: `${countFmt(customersData?.returning ?? 0)} returning`,
+          deltaClass: 'text-text-secondary',
+        },
+        {
+          label: 'Avg Spend',
+          icon: 'payments',
+          value: naira(customersData?.averageSpend ?? 0),
+          delta: 'Per active customer',
+          deltaClass: 'text-text-secondary',
+        },
+        {
+          label: 'Visit Frequency',
+          icon: 'near_me',
+          value: `${Math.round((customersData?.visitsPerActiveCustomer ?? 0) * 10) / 10}`,
+          delta: 'Visits per active customer',
+          deltaClass: 'text-text-secondary',
+        },
+      ]
+    : [
+        { label: 'Captured Diners', icon: 'person_pin', value: '1,842', delta: '+142 this mo', deltaClass: 'text-badge-discount-text' },
+        { label: 'Repeat Rate', icon: 'repeat', value: '58%', delta: '76 patrons power bulk', deltaClass: 'text-text-secondary' },
+        { label: 'Avg Lifetime Value', icon: 'payments', value: '₦38,400', delta: '+8.4% vs benchmark', deltaClass: 'text-badge-discount-text' },
+        { label: 'VEMTAP Velocity', icon: 'near_me', value: '+34', delta: 'New walk-ins / week', deltaClass: 'text-text-secondary' },
+      ];
 
   const header = (
     <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
@@ -503,18 +728,33 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
               <line stroke="#f1f3ff" strokeDasharray="3 3" strokeWidth="1" x1="0" x2="320" y1="30" y2="30" />
               <line stroke="#f1f3ff" strokeDasharray="3 3" strokeWidth="1" x1="0" x2="320" y1="70" y2="70" />
               <line stroke="#e9edff" strokeWidth="1" x1="0" x2="320" y1="110" y2="110" />
+              {live ? (
+                trendBuckets.map((bucket, index) => {
+                  const previous = Math.round((bucket.previous / trendMax) * 100);
+                  const current = Math.round((bucket.amount / trendMax) * 100);
+                  return (
+                    <g key={bucket.label}>
+                      <rect fill="#e9edff" height={previous} rx="3" width="16" x={24 + index * 72} y={110 - previous} />
+                      <rect fill="#0055c4" height={current} rx="3" width="16" x={44 + index * 72} y={110 - current} />
+                    </g>
+                  );
+                })
+              ) : (
+                <>
               <rect fill="#e9edff" height="55" rx="3" width="16" x="24" y="55" />
-              <rect fill="#0055c4" height="68" rx="3" width="16" x="44" y="42" />
-              <rect fill="#e9edff" height="62" rx="3" width="16" x="96" y="48" />
-              <rect fill="#0055c4" height="78" rx="3" width="16" x="116" y="32" />
-              <rect fill="#e9edff" height="70" rx="3" width="16" x="168" y="40" />
-              <rect fill="#0055c4" height="88" rx="3" width="16" x="188" y="22" />
-              <rect fill="#e9edff" height="74" rx="3" width="16" x="240" y="36" />
-              <rect fill="#066cf4" height="100" rx="3" width="16" x="260" y="10" />
-              <circle cx="268" cy="10" fill="#066cf4" r="4" stroke="#ffffff" strokeWidth="2" />
+                <rect fill="#0055c4" height="68" rx="3" width="16" x="44" y="42" />
+                <rect fill="#e9edff" height="62" rx="3" width="16" x="96" y="48" />
+                <rect fill="#0055c4" height="78" rx="3" width="16" x="116" y="32" />
+                <rect fill="#e9edff" height="70" rx="3" width="16" x="168" y="40" />
+                <rect fill="#0055c4" height="88" rx="3" width="16" x="188" y="22" />
+                <rect fill="#e9edff" height="74" rx="3" width="16" x="240" y="36" />
+                <rect fill="#066cf4" height="100" rx="3" width="16" x="260" y="10" />
+                <circle cx="268" cy="10" fill="#066cf4" r="4" stroke="#ffffff" strokeWidth="2" />
+                </>
+              )}
             </svg>
             <div className="flex justify-around text-text-tertiary font-caption text-caption pt-space-2xs">
-              {TREND_BUCKETS[dateRange].map((bucket, index) => (
+              {trendBuckets.map((bucket, index) => (
                 <span
                   className={`w-16 text-center ${index === 3 ? 'text-primary font-semibold' : ''}`}
                   key={bucket.label}
@@ -528,10 +768,12 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
             <div className="flex items-center gap-space-2xs">
               <Icon name="bolt" className="text-primary text-[17px]" />
               <span className="font-label-sm text-label-sm font-semibold">
-                Target Exceeded: +{naira(overview.heroBase * periodScale * 0.089)}
+                {live
+                  ? `${trendDelta >= 0 ? '+' : '-'}${naira(Math.abs(trendDelta))} vs previous period`
+                  : `Target Exceeded: +${naira(overview.heroBase * periodScale * 0.089)}`}
               </span>
             </div>
-            <span className="font-caption text-caption text-text-secondary">{dateRange} streak</span>
+            <span className="font-caption text-caption text-text-secondary">{live ? dateRange : `${dateRange} streak`}</span>
           </div>
         </div>
       </section>
@@ -584,7 +826,7 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
               <span className="font-caption text-caption text-text-secondary">Busiest operational windows</span>
             </div>
             <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-              Fri &amp; Sat Surge
+              {live ? (bestDay && bestDay.revenue > 0 ? `${DAY_LONG[bestDay.dow]} peak` : '—') : 'Fri & Sat Surge'}
             </span>
           </div>
           <div className="flex flex-col gap-space-2xs">
@@ -605,7 +847,10 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
                   {row.day}
                 </span>
                 {row.cells.map((cell, index) =>
-                  cell === 'peak' || cell === 'rush' ? (
+                  live ? (
+                    // Day-by-hour figures are not reported yet, so live cells stay neutral.
+                    <span className="h-6 mx-1 rounded bg-surface-container-low" key={`${row.day}-${index}`} />
+                  ) : cell === 'peak' || cell === 'rush' ? (
                     <span
                       className="h-6 mx-1 rounded bg-primary text-on-primary font-caption text-caption flex items-center justify-center font-bold shadow-sm"
                       key={`${row.day}-${index}`}
@@ -621,7 +866,13 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
           </div>
           <div className="pt-space-2xs flex items-center gap-space-xs text-text-secondary font-caption text-caption">
             <Icon name="schedule" className="text-[15px] text-tertiary-container" />
-            <span>Recommended: Schedule +2 floor staff on Friday 5:30 PM.</span>
+            <span>
+              {live
+                ? bestDay && bestDay.revenue > 0
+                  ? `Busiest: ${DAY_LONG[bestDay.dow]}${bestHour && bestHour.revenue > 0 ? ` around ${hourLabel(bestHour.hour)}` : ''}. Day-by-hour detail isn't available yet.`
+                  : 'Not enough activity yet.'
+                : 'Recommended: Schedule +2 floor staff on Friday 5:30 PM.'}
+            </span>
           </div>
         </div>
       </section>
@@ -637,13 +888,13 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
             <button
               className="font-label-sm text-label-sm text-primary font-semibold"
               type="button"
-              onClick={() => showToast('Showing all 42 offerings')}
+              onClick={() => showToast(live ? 'Your full sales list is in the POS analytics.' : 'Showing all 42 offerings')}
             >
-              View All (42)
+              {live ? `Top ${topItems.length}` : 'View All (42)'}
             </button>
           </div>
           <div className="flex flex-col gap-space-xs">
-            {TOP_ITEMS.map((item) => (
+            {topItems.map((item) => (
               <div className="p-space-xs rounded-xl bg-surface-subtle flex items-center gap-space-sm" key={item.name}>
                 <div className="w-11 h-11 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0">
                   <Icon name="restaurant_menu" className="text-primary text-[18px]" />
@@ -703,17 +954,32 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
           </span>
         </div>
         <div>
-          <p className="font-heading-sm text-heading-sm text-text-primary font-bold">Patron Retention is Up +18%</p>
+          <p className="font-heading-sm text-heading-sm text-text-primary font-bold">
+            {live
+              ? `Repeat rate is ${pct(customersData?.repeatRate.current ?? 0)} (${deltaText(customersData?.repeatRate)})`
+              : 'Patron Retention is Up +18%'}
+          </p>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
-            76 VIP regulars generated over <strong className="text-text-primary">58% of gross revenue</strong> in Abuja
-            Downtown this cycle.
+            {live ? (
+              <>
+                {countFmt(segmentsData?.vip.count ?? 0)} VIP customers generated{' '}
+                <strong className="text-text-primary">{vipShare}% of customer spend</strong> this period.
+              </>
+            ) : (
+              <>
+                76 VIP regulars generated over <strong className="text-text-primary">58% of gross revenue</strong> in Abuja
+                Downtown this cycle.
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-space-xs pt-space-2xs">
           <button
             className="h-10 px-space-md bg-surface-tint-blue text-primary rounded-xl font-label-sm text-label-sm font-semibold flex items-center gap-space-2xs active:scale-95 transition-all"
             type="button"
-            onClick={() => showToast('VIP Chef Special invite queued for 76 regulars!')}
+            onClick={() =>
+              showToast(live ? 'Sending perks from analytics is coming soon.' : 'VIP Chef Special invite queued for 76 regulars!')
+            }
           >
             <Icon name="bolt" className="text-[16px]" />
             <span>Trigger VIP Thank-You Perk</span>
@@ -723,12 +989,7 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
 
       {/* Metrics matrix */}
       <div className="grid grid-cols-2 gap-space-sm">
-        {[
-          { label: 'Captured Diners', icon: 'person_pin', value: '1,842', delta: '+142 this mo', deltaClass: 'text-badge-discount-text' },
-          { label: 'Repeat Rate', icon: 'repeat', value: '58%', delta: '76 patrons power bulk', deltaClass: 'text-text-secondary' },
-          { label: 'Avg Lifetime Value', icon: 'payments', value: '₦38,400', delta: '+8.4% vs benchmark', deltaClass: 'text-badge-discount-text' },
-          { label: 'VEMTAP Velocity', icon: 'near_me', value: '+34', delta: 'New walk-ins / week', deltaClass: 'text-text-secondary' },
-        ].map((metric) => (
+        {audienceMetrics.map((metric) => (
           <div className="bg-surface-canvas p-space-md rounded-2xl shadow-sm flex flex-col justify-between" key={metric.label}>
             <div className="flex items-center justify-between mb-space-2xs">
               <span className="font-caption text-caption text-text-secondary font-medium">{metric.label}</span>
@@ -753,10 +1014,15 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
             <p className="font-caption text-caption text-text-secondary">Weekly post-discovery return rate (W1 - W8)</p>
           </div>
           <span className="font-caption text-caption font-semibold text-primary bg-surface-tint-blue px-2.5 py-1 rounded-full">
-            Cohort 2024
+            {live ? '—' : 'Cohort 2024'}
           </span>
         </div>
         <div className="w-full relative">
+          {live ? (
+            <p className="font-caption text-caption text-text-tertiary py-space-md text-center">
+              Week-by-week return rates aren't available yet.
+            </p>
+          ) : (
           <svg className="w-full h-32 overflow-visible" viewBox="0 0 340 130">
             <defs>
               <linearGradient id="curveGradient" x1="0" x2="0" y1="0" y2="1">
@@ -787,19 +1053,20 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
               54.2%
             </text>
           </svg>
+          )}
           <div className="flex justify-between items-center text-text-tertiary font-caption text-caption pt-1 px-1">
-            <span>W1 (100%)</span>
-            <span>W3 (54%)</span>
-            <span>W5 (46%)</span>
-            <span>W8 (38%)</span>
+            <span>{live ? 'W1 —' : 'W1 (100%)'}</span>
+            <span>{live ? 'W3 —' : 'W3 (54%)'}</span>
+            <span>{live ? 'W5 —' : 'W5 (46%)'}</span>
+            <span>{live ? 'W8 —' : 'W8 (38%)'}</span>
           </div>
         </div>
         <div className="bg-surface-subtle p-space-xs rounded-xl flex items-center justify-between text-text-secondary">
           <span className="font-caption text-caption flex items-center gap-1 min-w-0">
             <Icon name="verified" className="text-[15px] text-badge-discount-text" />
-            <span className="truncate">Abuja food &amp; drink standard: 28% at W8</span>
+            <span className="truncate">{live ? 'Local benchmark: —' : 'Abuja food & drink standard: 28% at W8'}</span>
           </span>
-          <span className="font-label-sm text-label-sm font-semibold text-text-primary shrink-0">+10% Outperform</span>
+          <span className="font-label-sm text-label-sm font-semibold text-text-primary shrink-0">{live ? '—' : '+10% Outperform'}</span>
         </div>
       </div>
 
@@ -809,7 +1076,7 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
           <h2 className="font-label-md text-label-md text-text-primary font-semibold">Customer Segments</h2>
           <span className="font-caption text-caption text-text-secondary">Sorted by lifetime impact</span>
         </div>
-        {SEGMENTS.map((segment) => (
+        {segments.map((segment) => (
           <div className="bg-surface-canvas p-space-md rounded-2xl shadow-sm flex flex-col gap-space-2xs" key={segment.title}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-space-xs min-w-0">
@@ -841,7 +1108,11 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
               </div>
               <div className="min-w-0">
                 <div className="font-label-sm text-label-sm text-text-primary font-bold">At-Risk / Lapsed</div>
-                <div className="font-caption text-caption text-text-secondary">124 patrons • No visit in 45+ days</div>
+                <div className="font-caption text-caption text-text-secondary">
+                  {live
+                    ? `${countFmt(segmentsData?.lapsed.count ?? 0)} customers • No recent visit`
+                    : '124 patrons • No visit in 45+ days'}
+                </div>
               </div>
             </div>
             <span className="font-label-sm text-label-sm font-semibold text-error bg-error-container/60 px-2 py-0.5 rounded-full shrink-0">
@@ -849,11 +1120,15 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
             </span>
           </div>
           <div className="flex items-center justify-between bg-surface-container-low p-space-xs rounded-xl gap-space-xs">
-            <span className="font-caption text-caption text-text-secondary">Potential churn: ₦950k</span>
+            <span className="font-caption text-caption text-text-secondary">
+              {live ? `Past spend: ${naira(segmentsData?.lapsed.spend ?? 0)}` : 'Potential churn: ₦950k'}
+            </span>
             <button
               className="h-8 px-space-sm bg-primary text-on-primary rounded-lg font-label-sm text-label-sm font-semibold flex items-center gap-1 active:scale-95 transition-transform shrink-0"
               type="button"
-              onClick={() => showToast('45-day comeback voucher sent to 124 patrons!')}
+              onClick={() =>
+                showToast(live ? 'Re-engaging from analytics is coming soon. Use Segments instead.' : '45-day comeback voucher sent to 124 patrons!')
+              }
             >
               <Icon name="send" className="text-[14px]" />
               <span>Re-engage with Deal</span>
@@ -870,20 +1145,28 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
         </div>
         <div className="p-space-sm rounded-xl bg-surface-subtle flex flex-col gap-space-2xs">
           <div className="flex items-center justify-between">
-            <span className="font-label-sm text-label-sm text-text-primary font-semibold">82% within 5km Radius</span>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold">
+              {live ? '— within 5km Radius' : '82% within 5km Radius'}
+            </span>
             <span className="font-caption text-caption text-primary font-semibold">Primary Zone</span>
           </div>
           <p className="font-caption text-caption text-text-secondary">
-            Heaviest footfall originates from <strong className="text-text-primary">Wuse 2</strong>,{' '}
-            <strong className="text-text-primary">Maitama</strong>, and Central Business District.
+            {live ? (
+              'Where customers travel from isn’t tracked yet.'
+            ) : (
+              <>
+                Heaviest footfall originates from <strong className="text-text-primary">Wuse 2</strong>,{' '}
+                <strong className="text-text-primary">Maitama</strong>, and Central Business District.
+              </>
+            )}
           </p>
           <div className="w-full bg-surface-container h-2 rounded-full overflow-hidden flex mt-1">
-            <div className="bg-primary-container h-full" style={{ width: '82%' }} />
-            <div className="bg-secondary-fixed h-full" style={{ width: '18%' }} />
+            <div className="bg-primary-container h-full" style={{ width: live ? '0%' : '82%' }} />
+            <div className="bg-secondary-fixed h-full" style={{ width: live ? '0%' : '18%' }} />
           </div>
           <div className="flex justify-between items-center font-caption text-caption text-text-tertiary">
-            <span>5km Downtown (82%)</span>
-            <span>Cross-Town (18%)</span>
+            <span>{live ? '5km Downtown (—)' : '5km Downtown (82%)'}</span>
+            <span>{live ? 'Cross-Town (—)' : 'Cross-Town (18%)'}</span>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-space-sm pt-space-2xs">
@@ -892,15 +1175,15 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
               <Icon name="table_bar" className="text-[16px]" />
               <span className="font-label-sm text-label-sm font-semibold">Dine-In</span>
             </div>
-            <div className="font-heading-sm text-heading-sm text-text-primary font-bold">74%</div>
-            <span className="font-caption text-caption text-text-secondary">Avg duration: 52 mins</span>
+            <div className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? '—' : '74%'}</div>
+            <span className="font-caption text-caption text-text-secondary">{live ? 'Avg duration: —' : 'Avg duration: 52 mins'}</span>
           </div>
           <div className="p-space-sm rounded-xl bg-surface-container-low flex flex-col gap-0.5">
             <div className="flex items-center gap-1 text-secondary">
               <Icon name="takeout_dining" className="text-[16px]" />
               <span className="font-label-sm text-label-sm font-semibold">Takeout &amp; Tap</span>
             </div>
-            <div className="font-heading-sm text-heading-sm text-text-primary font-bold">26%</div>
+            <div className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? '—' : '26%'}</div>
             <span className="font-caption text-caption text-text-secondary">Quick checkout</span>
           </div>
         </div>
@@ -912,7 +1195,7 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
           <h2 className="font-label-md text-label-md text-text-primary font-semibold">Top Patron Highlights</h2>
           <span className="font-caption text-caption text-primary font-semibold">Hall of Fame</span>
         </div>
-        {PATRONS.map((patron) => (
+        {patrons.map((patron) => (
           <div
             className="bg-surface-canvas p-space-md rounded-2xl shadow-sm flex items-center justify-between gap-space-xs"
             key={patron.name}
@@ -940,7 +1223,7 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
         <button
           className="w-full h-11 bg-primary-container text-on-primary font-label-md text-label-md rounded-xl flex items-center justify-center gap-space-2xs shadow-md active:scale-95 transition-all"
           type="button"
-          onClick={() => showToast('Opening Loyalty Builder Studio...')}
+          onClick={() => showToast(live ? 'Open Loyalty from the Business Hub to start a campaign.' : 'Opening Loyalty Builder Studio...')}
         >
           <Icon name="campaign" className="text-[18px]" />
           <span>Launch Targeted Loyalty Campaign</span>
@@ -952,9 +1235,9 @@ ${printKvTable('Revenue Trend', TREND_BUCKETS[dateRange].map((bucket) => [bucket
             downloadCsv(
               'vemtap_customer_directory',
               ['Name', 'Visits', 'Total Spend', 'Segment'],
-              PATRONS.map((patron) => [patron.name, patron.meta, patron.amount, patron.tag]),
+              patrons.map((patron) => [patron.name, patron.meta, patron.amount, patron.tag]),
             );
-            showToast(`Exported ${PATRONS.length} patron records (CSV)`);
+            showToast(`Exported ${patrons.length} patron records (CSV)`);
           }}
         >
           <Icon name="download" className="text-on-surface-variant text-[16px]" />

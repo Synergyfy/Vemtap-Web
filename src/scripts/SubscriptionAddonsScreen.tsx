@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { useActiveSubscription, useCreditCheckout, useCreditPlans } from '../hooks/business/useSubscription';
+import { cheapestCreditPlan, creditBundleLine } from './subscriptionLive';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionAddonsScreenProps {
@@ -29,6 +32,19 @@ const AI_FEATURES = [
 
 export function SubscriptionAddonsScreen({ onBack, onBoost }: SubscriptionAddonsScreenProps) {
   const [waitlisted, setWaitlisted] = useState(false);
+  const live = hasApiConfig();
+  const activePlan = useActiveSubscription();
+  const creditPlans = useCreditPlans();
+  const checkout = useCreditCheckout();
+
+  // Live bundles drive the SMS / AI cards; demo keeps the scripted prices.
+  const smsPlan = cheapestCreditPlan(creditPlans.data ?? [], 'sms');
+  const aiPlan = cheapestCreditPlan(creditPlans.data ?? [], 'ai');
+  const smsLine = creditBundleLine(smsPlan, 'sms');
+  const aiLine = creditBundleLine(aiPlan, 'ai');
+  const buyCredit = (planId?: string) => {
+    if (planId) checkout.mutate(planId);
+  };
 
   return (
     <AppScreen surface="bg-surface-canvas">
@@ -169,14 +185,27 @@ export function SubscriptionAddonsScreen({ onBack, onBoost }: SubscriptionAddons
             <div className="flex items-center justify-between pt-1 mt-auto">
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Bundles from</span>
-                <div className="flex items-baseline gap-1">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,500</span>
-                  <span className="font-caption text-caption text-text-secondary">/ 250 SMS</span>
-                </div>
+                {live ? (
+                  smsLine ? (
+                    <div className="flex items-baseline gap-1">
+                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{smsLine.split(' / ')[0]}</span>
+                      <span className="font-caption text-caption text-text-secondary">/ {smsLine.split(' / ')[1]}</span>
+                    </div>
+                  ) : (
+                    <span className="font-label-sm text-label-sm text-text-secondary">No bundles on sale yet</span>
+                  )
+                ) : (
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,500</span>
+                    <span className="font-caption text-caption text-text-secondary">/ 250 SMS</span>
+                  </div>
+                )}
               </div>
               <button
-                className="h-11 px-4 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                className="h-11 px-4 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 type="button"
+                disabled={live && !smsPlan}
+                onClick={() => buyCredit(smsPlan?.id)}
               >
                 <span>Buy SMS Credits</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
@@ -215,14 +244,27 @@ export function SubscriptionAddonsScreen({ onBack, onBoost }: SubscriptionAddons
             <div className="flex items-center justify-between pt-1 mt-auto">
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Bundles from</span>
-                <div className="flex items-baseline gap-1">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,000</span>
-                  <span className="font-caption text-caption text-text-secondary">/ 100 Credits</span>
-                </div>
+                {live ? (
+                  aiLine ? (
+                    <div className="flex items-baseline gap-1">
+                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{aiLine.split(' / ')[0]}</span>
+                      <span className="font-caption text-caption text-text-secondary">/ {aiLine.split(' / ')[1]}</span>
+                    </div>
+                  ) : (
+                    <span className="font-label-sm text-label-sm text-text-secondary">No bundles on sale yet</span>
+                  )
+                ) : (
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-heading-sm text-heading-sm text-text-primary font-bold">₦1,000</span>
+                    <span className="font-caption text-caption text-text-secondary">/ 100 Credits</span>
+                  </div>
+                )}
               </div>
               <button
-                className="h-11 px-4 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                className="h-11 px-4 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 type="button"
+                disabled={live && !aiPlan}
+                onClick={() => buyCredit(aiPlan?.id)}
               >
                 <span>Buy AI Credits</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
@@ -281,7 +323,7 @@ export function SubscriptionAddonsScreen({ onBack, onBoost }: SubscriptionAddons
           <Icon name="info" className="text-primary text-[20px] flex-shrink-0 mt-0.5" />
           <p className="font-body-md text-body-md text-text-secondary leading-normal">
             Add-ons are one-time or pay-as-you-go. They never alter your base{' '}
-            <span className="text-text-primary font-semibold">₦5,000/mo Growth subscription</span>.
+            <span className="text-text-primary font-semibold">{live ? (activePlan.data?.plan?.name ? `${activePlan.data.plan.name} plan` : 'subscription plan') : '₦5,000/mo Growth subscription'}</span>.
           </p>
         </div>
       </div>
