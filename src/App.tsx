@@ -2136,7 +2136,7 @@ function AppInner() {
     await authService.requestCustomerOtp({ email: nextEmail });
   };
 
-  /** Business sign-up (`business-auth`): live, the email gets a 4-digit owner code. */
+  /** Business sign-up (`business-auth`): live, the email gets a 6-digit owner code. */
   const requestOwnerSignupOtp = async (email: string) => {
     const nextEmail = email.trim().toLowerCase();
     if (!nextEmail) {
@@ -2601,8 +2601,6 @@ function AppInner() {
       // keeps going through the consumer profile setup.
       const businessSignup = authIntent === 'business';
       const authEntry: Route = businessSignup ? 'business-auth' : 'auth-code';
-      // Live owner codes are 4 digits; customer and demo codes stay at 6.
-      const ownerCodeLength = businessSignup && hasApiConfig() ? 4 : undefined;
       if (isDesktop)
         return (
           <DesktopVerifyEmailScreen
@@ -2622,7 +2620,6 @@ function AppInner() {
               if (businessSignup) await requestOwnerSignupOtp(customerSignup.email);
               else await requestCustomerSignupOtp(customerSignup.email);
             }}
-            codeLength={ownerCodeLength}
           />
         );
       return (
@@ -2650,7 +2647,6 @@ function AppInner() {
                   await requestCustomerSignupOtp(customerSignup.email);
                 }
           }
-          codeLength={ownerCodeLength}
         />
       );
     }
