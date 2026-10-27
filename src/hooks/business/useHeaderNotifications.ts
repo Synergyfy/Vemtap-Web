@@ -30,6 +30,66 @@ function ago(iso?: string | null) {
   return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
 }
 
+export type BusinessFeedCategory = 'orders' | 'bookings' | 'payouts' | 'deals' | 'system';
+
+/** Filter bucket for a business notification, from its event or type. */
+function categoryFor(notification: BusinessNotification & { eventType?: string | null }): BusinessFeedCategory {
+  const key = `${notification.eventType ?? ''} ${notification.type ?? ''} ${notification.title}`.toLowerCase();
+  if (/payout|settle|withdraw|wallet|invoice|billing|subscription/.test(key)) return 'payouts';
+  if (/book|reserv|appointment/.test(key)) return 'bookings';
+  if (/order|sale|shift|pos|payment|refund/.test(key)) return 'orders';
+  if (/deal|claim|offer|loyal|reward|point/.test(key)) return 'deals';
+  return 'system';
+}
+
+export interface BusinessFeedRow extends NotificationFeedItem {
+  category: BusinessFeedCategory;
+  section: 'today' | 'earlier';
+  unread: boolean;
+}
+
+/**
+ * The full Notifications page feed (live only): the business's notifications
+ * from `GET /notifications/business`, bucketed for the filter chips, with read
+ * state saved on the server.
+ */
+export function useBusinessNotificationFeed(limit = 50, enabled = true) {
+  const live = hasApiConfig();
+  const { authed } = useAuth();
+  const queryClient = useQueryClient();
+  const feed = useQuery({
+    queryKey: [...headerNotificationKeys.all, 'page', limit],
+    queryFn: () => notificationService.businessFeed({ page: 1, limit }),
+    enabled: live && authed && enabled,
+    refetchInterval: 60_000,
+  });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  const markRead = useMutation({ mutationFn: (id: string) => notificationService.markAsRead(id), onSuccess: refresh });
+  const markAll = useMutation({ mutationFn: () => notificationService.markAllRead(), onSuccess: refresh });
+  const today = new Date().toDateString();
+  const rows: BusinessFeedRow[] = (feed.data?.data ?? []).map((row) => ({
+    id: row.id,
+    ...iconFor(row),
+    title: row.title,
+    time: ago(row.createdAt),
+    body: row.message,
+    category: categoryFor(row),
+    section: row.createdAt && new Date(row.createdAt).toDateString() === today ? 'today' : 'earlier',
+    unread: !row.isRead,
+  }));
+  return {
+    live,
+    rows,
+    loading: live && feed.isLoading,
+    error: feed.error,
+    unreadCount: feed.data?.unreadCount ?? rows.filter((row) => row.unread).length,
+    markRead: (id: string) => {
+      if (rows.find((row) => row.id === id)?.unread) markRead.mutate(id);
+    },
+    markAllRead: () => markAll.mutate(),
+  };
+}
+
 /**
  * The header bell's feed. Live: the business's latest notifications from
  * `GET /notifications/business`, with read state saved on the server. Demo:
