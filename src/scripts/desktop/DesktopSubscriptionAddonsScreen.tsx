@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
-import { useCreditBalance, useCreditCheckout, useCreditPlans } from '../../hooks/business/useSubscription';
+import { useActiveSubscription, useCreditBalance, useCreditCheckout, useCreditPlans } from '../../hooks/business/useSubscription';
+import { hasApiConfig } from '../../services/api/client';
 import { cheapestCreditPlan, creditBundleLine } from '../subscriptionLive';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
@@ -33,6 +34,8 @@ export function DesktopSubscriptionAddonsScreen({ onBack, onBoost }: DesktopSubs
   const balance = useCreditBalance();
   const creditPlans = useCreditPlans();
   const checkout = useCreditCheckout();
+  const live = hasApiConfig();
+  const activePlan = useActiveSubscription();
 
   // Live: real balances + the cheapest live bundle per credit type; demo
   // keeps the scripted "0 SMS / 0 AI" figures.
@@ -338,7 +341,7 @@ export function DesktopSubscriptionAddonsScreen({ onBack, onBoost }: DesktopSubs
           <Icon name="info" className="text-primary text-[20px] flex-shrink-0 mt-0.5" />
           <p className="font-body-md text-body-md text-text-secondary leading-normal">
             Add-ons are one-time or pay-as-you-go. They never alter your base{' '}
-            <span className="text-text-primary font-semibold">₦5,000/mo Growth subscription</span>.
+            <span className="text-text-primary font-semibold">{live ? (activePlan.data?.plan?.name ? `${activePlan.data.plan.name} plan` : 'subscription plan') : '₦5,000/mo Growth subscription'}</span>.
           </p>
         </section>
       </div>
