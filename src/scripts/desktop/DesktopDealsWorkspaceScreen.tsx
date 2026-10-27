@@ -209,7 +209,7 @@ export function DesktopDealsWorkspaceScreen({
   const summaryQuery = useOfferSummary();
   const offerMutations = useOfferMutations();
   const locations = useBusinessAnalytics('locations', 30);
-  const { branches } = useBusinessBranch();
+  const { branches, branch: activeBranch, switchTo } = useBusinessBranch();
   const liveOffers = offersQuery.data ?? [];
   const summary = summaryQuery.data;
   const [liveToast, setLiveToast] = useState<string | null>(null);
@@ -239,12 +239,15 @@ export function DesktopDealsWorkspaceScreen({
     { id: 'chill', branch: 'wuse-maitama', haystack: 'after-work chill pass maitama wuse ii' },
   ];
 
-  const branchChoices = [
-    { value: '', label: 'All branches' },
-    { value: 'all', label: 'Runs on every branch' },
-    { value: 'wuse', label: 'Wuse II only' },
-    { value: 'wuse-maitama', label: 'Wuse II & Maitama' },
-  ];
+  // Live: deals are listed per branch, so picking a branch switches to it.
+  const branchChoices = live
+    ? branches.filter((option) => option.id).map((option) => ({ value: option.key, label: option.name }))
+    : [
+        { value: '', label: 'All branches' },
+        { value: 'all', label: 'Runs on every branch' },
+        { value: 'wuse', label: 'Wuse II only' },
+        { value: 'wuse-maitama', label: 'Wuse II & Maitama' },
+      ];
 
   const query = search.trim().toLowerCase();
 
@@ -375,9 +378,9 @@ export function DesktopDealsWorkspaceScreen({
               icon="tune"
               iconClassName="text-[20px] text-text-secondary"
               label="Filters"
-              onChange={setBranchFilter}
-              title="Filter by branch"
-              value={branchFilter}
+              onChange={(value) => (live ? switchTo(value) : setBranchFilter(value))}
+              title={live ? 'Show deals for a branch' : 'Filter by branch'}
+              value={live ? activeBranch.key : branchFilter}
             />
             {branchFilter !== '' && (
               <span className="w-5 h-5 rounded-full bg-primary text-on-primary font-caption text-caption flex items-center justify-center font-bold">
@@ -868,7 +871,7 @@ export function DesktopDealsWorkspaceScreen({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-caption text-caption text-text-tertiary">Real-Time Refresh Rate: 10s</span>
+              <span className="font-caption text-caption text-text-tertiary">{live ? 'Live data · last 30 days' : 'Real-Time Refresh Rate: 10s'}</span>
               <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
             </div>
           </div>

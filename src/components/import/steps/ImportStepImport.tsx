@@ -1,4 +1,5 @@
 import { Icon } from '../../ui/Icon';
+import { hasApiConfig } from '../../../services/api/client';
 import type { ImportBatchResult } from '../../../scripts/productImport/importTypes';
 
 export interface ImportRunState {
@@ -66,7 +67,11 @@ export function ImportStepImport({
           <h2 className="font-heading-md text-heading-md text-text-primary">Import finished</h2>
           <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
             “{result.fileName}” was processed.{' '}
-            {result.published === 0
+            {hasApiConfig()
+              ? result.imported === 0
+                ? 'Nothing was saved — fix the rows below and retry.'
+                : `${result.imported.toLocaleString()} product${result.imported === 1 ? ' was' : 's were'} added to your catalogue.`
+              : result.published === 0
               ? 'Everything was saved as a draft — review and publish when ready.'
               : result.published >= result.imported
                 ? `All ${result.imported.toLocaleString()} were published immediately.`
@@ -173,8 +178,17 @@ export function ImportStepImport({
       <div>
         <h2 className="font-heading-md text-heading-md text-text-primary">Ready to import</h2>
         <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-          {willImport.toLocaleString()} products will be imported as <span className="font-semibold text-text-primary">drafts</span>
-          {willPublishAfterImport > 0 && (
+          {hasApiConfig() ? (
+            <>
+              {willImport.toLocaleString()} products will be added to your{' '}
+              <span className="font-semibold text-text-primary">catalogue</span> at the selected branch.
+            </>
+          ) : (
+            <>
+              {willImport.toLocaleString()} products will be imported as <span className="font-semibold text-text-primary">drafts</span>
+            </>
+          )}
+          {!hasApiConfig() && willPublishAfterImport > 0 && (
             <>
               , of which <span className="font-semibold text-text-primary">{willPublishAfterImport.toLocaleString()}</span>{' '}
               {willPublishAfterImport === 1 ? 'is' : 'are'} marked to publish right after import
@@ -189,10 +203,19 @@ export function ImportStepImport({
       <div className="rounded-xl bg-surface-tint-blue p-space-sm flex items-start gap-space-sm">
         <Icon name="shield" className="text-[22px] text-primary shrink-0 mt-0.5" />
         <span className="font-caption text-caption text-text-secondary leading-relaxed">
-          Import runs in small batches with duplicate protection: products whose SKU already exists are skipped, and
-          nothing is published automatically. Rows you marked to publish are still checked — a row missing a name or
-          price stays a draft instead of going live. If the browser interrupts the run, retrying won&apos;t duplicate
-          the rows that already succeeded.
+          {hasApiConfig() ? (
+            <>
+              Import runs in small batches with duplicate protection: rows whose SKU or barcode already exists, or that
+              are missing a name or price, are not saved and are listed so you can fix and retry them.
+            </>
+          ) : (
+            <>
+              Import runs in small batches with duplicate protection: products whose SKU already exists are skipped, and
+              nothing is published automatically. Rows you marked to publish are still checked — a row missing a name or
+              price stays a draft instead of going live. If the browser interrupts the run, retrying won&apos;t duplicate
+              the rows that already succeeded.
+            </>
+          )}
         </span>
       </div>
       <button
@@ -204,7 +227,7 @@ export function ImportStepImport({
         <Icon name="upload_file" className="text-[20px]" />
         <span>
           Import {willImport.toLocaleString()} product{willImport === 1 ? '' : 's'}
-          {willPublishAfterImport > 0 ? ` · publish ${willPublishAfterImport.toLocaleString()}` : ' as drafts'}
+          {hasApiConfig() ? '' : willPublishAfterImport > 0 ? ` · publish ${willPublishAfterImport.toLocaleString()}` : ' as drafts'}
         </span>
       </button>
     </div>

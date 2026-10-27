@@ -635,11 +635,11 @@ export function DesktopBusinessCatalogHubScreen({
   const importedRows = useMemo(() => importedProducts.map(importedProductToRow), [importedProducts]);
   /** Imported products still awaiting review/publish. */
   const draftImportCount = useMemo(
-    () => importedProducts.filter((product) => product.status === 'draft').length,
-    [importedProducts],
+    () => (live ? 0 : importedProducts.filter((product) => product.status === 'draft').length),
+    [importedProducts, live],
   );
-  /** Seed rows + bulk-imported products (imported ones render first). */
-  const allProductRows = useMemo(() => [...importedRows, ...productRows], [importedRows, productRows]);
+  /** Seed rows + bulk-imported products (imported ones render first). Live: server items only. */
+  const allProductRows = useMemo(() => (live ? productRows : [...importedRows, ...productRows]), [importedRows, productRows, live]);
   const [demoCategories, setCentralCategories] = useState<CentralCategory[]>(() => getCentralCategories());
   // Live: the business's own categories with real item counts; demo keeps the sample set.
   const categoryMutation = useCategoryMutation();

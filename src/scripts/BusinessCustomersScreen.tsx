@@ -387,7 +387,7 @@ export function BusinessCustomersScreen({
 
   const drawer = drawerCustomer
     ? (visibleCustomers.find((customer) => customer.name === drawerCustomer) ??
-      CUSTOMERS.find((customer) => customer.name === drawerCustomer))
+      (live ? undefined : CUSTOMERS.find((customer) => customer.name === drawerCustomer)))
     : undefined;
 
   return (

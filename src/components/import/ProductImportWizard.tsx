@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../ui/Icon';
 import { ModalCloseButton } from '../desktop/DesktopModal';
 import { useIsDesktop } from '../../hooks/useIsDesktop';
+import { useQueryClient } from '@tanstack/react-query';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { catalogueItemsService } from '../../services/catalogueItemsService';
+import { catalogueItemKeys } from '../../hooks/business/useCatalogueItems';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import {
   ImportError,
   parseSpreadsheetFile,
@@ -78,6 +84,10 @@ export function ProductImportWizard({
   existingNames = [],
 }: ProductImportWizardProps) {
   const isDesktop = useIsDesktop();
+  // Live: imported rows become real catalogue items at the active branch.
+  const live = hasApiConfig();
+  const { activeBranchId } = useBusinessBranch();
+  const queryClient = useQueryClient();
 
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -244,6 +254,46 @@ export function ProductImportWizard({
 
     for (let offset = 0; offset < draftsToRun.length; offset += BATCH_SIZE) {
       const slice = draftsToRun.slice(offset, offset + BATCH_SIZE);
+      if (live) {
+        try {
+          if (!activeBranchId) throw new Error('Pick a branch before importing.');
+          // The API validates the whole request, so rows without a price are failed here.
+          const priceOf = (draft: ImportProductDraft) => draft.salePrice ?? draft.price;
+          const valid = slice.filter((draft) => {
+            const price = priceOf(draft);
+            const ok = typeof price === 'number' && Number.isFinite(price) && price >= 0;
+            if (!ok) failures.push({ rowNumber: draft.rowNumber, name: draft.name, message: 'Missing or invalid price', draft });
+            return ok;
+          });
+          const response = valid.length
+            ? await catalogueItemsService.bulkCreate({
+                branchId: activeBranchId,
+                items: valid.map((draft) => ({
+                  name: draft.name,
+                  price: priceOf(draft) as number,
+                  description: draft.description || undefined,
+                  category: draft.category || undefined,
+                  stockQuantity: draft.stock ?? undefined,
+                  sku: draft.sku || undefined,
+                  barcode: draft.barcode || undefined,
+                })),
+              })
+            : { created: 0, failed: 0, results: [] };
+          // The server numbers rows from 1 within this request.
+          response.results.forEach((row) => {
+            const draft = valid[row.row - 1];
+            if (row.success) imported += 1;
+            else if (draft) failures.push({ rowNumber: draft.rowNumber, name: draft.name, message: row.error ?? 'Not saved', draft });
+          });
+          published += response.created;
+        } catch (error) {
+          const message = apiErrorMessage(error, 'Could not save these products.');
+          slice.forEach((draft) => failures.push({ rowNumber: draft.rowNumber, name: draft.name, message, draft }));
+        }
+        setProgress({ done: Math.min(offset + slice.length, draftsToRun.length), total: draftsToRun.length });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        continue;
+      }
       try {
         const savedResult = saveImportedProducts(
           { batchId, fileName, importedAt: Date.now() },
@@ -291,6 +341,7 @@ export function ProductImportWizard({
     setResult(merged);
     setRetryDrafts(failures.map((failure) => failure.draft));
     setRunning(false);
+    if (live) void queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
     onImported?.(merged);
   };
 

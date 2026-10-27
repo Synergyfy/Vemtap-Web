@@ -282,7 +282,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         .filter((item) => (tab === 'services' ? item.itemType === 'service' : item.itemType !== 'service'))
         .map((item) => liveToItem(item, offersQuery.data ?? [], branches.filter((branch) => branch.id).length))
     : CATALOG_ITEMS;
-  const allItems = [...importedItems, ...catalogItems];
+  const allItems = live ? catalogItems : [...importedItems, ...catalogItems];
   const liveCount = (type: 'product' | 'service') =>
     liveItems.filter((item) => (type === 'service' ? item.itemType === 'service' : item.itemType !== 'service')).length;
   const liveDealCount = (offersQuery.data ?? []).filter((offer) => offer.status === 'active').length;
@@ -300,7 +300,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
     );
     return true;
   };
-  const draftImportCount = importedProducts.filter((product) => product.status === 'draft').length;
+  const draftImportCount = live ? 0 : importedProducts.filter((product) => product.status === 'draft').length;
 
   const showToast = (message: string) => {
     setToast(message);

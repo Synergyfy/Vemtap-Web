@@ -5,7 +5,8 @@ import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBa
 import { FilterMenu } from '../components/FilterMenu';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { hasApiConfig } from '../services/api/client';
-import { useOfferMutations, useOffers } from '../hooks/business/useOffers';
+import { useOfferMutations, useOfferSummary, useOffers } from '../hooks/business/useOffers';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { apiErrorMessage } from '../services/errorMessages';
 import type { BusinessOffer } from '../services/offersService';
 import {
@@ -162,6 +163,13 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
   const liveOffers = offersQuery.data ?? [];
   const liveById = new Map(liveOffers.map((offer) => [offer.id, offer]));
   const deals = live ? liveOffers.map(offerToCard) : DEALS;
+  // Live: the branch's deal totals for the pulse card.
+  const summary = useOfferSummary().data;
+  const { branches } = useBusinessBranch();
+  const liveBranchCount = branches.filter((option) => option.id).length;
+  const redeemShare = summary?.claimsToday ? Math.round((summary.redeemedToday / summary.claimsToday) * 100) : 0;
+  const nairaShort = (value: number) =>
+    value >= 1_000_000 ? `₦${(value / 1_000_000).toFixed(1)}M` : value >= 1_000 ? `₦${Math.round(value / 1_000)}k` : `₦${value}`;
   const [toast, setToast] = useState<string | null>(null);
   const showToast = (message: string) => {
     setToast(message);
@@ -312,7 +320,9 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
             <div className="flex items-center justify-between mb-space-xs">
               <div className="flex items-center gap-space-2xs">
                 <Icon name="monitoring" className="text-primary text-[18px]" />
-                <span className="font-label-sm text-label-sm font-semibold text-primary">Live Pulse · 3 Branches</span>
+                <span className="font-label-sm text-label-sm font-semibold text-primary">
+                  Live Pulse · {live ? `${liveBranchCount} ${liveBranchCount === 1 ? 'Branch' : 'Branches'}` : '3 Branches'}
+                </span>
               </div>
               <span className="font-caption text-caption text-text-secondary bg-surface-canvas/80 px-2 py-0.5 rounded-full">
                 Synced just now
@@ -320,24 +330,34 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
             </div>
             <div className="grid grid-cols-3 gap-space-2xs pt-space-xs">
               <div className="flex flex-col">
-                <span className="font-heading-sm text-heading-sm font-bold text-on-surface">6</span>
+                <span className="font-heading-sm text-heading-sm font-bold text-on-surface">{live ? (summary?.activeDeals ?? '—') : '6'}</span>
                 <span className="font-caption text-caption text-text-secondary">Active Deals</span>
               </div>
               <div className="flex flex-col">
-                <span className="font-heading-sm text-heading-sm font-bold text-on-surface">1,480</span>
-                <span className="font-caption text-caption text-text-secondary">Total Claims</span>
+                <span className="font-heading-sm text-heading-sm font-bold text-on-surface">
+                  {live ? (summary?.claimsToday ?? '—') : '1,480'}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">{live ? 'Claims Today' : 'Total Claims'}</span>
               </div>
               <div className="flex flex-col">
-                <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">₦1.8M</span>
-                <span className="font-caption text-caption text-text-secondary">Gross Claimed</span>
+                <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">
+                  {live ? (summary ? nairaShort(summary.netRevenue30d) : '—') : '₦1.8M'}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">{live ? 'Revenue (30d)' : 'Gross Claimed'}</span>
               </div>
             </div>
             <div className="w-full bg-surface-canvas/60 h-1.5 rounded-full mt-space-sm overflow-hidden">
-              <div className="bg-primary h-full rounded-full" style={{ width: '76%' }} />
+              <div className="bg-primary h-full rounded-full" style={{ width: live ? `${redeemShare}%` : '76%' }} />
             </div>
             <div className="flex items-center justify-between mt-space-2xs text-text-secondary">
-              <span className="font-caption text-caption">Daily redemption target: 76% achieved</span>
-              <span className="font-caption text-caption font-semibold text-primary">+18% vs last wk</span>
+              <span className="font-caption text-caption">
+                {live
+                  ? `${summary?.redeemedToday ?? 0} of ${summary?.claimsToday ?? 0} claims redeemed today`
+                  : 'Daily redemption target: 76% achieved'}
+              </span>
+              <span className="font-caption text-caption font-semibold text-primary">
+                {live ? (summary ? `${nairaShort(summary.discountGiven30d)} saved (30d)` : '—') : '+18% vs last wk'}
+              </span>
             </div>
           </div>
         </div>
