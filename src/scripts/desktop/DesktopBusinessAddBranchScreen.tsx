@@ -56,6 +56,15 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
   const [leadEmail, setLeadEmail] = useState(hasApiConfig() ? '' : 'chidinma@urbangrill.ng');
   const [leadWhatsapp, setLeadWhatsapp] = useState(hasApiConfig() ? '' : '+234 803 762 9901');
   const [role, setRole] = useState('Branch Manager');
+  // Live: the preview cards reflect what has been typed; there is no map / reach data yet.
+  const live = hasApiConfig();
+  const leadInitials =
+    leadName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]!.toUpperCase())
+      .join('') || '—';
   const [dashboardAccess, setDashboardAccess] = useState(true);
   const [customizeDays, setCustomizeDays] = useState(false);
   const [standardHours, setStandardHours] = useState<StandardHours>({
@@ -525,7 +534,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                 <div
                   className="w-full h-full bg-cover bg-center"
                   data-location="Plot 742 Tafawa Balewa Way Garki Abuja Nigeria"
-                  style={{ backgroundImage: `url('${GEOFENCE_MAP_IMAGE}')` }}
+                  style={live ? undefined : { backgroundImage: `url('${GEOFENCE_MAP_IMAGE}')` }}
                 />
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="w-52 h-52 rounded-full border-2 border-primary/40 bg-primary/10 flex items-center justify-center animate-pulse">
@@ -535,35 +544,37 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-none drop-shadow-lg">
                   <div className="bg-on-surface text-on-primary px-space-sm py-1 rounded-full font-caption text-caption font-semibold flex items-center gap-space-2xs whitespace-nowrap shadow-md">
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    <span>Urban Grill (Garki Branch)</span>
+                    <span>{live ? branchName.trim() || 'New branch' : 'Urban Grill (Garki Branch)'}</span>
                   </div>
                   <Icon name="location_on" filled className="text-primary text-[38px] -mt-1" />
                 </div>
                 <div className="absolute bottom-3 left-3 right-3 bg-surface-canvas/90 backdrop-blur-md p-space-xs px-space-sm rounded-lg flex items-center justify-between text-on-surface shadow-sm">
                   <div className="flex items-center gap-space-xs font-caption text-caption text-text-secondary font-mono">
                     <Icon name="explore" className="text-[15px] text-primary" />
-                    <span>9.0348° N, 7.4891° E</span>
+                    <span>{live ? address.trim() || 'Pinned from the address you enter' : '9.0348° N, 7.4891° E'}</span>
                   </div>
-                  <div className="flex items-center gap-space-2xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                    <span className="font-caption text-caption text-badge-discount-text font-semibold">
-                      ±3m Accuracy
-                    </span>
-                  </div>
+                  {!live && (
+                    <div className="flex items-center gap-space-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
+                      <span className="font-caption text-caption text-badge-discount-text font-semibold">
+                        ±3m Accuracy
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="p-space-md grid grid-cols-3 gap-space-xs text-center bg-surface-subtle">
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary">Catchment Radius</span>
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">3.0 km</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{live ? '—' : '3.0 km'}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary">Est. Shoppers Reach</span>
-                  <span className="font-heading-sm text-heading-sm font-bold text-primary">~18,400</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-primary">{live ? '—' : '~18,400'}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary">Delivery Timeband</span>
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">12-25 min</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{live ? '—' : '12-25 min'}</span>
                 </div>
               </div>
             </div>
@@ -578,20 +589,26 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                 </span>
               </div>
               <div className="p-space-md rounded-xl bg-surface-container-low flex items-start gap-space-md">
-                <img
-                  className="w-14 h-14 rounded-full object-cover shadow-sm shrink-0"
-                  alt={LEAD_PORTRAIT_ALT}
-                  src={LEAD_PORTRAIT}
-                />
+                {live ? (
+                  <span className="w-14 h-14 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-heading-sm text-heading-sm font-bold shadow-sm shrink-0">
+                    {leadInitials}
+                  </span>
+                ) : (
+                  <img
+                    className="w-14 h-14 rounded-full object-cover shadow-sm shrink-0"
+                    alt={LEAD_PORTRAIT_ALT}
+                    src={LEAD_PORTRAIT}
+                  />
+                )}
                 <div className="flex flex-col gap-space-2xs min-w-0">
                   <div className="flex items-center gap-space-xs">
                     <h4 className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">
-                      {leadName}
+                      {live ? leadName.trim() || 'Branch lead' : leadName}
                     </h4>
                     <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
                   </div>
-                  <p className="font-caption text-caption text-primary font-semibold">{role} • Garki Flagship</p>
-                  <p className="font-caption text-caption text-text-secondary truncate">{leadEmail}</p>
+                  <p className="font-caption text-caption text-primary font-semibold">{role} • {live ? branchName.trim() || 'New branch' : 'Garki Flagship'}</p>
+                  <p className="font-caption text-caption text-text-secondary truncate">{live ? leadEmail.trim() || '—' : leadEmail}</p>
                 </div>
               </div>
               <div className="flex flex-col gap-space-xs pt-space-2xs">
@@ -599,7 +616,12 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                   Permitted Modules
                 </span>
                 <div className="flex flex-wrap gap-space-2xs">
-                  {PERMITTED_MODULES.map((entry) => (
+                  {(live
+                    ? dashboardAccess
+                      ? PERMITTED_MODULES.map((entry) => (entry.label === 'Till 02 operations' ? { ...entry, label: 'POS operations' } : entry))
+                      : []
+                    : PERMITTED_MODULES
+                  ).map((entry) => (
                     <span
                       key={entry.label}
                       className="px-space-xs py-1 rounded-md bg-surface-subtle text-on-surface-variant font-caption text-caption flex items-center gap-space-2xs"

@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { useBusinessProfileForm, type BusinessProfileForm } from '../../hooks/business/useBusinessProfileForm';
+import { useStorefrontPreview } from '../../hooks/business/useStorefrontPreview';
+import { apiErrorMessage } from '../../services/errorMessages';
+
+/** Neutral tile while the business has no cover / logo / item photo. */
+const NO_IMAGE =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
 
 interface DesktopBusinessProfilePreviewStudioScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -12,6 +19,15 @@ interface Amenity {
   icon: string;
   label: string;
 }
+
+const DEMO_COVER =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuBXkpStKZGEaRSBhcdBylyfs1abZ2bDsUnGvuADtcSnD-qjIUZ51WfofWRXC3Upo7QEorP4ymqDYZP0xgUfrXNvljqX8KmO3BHwSV-yZqtvtIsGHEResllrRNckDeKMvXDaLXzp4ck64P7eEIvr_VCUBfUom7p2_UcJ-97BabQZ0Of6xxqB6PVPx2hLNsb7PfMw6j2PgSvxytV2jYVdZ3778iMYnx_rksJznfYqjKpDRBJjjR_d-OeitA';
+const DEMO_LOGO =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuBKk_SocM8tvSBVXvk7Whvl-0L5of8F7w3E4BBF8Q1bVMAGx9qkRMl4eLiF6APxGrlMZ2zMWfTG2Mar0N5FzVMCu0xEB6qDPeMfy4Bb6qgytyIu1BiYrrMeEf79P4ATsBzQ5LXPR5oGDAHF7wHh1FGL3rdenmJYjUr-hXFGMksgIAQEOnfIrHB2qDZ1HWdCGW4gwk5kerrpJ2Al-woLI5PvCrmYYBTsCdiZLTMAD4fl2FVMSZKv8c1L_g';
+const DEMO_PREVIEW_COVER =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuBoSQapBR2K8RNL6ubyOFZFCnRUASULyUP4tANm20iuQCWCbGYFdo94ic8yeos0Mk-suIrpeNGmDXvu8sy3pKN1f8R3mkHBWbucl3rYrhkOoQZEjFdE4xJrukbxCSOoIH419BIXyxcFluZj5I8VirElnAmvtZVlTFoRzx6v68KfTF_o0_ZeHxp_LkKQX2vC91jih0fnXUDgzO0Bmc5I4A-sxopmRetuxhnajr7u7ZmhIPSCwNFYrl6HSg';
+const DEMO_PREVIEW_LOGO =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuDC3oLgxrQwsFgRl45ahVDnCs70FyaPg4llGt-MyzspCw8sTDzP7a1RxVDSikrSyPRFFEnLVTFXgSp_Kq96a7x9-8EW2fYmU1H8gGUXpD_ALp_vnnAGBkJflFO5bLg7XuQz31AjRYs9VMZTBwoTHHlwaLJ822x6hUpZhYO62hHTVXK9-ureACHeBcbFQFHRmaFPl13iiyUrf_n6S5t885IoFGJGvS9Izps5te4mTBYMfm4QHBAAMl2npQ';
 
 const AMENITIES: Amenity[] = [
   { icon: 'restaurant', label: 'Dine-In' },
@@ -67,18 +83,93 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [copied, setCopied] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  // Live: the business record, verification and storefront figures; demo keeps the samples.
+  const profile = useBusinessProfileForm();
+  const preview = useStorefrontPreview();
+  const live = preview.live;
+  const form = profile.form;
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  /** Live: inputs are bound to the profile form; demo keeps its uncontrolled samples. */
+  const field = (key: keyof Pick<BusinessProfileForm, 'name' | 'description' | 'phone' | 'officialEmail'>, demo: string) =>
+    live
+      ? { value: form[key], onChange: (event: { target: { value: string } }) => profile.set(key, event.target.value) }
+      : { defaultValue: demo };
+  const socialField = (platform: string, demo: string) =>
+    live
+      ? {
+          value: (form.socials[platform] ?? '').replace(/^@/, ''),
+          onChange: (event: { target: { value: string } }) => profile.set('socials', { ...form.socials, [platform]: event.target.value }),
+        }
+      : { defaultValue: demo };
+  const verificationBadge = live ? preview.verificationLabel ?? (preview.verified ? 'Verified' : 'Not verified') : 'Tier 3 Verified';
+  const trustItems = live
+    ? [
+        {
+          icon: 'domain',
+          label: 'Business registration',
+          value: preview.businessCheck ?? 'Not submitted',
+          note: preview.businessCheckOk ? 'Verified' : 'Pending review',
+        },
+        {
+          icon: 'fingerprint',
+          label: 'Owner identity',
+          value: preview.identityCheck ?? 'Not submitted',
+          note: preview.identityCheckOk ? 'Verified' : 'Pending review',
+        },
+      ]
+    : TRUST_ITEMS;
+  const previewItems = live
+    ? preview.featured.map((item) => ({ image: item.image ?? NO_IMAGE, alt: item.name, name: item.name, note: item.note, price: item.price }))
+    : PREVIEW_ITEMS;
+
+  // Reflect the saved amenities once the profile loads (or after a save).
+  useEffect(() => {
+    if (!live || profile.isLoading) return;
+    setActiveAmenities(AMENITIES.map((a) => a.label).filter((label) => form.amenities.includes(label)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, profile.isLoading, form.amenities]);
+
+  useEffect(() => {
+    if (live && profile.loadError) showToast(apiErrorMessage(profile.loadError, 'Could not load your business profile.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.loadError]);
 
   const toggleAmenity = (label: string) =>
     setActiveAmenities((prev) => (prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]));
 
   const copySubdomain = () => {
-    navigator.clipboard?.writeText('https://urbangrill.vem.store');
+    navigator.clipboard?.writeText(v(preview.publicUrl ?? '', 'https://urbangrill.vem.store'));
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2200);
   };
 
   const saveChanges = () => {
     if (saveState !== 'idle') return;
+    if (live) {
+      // Keep amenities this screen doesn't list (e.g. set on mobile) untouched.
+      const listed = AMENITIES.map((a) => a.label);
+      const amenities = [...form.amenities.filter((label) => !listed.includes(label)), ...activeAmenities];
+      setSaveState('saving');
+      profile.save.mutate(
+        { ...form, amenities },
+        {
+          onSuccess: () => {
+            setSaveState('saved');
+            window.setTimeout(() => setSaveState('idle'), 1800);
+          },
+          onError: (error) => {
+            setSaveState('idle');
+            showToast(apiErrorMessage(error, 'Could not save your profile.'));
+          },
+        },
+      );
+      return;
+    }
     setSaveState('saving');
     window.setTimeout(() => {
       setSaveState('saved');
@@ -103,7 +194,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Business Profile &amp; Public Preview Studio</h1>
               <span className="px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold flex items-center gap-1">
                 <Icon name="verified" className="text-[14px]" filled />
-                Tier 3 Verified
+                {verificationBadge}
               </span>
             </div>
             <p className="font-body-md text-body-md text-text-secondary max-w-3xl">
@@ -150,14 +241,14 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <Icon name="badge" className="text-primary text-[22px]" />
                   <h2 className="font-heading-sm text-heading-sm text-text-primary">Cover &amp; Brand Identity</h2>
                 </div>
-                <span className="font-caption text-caption text-text-tertiary">Merchant ID: #4082</span>
+                <span className="font-caption text-caption text-text-tertiary">Merchant ID: #{v(preview.storeCode ?? '—', '4082')}</span>
               </div>
               <div className="p-space-lg flex flex-col gap-space-lg">
                 <div className="relative w-full aspect-[16/7] rounded-xl overflow-hidden group">
                   <img
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    alt="Sophisticated modern grill restaurant interior with dark oak wood tables, warm amber ambient strip lights, stainless steel open kitchen, clean architecture, cinematic lighting, ultra sharp focus"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXkpStKZGEaRSBhcdBylyfs1abZ2bDsUnGvuADtcSnD-qjIUZ51WfofWRXC3Upo7QEorP4ymqDYZP0xgUfrXNvljqX8KmO3BHwSV-yZqtvtIsGHEResllrRNckDeKMvXDaLXzp4ck64P7eEIvr_VCUBfUom7p2_UcJ-97BabQZ0Of6xxqB6PVPx2hLNsb7PfMw6j2PgSvxytV2jYVdZ3778iMYnx_rksJznfYqjKpDRBJjjR_d-OeitA"
+                    alt={live ? `${form.name || 'Business'} cover photo` : 'Sophisticated modern grill restaurant interior with dark oak wood tables, warm amber ambient strip lights, stainless steel open kitchen, clean architecture, cinematic lighting, ultra sharp focus'}
+                    src={live ? preview.coverImage || NO_IMAGE : DEMO_COVER}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
                   <button
@@ -178,8 +269,8 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg p-1 bg-surface-canvas">
                       <img
                         className="w-full h-full rounded-full object-cover"
-                        alt="Minimalist circular logo emblem for Urban Grill featuring clean typographic monogram with flame accent in royal blue and warm amber tones on clean background"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKk_SocM8tvSBVXvk7Whvl-0L5of8F7w3E4BBF8Q1bVMAGx9qkRMl4eLiF6APxGrlMZ2zMWfTG2Mar0N5FzVMCu0xEB6qDPeMfy4Bb6qgytyIu1BiYrrMeEf79P4ATsBzQ5LXPR5oGDAHF7wHh1FGL3rdenmJYjUr-hXFGMksgIAQEOnfIrHB2qDZ1HWdCGW4gwk5kerrpJ2Al-woLI5PvCrmYYBTsCdiZLTMAD4fl2FVMSZKv8c1L_g"
+                        alt={live ? `${form.name || 'Business'} logo` : 'Minimalist circular logo emblem for Urban Grill featuring clean typographic monogram with flame accent in royal blue and warm amber tones on clean background'}
+                        src={live ? preview.logoUrl || NO_IMAGE : DEMO_LOGO}
                       />
                     </div>
                     <button
@@ -192,27 +283,32 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   </div>
                   <div className="flex flex-col flex-grow">
                     <div className="flex flex-wrap items-center gap-space-xs">
-                      <span className="font-heading-md text-heading-md text-text-primary tracking-tight">Urban Grill &amp; Bistro</span>
-                      <span title="VEMTAP Verified Merchant" className="flex items-center">
-                        <Icon name="verified" className="text-primary text-[20px]" filled />
+                      <span className="font-heading-md text-heading-md text-text-primary tracking-tight">{v(form.name || 'Your business', 'Urban Grill & Bistro')}</span>
+                      {(!live || preview.verified) && (
+                        <span title="VEMTAP Verified Merchant" className="flex items-center">
+                          <Icon name="verified" className="text-primary text-[20px]" filled />
+                        </span>
+                      )}
+                      <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                        {v(form.isVisible ? 'Live Online' : 'Hidden from search', 'Live Online')}
                       </span>
-                      <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">Live Online</span>
                     </div>
-                    <p className="font-label-sm text-label-sm text-text-secondary mt-0.5">Restaurant &amp; Grill • Casual Dining • Wuse II, Abuja</p>
+                    <p className="font-label-sm text-label-sm text-text-secondary mt-0.5">{v([profile.category || 'Add a category', preview.location].filter(Boolean).join(' • '), 'Restaurant & Grill • Casual Dining • Wuse II, Abuja')}</p>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-1.5 pt-space-xs">
                   <div className="flex items-center justify-between">
                     <label className="font-label-sm text-label-sm text-text-primary font-semibold" htmlFor="storefront-bio">Storefront Public Bio</label>
-                    <span className="font-caption text-caption text-text-tertiary">138 / 250 characters</span>
+                    <span className="font-caption text-caption text-text-tertiary">{v(`${form.description.length} / 250 characters`, '138 / 250 characters')}</span>
                   </div>
                   <textarea
                     className="w-full rounded-xl bg-surface-subtle p-space-sm font-body-md text-body-md text-text-primary focus:bg-surface-canvas outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none shadow-inner"
                     placeholder="Tell customers about your kitchen, specialties, and experience..."
                     rows={3}
                     id="storefront-bio"
-                    defaultValue="Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails."
+                    maxLength={live ? 250 : undefined}
+                    {...field('description', 'Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails.')}
                   />
                   <span className="font-caption text-caption text-text-tertiary">
                     Visible on the consumer app header and local discovery search engine.
@@ -230,11 +326,11 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                 </div>
                 <div className="flex items-center gap-1.5 px-space-xs py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                   <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                  <span>Tier 3 Fully Compliant</span>
+                  <span>{v(verificationBadge, 'Tier 3 Fully Compliant')}</span>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm pt-space-2xs">
-                {TRUST_ITEMS.map((item) => (
+                {trustItems.map((item) => (
                   <div key={item.label} className="bg-surface-subtle p-space-sm rounded-xl flex items-start gap-space-xs">
                     <div className="w-8 h-8 rounded-lg bg-badge-discount-bg text-badge-discount-text flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Icon name={item.icon} className="text-[18px]" />
@@ -268,7 +364,9 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   </div>
                   <div className="flex items-center gap-space-xs bg-surface-canvas px-space-sm py-2 rounded-lg shadow-sm">
                     <Icon name="link" className="text-primary text-[18px]" />
-                    <span className="font-body-md text-body-md text-text-primary font-medium flex-grow truncate">urbangrill.vem.store</span>
+                    <span className="font-body-md text-body-md text-text-primary font-medium flex-grow truncate">
+                      {v((preview.publicUrl ?? '—').replace(/^https?:\/\//, ''), 'urbangrill.vem.store')}
+                    </span>
                     <button
                       type="button"
                       onClick={copySubdomain}
@@ -286,7 +384,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <label className="font-label-sm text-label-sm text-text-secondary" htmlFor="hotline-input">Official Hotline (Customer Calls)</label>
                   <div className="flex items-center gap-space-xs bg-surface-subtle px-space-sm py-2.5 rounded-xl">
                     <Icon name="call" className="text-primary text-[18px]" />
-                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="hotline-input" type="text" defaultValue="+234 803 900 2210" />
+                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="hotline-input" type="text" {...field('phone', '+234 803 900 2210')} />
                     <span title="SMS Verified" className="flex items-center">
                       <Icon name="check_circle" className="text-badge-discount-text text-[16px]" filled />
                     </span>
@@ -297,7 +395,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <label className="font-label-sm text-label-sm text-text-secondary" htmlFor="email-input">Customer Desk Email</label>
                   <div className="flex items-center gap-space-xs bg-surface-subtle px-space-sm py-2.5 rounded-xl">
                     <Icon name="alternate_email" className="text-primary text-[18px]" />
-                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="email-input" type="email" defaultValue="contact@urbangrill.ng" />
+                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="email-input" type="email" {...field('officialEmail', 'contact@urbangrill.ng')} />
                   </div>
                 </div>
 
@@ -306,7 +404,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <div className="flex items-center gap-space-xs bg-surface-subtle px-space-sm py-2.5 rounded-xl">
                     <Icon name="photo_camera" className="text-text-secondary text-[18px]" />
                     <span className="font-label-sm text-label-sm text-text-tertiary">@</span>
-                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="instagram-input" type="text" defaultValue="urbangrillbistro" />
+                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="instagram-input" type="text" {...socialField('instagram', 'urbangrillbistro')} />
                   </div>
                 </div>
 
@@ -315,7 +413,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <div className="flex items-center gap-space-xs bg-surface-subtle px-space-sm py-2.5 rounded-xl">
                     <Icon name="tag" className="text-text-secondary text-[18px]" />
                     <span className="font-label-sm text-label-sm text-text-tertiary">@</span>
-                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="x-input" type="text" defaultValue="urbangrill_ng" />
+                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="x-input" type="text" {...socialField('x', 'urbangrill_ng')} />
                   </div>
                 </div>
               </div>
@@ -376,32 +474,38 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <div className="relative w-full aspect-[16/9] overflow-hidden">
                     <img
                       className="w-full h-full object-cover"
-                      alt="Plated gourmet grilled tomahawk steak with rosemary butter, smoke rising softly, artisan dark stone platter, high-end bistro ambiance"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuBoSQapBR2K8RNL6ubyOFZFCnRUASULyUP4tANm20iuQCWCbGYFdo94ic8yeos0Mk-suIrpeNGmDXvu8sy3pKN1f8R3mkHBWbucl3rYrhkOoQZEjFdE4xJrukbxCSOoIH419BIXyxcFluZj5I8VirElnAmvtZVlTFoRzx6v68KfTF_o0_ZeHxp_LkKQX2vC91jih0fnXUDgzO0Bmc5I4A-sxopmRetuxhnajr7u7ZmhIPSCwNFYrl6HSg"
+                      alt={live ? `${form.name || 'Business'} cover` : 'Plated gourmet grilled tomahawk steak with rosemary butter, smoke rising softly, artisan dark stone platter, high-end bistro ambiance'}
+                      src={live ? preview.coverImage || NO_IMAGE : DEMO_PREVIEW_COVER}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm">
-                        15% OFF First Dine-In
-                      </span>
-                    </div>
-                    <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white font-caption text-caption flex items-center gap-1">
-                      <Icon name="near_me" className="text-[12px] text-badge-discount-text" />
-                      <span>0.4 km away</span>
-                    </div>
+                    {!live && (
+                      <>
+                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm">
+                            15% OFF First Dine-In
+                          </span>
+                        </div>
+                        <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white font-caption text-caption flex items-center gap-1">
+                          <Icon name="near_me" className="text-[12px] text-badge-discount-text" />
+                          <span>0.4 km away</span>
+                        </div>
+                      </>
+                    )}
                     <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between">
                       <div className="flex flex-col text-white">
                         <div className="flex items-center gap-1">
-                          <span className="font-heading-sm text-heading-sm font-bold leading-tight">Urban Grill &amp; Bistro</span>
-                          <Icon name="verified" className="text-primary-fixed text-[16px]" filled />
+                          <span className="font-heading-sm text-heading-sm font-bold leading-tight">{v(form.name || 'Your business', 'Urban Grill & Bistro')}</span>
+                          {(!live || preview.verified) && <Icon name="verified" className="text-primary-fixed text-[16px]" filled />}
                         </div>
-                        <span className="font-caption text-caption text-white/80">Wuse II, Abuja • Casual Dining</span>
+                        <span className="font-caption text-caption text-white/80">
+                          {v([preview.location, preview.category].filter(Boolean).join(' • ') || '—', 'Wuse II, Abuja • Casual Dining')}
+                        </span>
                       </div>
                       <div className="w-10 h-10 rounded-full p-0.5 bg-surface-canvas shadow-md flex-shrink-0">
                         <img
                           className="w-full h-full rounded-full object-cover"
-                          alt="Urban grill logo round avatar graphic crisp and punchy"
-                          src="https://lh3.googleusercontent.com/aida-public/AB6AXuDC3oLgxrQwsFgRl45ahVDnCs70FyaPg4llGt-MyzspCw8sTDzP7a1RxVDSikrSyPRFFEnLVTFXgSp_Kq96a7x9-8EW2fYmU1H8gGUXpD_ALp_vnnAGBkJflFO5bLg7XuQz31AjRYs9VMZTBwoTHHlwaLJ822x6hUpZhYO62hHTVXK9-ureACHeBcbFQFHRmaFPl13iiyUrf_n6S5t885IoFGJGvS9Izps5te4mTBYMfm4QHBAAMl2npQ"
+                          alt={live ? `${form.name || 'Business'} logo` : 'Urban grill logo round avatar graphic crisp and punchy'}
+                          src={live ? preview.logoUrl || NO_IMAGE : DEMO_PREVIEW_LOGO}
                         />
                       </div>
                     </div>
@@ -411,14 +515,16 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     <div className="flex items-center justify-between text-text-secondary">
                       <div className="flex items-center gap-1">
                         <Icon name="star" className="text-[16px] text-amber-500" filled />
-                        <span className="font-label-sm text-label-sm text-text-primary font-bold">4.9</span>
-                        <span className="font-caption text-caption text-text-tertiary">(142 reviews)</span>
+                        <span className="font-label-sm text-label-sm text-text-primary font-bold">{v(preview.rating ?? '—', '4.9')}</span>
+                        <span className="font-caption text-caption text-text-tertiary">({v(preview.reviewCount, 142)} reviews)</span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                        <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">Open Now</span>
-                        <span className="font-caption text-caption text-text-tertiary">• Closes 11 PM</span>
-                      </div>
+                      {!live && (
+                        <div className="flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                          <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">Open Now</span>
+                          <span className="font-caption text-caption text-text-tertiary">• Closes 11 PM</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-4 gap-1.5 pt-1">
@@ -436,16 +542,19 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                       </button>
                       <button type="button" className="flex flex-col items-center justify-center py-1.5 rounded-lg bg-badge-discount-bg text-badge-discount-text">
                         <Icon name="local_offer" className="text-[18px]" />
-                        <span className="font-caption text-caption font-bold mt-0.5">3 Deals</span>
+                        <span className="font-caption text-caption font-bold mt-0.5">{v(`${preview.activeDeals ?? 0} Deals`, '3 Deals')}</span>
                       </button>
                     </div>
 
                     <div className="mt-space-2xs flex flex-col gap-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-label-sm text-label-sm text-text-primary font-bold">Signature Bites Today</span>
-                        <span className="font-caption text-caption text-primary font-medium cursor-pointer">View 28 items</span>
+                        <span className="font-caption text-caption text-primary font-medium cursor-pointer">View {v(preview.itemCount ?? 0, 28)} items</span>
                       </div>
-                      {PREVIEW_ITEMS.map((item) => (
+                      {live && !previewItems.length && (
+                        <span className="font-caption text-caption text-text-tertiary">Add products to feature them here.</span>
+                      )}
+                      {previewItems.map((item) => (
                         <div key={item.name} className="p-2 rounded-xl bg-surface-subtle flex items-center justify-between gap-space-xs">
                           <div className="flex items-center gap-space-xs min-w-0">
                             <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container">
@@ -477,8 +586,12 @@ export function DesktopBusinessProfilePreviewStudioScreen({
 
               <div className="p-space-sm bg-surface-subtle flex items-center justify-between text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-1">
-                  <Icon name="speed" className="text-[15px] text-badge-discount-text" />
-                  0.4s Public Page Load Time
+                  {!live && (
+                    <>
+                      <Icon name="speed" className="text-[15px] text-badge-discount-text" />
+                      0.4s Public Page Load Time
+                    </>
+                  )}
                 </span>
                 <button type="button" onClick={onPreviewStorefront} className="text-primary hover:underline font-semibold flex items-center gap-0.5">
                   <span>Open in browser tab</span>
@@ -543,6 +656,11 @@ export function DesktopBusinessProfilePreviewStudioScreen({
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </MerchantPortalChrome>
   );
 }

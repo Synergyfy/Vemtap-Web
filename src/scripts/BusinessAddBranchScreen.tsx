@@ -260,16 +260,18 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 aria-label={BRANCH_IMAGES[0].alt}
                 className="w-full h-36 bg-cover bg-center"
                 role="img"
-                style={{ backgroundImage: `url('${BRANCH_IMAGES[0].src}')` }}
+                style={live ? undefined : { backgroundImage: `url('${BRANCH_IMAGES[0].src}')` }}
               />
               <div className="p-space-sm bg-surface-canvas flex items-center justify-between">
                 <div className="flex items-center gap-space-xs min-w-0">
                   <Icon name="pin_drop" className="text-primary-container text-[20px] shrink-0" />
                   <div className="flex flex-col min-w-0">
                     <span className="font-label-sm text-label-sm text-text-primary truncate">
-                      9.0348° N, 7.4891° E
+                      {live ? 'Location' : '9.0348° N, 7.4891° E'}
                     </span>
-                    <span className="font-caption text-caption text-text-tertiary">Pinned with ±3m accuracy</span>
+                    <span className="font-caption text-caption text-text-tertiary">
+                      {live ? 'Pinned from the address you enter' : 'Pinned with ±3m accuracy'}
+                    </span>
                   </div>
                 </div>
                 <button
