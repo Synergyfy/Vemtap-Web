@@ -5,6 +5,7 @@ import { DesktopBusinessMessagesComposeScreen } from './DesktopBusinessMessagesC
 import { DesktopBusinessMessagesBookingScreen } from './DesktopBusinessMessagesBookingScreen';
 import { DesktopBusinessMessagesDealScreen } from './DesktopBusinessMessagesDealScreen';
 import { DesktopBusinessMessagesSearchScreen } from './DesktopBusinessMessagesSearchScreen';
+import { hasApiConfig } from '../../services/api/client';
 
 interface DesktopBusinessMessagesWorkspaceScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -14,6 +15,22 @@ interface DesktopBusinessMessagesWorkspaceScreenProps {
 
 export function DesktopBusinessMessagesWorkspaceScreen({ onNav, onViewCustomerProfile }: DesktopBusinessMessagesWorkspaceScreenProps) {
   const [view, setView] = useState<MessagesWorkspaceView>('order-context');
+
+  // Live: one workspace over the real inbox. The Booking / Deal / Search / Compose
+  // views are sample-thread mockups, so they open the live workspace pre-set instead.
+  if (hasApiConfig()) {
+    return (
+      <DesktopBusinessMessagesOrderContextScreen
+        key={view}
+        onNav={onNav}
+        onView={setView}
+        onViewCustomerProfile={onViewCustomerProfile}
+        initialFilter={view === 'booking' ? 'bookings' : view === 'deal' ? 'deals' : 'all'}
+        focusSearch={view === 'search'}
+        openRecipient={view === 'compose'}
+      />
+    );
+  }
 
   switch (view) {
     case 'compose':

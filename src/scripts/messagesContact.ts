@@ -8,6 +8,8 @@ export interface BusinessChatContact {
   isBusiness?: boolean;
   /** Live inbox thread this chat opens; absent for demo contacts. */
   threadId?: string;
+  /** Live: the customer's user id, for their CRM record. */
+  customerId?: string | null;
 }
 
 /** Fallback contacts used when a chat screen is opened without an explicit contact. */

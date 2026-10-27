@@ -88,7 +88,7 @@ const CONVERSATIONS: ConversationRow[] = [
     online: true,
     unread: true,
     chipIcon: 'local_offer',
-    chipLabel: 'Deal Â· 20% Lunch Combo',
+    chipLabel: 'Deal · 20% Lunch Combo',
     chipClass: 'bg-badge-discount-bg text-badge-discount-text',
     message: 'Hi, is the 20% lunch combo discount still available for 4 people today?',
     messagePrimary: true,
@@ -102,7 +102,7 @@ const CONVERSATIONS: ConversationRow[] = [
     name: 'Michael James',
     time: '9:24 AM',
     chipIcon: 'receipt',
-    chipLabel: 'Order #VG-94021 Â· Ribeye Steak',
+    chipLabel: 'Order #VG-94021 · Ribeye Steak',
     chipClass: 'bg-surface-container text-secondary',
     message: 'Your order is packed and ready for counter pickup!',
     showYouPrefix: true,
@@ -120,7 +120,7 @@ const CONVERSATIONS: ConversationRow[] = [
     online: true,
     unread: true,
     chipIcon: 'inventory_2',
-    chipLabel: 'Product Â· Glow Radiance Serum',
+    chipLabel: 'Product · Glow Radiance Serum',
     chipClass: 'bg-surface-container text-on-secondary-container',
     message: 'Do you have the 100ml bottle available in your Wuse II store?',
     messagePrimary: true,
@@ -135,7 +135,7 @@ const CONVERSATIONS: ConversationRow[] = [
     name: 'Dr. Chidi Okafor',
     time: 'Yesterday',
     chipIcon: 'event_seat',
-    chipLabel: 'Booking Â· Table Reservation (Sat 7:30 PM)',
+    chipLabel: 'Booking · Table Reservation (Sat 7:30 PM)',
     chipClass: 'bg-surface-container-high text-on-surface-variant',
     message: 'I would like to confirm our anniversary table booking for Saturday.',
     readIcon: 'done_all',
@@ -166,7 +166,7 @@ const CONVERSATIONS: ConversationRow[] = [
     timePrimary: true,
     unread: true,
     chipIcon: 'spa',
-    chipLabel: 'Booking Â· Swedish Massage',
+    chipLabel: 'Booking · Swedish Massage',
     chipClass: 'bg-secondary-container text-on-secondary-container',
     message: 'Can I reschedule my 5:15 PM appointment to Thursday?',
     messagePrimary: true,
@@ -328,7 +328,7 @@ export function BusinessMessagesHomeScreen({
                 {live && !socketLive ? 'Reconnecting' : 'Connected'}
               </span>
               <span className="font-caption text-caption opacity-75">
-                {live && !socketLive ? 'â€¢ Live sync interrupted' : 'â€¢ Instant customer sync active'}
+                {live && !socketLive ? '• Live sync interrupted' : '• Instant customer sync active'}
               </span>
             </div>
           </div>
@@ -358,6 +358,7 @@ export function BusinessMessagesHomeScreen({
                   isBusiness: row.isBusiness,
                   // Only live rows carry a real thread id; demo rows would 404.
                   threadId: live ? row.id : undefined,
+                  customerId: live ? liveRows.find((liveRow) => liveRow.id === row.id)?.customerId : undefined,
                 })
               }
             >

@@ -5,11 +5,14 @@ export function CustomerProfileDrawer({
   onClose,
   name,
   phone,
+  stats,
 }: {
   open: boolean;
   onClose: () => void;
   name: string;
   phone: string;
+  /** Live: the customer's real figures; omitted in demo mode. */
+  stats?: { spend: string; frequency: string; favorites: string[]; tier: string };
 }) {
   if (!open) return null;
   const initials = name
@@ -51,23 +54,23 @@ export function CustomerProfileDrawer({
                 <span className="font-label-sm text-label-sm font-medium text-text-primary">{phone}</span>
               </div>
               <span className="mt-2 px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
-                Loyal Tier VIP
+                {stats ? stats.tier : 'Loyal Tier VIP'}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-space-xs text-center">
               <div className="p-space-sm rounded-xl bg-surface-container-low">
                 <p className="font-caption text-caption text-text-secondary">Total Spend</p>
-                <p className="font-heading-sm text-heading-sm text-text-primary mt-1">₦118,500</p>
+                <p className="font-heading-sm text-heading-sm text-text-primary mt-1">{stats ? stats.spend : '₦118,500'}</p>
               </div>
               <div className="p-space-sm rounded-xl bg-surface-container-low">
                 <p className="font-caption text-caption text-text-secondary">Visit Frequency</p>
-                <p className="font-heading-sm text-heading-sm text-text-primary mt-1">Every 8 Days</p>
+                <p className="font-heading-sm text-heading-sm text-text-primary mt-1">{stats ? stats.frequency : 'Every 8 Days'}</p>
               </div>
             </div>
             <div className="flex flex-col gap-space-2xs">
               <h4 className="font-label-md text-label-md text-text-primary font-semibold">Favorite Items</h4>
               <div className="flex flex-wrap gap-1.5">
-                {['Chargrilled Ribeye', 'Hibiscus Cooler', 'Truffle Fries'].map((favorite) => (
+                {(stats ? (stats.favorites.length ? stats.favorites : ['No purchases yet']) : ['Chargrilled Ribeye', 'Hibiscus Cooler', 'Truffle Fries']).map((favorite) => (
                   <span
                     className="px-2.5 py-1 rounded-lg bg-surface-container text-text-secondary font-caption text-caption"
                     key={favorite}

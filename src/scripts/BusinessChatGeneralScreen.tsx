@@ -3,7 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CustomerProfileDrawer, ChatOptionsSheet } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
-import { useLiveChat } from './messagesLive';
+import { useChatCustomer, useLiveChat } from './messagesLive';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatGeneralScreenProps {
@@ -59,6 +60,16 @@ export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGener
   const firstName = contactFirstName(activeContact.name);
   const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
   const liveChat = useLiveChat(activeContact.threadId);
+
+  // Live: the customer's CRM record and what this chat is about.
+  const chat = useChatCustomer(activeContact.threadId, activeContact.customerId);
+  const live = chat.live;
+  const phone = live ? (chat.phone ?? '—') : '+234 803 555 1204';
+  const callCustomer = () => {
+    if (live && !chat.phone) return;
+    window.location.href = `tel:${live ? chat.phone : '+2348035551204'}`;
+  };
+  const business = useMyBusiness();
   const [input, setInput] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -95,12 +106,12 @@ export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGener
         title={activeContact.name}
         avatar={activeContact.avatar}
         isBusiness={activeContact.isBusiness}
-        subtitle="Active inquiry • Corporate Catering"
+        subtitle={live ? chat.subtitle : 'Active inquiry • Corporate Catering'}
         onAvatar={() => setDrawerOpen(true)}
-        onCall={() => (window.location.href = 'tel:+2348035551204')}
+        onCall={callCustomer}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 803 555 1204" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone={phone} stats={chat.drawer} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
       <div className="flex flex-col w-full flex-1 relative">
@@ -112,10 +123,12 @@ export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGener
               <span className="inline-flex items-center px-2 py-0.5 rounded-full font-label-sm font-semibold tracking-wide bg-secondary-container text-on-secondary-container">
                 GENERAL INQUIRY
               </span>
-              <span className="font-caption text-caption text-text-tertiary">Initiated 10:12 AM</span>
+              <span className="font-caption text-caption text-text-tertiary">
+                {live ? (liveChat.messages[0]?.time ? `Initiated ${liveChat.messages[0].time}` : '—') : 'Initiated 10:12 AM'}
+              </span>
             </div>
             <p className="font-label-sm text-label-sm text-on-surface-variant">
-              Customer started conversation from <span className="font-semibold text-on-surface">Urban Grill & Bistro</span>{' '}
+              Customer started conversation from <span className="font-semibold text-on-surface">{live ? (business.data?.name ?? 'your business') : 'Urban Grill & Bistro'}</span>{' '}
               public storefront.
             </p>
             <button

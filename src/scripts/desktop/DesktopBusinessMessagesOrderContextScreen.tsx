@@ -7,7 +7,9 @@ import { MessagesShareAttachmentModal } from './MessagesShareAttachmentModal';
 import { MessagesSelectRecipientModal } from './MessagesSelectRecipientModal';
 import { hasApiConfig } from '../../services/api/client';
 import { useInboxRealtime, useThreadRealtime } from '../../hooks/business/useInbox';
-import { useInboxRows, useLiveChat } from '../messagesLive';
+import { customerPanel, useInboxRows, useLiveChat, useStartChat } from '../messagesLive';
+import { useCustomerDossier, useSaveCustomerNote } from '../../hooks/business/useBusinessCustomers';
+import { apiErrorMessage } from '../../services/errorMessages';
 
 export type MessagesWorkspaceView =
   | 'order-context'
@@ -21,9 +23,13 @@ interface DesktopBusinessMessagesOrderContextScreenProps {
   onView: (view: MessagesWorkspaceView) => void;
   /** Opens the customer's full CRM profile (Customers page) from the chat header menu. */
   onViewCustomerProfile?: (name: string) => void;
+  /** Live: the Booking / Deal / Search / Compose views open this workspace pre-set. */
+  initialFilter?: ConvFilter;
+  focusSearch?: boolean;
+  openRecipient?: boolean;
 }
 
-type ConvFilter = 'all' | 'unread' | 'orders' | 'bookings' | 'deals';
+export type ConvFilter = 'all' | 'unread' | 'orders' | 'bookings' | 'deals';
 
 interface OrderConv {
   id: string;
@@ -41,6 +47,8 @@ interface OrderConv {
   /** Live rows carry the customer's contact details for the dossier. */
   phone?: string;
   email?: string;
+  /** Live: the customer's user id, for their CRM record. */
+  customerId?: string | null;
 }
 
 const CONVS: OrderConv[] = [
@@ -117,15 +125,22 @@ const DOSSIER_NOTES = [
   { label: 'Allergies', value: 'None on file', icon: 'health_and_safety' },
 ];
 
-export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onViewCustomerProfile }: DesktopBusinessMessagesOrderContextScreenProps) {
+export function DesktopBusinessMessagesOrderContextScreen({
+  onNav,
+  onView,
+  onViewCustomerProfile,
+  initialFilter = 'all',
+  focusSearch = false,
+  openRecipient = false,
+}: DesktopBusinessMessagesOrderContextScreenProps) {
   const live = hasApiConfig();
   const socketLive = useInboxRealtime();
   const { rows: liveRows, loading } = useInboxRows('IN_HOUSE');
   const [selectedId, setSelectedId] = useState('c1');
-  const [filter, setFilter] = useState<ConvFilter>('all');
+  const [filter, setFilter] = useState<ConvFilter>(initialFilter);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
-  const [showRecipient, setShowRecipient] = useState(false);
+  const [showRecipient, setShowRecipient] = useState(openRecipient);
   const [extraMessages, setExtraMessages] = useState<Array<{ id: string; text: string; time: string }>>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
@@ -133,6 +148,9 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
   const [transferred, setTransferred] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusSearch) searchInputRef.current?.focus();
+  }, [focusSearch]);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   // Live mode maps inbox threads onto the conversation shape this screen
@@ -156,6 +174,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
             prep: false,
             phone: row.phone ?? undefined,
             email: row.email ?? undefined,
+            customerId: row.customerId,
           }))
         : CONVS,
     [live, liveRows],
@@ -192,6 +211,37 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
 
   const selected = conversations.find((c) => c.id === selectedId) ?? conversations[0];
   const liveChat = useLiveChat(live && selected ? selected.id : null);
+  const customerId = live ? (selected?.customerId ?? null) : null;
+  const dossier = useCustomerDossier(customerId);
+  const saveNote = useSaveCustomerNote(customerId ?? '');
+  const panel = customerPanel(dossier.data);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  useEffect(() => {
+    if (live && dossier.error) showToast(apiErrorMessage(dossier.error, 'Could not load this customer.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dossier.error]);
+
+  /** Live: edit the customer's merchant note (kept with their CRM record). */
+  const editNote = () => {
+    if (!live) return;
+    if (!customerId) {
+      showToast('This chat has no saved customer to add notes to');
+      return;
+    }
+    const next = window.prompt('Merchant note for this customer:', dossier.data?.note?.note ?? '');
+    if (next === null) return;
+    saveNote.mutate(
+      { note: next.trim() },
+      {
+        onSuccess: () => showToast('Note saved'),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not save the note.')),
+      },
+    );
+  };
   const { customerTyping } = useThreadRealtime(liveChat.live && selected ? selected.id : null);
 
   const send = () => {
@@ -207,7 +257,27 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
   };
 
   /** Start a chat from the recipient picker without leaving this inbox. */
-  const startChatWith = (name: string) => {
+  const startChat = useStartChat();
+  const startChatWith = (name: string, pickedCustomerId?: string) => {
+    if (live) {
+      if (!pickedCustomerId) {
+        showToast('Pick a customer to message');
+        return;
+      }
+      setFilter('all');
+      setSearch('');
+      // Reuse the customer's existing thread at this branch, otherwise open one.
+      const existing = conversations.find((c) => c.customerId === pickedCustomerId);
+      if (existing) {
+        setSelectedId(existing.id);
+        return;
+      }
+      startChat
+        .start(pickedCustomerId)
+        .then((threadId) => setSelectedId(threadId))
+        .catch((error: unknown) => showToast(apiErrorMessage(error, `Could not start a chat with ${name}.`)));
+      return;
+    }
     if (!name) return;
     const match = conversations.find((c) => c.name.toLowerCase() === name.toLowerCase());
     if (match) {
@@ -390,7 +460,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
               <div className="p-space-xs border-t border-border flex items-center justify-between font-caption text-caption text-text-tertiary">
                 <span className="flex items-center gap-space-2xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-                  {live ? (socketLive ? 'Socket connected' : 'Reconnectingâ€¦') : 'Socket connected (Cluster LAG-01)'}
+                  {live ? (socketLive ? 'Socket connected' : 'Reconnecting…') : 'Socket connected (Cluster LAG-01)'}
                 </span>
                 <button type="button" className="flex items-center gap-space-2xs text-primary hover:underline">
                   <Icon name="refresh" className="text-[14px]" />
@@ -672,12 +742,15 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                 <div className="p-space-sm">
                   <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">Lifetime Engagement</div>
                   <div className="grid grid-cols-2 gap-space-xs">
-                    {[
-                      { label: 'Visits', value: '14' },
-                      { label: 'Orders', value: '11' },
-                      { label: 'Deals', value: '4' },
-                      { label: 'Tap Points', value: '2,450' },
-                    ].map((s) => (
+                    {(live
+                      ? panel.engagement
+                      : [
+                          { label: 'Visits', value: '14' },
+                          { label: 'Orders', value: '11' },
+                          { label: 'Deals', value: '4' },
+                          { label: 'Tap Points', value: '2,450' },
+                        ]
+                    ).map((s) => (
                       <div key={s.label} className="p-space-xs rounded-xl bg-surface-subtle border border-border">
                         <div className="font-caption text-caption text-on-surface-variant">{s.label}</div>
                         <div className="font-heading-sm text-heading-sm text-on-surface">{s.value}</div>
@@ -689,12 +762,15 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                 <div className="p-space-sm">
                   <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">Relationship Telemetry</div>
                   <div className="space-y-space-2xs font-body-sm text-body-sm">
-                    {[
-                      { label: 'Avg order value', value: '₦2,818' },
-                      { label: 'Visit frequency', value: '2.4× / month' },
-                      { label: 'Deal redemption rate', value: '36%' },
-                      { label: 'Response rate', value: '92%' },
-                    ].map((r) => (
+                    {(live
+                      ? panel.telemetry
+                      : [
+                          { label: 'Avg order value', value: '₦2,818' },
+                          { label: 'Visit frequency', value: '2.4× / month' },
+                          { label: 'Deal redemption rate', value: '36%' },
+                          { label: 'Response rate', value: '92%' },
+                        ]
+                    ).map((r) => (
                       <div key={r.label} className="flex items-center justify-between">
                         <span className="text-on-surface-variant">{r.label}</span>
                         <span className="text-on-surface font-medium">{r.value}</span>
@@ -703,11 +779,12 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                   </div>
                   <div className="mt-space-sm">
                     <div className="flex items-center justify-between font-label-sm text-label-sm mb-space-2xs">
-                      <span className="text-on-surface-variant">VIP Tier progress</span>
-                      <span className="text-primary font-semibold">82%</span>
+                      <span className="text-on-surface-variant">{live ? 'Loyalty tier' : 'VIP Tier progress'}</span>
+                      <span className="text-primary font-semibold">{live ? (panel.tier ?? '—') : '82%'}</span>
                     </div>
                     <div className="h-2 rounded-full bg-surface-subtle overflow-hidden">
-                      <div className="h-full rounded-full bg-primary" style={{ width: '82%' }} />
+                      {/* Live: tier thresholds aren't exposed, so there is no progress to draw. */}
+                      <div className="h-full rounded-full bg-primary" style={{ width: live ? '0%' : '82%' }} />
                     </div>
                   </div>
                 </div>
@@ -715,14 +792,16 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                 <div className="p-space-sm">
                   <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">Preferred items</div>
                   <div className="flex flex-wrap gap-space-2xs">
-                    {['Truffle Fries', 'Grilled Wings', 'Sparkling Water'].map((p) => (
+                    {(live ? (panel.preferred.length ? panel.preferred : ['No purchases yet']) : ['Truffle Fries', 'Grilled Wings', 'Sparkling Water']).map((p) => (
                       <span key={p} className="px-space-xs py-space-2xs rounded-full bg-surface-subtle border border-border font-caption text-caption text-on-surface-variant">{p}</span>
                     ))}
                   </div>
-                  <div className="mt-space-sm flex items-center gap-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text w-fit">
-                    <Icon name="verified" className="text-[14px]" filled />
-                    <span className="font-caption text-caption font-semibold">Tap-Pass verified</span>
-                  </div>
+                  {!live && (
+                    <div className="mt-space-sm flex items-center gap-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text w-fit">
+                      <Icon name="verified" className="text-[14px]" filled />
+                      <span className="font-caption text-caption font-semibold">Tap-Pass verified</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-space-sm">
@@ -735,10 +814,10 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                 <div className="p-space-sm">
                   <div className="flex items-center justify-between mb-space-xs">
                     <span className="font-label-sm text-label-sm text-on-surface-variant">Merchant Notes</span>
-                    <button type="button" className="font-label-sm text-label-sm text-primary hover:underline">Edit</button>
+                    <button type="button" onClick={editNote} className="font-label-sm text-label-sm text-primary hover:underline">Edit</button>
                   </div>
                   <ul className="space-y-space-2xs">
-                    {DOSSIER_NOTES.map((n) => (
+                    {(live ? panel.notes : DOSSIER_NOTES).map((n) => (
                       <li key={n.label} className="flex items-start gap-space-xs font-body-sm text-body-sm">
                         <Icon name={n.icon} className="text-[14px] text-text-tertiary mt-0.5 shrink-0" />
                         <span>
@@ -759,7 +838,7 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
                       <p className="font-body-sm text-body-sm text-on-surface-variant">Transfer this conversation to Floor Manager or Kitchen Lead with full context.</p>
                       <button
                         type="button"
-                        onClick={() => setTransferred(true)}
+                        onClick={() => (live ? showToast('Transferring chats to staff is coming soon') : setTransferred(true))}
                         disabled={transferred}
                         className="mt-space-2xs h-9 px-space-sm rounded-lg bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 disabled:opacity-70 disabled:hover:opacity-70"
                       >
@@ -795,6 +874,11 @@ export function DesktopBusinessMessagesOrderContextScreen({ onNav, onView, onVie
           onClose={() => setShowRecipient(false)}
           onStartChat={startChatWith}
         />
+      )}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
       )}
     </BusinessPortalChrome>
   );

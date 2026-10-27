@@ -3,11 +3,13 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import type { BusinessChatContact } from './messagesContact';
+import { hasApiConfig } from '../services/api/client';
+import { useInboxRows, type InboxKind } from './messagesLive';
 
 interface BusinessMessagesSearchScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onCancel: () => void;
-  onOpenConversation: (thread: 'order' | 'general', contact: BusinessChatContact) => void;
+  onOpenConversation: (thread: InboxKind, contact: BusinessChatContact) => void;
 }
 
 type ResultChipKey = 'all' | 'orders' | 'customers' | 'deals';
@@ -40,7 +42,10 @@ interface SearchResultRow {
   metaIconClass: string;
   metaLabel: string;
   metaItem: string;
-  thread: 'order' | 'general';
+  thread: InboxKind;
+  /** Live: thread + customer ids for the chat screen. */
+  threadId?: string;
+  customerId?: string | null;
 }
 
 const RESULTS: SearchResultRow[] = [
@@ -114,9 +119,55 @@ export function BusinessMessagesSearchScreen({
   onCancel,
   onOpenConversation,
 }: BusinessMessagesSearchScreenProps) {
-  const [query, setQuery] = useState('Order #VG');
+  const live = hasApiConfig();
+  const [query, setQuery] = useState(live ? '' : 'Order #VG');
   const [chip, setChip] = useState<ResultChipKey>('all');
-  const [showEmpty, setShowEmpty] = useState(false);
+  const [demoEmpty, setShowEmpty] = useState(false);
+
+  // Live: search the branch's real conversations by name, message and topic.
+  const { rows: liveRows, loading } = useInboxRows('IN_HOUSE');
+  const needle = query.trim().toLowerCase();
+  const liveMatches = liveRows.filter(
+    (row) =>
+      !needle ||
+      row.name.toLowerCase().includes(needle) ||
+      row.preview.toLowerCase().includes(needle) ||
+      row.chipLabel.toLowerCase().includes(needle),
+  );
+  const inChip = (kind: InboxKind, key: ResultChipKey) =>
+    key === 'all' || (key === 'orders' ? kind === 'order' || kind === 'booking' : key === 'deals' ? kind === 'deal' : kind === 'general');
+  const resultChips = live
+    ? RESULT_CHIPS.map((resultChip) => ({
+        ...resultChip,
+        label: `${resultChip.label.replace(/ \(\d+\)$/, '')} (${liveMatches.filter((row) => inChip(row.kind, resultChip.key)).length})`,
+      }))
+    : RESULT_CHIPS;
+  const results: SearchResultRow[] = live
+    ? liveMatches
+        .filter((row) => inChip(row.kind, chip))
+        .map((row) => ({
+          id: row.id,
+          threadId: row.id,
+          customerId: row.customerId,
+          img: row.avatar,
+          alt: row.name,
+          name: row.name,
+          time: row.time,
+          timePrimary: row.unread,
+          chipIcon: row.chipIcon,
+          chipClass: row.chipClass,
+          orderRef: '',
+          orderSuffix: row.chipLabel,
+          messagePrefix: '',
+          message: row.preview,
+          metaIcon: row.unread ? 'mark_chat_unread' : 'chat',
+          metaIconClass: row.unread ? 'text-primary' : 'text-text-tertiary',
+          metaLabel: row.unread ? `${row.unreadCount} unread` : 'Read',
+          metaItem: row.phone ?? '',
+          thread: row.kind,
+        }))
+    : RESULTS;
+  const showEmpty = live ? !loading && results.length === 0 : demoEmpty;
 
   return (
     <AppScreen>
@@ -184,7 +235,7 @@ export function BusinessMessagesSearchScreen({
             </button>
           </div>
           <div className="flex items-center gap-space-2xs mt-space-sm overflow-x-auto no-scrollbar py-0.5">
-            {RESULT_CHIPS.map((resultChip) => {
+            {resultChips.map((resultChip) => {
               const active = resultChip.key === chip;
               return (
                 <button
@@ -207,11 +258,15 @@ export function BusinessMessagesSearchScreen({
         <div className="px-margin pt-space-xs pb-space-2xs flex items-center justify-between">
           <p className="font-label-sm text-label-sm text-text-secondary">
             {showEmpty ? (
-              <>Found <span className="font-semibold text-on-surface">0 conversations</span> matching <span className="text-primary font-semibold">"xyz123"</span></>
+              <>Found <span className="font-semibold text-on-surface">0 conversations</span> matching <span className="text-primary font-semibold">"{live ? query : 'xyz123'}"</span></>
             ) : (
               <>
-                Found <span className="font-semibold text-on-surface">3 conversations</span> matching{' '}
-                <span className="text-primary font-semibold">"Order #VG"</span>
+                Found <span className="font-semibold text-on-surface">{live ? results.length : 3} conversations</span>{' '}
+                {live && !needle ? 'in your inbox' : (
+                  <>
+                    matching <span className="text-primary font-semibold">"{live ? query : 'Order #VG'}"</span>
+                  </>
+                )}
               </>
             )}
           </p>
@@ -233,13 +288,13 @@ export function BusinessMessagesSearchScreen({
                 <span className="w-3 h-3 rounded-full bg-secondary-fixed-dim absolute top-2 right-2 animate-ping" />
               </div>
               <h4 className="font-heading-sm text-heading-sm text-on-surface mb-1">
-                No conversations found for <span className="text-tertiary-container font-semibold">'xyz123'</span>
+                No conversations found for <span className="text-tertiary-container font-semibold">'{live ? query : 'xyz123'}'</span>
               </h4>
               <p className="font-body-md text-body-md text-text-secondary max-w-xs mx-auto mb-space-md">
                 Try searching by customer name, deal name, product item, or order booking code.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-1.5">
-                {['E.g. "Ribeye"', '"Amina"', '"#VG-94021"'].map((example) => (
+                {(live ? ['A customer name', 'Words from a message', '"Order" or "Booking"'] : ['E.g. "Ribeye"', '"Amina"', '"#VG-94021"']).map((example) => (
                   <span
                     className="px-2.5 py-1 rounded-full bg-surface-canvas text-text-secondary font-caption text-caption shadow-sm"
                     key={example}
@@ -252,14 +307,16 @@ export function BusinessMessagesSearchScreen({
           </div>
         ) : (
           <div className="px-margin flex flex-col gap-space-sm mt-space-xs">
-            {RESULTS.map((row) => (
+            {results.map((row) => (
               <button
                 className={`w-full bg-surface-canvas rounded-xl p-space-md shadow-sm active:scale-[0.99] transition-transform cursor-pointer relative overflow-hidden text-left ${
                   row.id === 'michael' ? '' : ''
                 }`}
                 key={row.id}
                 type="button"
-                onClick={() => onOpenConversation(row.thread, { name: row.name, avatar: row.img })}
+                onClick={() =>
+                  onOpenConversation(row.thread, { name: row.name, avatar: row.img, threadId: row.threadId, customerId: row.customerId })
+                }
               >
                 {row.id === 'michael' && <div className="absolute top-0 left-0 w-1 h-full bg-primary rounded-l-xl" />}
                 <div className="flex items-start gap-space-sm pl-1">
@@ -286,12 +343,12 @@ export function BusinessMessagesSearchScreen({
                     <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1 ${row.chipClass}`}>
                       <Icon name={row.chipIcon} className="text-[14px]" />
                       <span className="font-caption text-caption font-semibold">
-                        <mark className="bg-primary/20 text-primary px-0.5 rounded">{row.orderRef}</mark>
+                        {row.orderRef && <mark className="bg-primary/20 text-primary px-0.5 rounded">{row.orderRef}</mark>}
                         {row.orderSuffix}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-secondary truncate mt-0.5">
-                      <span className="font-medium text-on-surface">{row.messagePrefix}</span>{' '}
+                      {row.messagePrefix && <span className="font-medium text-on-surface">{row.messagePrefix}</span>}{' '}
                       {row.message}
                       {row.id !== 'ibrahim' ? (
                         <mark className="bg-primary-fixed text-on-primary-fixed-variant font-medium px-1 rounded">
@@ -319,7 +376,8 @@ export function BusinessMessagesSearchScreen({
           </div>
         )}
 
-        {/* Zero State Preview Toggle */}
+        {/* Zero State Preview Toggle (demo only) */}
+        {!live && (
         <div className="px-margin mt-space-md pt-space-xs pb-space-lg">
           <div className="flex items-center justify-between mb-space-xs px-1">
             <span className="font-caption text-caption font-semibold tracking-wider uppercase text-text-tertiary">
@@ -334,6 +392,7 @@ export function BusinessMessagesSearchScreen({
             </button>
           </div>
         </div>
+        )}
       </div>
 
       <BusinessTabBar active="messages" onTab={onTab} />

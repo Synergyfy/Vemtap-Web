@@ -141,7 +141,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
               {orderStatusLabel(order.status)}
             </span>
             {active && order.paymentStatus === 'pending' && (
-              <span className="font-caption text-caption text-error font-semibold shrink-0">â€¢ Awaiting payment</span>
+              <span className="font-caption text-caption text-error font-semibold shrink-0">• Awaiting payment</span>
             )}
           </div>
           <span className="font-mono font-caption text-caption text-text-tertiary shrink-0">#{order.ref}</span>
@@ -213,10 +213,10 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
             <p className="font-caption text-caption text-text-secondary truncate">{lineSummary(order)}</p>
             <div className="flex items-baseline gap-1.5 mt-auto">
               <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                â‚¦{order.total.toLocaleString('en-US')}
+                ₦{order.total.toLocaleString('en-US')}
               </span>
               <span className="font-caption text-caption text-text-tertiary truncate">
-                {formatOrderTime(order.submittedAt)} â€¢ {PAYMENT_STATUS_LABELS[order.paymentStatus]}
+                {formatOrderTime(order.submittedAt)} • {PAYMENT_STATUS_LABELS[order.paymentStatus]}
               </span>
             </div>
           </div>
@@ -271,7 +271,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
         )}
         {!paymentCleared && (
           <p className="font-caption text-caption text-error">
-            This order is not marked paid â€” {order.merchantName} has not verified the payment yet.
+            This order is not marked paid — {order.merchantName} has not verified the payment yet.
           </p>
         )}
       </article>

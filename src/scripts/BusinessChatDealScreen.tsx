@@ -7,7 +7,8 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
-import { useLiveChat } from './messagesLive';
+import { statusLabel, useChatCustomer, useLiveChat } from './messagesLive';
+import { NO_IMAGE } from './posLive';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatDealScreenProps {
@@ -92,6 +93,17 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
   const firstName = contactFirstName(activeContact.name);
   const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
   const liveChat = useLiveChat(activeContact.threadId);
+
+  // Live: the customer's CRM record and what this chat is about.
+  const chat = useChatCustomer(activeContact.threadId, activeContact.customerId);
+  const live = chat.live;
+  const phone = live ? (chat.phone ?? '—') : '+234 812 443 0912';
+  const callCustomer = () => {
+    if (live && !chat.phone) return;
+    window.location.href = `tel:${live ? chat.phone : '+2348124430912'}`;
+  };
+  const claim = chat.claim;
+  const shortDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short' }) : '—');
   const [input, setInput] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -130,12 +142,12 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
         title={activeContact.name}
         avatar={activeContact.avatar}
         isBusiness={activeContact.isBusiness}
-        subtitle="Active inquiry • Deal #VT-48F261"
+        subtitle={live ? chat.subtitle : 'Active inquiry • Deal #VT-48F261'}
         onAvatar={() => setDrawerOpen(true)}
-        onCall={() => (window.location.href = 'tel:+2348124430912')}
+        onCall={callCustomer}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 812 443 0912" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone={phone} stats={chat.drawer} />
       <AttachmentSheet open={attachOpen} onClose={() => setAttachOpen(false)} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
@@ -152,27 +164,43 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
                   <Icon name="local_offer" filled className="text-[13px]" />
                   DEAL CONTEXT
                 </span>
-                <span className="font-caption text-caption text-text-tertiary">#VT-48F261</span>
+                <span className="font-caption text-caption text-text-tertiary">{live ? (claim ? claim.claimCode : '—') : '#VT-48F261'}</span>
               </div>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container font-caption text-caption text-text-secondary">
-                Active Campaign
+                {live ? (claim ? statusLabel(claim.status) : 'No linked deal') : 'Active Campaign'}
               </span>
             </div>
             <div className="flex items-center gap-space-sm pt-space-2xs">
               <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container">
-                <img alt={DEAL_ALT} className="w-full h-full object-cover" src={DEAL_IMG} />
+                <img
+                  alt={live ? (claim?.offer?.name ?? 'Deal') : DEAL_ALT}
+                  className="w-full h-full object-cover"
+                  src={live ? (claim?.offer?.mainImage || NO_IMAGE) : DEAL_IMG}
+                />
               </div>
               <div className="flex flex-col min-w-0 flex-1">
-                <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">20% Off Prime Lunch Combo</h2>
+                <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
+                  {live ? (claim?.offer?.name ?? 'This chat is not linked to a deal') : '20% Off Prime Lunch Combo'}
+                </h2>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-label-sm text-label-sm text-primary font-semibold">₦9,600</span>
-                  <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>
+                  <span className="font-label-sm text-label-sm text-primary font-semibold">
+                    {live ? (claim?.offer?.price != null ? `₦${claim.offer.price.toLocaleString('en-NG')}` : '—') : '₦9,600'}
+                  </span>
+                  {!live && <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>}
                   <span className="w-1 h-1 rounded-full bg-text-tertiary" />
-                  <span className="font-caption text-caption text-text-secondary">Mon-Fri 12–4 PM</span>
+                  <span className="font-caption text-caption text-text-secondary">
+                    {live ? (claim?.expiresAt ? `Expires ${shortDate(claim.expiresAt)}` : '—') : 'Mon-Fri 12–4 PM'}
+                  </span>
                 </div>
                 <div className="mt-space-2xs flex items-center justify-between">
                   <span className="font-caption text-caption text-badge-discount-text font-medium">
-                    Valid for separate redemption
+                    {live
+                      ? claim
+                        ? claim.redeemedAt
+                          ? `Redeemed ${shortDate(claim.redeemedAt)}`
+                          : `Claimed ${shortDate(claim.claimedAt)}`
+                        : '—'
+                      : 'Valid for separate redemption'}
                   </span>
                   <button
                     aria-label="View complete deal details"
@@ -193,7 +221,7 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
           {/* Timeline Date Stamp */}
           <div className="flex items-center justify-center my-space-2xs">
             <span className="px-space-sm py-1 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption font-medium shadow-sm">
-              TODAY, OCT 18
+              {live ? 'CONVERSATION' : 'TODAY, OCT 18'}
             </span>
           </div>
 

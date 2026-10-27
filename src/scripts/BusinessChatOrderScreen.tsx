@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import {
@@ -7,7 +7,8 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
-import { useLiveChat } from './messagesLive';
+import { statusLabel, useChatCustomer, useLiveChat } from './messagesLive';
+import { apiErrorMessage } from '../services/errorMessages';
 import { useThreadRealtime } from '../hooks/business/useInbox';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, contactInitials, type BusinessChatContact } from './messagesContact';
 
@@ -27,7 +28,7 @@ const METRICS = [
     label: 'Total Spend',
     icon: 'payments',
     iconClass: 'text-primary',
-    value: 'â‚¦318,000',
+    value: '₦318,000',
     sub: 'Top 5% Local Spender',
     subClass: 'text-badge-discount-text',
   },
@@ -36,7 +37,7 @@ const METRICS = [
     icon: 'receipt_long',
     iconClass: 'text-secondary',
     value: '14 Orders',
-    sub: 'Avg â‚¦22.7k / order',
+    sub: 'Avg ₦22.7k / order',
     subClass: 'text-text-secondary',
   },
   {
@@ -44,7 +45,7 @@ const METRICS = [
     icon: 'workspace_premium',
     iconClass: 'text-tertiary-container',
     value: '450 Pts',
-    sub: 'â‚¦4,500 redeemable',
+    sub: '₦4,500 redeemable',
     subClass: 'text-text-secondary',
   },
   {
@@ -60,8 +61,8 @@ const METRICS = [
 const ORDER_HISTORY = [
   {
     id: '#VG-94021',
-    date: 'Today â€¢ 3 items',
-    amount: 'â‚¦34,500',
+    date: 'Today • 3 items',
+    amount: '₦34,500',
     status: 'Ready',
     statusClass: 'text-badge-discount-text font-medium',
     icon: 'skillet',
@@ -69,8 +70,8 @@ const ORDER_HISTORY = [
   },
   {
     id: '#VG-93880',
-    date: 'Oct 12 â€¢ 1 item',
-    amount: 'â‚¦9,600',
+    date: 'Oct 12 • 1 item',
+    amount: '₦9,600',
     status: 'Completed',
     statusClass: 'text-text-secondary',
     icon: 'check_circle',
@@ -78,8 +79,8 @@ const ORDER_HISTORY = [
   },
   {
     id: '#VG-93510',
-    date: 'Sep 28 â€¢ 2 items',
-    amount: 'â‚¦14,800',
+    date: 'Sep 28 • 2 items',
+    amount: '₦14,800',
     status: 'Completed',
     statusClass: 'text-text-secondary',
     icon: 'check_circle',
@@ -106,6 +107,39 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
     window.setTimeout(() => setToast(null), 2400);
   };
 
+  // Live: the customer's CRM record and the order this chat is about.
+  const chat = useChatCustomer(activeContact.threadId, activeContact.customerId);
+  const live = chat.live;
+  const order = chat.order;
+  const naira = (n: number | string | null | undefined) => `₦${(Number(n ?? 0) || 0).toLocaleString('en-NG')}`;
+  const phone = live ? (chat.phone ?? '—') : '+234 803 219 8831';
+  const email = live ? (chat.email ?? '—') : 'michael.j@example.com';
+  const orderRef = live ? (order?.reference ?? '—') : '#VG-94021';
+  const metrics = live
+    ? [
+        { ...METRICS[0], value: chat.panel.spend, sub: `${chat.person?.visits ?? 0} visits` },
+        { ...METRICS[1], value: `${chat.person?.orders ?? 0} Orders`, sub: `Avg ${chat.panel.telemetry[0].value} / order` },
+        { ...METRICS[2], value: `${chat.person?.pointsBalance ?? 0} Pts`, sub: chat.person?.tier ?? 'Loyalty points' },
+        { ...METRICS[3], value: chat.panel.preferred[0] ?? '—', sub: chat.panel.preferred[0] ? 'Most ordered' : 'No purchases yet' },
+      ]
+    : METRICS;
+  const history = live
+    ? (chat.person?.recentPurchases ?? []).slice(0, 3).map((purchase, index) => ({
+        id: purchase.reference ? `#${purchase.reference}` : `#${purchase.id.slice(0, 8).toUpperCase()}`,
+        date: `${new Date(purchase.at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })} • ${purchase.kind === 'pos' ? 'In store' : 'Online'}`,
+        amount: naira(purchase.total),
+        status: purchase.branchName ?? (purchase.kind === 'pos' ? 'POS sale' : 'Order'),
+        statusClass: index === 0 ? 'text-badge-discount-text font-medium' : 'text-text-secondary',
+        icon: index === 0 ? 'skillet' : 'check_circle',
+        iconBox: index === 0 ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-secondary',
+      }))
+    : ORDER_HISTORY;
+
+  useEffect(() => {
+    if (live && chat.error) showToast(apiErrorMessage(chat.error, 'Could not load this customer.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.error]);
+
   const handleSend = () => {
     const value = input.trim();
     if (!value) return;
@@ -118,7 +152,7 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
   };
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(`${activeContact.name} | +2348032198831 | michael.j@example.com`).catch(() => {});
+    navigator.clipboard?.writeText(`${activeContact.name} | ${phone} | ${email}`).catch(() => {});
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   };
@@ -130,12 +164,18 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
         title={activeContact.name}
         avatar={activeContact.avatar}
         isBusiness={activeContact.isBusiness}
-        subtitle="Active inquiry â€¢ Order #VG-94021"
+        subtitle={live ? chat.subtitle : 'Active inquiry • Order #VG-94021'}
         onAvatar={() => setCustOpen(true)}
-        onCall={() => (window.location.href = 'tel:+2348032198831')}
+        onCall={() => {
+          if (live && !chat.phone) {
+            showToast('No phone number on file for this customer');
+            return;
+          }
+          window.location.href = `tel:${live ? chat.phone : '+2348032198831'}`;
+        }}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={custOpen} onClose={() => setCustOpen(false)} name={activeContact.name} phone="+234 803 219 8831" />
+      <CustomerProfileDrawer open={custOpen} onClose={() => setCustOpen(false)} name={activeContact.name} phone={phone} stats={chat.drawer} />
       <AttachmentSheet open={attachOpen} onClose={() => setAttachOpen(false)} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
@@ -148,25 +188,31 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
                 <span className="bg-surface-tint-blue text-primary font-caption text-caption px-space-xs py-0.5 rounded-full uppercase tracking-wider font-semibold">
                   Order Context
                 </span>
-                <span className="font-label-sm text-label-sm text-text-secondary">#VG-94021</span>
+                <span className="font-label-sm text-label-sm text-text-secondary">{orderRef}</span>
               </div>
               <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-space-xs py-0.5 rounded-full font-medium flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                Ready Â· Pickup
+                {live ? (order ? statusLabel(order.status) : 'No linked order') : 'Ready · Pickup'}
               </span>
             </div>
             <div className="flex items-baseline justify-between mt-1">
               <p className="font-body-md text-body-md text-text-primary font-medium truncate pr-2">
-                3 items (Woodfire Aged Ribeye x2, Fresh Lemonade x1)
+                {live
+                  ? order
+                    ? `${order.items.reduce((sum, item) => sum + item.quantity, 0)} items (${order.items.map((item) => `${item.name} x${item.quantity}`).join(', ')})`
+                    : 'This chat is not linked to an order'
+                  : '3 items (Woodfire Aged Ribeye x2, Fresh Lemonade x1)'}
               </p>
-              <span className="font-heading-sm text-heading-sm text-primary flex-shrink-0 font-bold">â‚¦34,500</span>
+              <span className="font-heading-sm text-heading-sm text-primary flex-shrink-0 font-bold">
+                {live ? (order ? naira(order.totalAmount) : '—') : '₦34,500'}
+              </span>
             </div>
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-1 text-text-secondary font-caption text-caption">
                 <Icon name="contactless" className="text-[16px] text-text-tertiary" />
-                <span>POS Terminal â€¢ Pay at Counter</span>
+                <span>{live ? (order ? statusLabel(order.paymentStatus ?? 'unpaid') : '—') : 'POS Terminal • Pay at Counter'}</span>
               </div>
-              <button className="font-label-sm text-label-sm text-primary font-semibold flex items-center gap-0.5" type="button" onClick={() => showToast('Opening kitchen ticket #VG-94021…')}>
+              <button className="font-label-sm text-label-sm text-primary font-semibold flex items-center gap-0.5" type="button" onClick={() => showToast(live ? (order ? `Order ${order.reference} is in Orders` : 'No order linked to this chat') : 'Opening kitchen ticket #VG-94021…')}>
                 View Ticket <Icon name="arrow_forward" className="text-[14px]" />
               </button>
             </div>
@@ -177,7 +223,7 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
         <div className="px-space-md py-space-sm flex flex-col gap-space-md opacity-45 pointer-events-none select-none pb-32">
           <div className="flex justify-center">
             <span className="font-caption text-caption bg-surface-container-low text-text-secondary px-3 py-1 rounded-full">
-              Today, 11:28 AM
+              {live ? 'Conversation' : 'Today, 11:28 AM'}
             </span>
           </div>
           {/* Customer Incoming */}
@@ -287,7 +333,11 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
               <div className="flex flex-col items-center text-center bg-surface-subtle rounded-2xl p-space-md shadow-sm relative overflow-hidden">
                 <div className="relative mb-space-xs">
                   <div className="w-20 h-20 rounded-full overflow-hidden shadow-sm">
-                    <img alt={MICHAEL_ALT} className="w-full h-full object-cover" src={MICHAEL_IMG} />
+                    <img
+                      alt={live ? activeContact.name : MICHAEL_ALT}
+                      className="w-full h-full object-cover"
+                      src={live ? (activeContact.avatar ?? MICHAEL_IMG) : MICHAEL_IMG}
+                    />
                   </div>
                   <div
                     className="absolute bottom-0 right-0 bg-primary text-on-primary rounded-full w-6 h-6 flex items-center justify-center shadow-sm"
@@ -299,23 +349,23 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
                 <h2 className="font-heading-md text-heading-md text-text-primary font-bold">{activeContact.name}</h2>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="bg-surface-tint-blue text-primary font-label-sm text-label-sm px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                    <Icon name="star" className="text-[14px]" /> Loyal Tier VIP
+                    <Icon name="star" className="text-[14px]" /> {live ? (chat.person?.tier ?? 'Customer') : 'Loyal Tier VIP'}
                   </span>
                 </div>
                 <div className="flex flex-col items-center gap-1 mt-space-sm w-full font-body-md text-body-md text-text-secondary">
                   <div className="flex items-center gap-2">
                     <Icon name="phone_iphone" className="text-[17px] text-text-tertiary" />
-                    <span className="font-medium text-text-primary">+234 803 219 8831</span>
+                    <span className="font-medium text-text-primary">{phone}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Icon name="mail" className="text-[17px] text-text-tertiary" />
-                    <span className="font-caption text-caption text-text-secondary">michael.j@example.com</span>
+                    <span className="font-caption text-caption text-text-secondary">{email}</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-space-xs w-full mt-space-sm pt-space-xs">
                   <a
                     className="h-10 bg-primary text-on-primary rounded-xl font-label-md text-label-md flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-transform"
-                    href="tel:+2348032198831"
+                    href={live ? (chat.phone ? `tel:${chat.phone}` : undefined) : 'tel:+2348032198831'}
                   >
                     <Icon name="call" className="text-[18px]" />
                     Call
@@ -335,7 +385,7 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
 
               {/* Relationship Metrics Bento */}
               <div className="grid grid-cols-2 gap-space-xs">
-                {METRICS.map((metric) => (
+                {metrics.map((metric) => (
                   <div className="bg-surface-subtle p-space-sm rounded-xl flex flex-col justify-between shadow-sm" key={metric.label}>
                     <div className="flex items-center justify-between text-text-secondary">
                       <span className="font-caption text-caption">{metric.label}</span>
@@ -357,7 +407,11 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
                 <div className="flex flex-col">
                   <span className="font-label-sm text-label-sm text-primary font-semibold">Active Conversation Intent</span>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Order #VG-94021 is undergoing counter packing. {firstName} prefers extra cutlery & chimichurri.
+                    {live
+                      ? order
+                        ? `Order ${order.reference} is ${statusLabel(order.status).toLowerCase()}. ${chat.person?.note?.note ?? ''}`.trim()
+                        : chat.person?.note?.note ?? `${firstName} has no order linked to this chat.`
+                      : `Order #VG-94021 is undergoing counter packing. ${firstName} prefers extra cutlery & chimichurri.`}
                   </p>
                 </div>
               </div>
@@ -366,9 +420,12 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
               <div className="flex flex-col gap-space-xs">
                 <div className="flex items-center justify-between">
                   <h3 className="font-label-md text-label-md text-text-primary font-bold">Recent Order History</h3>
-                  <span className="font-caption text-caption text-text-secondary">Last 60 Days</span>
+                  <span className="font-caption text-caption text-text-secondary">{live ? 'Latest' : 'Last 60 Days'}</span>
                 </div>
-                {ORDER_HISTORY.map((order) => (
+                {live && !history.length && (
+                  <p className="font-caption text-caption text-text-secondary">No orders yet.</p>
+                )}
+                {history.map((order) => (
                   <div className="bg-surface-subtle p-space-sm rounded-xl flex items-center justify-between shadow-sm" key={order.id}>
                     <div className="flex items-center gap-space-xs">
                       <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${order.iconBox}`}>
@@ -399,7 +456,7 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
               </button>
               <div className="flex justify-center">
                 <span className="font-caption text-caption text-text-tertiary">
-                  VEMTAP Tap-Pass Identity Verified #9021-MJ
+                  {live ? `Customer since ${chat.panel.notes[1].value}` : 'VEMTAP Tap-Pass Identity Verified #9021-MJ'}
                 </span>
               </div>
             </div>

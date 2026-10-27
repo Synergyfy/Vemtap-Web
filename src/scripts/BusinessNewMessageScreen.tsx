@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useLiveRecipients } from './messagesLive';
 
 interface BusinessNewMessageScreenProps {
   onBack: () => void;
-  onRecipientSelected: (name: string, context: string) => void;
+  /** Live: also hands over the customer's user id so the chat can be opened. */
+  onRecipientSelected: (name: string, context: string, customerId?: string) => void;
 }
 
 type AudienceChipKey = 'recent' | 'orders' | 'bookings' | 'deals' | 'all';
@@ -33,6 +36,8 @@ interface Recipient {
   status: string;
   statusPrimary?: boolean;
   category: 'orders' | 'bookings' | 'deals' | 'loyalty' | 'inquiry';
+  /** Live: the customer's user id. */
+  customerId?: string;
 }
 
 const RECIPIENTS: Recipient[] = [
@@ -141,7 +146,10 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
   const handleSelect = (recipient: Recipient) => {
     showToast(`Connecting to ${recipient.name}...`);
     if (selectTimer.current !== null) window.clearTimeout(selectTimer.current);
-    selectTimer.current = window.setTimeout(() => onRecipientSelected(recipient.name, recipient.tagLabel), 1200);
+    selectTimer.current = window.setTimeout(
+      () => onRecipientSelected(recipient.name, recipient.tagLabel, recipient.customerId),
+      live ? 300 : 1200,
+    );
   };
 
   const matchesChip = (recipient: Recipient) => {
@@ -152,10 +160,35 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
     return true;
   };
 
-  const visibleRecipients = RECIPIENTS.filter(
+  // Live: the business's customers (search runs on the server).
+  const liveList = useLiveRecipients(query);
+  const live = liveList.live;
+  useEffect(() => {
+    if (live && liveList.error) showToast(apiErrorMessage(liveList.error, 'Could not load customers.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveList.error]);
+  const recipients: Recipient[] = live
+    ? liveList.recipients.map((row) => ({
+        id: row.customerId,
+        customerId: row.customerId,
+        img: row.avatar,
+        alt: row.name,
+        initials: row.initials,
+        initialsClass: 'bg-secondary-container text-on-secondary-container',
+        name: row.name,
+        tagIcon: row.tagIcon,
+        tagLabel: row.tagLabel,
+        tagClass: 'bg-surface-tint-blue text-primary-container',
+        phone: row.phone,
+        status: row.status,
+        category: row.category,
+      }))
+    : RECIPIENTS;
+
+  const visibleRecipients = recipients.filter(
     (recipient) =>
       matchesChip(recipient) &&
-      (query.trim() === '' || recipient.name.toLowerCase().includes(query.trim().toLowerCase())),
+      (live || query.trim() === '' || recipient.name.toLowerCase().includes(query.trim().toLowerCase())),
   );
 
   return (
@@ -279,6 +312,11 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
 
         {/* Recipient List Stack */}
         <div className="px-margin flex flex-col gap-space-xs">
+          {live && !liveList.loading && !visibleRecipients.length && (
+            <p className="font-caption text-caption text-text-secondary px-1 py-2">
+              {query.trim() ? 'No customers match your search.' : 'No customers yet — they appear here after their first visit or order.'}
+            </p>
+          )}
           {visibleRecipients.map((recipient) => (
             <button
               className="customer-card relative flex items-center gap-space-sm p-3.5 bg-surface-canvas rounded-xl shadow-sm hover:shadow-md active:bg-surface-subtle transition-all cursor-pointer text-left w-full"
@@ -296,7 +334,7 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
                     {recipient.initials}
                   </div>
                 )}
-                {recipient.id === 'michael' && (
+                {!live && recipient.id === 'michael' && (
                   <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-badge-discount-text ring-2 ring-surface-canvas" />
                 )}
               </div>
