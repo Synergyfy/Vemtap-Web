@@ -2536,17 +2536,6 @@ function AppInner() {
               setRoute('business-onboarding');
             }}
             onForgotPin={() => setRoute('forgot-pin')}
-            onCustomerSignIn={async () => {
-              setRoute('dashboard');
-            }}
-            onBusinessSignIn={async () => {
-              if (isBusinessSession) {
-                setRoute('business-overview');
-                return;
-              }
-              setBusinessOnboardingFrom('sign-in');
-              setRoute('business-onboarding');
-            }}
           />
         );
       return (
@@ -2581,17 +2570,6 @@ function AppInner() {
             setRoute('business-onboarding');
           }}
           onForgotPin={() => setRoute('forgot-pin')}
-          onCustomerSignIn={async () => {
-            setRoute('dashboard');
-          }}
-          onBusinessSignIn={async () => {
-            if (isBusinessSession) {
-              setRoute('business-overview');
-              return;
-            }
-            setBusinessOnboardingFrom('sign-in');
-            setRoute('business-onboarding');
-          }}
         />
       );
 
