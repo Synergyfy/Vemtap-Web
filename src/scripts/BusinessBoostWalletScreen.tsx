@@ -401,7 +401,7 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
                     Tier-1 Escrow Protected
                   </span>
                 </div>
-                <span className="font-caption text-caption text-on-primary/80">Ref: VEM-WAL-709</span>
+                <span className="font-caption text-caption text-on-primary/80">Ref: {live ? (walletSummary.walletRef ?? '—') : 'VEM-WAL-709'}</span>
               </div>
               <div className="mt-4">
                 <p className="font-label-md text-label-md text-on-primary/80 font-medium">

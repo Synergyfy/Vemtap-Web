@@ -228,11 +228,11 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
             <div className="grid grid-cols-2 gap-space-xs">
               <div className="bg-surface-container-low rounded-xl px-space-xs py-space-xs">
                 <span className="block font-caption text-caption text-text-tertiary">Start</span>
-                <span className="block font-label-sm text-label-sm text-text-primary font-semibold">Sep 10, 2026</span>
+                <span className="block font-label-sm text-label-sm text-text-primary font-semibold">{live ? '—' : 'Sep 10, 2026'}</span>
               </div>
               <div className="bg-surface-container-low rounded-xl px-space-xs py-space-xs">
                 <span className="block font-caption text-caption text-text-tertiary">End</span>
-                <span className="block font-label-sm text-label-sm text-text-primary font-semibold">Oct 10, 2026</span>
+                <span className="block font-label-sm text-label-sm text-text-primary font-semibold">{live ? '—' : 'Oct 10, 2026'}</span>
               </div>
             </div>
           </div>

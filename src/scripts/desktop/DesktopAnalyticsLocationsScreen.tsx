@@ -259,8 +259,8 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
               </p>
             </div>
 
-            {/* Micro Sparkline SVG Visualization */}
-            <div className="w-full pt-space-md">
+            {/* Micro Sparkline SVG Visualization — sample curve, demo only */}
+            <div className={`w-full pt-space-md ${live ? 'hidden' : ''}`}>
               <div className="flex items-center justify-between font-caption text-caption text-text-tertiary mb-1">
                 <span>Weekday Baseline</span>
                 <span className="text-on-surface font-semibold">114 taps/day avg</span>
@@ -316,8 +316,8 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
               </div>
               <div className="flex items-center justify-between font-caption text-caption text-text-tertiary">
                 <span>₦0</span>
-                <span className="font-medium text-on-surface">Network Benchmark Target: ₦6,000,000</span>
-                <span>80.8% of Target</span>
+                {!live && <span className="font-medium text-on-surface">Network Benchmark Target: ₦6,000,000</span>}
+                {!live && <span>80.8% of Target</span>}
               </div>
             </div>
 
@@ -723,7 +723,8 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
           </div>
         </section>
 
-        {/* Bottom Section: Catchment Map & Geographic Draw Studio + Strategic Opportunity Card */}
+        {/* Bottom Section: Catchment Map & Geographic Draw Studio + Strategic Opportunity Card — sample insight, demo only */}
+        {!live && (
         <section className="grid grid-cols-1 xl:grid-cols-12 gap-space-lg">
           {/* Interactive Catchment Map Container */}
           <div className="xl:col-span-8 bg-surface-container-lowest rounded-2xl p-space-lg shadow-sm flex flex-col justify-between">
@@ -870,6 +871,7 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
             </div>
           </div>
         </section>
+        )}
       </div>
 
       {toast && (

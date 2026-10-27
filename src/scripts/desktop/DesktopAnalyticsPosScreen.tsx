@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { AnalyticsShell } from './AnalyticsShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -143,6 +144,7 @@ export function DesktopAnalyticsPosScreen({
   const tenders = live ? view.tenders : TENDERS;
   const items = live ? view.items : TOP_ITEMS;
   const staff = live ? view.staff : STAFF;
+  const { branch } = useBusinessBranch();
 
   const handleTab = (tab: AnalyticsTabKey) => {
     setDomainTab(tab);
@@ -166,7 +168,7 @@ export function DesktopAnalyticsPosScreen({
           </nav>
           <div className="inline-flex items-center gap-space-xs px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
             <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-            <span>Wuse #01 · #02</span>
+            <span>{live ? `${branch.name} tills` : 'Wuse #01 · #02'}</span>
           </div>
         </div>
 

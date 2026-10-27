@@ -376,7 +376,8 @@ export function AnalyticsLocationsScreen({
           </Card>
         </AnalyticsSection>
 
-        {/* Geofence radar */}
+        {/* Geofence radar — sample insight, demo only (no geofence ping data yet) */}
+        {!live && (
         <AnalyticsSection title="Live Geofence Radar" meta="Discovery pings around your outlets">
           <Card className="p-0 overflow-hidden">
             <div className="relative">
@@ -405,6 +406,7 @@ export function AnalyticsLocationsScreen({
             </div>
           </Card>
         </AnalyticsSection>
+        )}
 
         {/* Handoff */}
         <Card className="bg-gradient-to-br from-surface-tint-blue to-surface-canvas border-primary/20">
