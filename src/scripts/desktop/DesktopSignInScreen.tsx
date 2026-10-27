@@ -22,7 +22,7 @@ const getAuthErrorMessage = (error: unknown) => {
   if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
     return (error as { message: string }).message;
   }
-  return 'We could not sign you in. Please check your email or password and try again.';
+  return 'We could not sign you in. Please check your email or phone and your 6-digit PIN.';
 };
 
 const PILLARS = [
@@ -96,6 +96,12 @@ export function DesktopSignInScreen({
     }
     if (!credential?.value) {
       credential?.focus();
+      return;
+    }
+    // Customer and business accounts sign in with a 6-digit PIN only.
+    if (!/^\d{6}$/.test(credential.value)) {
+      setError('Enter your 6-digit PIN.');
+      credential.focus();
       return;
     }
     const nextIdentifier = identifier.value.trim();
@@ -298,7 +304,7 @@ export function DesktopSignInScreen({
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <label className="font-label-md text-label-md text-text-primary" htmlFor="password">
-                      PIN or Password
+                      6-digit PIN
                     </label>
                     <button
                       type="button"
@@ -320,13 +326,18 @@ export function DesktopSignInScreen({
                       autoComplete="current-password"
                       id="password"
                       name="password"
-                      maxLength={32}
-                      placeholder="Enter 6-digit PIN or password"
+                      maxLength={6}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Enter your 6-digit PIN"
                       required
                       type={showPassword ? 'text' : 'password'}
+                      onInput={(event) => {
+                        event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 6);
+                      }}
                     />
                     <button
-                      aria-label="Toggle password visibility"
+                      aria-label="Toggle PIN visibility"
                       className="absolute right-3.5 text-text-tertiary hover:text-text-primary flex items-center p-1"
                       id="togglePassBtn"
                       type="button"
