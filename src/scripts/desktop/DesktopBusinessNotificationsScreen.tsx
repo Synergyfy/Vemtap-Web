@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useBusinessNotificationFeed } from '../../hooks/business/useHeaderNotifications';
+import { apiErrorMessage } from '../../services/errorMessages';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopBusinessNotificationsScreenProps {
@@ -126,12 +128,18 @@ const FILTERS: { key: FilterKey; label: string }[] = [
  * portal chrome; the consumer route 'notifications' keeps its own chrome.
  */
 export function DesktopBusinessNotificationsScreen({ onNav }: DesktopBusinessNotificationsScreenProps) {
-  const [items, setItems] = useState<BusinessFeedItem[]>(FEED);
+  const [demoItems, setItems] = useState<BusinessFeedItem[]>(FEED);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [toast, setToast] = useState<string | null>(null);
+  // Live: the business's notifications from the API (deal alerts sit under Account & System).
+  const feed = useBusinessNotificationFeed();
+  const live = feed.live;
+  const items: BusinessFeedItem[] = live
+    ? feed.rows.map((row) => ({ ...row, category: row.category === 'deals' ? 'system' : row.category }))
+    : demoItems;
 
   const visible = items.filter((item) => filter === 'all' || item.category === filter);
-  const unreadCount = items.filter((item) => item.unread).length;
+  const unreadCount = live ? feed.unreadCount : items.filter((item) => item.unread).length;
   const today = visible.filter((item) => item.section === 'today');
   const earlier = visible.filter((item) => item.section === 'earlier');
 
@@ -140,11 +148,22 @@ export function DesktopBusinessNotificationsScreen({ onNav }: DesktopBusinessNot
     window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2400);
   };
 
-  const markRead = (id: string) =>
+  useEffect(() => {
+    if (feed.error) showToast(apiErrorMessage(feed.error, 'Could not load notifications.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed.error]);
+
+  const markRead = (id: string) => {
+    if (live) {
+      feed.markRead(id);
+      return;
+    }
     setItems((current) => current.map((item) => (item.id === id ? { ...item, unread: false } : item)));
+  };
 
   const markAllRead = () => {
-    setItems((current) => current.map((item) => ({ ...item, unread: false })));
+    if (live) feed.markAllRead();
+    else setItems((current) => current.map((item) => ({ ...item, unread: false })));
     showToast('All notifications marked as read');
   };
 
@@ -230,7 +249,7 @@ export function DesktopBusinessNotificationsScreen({ onNav }: DesktopBusinessNot
                 <span className="w-12 h-12 rounded-full bg-surface-subtle text-text-tertiary flex items-center justify-center">
                   <Icon name="notifications_off" className="text-[24px]" />
                 </span>
-                <p className="font-label-md text-label-md text-on-surface font-semibold">Nothing here yet</p>
+                <p className="font-label-md text-label-md text-on-surface font-semibold">{feed.loading ? 'Loading notifications…' : 'Nothing here yet'}</p>
                 <p className="font-body-md text-body-md text-text-secondary">
                   No notifications in this category. New alerts will appear here as they happen.
                 </p>
@@ -273,8 +292,9 @@ export function DesktopBusinessNotificationsScreen({ onNav }: DesktopBusinessNot
             <div className="p-space-md rounded-xl bg-surface-container-low flex items-start gap-space-sm">
               <Icon name="notifications_active" className="text-primary text-[20px] shrink-0 mt-0.5" />
               <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                Alerts are scoped to the branch selected in your header. Switch branch to see notifications for another
-                location.
+                {live
+                  ? 'Alerts cover every branch of your business.'
+                  : 'Alerts are scoped to the branch selected in your header. Switch branch to see notifications for another location.'}
               </p>
             </div>
 
