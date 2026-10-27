@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useNavBadges } from '../../hooks/business/useNavBadges';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
   resolveSidebarActive,
@@ -30,6 +31,7 @@ export function BusinessSidebarRail({
   collapsed = false,
 }: BusinessSidebarRailProps) {
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
+  const badgeFor = useNavBadges();
 
   // Sections hidden from the main rail (e.g. Store Front, which moved inside POS).
   const visibleSections = sections.filter((section) => !section.hidden);
@@ -125,13 +127,13 @@ export function BusinessSidebarRail({
                 </div>
 
                 <div className={`${collapsed ? 'hidden' : 'hidden lg:flex'} items-center gap-1.5 shrink-0`}>
-                  {section.badge && (
+                  {badgeFor(section.key, section.badge) && (
                     <span
                       className={`px-1.5 py-0.5 rounded-full font-caption text-[10px] font-bold tracking-tight uppercase leading-none ${
                         section.badgeClass || 'bg-surface-container text-text-secondary'
                       }`}
                     >
-                      {section.badge}
+                      {badgeFor(section.key, section.badge)}
                     </span>
                   )}
                   {hasChildren && (
@@ -183,7 +185,7 @@ export function BusinessSidebarRail({
                           </span>
                         </div>
 
-                        {subItem.badge && (
+                        {badgeFor(subItem.key, subItem.badge) && (
                           <span
                             className={`px-1.5 py-0.5 rounded-full font-caption text-[10px] font-bold ${
                               isSubItemActive
@@ -191,7 +193,7 @@ export function BusinessSidebarRail({
                                 : subItem.badgeClass || 'bg-surface-container text-text-secondary'
                             }`}
                           >
-                            {subItem.badge}
+                            {badgeFor(subItem.key, subItem.badge)}
                           </span>
                         )}
                       </button>
