@@ -3,6 +3,16 @@ import { Icon } from '../../components/ui/Icon';
 import { DeleteAccountSheet } from '../../components/DeleteAccountSheet';
 import { useAuth } from '../../context/AuthContext';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { authService } from '../../services/authService';
+import { accountPrivacyService, type AccountPrivacy } from '../../services/accountPrivacyService';
+import { notificationService, type NotificationPreferencePayload } from '../../services/notificationService';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { useSessionUser } from '../../hooks/useSessionUser';
+
+const COMING_SOON = 'This setting is coming soon.';
 
 interface DesktopBusinessSettingsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -57,6 +67,7 @@ function CredentialModal({
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -77,6 +88,16 @@ function CredentialModal({
     }
     if (next !== confirm) return setError('Confirmation does not match');
     setError(null);
+    // Live: the password change goes to the API; the PIN has no endpoint (its button shows "coming soon").
+    if (hasApiConfig() && !isPin) {
+      setSaving(true);
+      authService
+        .changePassword({ currentPassword: current, newPassword: next })
+        .then(() => onSaved())
+        .catch((changeError: unknown) => setError(apiErrorMessage(changeError, 'Could not change your password.')))
+        .finally(() => setSaving(false));
+      return;
+    }
     onSaved();
   };
 
@@ -155,9 +176,10 @@ function CredentialModal({
           <button
             type="button"
             onClick={submit}
-            className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform"
+            disabled={saving}
+            className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform disabled:opacity-60"
           >
-            <span>{isPin ? 'Update PIN' : 'Update password'}</span>
+            <span>{saving ? 'Updating…' : isPin ? 'Update PIN' : 'Update password'}</span>
             <Icon name="check" className="text-[18px]" />
           </button>
         </div>
@@ -184,6 +206,92 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2600);
+  };
+
+  // Live: business identity, the signed-in user's 2FA, privacy choices and notification channels.
+  const live = hasApiConfig();
+  const queryClient = useQueryClient();
+  const business = useMyBusiness().data;
+  const session = useSessionUser().data;
+  const privacyQuery = useQuery({ queryKey: ['account-privacy'], queryFn: accountPrivacyService.get, enabled: live });
+  const prefsQuery = useQuery({ queryKey: ['notification-preferences'], queryFn: notificationService.getPreferences, enabled: live });
+  const savePrivacy = useMutation({
+    mutationFn: (patch: Partial<Omit<AccountPrivacy, 'canManageBusiness'>>) => accountPrivacyService.update(patch),
+    onSuccess: (next) => queryClient.setQueryData(['account-privacy'], next),
+  });
+  const savePrefs = useMutation({
+    mutationFn: (patch: NotificationPreferencePayload) => notificationService.updatePreferences(patch),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notification-preferences'] }),
+  });
+  const livePrivacy = privacyQuery.data;
+  const livePrefs = prefsQuery.data ?? {};
+  const securityView = live
+    ? { twoFactor: Boolean(session?.twoFactorEnabled), posPin: false, deviceAlerts: Boolean(livePrivacy?.deviceAlerts) }
+    : security;
+  const privacyView = live
+    ? {
+        restrictProcessing: Boolean(livePrivacy?.restrictProcessing),
+        analytics: livePrivacy ? livePrivacy.analytics : true,
+        marketing: Boolean(livePrivacy?.marketing),
+      }
+    : privacy;
+  const channelsView = live
+    ? { push: livePrefs.push !== false, email: livePrefs.email !== false, sms: livePrefs.sms !== false, whatsapp: false }
+    : channels;
+
+  useEffect(() => {
+    const error = privacyQuery.error ?? prefsQuery.error;
+    if (live && error) showToast(apiErrorMessage(error, 'Could not load your settings.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privacyQuery.error, prefsQuery.error]);
+
+  /** Live privacy toggle (business-wide ones need an owner or manager). */
+  const togglePrivacy = (key: 'restrictProcessing' | 'analytics' | 'marketing' | 'deviceAlerts', label: string) => {
+    if (!livePrivacy) return;
+    if (key !== 'marketing' && key !== 'deviceAlerts' && !livePrivacy.canManageBusiness) {
+      showToast('Only the owner or a manager can change this.');
+      return;
+    }
+    const next = !livePrivacy[key];
+    savePrivacy.mutate(
+      { [key]: next },
+      {
+        onSuccess: () => showToast(`${label} turned ${next ? 'on' : 'off'}`),
+        onError: (error) => showToast(apiErrorMessage(error, `Could not update ${label.toLowerCase()}.`)),
+      },
+    );
+  };
+  const toggleChannel = (key: 'push' | 'email' | 'sms', label: string) => {
+    const next = !channelsView[key];
+    savePrefs.mutate(
+      { [key]: next },
+      {
+        onSuccess: () => showToast(`${label} turned ${next ? 'on' : 'off'}`),
+        onError: (error) => showToast(apiErrorMessage(error, `Could not update ${label.toLowerCase()}.`)),
+      },
+    );
+  };
+  const exportArchive = () => {
+    accountPrivacyService
+      .export()
+      .then((file) => {
+        const url = URL.createObjectURL(new Blob([file.content], { type: file.mimeType || 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.fileName || 'vemtap-data-export.json';
+        link.click();
+        URL.revokeObjectURL(url);
+        showToast(`Data archive downloaded · ref ${file.reference}`);
+      })
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not prepare your data archive.')));
+  };
+  const requestRectification = () => {
+    const details = window.prompt('What should we correct? Describe the record and the right value.');
+    if (!details?.trim()) return;
+    accountPrivacyService
+      .requestRectification(details.trim())
+      .then((row) => showToast(`Request ${row.reference} sent to our DPO — we reply within 72 hours`))
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not send your request.')));
   };
 
   const flip = <T extends Record<string, boolean>>(
@@ -253,10 +361,14 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
             </span>
             <div className="flex flex-col min-w-0">
               <span className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate">
-                Urban Grill &amp; Bistro
+                {live ? business?.name || 'Your business' : 'Urban Grill & Bistro'}
               </span>
               <span className="font-caption text-caption text-text-secondary truncate">
-                #VG-80492 · hello@urbangrill.ng · +234 803 555 0192
+                {live
+                  ? [business?.uniqueCode ? `#${business.uniqueCode}` : null, business?.officialEmail, business?.phone]
+                      .filter(Boolean)
+                      .join(' · ') || 'Add your contact details in the business profile'
+                  : '#VG-80492 · hello@urbangrill.ng · +234 803 555 0192'}
               </span>
             </div>
           </div>
@@ -287,13 +399,13 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               iconClass="bg-primary-container text-on-primary"
               title="Transaction PIN"
               desc="4-digit PIN for refunds, voids and payout releases"
-              trailing={<ActionButton label="Change PIN" onClick={() => setCredential('pin')} />}
+              trailing={<ActionButton label="Change PIN" onClick={() => (live ? showToast(COMING_SOON) : setCredential('pin'))} />}
             />
             <SettingRow
               icon="lock"
               iconClass="bg-surface-container-high text-on-surface-variant"
               title="Account password"
-              desc="Last changed 3 months ago · use a unique passphrase"
+              desc={live ? 'Use a unique passphrase you don’t use elsewhere' : 'Last changed 3 months ago · use a unique passphrase'}
               trailing={<ActionButton label="Change password" onClick={() => setCredential('password')} />}
             />
             <SettingRow
@@ -303,9 +415,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               desc="Email OTP required for sign-in and profile changes"
               trailing={
                 <Toggle
-                  checked={security.twoFactor}
+                  checked={securityView.twoFactor}
                   label="Two-factor authentication"
-                  onChange={() => flip(setSecurity, 'twoFactor', 'Two-factor authentication')}
+                  onChange={() => (live ? showToast('Authenticator-app setup is coming soon.') : flip(setSecurity, 'twoFactor', 'Two-factor authentication'))}
                 />
               }
             />
@@ -316,9 +428,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               desc="Locks the register until a staff PIN is entered"
               trailing={
                 <Toggle
-                  checked={security.posPin}
+                  checked={securityView.posPin}
                   label="Require PIN to open POS sales"
-                  onChange={() => flip(setSecurity, 'posPin', 'POS PIN lock')}
+                  onChange={() => (live ? showToast(COMING_SOON) : flip(setSecurity, 'posPin', 'POS PIN lock'))}
                 />
               }
             />
@@ -329,9 +441,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               desc="Notify you whenever a new browser or terminal signs in"
               trailing={
                 <Toggle
-                  checked={security.deviceAlerts}
+                  checked={securityView.deviceAlerts}
                   label="New device sign-in alerts"
-                  onChange={() => flip(setSecurity, 'deviceAlerts', 'Device sign-in alerts')}
+                  onChange={() => (live ? togglePrivacy('deviceAlerts', 'Device sign-in alerts') : flip(setSecurity, 'deviceAlerts', 'Device sign-in alerts'))}
                 />
               }
             />
@@ -339,11 +451,11 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               icon="manage_accounts"
               iconClass="bg-surface-container-high text-on-surface-variant"
               title="Active sessions"
-              desc="3 devices signed in · last activity just now"
+              desc={live ? 'See where your account is signed in' : '3 devices signed in · last activity just now'}
               trailing={
                 <ActionButton
                   label="Review"
-                  onClick={() => showToast('3 active sessions — review coming from the security desk')}
+                  onClick={() => showToast(live ? COMING_SOON : '3 active sessions — review coming from the security desk')}
                 />
               }
             />
@@ -389,7 +501,7 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               trailing={
                 <ActionButton
                   label="Request archive"
-                  onClick={() => showToast('Preparing your data archive — you will be notified when ready')}
+                  onClick={() => (live ? exportArchive() : showToast('Preparing your data archive — you will be notified when ready'))}
                 />
               }
             />
@@ -401,7 +513,7 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               trailing={
                 <ActionButton
                   label="Raise request"
-                  onClick={() => showToast('Rectification request opened with our DPO')}
+                  onClick={() => (live ? requestRectification() : showToast('Rectification request opened with our DPO'))}
                 />
               }
             />
@@ -412,9 +524,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               desc="Pause analytics & personalisation while keeping your account"
               trailing={
                 <Toggle
-                  checked={privacy.restrictProcessing}
+                  checked={privacyView.restrictProcessing}
                   label="Restrict processing"
-                  onChange={() => flip(setPrivacy, 'restrictProcessing', 'Restrict processing')}
+                  onChange={() => (live ? togglePrivacy('restrictProcessing', 'Restrict processing') : flip(setPrivacy, 'restrictProcessing', 'Restrict processing'))}
                 />
               }
             />
@@ -425,9 +537,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               desc="Use your activity to tailor dashboard insights"
               trailing={
                 <Toggle
-                  checked={privacy.analytics}
+                  checked={privacyView.analytics}
                   label="Personalised analytics"
-                  onChange={() => flip(setPrivacy, 'analytics', 'Personalised analytics')}
+                  onChange={() => (live ? togglePrivacy('analytics', 'Personalised analytics') : flip(setPrivacy, 'analytics', 'Personalised analytics'))}
                 />
               }
             />
@@ -438,9 +550,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
               desc="Growth tips, product news and merchant offers"
               trailing={
                 <Toggle
-                  checked={privacy.marketing}
+                  checked={privacyView.marketing}
                   label="Marketing communications"
-                  onChange={() => flip(setPrivacy, 'marketing', 'Marketing communications')}
+                  onChange={() => (live ? togglePrivacy('marketing', 'Marketing communications') : flip(setPrivacy, 'marketing', 'Marketing communications'))}
                 />
               }
             />
@@ -487,9 +599,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
                 desc="Orders, bookings and till alerts in the browser"
                 trailing={
                   <Toggle
-                    checked={channels.push}
+                    checked={channelsView.push}
                     label="Push notifications"
-                    onChange={() => flip(setChannels, 'push', 'Push notifications')}
+                    onChange={() => (live ? toggleChannel('push', 'Push notifications') : flip(setChannels, 'push', 'Push notifications'))}
                   />
                 }
               />
@@ -500,9 +612,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
                 desc="Daily summary and settlement confirmations"
                 trailing={
                   <Toggle
-                    checked={channels.email}
+                    checked={channelsView.email}
                     label="Email digests"
-                    onChange={() => flip(setChannels, 'email', 'Email digests')}
+                    onChange={() => (live ? toggleChannel('email', 'Email digests') : flip(setChannels, 'email', 'Email digests'))}
                   />
                 }
               />
@@ -513,9 +625,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
                 desc="Critical alerts when you are offline"
                 trailing={
                   <Toggle
-                    checked={channels.sms}
+                    checked={channelsView.sms}
                     label="SMS fallback"
-                    onChange={() => flip(setChannels, 'sms', 'SMS fallback')}
+                    onChange={() => (live ? toggleChannel('sms', 'SMS fallback') : flip(setChannels, 'sms', 'SMS fallback'))}
                   />
                 }
               />
@@ -526,9 +638,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
                 desc="Order and booking pings to your business WhatsApp"
                 trailing={
                   <Toggle
-                    checked={channels.whatsapp}
+                    checked={channelsView.whatsapp}
                     label="WhatsApp Business alerts"
-                    onChange={() => flip(setChannels, 'whatsapp', 'WhatsApp alerts')}
+                    onChange={() => (live ? showToast(COMING_SOON) : flip(setChannels, 'whatsapp', 'WhatsApp alerts'))}
                   />
                 }
               />
