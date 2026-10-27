@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../context/ProfileContext';
 import { hasApiConfig } from '../../lib/api';
 import { accountService, authService } from '../../services';
+import { apiErrorMessage } from '../../services/errorMessages';
 
 function PasswordChangeModal({
   open,
@@ -35,16 +36,20 @@ function PasswordChangeModal({
   if (!open) return null;
 
   const submit = async () => {
-    if (currentPassword.length < 8) {
-      setError('Current password must be at least 8 characters.');
+    if (!/^\d{6}$/.test(currentPassword)) {
+      setError('Enter your current 6-digit PIN.');
       return;
     }
-    if (newPassword.length < 8) {
-      setError('New password must be at least 8 characters.');
+    if (!/^\d{6}$/.test(newPassword)) {
+      setError('Your new PIN must be exactly 6 digits.');
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setError('Choose a new PIN that is different from your current one.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('New password confirmation does not match.');
+      setError('New PIN confirmation does not match.');
       return;
     }
 
@@ -59,7 +64,7 @@ function PasswordChangeModal({
       setConfirmPassword('');
     } catch (passwordError) {
       console.error('Password change failed:', passwordError);
-      setError('Unable to update your password right now. Please try again later.');
+      setError(apiErrorMessage(passwordError, 'Unable to update your PIN right now. Please try again later.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -72,7 +77,9 @@ function PasswordChangeModal({
         <input
           type={revealed[key] ? 'text' : 'password'}
           value={value}
-          onChange={(event) => setter(event.target.value)}
+          inputMode="numeric"
+          maxLength={6}
+          onChange={(event) => setter(event.target.value.replace(/\D/g, '').slice(0, 6))}
           className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface outline-none focus:border-primary transition-colors"
         />
         <button
@@ -89,14 +96,14 @@ function PasswordChangeModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-inverse-surface/40 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="Change password" className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md">
+      <div role="dialog" aria-modal="true" aria-label="Change PIN" className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md">
         <div className="flex items-start justify-between gap-space-sm">
           <div className="flex items-center gap-space-sm">
             <span className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
               <Icon name="lock" className="text-[20px]" />
             </span>
             <div className="flex flex-col">
-              <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Change password</h2>
+              <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Change PIN</h2>
               <p className="font-caption text-caption text-text-secondary">Update your sign-in credentials securely</p>
             </div>
           </div>
@@ -106,9 +113,9 @@ function PasswordChangeModal({
         </div>
 
         <div className="flex flex-col gap-space-sm">
-          {field('Current password', currentPassword, setCurrentPassword, 'current')}
-          {field('New password', newPassword, setNewPassword, 'next')}
-          {field('Confirm new password', confirmPassword, setConfirmPassword, 'confirm')}
+          {field('Current PIN', currentPassword, setCurrentPassword, 'current')}
+          {field('New PIN', newPassword, setNewPassword, 'next')}
+          {field('Confirm new PIN', confirmPassword, setConfirmPassword, 'confirm')}
         </div>
 
         {error && (
@@ -123,7 +130,7 @@ function PasswordChangeModal({
             Cancel
           </button>
           <button type="button" onClick={() => void submit()} disabled={isSubmitting} className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform disabled:opacity-70">
-            <span>{isSubmitting ? 'Updating...' : 'Update password'}</span>
+            <span>{isSubmitting ? 'Updating...' : 'Update PIN'}</span>
             <Icon name="check" className="text-[18px]" />
           </button>
         </div>
@@ -816,7 +823,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                             <Icon name="lock" className="text-[20px] text-primary" />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-label-md text-label-md text-on-surface font-semibold">Sign-in password</p>
+                            <p className="font-label-md text-label-md text-on-surface font-semibold">Sign-in PIN</p>
                             <p className="font-caption text-caption text-on-surface-variant">Managed through the auth flow</p>
                           </div>
                         </div>
@@ -825,7 +832,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                           type="button"
                           onClick={() => void handlePasswordReset()}
                         >
-                          Reset password
+                          Change PIN
                         </button>
                       </div>
                     </div>
@@ -1082,7 +1089,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
           onClose={() => setShowPasswordChangeModal(false)}
           onSaved={() => {
             setShowPasswordChangeModal(false);
-            showToast('Password updated successfully');
+            showToast('PIN updated successfully');
           }}
         />
       )}

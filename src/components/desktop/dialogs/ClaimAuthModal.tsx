@@ -178,7 +178,7 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated, deal }: ClaimAu
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-label-sm text-label-sm text-text-secondary font-medium">
-                  6-digit PIN or Password
+                  6-digit PIN
                 </span>
                 <button type="button" className="font-label-sm text-label-sm text-primary hover:underline">
                   Forgot PIN?
@@ -206,7 +206,7 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated, deal }: ClaimAu
               </div>
               <button
                 type="button"
-                aria-label="Toggle password visibility"
+                aria-label="Toggle PIN visibility"
                 onClick={() => setRevealed((value) => !value)}
                 className="self-end text-text-tertiary hover:text-text-primary focus:outline-none mt-1"
               >
