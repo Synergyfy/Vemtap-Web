@@ -2200,10 +2200,43 @@ function AppInner() {
     enterBusinessProfile();
   };
 
+  /**
+   * Plain wording for a rejected sign-up code. The API keeps only the newest
+   * code per email, so a code from an earlier email reads as "invalid".
+   */
+  const signupCodeError = (error: unknown, stage: 'code' | 'profile') => {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('expired')) {
+      return new Error(
+        stage === 'code'
+          ? 'That code has expired — tap Resend for a new one.'
+          : 'Your verification code expired. Go back, request a new code and try again.',
+      );
+    }
+    if (message.includes('invalid otp') || message.includes('otp not found') || message.includes('session not found')) {
+      return new Error(
+        stage === 'code'
+          ? 'That code isn’t right — use the code in the most recent email, or tap Resend.'
+          : 'Your verification code is no longer valid. Go back, request a new code and try again.',
+      );
+    }
+    return error instanceof Error ? error : new Error('We could not verify your code. Please try again.');
+  };
+
   const handleCustomerSignupVerification = async (code: string) => {
     const nextCode = code.replace(/\D/g, '').slice(0, 6);
     if (!nextCode) {
       throw new Error('Enter the 6-digit verification code to continue.');
+    }
+
+    // Live: check the code now (like the owner path), so a wrong or superseded
+    // code is caught here instead of after the whole profile is filled in.
+    if (hasApiConfig()) {
+      try {
+        await ownerAuthService.verifyOtp(customerSignup.email, nextCode);
+      } catch (error) {
+        throw signupCodeError(error, 'code');
+      }
     }
 
     setCustomerSignup((current) => ({ ...current, code: nextCode }));
@@ -2235,7 +2268,11 @@ function AppInner() {
     };
 
     if (hasApiConfig()) {
-      await authService.verifyCustomerPin(payload);
+      try {
+        await authService.verifyCustomerPin(payload);
+      } catch (error) {
+        throw signupCodeError(error, 'profile');
+      }
     }
 
     profile.update({
