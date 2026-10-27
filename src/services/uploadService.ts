@@ -1,6 +1,7 @@
 import { hasApiConfig, uploadFile } from './api/client';
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Matches the server's `POST /uploads` cap (kept under the serverless body limit). */
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 /** Opens the file picker and resolves with the chosen image (null when cancelled). */
 export function pickImage(): Promise<File | null> {
@@ -27,7 +28,7 @@ export function pickImage(): Promise<File | null> {
  */
 export async function uploadImage(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Choose a PNG, JPG or WebP image.');
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('Images must be 5MB or smaller.');
+  if (file.size > MAX_IMAGE_BYTES) throw new Error('Images must be 4MB or smaller.');
   if (!hasApiConfig()) return URL.createObjectURL(file);
   const result = await uploadFile<{ url?: string; data?: { url?: string } }>('/uploads', file);
   const url = result.url ?? result.data?.url;

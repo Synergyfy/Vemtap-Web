@@ -65,8 +65,13 @@ function VemtapQrSvg({ size = 180 }: { size?: number }) {
 }
 
 export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrScreenProps) {
-  const { addQrCode, lastError, clearLastError } = useStoreOrdering();
+  const { addQrCode, lastError, clearLastError, orders } = useStoreOrdering();
   const live = hasApiConfig();
+  // Live: orders placed through the store QR; scans aren't tracked per QR yet.
+  const storeQrOrders = orders.filter((order) => order.origin === 'Store QR' && order.status !== 'cancelled');
+  const storeQrRevenue = storeQrOrders.reduce((sum, order) => sum + (order.confirmedTotal || order.estimatedTotal || 0), 0);
+  const compactNaira = (value: number) =>
+    value >= 1_000_000 ? `₦${(value / 1_000_000).toFixed(1)}M` : value >= 1_000 ? `₦${Math.round(value / 1_000)}k` : `₦${value.toLocaleString('en-NG')}`;
   const { branch: activeBranch, branches, isLive: branchesLoaded } = useBusinessBranch();
   // Live: real branches (keyed by id); demo: the storefront's sample branches.
   const branchOptions = live
@@ -264,7 +269,11 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
               <div className="flex flex-col md:flex-row items-center gap-space-xl">
                 <div className="flex flex-col items-center gap-3 shrink-0">
                   <div className="p-4 bg-white rounded-2xl shadow-md border border-border-subtle">
-                    <VemtapQrSvg size={140} />
+                    {live && businessQr.qrImage ? (
+                      <img alt={`${storeName} store QR code`} className="w-[140px] h-[140px]" src={businessQr.qrImage} />
+                    ) : (
+                      <VemtapQrSvg size={140} />
+                    )}
                   </div>
                   <span className="text-caption text-text-tertiary font-mono">Store QR</span>
                 </div>
@@ -278,15 +287,15 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                      <div className="font-heading-sm font-bold text-text-primary">1,240</div>
+                      <div className="font-heading-sm font-bold text-text-primary">{live ? '—' : '1,240'}</div>
                       <div className="text-caption text-text-tertiary">Total Scans</div>
                     </div>
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                      <div className="font-heading-sm font-bold text-text-primary">382</div>
+                      <div className="font-heading-sm font-bold text-text-primary">{live ? storeQrOrders.length : '382'}</div>
                       <div className="text-caption text-text-tertiary">Orders</div>
                     </div>
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
-                      <div className="font-heading-sm font-bold text-badge-discount-text">₦5.1M</div>
+                      <div className="font-heading-sm font-bold text-badge-discount-text">{live ? compactNaira(storeQrRevenue) : '₦5.1M'}</div>
                       <div className="text-caption text-text-tertiary">Revenue</div>
                     </div>
                   </div>

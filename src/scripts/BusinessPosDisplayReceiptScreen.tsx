@@ -300,7 +300,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
             <div className="flex items-center gap-space-2xs min-w-0 flex-1">
               <Icon name="chat" className="text-[18px] text-badge-discount-text" />
               <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                WhatsApp (+234 803 219 8831)
+                WhatsApp ({live ? receipt.sale?.customer?.phone || 'no phone on file' : '+234 803 219 8831'})
               </span>
             </div>
             <span className="font-caption text-caption text-text-tertiary">Default</span>
@@ -318,7 +318,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
             <div className="flex items-center gap-space-2xs min-w-0 flex-1">
               <Icon name="mail" className="text-[18px] text-primary" />
               <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                Email (michael.j@example.com)
+                Email ({live ? receipt.sale?.customer?.email || 'no email on file' : 'michael.j@example.com'})
               </span>
             </div>
             <span className="font-caption text-caption text-text-tertiary">Verified</span>

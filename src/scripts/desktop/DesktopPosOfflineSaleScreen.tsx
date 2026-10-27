@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
-import { useLivePos } from '../posLive';
+import { naira, useLivePos } from '../posLive';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 
@@ -30,6 +30,7 @@ interface SaleCtaProps {
 }
 
 function SaleCta({ state, onClick, className }: SaleCtaProps) {
+  const live = hasApiConfig();
   return (
     <button
       type="button"
@@ -43,7 +44,7 @@ function SaleCta({ state, onClick, className }: SaleCtaProps) {
     >
       {state === 'idle' && (
         <>
-          <span>Complete Offline Sale (₦31,712.50)</span>
+          <span>{live ? 'Complete Offline Sale' : 'Complete Offline Sale (₦31,712.50)'}</span>
           <Icon name="arrow_forward" className="text-[19px]" />
         </>
       )}
@@ -89,6 +90,12 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
   const pos = useLivePos();
   const queuedCount = live ? pos.offline.pendingCount : 5;
   const tillLabel = live ? (pos.isOpen ? pos.tillName : 'this till') : 'Till #01';
+  // Live: the ticket card shows the latest sale queued on this device while offline.
+  const lastQueued = live ? ([...pos.offline.queue].sort((a, b) => b.takenAt - a.takenAt)[0] ?? null) : null;
+  const queuedTime = lastQueued
+    ? new Date(lastQueued.takenAt).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
+    : '—';
+  const lastTotal = lastQueued ? naira(lastQueued.total) : '—';
 
   const completeSale = () => {
     if (live) {
@@ -113,7 +120,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
             <Icon name="cloud_off" className="text-[16px]" />
             <span className="font-label-md text-label-md font-semibold">Offline Mode Active</span>
             <span className="opacity-60">|</span>
-            <span className="font-body-md text-body-md">Cached Ledger: 14 Txs</span>
+            <span className="font-body-md text-body-md">Cached Ledger: {live ? queuedCount : 14} Txs</span>
           </div>
           <div className="flex items-center gap-space-xs font-caption text-caption uppercase tracking-wider font-semibold">
             <Icon name="lock" className="text-[14px]" />
@@ -130,13 +137,13 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               <Icon name="cloud_off" className="text-[14px]" />
               <span>Offline Mode Active</span>
               <span>•</span>
-              <span>Station POS-NG-ABJ-004</span>
+              <span>{live ? tillLabel : 'Station POS-NG-ABJ-004'}</span>
               <span>•</span>
-              <span>Cached Ledger: 14 Txs</span>
+              <span>Cached Ledger: {live ? queuedCount : 14} Txs</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Offline Checkout Terminal</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              Cashier #08: Alex R. • Reg 02 — every ticket is written to the encrypted on-device SQLite buffer and
+              {live ? `Cashier: ${pos.cashierName} • ${tillLabel}` : 'Cashier #08: Alex R. • Reg 02'} — every ticket is written to the encrypted on-device SQLite buffer and
               reconciles with VEMTAP Cloud the second network returns.
             </p>
           </div>
@@ -147,7 +154,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               className="inline-flex items-center gap-space-xs px-space-md py-3 rounded-xl bg-surface-container-high text-on-surface font-button-secondary text-button-secondary hover:bg-surface-subtle transition-colors"
             >
               <Icon name="inventory_2" className="text-[18px]" />
-              <span>View Local Queue (5)</span>
+              <span>View Local Queue ({queuedCount})</span>
             </button>
             <SaleCta state={saleState} onClick={completeSale} className="px-space-lg py-3" />
           </div>
@@ -231,7 +238,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               </div>
             </div>
             <div className="mt-space-md">
-              <span className="font-display-hero text-display-hero text-on-surface leading-none">5 / 500</span>
+              <span className="font-display-hero text-display-hero text-on-surface leading-none">{queuedCount} / 500</span>
               <div className="mt-space-2xs flex items-center justify-between">
                 <span className="font-label-sm text-label-sm text-text-secondary">Txs buffered</span>
                 <span className="font-caption text-caption text-primary font-medium">{queuedCount} queued sales</span>
@@ -251,10 +258,10 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               </div>
             </div>
             <div className="mt-space-md">
-              <span className="font-display-hero text-display-hero text-primary leading-none">₦31,712.50</span>
+              <span className="font-display-hero text-display-hero text-primary leading-none">{live ? lastTotal : '₦31,712.50'}</span>
               <div className="mt-space-2xs flex items-center justify-between text-text-tertiary font-caption text-caption">
-                <span>Subtotal ₦29,500.00</span>
-                <span>VAT (7.5%) ₦2,212.50</span>
+                <span>{live ? `Last offline sale ${queuedTime}` : 'Subtotal ₦29,500.00'}</span>
+                <span>{live ? (lastQueued?.tender ?? '') : 'VAT (7.5%) ₦2,212.50'}</span>
               </div>
             </div>
           </div>
@@ -273,7 +280,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
                 <Icon name="search" className="absolute left-3.5 text-text-tertiary text-[19px]" />
                 <input
                   type="text"
-                  placeholder="Search 142 cached items or SKU..."
+                  placeholder={live ? 'Search cached items or SKU...' : 'Search 142 cached items or SKU...'}
                   autoComplete="off"
                   className="w-full h-11 pl-11 pr-12 rounded-xl bg-surface-container-low font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue transition-colors shadow-sm"
                 />
@@ -289,11 +296,11 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               <div className="flex items-center justify-between px-1 pt-space-2xs">
                 <span className="flex items-center gap-1.5 text-badge-discount-text min-w-0">
                   <Icon name="check_circle" className="text-[15px] shrink-0" />
-                  <span className="font-caption text-caption font-medium truncate">Local Menu Cache Ready (14:15)</span>
+                  <span className="font-caption text-caption font-medium truncate">{live ? 'Menu cached on this device' : 'Local Menu Cache Ready (14:15)'}</span>
                 </span>
                 <button
                   type="button"
-                  onClick={() => showToast('Re-indexed 142 cached items')}
+                  onClick={() => showToast(live ? 'Menu cache refreshed' : 'Re-indexed 142 cached items')}
                   className="font-caption text-caption text-primary shrink-0"
                 >
                   Re-index
@@ -307,18 +314,18 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
                 <div className="flex flex-wrap items-center justify-between gap-space-xs">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="font-label-md text-label-md font-bold text-text-primary truncate">
-                      LOC-TXN-402-005
+                      {live ? (lastQueued?.ref ?? 'No offline sale yet') : 'LOC-TXN-402-005'}
                     </span>
                     <span className="bg-surface-tint-blue text-primary font-caption text-caption px-1.5 py-0.5 rounded shrink-0">
                       STANDALONE
                     </span>
                   </div>
-                  <span className="font-caption text-caption text-text-secondary shrink-0">Today, 03:12 PM</span>
+                  <span className="font-caption text-caption text-text-secondary shrink-0">{live ? queuedTime : 'Today, 03:12 PM'}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-caption text-caption text-text-secondary">
-                  <span>Cashier: Emeka O. (#VT-STAFF-09)</span>
+                  <span>{live ? `Cashier: ${pos.cashierName}` : 'Cashier: Emeka O. (#VT-STAFF-09)'}</span>
                   <span>•</span>
-                  <span>Branch ID: LOC-001</span>
+                  <span>{live ? pos.branchName : 'Branch ID: LOC-001'}</span>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center justify-between gap-space-xs bg-surface-canvas p-2.5 rounded-lg shadow-sm">
                   <div className="flex items-center gap-2 min-w-0">
@@ -346,7 +353,12 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
 
               {/* Cart lines */}
               <div className="p-space-md flex flex-col">
-                {TICKET_LINES.map((line) => (
+                {live && (
+                  <span className="font-label-md text-label-md text-text-primary font-medium py-1.5">
+                    {lastQueued ? lastQueued.items || '—' : 'Sales rung up on the register while offline queue here.'}
+                  </span>
+                )}
+                {!live && TICKET_LINES.map((line) => (
                   <div key={line.name} className="flex items-center justify-between gap-space-xs py-1.5">
                     <div className="flex items-center gap-space-xs min-w-0">
                       <span className="w-6 h-6 rounded-md bg-surface-container-low text-primary flex items-center justify-center font-label-sm text-label-sm font-bold shrink-0">
@@ -369,16 +381,18 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
               {/* Financials */}
               <div className="bg-surface-subtle p-space-md flex flex-col gap-1.5">
                 <div className="flex justify-between font-caption text-caption text-text-secondary">
-                  <span>Subtotal (3 items)</span>
-                  <span>₦29,500.00</span>
+                  <span>{live ? 'Tender' : 'Subtotal (3 items)'}</span>
+                  <span>{live ? (lastQueued?.tender ?? '—') : '₦29,500.00'}</span>
                 </div>
-                <div className="flex justify-between font-caption text-caption text-text-secondary">
-                  <span>VAT (7.5% Local Statutory)</span>
-                  <span>₦2,212.50</span>
-                </div>
+                {!live && (
+                  <div className="flex justify-between font-caption text-caption text-text-secondary">
+                    <span>VAT (7.5% Local Statutory)</span>
+                    <span>₦2,212.50</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center font-heading-sm text-heading-sm text-text-primary font-bold pt-2 mt-1 bg-surface-container-lowest/50 px-2 py-1.5 rounded-lg">
                   <span>Total Due</span>
-                  <span className="text-primary font-heading-md text-heading-md">₦31,712.50</span>
+                  <span className="text-primary font-heading-md text-heading-md">{live ? lastTotal : '₦31,712.50'}</span>
                 </div>
               </div>
             </div>
@@ -451,12 +465,12 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
                       <div className="bg-surface-canvas rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-space-xs mt-1 shadow-sm">
                         <div>
                           <span className="font-caption text-caption text-text-secondary block">Amount Tendered</span>
-                          <span className="font-label-md text-label-md font-bold text-text-primary">₦35,000.00</span>
+                          <span className="font-label-md text-label-md font-bold text-text-primary">{live ? '—' : '₦35,000.00'}</span>
                         </div>
                         <div className="text-right">
                           <span className="font-caption text-caption text-text-secondary block">Cash Change Due</span>
                           <span className="font-label-md text-label-md font-bold text-badge-discount-text">
-                            ₦3,287.50
+                            {live ? '—' : '₦3,287.50'}
                           </span>
                         </div>
                       </div>
@@ -483,9 +497,9 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
                       <div className="bg-surface-canvas rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-space-xs mt-1 shadow-sm">
                         <div>
                           <span className="font-caption text-caption text-text-secondary block">House Tab Limit</span>
-                          <span className="font-label-md text-label-md font-bold text-text-primary">₦100,000.00</span>
+                          <span className="font-label-md text-label-md font-bold text-text-primary">{live ? '—' : '₦100,000.00'}</span>
                         </div>
-                        <span className="font-caption text-caption text-text-tertiary font-medium">0.0% used</span>
+                        <span className="font-caption text-caption text-text-tertiary font-medium">{live ? '—' : '0.0% used'}</span>
                       </div>
                     )}
                   </div>
@@ -517,7 +531,7 @@ export function DesktopPosOfflineSaleScreen({ onNav }: DesktopPosOfflineSaleScre
                 className="w-full py-3 flex items-center justify-center gap-1.5 font-button-secondary text-button-secondary text-text-secondary hover:text-text-primary transition-colors"
               >
                 <Icon name="inventory_2" className="text-[17px]" />
-                <span>View 5 Buffered Transactions in Local Queue</span>
+                <span>View {queuedCount} Buffered Transactions in Local Queue</span>
               </button>
             </div>
           </div>

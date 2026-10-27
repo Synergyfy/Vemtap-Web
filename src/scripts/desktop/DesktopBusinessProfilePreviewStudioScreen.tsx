@@ -13,6 +13,8 @@ const NO_IMAGE =
 interface DesktopBusinessProfilePreviewStudioScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onPreviewStorefront?: () => void;
+  /** Opens the full profile editor (Business Profile & Storefront studio). */
+  onEditProfile?: () => void;
 }
 
 interface Amenity {
@@ -79,6 +81,7 @@ const PREVIEW_ITEMS: Array<{ image: string; alt: string; name: string; note: str
 export function DesktopBusinessProfilePreviewStudioScreen({
   onNav,
   onPreviewStorefront,
+  onEditProfile,
 }: DesktopBusinessProfilePreviewStudioScreenProps) {
   const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -141,6 +144,19 @@ export function DesktopBusinessProfilePreviewStudioScreen({
 
   const toggleAmenity = (label: string) =>
     setActiveAmenities((prev) => (prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]));
+
+  /** Live: uploads a new logo / cover and saves it to the business right away. */
+  const changeImage = (kind: 'logo' | 'cover') => {
+    if (!live) return;
+    profile.uploadImage.mutate(kind, {
+      onSuccess: (url) => {
+        if (url) showToast(kind === 'logo' ? 'Logo updated on your storefront.' : 'Cover photo updated on your storefront.');
+      },
+      onError: (error) => showToast(apiErrorMessage(error, `Could not update the ${kind === 'logo' ? 'logo' : 'cover photo'}.`)),
+    });
+  };
+  const uploadingKind = profile.uploadImage.isPending ? profile.uploadImage.variables : null;
+  const brandInitial = (form.name || 'B').charAt(0).toUpperCase();
 
   const copySubdomain = () => {
     navigator.clipboard?.writeText(v(preview.publicUrl ?? '', 'https://urbangrill.vem.store'));
@@ -206,6 +222,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
           <div className="flex flex-wrap items-center gap-space-sm flex-shrink-0">
             <button
               type="button"
+              onClick={onEditProfile}
               className="h-[44px] px-space-md rounded-xl bg-surface-canvas text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-low transition-all shadow-sm flex items-center gap-space-xs"
             >
               <Icon name="edit" className="text-[18px]" />
@@ -253,10 +270,12 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
                   <button
                     type="button"
-                    className="absolute top-space-sm right-space-sm bg-surface-canvas/90 backdrop-blur-md hover:bg-surface-canvas text-text-primary px-space-sm py-1.5 rounded-lg font-label-sm text-label-sm shadow-md flex items-center gap-1.5 transition-all"
+                    onClick={() => changeImage('cover')}
+                    disabled={uploadingKind === 'cover'}
+                    className="absolute top-space-sm right-space-sm bg-surface-canvas/90 backdrop-blur-md hover:bg-surface-canvas text-text-primary px-space-sm py-1.5 rounded-lg font-label-sm text-label-sm shadow-md flex items-center gap-1.5 transition-all disabled:opacity-70"
                   >
                     <Icon name="photo_camera" className="text-[16px] text-primary" />
-                    <span>Change Cover Photo</span>
+                    <span>{uploadingKind === 'cover' ? 'Uploading…' : live && !preview.coverImage ? 'Add Cover Photo' : 'Change Cover Photo'}</span>
                   </button>
                   <div className="absolute bottom-space-sm left-space-md text-surface-canvas flex items-center gap-space-xs">
                     <span className="px-space-xs py-0.5 rounded-md bg-black/40 backdrop-blur-sm font-caption text-caption">1920 × 840 px optimal</span>
@@ -267,18 +286,26 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                 <div className="flex flex-col sm:flex-row items-start sm:items-end gap-space-md -mt-12 sm:-mt-14 px-space-xs">
                   <div className="relative flex-shrink-0">
                     <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg p-1 bg-surface-canvas">
-                      <img
-                        className="w-full h-full rounded-full object-cover"
-                        alt={live ? `${form.name || 'Business'} logo` : 'Minimalist circular logo emblem for Urban Grill featuring clean typographic monogram with flame accent in royal blue and warm amber tones on clean background'}
-                        src={live ? preview.logoUrl || NO_IMAGE : DEMO_LOGO}
-                      />
+                      {live && !preview.logoUrl ? (
+                        <div className="w-full h-full rounded-full bg-surface-tint-blue text-primary flex items-center justify-center font-heading-md text-heading-md">
+                          {brandInitial}
+                        </div>
+                      ) : (
+                        <img
+                          className="w-full h-full rounded-full object-cover"
+                          alt={live ? `${form.name || 'Business'} logo` : 'Minimalist circular logo emblem for Urban Grill featuring clean typographic monogram with flame accent in royal blue and warm amber tones on clean background'}
+                          src={live ? (preview.logoUrl as string) : DEMO_LOGO}
+                        />
+                      )}
                     </div>
                     <button
                       type="button"
                       title="Change store logo"
-                      className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow-md hover:scale-105 transition-transform"
+                      onClick={() => changeImage('logo')}
+                      disabled={uploadingKind === 'logo'}
+                      className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow-md hover:scale-105 transition-transform disabled:opacity-70"
                     >
-                      <Icon name="edit" className="text-[16px]" />
+                      <Icon name={uploadingKind === 'logo' ? 'progress_activity' : 'edit'} className={`text-[16px] ${uploadingKind === 'logo' ? 'animate-spin' : ''}`} />
                     </button>
                   </div>
                   <div className="flex flex-col flex-grow">

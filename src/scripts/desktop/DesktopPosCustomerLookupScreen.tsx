@@ -186,7 +186,7 @@ export function DesktopPosCustomerLookupScreen({
             <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption uppercase tracking-wider mb-space-2xs">
               <span className="h-7 px-space-xs rounded-full bg-surface-tint-blue text-primary font-semibold flex items-center gap-1 normal-case tracking-normal">
                 <Icon name="storefront" className="text-[13px]" />
-                <span>Wuse II · Till 01</span>
+                <span>{live ? `${pos.branchName} · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse II · Till 01'}</span>
               </span>
               <span className="h-7 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-semibold flex items-center gap-1 normal-case tracking-normal">
                 <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />

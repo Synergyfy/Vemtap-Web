@@ -314,7 +314,7 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
           <div className="flex items-start gap-space-2xs bg-surface-tint-blue rounded-xl px-space-xs py-space-2xs">
             <Icon name="policy" className="text-primary text-[15px] mt-0.5 shrink-0" />
             <span className="font-caption text-caption text-on-surface">
-              Shift overrides are logged against Till 01 · manager approval needed to edit base stock.
+              Shift overrides are logged against {live ? (pos.isOpen ? pos.tillName : 'the open till') : 'Till 01'} · manager approval needed to edit base stock.
             </span>
           </div>
         </div>

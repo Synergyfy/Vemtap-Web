@@ -14,11 +14,14 @@ export function BusinessOrdersScreen({
   onTab,
   onOpenBooking,
   onOpenDisplay,
+  onOpenSale,
 }: {
   initialStep?: BusinessOrdersStep;
   onTab: (tab: BusinessTabKey) => void;
   onOpenBooking: () => void;
   onOpenDisplay?: () => void;
+  /** Opens the POS transaction detail (live POS sales). */
+  onOpenSale?: () => void;
 }) {
   const [step, setStep] = useState<BusinessOrdersStep>(initialStep);
   const [detailFrom, setDetailFrom] = useState<HubStep>('orders');
@@ -71,6 +74,7 @@ export function BusinessOrdersScreen({
             onTab={handleTab}
             onOpenOrder={() => openDetail('pos')}
             onOpenDisplay={onOpenDisplay}
+            onOpenSale={onOpenSale}
           />
         );
       case 'detail':

@@ -5,6 +5,10 @@ import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBa
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { URBAN_BUSINESS } from './businessData';
+import { hasApiConfig } from '../services/api/client';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useActiveSubscription } from '../hooks/business/useSubscription';
+import { useLivePos } from './posLive';
 
 interface BusinessMoreScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -277,6 +281,15 @@ export function BusinessMoreScreen({
     </div>
   );
 
+  // Live: the signed-in business's identity, plan and till instead of the demo venue.
+  const live = hasApiConfig();
+  const business = useMyBusiness().data;
+  const subscription = useActiveSubscription().data;
+  const pos = useLivePos();
+  const businessName = live ? business?.name || 'Your business' : URBAN_BUSINESS.name;
+  const businessLogo = live ? business?.logoUrl ?? null : LOGO_SRC;
+  const planLabel = live ? subscription?.plan?.name ? `${subscription.plan.name} Plan` : 'No plan yet' : 'Growth Plan';
+
   return (
     <div className="biz-flow">
       <AppScreen>
@@ -303,23 +316,31 @@ export function BusinessMoreScreen({
               <div className="flex items-start justify-between gap-space-sm">
                 <div className="flex items-center gap-space-sm min-w-0">
                   <div className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-surface-container-high shadow-inner">
-                    <img alt={`${URBAN_BUSINESS.name} logo`} className="w-full h-full object-cover" src={LOGO_SRC} />
+                    {businessLogo ? (
+                      <img alt={`${businessName} logo`} className="w-full h-full object-cover" src={businessLogo} />
+                    ) : (
+                      <div className="w-full h-full bg-surface-tint-blue text-primary flex items-center justify-center font-heading-sm text-heading-sm">
+                        {businessName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate">
-                        {URBAN_BUSINESS.name}
+                        {businessName}
                       </span>
-                      <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />
+                      {(!live || business?.isVerified) && <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-caption text-caption text-text-tertiary">#VG-80492</span>
+                      <span className="font-caption text-caption text-text-tertiary">
+                        #{live ? business?.uniqueCode ?? '—' : 'VG-80492'}
+                      </span>
                       <span className="w-1 h-1 rounded-full bg-outline-variant" />
-                      <span className="font-caption text-caption text-primary font-medium">Growth Plan</span>
+                      <span className="font-caption text-caption text-primary font-medium">{planLabel}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-1 text-text-secondary min-w-0">
                       <Icon name="location_on" className="text-[15px] text-text-tertiary shrink-0" />
-                      <span className="font-label-sm text-label-sm truncate">{branch.area}</span>
+                      <span className="font-label-sm text-label-sm truncate">{live ? branch.area || branch.name : branch.area}</span>
                     </div>
                   </div>
                 </div>
@@ -337,12 +358,14 @@ export function BusinessMoreScreen({
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />
                   <span className="font-caption text-caption text-text-primary font-medium truncate">
-                    Terminal 01 Online
+                    {live ? (pos.isOpen ? `${pos.tillName} Open` : 'No register open') : 'Terminal 01 Online'}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 text-text-tertiary">
-                  <Icon name="cloud_done" className="text-[14px]" />
-                  <span className="font-caption text-caption">Synced 2m ago</span>
+                  <Icon name={live && pos.offline.pendingCount ? 'cloud_upload' : 'cloud_done'} className="text-[14px]" />
+                  <span className="font-caption text-caption">
+                    {live ? (pos.offline.pendingCount ? `${pos.offline.pendingCount} to sync` : 'All synced') : 'Synced 2m ago'}
+                  </span>
                 </div>
               </div>
             </section>

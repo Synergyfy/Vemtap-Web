@@ -154,8 +154,9 @@ export function DesktopPosCartScreen({
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Current Sale</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              Item customizer for ticket #POS-1049 — review every line, apply quick actions and charge the walk-in
-              dine-in ticket when the order rings true.
+              {live
+                ? 'Review every line on the current ticket, apply quick actions and charge it when the order is right.'
+                : 'Item customizer for ticket #POS-1049 — review every line, apply quick actions and charge the walk-in dine-in ticket when the order rings true.'}
             </p>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">

@@ -4874,6 +4874,7 @@ function AppInner() {
           <DesktopBusinessProfilePreviewStudioScreen
             onNav={businessPortalNav}
             onPreviewStorefront={() => setRoute('storefront')}
+            onEditProfile={() => setRoute('business-profile-studio')}
           />
         );
       return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
@@ -5798,13 +5799,17 @@ function AppInner() {
       );
 
     case 'business-pos-orders':
-      if (isDesktop) return <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} activeNav={posActiveNav} />;
+      if (isDesktop)
+        return (
+          <DesktopBusinessPosOrdersScreen onNav={businessPortalNav} activeNav={posActiveNav} onOpenSale={() => setRoute('pos-txn-detail')} />
+        );
       return (
         <BusinessOrdersScreen
           initialStep="pos"
           onTab={businessTab}
           onOpenBooking={() => setRoute('booking-detail')}
           onOpenDisplay={() => setRoute('pos-display-order')}
+          onOpenSale={() => setRoute('pos-txn-detail')}
         />
       );
 

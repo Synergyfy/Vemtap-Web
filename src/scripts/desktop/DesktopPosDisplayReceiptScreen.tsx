@@ -472,7 +472,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                           </span>
                         </div>
                         <div className="font-caption text-caption text-text-secondary">
-                          +234 803 219 8831 (Default)
+                          {live ? receipt.sale?.customer?.phone || 'No phone on file' : '+234 803 219 8831 (Default)'}
                         </div>
                       </div>
                     </div>
@@ -500,7 +500,9 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                             Verified
                           </span>
                         </div>
-                        <div className="font-caption text-caption text-text-secondary">michael.j@example.com</div>
+                        <div className="font-caption text-caption text-text-secondary">
+                          {live ? receipt.sale?.customer?.email || 'No email on file' : 'michael.j@example.com'}
+                        </div>
                       </div>
                     </div>
                     {emailOn && (
