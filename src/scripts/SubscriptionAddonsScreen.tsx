@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { hasApiConfig } from '../services/api/client';
-import { useCreditCheckout, useCreditPlans } from '../hooks/business/useSubscription';
+import { useActiveSubscription, useCreditCheckout, useCreditPlans } from '../hooks/business/useSubscription';
 import { cheapestCreditPlan, creditBundleLine } from './subscriptionLive';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
@@ -33,6 +33,7 @@ const AI_FEATURES = [
 export function SubscriptionAddonsScreen({ onBack, onBoost }: SubscriptionAddonsScreenProps) {
   const [waitlisted, setWaitlisted] = useState(false);
   const live = hasApiConfig();
+  const activePlan = useActiveSubscription();
   const creditPlans = useCreditPlans();
   const checkout = useCreditCheckout();
 
@@ -322,7 +323,7 @@ export function SubscriptionAddonsScreen({ onBack, onBoost }: SubscriptionAddons
           <Icon name="info" className="text-primary text-[20px] flex-shrink-0 mt-0.5" />
           <p className="font-body-md text-body-md text-text-secondary leading-normal">
             Add-ons are one-time or pay-as-you-go. They never alter your base{' '}
-            <span className="text-text-primary font-semibold">₦5,000/mo Growth subscription</span>.
+            <span className="text-text-primary font-semibold">{live ? (activePlan.data?.plan?.name ? `${activePlan.data.plan.name} plan` : 'subscription plan') : '₦5,000/mo Growth subscription'}</span>.
           </p>
         </div>
       </div>

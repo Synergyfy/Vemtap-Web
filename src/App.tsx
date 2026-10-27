@@ -4581,6 +4581,7 @@ function AppInner() {
       return (
         <div className="biz-flow">
           <NotificationsScreen
+            business
             onBack={() => setRoute('business-more')}
             onOpenPass={() => {
               setClaimedFrom('business-notifications');
