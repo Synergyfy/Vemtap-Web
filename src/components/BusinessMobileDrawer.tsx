@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icon } from './ui/Icon';
 import { Logo } from './ui/Logo';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
   resolveSidebarActive,
@@ -23,6 +24,7 @@ export function BusinessMobileDrawer({
   onSelect,
   onSignOut,
 }: BusinessMobileDrawerProps) {
+  const { branch, isLive } = useBusinessBranch();
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
 
   const activeSectionHasChildren = BUSINESS_SIDEBAR_SECTIONS.some(
@@ -110,7 +112,7 @@ export function BusinessMobileDrawer({
           <div className="flex items-center gap-2 min-w-0">
             <Icon name="store" className="text-primary text-[16px] shrink-0" />
             <span className="font-caption text-caption text-text-secondary truncate">
-              Wuse II Branch, Abuja
+              {isLive ? [branch.name, branch.area].filter(Boolean).join(', ') : 'Wuse II Branch, Abuja'}
             </span>
           </div>
           <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />

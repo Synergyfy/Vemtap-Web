@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 
 interface CheckoutHubShellProps {
   children: ReactNode;
 }
 
 export function CheckoutHubShell({ children }: CheckoutHubShellProps) {
+  const { branch, isLive } = useBusinessBranch();
   return (
     <div className="w-full min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased">
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
@@ -26,7 +28,9 @@ export function CheckoutHubShell({ children }: CheckoutHubShellProps) {
           <div className="flex items-center gap-space-md">
             <div className="flex items-center gap-space-xs px-space-sm py-1.5 rounded-full bg-surface-container-low text-on-surface">
               <Icon name="store" className="text-primary text-[18px]" />
-              <span className="font-label-sm text-label-sm font-medium">Wuse II Branch, Abuja</span>
+              <span className="font-label-sm text-label-sm font-medium">
+                {isLive ? [branch.name, branch.area].filter(Boolean).join(', ') : 'Wuse II Branch, Abuja'}
+              </span>
             </div>
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
               <Icon name="person" className="text-on-primary text-[18px]" />

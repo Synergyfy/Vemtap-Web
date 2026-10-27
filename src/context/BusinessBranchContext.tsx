@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useSessionUser } from '../hooks/useSessionUser';
 import type { ProfileBranch } from '../services/businessService';
 import { hasApiConfig } from '../services/api/client';
 
@@ -129,9 +130,15 @@ export function BusinessBranchProvider({
   canSwitchLocations?: boolean;
 }) {
   const myBusiness = useMyBusiness();
+  const session = useSessionUser().data;
+  // Owners see every branch; managers and staff only the branch their account belongs to.
+  const scopedBranchId = session && session.role !== 'Owner' ? session.branchId ?? null : null;
   const liveBranches = useMemo(
-    () => (myBusiness.data?.branches ?? []).filter((b) => b.id && b.isActive !== false).map(toBranchData),
-    [myBusiness.data],
+    () =>
+      (myBusiness.data?.branches ?? [])
+        .filter((b) => b.id && b.isActive !== false && (!scopedBranchId || b.id === scopedBranchId))
+        .map(toBranchData),
+    [myBusiness.data, scopedBranchId],
   );
   const isLive = liveBranches.length > 0;
   // Never mix sample branches into a live business: their keys would reach branch-scoped APIs.
@@ -168,7 +175,15 @@ export function BusinessBranchProvider({
 
   return (
     <BusinessBranchContext.Provider
-      value={{ branch, branches, switching, canSwitchLocations, switchTo, activeBranchId: branch.id, isLive }}
+      value={{
+        branch,
+        branches,
+        switching,
+        canSwitchLocations: canSwitchLocations && !scopedBranchId,
+        switchTo,
+        activeBranchId: branch.id,
+        isLive,
+      }}
     >
       {children}
     </BusinessBranchContext.Provider>

@@ -38,7 +38,7 @@ interface MobileLocationMenuProps {
  * only names the branch they are operating in.
  */
 export function MobileLocationMenu({ className }: MobileLocationMenuProps) {
-  const { branch, branches, canSwitchLocations, switchTo } = useBusinessBranch();
+  const { branch, branches, canSwitchLocations, switchTo, isLive } = useBusinessBranch();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export function MobileLocationMenu({ className }: MobileLocationMenuProps) {
                         option.key === branch.key ? 'text-primary/80' : 'text-text-secondary'
                       }`}
                     >
-                      {option.area}
+                      {option.area || (isLive ? 'No address added' : '')}
                     </span>
                   </span>
                   {option.key === branch.key && <Icon name="check" className="text-[18px] shrink-0" />}
@@ -127,7 +127,7 @@ export function MobileLocationMenu({ className }: MobileLocationMenuProps) {
                   {branch.name}
                 </span>
                 <span className="font-caption text-caption text-text-secondary leading-snug mt-0.5">
-                  {branch.area}
+                  {branch.area || (isLive ? 'No address added' : '')}
                 </span>
                 <span className="font-caption text-caption text-text-tertiary leading-snug mt-space-2xs">
                   Your account operates in this location only.
