@@ -1,14 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { useBusinessBookings, useBusinessOrders } from '../hooks/business/useBusinessOrders';
+import { hasApiConfig } from '../services/api/client';
+import type { BusinessOrder } from '../services/businessOrdersService';
+import { formatRelativeTime } from '../utils/format';
+import {
+  bookingStatus,
+  isOpenOrder,
+  orderChip,
+  orderItemsSummary,
+  orderRef,
+  orderStatus,
+  orderStatusLabel,
+  orderTotalLabel,
+  personName,
+} from './ordersLive';
 
 import { BusinessModeHeader } from './BusinessModeHeader';
 
 interface BusinessOrdersHubScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onSwitchBookings: () => void;
-  onOpenOrder: () => void;
+  /** Live: the tapped order's id. */
+  onOpenOrder: (orderId?: string) => void;
 }
 
 type StatusChipKey = 'all' | 'new' | 'processing' | 'ready' | 'completed' | 'cancelled';
@@ -162,6 +178,42 @@ const ORDER_ROWS: OrderRow[] = [
   },
 ];
 
+const LIVE_BADGE_CLASS: Record<string, string> = {
+  new: 'bg-primary-container text-on-primary',
+  processing: 'bg-surface-tint-blue text-primary',
+  ready: 'bg-badge-discount-bg text-badge-discount-text',
+  completed: 'bg-surface-container text-text-secondary',
+};
+const LIVE_BORDER_CLASS: Record<string, string> = {
+  new: 'border-primary',
+  processing: 'border-surface-tint-blue',
+  ready: 'border-badge-discount-text',
+};
+
+/** A live order in the feed's row shape. */
+const liveRow = (order: BusinessOrder): OrderRow & { orderId: string } => {
+  const status = orderStatus(order);
+  return {
+    orderId: order.id,
+    id: orderRef(order),
+    badgeLabel: orderStatusLabel(order),
+    badgeClass: LIVE_BADGE_CLASS[status] ?? 'bg-error-container text-on-error-container',
+    typeChip: '',
+    typeChipClass: '',
+    borderClass: LIVE_BORDER_CLASS[status] ?? '',
+    customer: personName(order.customer),
+    customerClass: '',
+    items: orderItemsSummary(order),
+    price: orderTotalLabel(order),
+    time: formatRelativeTime(order.createdAt),
+    timeClass: '',
+    ping: status === 'new',
+    paymentIcon: '',
+    paymentText: '',
+    paymentChipClass: '',
+  };
+};
+
 export function BusinessOrdersHubScreen({
   onTab,
   onSwitchBookings,
@@ -169,6 +221,28 @@ export function BusinessOrdersHubScreen({
 }: BusinessOrdersHubScreenProps) {
   const [statusChip, setStatusChip] = useState<StatusChipKey>('new');
   const [toast, setToast] = useState<string | null>(null);
+
+  // Live: real orders at the active branch, filtered by the status chips.
+  const live = hasApiConfig();
+  const ordersQuery = useBusinessOrders();
+  const bookingsQuery = useBusinessBookings();
+  const orders = ordersQuery.data ?? [];
+  const countFor = (key: StatusChipKey) => (key === 'all' ? orders.length : orders.filter((o) => orderChip(o) === key).length);
+  const chips = live
+    ? STATUS_CHIPS.map((chip) => ({ ...chip, label: `${chip.label.replace(/ \(\d+\)$/, '')} (${countFor(chip.key)})` }))
+    : STATUS_CHIPS;
+  const rows: (OrderRow & { orderId?: string })[] = live
+    ? orders.filter((o) => statusChip === 'all' || orderChip(o) === statusChip).map(liveRow)
+    : ORDER_ROWS;
+  const openOrders = live ? String(orders.filter(isOpenOrder).length) : '8';
+  const openBookings = live
+    ? String((bookingsQuery.data ?? []).filter((b) => ['booked', 'confirmed'].includes(bookingStatus(b))).length)
+    : '3';
+  const toAction = live ? countFor('new') : 3;
+
+  useEffect(() => {
+    if (live && ordersQuery.isError) showToast("Couldn't load orders. Try again shortly.");
+  }, [live, ordersQuery.isError]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -211,7 +285,7 @@ export function BusinessOrdersHubScreen({
             >
               <span>Orders</span>
               <span className="px-1.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                8
+                {openOrders}
               </span>
             </button>
             <button
@@ -221,13 +295,13 @@ export function BusinessOrdersHubScreen({
             >
               <span>Bookings</span>
               <span className="px-1.5 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-caption font-medium">
-                3
+                {openBookings}
               </span>
             </button>
           </div>
           {/* Status Chips Bar */}
           <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
-            {STATUS_CHIPS.map((chip) => {
+            {chips.map((chip) => {
               const active = chip.key === statusChip;
               return (
                 <button
@@ -254,7 +328,7 @@ export function BusinessOrdersHubScreen({
           <button
             className="bg-surface-tint-blue rounded-xl p-space-xs flex items-center justify-between text-left"
             type="button"
-            onClick={onOpenOrder}
+            onClick={() => (live ? rows[0] && onOpenOrder(rows[0].orderId) : onOpenOrder())}
           >
             <div className="flex items-center gap-space-xs min-w-0">
               <Icon name="touch_app" className="text-primary text-[18px] shrink-0" />
@@ -263,20 +337,25 @@ export function BusinessOrdersHubScreen({
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full bg-primary-container text-on-primary font-caption text-caption font-semibold shrink-0">
-              3 to action
+              {toAction} to action
             </span>
           </button>
 
           {/* Compact Orders Feed */}
           <div className="flex flex-col gap-space-2xs">
-            {ORDER_ROWS.map((row) => (
+            {live && !ordersQuery.isLoading && !ordersQuery.isError && !rows.length && (
+              <p className="font-caption text-caption text-text-secondary text-center py-space-md">
+                No orders here yet.
+              </p>
+            )}
+            {rows.map((row) => (
               <button
                 className={`w-full flex items-center gap-space-xs px-3 py-3 rounded-xl bg-surface-container-lowest shadow-sm active:scale-[0.99] transition-transform text-left ${
                   row.borderClass ? `border-l-4 ${row.borderClass}` : ''
                 } ${row.badgeLabel === 'Completed' ? 'opacity-75' : ''}`}
-                key={row.id}
+                key={row.orderId ?? row.id}
                 type="button"
-                onClick={onOpenOrder}
+                onClick={() => onOpenOrder(row.orderId)}
               >
                 <span className={`w-2 h-2 rounded-full shrink-0 ${row.ping ? 'bg-primary-container animate-pulse' : 'bg-surface-container-highest'}`} />
                 <span className="font-label-md text-label-md font-bold text-on-surface tracking-tight shrink-0">

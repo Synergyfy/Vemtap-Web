@@ -3,6 +3,13 @@ import { Icon } from '../../components/ui/Icon';
 import { AnalyticsShell } from './AnalyticsShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { runExportCenter } from '../../utils/exportCenter';
+import { downloadBase64 } from '../../utils/exportCsv';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { businessAnalyticsService, type ExportModule } from '../../services/businessAnalyticsService';
+import { analyticsRange } from '../../hooks/business/useBusinessAnalytics';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { periodLabel, useAnalyticsFilter } from '../analyticsLive';
 
 interface DesktopAnalyticsExportScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -43,6 +50,22 @@ const DELIVERY = [
 
 type ExportState = 'idle' | 'loading' | 'done';
 
+/**
+ * The screen's module keys vs the backend's report sections: sales/inventory
+ * both draw on `overview` (top items cover units sold), and staff spans the
+ * POS cashier table plus the supervisor audit log.
+ */
+const MODULE_SECTIONS: Record<string, ExportModule[]> = {
+  sales: ['overview'],
+  customers: ['customers'],
+  deals: ['deals'],
+  locations: ['locations'],
+  inventory: ['overview'],
+  staff: ['pos', 'audit'],
+};
+
+const toSections = (keys: string[]) => [...new Set(keys.flatMap((key) => MODULE_SECTIONS[key] ?? []))];
+
 function ScopeRow({ label, value, first = false }: { label: string; value: string; first?: boolean }) {
   return (
     <div
@@ -68,16 +91,32 @@ export function DesktopAnalyticsExportScreen({ onNav, onBack }: DesktopAnalytics
   });
   const [delivery, setDelivery] = useState<string>('download');
   const [state, setState] = useState<ExportState>('idle');
+  const [toast, setToast] = useState<string | null>(null);
   const stateTimer = useRef<number | null>(null);
   const resetTimer = useRef<number | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  const live = hasApiConfig();
+  const filter = useAnalyticsFilter();
+  const { branches } = useBusinessBranch();
+  const branchLabel = filter.branchId
+    ? (branches.find((branch) => branch.id === filter.branchId)?.name ?? 'All locations')
+    : 'All locations';
 
   useEffect(() => {
     window.scrollTo(0, 0);
     return () => {
       if (stateTimer.current !== null) window.clearTimeout(stateTimer.current);
       if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     };
   }, []);
+
+  const showToast = (message: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+  };
 
   const selectedCount = MODULES.filter((module) => checked[module.key]).length;
   const allSelected = selectedCount === MODULES.length;
@@ -87,19 +126,42 @@ export function DesktopAnalyticsExportScreen({ onNav, onBack }: DesktopAnalytics
     setChecked(Object.fromEntries(MODULES.map((module) => [module.key, next])));
   };
 
+  const selectedKeys = MODULES.filter((module) => checked[module.key]).map((module) => module.key as string);
+
   const generate = () => {
     if (state !== 'idle' || selectedCount === 0) return;
     setState('loading');
-    stateTimer.current = window.setTimeout(() => {
-      runExportCenter({
+
+    if (!live) {
+      stateTimer.current = window.setTimeout(() => {
+        runExportCenter({
+          format,
+          selectedKeys,
+          timeframe: 'Sep 10 – Oct 10, 2026',
+          branchFilter: 'All Locations (3)',
+        });
+        setState('done');
+        resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
+      }, 1400);
+      return;
+    }
+
+    businessAnalyticsService
+      .export({
         format,
-        selectedKeys: MODULES.filter((module) => checked[module.key]).map((module) => module.key as string),
-        timeframe: 'Sep 10 – Oct 10, 2026',
-        branchFilter: 'All Locations (3)',
+        modules: toSections(selectedKeys),
+        ...analyticsRange(filter.days),
+        branchId: filter.branchId ?? undefined,
+      })
+      .then((file) => {
+        downloadBase64(file.filename, file.mimeType, file.contentBase64);
+        setState('done');
+        resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
+      })
+      .catch((error: unknown) => {
+        showToast(apiErrorMessage(error, 'Could not generate the report.'));
+        setState('idle');
       });
-      setState('done');
-      resetTimer.current = window.setTimeout(() => setState('idle'), 2600);
-    }, 1400);
   };
 
   const buttonLabel =
@@ -317,9 +379,12 @@ export function DesktopAnalyticsExportScreen({ onNav, onBack }: DesktopAnalytics
                 <Icon name="task" className="text-primary text-[15px]" />
                 <span className="font-label-md text-label-md text-on-surface font-semibold">Report Scope</span>
               </div>
-              <ScopeRow first label="Timeframe" value="Sep 10 – Oct 10, 2026" />
-              <ScopeRow label="Branch filter" value="All Locations (3)" />
-              <ScopeRow label="Estimated volume" value="512 orders · 1,482 customers" />
+              <ScopeRow first label="Timeframe" value={live ? periodLabel(filter) : 'Sep 10 – Oct 10, 2026'} />
+              <ScopeRow label="Branch filter" value={live ? branchLabel : 'All Locations (3)'} />
+              <ScopeRow
+                label="Estimated volume"
+                value={live ? `${selectedCount} of ${MODULES.length} modules` : '512 orders · 1,482 customers'}
+              />
             </div>
 
             {/* Export summary + run export */}
@@ -391,6 +456,13 @@ export function DesktopAnalyticsExportScreen({ onNav, onBack }: DesktopAnalytics
           </aside>
         </div>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          <Icon name="error" className="text-[16px] text-badge-discount-text shrink-0" />
+          <span>{toast}</span>
+        </div>
+      )}
     </AnalyticsShell>
   );
 }

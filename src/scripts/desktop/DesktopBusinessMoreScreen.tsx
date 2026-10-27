@@ -1,7 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { URBAN_BUSINESS } from '../businessData';
-import { useMoreSummary } from '../../hooks/business/useMoreSummary';
-import { useSwitchToCustomer } from '../../components/business/SwitchToCustomerDialog';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 
@@ -67,29 +64,6 @@ export function DesktopBusinessMoreScreen({
   onSignOut,
   onOpenStoreOrdering,
 }: DesktopBusinessMoreScreenProps) {
-  const more = useMoreSummary();
-  const card = more.live
-    ? {
-        name: more.name ?? 'Your business',
-        code: more.code,
-        plan: more.planName,
-        location: more.location,
-        logo: more.logoUrl,
-        verified: more.verified,
-        status: `${more.branchName} · Online`,
-        synced: 'Live data',
-      }
-    : {
-        name: URBAN_BUSINESS.name,
-        code: '#VG-80492',
-        plan: 'Growth Plan',
-        location: 'Wuse II, Abuja',
-        logo: LOGO_SRC,
-        verified: true,
-        status: 'Terminal 01 Online',
-        synced: 'Synced 2m ago',
-      };
-  const switchToCustomer = useSwitchToCustomer(onSwitchConsumer, card.name);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -110,7 +84,7 @@ export function DesktopBusinessMoreScreen({
     {
       key: 'cluster',
       label: 'Cluster System',
-      badge: more.live ? more.clusterName ?? undefined : 'Amaka Mall',
+      badge: 'Amaka Mall',
       badgeClass: GREEN_BADGE,
       rows: [
         {
@@ -237,10 +211,10 @@ export function DesktopBusinessMoreScreen({
           key: 'reviews',
           icon: 'hotel_class',
           title: 'Reviews & Ratings',
-          sub: more.live ? more.reviewsLine ?? 'Customer reviews & ratings' : '4.9 ★ · 128 verified customer reviews',
-          badge: more.live ? (more.pendingReviews ? `${more.pendingReviews} pending` : undefined) : '3 new',
+          sub: '4.9 ★ · 128 verified customer reviews',
+          badge: '3 new',
           badgeClass: GREEN_BADGE,
-          onClick: () => showToast(more.live ? 'Opening reviews' : 'Opening 3 new reviews'),
+          onClick: () => showToast('Opening 3 new reviews'),
         },
         {
           key: 'notifications',
@@ -248,7 +222,7 @@ export function DesktopBusinessMoreScreen({
           iconClass: NEUTRAL_ICON,
           title: 'Notifications Center',
           sub: 'Till alerts, payout updates & staff clock-ins',
-          badge: more.live ? (more.unread ? `${more.unread} unread` : undefined) : '4 unread',
+          badge: '4 unread',
           badgeClass: ERROR_BADGE,
           onClick: onOpenNotifications,
         },
@@ -263,7 +237,7 @@ export function DesktopBusinessMoreScreen({
           icon: 'credit_card',
           iconClass: NEUTRAL_ICON,
           title: 'Subscription & Billing',
-          sub: more.live ? more.planLine ?? 'View your plan & billing' : 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
+          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
           onClick: onOpenSubscription,
         },
         {
@@ -271,8 +245,8 @@ export function DesktopBusinessMoreScreen({
           icon: 'verified_user',
           iconClass: GREEN_BADGE,
           title: 'Business Verification',
-          sub: !more.live || more.verified ? 'CAC, Director ID & Bank Settlement Approved' : 'Verify your business to earn the badge',
-          badge: more.live ? (more.verified ? 'Verified' : 'Not verified') : 'Tier 3',
+          sub: 'CAC, Director ID & Bank Settlement Approved',
+          badge: 'Tier 3',
           badgeClass: GREEN_BADGE,
           onClick: onOpenVerification,
         },
@@ -391,29 +365,23 @@ export function DesktopBusinessMoreScreen({
           <div className="flex items-start justify-between gap-space-sm relative z-10">
             <div className="flex items-center gap-space-sm min-w-0">
               <div className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-surface-container-high shadow-inner">
-                {card.logo ? (
-                  <img alt={`${card.name} logo`} className="w-full h-full object-cover" src={card.logo} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center font-heading-sm text-heading-sm text-primary">
-                    {card.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <img alt="Urban Grill & Bistro logo" className="w-full h-full object-cover" src={LOGO_SRC} />
               </div>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate">
-                    {card.name}
+                    Urban Grill &amp; Bistro
                   </span>
-                  {card.verified && <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />}
+                  <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {card.code && <span className="font-caption text-caption text-text-tertiary">{card.code}</span>}
-                  {card.code && card.plan && <span className="w-1 h-1 rounded-full bg-border-subtle" />}
-                  {card.plan && <span className="font-caption text-caption text-primary font-medium">{card.plan}</span>}
+                  <span className="font-caption text-caption text-text-tertiary">#VG-80492</span>
+                  <span className="w-1 h-1 rounded-full bg-border-subtle" />
+                  <span className="font-caption text-caption text-primary font-medium">Growth Plan</span>
                 </div>
                 <div className="mt-1 flex items-center gap-1 text-text-secondary min-w-0">
                   <Icon name="location_on" className="text-[15px] text-text-tertiary shrink-0" />
-                  <span className="font-label-sm text-label-sm truncate">{card.location ?? 'Add your address'}</span>
+                  <span className="font-label-sm text-label-sm truncate">Wuse II, Abuja</span>
                 </div>
               </div>
             </div>
@@ -431,12 +399,12 @@ export function DesktopBusinessMoreScreen({
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />
               <span className="font-caption text-caption text-text-primary font-medium truncate">
-                {card.status}
+                Terminal 01 Online
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0 text-text-tertiary">
               <Icon name="cloud_done" className="text-[14px]" />
-              <span className="font-caption text-caption">{card.synced}</span>
+              <span className="font-caption text-caption">Synced 2m ago</span>
             </div>
           </div>
         </section>
@@ -462,7 +430,7 @@ export function DesktopBusinessMoreScreen({
             </div>
             <button
               type="button"
-              onClick={switchToCustomer.request}
+              onClick={onSwitchConsumer}
               className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-2 shadow-md hover:opacity-90 transition-opacity"
             >
               <span>Open Consumer Experience</span>
@@ -516,7 +484,6 @@ export function DesktopBusinessMoreScreen({
           </div>
         </div>
       )}
-      {switchToCustomer.dialog}
     </BusinessPortalChrome>
   );
 }

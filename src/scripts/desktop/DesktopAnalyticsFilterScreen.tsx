@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { AnalyticsShell } from './AnalyticsShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { presetDays, setAnalyticsFilter, useAnalyticsFilter } from '../analyticsLive';
 
 interface DesktopAnalyticsFilterScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -80,8 +83,11 @@ function PreviewTile({ label, value }: { label: string; value: string }) {
 }
 
 export function DesktopAnalyticsFilterScreen({ onNav, onBack }: DesktopAnalyticsFilterScreenProps) {
-  const [preset, setPreset] = useState<string>('30 Days');
-  const [location, setLocation] = useState<string>('all');
+  const live = hasApiConfig();
+  const filter = useAnalyticsFilter();
+  const { branches, isLive } = useBusinessBranch();
+  const [preset, setPreset] = useState<string>(filter.preset);
+  const [location, setLocation] = useState<string>(filter.branchId ?? 'all');
   const [tab, setTab] = useState<string>('deals');
   const [dealStatuses, setDealStatuses] = useState<string[]>(['Active']);
   const [channels, setChannels] = useState<string[]>(['QR & POS', 'Storefront']);
@@ -94,6 +100,23 @@ export function DesktopAnalyticsFilterScreen({ onNav, onBack }: DesktopAnalytics
   const toastTimer = useRef<number | null>(null);
   const applyTimer = useRef<number | null>(null);
   const revertTimer = useRef<number | null>(null);
+
+  // Live businesses pick from their real branches; a configured business that
+  // has not added any branch yet can only scope to "All". Sample branch keys
+  // must never reach branch-scoped APIs (see BusinessBranchContext).
+  const locationOptions = isLive
+    ? [
+        { key: 'all', label: 'All Locations', meta: `${branches.length} outlets` },
+        // The provider only reports isLive when every branch carries an id.
+        ...branches.filter((branch) => branch.id).map((branch) => ({
+          key: branch.id as string,
+          label: branch.name,
+          meta: branch.area || (branch.isMainBranch ? 'Main branch' : 'Outlet'),
+        })),
+      ]
+    : live
+      ? [{ key: 'all', label: 'All Locations', meta: 'No branches yet' }]
+      : LOCATIONS;
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -122,6 +145,7 @@ export function DesktopAnalyticsFilterScreen({ onNav, onBack }: DesktopAnalytics
     setSettlements(['Card', 'Transfer']);
     setTills(['Till #01', 'Till #02']);
     setCohort('all');
+    setAnalyticsFilter({ preset: '30 Days', days: 30, branchId: null });
     showToast('Filters reset to defaults');
   };
 
@@ -131,6 +155,9 @@ export function DesktopAnalyticsFilterScreen({ onNav, onBack }: DesktopAnalytics
     applyTimer.current = window.setTimeout(() => {
       setApplying(false);
       setApplied(true);
+      // Persist the scope the analytics screens read: the preset and branch
+      // drive every module's query (and the export's range) from here on.
+      setAnalyticsFilter({ preset, days: presetDays(preset), branchId: location === 'all' ? null : location });
       showToast('Filters applied across analytics');
       revertTimer.current = window.setTimeout(() => setApplied(false), 2400);
     }, 900);
@@ -144,7 +171,7 @@ export function DesktopAnalyticsFilterScreen({ onNav, onBack }: DesktopAnalytics
       ? 'bg-primary/70 text-on-primary'
       : 'bg-primary text-on-primary hover:bg-primary-container shadow-md hover:shadow-lg';
 
-  const locationLabel = LOCATIONS.find((item) => item.key === location)?.label ?? 'All Locations';
+  const locationLabel = locationOptions.find((item) => item.key === location)?.label ?? 'All Locations';
   const activeTabLabel = CONTEXT_TABS.find((item) => item.key === tab)?.label ?? 'Deals';
   const contextFacetCount = dealStatuses.length + channels.length + settlements.length + tills.length;
 
@@ -335,7 +362,7 @@ export function DesktopAnalyticsFilterScreen({ onNav, onBack }: DesktopAnalytics
                 <h2 className="font-heading-sm text-heading-sm text-text-primary tracking-tight">Locations</h2>
               </div>
               <div className="border border-border-subtle rounded-xl overflow-hidden">
-                {LOCATIONS.map((item, index) => {
+                {locationOptions.map((item, index) => {
                   const active = location === item.key;
                   return (
                     <button

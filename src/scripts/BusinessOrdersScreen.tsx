@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
-import { AppScreen } from '../components/ui/AppScreen';
-import { OrdersPanel } from '../components/business/OrdersPanel';
-import { hasApiConfig } from '../services/api/client';
+import type { BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessOrdersHubScreen } from './BusinessOrdersHubScreen';
 import { BusinessBookingsHubScreen } from './BusinessBookingsHubScreen';
 import { BusinessPosOrdersScreen } from './BusinessPosOrdersScreen';
@@ -17,14 +14,18 @@ export function BusinessOrdersScreen({
   onTab,
   onOpenBooking,
   onOpenDisplay,
+  onOpenSale,
 }: {
   initialStep?: BusinessOrdersStep;
   onTab: (tab: BusinessTabKey) => void;
   onOpenBooking: () => void;
   onOpenDisplay?: () => void;
+  /** Opens the POS transaction detail (live POS sales). */
+  onOpenSale?: () => void;
 }) {
   const [step, setStep] = useState<BusinessOrdersStep>(initialStep);
   const [detailFrom, setDetailFrom] = useState<HubStep>('orders');
+  const [orderId, setOrderId] = useState<string | undefined>();
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -34,8 +35,9 @@ export function BusinessOrdersScreen({
     setStep(initialStep);
   }, [initialStep]);
 
-  const openDetail = (from: HubStep) => {
+  const openDetail = (from: HubStep, id?: string) => {
     setDetailFrom(from);
+    setOrderId(id);
     setStep('detail');
   };
 
@@ -49,25 +51,13 @@ export function BusinessOrdersScreen({
   };
 
   const renderStep = () => {
-    // Live: real orders and bookings for the active branch (POS keeps its own screen).
-    if (hasApiConfig() && (step === 'orders' || step === 'bookings')) {
-      return (
-        <AppScreen>
-          <div className="flex flex-col w-full flex-1 px-margin pt-space-md pb-28 gap-space-md">
-            <h1 className="font-heading-md text-heading-md text-text-primary">Orders &amp; Bookings</h1>
-            <OrdersPanel key={step} initialView={step} />
-          </div>
-          <BusinessTabBar active="orders" onTab={handleTab} />
-        </AppScreen>
-      );
-    }
     switch (step) {
       case 'orders':
         return (
           <BusinessOrdersHubScreen
             onTab={handleTab}
             onSwitchBookings={() => setStep('bookings')}
-            onOpenOrder={() => openDetail('orders')}
+            onOpenOrder={(id) => openDetail('orders', id)}
           />
         );
       case 'bookings':
@@ -84,10 +74,11 @@ export function BusinessOrdersScreen({
             onTab={handleTab}
             onOpenOrder={() => openDetail('pos')}
             onOpenDisplay={onOpenDisplay}
+            onOpenSale={onOpenSale}
           />
         );
       case 'detail':
-        return <BusinessOrderDetailScreen onBack={() => setStep(detailFrom)} />;
+        return <BusinessOrderDetailScreen orderId={orderId} onBack={() => setStep(detailFrom)} />;
     }
   };
 

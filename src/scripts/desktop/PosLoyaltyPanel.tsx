@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import {
   LOYALTY_REWARDS,
@@ -10,6 +10,11 @@ import {
   unlockedRewards,
   type PosCustomerRecord,
 } from './posRegisterExtras';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { posService } from '../../services/posService';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { apiCustomerId, rewardNext, rewardsUnlocked, useTillPointsRate, useTillRewards } from '../posLive';
 
 /**
  * Loyalty snapshot + point award for the customer on the current ticket.
@@ -22,6 +27,7 @@ export function PosLoyaltyPanel({
   customer,
   ticketTotal,
   onAward,
+  onError,
   compact,
 }: {
   customer: PosCustomerRecord;
@@ -29,26 +35,68 @@ export function PosLoyaltyPanel({
   ticketTotal: number;
   /** Commit the awarded points (caller persists them). */
   onAward: (points: number) => void;
+  /** Live: why an award failed (shown as the screen's toast). */
+  onError?: (message: string) => void;
   /** Tighter layout for the ticket pane. */
   compact?: boolean;
 }) {
-  const suggested = pointsForAmount(ticketTotal);
+  const liveRewards = useTillRewards(customer.id);
+  const pointsRate = useTillPointsRate();
+  const rewardList = liveRewards ?? LOYALTY_REWARDS;
+  const suggested = pointsRate ? pointsRate(ticketTotal) : pointsForAmount(ticketTotal);
   const [award, setAward] = useState(suggested);
+  // Live: the earn rate loads after mount — follow it until the cashier awards.
+  useEffect(() => {
+    if (pointsRate && !awarded) setAward(suggested);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggested]);
   const [awarded, setAwarded] = useState(false);
+  const [awarding, setAwarding] = useState(false);
+  const live = hasApiConfig();
+  const { activeBranchId } = useBusinessBranch();
 
-  const tier = tierForPoints(customer.points);
-  const upcomingTier = nextTier(customer.points);
-  const upcoming = nextReward(customer.points);
-  const unlocked = useMemo(() => unlockedRewards(customer.points), [customer.points]);
+  /** Live: credit the points through the loyalty API before reporting them. */
+  const giveAward = () => {
+    if (!live) {
+      onAward(award);
+      setAwarded(true);
+      return;
+    }
+    const userId = apiCustomerId(customer.id);
+    if (!userId || !activeBranchId) {
+      onError?.('Pick a branch and a saved customer first.');
+      return;
+    }
+    setAwarding(true);
+    posService
+      .awardPoints({ userId, points: award }, activeBranchId)
+      .then(() => {
+        onAward(award);
+        setAwarded(true);
+      })
+      .catch((error: unknown) => onError?.(apiErrorMessage(error, 'Could not award points.')))
+      .finally(() => setAwarding(false));
+  };
+
+  const localTier = tierForPoints(customer.points);
+  // Live: the business's own tier name for this customer.
+  const tier = hasApiConfig() && customer.tier ? { ...localTier, name: customer.tier } : localTier;
+  // Live: tier thresholds aren't exposed by the API, so only the tier name is real.
+  const upcomingTier = liveRewards ? null : nextTier(customer.points);
+  const upcoming = liveRewards ? rewardNext(liveRewards, customer.points) : nextReward(customer.points);
+  const unlocked = useMemo(
+    () => (liveRewards ? rewardsUnlocked(liveRewards, customer.points) : unlockedRewards(customer.points)),
+    [liveRewards, customer.points],
+  );
 
   const pointsAfter = customer.points + (awarded ? award : 0);
   const progressToNext = useMemo(() => {
     if (!upcoming) return 100;
-    const previousThreshold = [...LOYALTY_REWARDS].reverse().find((reward) => reward.points <= customer.points)?.points ?? 0;
+    const previousThreshold = [...rewardList].reverse().find((reward) => reward.points <= customer.points)?.points ?? 0;
     const span = upcoming.points - previousThreshold;
     if (span <= 0) return 100;
     return Math.min(100, Math.max(0, ((customer.points - previousThreshold) / span) * 100));
-  }, [customer.points, upcoming]);
+  }, [customer.points, upcoming, rewardList]);
 
   return (
     <div className={`rounded-xl bg-surface-canvas shadow-sm border border-border-subtle flex flex-col ${compact ? 'p-space-sm' : 'p-space-md'}`}>
@@ -86,9 +134,11 @@ export function PosLoyaltyPanel({
       <div className="mt-space-sm">
         <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
           <span>
-            {upcomingTier ? `Next tier: ${upcomingTier.name}` : 'Top tier reached'}
+            {liveRewards ? `${tier.name} member` : upcomingTier ? `Next tier: ${upcomingTier.name}` : 'Top tier reached'}
           </span>
-          <span className="text-text-tertiary">{upcomingTier ? `${(upcomingTier.threshold - customer.points).toLocaleString()} pts to go` : tier.perk}</span>
+          <span className="text-text-tertiary">
+            {liveRewards ? '—' : upcomingTier ? `${(upcomingTier.threshold - customer.points).toLocaleString()} pts to go` : tier.perk}
+          </span>
         </div>
         <div className="mt-1 h-2 rounded-full bg-surface-subtle overflow-hidden">
           <div
@@ -171,11 +221,8 @@ export function PosLoyaltyPanel({
           </div>
           <button
             type="button"
-            disabled={award <= 0 || awarded}
-            onClick={() => {
-              onAward(award);
-              setAwarded(true);
-            }}
+            disabled={award <= 0 || awarded || awarding}
+            onClick={giveAward}
             className="h-10 px-space-sm rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold flex items-center gap-1 disabled:opacity-40 transition-opacity shrink-0"
           >
             <Icon name="stars" className="text-[16px]" />

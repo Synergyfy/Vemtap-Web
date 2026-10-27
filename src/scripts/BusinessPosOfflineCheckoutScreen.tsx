@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../services/api/client';
+import { naira, useLivePos } from './posLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 
@@ -44,7 +46,22 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const queuedCount = live ? pos.offline.pendingCount : 5;
+  const tillLabel = live ? (pos.isOpen ? pos.tillName : 'this till') : 'Till #01';
+  // Live: the ticket card shows the latest sale queued on this device while offline.
+  const lastQueued = live ? ([...pos.offline.queue].sort((a, b) => b.takenAt - a.takenAt)[0] ?? null) : null;
+  const queuedTime = lastQueued
+    ? new Date(lastQueued.takenAt).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
+    : '—';
+
   const completeSale = () => {
+    if (live) {
+      // The register queues sales on this device by itself while offline.
+      showToast('Ring this sale up on the register — offline sales queue on this device automatically');
+      return;
+    }
     if (saleState !== 'idle') return;
     setSaleState('saving');
     saleTimer.current = window.setTimeout(() => {
@@ -64,7 +81,7 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               Offline Mode Active
             </span>
           </span>
-          <span className="font-caption text-caption text-on-tertiary-fixed-variant">Cached Ledger: 14 Txs</span>
+          <span className="font-caption text-caption text-on-tertiary-fixed-variant">Cached Ledger: {live ? queuedCount : 14} Txs</span>
         </div>
         <div className="h-16 px-margin flex items-center justify-between">
           <div className="flex items-center gap-space-xs min-w-0">
@@ -81,9 +98,9 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
                 Offline Checkout Terminal
               </h1>
               <div className="flex items-center gap-1.5">
-                <span className="font-caption text-caption text-text-secondary truncate">Cashier #08: Alex R.</span>
+                <span className="font-caption text-caption text-text-secondary truncate">{live ? `Cashier: ${pos.cashierName}` : 'Cashier #08: Alex R.'}</span>
                 <span className="w-1 h-1 rounded-full bg-outline-variant shrink-0" />
-                <span className="font-caption text-caption text-primary font-medium">Reg 02</span>
+                <span className="font-caption text-caption text-primary font-medium">{live ? tillLabel : 'Reg 02'}</span>
               </div>
             </div>
           </div>
@@ -112,11 +129,11 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
                   </span>
                 </div>
                 <span className="bg-tertiary text-on-tertiary font-caption text-caption px-2 py-0.5 rounded-full font-medium shrink-0">
-                  5 queued sales
+                  {queuedCount} queued sales
                 </span>
               </div>
               <p className="font-caption text-caption text-on-tertiary-fixed-variant leading-relaxed">
-                Sales are stored encrypted on Till #01. Automatic cloud reconciliation fires the second network returns.
+                Sales are stored encrypted on {tillLabel}. Automatic cloud reconciliation fires the second network returns.
               </p>
             </div>
           </div>
@@ -129,7 +146,7 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               <span className="flex items-center gap-1.5 min-w-0">
                 <Icon name="storefront" className="text-primary text-[17px] shrink-0" />
                 <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
-                  Wuse Branch (Flagship)
+                  {live ? pos.branchName : 'Wuse Branch (Flagship)'}
                 </span>
               </span>
               <span className="inline-flex items-center gap-1 bg-error-container text-on-error-container font-caption text-caption px-2 py-0.5 rounded-full font-medium shrink-0">
@@ -138,8 +155,8 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               </span>
             </div>
             <div className="flex items-center justify-between gap-space-xs font-caption text-caption text-text-secondary pt-1">
-              <span className="truncate">Till #01 • Cashier: Emeka Okafor</span>
-              <span className="text-tertiary font-medium shrink-0">Buffer Cap: 5 / 500 Txs</span>
+              <span className="truncate">{live ? `${tillLabel} • Cashier: ${pos.cashierName}` : 'Till #01 • Cashier: Emeka Okafor'}</span>
+              <span className="text-tertiary font-medium shrink-0">Buffer Cap: {queuedCount} / 500 Txs</span>
             </div>
           </div>
 
@@ -149,7 +166,7 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               <Icon name="search" className="absolute left-3.5 text-text-tertiary text-[19px]" />
               <input
                 type="text"
-                placeholder="Search 142 cached items or SKU..."
+                placeholder={live ? 'Search cached items or SKU...' : 'Search 142 cached items or SKU...'}
                 autoComplete="off"
                 className="w-full h-11 pl-11 pr-12 rounded-xl bg-surface-container-lowest font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue transition-colors shadow-sm"
               />
@@ -165,11 +182,11 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
             <div className="flex items-center justify-between px-1">
               <span className="flex items-center gap-1.5 text-badge-discount-text min-w-0">
                 <Icon name="check_circle" className="text-[15px] shrink-0" />
-                <span className="font-caption text-caption font-medium truncate">Local Menu Cache Ready (14:15)</span>
+                <span className="font-caption text-caption font-medium truncate">{live ? 'Menu cached on this device' : 'Local Menu Cache Ready (14:15)'}</span>
               </span>
               <button
                 type="button"
-                onClick={() => showToast('Re-indexed 142 cached items')}
+                onClick={() => showToast(live ? 'Menu cache refreshed' : 'Re-indexed 142 cached items')}
                 className="font-caption text-caption text-primary shrink-0"
               >
                 Re-index
@@ -183,18 +200,18 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               <div className="flex items-center justify-between gap-space-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-label-md text-label-md font-bold text-text-primary truncate">
-                    LOC-TXN-402-005
+                    {live ? (lastQueued?.ref ?? 'No offline sale yet') : 'LOC-TXN-402-005'}
                   </span>
                   <span className="bg-secondary-container text-on-secondary-container font-caption text-caption px-1.5 py-0.5 rounded shrink-0">
                     STANDALONE
                   </span>
                 </div>
-                <span className="font-caption text-caption text-text-secondary shrink-0">Today, 03:12 PM</span>
+                <span className="font-caption text-caption text-text-secondary shrink-0">{live ? queuedTime : 'Today, 03:12 PM'}</span>
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-caption text-caption text-text-secondary">
-                <span>Cashier: Emeka O. (#VT-STAFF-09)</span>
+                <span>{live ? `Cashier: ${pos.cashierName}` : 'Cashier: Emeka O. (#VT-STAFF-09)'}</span>
                 <span>•</span>
-                <span>Branch ID: LOC-001</span>
+                <span>{live ? pos.branchName : 'Branch ID: LOC-001'}</span>
               </div>
               <div className="mt-1 flex items-center justify-between gap-space-xs bg-surface-canvas p-2.5 rounded-lg shadow-sm">
                 <div className="flex items-center gap-2 min-w-0">
@@ -222,7 +239,12 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
 
             {/* Cart lines */}
             <div className="p-space-md flex flex-col">
-              {TICKET_LINES.map((line) => (
+              {live && (
+                <span className="font-label-md text-label-md text-text-primary font-medium py-1">
+                  {lastQueued ? lastQueued.items || '—' : 'Sales rung up on the register while offline queue here.'}
+                </span>
+              )}
+              {!live && TICKET_LINES.map((line) => (
                 <div key={line.name} className="flex items-center justify-between gap-space-xs py-1">
                   <div className="flex items-center gap-space-xs min-w-0">
                     <span className="w-6 h-6 rounded-md bg-surface-container-low text-primary flex items-center justify-center font-label-sm text-label-sm font-bold shrink-0">
@@ -245,16 +267,18 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
             {/* Financials */}
             <div className="bg-surface-subtle p-space-md flex flex-col gap-1.5">
               <div className="flex justify-between font-caption text-caption text-text-secondary">
-                <span>Subtotal (3 items)</span>
-                <span>₦29,500.00</span>
+                <span>{live ? 'Tender' : 'Subtotal (3 items)'}</span>
+                <span>{live ? (lastQueued?.tender ?? '—') : '₦29,500.00'}</span>
               </div>
-              <div className="flex justify-between font-caption text-caption text-text-secondary">
-                <span>VAT (7.5% Local Statutory)</span>
-                <span>₦2,212.50</span>
-              </div>
+              {!live && (
+                <div className="flex justify-between font-caption text-caption text-text-secondary">
+                  <span>VAT (7.5% Local Statutory)</span>
+                  <span>₦2,212.50</span>
+                </div>
+              )}
               <div className="flex justify-between items-center font-heading-sm text-heading-sm text-text-primary font-bold pt-2 mt-1 bg-surface-container-lowest/50 px-2 py-1.5 rounded-lg">
                 <span>Total Due</span>
-                <span className="text-primary font-heading-md text-heading-md">₦31,712.50</span>
+                <span className="text-primary font-heading-md text-heading-md">{live ? (lastQueued ? naira(lastQueued.total) : '—') : '₦31,712.50'}</span>
               </div>
             </div>
           </div>
@@ -324,11 +348,11 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
                     <div className="bg-surface-canvas rounded-lg p-2.5 flex items-center justify-between mt-1 shadow-sm">
                       <div>
                         <span className="font-caption text-caption text-text-secondary block">Amount Tendered</span>
-                        <span className="font-label-md text-label-md font-bold text-text-primary">₦35,000.00</span>
+                        <span className="font-label-md text-label-md font-bold text-text-primary">{live ? '—' : '₦35,000.00'}</span>
                       </div>
                       <div className="text-right">
                         <span className="font-caption text-caption text-text-secondary block">Cash Change Due</span>
-                        <span className="font-label-md text-label-md font-bold text-badge-discount-text">₦3,287.50</span>
+                        <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? '—' : '₦3,287.50'}</span>
                       </div>
                     </div>
                   )}
@@ -354,9 +378,9 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
                     <div className="bg-surface-canvas rounded-lg p-2.5 flex items-center justify-between mt-1 shadow-sm">
                       <div>
                         <span className="font-caption text-caption text-text-secondary block">House Tab Limit</span>
-                        <span className="font-label-md text-label-md font-bold text-text-primary">₦100,000.00</span>
+                        <span className="font-label-md text-label-md font-bold text-text-primary">{live ? '—' : '₦100,000.00'}</span>
                       </div>
-                      <span className="font-caption text-caption text-tertiary font-medium">0.0% used</span>
+                      <span className="font-caption text-caption text-tertiary font-medium">{live ? '—' : '0.0% used'}</span>
                     </div>
                   )}
                 </div>
@@ -393,7 +417,7 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
             >
               {saleState === 'idle' && (
                 <>
-                  <span>Complete Offline Sale (₦31,712.50)</span>
+                  <span>{live ? 'Complete Offline Sale' : 'Complete Offline Sale (₦31,712.50)'}</span>
                   <Icon name="arrow_forward" className="text-[19px]" />
                 </>
               )}
@@ -416,7 +440,7 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               className="w-full h-11 flex items-center justify-center gap-1.5 font-label-md text-label-md text-text-secondary hover:text-text-primary transition-colors"
             >
               <Icon name="inventory_2" className="text-[17px]" />
-              <span>View 5 Buffered Transactions in Local Queue</span>
+              <span>View {queuedCount} Buffered Transactions in Local Queue</span>
             </button>
           </div>
         </div>

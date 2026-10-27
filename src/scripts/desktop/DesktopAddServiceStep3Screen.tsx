@@ -1,6 +1,6 @@
-import { LiveAvailabilityStep } from '../../components/business/LiveItemSteps';
-import { hasApiConfig } from '../../services/api/client';
 import { useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -83,7 +83,7 @@ const PEAK_BARS: Array<{ x: number; y: number; height: number; className: string
   { x: 275, y: 48, height: 22, className: 'fill-surface-container-highest' },
 ];
 
-function DemoDesktopAddServiceStep3Screen({
+export function DesktopAddServiceStep3Screen({
   draft,
   onDraftChange,
   onBack,
@@ -149,12 +149,42 @@ function DemoDesktopAddServiceStep3Screen({
   const sector = resolveServiceSector([draft.primaryCategory], [draft.subCategory]);
   const preset = getServiceSectorPreset(sector);
 
-  const toggleBranch = (key: 'maitama' | 'wuseII' | 'garki', checked: boolean) => {
+  // Live: the business's real branches; the choice is kept in `locations` (branch ids).
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
+  const branchCards: Array<Omit<(typeof BRANCHES)[number], 'key'> & { key: string }> = live
+    ? liveBranches
+        .filter((branch) => branch.id)
+        .map((branch) => ({
+          key: branch.id as string,
+          name: branch.name,
+          badge: branch.isMainBranch ? 'Main Branch' : 'Branch',
+          badgeClass: branch.isMainBranch ? 'bg-primary-fixed text-on-primary-fixed-variant' : 'bg-surface-container text-text-secondary',
+          address: branch.area || '—',
+          rooms: '—',
+          hours: '—',
+          lockedNote: '',
+        }))
+    : BRANCHES;
+  const isBranchOn = (key: string) =>
+    live ? draft.locations.includes(key) : Boolean(draft.branches[key as 'maitama' | 'wuseII' | 'garki']);
+
+  const toggleBranch = (key: string, checked: boolean) => {
+    if (live) {
+      onDraftChange({
+        locations: checked ? [...new Set([...draft.locations, key])] : draft.locations.filter((id) => id !== key),
+      });
+      return;
+    }
     if (key === 'garki') return;
     onDraftChange({ branches: { ...draft.branches, [key]: checked } });
   };
 
   const selectAllActive = () => {
+    if (live) {
+      onDraftChange({ locations: branchCards.map((branch) => branch.key) });
+      return;
+    }
     onDraftChange({ branches: { ...draft.branches, maitama: true, wuseII: true } });
   };
 
@@ -222,8 +252,8 @@ function DemoDesktopAddServiceStep3Screen({
                 </button>
               </div>
               <div className="flex flex-col gap-3 mt-2">
-                {BRANCHES.map((branch) => {
-                  const checked = draft.branches[branch.key];
+                {branchCards.map((branch) => {
+                  const checked = isBranchOn(branch.key);
                   if (branch.locked) {
                     return (
                       <div
@@ -852,35 +882,6 @@ function DemoDesktopAddServiceStep3Screen({
             </button>
           </div>
         </div>
-      </div>
-    </Shell>
-  );
-}
-
-/** Live: the business's real branches and item; demo keeps the designed screen. */
-export function DesktopAddServiceStep3Screen(props: DesktopAddServiceStep3ScreenProps) {
-  if (!hasApiConfig()) return <DemoDesktopAddServiceStep3Screen {...props} />;
-  const Shell = props.onNav ? MerchantShell : BusinessSetupChrome;
-  return (
-    <Shell activeNav="catalog" onNav={props.onNav}>
-      <div className="max-w-4xl mx-auto w-full px-6 py-space-xl">
-      <LiveAvailabilityStep
-        item={{
-    kind: 'service',
-    title: props.draft.title,
-    image: /^https?:\/\//.test(props.draft.image) ? props.draft.image : undefined,
-    category: props.draft.subCategory,
-    description: props.draft.description,
-    price: props.draft.standardPrice || props.draft.basePrice,
-    was: props.draft.comparePrice,
-    details: [['Duration', `${props.draft.durationMins} mins`]],
-  }}
-        selected={props.draft.locations ?? []}
-        onChange={(ids) => props.onDraftChange({ locations: ids })}
-        onBack={props.onBack}
-        onNext={props.onNext}
-        nextLabel="Review & publish"
-      />
       </div>
     </Shell>
   );

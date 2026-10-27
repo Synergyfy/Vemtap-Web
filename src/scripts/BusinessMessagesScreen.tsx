@@ -79,8 +79,8 @@ export function BusinessMessagesScreen({
         return (
           <BusinessNewMessageScreen
             onBack={() => setStep('home')}
-            onRecipientSelected={(name) => {
-              setContact({ name });
+            onRecipientSelected={(name, _context, customerId) => {
+              setContact({ name, customerId });
               setStep('compose');
             }}
           />
@@ -89,8 +89,13 @@ export function BusinessMessagesScreen({
         return (
           <BusinessComposeScreen
             recipientName={contact.name}
+            recipientId={contact.customerId ?? undefined}
             onBack={() => setStep('select')}
-            onSent={() => setStep('chatBooking')}
+            onSent={(threadId) => {
+              // Live: open the real thread the first message went to.
+              if (threadId) openConversation('general', { name: contact.name, threadId, customerId: contact.customerId });
+              else setStep('chatBooking');
+            }}
           />
         );
       case 'chatGeneral':

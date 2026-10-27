@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { CheckoutHubShell } from './CheckoutHubShell';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useLiveDisplay } from '../posLive';
 
 interface DesktopPosDisplayTipScreenProps {
   onProceed?: () => void;
@@ -45,12 +47,55 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
   const [paymentState, setPaymentState] = useState<'idle' | 'authorizing' | 'sent'>('idle');
   const customInputRef = useRef<HTMLInputElement>(null);
 
-  const total = SUBTOTAL + tipAmount;
+  const display = useLiveDisplay();
+  const live = display.live;
+  const [toast, setToast] = useState<string | null>(null);
+  const subtotal = live ? display.total : SUBTOTAL;
+  // Live: the business's tip presets, after "No Tip".
+  const tipPresets = live
+    ? [
+        TIP_PRESETS[0],
+        ...display.tipOptions.map((option, index) => ({
+          ...TIP_PRESETS[Math.min(index + 1, TIP_PRESETS.length - 1)],
+          id: `p${option.percent}`,
+          label: `${option.percent}%`,
+          percent: option.percent,
+          amount: option.amount,
+        })),
+      ]
+    : TIP_PRESETS;
+
+  // Live: start with no tip rather than the demo's 15%.
+  useEffect(() => {
+    if (!live) return;
+    setSelectedPreset('none');
+    setTipPercent(0);
+    setTipAmount(0);
+  }, [live]);
+
+  const total = subtotal + tipAmount;
 
   useEffect(() => {
     if (paymentState !== 'authorizing') return;
+    if (live) {
+      // Live: save the tip and rating against this till, then hand over to pay.
+      if (tipAmount === 0) {
+        setPaymentState('sent');
+        return;
+      }
+      display
+        .sendTip(tipAmount, rating)
+        .then(() => setPaymentState('sent'))
+        .catch((error: unknown) => {
+          setPaymentState('idle');
+          setToast(apiErrorMessage(error, 'Could not save the tip.'));
+          window.setTimeout(() => setToast(null), 3000);
+        });
+      return;
+    }
     const timeout = setTimeout(() => setPaymentState('sent'), 1200);
     return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentState]);
 
   useEffect(() => {
@@ -111,7 +156,7 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-space-xs flex-wrap">
                 <span className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">
-                  Sunday M. &amp; Kitchen Crew
+                  {live ? display.venueName : 'Sunday M. & Kitchen Crew'}
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
@@ -119,12 +164,15 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary mt-0.5">
-                Urban Grill &amp; Bistro #01 • Order <span className="font-semibold text-text-primary">#TK-108</span> •
-                Table 04 (Dine-in)
+                {live ? display.whereLine : 'Urban Grill & Bistro #01'} • Order{' '}
+                <span className="font-semibold text-text-primary">
+                  #{live ? (display.ticket?.reference ?? '—') : 'TK-108'}
+                </span>
+                {live ? (display.ticket?.tableNumber ? ` • Table ${display.ticket.tableNumber}` : '') : ' • Table 04 (Dine-in)'}
               </p>
               <p className="font-caption text-caption text-primary flex items-center gap-1 mt-0.5">
                 <Icon name="volunteer_activism" className="text-[14px]" />
-                100% of staff tips go directly to Sunday and the Abuja culinary crew.
+                {live ? '100% of staff tips go directly to the team.' : '100% of staff tips go directly to Sunday and the Abuja culinary crew.'}
               </p>
             </div>
           </div>
@@ -134,7 +182,7 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
               Order Subtotal
             </span>
             <span className="font-heading-md text-heading-md text-text-primary font-bold">
-              ₦27,628<span className="font-caption text-caption font-normal text-text-secondary">.00</span>
+              {naira(subtotal)}<span className="font-caption text-caption font-normal text-text-secondary">.00</span>
             </span>
           </div>
         </div>
@@ -160,7 +208,7 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
 
                 {/* Tip Presets Grid */}
                 <div className="grid grid-cols-2 gap-space-sm mb-space-md">
-                  {TIP_PRESETS.map((preset) => {
+                  {tipPresets.map((preset) => {
                     const active = isPresetActive(preset.id);
                     return (
                       <button
@@ -232,7 +280,7 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
               <div className="bg-surface rounded-xl p-space-md mt-auto shadow-inner">
                 <div className="flex justify-between items-center py-1">
                   <span className="font-body-md text-body-md text-text-secondary">Meal Subtotal</span>
-                  <span className="font-body-md text-body-md text-text-primary font-medium">₦27,628.00</span>
+                  <span className="font-body-md text-body-md text-text-primary font-medium">{naira(subtotal)}.00</span>
                 </div>
                 <div className="flex justify-between items-center py-1">
                   <span className="font-body-md text-body-md text-primary font-medium">{tipLabel}</span>
@@ -267,7 +315,7 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
                   <div>
                     <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold">Rate Your Visit</h2>
                     <p className="font-body-md text-body-md text-text-secondary">
-                      Urban Grill &amp; Bistro • Wuse II Branch
+                      {live ? display.whereLine : 'Urban Grill & Bistro • Wuse II Branch'}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text px-2.5 py-1 rounded-full font-label-sm text-label-sm font-bold">
@@ -390,7 +438,7 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
               onClick={skipTip}
               className="w-full sm:w-auto px-space-lg py-3.5 rounded-xl bg-surface-container-low text-text-secondary font-button-secondary text-button-secondary font-semibold hover:bg-surface-container transition-all active:scale-[0.98]"
             >
-              Skip &amp; Pay Subtotal (₦27,628)
+              Skip &amp; Pay Subtotal ({naira(subtotal)})
             </button>
             {/* Primary High-Contrast Proceed Button */}
             <button
@@ -424,6 +472,11 @@ export function DesktopPosDisplayTipScreen({ onProceed }: DesktopPosDisplayTipSc
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </CheckoutHubShell>
   );
 }

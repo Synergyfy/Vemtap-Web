@@ -1,9 +1,16 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { useOfferGroup, useOfferGroupMutations, useOffers } from '../../hooks/business/useOffers';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
 
 interface DesktopDealLocationPricingScreenProps {
+  /** Live: the deal group whose branches, prices and caps are edited. */
+  dealGroupId?: string | null;
   onNav: (key: BusinessPortalNavKey) => void;
   onCancel?: () => void;
   onSave?: () => void;
@@ -187,7 +194,28 @@ const AUDIT_LOG: AuditEntry[] = [
   },
 ];
 
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
+const money = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
+const digits = (value: string) => Number(value.replace(/[^\d.]/g, '')) || 0;
+
+/** One editable branch row of the live matrix. */
+interface LiveRow {
+  branchId: string;
+  name: string;
+  address: string;
+  isMain: boolean;
+  inDeal: boolean;
+  included: boolean;
+  price: string;
+  quota: string;
+  claims: number;
+  redeemed: number;
+}
+
 export function DesktopDealLocationPricingScreen({
+  dealGroupId,
   onNav,
   onCancel,
   onSave,
@@ -200,8 +228,147 @@ export function DesktopDealLocationPricingScreen({
     garki: false,
   });
 
-  const toggleIncluded = (id: string) =>
+  // Live: the deal's real branches, prices, caps and price history; demo keeps the samples.
+  const live = hasApiConfig() && Boolean(dealGroupId);
+  const offersQuery = useOffers();
+  const group = useOfferGroup(live ? dealGroupId : null);
+  const groupMutations = useOfferGroupMutations(live ? dealGroupId : null);
+  const { branches } = useBusinessBranch();
+  const offer = (offersQuery.data ?? []).find((entry) => (entry.dealGroupId ?? entry.id) === dealGroupId);
+  const original = Number(offer?.originalPrice ?? 0);
+  const [rows, setRows] = useState<LiveRow[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 4000);
+  };
+  useEffect(() => {
+    const pricing = group.pricing.data;
+    if (!live || !pricing) return;
+    const inDeal = new Map(pricing.branches.map((row) => [row.branchId, row]));
+    setRows(
+      branches
+        .filter((branch) => branch.id)
+        .map((branch) => {
+          const row = inDeal.get(branch.id as string);
+          return {
+            branchId: branch.id as string,
+            name: branch.name,
+            address: branch.area || '—',
+            isMain: branch.isMainBranch === true,
+            inDeal: Boolean(row),
+            included: row?.isActive ?? false,
+            price: row ? String(Math.round(Number(row.calculatedPrice))) : '',
+            quota: row?.quantity != null ? String(row.quantity) : '',
+            claims: row?.claimedCount ?? 0,
+            redeemed: row?.redeemedCount ?? 0,
+          };
+        }),
+    );
+  }, [live, group.pricing.data, branches]);
+  const updateRow = (branchId: string, patch: Partial<LiveRow>) =>
+    setRows((current) => current.map((row) => (row.branchId === branchId ? { ...row, ...patch } : row)));
+  const includedRows = rows.filter((row) => (scope === 'all' ? true : row.included));
+  const totalQuota = includedRows.reduce((sum, row) => sum + digits(row.quota), 0);
+  const maxYield = includedRows.reduce((sum, row) => sum + digits(row.price) * digits(row.quota), 0);
+  const QUOTA_COLORS = ['bg-primary', 'bg-tertiary-container', 'bg-secondary', 'bg-badge-discount-text'];
+
+  /** The live rows in the outlet card shape. */
+  const liveOutlets: Outlet[] = rows.map((row) => {
+    const price = digits(row.price);
+    const off = original && price && price < original ? ((original - price) / original) * 100 : 0;
+    return {
+      id: row.branchId,
+      image: LIVE_IMAGE_PLACEHOLDER,
+      imageAlt: row.name,
+      name: row.name,
+      tags: (
+        <>
+          {row.isMain && (
+            <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold">
+              Main Branch
+            </span>
+          )}
+          {row.included && (
+            <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
+              Participating
+            </span>
+          )}
+        </>
+      ),
+      address: row.address,
+      meta: (
+        <span className="flex items-center gap-1">
+          <Icon name="confirmation_number" className="text-[15px] text-primary" /> {row.claims} claims • {row.redeemed} redeemed
+        </span>
+      ),
+      statusDot: row.included ? 'bg-badge-discount-text' : 'bg-outline-variant',
+      panelClass: 'bg-gradient-to-r from-surface-tint-blue/30 via-surface-canvas to-surface-canvas',
+      originalLabel: 'Original Price (MSRP)',
+      originalPrice: original ? money(original) : '—',
+      originalNote: 'Catalogue price',
+      dealPriceLabel: 'Deal Price (Override)',
+      dealPrice: row.price,
+      discountLabel: off ? `${off.toFixed(1)}% OFF` : '—',
+      savings: off ? `Customer saves ${money(original - price)}` : '—',
+      quotaLabel: 'Voucher Cap',
+      quotaValue: row.quota,
+      quotaNote: row.quota ? 'Vouchers for this branch' : 'No cap',
+      maintenanceNote: row.inDeal
+        ? 'Paused at this branch. Existing claims are kept.'
+        : `Not in this deal yet. Enabling adds it at ${original ? money(original) : 'the catalogue price'}.`,
+    };
+  });
+  const outlets = live ? liveOutlets : OUTLETS;
+  const isIncluded = (id: string) => (live ? rows.find((row) => row.branchId === id)?.included ?? false : included[id]);
+
+  const toggleIncluded = (id: string) => {
+    if (live) {
+      const row = rows.find((entry) => entry.branchId === id);
+      if (row) updateRow(id, { included: !row.included });
+      return;
+    }
     setIncluded((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  /** Live: one PUT with every branch's on/off state, price and voucher cap. */
+  const saveLive = () => {
+    const percentage = offer?.pricingType === 'percentage_discount';
+    const uniform = rows.find((row) => row.included)?.price ?? '';
+    groupMutations.setPricing.mutate(
+      {
+        branches: rows
+          .filter((row) => row.inDeal || row.included || scope === 'all')
+          .map((row) => {
+            const isActive = scope === 'all' ? true : row.included;
+            const price = digits(customPrices ? row.price : uniform);
+            const quota = digits(row.quota);
+            const base = { branchId: row.branchId, isActive, ...(quota ? { quantity: quota } : {}) };
+            if (!price) return base;
+            return percentage && original
+              ? { ...base, discountValue: Math.max(0, Math.round(((original - price) / original) * 1000) / 10) }
+              : { ...base, fixedPrice: price };
+          }),
+      },
+      {
+        onSuccess: () => {
+          showToast('Branch pricing saved.');
+          onSave?.();
+        },
+        onError: (error) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not save the branch pricing.')),
+      },
+    );
+  };
+
+  const auditLog: AuditEntry[] = live
+    ? (group.history.data ?? []).map((change) => ({
+        dotClass: Number(change.newPrice) < Number(change.oldPrice) ? 'bg-badge-discount-text' : 'bg-primary',
+        title: `${change.branchName ?? 'Branch'} price adjusted`,
+        detail: `${money(Number(change.oldPrice))} updated to ${money(Number(change.newPrice))}`,
+        time: new Date(change.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      }))
+    : AUDIT_LOG;
 
   return (
     <MerchantPortalChrome activeNav="business-deals" onNav={onNav}>
@@ -220,7 +387,7 @@ export function DesktopDealLocationPricingScreen({
               </button>
               <Icon name="chevron_right" className="text-[13px] text-text-tertiary" />
               <span className="text-text-secondary truncate max-w-[200px] sm:max-w-none">
-                Weekend Prime Lunch Combo
+                {live ? offer?.name ?? 'Deal' : 'Weekend Prime Lunch Combo'}
               </span>
               <Icon name="chevron_right" className="text-[13px] text-text-tertiary" />
               <span className="text-primary font-medium">Location Assignment &amp; Pricing</span>
@@ -231,12 +398,16 @@ export function DesktopDealLocationPricingScreen({
               </h1>
               <div className="flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                <span className="font-medium">Draft Deal • Ref #VT-48F261</span>
+                <span className="font-medium">
+                  {live
+                    ? `${offer?.status === 'active' ? 'Live Deal' : 'Paused Deal'} • Ref #${(dealGroupId ?? '').slice(0, 8).toUpperCase()}`
+                    : 'Draft Deal • Ref #VT-48F261'}
+                </span>
               </div>
             </div>
             <p className="font-body-md text-body-md text-text-secondary">
-              Manage branch-level availability, price overrides, and daily voucher quota caps for Weekend Prime Lunch
-              Combo.
+              Manage branch-level availability, price overrides, and voucher caps for{' '}
+              {live ? offer?.name ?? 'this deal' : 'Weekend Prime Lunch Combo'}.
             </p>
           </div>
           <div className="flex items-center gap-space-md self-start md:self-auto bg-surface-subtle p-space-sm rounded-xl">
@@ -248,7 +419,11 @@ export function DesktopDealLocationPricingScreen({
                 <span className="font-label-sm text-label-sm text-text-primary font-semibold">Sync Active</span>
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
               </div>
-              <span className="font-caption text-caption text-text-secondary">2 of 3 branches participating</span>
+              <span className="font-caption text-caption text-text-secondary">
+                {live
+                  ? `${rows.filter((row) => row.included).length} of ${rows.length} branches participating`
+                  : '2 of 3 branches participating'}
+              </span>
             </div>
           </div>
         </div>
@@ -337,7 +512,7 @@ export function DesktopDealLocationPricingScreen({
                         </span>
                       )}
                       <span className="font-label-md text-label-md text-text-primary font-medium">
-                        All locations (3 Branches)
+                        {live ? `All locations (${rows.length} ${rows.length === 1 ? 'Branch' : 'Branches'})` : 'All locations (3 Branches)'}
                       </span>
                     </div>
                     <span className="px-2 py-0.5 rounded-full bg-surface-variant text-text-secondary font-caption text-caption">
@@ -409,8 +584,8 @@ export function DesktopDealLocationPricingScreen({
                 </div>
               </div>
 
-              {OUTLETS.map((outlet) => {
-                const active = included[outlet.id];
+              {outlets.map((outlet) => {
+                const active = isIncluded(outlet.id);
                 return (
                   <div
                     key={outlet.id}
@@ -485,7 +660,9 @@ export function DesktopDealLocationPricingScreen({
                             <input
                               className="w-full h-11 pl-8 pr-3 bg-surface-canvas rounded-xl font-label-md text-label-md text-text-primary font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
                               type="text"
-                              defaultValue={outlet.dealPrice}
+                              {...(live
+                                ? { value: outlet.dealPrice, onChange: (event: React.ChangeEvent<HTMLInputElement>) => updateRow(outlet.id, { price: event.target.value.replace(/[^\d]/g, '') }) }
+                                : { defaultValue: outlet.dealPrice })}
                             />
                           </div>
                           <span className="font-caption text-caption text-badge-discount-text mt-1 font-medium">
@@ -496,17 +673,25 @@ export function DesktopDealLocationPricingScreen({
                           <span className="font-caption text-caption text-text-primary font-medium flex items-center justify-between">
                             <span>{outlet.quotaLabel}</span>
                             <span className="font-caption text-caption text-primary font-medium">
-                              {outlet.id === 'wuse' ? '60% of total' : '40% of total'}
+                              {live
+                                ? totalQuota && digits(outlet.quotaValue)
+                                  ? `${Math.round((digits(outlet.quotaValue) / totalQuota) * 100)}% of total`
+                                  : '—'
+                                : outlet.id === 'wuse'
+                                  ? '60% of total'
+                                  : '40% of total'}
                             </span>
                           </span>
                           <div className="relative mt-1">
                             <input
                               className="w-full h-11 px-3 bg-surface-canvas rounded-xl font-label-md text-label-md text-text-primary font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
                               type="number"
-                              defaultValue={outlet.quotaValue}
+                              {...(live
+                                ? { value: outlet.quotaValue, onChange: (event: React.ChangeEvent<HTMLInputElement>) => updateRow(outlet.id, { quota: event.target.value }) }
+                                : { defaultValue: outlet.quotaValue })}
                             />
                             <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none font-caption text-caption text-text-tertiary">
-                              vouchers/day
+                              {live ? 'vouchers' : 'vouchers/day'}
                             </span>
                           </div>
                           <span className="font-caption text-caption text-text-secondary mt-1">{outlet.quotaNote}</span>
@@ -562,6 +747,23 @@ export function DesktopDealLocationPricingScreen({
                 localized pricing tier configured here.
               </p>
               <div className="mt-space-md p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-sm">
+                {live ? (
+                  includedRows.map((row, index) => (
+                    <div key={row.branchId} className="flex flex-col gap-space-xs">
+                      <div className="flex items-center justify-between font-caption text-caption">
+                        <span className="text-text-secondary flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                          {row.name}
+                        </span>
+                        <span className="font-semibold text-text-primary">{digits(row.price) ? `${money(digits(row.price))} Synced` : '—'}</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full w-full ${QUOTA_COLORS[index % QUOTA_COLORS.length]}`} />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <>
                 <div className="flex items-center justify-between font-caption text-caption">
                   <span className="text-text-secondary flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
@@ -582,6 +784,8 @@ export function DesktopDealLocationPricingScreen({
                 <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
                   <div className="h-full bg-tertiary-container rounded-full w-full" />
                 </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -589,31 +793,62 @@ export function DesktopDealLocationPricingScreen({
             <div className="bg-surface-canvas rounded-2xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">
               <div className="flex items-center justify-between">
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">Daily Quota Capacity</h3>
-                <span className="font-label-md text-label-md text-primary font-bold">50 Vouchers / Day</span>
+                <span className="font-label-md text-label-md text-primary font-bold">
+                  {live ? (totalQuota ? `${totalQuota} Vouchers` : 'No cap') : '50 Vouchers / Day'}
+                </span>
               </div>
               <p className="font-caption text-caption text-text-secondary">
                 Aggregate redemption volume cap across all active branches to maintain kitchen operational buffer.
               </p>
               <div className="flex flex-col gap-1.5 mt-space-xs">
                 <div className="h-4 w-full bg-surface-variant rounded-full overflow-hidden flex shadow-inner">
-                  <div className="bg-primary h-full transition-all duration-500" style={{ width: '60%' }} title="Wuse II (30 Vouchers - 60%)" />
-                  <div className="bg-tertiary-container h-full transition-all duration-500" style={{ width: '40%' }} title="Maitama Heights (20 Vouchers - 40%)" />
+                  {live ? (
+                    includedRows.map((row, index) => (
+                      <div
+                        key={row.branchId}
+                        className={`${QUOTA_COLORS[index % QUOTA_COLORS.length]} h-full transition-all duration-500`}
+                        style={{ width: totalQuota ? `${(digits(row.quota) / totalQuota) * 100}%` : '0%' }}
+                        title={`${row.name} (${digits(row.quota)} vouchers)`}
+                      />
+                    ))
+                  ) : (
+                    <>
+                      <div className="bg-primary h-full transition-all duration-500" style={{ width: '60%' }} title="Wuse II (30 Vouchers - 60%)" />
+                      <div className="bg-tertiary-container h-full transition-all duration-500" style={{ width: '40%' }} title="Maitama Heights (20 Vouchers - 40%)" />
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center justify-between font-caption text-caption text-text-secondary pt-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-primary" />
-                    <span>Wuse II (30 / 60%)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-tertiary-container" />
-                    <span>Maitama (20 / 40%)</span>
-                  </div>
+                  {live ? (
+                    includedRows.map((row, index) => (
+                      <div key={row.branchId} className="flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${QUOTA_COLORS[index % QUOTA_COLORS.length]}`} />
+                        <span>
+                          {row.name} ({digits(row.quota) || '—'}
+                          {totalQuota && digits(row.quota) ? ` / ${Math.round((digits(row.quota) / totalQuota) * 100)}%` : ''})
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                        <span>Wuse II (30 / 60%)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-tertiary-container" />
+                        <span>Maitama (20 / 40%)</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="p-space-md rounded-xl bg-surface-container-low flex items-center justify-between">
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary uppercase">Max Daily Promotion Yield</span>
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold mt-0.5">₦492,000</span>
+                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold mt-0.5">
+                  {live ? (maxYield ? money(maxYield) : '—') : '₦492,000'}
+                </span>
                 </div>
                 <div className="w-9 h-9 rounded-xl bg-surface-canvas text-primary flex items-center justify-center shadow-sm">
                   <Icon name="trending_up" className="text-[20px]" />
@@ -628,8 +863,11 @@ export function DesktopDealLocationPricingScreen({
                 <Icon name="history" className="text-text-tertiary text-[18px]" />
               </div>
               <div className="flex flex-col gap-space-md mt-space-sm relative">
-                {AUDIT_LOG.map((entry) => (
-                  <div key={entry.title} className="flex items-start gap-space-sm">
+                {live && auditLog.length === 0 && (
+                  <span className="font-caption text-caption text-text-tertiary">No price changes yet.</span>
+                )}
+                {auditLog.map((entry, index) => (
+                  <div key={`${entry.title}-${index}`} className="flex items-start gap-space-sm">
                     <div className={`w-2 h-2 rounded-full ${entry.dotClass} mt-1.5 flex-shrink-0`} />
                     <div className="flex flex-col">
                       <span className="font-label-sm text-label-sm text-text-primary font-medium">{entry.title}</span>
@@ -650,7 +888,13 @@ export function DesktopDealLocationPricingScreen({
           <div className="flex items-center gap-space-sm text-text-secondary font-caption text-caption text-center sm:text-left">
             <Icon name="info" className="text-primary text-[20px]" />
             <span>
-              Changes will deploy instantly across <strong>6 connected POS terminals</strong> upon confirmation.
+              {live ? (
+                <>Changes apply to every branch of this deal as soon as you save.</>
+              ) : (
+                <>
+                  Changes will deploy instantly across <strong>6 connected POS terminals</strong> upon confirmation.
+                </>
+              )}
             </span>
           </div>
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
@@ -663,7 +907,7 @@ export function DesktopDealLocationPricingScreen({
             </button>
             <button
               type="button"
-              onClick={onSave}
+              onClick={live ? saveLive : onSave}
               className="w-full sm:w-auto px-space-xl h-[52px] rounded-2xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <span>Save Location Assignment &amp; Pricing</span>
@@ -672,6 +916,11 @@ export function DesktopDealLocationPricingScreen({
           </div>
         </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
     </MerchantPortalChrome>
   );
 }

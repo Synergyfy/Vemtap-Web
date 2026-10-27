@@ -1,14 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosToggle } from '../../components/PosControls';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
-import { MoreSettingsLink } from '../../components/business/MoreSettingsLink';
 import { usePosSettings } from '../../context/PosSettingsContext';
+import { hasApiConfig } from '../../services/api/client';
+import { usePosSettingsQuery, useUpdatePosSettings } from '../../hooks/business/usePosSettingsApi';
 
 interface DesktopPosGeneralSettingsScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
-  onOpenTaxes?: () => void;
-  onOpenReceipt?: () => void;
 }
 
 const SETTINGS_TABS = [
@@ -141,8 +140,12 @@ function Card({ children }: { children: ReactNode }) {
  * POS Settings — tabbed list of till controls. Edits are staged as a draft;
  * Save Changes applies them across the whole till.
  */
-export function DesktopPosGeneralSettingsScreen({ onNav, onOpenTaxes, onOpenReceipt }: DesktopPosGeneralSettingsScreenProps) {
+export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSettingsScreenProps) {
   const s = usePosSettings();
+  const live = hasApiConfig();
+  const settingsQuery = usePosSettingsQuery();
+  const updateMutation = useUpdatePosSettings();
+  const hydrated = useRef(false);
   const [tab, setTab] = useState<SettingsTabKey>('business');
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -173,6 +176,41 @@ export function DesktopPosGeneralSettingsScreen({ onNav, onOpenTaxes, onOpenRece
     const id = window.setTimeout(() => setSaved(false), 2600);
     return () => window.clearTimeout(id);
   }, [saved]);
+
+  // Live: seed the draft — and the till context — from GET /pos/settings once,
+  // so register, cart and receipts read the saved values immediately.
+  useEffect(() => {
+    const data = settingsQuery.data;
+    if (!live || !data || hydrated.current) return;
+    hydrated.current = true;
+    setDraft((prev) => ({
+      ...prev,
+      businessAddress: data.receiptAddress ?? prev.businessAddress,
+      businessPhone: data.receiptPhone ?? prev.businessPhone,
+      receiptHeader: data.receiptHeader ?? prev.receiptHeader,
+      receiptFooter: data.receiptFooter ?? prev.receiptFooter,
+      autoPrintReceipt: data.autoPrintReceipt ?? prev.autoPrintReceipt,
+      showBusinessLogo: data.showLogo ?? prev.showBusinessLogo,
+      taxEnabled: data.taxEnabled ?? prev.taxEnabled,
+      taxRate: data.taxRate ?? prev.taxRate,
+      taxLabel: data.taxLabel ?? prev.taxLabel,
+      pricesIncludeTax: data.pricesIncludeTax ?? prev.pricesIncludeTax,
+    }));
+    if (typeof data.taxRate === 'number') setRateText(String(data.taxRate));
+    if (data.receiptAddress) s.setBusinessAddress(data.receiptAddress);
+    if (data.receiptPhone) s.setBusinessPhone(data.receiptPhone);
+    if (data.receiptHeader) s.setReceiptHeader(data.receiptHeader);
+    if (data.receiptFooter) s.setReceiptFooter(data.receiptFooter);
+    if (typeof data.autoPrintReceipt === 'boolean') s.setAutoPrintReceipt(data.autoPrintReceipt);
+    if (typeof data.showLogo === 'boolean') s.setShowBusinessLogo(data.showLogo);
+    if (typeof data.taxRate === 'number') s.setTaxRate(data.taxRate);
+    if (data.taxLabel) s.setTaxLabel(data.taxLabel);
+    // Tax flags go through the context's exclusive setters — enable-tax first,
+    // then prices-include-tax, so the last writer wins as designed.
+    if (typeof data.taxEnabled === 'boolean') s.setTaxEnabled(data.taxEnabled);
+    if (typeof data.pricesIncludeTax === 'boolean') s.setPricesIncludeTax(data.pricesIncludeTax);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, settingsQuery.data]);
 
   const update = <K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -215,6 +253,40 @@ export function DesktopPosGeneralSettingsScreen({ onNav, onOpenTaxes, onOpenRece
   };
 
   const save = () => {
+    if (live) {
+      // Only the receipt/tax fields live on the API — PATCH those, and keep
+      // business identity, alerts and loyalty in the local till context.
+      updateMutation.mutate(
+        {
+          receiptHeader: draft.receiptHeader,
+          receiptFooter: draft.receiptFooter,
+          receiptAddress: draft.businessAddress,
+          receiptPhone: draft.businessPhone,
+          autoPrintReceipt: draft.autoPrintReceipt,
+          showLogo: draft.showBusinessLogo,
+          taxEnabled: draft.taxEnabled,
+          taxRate: draft.taxRate,
+          taxLabel: draft.taxLabel,
+          pricesIncludeTax: draft.pricesIncludeTax,
+        },
+        {
+          onSuccess: () => {
+            s.setBusinessName(draft.businessName);
+            s.setBusinessAddress(draft.businessAddress);
+            s.setBusinessPhone(draft.businessPhone);
+            s.setLowStockAlerts(draft.lowStockAlerts);
+            s.setDailySalesSummary(draft.dailySalesSummary);
+            s.setNewOrderAlert(draft.newOrderAlert);
+            s.setStaffActivityAlerts(draft.staffActivityAlerts);
+            s.setLoyaltyEnabled(draft.loyaltyEnabled);
+            s.setRedemptionThreshold(draft.redemptionThreshold);
+            setDirty(false);
+            setSaved(true);
+          },
+        },
+      );
+      return;
+    }
     s.setBusinessName(draft.businessName);
     s.setBusinessAddress(draft.businessAddress);
     s.setBusinessPhone(draft.businessPhone);
@@ -251,11 +323,11 @@ export function DesktopPosGeneralSettingsScreen({ onNav, onOpenTaxes, onOpenRece
             <button
               type="button"
               onClick={save}
-              disabled={!dirty}
+              disabled={!dirty || updateMutation.isPending}
               className="px-space-lg h-11 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-md active:scale-[0.98] transition-all disabled:opacity-40 disabled:hover:bg-primary disabled:active:scale-100"
             >
               <Icon name="save" className="text-[18px]" />
-              <span>Save Changes</span>
+              <span>{updateMutation.isPending ? 'Saving...' : 'Save Changes'}</span>
             </button>
             {dirty && <span className="font-caption text-caption text-text-secondary">You have unsaved changes</span>}
           </div>
@@ -311,30 +383,6 @@ export function DesktopPosGeneralSettingsScreen({ onNav, onOpenTaxes, onOpenRece
         )}
 
 
-        {tab === 'receipt' && onOpenReceipt && (
-
-
-          <MoreSettingsLink
-
-
-            icon="tune"
-
-
-            title="Receipt & order customization"
-
-
-            body="Paper width, address, print triggers and a live preview"
-
-
-            onClick={onOpenReceipt}
-
-
-          />
-
-
-        )}
-
-
         {tab === 'receipt' && (
           <Card>
             <SettingFieldRow
@@ -366,22 +414,6 @@ export function DesktopPosGeneralSettingsScreen({ onNav, onOpenTaxes, onOpenRece
               onChange={() => update('showBusinessLogo', !draft.showBusinessLogo)}
             />
           </Card>
-        )}
-
-        {tab === 'tax' && onOpenTaxes && (
-
-          <MoreSettingsLink
-
-            icon="account_balance"
-
-            title="Taxes & surcharges"
-
-            body="Service charge, packaging fee, TIN and table QR rules"
-
-            onClick={onOpenTaxes}
-
-          />
-
         )}
 
         {tab === 'tax' && (

@@ -3,9 +3,12 @@ import { hasApiConfig } from '../../services/api/client';
 import {
   reasonCopy,
   verificationService,
+  type BusinessVerificationStatus,
   type IdentityIdType,
   type VerificationCheck,
+  type VerificationCheckStatus,
 } from '../../services/verificationService';
+import { useMyBusiness } from './useMyBusiness';
 
 export const verificationKeys = { status: ['verification', 'status'] as const };
 
@@ -22,8 +25,8 @@ export interface CheckOutcome {
 
 const POLL_MS = 3_000;
 const LIVENESS_TIMEOUT_MS = 10 * 60_000;
-/** Public page the selfie tab returns to; it only asks the user to close the tab. */
-export const LIVENESS_RETURN_PATH = '/verification/liveness-done';
+/** Where the selfie tab returns to: the status center, which shows the result. */
+export const LIVENESS_RETURN_PATH = '/business-verification/status';
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -123,4 +126,63 @@ export function useVerificationActions() {
   };
 
   return { verifyIdentity, verifyBusiness, submitUnregistered };
+}
+
+const STATUS_LABEL: Record<BusinessVerificationStatus, string> = {
+  verified: 'Verified Business',
+  in_progress: 'Verification in progress',
+  needs_review: 'Under review',
+  rejected: 'Verification rejected',
+  unverified: 'Not verified yet',
+};
+
+const CHECK_LABEL: Record<VerificationCheckStatus, string> = {
+  verified: 'Verified',
+  pending: 'Pending',
+  needs_review: 'In review',
+  failed: 'Failed',
+};
+
+const ID_TYPE_LABEL: Record<string, string> = {
+  nin: 'NIN',
+  drivers_license: "Driver's licence",
+  voters_card: "Voter's card",
+  passport: 'Passport',
+};
+
+const shortDate = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+
+const checkSummary = (check?: VerificationCheck | null) => ({
+  label: check ? CHECK_LABEL[check.status] : 'Not started',
+  ok: check?.status === 'verified',
+  name: check?.recordName ?? null,
+  ref: check?.maskedId ?? null,
+  idType: check ? (ID_TYPE_LABEL[check.idType] ?? check.idType) : null,
+  note: check ? (reasonCopy(check.reasons)[0] ?? null) : null,
+  date: shortDate(check?.reviewedAt ?? check?.createdAt),
+});
+
+/**
+ * Display values for the verification status center, from `GET /verification/status`
+ * and the business record. `live` is false in demo mode, where the page keeps its sample copy.
+ */
+export function useVerificationSummary() {
+  const live = hasApiConfig();
+  const status = useVerificationStatus();
+  const business = useMyBusiness();
+  const data = live ? status.data : undefined;
+  const identity = checkSummary(data?.identity);
+  const registration = checkSummary(data?.business);
+  return {
+    live,
+    loading: live && status.isLoading,
+    businessName: business.data?.name ?? 'Your business',
+    verified: data?.isVerified ?? false,
+    statusLabel: data ? STATUS_LABEL[data.status] : 'Checking status…',
+    lastVerified: shortDate(data?.verifiedAt),
+    checksVerified: Number(identity.ok) + Number(registration.ok),
+    identity,
+    registration,
+  };
 }

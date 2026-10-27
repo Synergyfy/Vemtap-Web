@@ -1,4 +1,5 @@
 import { Icon } from '../../components/ui/Icon';
+import { useNavBadges } from '../../hooks/business/useNavBadges';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
   resolveSidebarActive,
@@ -36,6 +37,7 @@ interface PosNavRailProps {
  */
 export function PosNavRail({ active, onSelect, headerHeight = '16' }: PosNavRailProps) {
   const { itemKey: activeItemKey } = resolveSidebarActive(active);
+  const badgeFor = useNavBadges();
 
   return (
     <aside
@@ -75,13 +77,13 @@ export function PosNavRail({ active, onSelect, headerHeight = '16' }: PosNavRail
                     >
                       {item.label}
                     </span>
-                    {item.badge && (
+                    {badgeFor(item.key, item.badge) && (
                       <span
                         className={`hidden lg:flex ml-auto px-1.5 py-0.5 rounded-full font-caption text-[10px] font-bold leading-none ${
                           isActive ? 'bg-on-primary/20 text-on-primary' : item.badgeClass || 'bg-surface-container text-text-secondary'
                         }`}
                       >
-                        {item.badge}
+                        {badgeFor(item.key, item.badge)}
                       </span>
                     )}
                   </button>

@@ -198,6 +198,7 @@ export const notificationService = {
   },
 
   markAllRead: async () => {
-    return api.patch('/notifications/mark-all-read');
+    // `PATCH mark-all-read` is not routed (the handler's stacked @Post wins); `read-all` is.
+    return api.patch('/notifications/read-all');
   },
 };

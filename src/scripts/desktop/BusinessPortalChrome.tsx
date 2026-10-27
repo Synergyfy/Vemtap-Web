@@ -14,7 +14,7 @@ import { PosNavRail } from './PosNavRail';
 import { MessagesNavRail } from './MessagesNavRail';
 import { resolveSidebarActive } from './businessSidebarConfig';
 import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
-import { NOTIFICATION_FEED } from '../../utils/notificationFeed';
+import { useHeaderNotifications } from '../../hooks/business/useHeaderNotifications';
 
 export type BusinessPortalNavKey = string;
 
@@ -44,13 +44,9 @@ export function BusinessPortalChrome({
   // Header bell pop-up: quick glance at recent alerts + a link to the full
   // dashboard notifications page. Closes on outside click or Escape.
   const [notifOpen, setNotifOpen] = useState(false);
-  const [readIds, setReadIds] = useState<Set<string>>(() => {
-    const initialRead = new Set<string>();
-    NOTIFICATION_FEED.slice(notificationCount).forEach((item) => initialRead.add(item.id));
-    return initialRead;
-  });
+  const notifications = useHeaderNotifications(notificationCount);
   const notifRef = useRef<HTMLDivElement | null>(null);
-  const unreadCount = NOTIFICATION_FEED.filter((item) => !readIds.has(item.id)).length;
+  const unreadCount = notifications.unreadCount;
 
   useEffect(() => {
     if (!notifOpen) return;
@@ -155,7 +151,7 @@ export function BusinessPortalChrome({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setReadIds(new Set(NOTIFICATION_FEED.map((item) => item.id)))}
+                      onClick={notifications.markAllRead}
                       disabled={unreadCount === 0}
                       className="font-label-sm text-label-sm text-primary hover:underline disabled:text-text-tertiary disabled:no-underline"
                     >
@@ -164,13 +160,19 @@ export function BusinessPortalChrome({
                   </div>
 
                   <div className="max-h-[320px] overflow-y-auto divide-y divide-border-subtle">
-                    {NOTIFICATION_FEED.map((item) => {
-                      const unread = !readIds.has(item.id);
+                    {!notifications.items.length && (
+                      <p className="px-space-md py-space-md font-caption text-caption text-text-secondary">No notifications yet.</p>
+                    )}
+                    {notifications.items.map((item) => {
+                      const unread = !notifications.isRead(item.id);
                       return (
                         <button
                           key={item.id}
                           type="button"
-                          onClick={openAllNotifications}
+                          onClick={() => {
+                            notifications.markRead(item.id);
+                            openAllNotifications();
+                          }}
                           className="w-full flex items-start gap-space-sm px-space-md py-space-sm text-left hover:bg-surface-subtle transition-colors"
                         >
                           <span

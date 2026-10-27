@@ -1,4 +1,5 @@
 import { Icon } from './ui/Icon';
+import { useNavBadges } from '../hooks/business/useNavBadges';
 
 export type BusinessTabKey = 'overview' | 'orders' | 'messages' | 'business' | 'more';
 
@@ -22,6 +23,7 @@ const TABS: { key: BusinessTabKey; icon: string; label: string; badge?: string; 
 ];
 
 export function BusinessTabBar({ active = 'orders', onTab }: BusinessTabBarProps) {
+  const badgeFor = useNavBadges();
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-1px_12px_rgba(0,0,0,0.05)]">
       <div className="flex justify-between items-center h-20 px-space-xs">
@@ -39,11 +41,11 @@ export function BusinessTabBar({ active = 'orders', onTab }: BusinessTabBarProps
             >
               <div className="relative flex items-center justify-center">
                 <Icon name={tab.icon} className="text-[24px]" filled={isActive} />
-                {tab.badge && (
+                {badgeFor(tab.key, tab.badge) && (
                   <span
                     className={`absolute -top-1 -right-2 min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm ${tab.badgeClass}`}
                   >
-                    {tab.badge}
+                    {badgeFor(tab.key, tab.badge)}
                   </span>
                 )}
               </div>

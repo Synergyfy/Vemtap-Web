@@ -2,13 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { Logo } from '../components/ui/Logo';
-import { hasApiConfig } from '../services/api/client';
-import {
-  lookupCustomerInvite,
-  registerCustomerViaInvite,
-  type InviteLookup,
-  type InviteRegistrationResult,
-} from './customerInviteService';
+import { findBusinessBySlug } from './businessData';
+import { registerCustomerViaInvite, type InviteRegistrationResult } from './customerInviteService';
 
 interface CustomerInviteJoinScreenProps {
   /** Business slug parsed from /join/{slug} by the router. */
@@ -24,12 +19,13 @@ const inputClass =
 
 /**
  * Public invite registration page — reached from a customer invite link
- * (/join/{business-slug}?invite=TOKEN). Works signed-out; see
- * customerInviteService.ts for the endpoints (and the demo-build mock).
+ * (/join/{business-slug}?invite=TOKEN). Works signed-out. Frontend-only mock:
+ * nothing is persisted and no email is sent; see customerInviteService.ts for
+ * the backend integration points.
  */
 export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: CustomerInviteJoinScreenProps) {
-  const [lookup, setLookup] = useState<InviteLookup | null | undefined>(undefined);
-  const linkValid = Boolean(lookup?.valid);
+  const business = findBusinessBySlug(businessSlug);
+  const linkValid = Boolean(business && inviteToken);
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -43,17 +39,6 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLookup(undefined);
-    void lookupCustomerInvite(businessSlug, inviteToken).then((next) => {
-      if (!cancelled) setLookup(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [businessSlug, inviteToken]);
 
   useEffect(() => {
     if (focusEmail) {
@@ -112,17 +97,6 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
     </div>
   );
 
-  /* ── Checking the link ─────────────────────────────────────────────────── */
-  if (lookup === undefined) {
-    return (
-      <AppScreen>
-        <div className="flex-1 flex items-center justify-center px-margin pb-24">
-          <Icon name="progress_activity" className="text-[28px] text-text-tertiary animate-spin" />
-        </div>
-      </AppScreen>
-    );
-  }
-
   /* ── Invalid / incomplete link ─────────────────────────────────────────── */
   if (!linkValid) {
     return (
@@ -142,7 +116,7 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
     );
   }
 
-  const businessName = lookup!.businessName;
+  const businessName = business!.name;
 
 
   /* ── Success: email provided ───────────────────────────────────────────── */
@@ -162,11 +136,9 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
               <span className="font-semibold text-on-surface">{email.trim()}</span> so you can finish setting up your
               account and access your VEMTAP customer dashboard.
             </p>
-            {result.isMock && (
-              <p className="font-caption text-caption text-text-tertiary leading-relaxed">
-                Preview state — no email is sent until the backend invite service is connected.
-              </p>
-            )}
+            <p className="font-caption text-caption text-text-tertiary leading-relaxed">
+              Preview state — no email is sent until the backend invite service is connected.
+            </p>
             <button
               type="button"
               onClick={resetForm}
@@ -326,8 +298,8 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
               )}
             </button>
             <p className="font-caption text-caption text-text-tertiary text-center leading-relaxed">
-              By continuing you agree to share these details with {businessName}.
-              {hasApiConfig() ? '' : ' This is a preview — nothing is submitted until the backend invite service is connected.'}
+              By continuing you agree to share these details with {businessName}. This is a preview — nothing is
+              submitted until the backend invite service is connected.
             </p>
           </form>
         </div>

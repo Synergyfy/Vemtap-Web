@@ -17,6 +17,11 @@ import {
   type CatalogueItem,
 } from '../../services/catalogueItemsService';
 import { catalogueItemKeys } from './useCatalogueItems';
+import { useAuth } from '../../context/AuthContext';
+import { useSessionUser } from '../useSessionUser';
+import { isBusinessRole } from '../../services/sessionService';
+import { ownerAuthService } from '../../services/ownerAuthService';
+import { getProvisionalReferralCode } from '../../scripts/referralData';
 
 /** The setup draft fields both onboarding screens share. */
 export interface OnboardingProfileDraft {
@@ -43,6 +48,8 @@ export function useOnboardingSync() {
   const queryClient = useQueryClient();
   const categories = useBusinessCategoryOptions(BUSINESS_CATEGORIES);
   const { activeBranchId, branches, isLive } = useBusinessBranch();
+  const { adoptSession } = useAuth();
+  const sessionUser = useSessionUser().data;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The item the setup just published, so "Make a deal" can start from it. */
@@ -69,6 +76,27 @@ export function useOnboardingSync() {
         .filter((b) => b.id)
         .map((b) => ({ branchId: b.id as string, isAvailable: b.id === activeBranchId || others.includes(b.id as string) })),
     });
+  };
+
+  /**
+   * A signed-in customer who chose "Continue with this account" becomes an
+   * owner on the first save (`POST /auth/upgrade-to-owner`), so the business
+   * exists before the profile is patched.
+   */
+  const ensureOwner = async (businessName: string) => {
+    if (!live || !sessionUser || isBusinessRole(sessionUser.role)) return;
+    try {
+      adoptSession(
+        await ownerAuthService.upgrade({ businessName, referralCode: getProvisionalReferralCode() || undefined }),
+      );
+    } catch (e) {
+      // PIN accounts confirm their PIN on the account-choice step; send them back there.
+      if (e instanceof Error && /password confirmation is required/i.test(e.message)) {
+        throw new Error('Confirm your PIN to add a business: go back and choose "Continue with this account".');
+      }
+      throw e;
+    }
+    await queryClient.invalidateQueries({ queryKey: myBusinessKeys.all });
   };
 
   const saveThen = (save: () => Promise<void>, next: () => void) => {
@@ -118,7 +146,11 @@ export function useOnboardingSync() {
     saving,
     error,
     clearError: () => setError(null),
-    saveBasic: (draft: OnboardingProfileDraft, next: () => void) => saveThen(() => patch(basicUpdate(draft)), next),
+    saveBasic: (draft: OnboardingProfileDraft, next: () => void) =>
+      saveThen(async () => {
+        await ensureOwner(draft.name.trim());
+        await patch(basicUpdate(draft));
+      }, next),
     saveContact: (draft: OnboardingProfileDraft, next: () => void) => saveThen(() => patch(contactUpdate(draft)), next),
     saveBranding: (branding: { logoUrl?: string; coverImage?: string; gallery: string[] }, next: () => void) =>
       saveThen(

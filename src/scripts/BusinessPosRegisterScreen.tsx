@@ -4,6 +4,10 @@ import { Icon } from '../components/ui/Icon';
 import { URBAN_PRODUCTS, naira } from './catalogueData';
 import { cartCount, cartTotals, type PosCartLine } from './posCartData';
 import { PosOfflineBar } from '../components/ui/PosOfflineBar';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { isCustomLine, useHeldTicket, useLivePos, usePosCartMirror, usePosProducts } from './posLive';
 
 interface BusinessPosRegisterScreenProps {
   cart: PosCartLine[];
@@ -59,14 +63,28 @@ export function BusinessPosRegisterScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const { branch } = useBusinessBranch();
+  const pos = useLivePos();
+  const catalogue = usePosProducts();
+  const heldTicket = useHeldTicket();
+  usePosCartMirror(cart);
+  const allProducts = live ? catalogue.mobile : URBAN_PRODUCTS;
+  const categories = live ? catalogue.categories : CATEGORIES;
+
+  useEffect(() => {
+    if (live && catalogue.error) showToast(apiErrorMessage(catalogue.error, 'Could not load your catalogue.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogue.error]);
+
   const products = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return URBAN_PRODUCTS.filter((p) => {
+    return allProducts.filter((p) => {
       const inCategory = category === 'all' || p.category === category;
       const matches = !q || p.name.toLowerCase().includes(q) || (p.desc ?? '').toLowerCase().includes(q);
       return inCategory && matches;
     });
-  }, [query, category]);
+  }, [query, category, allProducts]);
 
   const count = cartCount(cart);
   const subtotal = cartTotals(cart).subtotal;
@@ -113,8 +131,11 @@ export function BusinessPosRegisterScreen({
     if (e) e.preventDefault();
     const clean = manualSku.trim().toLowerCase();
     if (!clean) return;
-    const match = URBAN_PRODUCTS.find(
-      (p) => p.name.toLowerCase().includes(clean) || (p.desc ?? '').toLowerCase().includes(clean),
+    const match = allProducts.find(
+      (p) =>
+        (p.sku ?? '').toLowerCase() === clean ||
+        p.name.toLowerCase().includes(clean) ||
+        (p.desc ?? '').toLowerCase().includes(clean),
     );
     if (match) {
       addProduct(match.id, match.name, match.price);
@@ -137,6 +158,10 @@ export function BusinessPosRegisterScreen({
 
   const submitKeypad = () => {
     const amount = Number(keypadValue);
+    if (live) {
+      showToast('Custom charges are coming soon. Add a catalogue item instead.');
+      return;
+    }
     if (!amount || amount <= 0) {
       showToast('Enter a valid amount first');
       return;
@@ -149,9 +174,35 @@ export function BusinessPosRegisterScreen({
 
   const selectNav = (key: string) => {
     if (key === 'register') return;
-    if (key === 'held') showToast('2 held tickets loaded');
-    else if (key === 'orders') onOpenOrders();
-    else showToast('Shift drawer opened');
+    if (key === 'held') {
+      if (!live) {
+        showToast('2 held tickets loaded');
+        return;
+      }
+      const lines = cart.filter((line) => !isCustomLine(line));
+      if (lines.length) {
+        heldTicket
+          .hold(lines)
+          .then(() => {
+            onCartChange([]);
+            showToast('Ticket held — tap Held again to bring it back');
+          })
+          .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not hold the ticket.')));
+        return;
+      }
+      heldTicket
+        .resume()
+        .then((resumed) => {
+          if (!resumed) {
+            showToast('No held tickets');
+            return;
+          }
+          onCartChange(resumed.map((line) => ({ ...line, member: line.unit })));
+          showToast('Held ticket loaded');
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not load the held ticket.')));
+    } else if (key === 'orders') onOpenOrders();
+    else showToast(live ? (pos.isOpen ? `Register open on ${pos.tillName}` : 'No register open') : 'Shift drawer opened');
   };
 
   return (
@@ -171,7 +222,9 @@ export function BusinessPosRegisterScreen({
             <span className="font-heading-sm text-heading-sm text-on-surface leading-tight truncate">
               Register Catalog
             </span>
-            <span className="font-caption text-caption text-text-secondary leading-none">Register #02 · Wuse II</span>
+            <span className="font-caption text-caption text-text-secondary leading-none">
+              {live ? `${pos.isOpen ? pos.tillName : 'No till open'} · ${branch.shortName}` : 'Register #02 · Wuse II'}
+            </span>
           </div>
           <div className="flex items-center gap-space-2xs shrink-0">
             <button
@@ -250,7 +303,7 @@ export function BusinessPosRegisterScreen({
 
         {/* Category pills */}
         <div className="px-margin pb-space-xs flex gap-space-2xs overflow-x-auto no-scrollbar">
-          {CATEGORIES.map((item) => {
+          {categories.map((item) => {
             const isActive = item.key === category;
             return (
               <button
@@ -277,7 +330,7 @@ export function BusinessPosRegisterScreen({
       <div ref={scrollRef} className="flex-1 flex flex-col pb-48">
         <div className="px-margin py-space-2xs flex items-center justify-between">
           <span className="font-caption text-caption text-text-secondary">
-            {products.length} of {URBAN_PRODUCTS.length} items
+            {products.length} of {allProducts.length} items
           </span>
           <div className="flex items-center gap-space-xs">
             <button
@@ -677,7 +730,8 @@ export function BusinessPosRegisterScreen({
               </span>
             </div>
 
-            {/* Quick simulate tap for testing */}
+            {/* Quick simulate tap for testing (demo only) */}
+            {!live && (
             <div className="flex flex-col gap-1.5">
               <span className="font-caption text-caption text-text-secondary font-medium">
                 Tap to simulate scan:
@@ -700,6 +754,7 @@ export function BusinessPosRegisterScreen({
                 ))}
               </div>
             </div>
+            )}
 
             {/* Manual entry fallback */}
             <form onSubmit={handleManualScanSubmit} className="flex gap-1.5">

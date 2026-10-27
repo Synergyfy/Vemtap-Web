@@ -1,6 +1,6 @@
-import { LiveReviewStep } from '../../components/business/LiveItemSteps';
-import { hasApiConfig } from '../../services/api/client';
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -104,7 +104,7 @@ const toNumber = (value: string) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-function DemoDesktopServiceReviewScreen({
+export function DesktopServiceReviewScreen({
   draft,
   onBack,
   onEditBasics,
@@ -115,6 +115,9 @@ function DemoDesktopServiceReviewScreen({
   onSaveDraft,
   onNav,
 }: DesktopServiceReviewScreenProps) {
+  // Live: the real branches chosen in the previous step (`locations`).
+  const live = hasApiConfig();
+  const { branches: liveBranches } = useBusinessBranch();
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [publishState, setPublishState] = useState<'idle' | 'publishing' | 'success'>('idle');
   const timers = useRef<number[]>([]);
@@ -366,7 +369,24 @@ function DemoDesktopServiceReviewScreen({
                     </button>
                   </div>
                   <div className="flex flex-col gap-3">
-                    {draft.branches.maitama && (
+                    {live &&
+                      liveBranches
+                        .filter((branch) => branch.id && draft.locations.includes(branch.id))
+                        .map((branch) => (
+                          <div key={branch.id} className="p-3.5 rounded-xl bg-surface-subtle flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2.5">
+                              <Icon name="domain" className="text-text-secondary text-[18px] mt-0.5" />
+                              <div className="flex flex-col">
+                                <span className="font-label-md text-label-md font-bold text-on-surface">{branch.name}</span>
+                                <span className="font-caption text-caption text-text-secondary">{branch.area || '—'}</span>
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-caption text-caption font-semibold whitespace-nowrap">
+                              —
+                            </span>
+                          </div>
+                        ))}
+                    {!live && draft.branches.maitama && (
                       <div className="p-3.5 rounded-xl bg-surface-subtle flex items-start justify-between gap-3">
                         <div className="flex items-start gap-2.5">
                           <Icon name="domain" className="text-text-secondary text-[18px] mt-0.5" />
@@ -384,7 +404,7 @@ function DemoDesktopServiceReviewScreen({
                         </span>
                       </div>
                     )}
-                    {draft.branches.wuseII && (
+                    {!live && draft.branches.wuseII && (
                       <div className="p-3.5 rounded-xl bg-surface-subtle flex items-start justify-between gap-3">
                         <div className="flex items-start gap-2.5">
                           <Icon name="domain" className="text-text-secondary text-[18px] mt-0.5" />
@@ -798,37 +818,6 @@ function DemoDesktopServiceReviewScreen({
             </button>
           </div>
         </div>
-      </div>
-    </Shell>
-  );
-}
-
-/** Live: the business's real branches and item; demo keeps the designed screen. */
-export function DesktopServiceReviewScreen(props: DesktopServiceReviewScreenProps) {
-  if (!hasApiConfig()) return <DemoDesktopServiceReviewScreen {...props} />;
-  const Shell = props.onNav ? MerchantShell : BusinessSetupChrome;
-  return (
-    <Shell activeNav="catalog" onNav={props.onNav}>
-      <div className="max-w-4xl mx-auto w-full px-6 py-space-xl">
-      <LiveReviewStep
-        item={{
-    kind: 'service',
-    title: props.draft.title,
-    image: /^https?:\/\//.test(props.draft.image) ? props.draft.image : undefined,
-    category: props.draft.subCategory,
-    description: props.draft.description,
-    price: props.draft.standardPrice || props.draft.basePrice,
-    was: props.draft.comparePrice,
-    details: [['Duration', `${props.draft.durationMins} mins`]],
-  }}
-        branchIds={props.draft.locations ?? []}
-        onBack={props.onBack}
-        onEditBasics={props.onEditBasics}
-        onEditPricing={props.onEditPricing}
-        onEditBranches={props.onEditBranches}
-        onPublish={props.onPublish}
-        onSaveDraft={props.onSaveDraft}
-      />
       </div>
     </Shell>
   );

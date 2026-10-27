@@ -72,18 +72,16 @@ function useWatClock() {
 interface PosTerminalChromeProps {
   children: ReactNode;
   activeNav?: PosTerminalNavKey;
-  /** Rail item to highlight when the page is a sub-page of `activeNav`. */
-  railActive?: string;
   onNav: (key: PosTerminalNavKey) => void;
   onExitToDashboard?: () => void;
   onSignOut?: () => void;
 }
 
-export function PosTerminalChrome({ children, activeNav, railActive, onNav, onExitToDashboard, onSignOut }: PosTerminalChromeProps) {
+export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboard, onSignOut }: PosTerminalChromeProps) {
   const sessionTime = useWatClock();
   // The POS menu beside the collapsed business rail highlights the item that
   // matches the current terminal page.
-  const railKey = railActive ?? TERMINAL_TO_RAIL[activeNav ?? 'register'];
+  const railKey = TERMINAL_TO_RAIL[activeNav ?? 'register'];
 
   const exitToDashboard = () => {
     if (onExitToDashboard) {

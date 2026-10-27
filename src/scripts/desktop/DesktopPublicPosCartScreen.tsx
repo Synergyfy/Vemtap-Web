@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { naira } from '../catalogueData';
 import { publicCartCount, publicCartTotals, type PublicCartLine } from '../publicPosData';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { guestTotals, placeGuestOrder, useGuestMenu } from '../publicPosLive';
 
 interface DesktopPublicPosCartScreenProps {
   cart: PublicCartLine[];
@@ -18,14 +21,26 @@ export function DesktopPublicPosCartScreen({
   onAddMore,
   onTrack,
 }: DesktopPublicPosCartScreenProps) {
-  const [name, setName] = useState('Samuel A.');
-  const [phone, setPhone] = useState('+234 802 345 6789');
-  const [notes, setNotes] = useState('Extra serviettes and separate dipping bowl please.');
+  const live = hasApiConfig();
+  const guest = useGuestMenu();
+  const [name, setName] = useState(live ? '' : 'Samuel A.');
+  const [phone, setPhone] = useState(live ? '' : '+234 802 345 6789');
+  const [notes, setNotes] = useState(live ? '' : 'Extra serviettes and separate dipping bowl please.');
   const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [placed, setPlaced] = useState<{ ref: string; total: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
-
-  const totals = publicCartTotals(cart);
+  const totals = live ? guestTotals(cart, guest.info?.pricing) : publicCartTotals(cart);
+  const serviceCharge = live ? guestTotals(cart, guest.info?.pricing).service : 0;
+  const tableLabel = live ? (guest.table ? `Table ${guest.table}` : 'Your table') : 'Table 04';
+  const venue = live ? (guest.info?.businessName ?? guest.info?.branchName ?? 'Your table') : 'Urban Grill & Bistro';
+  const pricing = guest.info?.pricing;
+  const taxChip = live
+    ? [pricing?.taxEnabled ? `${pricing.taxRate}%` : null, pricing?.serviceChargeEnabled ? `+${pricing.serviceChargeRate}% service` : null]
+        .filter(Boolean)
+        .join(' ') || '0%'
+    : '7.5%';
   const count = publicCartCount(cart);
   const empty = cart.length === 0;
 
@@ -40,6 +55,44 @@ export function DesktopPublicPosCartScreen({
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToast(message);
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
+
+  /** Live: `POST /pos/orders` as a guest, then offer tracking. */
+  const submit = () => {
+    if (!live) {
+      setConfirming(true);
+      return;
+    }
+    if (submitting) return;
+    if (!guest.branchId) {
+      showToast('Scan the QR code on your table to order');
+      return;
+    }
+    if (guest.info && !guest.info.acceptingOrders) {
+      showToast('This venue is not taking table orders right now');
+      return;
+    }
+    if (guest.info?.maxOrderValue && totals.total > guest.info.maxOrderValue) {
+      showToast(`Table orders are capped at ${naira(guest.info.maxOrderValue)} — ask a server for help`);
+      return;
+    }
+    const [firstName, ...rest] = name.trim().split(/\s+/);
+    if (!firstName || !rest.length) {
+      showToast('Add your first and last name so the server can find you');
+      return;
+    }
+    if (phone.replace(/\D/g, '').length < 7) {
+      showToast('Add your phone number so the venue can reach you');
+      return;
+    }
+    setSubmitting(true);
+    placeGuestOrder({ lines: cart, firstName, lastName: rest.join(' '), phone: phone.trim(), notes: notes.trim() })
+      .then((order) => {
+        setPlaced({ ref: `#${order.id.slice(0, 8).toUpperCase()}`, total: totals.total });
+        setConfirming(true);
+      })
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not send your order.')))
+      .finally(() => setSubmitting(false));
   };
 
   const adjustQty = (id: string, change: number) => {
@@ -71,18 +124,18 @@ export function DesktopPublicPosCartScreen({
             </span>
             <div className="flex flex-col min-w-0">
               <h1 className="font-heading-sm text-heading-sm text-text-primary leading-tight truncate">
-                Urban Grill &amp; Bistro
+                {venue}
               </h1>
               <div className="flex items-center gap-space-2xs">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                <span className="font-caption text-caption text-text-secondary">Table 04 • Dine-in</span>
+                <span className="font-caption text-caption text-text-secondary">{tableLabel} • Dine-in</span>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
             <span className="hidden sm:inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
               <Icon name="table_restaurant" className="text-[16px]" />
-              <span>Table 04</span>
+              <span>{tableLabel}</span>
             </span>
             <span className="inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-secondary font-label-sm text-label-sm font-semibold">
               <Icon name="shopping_bag" className="text-[16px]" />
@@ -99,7 +152,7 @@ export function DesktopPublicPosCartScreen({
         <div className="min-w-0">
           <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Cart Review</h2>
           <p className="font-caption text-caption text-text-tertiary mt-0.5">
-            Urban Grill &amp; Bistro • Table 04 • Dine-in
+            {venue} • {tableLabel} • Dine-in
           </p>
         </div>
 
@@ -114,7 +167,7 @@ export function DesktopPublicPosCartScreen({
                 </span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-heading-sm text-heading-sm text-text-primary">Table 04</span>
+                    <span className="font-heading-sm text-heading-sm text-text-primary">{tableLabel}</span>
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text inline-block" />
                   </div>
                   <p className="font-caption text-caption text-text-secondary truncate">Dine-In • Scanned via QR</p>
@@ -229,7 +282,7 @@ export function DesktopPublicPosCartScreen({
                   <span className="truncate">Table &amp; Guest Details</span>
                 </h3>
                 <span className="font-caption text-caption text-badge-discount-text bg-badge-discount-bg px-2 py-0.5 rounded-full font-medium shrink-0">
-                  Table 04 Verified
+                  {tableLabel} {live && !guest.table ? '' : 'Verified'}
                 </span>
               </div>
 
@@ -288,7 +341,7 @@ export function DesktopPublicPosCartScreen({
                   <div className="min-w-0">
                     <p className="font-label-sm text-label-sm text-text-primary">Seat Location</p>
                     <p className="font-caption text-caption text-text-secondary truncate">
-                      Locked to Table 04 via digital dine-in session
+                      Locked to {tableLabel} via digital dine-in session
                     </p>
                   </div>
                 </div>
@@ -328,10 +381,10 @@ export function DesktopPublicPosCartScreen({
                 <span className="flex items-center gap-1 min-w-0">
                   <span className="font-body-md text-body-md text-text-secondary">Table Service &amp; VAT</span>
                   <span className="font-caption text-caption bg-surface-container-high px-1.5 py-0.5 rounded text-text-secondary">
-                    7.5%
+                    {taxChip}
                   </span>
                 </span>
-                <span className="font-body-md text-body-md text-text-primary font-medium">{naira(totals.vat)}</span>
+                <span className="font-body-md text-body-md text-text-primary font-medium">{naira(totals.vat + serviceCharge)}</span>
               </div>
               <div className="h-px bg-surface-container-high my-1" />
               <div className="flex items-center justify-between gap-space-xs">
@@ -355,8 +408,8 @@ export function DesktopPublicPosCartScreen({
             <section className="bg-surface-canvas rounded-xl border border-border-subtle shadow-sm p-space-md flex flex-col gap-space-xs">
               <button
                 type="button"
-                onClick={() => setConfirming(true)}
-                disabled={empty}
+                onClick={submit}
+                disabled={empty || submitting}
                 className={`w-full h-12 rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
                   empty
                     ? 'bg-surface-container-high text-text-tertiary shadow-none cursor-not-allowed'
@@ -364,7 +417,9 @@ export function DesktopPublicPosCartScreen({
                 }`}
               >
                 <Icon name="restaurant" className="text-[19px]" />
-                <span>{empty ? 'Your Cart is Empty' : `Submit Order to Kitchen (${naira(totals.total)})`}</span>
+                <span>
+                  {empty ? 'Your Cart is Empty' : submitting ? 'Sending to the kitchen…' : `Submit Order to Kitchen (${naira(totals.total)})`}
+                </span>
               </button>
               <p className="font-caption text-caption text-text-tertiary flex items-center gap-1 text-center justify-center pt-1">
                 <Icon name="print" className="text-[14px]" />
@@ -391,23 +446,24 @@ export function DesktopPublicPosCartScreen({
             </span>
             <h3 className="font-heading-md text-heading-md text-text-primary">Order Fired to Kitchen!</h3>
             <p className="font-body-md text-body-md text-text-secondary mt-1">
-              Ticket #TK-0482 dispatched to Head Chef. Your food is now preparing for{' '}
-              <strong className="text-text-primary">Table 04</strong>.
+              Ticket {live ? (placed?.ref ?? '—') : '#TK-0482'} dispatched to {live ? 'the kitchen' : 'Head Chef'}. Your food is now
+              preparing for <strong className="text-text-primary">{tableLabel}</strong>.
             </p>
             <div className="bg-surface-subtle w-full rounded-xl p-3 my-4 flex items-center justify-between text-left gap-space-xs">
               <div>
                 <p className="font-caption text-caption text-text-tertiary">Estimated Prep Time</p>
-                <p className="font-label-md text-label-md text-text-primary font-semibold">18 - 24 Mins</p>
+                <p className="font-label-md text-label-md text-text-primary font-semibold">{live ? `About ${guest.info?.prepMinutes ?? 15} Mins` : '18 - 24 Mins'}</p>
               </div>
               <div className="text-right">
                 <p className="font-caption text-caption text-text-tertiary">Amount to Settle</p>
-                <p className="font-label-md text-label-md text-primary font-bold">{naira(totals.total)}</p>
+                <p className="font-label-md text-label-md text-primary font-bold">{naira(placed?.total ?? totals.total)}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => {
                 setConfirming(false);
+                if (live) onCartChange([]);
                 onTrack();
               }}
               className="w-full h-12 rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary hover:bg-primary transition-colors"

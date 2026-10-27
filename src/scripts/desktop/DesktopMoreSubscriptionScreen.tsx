@@ -3,6 +3,15 @@ import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
+import { hasApiConfig } from '../../services/api/client';
+import {
+  useActiveSubscription,
+  useBillingHistory,
+  usePaymentMethod,
+  useSubscriptionPlans,
+} from '../../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, renewalDate } from '../subscriptionLive';
+import { formatNaira } from '../../utils/format';
 
 interface DesktopMoreSubscriptionScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -30,24 +39,61 @@ const INVOICES = [
  */
 export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscriptionScreenProps) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  const plans = useSubscriptionPlans();
+  const billing = useBillingHistory();
+  const payment = usePaymentMethod();
+
+  const sub = subscription.data ?? null;
+  const livePlan = sub ? (plans.data ?? []).find((plan) => plan.id === sub.planId) ?? featuredPlan(plans.data ?? []) : null;
+  const renewLabel = sub?.status === 'trial' ? 'Ends' : 'Renews';
+  const renewDate = renewalDate(sub?.endDate);
+  const card = live && payment.data?.hasCard ? payment.data.card : null;
+  const priceParts = livePlan ? planPriceLine(livePlan, sub?.billingPeriod ?? 'monthly').split(' / ') : null;
+
+  const invoiceTone = (status: string) =>
+    /paid|completed|success/i.test(status)
+      ? 'bg-badge-discount-bg text-badge-discount-text'
+      : /pending/i.test(status)
+        ? 'bg-surface-tint-blue text-primary'
+        : 'bg-error text-on-error';
+
+  // Live mode lists real invoices; demo keeps the scripted register.
+  const invoices = live
+    ? (billing.data ?? []).map((record) => ({
+        id: record.reference ?? record.id.slice(0, 8).toUpperCase(),
+        date: record.createdAt
+          ? new Date(record.createdAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
+          : '—',
+        amount: formatNaira(Number(record.amount) || 0),
+        status: record.status ? record.status.charAt(0).toUpperCase() + record.status.slice(1).toLowerCase() : 'Paid',
+        tone: invoiceTone(record.status ?? 'paid'),
+      }))
+    : INVOICES;
+
+  const accountLines = (): [string, string][] => [
+    ['Plan', live ? (sub?.plan?.name ?? 'No active plan') : 'VEMTAP Growth'],
+    ['Renews', live ? (renewDate ?? '—') : '1 Nov 2025'],
+    [
+      'Payment method',
+      live ? (card ? `${card.brand ?? 'Card'} ending •• ${card.last4}` : 'No card on file') : 'Mastercard ending •• 4291',
+    ],
+  ];
 
   /** Every invoice as a CSV register, plus a print-ready PDF statement. */
   const downloadAllInvoices = () => {
     downloadCsv(
       'vemtap-invoice-history.csv',
       ['Invoice', 'Date', 'Amount', 'Status'],
-      INVOICES.map((invoice) => [invoice.id, invoice.date, invoice.amount, invoice.status]),
+      invoices.map((invoice) => [invoice.id, invoice.date, invoice.amount, invoice.status]),
     );
     printReport(
-      'VEMTAP Invoice History — Gourmet Bites Bistro',
-      `${printKvTable('Account', [
-        ['Plan', 'VEMTAP Growth'],
-        ['Renews', '1 Nov 2025'],
-        ['Payment method', 'Mastercard ending •• 4291'],
-      ])}
+      `VEMTAP Invoice History — ${live ? (sub?.plan?.name ?? 'Your account') : 'Gourmet Bites Bistro'}`,
+      `${printKvTable('Account', accountLines())}
        ${printKvTable(
          'Invoices',
-         INVOICES.map((invoice) => [invoice.id, `${invoice.date} • ${invoice.amount} • ${invoice.status}`]),
+         invoices.map((invoice) => [invoice.id, `${invoice.date} • ${invoice.amount} • ${invoice.status}`]),
        )}
        <p class="foot">A CSV copy of the invoice register downloaded alongside this PDF.</p>`,
     );
@@ -69,11 +115,11 @@ export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscription
         ['Contact', 'billing@vemtap.ng'],
       ])}
        ${printKvTable('Customer', [
-        ['Business', 'Gourmet Bites Bistro'],
+        ['Business', live ? (sub?.plan?.name ? 'Subscribed business' : 'Your account') : 'Gourmet Bites Bistro'],
         ['TIN', 'TIN-8894102-NG'],
       ])}
        ${printKvTable('Line items', [
-        ['VEMTAP Growth plan — monthly subscription', `₦${net}.00`],
+        ['VEMTAP plan charge', `₦${net}.00`],
         ['VAT (7.5%)', 'included'],
         ['Total charged', `₦${net}.00`],
       ])}
@@ -101,18 +147,30 @@ export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscription
               <div className="flex items-center gap-space-sm">
                 <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-pulse" />
                 <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-secondary">
-                  Current plan · Active
+                  {live
+                    ? sub
+                      ? `Current plan · ${sub.status === 'trial' ? 'Trial' : 'Active'}`
+                      : 'Current plan · None'
+                    : 'Current plan · Active'}
                 </span>
               </div>
-              <span className="px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                Renews 1 Nov 2025
-              </span>
+              {renewDate && (
+                <span className="px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                  {renewLabel} {renewDate}
+                </span>
+              )}
             </div>
 
             <div className="flex items-end gap-space-xs flex-wrap">
-              <span className="font-heading-xl text-heading-xl text-text-primary font-bold">Growth</span>
-              <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">₦5,000</span>
-              <span className="font-body-md text-body-md text-text-secondary pb-1">/ month</span>
+              <span className="font-heading-xl text-heading-xl text-text-primary font-bold">
+                {live ? (sub?.plan?.name ?? 'No active plan') : 'Growth'}
+              </span>
+              {priceParts && (
+                <>
+                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">{priceParts[0]}</span>
+                  <span className="font-body-md text-body-md text-text-secondary pb-1">/ {priceParts[1]}</span>
+                </>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
@@ -162,15 +220,31 @@ export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscription
           <div className="lg:col-span-5 flex flex-col gap-space-lg">
             <section className="rounded-2xl bg-surface-canvas shadow-sm p-space-xl flex flex-col gap-space-md">
               <h2 className="font-heading-sm text-heading-sm text-text-primary">Payment method</h2>
-              <div className="flex items-center gap-space-sm p-space-sm rounded-xl bg-surface-subtle">
-                <span className="w-10 h-10 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
-                  <Icon name="credit_card" className="text-[20px]" />
-                </span>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-label-md text-label-md text-text-primary font-semibold">Visa •••• 4821</span>
-                  <span className="font-caption text-caption text-text-secondary">Expires 09/27 · Default card</span>
+              {live ? (
+                <div className="flex items-center gap-space-sm p-space-sm rounded-xl bg-surface-subtle">
+                  <span className="w-10 h-10 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                    <Icon name={card ? 'credit_card' : 'credit_card_off'} className="text-[20px]" />
+                  </span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-label-md text-label-md text-text-primary font-semibold">
+                      {card ? `${card.brand ?? 'Card'} •••• ${card.last4}` : 'No card on file'}
+                    </span>
+                    <span className="font-caption text-caption text-text-secondary">
+                      {card ? `Expires ${card.expMonth ?? '?'}/${card.expYear ?? '?'} · Default card` : 'A card is saved when you subscribe to a paid plan.'}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-space-sm p-space-sm rounded-xl bg-surface-subtle">
+                  <span className="w-10 h-10 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                    <Icon name="credit_card" className="text-[20px]" />
+                  </span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-label-md text-label-md text-text-primary font-semibold">Visa •••• 4821</span>
+                    <span className="font-caption text-caption text-text-secondary">Expires 09/27 · Default card</span>
+                  </div>
+                </div>
+              )}
               <button
                 className="h-[44px] rounded-xl bg-surface-subtle hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary transition-colors flex items-center justify-center gap-space-2xs"
                 type="button"
@@ -214,7 +288,12 @@ export function DesktopMoreSubscriptionScreen({ onNav }: DesktopMoreSubscription
             </button>
           </div>
           <div className="divide-y divide-border-subtle">
-            {INVOICES.map((invoice) => (
+            {live && invoices.length === 0 && (
+              <div className="px-space-lg py-space-md font-body-md text-body-md text-on-surface-variant text-center">
+                No invoices yet — they appear here after your first paid subscription charge.
+              </div>
+            )}
+            {invoices.map((invoice) => (
               <div key={invoice.id} className="px-space-lg py-space-sm flex items-center justify-between gap-space-sm">
                 <div className="flex flex-col min-w-0">
                   <span className="font-label-md text-label-md text-text-primary font-semibold">{invoice.id}</span>

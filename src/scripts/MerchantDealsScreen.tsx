@@ -31,11 +31,11 @@ const DEALS = [
     badges: ['20% OFF', 'Ends in 4h'],
     badgeIcons: ['', 'schedule'],
     rightBadge: 'Lunch Special',
-    location: 'Urban Grill & Bistro â€¢ Apo',
+    location: 'Urban Grill & Bistro • Apo',
     title: 'Prime 3-Course Lunch Combo & Drinks',
-    price: 'â‚¦9,600',
-    was: 'â‚¦12,000',
-    save: 'Save â‚¦2,400 on this meal',
+    price: '₦9,600',
+    was: '₦12,000',
+    save: 'Save ₦2,400 on this meal',
     voucher: '1 voucher / table',
     valid: 'Valid 12 PM - 4 PM',
     image: DEAL_IMAGES[0],
@@ -47,9 +47,9 @@ const DEALS = [
     rightBadge: '',
     title: "Chef's Signature Dinner Platter for Two",
     desc: 'Includes full rack ribs, 4 skewers, sides & house mocktails',
-    price: 'â‚¦18,500',
-    was: 'â‚¦21,000',
-    save: 'Save â‚¦2,500',
+    price: '₦18,500',
+    was: '₦21,000',
+    save: 'Save ₦2,500',
     image: DEAL_IMAGES[1],
     imageAlt: 'Generous chef dinner platter with smoky barbecue pork ribs, glazed chicken skewers, grilled sweet corn, and artisan dipping sauces, high-end food photography with deep contrast',
   },
@@ -59,9 +59,9 @@ const DEALS = [
     rightBadge: '',
     title: 'Gourmet Wagyu Burger & Truffle Fries',
     desc: 'Grass-fed wagyu patty, parmesan truffle oil fries & craft soda',
-    price: 'â‚¦7,200',
-    was: 'â‚¦8,000',
-    save: 'Save â‚¦800',
+    price: '₦7,200',
+    was: '₦8,000',
+    save: 'Save ₦800',
     image: DEAL_IMAGES[2],
     imageAlt: 'Artisan wagyu beef burger stacked with melted cheddar cheese, caramelized onions, and crisp arugula beside a basket of golden truffle fries, shot in bright natural daytime daylight',
   },
@@ -75,8 +75,8 @@ const NEARBY = [
     name: 'Cafe Neo Artisanal',
     distance: '0.3 km',
     title: 'Cold Brew 1L & Pastry Box',
-    price: 'â‚¦4,500',
-    was: 'â‚¦6,000',
+    price: '₦4,500',
+    was: '₦6,000',
   },
   {
     image: NEARBY_IMAGES[1],
@@ -86,8 +86,8 @@ const NEARBY = [
     name: 'The Sky Lounge & Grill',
     distance: '1.1 km',
     title: "Chef's Sunset Tasting Menu",
-    price: 'â‚¦22,500',
-    was: 'â‚¦45,000',
+    price: '₦22,500',
+    was: '₦45,000',
   },
   {
     image: NEARBY_IMAGES[2],
@@ -96,8 +96,8 @@ const NEARBY = [
     name: 'Glow & Serenity Spa',
     distance: '1.4 km',
     title: 'Weekend Glow Facial & Massage',
-    price: 'â‚¦18,500',
-    was: 'â‚¦25,000',
+    price: '₦18,500',
+    was: '₦25,000',
   },
 ];
 
@@ -179,7 +179,7 @@ export function MerchantDealsScreen({
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="near_me" className="text-[16px] text-primary" />
                   <span className="font-caption text-caption font-medium text-text-primary">0.8 km away</span>
-                  <span className="text-text-tertiary">â€¢</span>
+                  <span className="text-text-tertiary">•</span>
                   <span className="font-caption text-caption text-text-secondary">Apo, Abuja</span>
                 </div>
                 <div className="flex items-center gap-1 text-primary">

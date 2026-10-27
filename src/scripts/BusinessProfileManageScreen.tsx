@@ -4,7 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { useBusinessProfileForm } from '../hooks/business/useBusinessProfileForm';
 import { hasApiConfig } from '../services/api/client';
 import { useStorefrontPreview } from '../hooks/business/useStorefrontPreview';
-import { CHANNEL_PLATFORM_BY_ID, isChannelPlatform } from '../utils/socialChannels';
+import { CHANNEL_PLATFORMS, CHANNEL_PLATFORM_BY_ID, isChannelPlatform } from '../utils/socialChannels';
 import { apiErrorMessage } from '../services/errorMessages';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
@@ -100,6 +100,27 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
     description: live ? profile.form.description : BRAND_BIO,
   };
 
+  /** Live: Edit Profile / Manage turn the name, bio, contacts and handles into fields; Save writes them. */
+  const [editing, setEditing] = useState(false);
+  const startEditing = (demoMessage: string) => (live ? setEditing(true) : showToast(demoMessage));
+  const inputClass =
+    'w-full rounded-lg bg-surface-container-low px-3 py-2 font-body-md text-body-md text-text-primary outline-none focus:ring-2 focus:ring-primary/30';
+
+  /** Live: uploads a new logo / cover and saves it to the business right away. */
+  const changeImage = (kind: 'logo' | 'cover') => {
+    if (!live) {
+      showToast(kind === 'logo' ? 'Logo upload opened' : 'Cover photo picker opened');
+      return;
+    }
+    profile.uploadImage.mutate(kind, {
+      onSuccess: (url) => {
+        if (url) showToast(kind === 'logo' ? 'Logo updated' : 'Cover photo updated');
+      },
+      onError: (error) => showToast(`Could not upload: ${apiErrorMessage(error)}`),
+    });
+  };
+  const uploadingKind = profile.uploadImage.isPending ? profile.uploadImage.variables : null;
+
   const handleSave = () => {
     // Keep amenities this screen doesn't list (e.g. set on desktop) untouched.
     const listed = AMENITIES.map((amenity) => amenity.label);
@@ -110,7 +131,10 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
     profile.save.mutate(
       { ...profile.form, amenities },
       {
-        onSuccess: () => showToast('Profile & amenities updated successfully!'),
+        onSuccess: () => {
+          setEditing(false);
+          showToast('Profile & amenities updated successfully!');
+        },
         onError: (error) => showToast(`Could not save: ${apiErrorMessage(error)}`),
       },
     );
@@ -176,10 +200,11 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
             <button
               className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-inverse-surface/85 backdrop-blur-md text-on-primary font-label-sm text-label-sm active:scale-95 transition-all shadow-md"
               type="button"
-              onClick={() => showToast('Cover photo picker opened')}
+              onClick={() => changeImage('cover')}
+              disabled={uploadingKind === 'cover'}
             >
               <Icon name="photo_camera" className="text-[16px]" />
-              <span>Change Cover</span>
+              <span>{uploadingKind === 'cover' ? 'Uploading…' : live && !coverImg ? 'Add Cover' : 'Change Cover'}</span>
             </button>
             {storeCode && (
               <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md shadow-sm">
@@ -204,9 +229,11 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               <button
                 className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md active:scale-90 transition-transform"
                 type="button"
-                onClick={() => showToast('Logo upload opened')}
+                onClick={() => changeImage('logo')}
+                disabled={uploadingKind === 'logo'}
+                aria-label="Change logo"
               >
-                <Icon name="edit" className="text-[15px]" />
+                <Icon name={uploadingKind === 'logo' ? 'progress_activity' : 'edit'} className={`text-[15px] ${uploadingKind === 'logo' ? 'animate-spin' : ''}`} />
               </button>
             </div>
             <div className="flex items-center gap-1.5 pb-1">
@@ -229,18 +256,39 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
         {/* Bio */}
         <div className="px-margin flex flex-col gap-space-xs mb-space-lg">
           <div className="flex items-center gap-space-2xs flex-wrap">
-            <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold tracking-tight">
-              {brandName}
-            </h2>
+            {editing ? (
+              <input
+                aria-label="Business name"
+                className={`${inputClass} font-heading-sm text-heading-sm font-bold`}
+                value={profile.form.name}
+                onChange={(event) => profile.set('name', event.target.value)}
+              />
+            ) : (
+              <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold tracking-tight">
+                {brandName}
+              </h2>
+            )}
             {verified && <Icon name="verified" filled className="text-primary text-[20px]" />}
           </div>
           <div className="inline-flex items-center gap-1.5 self-start px-2.5 py-0.5 rounded-full bg-surface-container text-secondary font-label-sm text-label-sm">
             <Icon name="restaurant" className="text-[14px]" />
             <span>{brandCategory}</span>
           </div>
-          <p className="font-body-md text-body-md text-text-secondary mt-1">
-            {brandBio}
-          </p>
+          {editing ? (
+            <textarea
+              aria-label="Storefront bio"
+              className={`${inputClass} mt-1 resize-none`}
+              maxLength={250}
+              placeholder="Tell shoppers what you offer"
+              rows={3}
+              value={profile.form.description}
+              onChange={(event) => profile.set('description', event.target.value)}
+            />
+          ) : (
+            <p className="font-body-md text-body-md text-text-secondary mt-1">
+              {brandBio}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-space-sm mt-space-sm">
             <button
               className="h-11 rounded-xl bg-surface-container-high text-primary hover:bg-surface-variant flex items-center justify-center gap-2 font-button-secondary text-button-secondary transition-all active:scale-[0.98]"
@@ -254,10 +302,10 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
             <button
               className="h-11 rounded-xl bg-primary text-on-primary flex items-center justify-center gap-2 font-button-primary text-button-primary shadow-[0_8px_20px_-4px_rgba(6,108,244,0.28)] hover:bg-primary-container active:scale-[0.98] transition-all"
               type="button"
-              onClick={() => showToast('Profile editor opening…')}
+              onClick={() => (editing ? setEditing(false) : startEditing('Profile editor opening…'))}
             >
-              <Icon name="tune" className="text-[18px]" />
-              <span>Edit Profile</span>
+              <Icon name={editing ? 'close' : 'tune'} className="text-[18px]" />
+              <span>{editing ? 'Done Editing' : 'Edit Profile'}</span>
             </button>
           </div>
         </div>
@@ -326,7 +374,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
         <div className="px-margin mb-space-lg">
           <div className="flex items-center justify-between mb-space-xs">
             <h3 className="font-heading-sm text-heading-sm text-text-primary">Contact & Public Channels</h3>
-            <button className="font-label-sm text-label-sm text-primary hover:underline" type="button" onClick={() => showToast('Channel manager opening…')}>
+            <button className="font-label-sm text-label-sm text-primary hover:underline" type="button" onClick={() => startEditing('Channel manager opening…')}>
               Manage
             </button>
           </div>
@@ -338,9 +386,20 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="font-caption text-caption text-text-tertiary">Official Phone</span>
-                  <span className="font-body-md text-body-md text-text-primary font-medium truncate">
-                    {live ? profile.form.phone || 'Add a phone number' : '+234 803 900 2210'}
-                  </span>
+                  {editing ? (
+                    <input
+                      aria-label="Official phone"
+                      className={inputClass}
+                      inputMode="tel"
+                      placeholder="+234…"
+                      value={profile.form.phone}
+                      onChange={(event) => profile.set('phone', event.target.value)}
+                    />
+                  ) : (
+                    <span className="font-body-md text-body-md text-text-primary font-medium truncate">
+                      {live ? profile.form.phone || 'Add a phone number' : '+234 803 900 2210'}
+                    </span>
+                  )}
                 </div>
               </div>
               {!live && (
@@ -357,9 +416,20 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="font-caption text-caption text-text-tertiary">Customer Desk</span>
-                  <span className="font-body-md text-body-md text-text-primary font-medium truncate">
-                    {live ? profile.form.officialEmail || 'Add a contact email' : 'contact@urbangrill.ng'}
-                  </span>
+                  {editing ? (
+                    <input
+                      aria-label="Contact email"
+                      className={inputClass}
+                      placeholder="hello@yourbusiness.com"
+                      type="email"
+                      value={profile.form.officialEmail}
+                      onChange={(event) => profile.set('officialEmail', event.target.value)}
+                    />
+                  ) : (
+                    <span className="font-body-md text-body-md text-text-primary font-medium truncate">
+                      {live ? profile.form.officialEmail || 'Add a contact email' : 'contact@urbangrill.ng'}
+                    </span>
+                  )}
                 </div>
               </div>
               <Icon name="chevron_right" className="text-text-tertiary text-[18px]" />
@@ -387,7 +457,27 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 <Icon name="content_copy" className="text-[18px]" />
               </button>
             </div>
-            <div className="mt-space-xs pt-space-xs flex items-center justify-between gap-2 px-1">
+            {editing && (
+              <div className="mt-space-xs pt-space-xs flex flex-col gap-space-xs px-1">
+                {CHANNEL_PLATFORMS.map((platform) => (
+                  <label key={platform.id} className="flex items-center gap-space-xs">
+                    <Icon name={platform.icon} className="text-[18px] text-primary shrink-0" />
+                    <input
+                      aria-label={platform.label}
+                      className={inputClass}
+                      placeholder={`${platform.label} — ${platform.placeholder}`}
+                      value={platform.id === 'whatsapp' ? profile.form.whatsappNumber : (profile.form.socials[platform.id] ?? '')}
+                      onChange={(event) =>
+                        platform.id === 'whatsapp'
+                          ? profile.set('whatsappNumber', event.target.value)
+                          : profile.set('socials', { ...profile.form.socials, [platform.id]: event.target.value })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className={`mt-space-xs pt-space-xs items-center justify-between gap-2 px-1 ${editing ? 'hidden' : 'flex'}`}>
               <div className="flex items-center gap-2 flex-wrap">
                 {socialChips.length === 0 && (
                   <span className="font-caption text-caption text-text-tertiary">No social handles yet</span>
@@ -406,7 +496,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               <button
                 className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-text-secondary hover:text-primary"
                 type="button"
-                onClick={() => showToast('Add social handle opened')}
+                onClick={() => startEditing('Add social handle opened')}
               >
                 <Icon name="add" className="text-[18px]" />
               </button>

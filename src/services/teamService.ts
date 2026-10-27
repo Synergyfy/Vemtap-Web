@@ -34,6 +34,8 @@ export interface InviteStaffInput {
   jobTitle?: string;
   permissions?: string[];
   branchId: string;
+  /** 6-digit sign-in PIN the owner sets; emailed to the member. */
+  pin?: string;
 }
 
 export interface UpdateStaffInput {
@@ -54,6 +56,9 @@ export const teamService = {
   update: (id: string, branchId: string | undefined, input: UpdateStaffInput) =>
     api.patch<TeamMember>(`/users/team/${id}`, input, { params: { branchId } }),
   remove: (id: string, branchId: string | undefined) => api.del<void>(`/users/team/${id}`, { params: { branchId } }),
+  /** Emails a fresh PIN and signs them out; a pending invite is re-sent instead. */
+  resetPin: (id: string, branchId: string | undefined) =>
+    api.post<TeamMember>(`/users/team/${id}/reset-pin`, undefined, { params: { branchId } }),
   resendInvite: (id: string, branchId: string | undefined) =>
     api.post<{ message?: string }>(`/users/team/${id}/resend-invite`, undefined, { params: { branchId } }),
 };

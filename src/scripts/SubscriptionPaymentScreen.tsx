@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { usePricePreview, useSubscriptionCheckout, useSubscriptionPlans } from '../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine } from './subscriptionLive';
+import { formatNaira } from '../utils/format';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionPaymentScreenProps {
@@ -55,6 +59,21 @@ export function SubscriptionPaymentScreen({ onBack, onPaid }: SubscriptionPaymen
   const [method, setMethod] = useState<PaymentMethod>('paystack');
   const [paying, setPaying] = useState(false);
   const timer = useRef<number | null>(null);
+  const live = hasApiConfig();
+  const plans = useSubscriptionPlans();
+  const featured = featuredPlan(plans.data ?? []);
+  const preview = usePricePreview(featured?.id, 'monthly');
+  const checkout = useSubscriptionCheckout();
+
+  // Live: the API preview drives the billing summary; demo keeps the scripted
+  // Growth figures and the simulated gateway timer.
+  const planName = featured?.name ?? 'Growth';
+  const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
+  const subtotal = preview.data ? Number(preview.data.subtotal) || 0 : null;
+  const tax = preview.data ? Number(preview.data.taxAmount) || 0 : null;
+  const total = preview.data ? Number(preview.data.total) || 0 : null;
+  const payLabel =
+    total !== null ? formatNaira(total) : priceLine ? priceLine.split(' / ')[0] : '₦5,000';
 
   useEffect(
     () => () => {
@@ -65,6 +84,22 @@ export function SubscriptionPaymentScreen({ onBack, onPaid }: SubscriptionPaymen
 
   const handlePay = () => {
     if (paying) return;
+    if (live) {
+      if (!featured) return;
+      setPaying(true);
+      checkout.mutate(
+        { planId: featured.id, billingPeriod: 'monthly' },
+        {
+          onSuccess: (result) => {
+            // Without a hosted checkout URL there is nothing to redirect to —
+            // continue the flow as if paid (the backend activates on webhook).
+            if (!result.authorization_url) onPaid();
+          },
+          onError: () => setPaying(false),
+        },
+      );
+      return;
+    }
     setPaying(true);
     timer.current = window.setTimeout(() => onPaid(), 2400);
   };
@@ -92,7 +127,7 @@ export function SubscriptionPaymentScreen({ onBack, onPaid }: SubscriptionPaymen
         {/* Heading Block */}
         <div className="mb-space-lg">
           <h2 className="font-heading-md text-heading-md text-text-primary font-bold tracking-tight">
-            Continue with VEMTAP Growth
+            Continue with VEMTAP {planName}
           </h2>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
             Activate your monthly subscription to keep your business running smoothly.
@@ -109,11 +144,15 @@ export function SubscriptionPaymentScreen({ onBack, onPaid }: SubscriptionPaymen
                   <Icon name="verified" filled className="text-[13px]" />
                   POPULAR FOR RETAIL
                 </div>
-                <h3 className="font-heading-sm text-heading-sm text-text-primary font-semibold">VEMTAP Growth</h3>
+                <h3 className="font-heading-sm text-heading-sm text-text-primary font-semibold">VEMTAP {planName}</h3>
               </div>
               <div className="text-right">
-                <div className="font-heading-md text-heading-md text-primary font-bold">₦5,000</div>
-                <span className="font-caption text-caption text-text-secondary">/ month</span>
+                <div className="font-heading-md text-heading-md text-primary font-bold">
+                  {priceLine ? priceLine.split(' / ')[0] : '₦5,000'}
+                </div>
+                <span className="font-caption text-caption text-text-secondary">
+                  / {priceLine ? priceLine.split(' / ')[1] : 'month'}
+                </span>
               </div>
             </div>
             <p className="font-label-sm text-label-sm text-text-secondary mb-space-sm flex items-center gap-1.5">
@@ -231,17 +270,23 @@ export function SubscriptionPaymentScreen({ onBack, onPaid }: SubscriptionPaymen
           <h4 className="font-label-md text-label-md text-text-primary font-semibold mb-2">Billing Summary</h4>
           <div className="space-y-1.5 mb-space-sm">
             <div className="flex justify-between items-center">
-              <span className="font-label-sm text-label-sm text-text-secondary">Growth Subscription (1 mo)</span>
-              <span className="font-label-sm text-label-sm font-medium text-text-primary">₦5,000</span>
+              <span className="font-label-sm text-label-sm text-text-secondary">{planName} Subscription (1 mo)</span>
+              <span className="font-label-sm text-label-sm font-medium text-text-primary">
+                {subtotal !== null ? formatNaira(subtotal) : '₦5,000'}
+              </span>
             </div>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-1.5">
-                <span className="font-label-sm text-label-sm text-text-secondary">VAT (7.5%)</span>
+                <span className="font-label-sm text-label-sm text-text-secondary">
+                  {tax !== null && preview.data?.taxRule?.rate ? `VAT (${preview.data.taxRule.rate}%)` : 'VAT (7.5%)'}
+                </span>
                 <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                  Waived
+                  {tax ? 'Applied' : 'Waived'}
                 </span>
               </div>
-              <span className="font-label-sm text-label-sm font-medium text-badge-discount-text">₦0</span>
+              <span className="font-label-sm text-label-sm font-medium text-badge-discount-text">
+                {tax !== null ? formatNaira(tax) : '₦0'}
+              </span>
             </div>
           </div>
           <div className="pt-space-xs bg-surface-canvas rounded-xl p-3 flex justify-between items-baseline shadow-sm">
@@ -249,7 +294,7 @@ export function SubscriptionPaymentScreen({ onBack, onPaid }: SubscriptionPaymen
               <span className="font-heading-sm text-heading-sm font-semibold text-text-primary">Total Due Today</span>
               <span className="block font-caption text-caption text-text-secondary">Instant activation</span>
             </div>
-            <span className="font-heading-md text-heading-md text-primary font-bold">₦5,000</span>
+            <span className="font-heading-md text-heading-md text-primary font-bold">{payLabel}</span>
           </div>
         </div>
 
@@ -269,14 +314,16 @@ export function SubscriptionPaymentScreen({ onBack, onPaid }: SubscriptionPaymen
               </>
             ) : (
               <>
-                <span>Pay ₦5,000 & Activate Growth</span>
+                <span>
+                  Pay {payLabel} & Activate {planName}
+                </span>
                 <Icon name="arrow_forward" className="text-[18px] transition-transform" />
               </>
             )}
           </button>
           <div className="text-center px-space-xs space-y-1">
             <p className="font-caption text-caption text-text-secondary leading-snug">
-              Your subscription renews monthly at ₦5,000 until cancelled in settings.
+              Your subscription renews monthly at {payLabel} until cancelled in settings.
             </p>
             <div>
               <a

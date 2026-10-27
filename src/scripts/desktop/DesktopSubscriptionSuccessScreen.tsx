@@ -3,6 +3,15 @@ import { Icon } from '../../components/ui/Icon';
 import { SubscriptionChrome } from './SubscriptionChrome';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
+import { hasApiConfig } from '../../services/api/client';
+import {
+  useActiveSubscription,
+  useBillingHistory,
+  usePaymentMethod,
+  useSubscriptionPlans,
+} from '../../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, renewalDate } from '../subscriptionLive';
+import { formatNaira } from '../../utils/format';
 
 interface DesktopSubscriptionSuccessScreenProps {
   onGoDashboard: () => void;
@@ -48,6 +57,30 @@ export function DesktopSubscriptionSuccessScreen({
   onExploreFeatures,
 }: DesktopSubscriptionSuccessScreenProps) {
   const [copied, setCopied] = useState(false);
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  const plans = useSubscriptionPlans();
+  const billing = useBillingHistory();
+  const payment = usePaymentMethod();
+
+  // Live: the newest invoice + active subscription drive the receipt; demo
+  // keeps the scripted Growth receipt.
+  const sub = subscription.data ?? null;
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = sub?.plan?.name ?? featured?.name ?? 'Growth';
+  const latest = (billing.data ?? [])[0] ?? null;
+  const priceLine = featured ? planPriceLine(featured, sub?.billingPeriod ?? 'monthly') : null;
+  const paidText = latest ? formatNaira(Number(latest.amount) || 0) : priceLine ? priceLine.split(' / ')[0] : '₦5,000';
+  const paidTotalText = latest ? `${paidText}.00` : '₦5,000.00';
+  const card = live && payment.data?.hasCard ? payment.data.card : null;
+  const receiptRows = live
+    ? [
+        { label: 'Transaction ID', value: latest?.reference ?? '—', copy: true },
+        { label: 'Payment Date', value: latest?.createdAt ? new Date(latest.createdAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today' },
+        { label: 'Next Billing Date', value: renewalDate(sub?.endDate) ?? '—' },
+      ]
+    : RECEIPT_ROWS;
+  const invoiceRef = live ? (latest?.reference ?? 'VT-SUB-PENDING') : 'VT-SUB-982410';
 
   const handleCopy = () => {
     setCopied(true);
@@ -56,17 +89,27 @@ export function DesktopSubscriptionSuccessScreen({
 
   const handleDownloadInvoice = () => {
     downloadCsv(
-      'vemtap-subscription-invoice-VT-SUB-982410.csv',
+      `vemtap-subscription-invoice-${invoiceRef}.csv`,
       ['Field', 'Value'],
-      [...RECEIPT_ROWS.map((row) => [row.label, row.value]), ['Amount Paid', '₦5,000.00']],
+      [
+        ...receiptRows.map((row) => [row.label, row.value]),
+        ['Amount Paid', paidTotalText],
+        ['Plan', `VEMTAP ${planName}`],
+        [
+          'Payment method',
+          live ? (card ? `${card.brand ?? 'Card'} •••• ${card.last4}` : 'Card on file') : 'Mastercard •••• 4128',
+        ],
+      ],
     );
     printReport(
-      'VEMTAP Subscription Invoice — VT-SUB-982410',
-      `${printKvTable('Invoice', RECEIPT_ROWS.map((row) => [row.label, row.value] as [string, string]))}
+      `VEMTAP Subscription Invoice — ${invoiceRef}`,
+      `${printKvTable('Invoice', receiptRows.map((row) => [row.label, row.value] as [string, string]))}
        ${printKvTable('Line items', [
-         ['VEMTAP Growth plan — monthly subscription', '₦4,651.16'],
-         ['VAT (7.5%)', '₦348.84'],
-         ['Amount paid', '₦5,000.00'],
+         live
+           ? [`VEMTAP ${planName} plan — subscription`, paidText]
+           : ['VEMTAP Growth plan — monthly subscription', '₦4,651.16'],
+         live ? ['VAT', 'included'] : ['VAT (7.5%)', '₦348.84'],
+         ['Amount paid', paidTotalText],
        ])}
        <p class="foot">A CSV copy of this invoice downloaded alongside the PDF.</p>`,
     );
@@ -93,7 +136,7 @@ export function DesktopSubscriptionSuccessScreen({
               Payment Successful
             </span>
             <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
-              You're now on VEMTAP Growth
+              You're now on VEMTAP {planName}
             </h1>
             <p className="font-body-lg text-body-lg text-text-secondary max-w-lg">
               Your business is active and ready to grow with VEMTAP.
@@ -137,7 +180,7 @@ export function DesktopSubscriptionSuccessScreen({
               </div>
             </div>
             <div className="flex flex-col divide-y divide-border-subtle/60">
-              {RECEIPT_ROWS.map((row) => (
+              {receiptRows.map((row) => (
                 <div key={row.label} className="flex items-center justify-between py-space-xs">
                   <span className="font-caption text-caption text-text-secondary">{row.label}</span>
                   <span className="font-label-sm text-label-sm text-text-primary font-medium">{row.value}</span>
@@ -146,7 +189,7 @@ export function DesktopSubscriptionSuccessScreen({
             </div>
             <div className="mt-space-sm pt-space-sm border-t border-border-subtle flex items-center justify-between">
               <span className="font-label-md text-label-md text-text-primary font-semibold">Amount Paid</span>
-              <span className="font-heading-md text-heading-md text-text-primary font-bold">₦5,000.00</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold">{paidTotalText}</span>
             </div>
             <button
               type="button"
@@ -161,7 +204,7 @@ export function DesktopSubscriptionSuccessScreen({
           <div className="flex flex-col gap-space-lg">
             <section className="rounded-xl bg-surface-subtle p-space-lg shadow-sm">
               <h2 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">
-                Your Growth benefits are live
+                Your {planName} benefits are live
               </h2>
               <div className="flex flex-col gap-space-sm">
                 {UNLOCKED_BENEFITS.map((benefit) => (

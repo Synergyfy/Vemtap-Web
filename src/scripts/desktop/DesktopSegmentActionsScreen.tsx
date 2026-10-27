@@ -3,6 +3,11 @@ import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { SegmentRef } from '../BusinessSegmentsHubScreen';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useSegmentInsights } from '../../hooks/business/useSegments';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { compactNaira } from '../segmentsLive';
 
 interface DesktopSegmentActionsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -38,6 +43,21 @@ export function DesktopSegmentActionsScreen({
     const timer = window.setTimeout(() => setToast(null), 2600);
     timers.current.push(timer);
   };
+
+  const live = hasApiConfig();
+  const insights = useSegmentInsights(live ? segment : null);
+  const business = useMyBusiness();
+  const totalSpend = live ? (insights.data ? compactNaira(insights.data.totalSpend) : '—') : '₦3.28M';
+  const pushReady = live
+    ? `${insights.data ? (insights.data.reachableByPush ?? 0).toLocaleString('en-US') : '—'} Push/Feed ready`
+    : segment.count === '294'
+      ? '264 Push/Feed ready'
+      : 'Push/Feed ready';
+  const businessName = live ? business.data?.name || '—' : 'Urban Grill & Bistro';
+
+  useEffect(() => {
+    if (insights.error) showToast(apiErrorMessage(insights.error, 'Could not load this segment.'));
+  }, [insights.error]);
 
   return (
     <BusinessPortalChrome activeNav="business-customers" onNav={onNav}>
@@ -128,7 +148,7 @@ export function DesktopSegmentActionsScreen({
             </div>
             <div className="mt-space-2xs">
               <span className="font-label-md text-label-md text-text-primary font-semibold">
-                {segment.count === '294' ? '264 Push/Feed ready' : 'Push/Feed ready'}
+                {pushReady}
               </span>
               <span className="block text-caption font-caption text-text-secondary">
                 <span className="text-text-tertiary mx-1">•</span> In-App Message ready
@@ -143,8 +163,8 @@ export function DesktopSegmentActionsScreen({
               <Icon name="payments" className="text-[18px] text-primary" />
             </div>
             <div className="mt-space-2xs flex items-baseline gap-1.5">
-              <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">₦3.28M</span>
-              <span className="text-caption font-caption text-text-secondary">Trailing 90 days</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">{totalSpend}</span>
+              <span className="text-caption font-caption text-text-secondary">{live ? 'All time' : 'Trailing 90 days'}</span>
             </div>
           </div>
         </div>
@@ -269,19 +289,19 @@ export function DesktopSegmentActionsScreen({
                     <h3 className="text-label-md font-label-md font-semibold text-text-primary truncate">
                       {segment.name}
                     </h3>
-                    <p className="text-caption font-caption text-text-secondary">Urban Grill &amp; Bistro</p>
+                    <p className="text-caption font-caption text-text-secondary">{businessName}</p>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   <span className="text-caption font-caption text-text-secondary block">Total Spend</span>
-                  <span className="text-label-md font-label-md font-semibold text-text-primary">₦3.28M</span>
+                  <span className="text-label-md font-label-md font-semibold text-text-primary">{totalSpend}</span>
                 </div>
               </div>
               <p className="text-body-md font-body-md text-text-secondary leading-snug">{segment.desc}</p>
               <div className="flex items-center gap-space-xs bg-surface-canvas p-space-xs rounded-lg">
                 <Icon name="cell_tower" className="text-[16px] text-primary" filled />
                 <span className="text-caption font-caption text-text-primary font-medium">
-                  {segment.count === '294' ? '264 Push/Feed ready' : 'Push/Feed ready'}{' '}
+                  {pushReady}{' '}
                   <span className="text-text-tertiary mx-1">•</span> In-App Message ready
                 </span>
               </div>

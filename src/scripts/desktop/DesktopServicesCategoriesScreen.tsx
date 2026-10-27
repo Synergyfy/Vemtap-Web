@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
+import { hasApiConfig } from '../../services/api/client';
+import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
+import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategories';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { availabilityLabel, isItemActive, itemPriceLabel } from '../catalogueLive';
+import type { CatalogueItem } from '../../services/catalogueItemsService';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopServicesCategoriesScreenProps {
@@ -144,6 +150,37 @@ const TILES = [
 
 type StatusPill = 'all' | 'booking' | 'archived';
 
+/** Neutral image until a live service has a photo. */
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
+/** A live service in the card shape. Lead staff has no data source yet ("—"). */
+function liveServiceCard(item: CatalogueItem, branchCount: number): ServiceCardData {
+  const active = isItemActive(item);
+  return {
+    id: item.id,
+    image: item.mainImage || LIVE_IMAGE_PLACEHOLDER,
+    alt: item.name,
+    imageTag: (item.category?.name ?? 'Service').toUpperCase(),
+    imageTagClass: 'bg-badge-discount-bg text-badge-discount-text',
+    category: item.category?.name ?? 'Service',
+    status: { label: active ? 'Active' : 'Hidden', tone: 'active', icon: 'default' },
+    title: item.name,
+    description: item.shortDescription || item.description || '',
+    metrics: [
+      { icon: 'payments', iconClass: 'text-primary', label: 'Price', value: itemPriceLabel(item) },
+      { icon: 'schedule', iconClass: 'text-secondary', label: 'Duration', value: item.duration || '—' },
+      { icon: 'badge', iconClass: 'text-tertiary-container', label: 'Lead Staff', value: '—' },
+    ],
+    meta: [
+      { icon: 'location_on', iconClass: 'text-primary', text: availabilityLabel(item, branchCount) },
+      { icon: 'event_available', iconClass: 'text-tertiary', text: item.isBookable ? 'Bookable online' : 'Not bookable online' },
+    ],
+    actionLabel: 'Availability Calendar',
+    actionIcon: 'calendar_month',
+  };
+}
+
 export function DesktopServicesCategoriesScreen({
   onNav,
   onBackToCatalog,
@@ -152,7 +189,44 @@ export function DesktopServicesCategoriesScreen({
   const [pill, setPill] = useState<StatusPill>('all');
   const [published, setPublished] = useState(false);
 
-  const visibleServices = SERVICES.filter((service) => {
+  // Live: the business's real services and categories; demo keeps the samples.
+  const live = hasApiConfig();
+  const serviceItems = useCatalogueItems('service');
+  const productItems = useCatalogueItems('product');
+  const liveCategories = useCatalogueCategories();
+  const { branches } = useBusinessBranch();
+  const branchCount = branches.filter((branch) => branch.id).length;
+  const liveServices = serviceItems.data ?? [];
+  const services = live ? liveServices.map((item) => liveServiceCard(item, branchCount)) : SERVICES;
+  const allLiveItems = [...liveServices, ...(productItems.data ?? [])];
+  const categories = live
+    ? (liveCategories.data ?? []).map((category) => {
+        const items = allLiveItems.filter((item) => item.categoryId === category.id || item.category?.id === category.id);
+        const isServices = (category.kind ?? (items.some((item) => item.itemType === 'service') ? 'service' : 'product')) === 'service';
+        return {
+          name: category.name,
+          count: `${items.length} ${isServices ? (items.length === 1 ? 'service' : 'services') : items.length === 1 ? 'item' : 'items'}`,
+          kind: isServices ? 'Services' : 'Products',
+          boxClass: isServices ? 'bg-surface-container-high text-primary' : 'bg-surface-container text-secondary',
+          kindClass: isServices ? 'text-secondary' : 'text-primary',
+        };
+      })
+    : CATEGORIES;
+  const bookable = liveServices.filter((item) => item.isBookable).length;
+  const tiles = live
+    ? [
+        { ...TILES[0], value: String(liveServices.filter(isItemActive).length), valueNote: `${liveServices.length} total` },
+        {
+          ...TILES[1],
+          value: String(bookable),
+          valueNote: liveServices.length ? `${Math.round((bookable / liveServices.length) * 100)}% total` : '—',
+        },
+        { ...TILES[2], value: String(liveCategories.data?.length ?? 0) },
+        { ...TILES[3], value: '—', valueNote: '' },
+      ]
+    : TILES;
+
+  const visibleServices = services.filter((service) => {
     const needle = query.trim().toLowerCase();
     return !needle || service.title.toLowerCase().includes(needle) || service.category.toLowerCase().includes(needle);
   });
@@ -215,7 +289,7 @@ export function DesktopServicesCategoriesScreen({
 
         {/* Operational Metric Tiles & System Quick Glance */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-space-md">
-          {TILES.map((tile) => (
+          {tiles.map((tile) => (
             <div
               key={tile.label}
               className="bg-surface-canvas rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex items-center justify-between"
@@ -463,7 +537,7 @@ export function DesktopServicesCategoriesScreen({
 
               {/* Drag-and-Drop Taxonomy Interactive Stack */}
               <div className="space-y-space-xs">
-                {CATEGORIES.map((category, index) => (
+                {categories.map((category, index) => (
                   <div
                     key={category.name}
                     className="group flex items-center justify-between p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-all cursor-grab active:cursor-grabbing shadow-sm hover:shadow"

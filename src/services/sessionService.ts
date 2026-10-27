@@ -19,6 +19,8 @@ export interface SessionUser {
   business?: { id: string; name?: string | null; uniqueCode?: string | null } | null;
   emailVerified?: boolean;
   twoFactorEnabled?: boolean;
+  /** `GOOGLE` accounts have no PIN or password. */
+  authProvider?: 'LOCAL' | 'GOOGLE';
 }
 
 const BUSINESS_ROLES: UserRole[] = ['Owner', 'Manager', 'Staff'];

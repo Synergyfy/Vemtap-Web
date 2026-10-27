@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { POS_CUSTOMERS, naira, type PosCustomerRecord } from './posRegisterExtras';
+import { hasApiConfig } from '../../services/api/client';
+import { useDebounced, useLiveCustomerLookup } from '../posLive';
 
 /**
  * Till-side customer picker.
@@ -31,7 +33,13 @@ export function PosCustomerModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const live = hasApiConfig();
+  const search = useDebounced(query.trim());
+  const lookup = useLiveCustomerLookup(search, false, 20);
+  const liveResults = useMemo(() => lookup.rows.map((row) => row.record), [lookup.rows]);
+
   const results = useMemo(() => {
+    if (live) return liveResults;
     const q = query.trim().toLowerCase();
     if (!q) return POS_CUSTOMERS;
     const digits = q.replace(/\D/g, '');
@@ -42,7 +50,7 @@ export function PosCustomerModal({
       if (digits && customer.phone.replace(/\D/g, '').includes(digits)) return true;
       return false;
     });
-  }, [query]);
+  }, [query, live, liveResults]);
 
   /** VEMTAP member already known by this phone — used to pick 2A vs 2B. */
   const vemtapMatch = useMemo(() => {
@@ -54,6 +62,11 @@ export function PosCustomerModal({
   const submitNew = () => {
     if (!name.trim() || phone.replace(/\D/g, '').length < 7) {
       setError('Enter a name and a valid phone number. Email is optional.');
+      return;
+    }
+    if (live) {
+      // There is no till-side create endpoint yet; customers join by invite.
+      setError('Adding customers at the till is coming soon — invite them from Customers instead.');
       return;
     }
     setError(null);

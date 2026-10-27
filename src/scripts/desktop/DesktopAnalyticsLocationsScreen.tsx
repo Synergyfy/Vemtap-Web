@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { AnalyticsShell } from './AnalyticsShell';
 import { downloadCsv } from '../../utils/exportCsv';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { locationsView, useLiveAnalytics } from '../analyticsLive';
 
 interface DesktopAnalyticsLocationsScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -20,13 +22,56 @@ const SHARE_LEGEND: Array<{ dot: string; name: string; amount: string; share: st
 export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocationsScreenProps) {
   // Branch keys line up with the three scorecards in the Performance Matrix.
   const [branchFilter, setBranchFilter] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
 
-  const branchChoices = [
-    { value: '', label: 'All branches' },
-    { value: 'wuse', label: 'Wuse II Flagship' },
-    { value: 'maitama', label: 'Maitama Heights' },
-    { value: 'garki', label: 'Garki Area 11' },
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
+  const showToast = (message: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
+
+  const { live, data, error } = useLiveAnalytics('locations');
+  useEffect(() => {
+    if (error) showToast(apiErrorMessage(error, 'Could not load location analytics.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error]);
+
+  const view = locationsView(data);
+  const top = view.branches[0];
+  const legend = live
+    ? view.segments.map((segment, index) => ({
+        dot: segment.dot,
+        name: view.branches[index]?.name ?? '',
+        amount: view.branches[index]?.revenue ?? '—',
+        share: segment.share,
+      }))
+    : SHARE_LEGEND;
+  const demoSegments = [
+    { width: '54%', legend: 'Wuse II: 54%', dot: 'bg-primary' },
+    { width: '35.2%', legend: 'Maitama: 35.2%', dot: 'bg-primary-container' },
+    { width: '10.8%', legend: 'Garki Area 11: 10.8%', dot: 'bg-secondary-container' },
   ];
+  const segments = live ? view.segments : demoSegments;
+
+  const branchChoices = live
+    ? [
+        { value: '', label: 'All branches' },
+        ...view.branches.map((branch, index) => ({ value: String(index), label: branch.name })),
+      ]
+    : [
+        { value: '', label: 'All branches' },
+        { value: 'wuse', label: 'Wuse II Flagship' },
+        { value: 'maitama', label: 'Maitama Heights' },
+        { value: 'garki', label: 'Garki Area 11' },
+      ];
 
   const showBranch = (key: string) => branchFilter === '' || branchFilter === key;
 
@@ -95,7 +140,7 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
                 downloadCsv(
                   'vemtap_location_analytics',
                   ['Branch', 'Revenue', 'Share'],
-                  SHARE_LEGEND.map((branch) => [branch.name, branch.amount, branch.share]),
+                  legend.map((branch) => [branch.name, branch.amount, branch.share]),
                 );
               }}
             >
@@ -144,35 +189,48 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
                   Top Revenue Driver
                 </span>
                 <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold">
-                  54% of Gross
+                  {live && top ? `${top.share}% of Gross` : '54% of Gross'}
                 </span>
               </div>
-              <h2 className="font-heading-md text-heading-md text-on-surface font-bold tracking-tight">Wuse II Flagship</h2>
+              <h2 className="font-heading-md text-heading-md text-on-surface font-bold tracking-tight">
+                {live && top ? top.name : 'Wuse II Flagship'}
+              </h2>
               <div className="flex items-baseline gap-space-xs mt-space-2xs">
-                <span className="font-display-hero text-display-hero font-bold text-primary tracking-tight">₦2,620,000</span>
+                <span className="font-display-hero text-display-hero font-bold text-primary tracking-tight">
+                  {live && top ? top.revenue : '₦2,620,000'}
+                </span>
                 <span className="font-label-sm text-label-sm text-badge-discount-text flex items-center font-semibold">
-                  <Icon name="trending_up" className="text-[16px]" /> +14.2%
+                  <Icon name="trending_up" className="text-[16px]" /> {live && top ? top.change : '+14.2%'}
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary mt-space-2xs">
-                Anchor store dominating central Abuja trade territory. Consistent daytime velocity and high-volume
-                weekend dining.
+                {live && top
+                  ? top.status
+                  : 'Anchor store dominating central Abuja trade territory. Consistent daytime velocity and high-volume weekend dining.'}
               </p>
             </div>
             <div className="pt-space-md mt-space-md z-10 flex items-center justify-between bg-surface-subtle/80 rounded-xl p-space-sm">
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Total Volume</span>
-                <span className="font-label-md text-label-md font-bold text-on-surface">780 Orders</span>
+                <span className="font-label-md text-label-md font-bold text-on-surface">
+                  {live && top ? `${top.orders} Orders` : '780 Orders'}
+                </span>
               </div>
               <div className="h-6 w-px bg-surface-container" />
               <div className="flex flex-col">
-                <span className="font-caption text-caption text-text-tertiary">Table Turnover</span>
-                <span className="font-label-md text-label-md font-bold text-on-surface">4.8x / day</span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  {live ? 'Customers' : 'Table Turnover'}
+                </span>
+                <span className="font-label-md text-label-md font-bold text-on-surface">
+                  {live && top ? top.customers : '4.8x / day'}
+                </span>
               </div>
               <div className="h-6 w-px bg-surface-container" />
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">AOV</span>
-                <span className="font-label-md text-label-md font-bold text-primary">₦3,358</span>
+                <span className="font-label-md text-label-md font-bold text-primary">
+                  {live && top ? top.aov : '₦3,358'}
+                </span>
               </div>
             </div>
           </div>
@@ -189,16 +247,20 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
                 </div>
               </div>
               <div className="flex items-baseline gap-space-xs">
-                <span className="font-display-hero text-display-hero font-bold text-on-surface tracking-tight">3,420</span>
-                <span className="font-caption text-caption text-badge-discount-text font-bold">+8.3%</span>
+                <span className="font-display-hero text-display-hero font-bold text-on-surface tracking-tight">
+                  {live ? view.network.visits : '3,420'}
+                </span>
+                {live ? null : <span className="font-caption text-caption text-badge-discount-text font-bold">+8.3%</span>}
               </div>
               <p className="font-caption text-caption text-text-secondary">
-                Validated NFC/QR check-ins across 3 active branch terminals in Abuja Urban Core.
+                {live
+                  ? `Validated NFC/QR check-ins across ${view.network.outlets} active branch terminals.`
+                  : 'Validated NFC/QR check-ins across 3 active branch terminals in Abuja Urban Core.'}
               </p>
             </div>
 
-            {/* Micro Sparkline SVG Visualization */}
-            <div className="w-full pt-space-md">
+            {/* Micro Sparkline SVG Visualization — sample curve, demo only */}
+            <div className={`w-full pt-space-md ${live ? 'hidden' : ''}`}>
               <div className="flex items-center justify-between font-caption text-caption text-text-tertiary mb-1">
                 <span>Weekday Baseline</span>
                 <span className="text-on-surface font-semibold">114 taps/day avg</span>
@@ -231,42 +293,37 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
                 <span className="font-caption text-caption font-semibold uppercase tracking-wider text-text-tertiary">
                   Network Gross Share
                 </span>
-                <span className="font-heading-sm text-heading-sm font-bold text-on-surface">₦4,850,000 Combined</span>
+                <span className="font-heading-sm text-heading-sm font-bold text-on-surface">
+                  {live ? `${view.network.revenue} Combined` : '₦4,850,000 Combined'}
+                </span>
               </div>
               <span className="font-caption text-caption text-text-secondary bg-surface-container-low px-space-xs py-1 rounded-full">
-                3 active hubs
+                {live ? `${view.network.outlets} active hubs` : '3 active hubs'}
               </span>
             </div>
 
             {/* Multi-segment Horizontal Proportion Bar */}
             <div className="w-full flex flex-col gap-space-xs my-space-sm">
               <div className="w-full h-4 rounded-full bg-surface-container overflow-hidden flex shadow-inner">
-                <div
-                  className="h-full bg-primary transition-all duration-500 hover:opacity-90"
-                  style={{ width: '54%' }}
-                  title="Wuse II: 54%"
-                />
-                <div
-                  className="h-full bg-primary-container transition-all duration-500 hover:opacity-90"
-                  style={{ width: '35.2%' }}
-                  title="Maitama: 35.2%"
-                />
-                <div
-                  className="h-full bg-secondary-container transition-all duration-500 hover:opacity-90"
-                  style={{ width: '10.8%' }}
-                  title="Garki Area 11: 10.8%"
-                />
+                {segments.map((segment) => (
+                  <div
+                    className={`h-full ${segment.dot} transition-all duration-500 hover:opacity-90`}
+                    key={segment.legend}
+                    style={{ width: segment.width }}
+                    title={segment.legend}
+                  />
+                ))}
               </div>
               <div className="flex items-center justify-between font-caption text-caption text-text-tertiary">
                 <span>₦0</span>
-                <span className="font-medium text-on-surface">Network Benchmark Target: ₦6,000,000</span>
-                <span>80.8% of Target</span>
+                {!live && <span className="font-medium text-on-surface">Network Benchmark Target: ₦6,000,000</span>}
+                {!live && <span>80.8% of Target</span>}
               </div>
             </div>
 
             {/* Branch Legend Breakdowns */}
             <div className="grid grid-cols-3 gap-space-2xs pt-space-xs">
-              {SHARE_LEGEND.map((branch) => (
+              {legend.map((branch) => (
                 <div key={branch.name} className="flex flex-col p-space-xs rounded-xl bg-surface-container-low/60">
                   <div className="flex items-center gap-1.5">
                     <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${branch.dot}`} />
@@ -302,6 +359,107 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-space-lg">
+            {live ? (
+              view.branches
+                .filter((_, index) => branchFilter === '' || branchFilter === String(index))
+                .map((branch, index) => (
+                  <div
+                    className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow"
+                    key={branch.name}
+                  >
+                    <div>
+                      {/* Card Head with Banner Tag */}
+                      <div className="p-space-lg pb-space-md bg-gradient-to-b from-surface-tint-blue/50 to-transparent">
+                        <div className="flex items-start justify-between">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-space-2xs">
+                              <span
+                                className={`px-space-xs py-0.5 rounded font-caption text-caption font-bold uppercase tracking-wider ${
+                                  index === 0
+                                    ? 'bg-primary text-on-primary'
+                                    : 'bg-surface-tint-blue text-primary'
+                                }`}
+                              >
+                                {index === 0 ? 'Top Grossing' : `${branch.share}% share`}
+                              </span>
+                              <span className="font-caption text-caption text-text-tertiary">
+                                Hub #{String(index + 1).padStart(2, '0')}
+                              </span>
+                            </div>
+                            <h3 className="font-heading-sm text-heading-sm font-bold text-on-surface mt-space-2xs">
+                              {branch.name}
+                            </h3>
+                            <span className="font-caption text-caption text-text-secondary">{branch.status}</span>
+                          </div>
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                            <Icon name="storefront" className="text-[24px]" />
+                          </div>
+                        </div>
+                        {/* Main Gross Metric Box */}
+                        <div className="mt-space-md bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
+                          <span className="font-caption text-caption text-text-tertiary">Monthly Gross Revenue</span>
+                          <div className="flex items-baseline justify-between mt-1">
+                            <span className="font-heading-lg text-heading-lg font-bold text-on-surface">
+                              {branch.revenue}
+                            </span>
+                            <span className="font-label-sm text-label-sm font-semibold text-primary">
+                              {branch.orders} tickets
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Granular Breakdown Rows */}
+                      <div className="px-space-lg py-space-sm flex flex-col gap-space-sm">
+                        <div className="flex items-center justify-between py-space-xs">
+                          <div className="flex items-center gap-space-xs text-text-secondary font-label-md text-label-md">
+                            <Icon name="receipt_long" className="text-text-tertiary text-[18px]" />
+                            <span>Average Order Value</span>
+                          </div>
+                          <span className="font-label-md text-label-md font-bold text-on-surface">{branch.aov}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-space-xs">
+                          <div className="flex items-center gap-space-xs text-text-secondary font-label-md text-label-md">
+                            <Icon name="group" className="text-text-tertiary text-[18px]" />
+                            <span>Customers</span>
+                          </div>
+                          <span className="font-label-md text-label-md font-bold text-on-surface">{branch.customers}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-space-xs">
+                          <div className="flex items-center gap-space-xs text-text-secondary font-label-md text-label-md">
+                            <Icon name="visibility" className="text-text-tertiary text-[18px]" />
+                            <span>Deal Views</span>
+                          </div>
+                          <span className="font-label-md text-label-md font-semibold text-primary">{branch.views}</span>
+                        </div>
+                        {branch.rating != null && (
+                          <div className="flex items-center justify-between py-space-xs">
+                            <div className="flex items-center gap-space-xs text-text-secondary font-label-md text-label-md">
+                              <Icon name="star" className="text-text-tertiary text-[18px]" />
+                              <span>Rating</span>
+                            </div>
+                            <span className="font-label-md text-label-md font-medium text-on-surface">
+                              {branch.rating.toFixed(1)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card Footer Action */}
+                    <div className="p-space-lg pt-space-xs">
+                      <button
+                        className="w-full py-2.5 rounded-xl bg-surface-container-low hover:bg-surface-tint-blue hover:text-primary font-button-secondary text-button-secondary text-on-surface transition-colors flex items-center justify-center gap-1"
+                        type="button"
+                      >
+                        <span>View {branch.name.split(' ')[0]} Terminal Stream</span>
+                        <Icon name="arrow_forward" className="text-[16px]" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+            ) : (
+            <>
             {/* Scorecard 1: Wuse II Flagship */}
             {showBranch('wuse') && (
             <div className="bg-surface-container-lowest rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -560,10 +718,13 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
               </div>
             </div>
             )}
+            </>
+            )}
           </div>
         </section>
 
-        {/* Bottom Section: Catchment Map & Geographic Draw Studio + Strategic Opportunity Card */}
+        {/* Bottom Section: Catchment Map & Geographic Draw Studio + Strategic Opportunity Card — sample insight, demo only */}
+        {!live && (
         <section className="grid grid-cols-1 xl:grid-cols-12 gap-space-lg">
           {/* Interactive Catchment Map Container */}
           <div className="xl:col-span-8 bg-surface-container-lowest rounded-2xl p-space-lg shadow-sm flex flex-col justify-between">
@@ -710,7 +871,17 @@ export function DesktopAnalyticsLocationsScreen({ onNav }: DesktopAnalyticsLocat
             </div>
           </div>
         </section>
+        )}
       </div>
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 pointer-events-none max-w-sm">
+          <div className="bg-inverse-surface text-inverse-on-surface font-label-sm text-label-sm px-space-md py-space-xs rounded-full shadow-lg flex items-center gap-space-2xs">
+            <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
+            <span className="truncate">{toast}</span>
+          </div>
+        </div>
+      )}
     </AnalyticsShell>
   );
 }

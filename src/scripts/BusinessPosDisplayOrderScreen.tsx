@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { apiErrorMessage } from '../services/errorMessages';
+import { naira, useLiveDisplay } from './posLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessCfdHeader } from './BusinessCfdHeader';
@@ -43,8 +45,21 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
     [],
   );
 
+  const display = useLiveDisplay();
+  const live = display.live;
+  const items = live ? display.lines : ORDER_ITEMS;
+  const summary = live ? display.summary : SUMMARY;
+  const totalLabel = live ? naira(display.total) : '₦29,700';
+  const accountNumber = live ? (display.transfer?.accountNumber ?? '') : '1018492041';
+
+  useEffect(() => {
+    if (live && display.error) showToast(apiErrorMessage(display.error, 'Could not load the customer display.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [display.error]);
+
   const copyAccount = () => {
-    navigator.clipboard?.writeText('1018492041').catch(() => undefined);
+    if (!accountNumber) return;
+    navigator.clipboard?.writeText(accountNumber).catch(() => undefined);
     setCopied(true);
     if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
     copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
@@ -73,10 +88,10 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
               </div>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-space-2xs">
-                  <span className="font-label-sm text-label-sm text-on-surface truncate font-semibold">Urban Grill &amp; Bistro</span>
+                  <span className="font-label-sm text-label-sm text-on-surface truncate font-semibold">{live ? display.venueName : 'Urban Grill & Bistro'}</span>
                   <Icon name="check_circle" filled className="text-primary text-[15px]" />
                 </div>
-                <span className="font-caption text-caption text-text-secondary truncate">Wuse Branch · Till 01 · Counter</span>
+                <span className="font-caption text-caption text-text-secondary truncate">{live ? display.whereLine : 'Wuse Branch · Till 01 · Counter'}</span>
               </div>
             </div>
             <div className="bg-surface-tint-blue px-space-xs py-space-2xs rounded-full flex items-center gap-space-2xs shrink-0">
@@ -94,14 +109,14 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
                 <Icon name="stars" filled className="text-on-primary-fixed text-[18px]" />
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="font-label-sm text-label-sm text-on-surface truncate">Hello Michael James 👋</span>
-                <span className="font-caption text-caption text-text-secondary">VIP Member · 2,450 points available</span>
+                <span className="font-label-sm text-label-sm text-on-surface truncate">Hello {live ? (display.customerName ?? 'there') : 'Michael James'} 👋</span>
+                <span className="font-caption text-caption text-text-secondary">{live ? (display.customerName ? 'VEMTAP member' : 'Welcome in') : 'VIP Member · 2,450 points available'}</span>
               </div>
             </div>
             <button
               className="bg-surface-canvas text-primary font-caption text-caption px-space-xs py-space-2xs rounded-full shadow-sm flex items-center gap-space-2xs shrink-0 active:scale-95 transition-transform"
               type="button"
-              onClick={() => showToast('Perk picker opened for Michael')}
+              onClick={() => showToast(live ? 'Perks at the display are coming soon' : 'Perk picker opened for Michael')}
             >
               <Icon name="redeem" className="text-[14px]" />
               <span>Use Perks</span>
@@ -122,8 +137,8 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
               </span>
             </div>
             <div className="flex flex-col">
-              {ORDER_ITEMS.map((item, index) => (
-                <div key={item.name}>
+              {items.map((item, index) => (
+                <div key={`${item.name}-${index}`}>
                   <div className="flex items-start justify-between gap-space-xs py-space-2xs">
                     <div className="flex flex-col min-w-0">
                       <span className="font-label-sm text-label-sm text-on-surface truncate">{item.name}</span>
@@ -132,7 +147,7 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
                     </div>
                     <span className="font-label-sm text-label-sm text-on-surface shrink-0 font-semibold">{item.price}</span>
                   </div>
-                  {index < ORDER_ITEMS.length - 1 && <div className="h-px bg-surface-container-high w-full" />}
+                  {index < items.length - 1 && <div className="h-px bg-surface-container-high w-full" />}
                 </div>
               ))}
             </div>
@@ -148,19 +163,19 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold truncate">
-                  VEMTAP Prime Lunch Applied
+                  {live ? (display.discount ? 'Discount applied' : 'No discount on this ticket') : 'VEMTAP Prime Lunch Applied'}
                 </span>
                 <span className="font-caption text-caption text-badge-discount-text">Member instant savings active 🎉</span>
               </div>
             </div>
-            <span className="font-heading-sm text-heading-sm text-badge-discount-text font-bold shrink-0">-₦1,572</span>
+            <span className="font-heading-sm text-heading-sm text-badge-discount-text font-bold shrink-0">{live ? `-${naira(display.discount)}` : '-₦1,572'}</span>
           </div>
         </div>
 
         {/* Totals */}
         <div className="px-margin mb-space-sm">
           <div className="bg-surface-canvas rounded-xl p-space-sm shadow-sm flex flex-col gap-space-2xs">
-            {SUMMARY.map((row) => (
+            {summary.map((row) => (
               <div className={`flex justify-between items-center ${row.tone}`} key={row.label}>
                 <span className="font-body-md text-body-md">{row.label}</span>
                 <span className={`font-label-sm text-label-sm font-semibold ${row.valueTone}`}>{row.value}</span>
@@ -174,7 +189,7 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
                 </span>
                 <span className="font-caption text-caption text-primary font-medium">Receipt via VEMTAP</span>
               </div>
-              <span className="font-heading-md text-heading-md text-primary font-bold tracking-tight">₦29,700</span>
+              <span className="font-heading-md text-heading-md text-primary font-bold tracking-tight">{totalLabel}</span>
             </div>
           </div>
         </div>
@@ -188,7 +203,9 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
             </div>
             <h2 className="font-label-md text-label-md text-on-surface font-bold mb-0.5">Scan with VEMTAP App</h2>
             <p className="font-caption text-caption text-text-secondary max-w-xs mb-space-sm">
-              Point your camera or VEMTAP scanner to confirm ₦29,700 and automatically collect +297 loyalty points.
+              {live
+                ? `Point your camera or VEMTAP scanner to confirm ${totalLabel} and collect your loyalty points.`
+                : 'Point your camera or VEMTAP scanner to confirm ₦29,700 and automatically collect +297 loyalty points.'}
             </p>
             <div className="bg-surface-canvas p-space-sm rounded-xl shadow-md flex flex-col items-center mb-space-sm">
               <div className="w-40 h-40 bg-surface-canvas rounded-lg flex items-center justify-center relative overflow-hidden">
@@ -247,9 +264,13 @@ export function BusinessPosDisplayOrderScreen({ onBack, onProceed, onSplit }: Bu
                   Direct Bank Transfer
                 </span>
                 <span className="font-label-sm text-label-sm text-on-surface font-semibold truncate">
-                  Zenith Bank · 1018492041
+                  {live
+                    ? display.transfer?.accountNumber
+                      ? `${display.transfer.bankName ?? 'Bank'} · ${display.transfer.accountNumber}`
+                      : 'Not set up'
+                    : 'Zenith Bank · 1018492041'}
                 </span>
-                <span className="font-caption text-caption text-text-secondary truncate">Urban Grill Ltd (Auto-matched)</span>
+                <span className="font-caption text-caption text-text-secondary truncate">{live ? (display.transfer?.accountName ?? '—') : 'Urban Grill Ltd (Auto-matched)'}</span>
               </div>
               <button
                 className={`px-space-xs py-space-2xs rounded-lg font-caption text-caption shadow-sm flex items-center gap-1 shrink-0 active:scale-95 transition-transform ${

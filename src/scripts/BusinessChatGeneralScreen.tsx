@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CustomerProfileDrawer, ChatOptionsSheet } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { useChatCustomer, useLiveChat } from './messagesLive';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatGeneralScreenProps {
@@ -12,7 +14,7 @@ interface BusinessChatGeneralScreenProps {
 }
 
 interface ThreadMessage {
-  id: number;
+  id: string;
   direction: 'in' | 'out';
   text: string;
   time: string;
@@ -20,17 +22,17 @@ interface ThreadMessage {
 }
 
 const buildInitialMessages = (firstName: string): ThreadMessage[] => [
-  { id: 1, direction: 'in', text: 'Good morning! Do you cater for private corporate lunches for about 25 people?', time: '10:14 AM' },
+  { id: '1', direction: 'in', text: 'Good morning! Do you cater for private corporate lunches for about 25 people?', time: '10:14 AM' },
   {
-    id: 2,
+    id: '2',
     direction: 'out',
     text: `Good morning ${firstName}! Yes, we offer tailored corporate lunch catering packages with custom menus.`,
     time: '10:18 AM',
     read: 'done_all',
   },
-  { id: 3, direction: 'in', text: 'That sounds great. Could you share your catering brochure or a sample menu with prices?', time: '10:20 AM' },
+  { id: '3', direction: 'in', text: 'That sounds great. Could you share your catering brochure or a sample menu with prices?', time: '10:20 AM' },
   {
-    id: 4,
+    id: '4',
     direction: 'out',
     text: 'Certainly! Sending our current corporate catering catalogue and banquet packages right now.',
     time: '10:22 AM',
@@ -56,18 +58,44 @@ const formatNow = () => {
 export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGeneralScreenProps) {
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.general;
   const firstName = contactFirstName(activeContact.name);
-  const [messages, setMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() => buildInitialMessages(firstName));
+  const liveChat = useLiveChat(activeContact.threadId);
+
+  // Live: the customer's CRM record and what this chat is about.
+  const chat = useChatCustomer(activeContact.threadId, activeContact.customerId);
+  const live = chat.live;
+  const phone = live ? (chat.phone ?? '—') : '+234 803 555 1204';
+  const callCustomer = () => {
+    if (live && !chat.phone) return;
+    window.location.href = `tel:${live ? chat.phone : '+2348035551204'}`;
+  };
+  const business = useMyBusiness();
   const [input, setInput] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
 
+  // Live threads stream from the inbox; demo chats keep the scripted thread.
+  const messages: ThreadMessage[] = liveChat.live
+    ? liveChat.messages.map((message) => ({
+        id: message.id,
+        direction: message.direction,
+        text: message.text,
+        time: message.time || formatNow(),
+        read: message.read ? 'done_all' : 'done',
+      }))
+    : demoMessages;
+
   const handleSend = () => {
     const value = input.trim();
     if (!value) return;
-    setMessages((current) => [...current, { id: Date.now(), direction: 'out', text: value, time: formatNow(), read: 'done' }]);
     setInput('');
     setSheetOpen(false);
+    if (liveChat.live) {
+      liveChat.send(value);
+      return;
+    }
+    setDemoMessages((current) => [...current, { id: String(Date.now()), direction: 'out', text: value, time: formatNow(), read: 'done' }]);
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 
@@ -78,12 +106,12 @@ export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGener
         title={activeContact.name}
         avatar={activeContact.avatar}
         isBusiness={activeContact.isBusiness}
-        subtitle="Active inquiry • Corporate Catering"
+        subtitle={live ? chat.subtitle : 'Active inquiry • Corporate Catering'}
         onAvatar={() => setDrawerOpen(true)}
-        onCall={() => (window.location.href = 'tel:+2348035551204')}
+        onCall={callCustomer}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 803 555 1204" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone={phone} stats={chat.drawer} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
       <div className="flex flex-col w-full flex-1 relative">
@@ -95,10 +123,12 @@ export function BusinessChatGeneralScreen({ onBack, contact }: BusinessChatGener
               <span className="inline-flex items-center px-2 py-0.5 rounded-full font-label-sm font-semibold tracking-wide bg-secondary-container text-on-secondary-container">
                 GENERAL INQUIRY
               </span>
-              <span className="font-caption text-caption text-text-tertiary">Initiated 10:12 AM</span>
+              <span className="font-caption text-caption text-text-tertiary">
+                {live ? (liveChat.messages[0]?.time ? `Initiated ${liveChat.messages[0].time}` : '—') : 'Initiated 10:12 AM'}
+              </span>
             </div>
             <p className="font-label-sm text-label-sm text-on-surface-variant">
-              Customer started conversation from <span className="font-semibold text-on-surface">Urban Grill & Bistro</span>{' '}
+              Customer started conversation from <span className="font-semibold text-on-surface">{live ? (business.data?.name ?? 'your business') : 'Urban Grill & Bistro'}</span>{' '}
               public storefront.
             </p>
             <button

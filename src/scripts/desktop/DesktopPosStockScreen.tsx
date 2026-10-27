@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { setShiftProductId, useLivePos, useLiveStock } from '../posLive';
 
 
 interface DesktopPosStockScreenProps {
@@ -188,33 +191,111 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
     'tiger-prawns': true,
   });
 
+  const [toast, setToast] = useState<string | null>(null);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const liveStock = useLiveStock();
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  useEffect(() => {
+    if (live && liveStock.error) showToast(apiErrorMessage(liveStock.error, 'Could not load stock.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStock.error]);
+
+  // Live: branch products; "critical" is at or under half the reorder level.
+  const stockRows: StockRow[] = useMemo(
+    () =>
+      live
+        ? liveStock.rows.map(({ item, product, quantity, availability }) => {
+            const onHand = quantity ?? 0;
+            const reorder = item.minStock ?? 0;
+            return {
+              id: item.id,
+              name: item.name,
+              category: item.category?.name ?? 'Uncategorised',
+              sku: item.sku ?? '—',
+              unit: product.price,
+              onHand,
+              reorder,
+              par: Math.max(onHand, reorder * 2, 1),
+              status:
+                availability === 'out' ? 'eighty-sixed' : availability === 'low' ? (onHand <= reorder / 2 ? 'critical' : 'low') : 'in-stock',
+              shiftSold: 0,
+              img: product.image,
+            };
+          })
+        : STOCK_ROWS,
+    [live, liveStock.rows],
+  );
+  const isBar = (row: StockRow) => (live ? /drink|bar|cocktail|beverage/i.test(row.category) : row.category === 'Cocktails & Drinks');
+  const eightySixed = stockRows.filter((row) => row.status === 'eighty-sixed');
+  const lowCount = stockRows.filter((row) => row.status === 'low' || row.status === 'critical').length;
+
+  const openProduct = (id?: string) => {
+    if (live) setShiftProductId(id ?? eightySixed[0]?.id ?? null);
+    onOpenProduct();
+  };
+
+  /** Live: 86 sets on-hand to 0; Restore asks for the new count. */
+  const toggleEightySix = (row: StockRow, isEightySixed: boolean) => {
+    if (!live) {
+      setEightySix((prev) => ({ ...prev, [row.id]: !prev[row.id] }));
+      return;
+    }
+    let quantity = 0;
+    if (isEightySixed) {
+      const answer = window.prompt(`New on-hand quantity for ${row.name}:`, String(Math.max(row.reorder * 2, 10)));
+      if (answer === null) return;
+      quantity = Math.floor(Number(answer));
+      if (!Number.isFinite(quantity) || quantity < 0) {
+        showToast('Enter a whole number of 0 or more');
+        return;
+      }
+    }
+    liveStock
+      .setQuantity(row.id, quantity, isEightySixed ? 'Restocked at the till' : '86’d at the till')
+      .then(() => showToast(isEightySixed ? `${row.name} restored · ${quantity} on hand` : `${row.name} 86’d`))
+      .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not update stock.')));
+  };
+
   const filtered = useMemo(() => {
-    return STOCK_ROWS.filter((row) => {
+    return stockRows.filter((row) => {
       const matchesQuery =
         !query ||
         row.name.toLowerCase().includes(query.toLowerCase()) ||
         row.sku.toLowerCase().includes(query.toLowerCase());
       if (!matchesQuery) return false;
       if (filter === 'low') return row.status === 'low' || row.status === 'critical';
-      if (filter === 'eighty-sixed') return row.status === 'eighty-sixed' || eightySix[row.id];
-      if (filter === 'food') return row.category !== 'Cocktails & Drinks';
-      if (filter === 'bar') return row.category === 'Cocktails & Drinks';
+      if (filter === 'eighty-sixed') return row.status === 'eighty-sixed' || (!live && eightySix[row.id]);
+      if (filter === 'food') return !isBar(row);
+      if (filter === 'bar') return isBar(row);
       return true;
     });
-  }, [filter, query, eightySix]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, query, eightySix, stockRows]);
 
   const totalValue = useMemo(
-    () => STOCK_ROWS.reduce((sum, row) => sum + row.onHand * row.unit, 0),
-    [],
+    () => stockRows.reduce((sum, row) => sum + row.onHand * row.unit, 0),
+    [stockRows],
   );
 
-  const stats = [
+  const stats = live
+    ? [
+        { label: 'Total Live SKUs', value: String(stockRows.length), meta: `Across ${Math.max(0, liveStock.categories.length - 1)} categories`, tone: 'text-text-primary' },
+        { label: 'Low / Critical', value: String(lowCount), meta: 'Reorder suggested', tone: 'text-tertiary' },
+        { label: "86'd Today", value: String(eightySixed.length), meta: 'Out of stock', tone: 'text-error' },
+        { label: 'Stock Value (Cost)', value: `₦${(totalValue / 1000).toFixed(1)}k`, meta: 'At selling price', tone: 'text-text-primary' },
+        { label: 'Shift Units Sold', value: '—', meta: pos.session ? 'This shift' : 'No open shift', tone: 'text-primary' },
+      ]
+    : [
     { label: 'Total Live SKUs', value: '184', meta: 'Across 5 categories', tone: 'text-text-primary' },
     { label: 'Low / Critical', value: '6', meta: 'Reorder suggested', tone: 'text-tertiary' },
     { label: "86'd Today", value: '2', meta: 'Kitchen flagged', tone: 'text-error' },
     { label: 'Stock Value (Cost)', value: `₦${(totalValue / 1000).toFixed(1)}k`, meta: 'At cost valuation', tone: 'text-text-primary' },
     { label: 'Shift Units Sold', value: '312', meta: 'Since 08:30 AM', tone: 'text-primary' },
-  ];
+      ];
 
   return (
     <PosTerminalChrome activeNav="products" onNav={onNav}>
@@ -229,7 +310,9 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
               </h1>
             </div>
             <p className="font-caption text-caption text-text-secondary mt-0.5">
-              Realtime on-hand, reorder levels and 86'd control • Synced from mesh node #WUSE2-01
+              {live
+                ? `Realtime on-hand, reorder levels and 86'd control • ${pos.branchName}`
+                : "Realtime on-hand, reorder levels and 86'd control • Synced from mesh node #WUSE2-01"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-xs">
@@ -278,7 +361,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
       </section>
 
       {/* Kitchen 86'd alert banner */}
-      {alertOpen ? (
+      {alertOpen && (!live || eightySixed.length > 0) ? (
         <section className="w-full pb-space-md">
           <div className="w-full rounded-xl bg-error-container p-space-md flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm shadow-sm">
             <div className="flex items-start gap-space-sm">
@@ -287,17 +370,19 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
               </div>
               <div>
                 <span className="font-label-md text-label-md font-bold text-on-error-container block">
-                  Kitchen alert: 2 items toggled 86'd this shift
+                  {live ? `Kitchen alert: ${eightySixed.length} items are 86'd` : "Kitchen alert: 2 items toggled 86'd this shift"}
                 </span>
                 <span className="font-caption text-caption text-on-error-container/80">
-                  Peppered Oxtail and Grilled Tiger Prawns are hidden from the register catalogue until restocked.
+                  {live
+                    ? `${eightySixed.slice(0, 2).map((row) => row.name).join(' and ')} ${eightySixed.length > 2 ? 'and more ' : ''}can't be sold until restocked.`
+                    : 'Peppered Oxtail and Grilled Tiger Prawns are hidden from the register catalogue until restocked.'}
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-space-xs shrink-0">
               <button
                 type="button"
-                onClick={onOpenProduct}
+                onClick={() => openProduct()}
                 className="px-space-md py-2 rounded-lg bg-surface-canvas text-error font-button-secondary text-button-secondary font-semibold hover:bg-surface-container transition-colors"
               >
                 Review 86'd Items
@@ -355,7 +440,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
               <tbody>
                 {filtered.map((row) => {
                   const ratio = Math.min(100, Math.round((row.onHand / row.par) * 100));
-                  const isEightySixed = row.status === 'eighty-sixed' || eightySix[row.id];
+                  const isEightySixed = row.status === 'eighty-sixed' || (!live && eightySix[row.id]);
                   const meta = isEightySixed ? STATUS_META['eighty-sixed'] : STATUS_META[row.status];
                   const barTone = isEightySixed
                     ? 'bg-error'
@@ -372,7 +457,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
                       <td className="px-space-md py-3">
                         <button
                           type="button"
-                          onClick={onOpenProduct}
+                          onClick={() => openProduct(row.id)}
                           className="flex items-center gap-space-sm text-left"
                         >
                           <img
@@ -406,7 +491,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
                         {row.reorder} units
                       </td>
                       <td className="px-space-md py-3 font-label-md text-label-md font-semibold text-text-primary">
-                        {row.shiftSold}
+                        {live ? '—' : row.shiftSold}
                       </td>
                       <td className="px-space-md py-3">
                         <span
@@ -420,9 +505,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
                         <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
-                            onClick={() =>
-                              setEightySix((prev) => ({ ...prev, [row.id]: !prev[row.id] }))
-                            }
+                            onClick={() => toggleEightySix(row, isEightySixed)}
                             title={isEightySixed ? "Restore item to menu" : "Toggle 86'd"}
                             className={`px-2.5 py-1.5 rounded-lg font-caption text-caption font-semibold transition-colors ${
                               isEightySixed
@@ -434,7 +517,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
                           </button>
                           <button
                             type="button"
-                            onClick={onOpenProduct}
+                            onClick={() => openProduct(row.id)}
                             title="Adjust stock"
                             className="w-8 h-8 rounded-lg bg-surface-container hover:bg-surface-container-high text-text-secondary flex items-center justify-center transition-colors"
                           >
@@ -479,6 +562,11 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
           </div>
         </div>
       </section>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </PosTerminalChrome>
   );
 }

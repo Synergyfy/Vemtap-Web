@@ -1,6 +1,5 @@
 import { Icon } from '../../components/ui/Icon';
-import { VerificationStatusPanel } from '../../components/business/VerificationStatusPanel';
-import { hasApiConfig } from '../../services/api/client';
+import { useVerificationSummary } from '../../hooks/business/useVerification';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopVerificationStatusCenterScreenProps {
@@ -30,23 +29,11 @@ export function DesktopVerificationStatusCenterScreen({
   onBrand,
   onNav,
 }: DesktopVerificationStatusCenterScreenProps) {
-  // Live: the real status from the backend; the designed page below is the demo.
-  if (hasApiConfig()) {
-    return (
-      <BusinessPortalChrome activeNav="more-verification" onNav={onNav} onBrand={onBrand}>
-        <div className="w-full py-space-xl flex flex-col gap-space-lg">
-          <div className="flex flex-col gap-1">
-            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Verification</h1>
-            <p className="font-body-md text-body-md text-text-secondary">
-              Your identity and business checks, and what is left to do.
-            </p>
-          </div>
-          <VerificationStatusPanel onContinue={onUpdateInfo} />
-        </div>
-      </BusinessPortalChrome>
-    );
-  }
-
+  // Live: the real status from `GET /verification/status`; demo keeps the sample copy.
+  const summary = useVerificationSummary();
+  const live = summary.live;
+  const pill = (ok: boolean) =>
+    ok || !live ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
   return (
     <BusinessPortalChrome activeNav="more-verification" onNav={onNav} onBrand={onBrand}>
       <div className="max-w-6xl mx-auto py-space-lg px-margin flex flex-col gap-space-xl w-full">
@@ -66,21 +53,27 @@ export function DesktopVerificationStatusCenterScreen({
               </div>
               <div className="flex flex-col gap-space-2xs">
                 <div className="flex flex-wrap items-center gap-space-xs">
-                  <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Urban Grill &amp; Bistro</h1>
+                  <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{live ? summary.businessName : 'Urban Grill & Bistro'}</h1>
                   <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold uppercase tracking-wider flex items-center gap-space-2xs">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                    Tier 3 Merchant
+                    {live ? summary.statusLabel : 'Tier 3 Merchant'}
                   </span>
                 </div>
                 <p className="font-body-md text-body-md text-text-secondary flex items-center gap-space-xs flex-wrap">
                   <Icon name="event_available" className="text-text-tertiary text-[18px]" />
                   <span>
-                    Last verified on <strong className="text-text-primary font-semibold">Oct 18, 2024</strong>
+                    {live && !summary.lastVerified ? (
+                      'Not verified yet'
+                    ) : (
+                      <>
+                        Last verified on <strong className="text-text-primary font-semibold">{live ? summary.lastVerified : 'Oct 18, 2024'}</strong>
+                      </>
+                    )}
                   </span>
                   <span className="text-text-tertiary">•</span>
                   <span className="text-badge-discount-text font-medium flex items-center gap-space-2xs">
                     <Icon name="check_circle" className="text-[16px]" />
-                    100% Compliant
+                    {live ? (summary.verified ? 'Compliant' : 'In progress') : '100% Compliant'}
                   </span>
                 </p>
               </div>
@@ -123,7 +116,7 @@ export function DesktopVerificationStatusCenterScreen({
               <div className="flex items-center gap-space-xs">
                 <h2 className="font-heading-sm text-heading-sm text-text-primary">Credentials &amp; Standing</h2>
                 <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                  4 of 4 Active
+                  {live ? `${summary.checksVerified} of 2 Verified` : '4 of 4 Active'}
                 </span>
               </div>
               <span className="font-caption text-caption text-text-secondary">Continuous Real-time Sync</span>
@@ -138,13 +131,19 @@ export function DesktopVerificationStatusCenterScreen({
                   <div className="flex flex-col">
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Identity Verification</h3>
-                      <span className="px-space-2xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                        Verified
+                      <span className={`px-space-2xs py-0.5 rounded ${pill(summary.identity.ok)} font-caption text-caption font-semibold`}>
+                        {live ? summary.identity.label : 'Verified'}
                       </span>
                     </div>
-                    <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">Zainab Ahmed</p>
+                    <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">
+                      {live ? (summary.identity.name ?? 'Account holder') : 'Zainab Ahmed'}
+                    </p>
                     <p className="font-label-sm text-label-sm text-text-secondary">
-                      National Identification Number (NIN ending in •••• 4821)
+                      {live
+                        ? summary.identity.ref
+                          ? `${summary.identity.idType} (${summary.identity.ref})`
+                          : 'Not submitted yet'
+                        : 'National Identification Number (NIN ending in •••• 4821)'}
                     </p>
                   </div>
                 </div>
@@ -159,9 +158,9 @@ export function DesktopVerificationStatusCenterScreen({
               <div className="bg-surface-subtle p-space-sm rounded-lg flex items-center justify-between text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-space-2xs">
                   <Icon name="verified" className="text-badge-discount-text text-[16px]" />
-                  Gov-issued ID &amp; Biometric Facial Check Passed
+                  {live ? (summary.identity.note ?? 'Gov-issued ID & selfie check') : 'Gov-issued ID & Biometric Facial Check Passed'}
                 </span>
-                <span className="text-text-tertiary">Verified Dec 2023</span>
+                <span className="text-text-tertiary">{live ? (summary.identity.date ?? '') : 'Verified Dec 2023'}</span>
               </div>
             </div>
 
@@ -174,15 +173,15 @@ export function DesktopVerificationStatusCenterScreen({
                   <div className="flex flex-col">
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Business Registration (CAC)</h3>
-                      <span className="px-space-2xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                        Active Filing
+                      <span className={`px-space-2xs py-0.5 rounded ${pill(summary.registration.ok)} font-caption text-caption font-semibold`}>
+                        {live ? summary.registration.label : 'Active Filing'}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">
                       Corporate Affairs Commission of Nigeria
                     </p>
                     <p className="font-label-sm text-label-sm text-text-secondary">
-                      Registration ID: <span className="font-mono text-text-primary font-medium">BN-3491820</span>
+                      Registration ID: <span className="font-mono text-text-primary font-medium">{live ? (summary.registration.ref ?? 'Not submitted yet') : 'BN-3491820'}</span>
                     </p>
                   </div>
                 </div>
@@ -197,7 +196,9 @@ export function DesktopVerificationStatusCenterScreen({
               <div className="bg-surface-subtle p-space-sm rounded-lg flex flex-wrap items-center justify-between gap-space-xs text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-space-2xs">
                   <Icon name="task_alt" className="text-badge-discount-text text-[16px]" />
-                  Registered 14 May 2021 • Category: Hospitality &amp; Dining
+                  {live
+                    ? (summary.registration.note ?? (summary.registration.date ? `Checked ${summary.registration.date}` : 'CAC register check'))
+                    : 'Registered 14 May 2021 • Category: Hospitality & Dining'}
                 </span>
                 <span className="text-text-tertiary">CAC Electronic Register Match</span>
               </div>

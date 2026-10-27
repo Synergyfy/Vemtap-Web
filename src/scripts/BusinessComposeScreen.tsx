@@ -2,12 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { contactFirstName, contactInitials } from './messagesContact';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useStartChat } from './messagesLive';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 
 interface BusinessComposeScreenProps {
   onBack: () => void;
-  onSent: () => void;
+  /** Live: called with the thread the message went to. */
+  onSent: (threadId?: string) => void;
   /** Name of the recipient the message is being composed for. */
   recipientName?: string;
+  /** Live: the recipient's user id; the message opens (or reuses) their thread. */
+  recipientId?: string;
 }
 
 const RECIPIENT_IMG =
@@ -60,11 +67,15 @@ const TEMPLATES = [
   },
 ];
 
-export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chidi Okafor' }: BusinessComposeScreenProps) {
+export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chidi Okafor', recipientId }: BusinessComposeScreenProps) {
+  const live = hasApiConfig();
   const firstName = contactFirstName(recipientName);
-  const isDefaultRecipient = recipientName === 'Dr. Chidi Okafor';
-  const [draft, setDraft] = useState(() => DEFAULT_DRAFT.split('{name}').join(firstName));
-  const [contextVisible, setContextVisible] = useState(true);
+  const isDefaultRecipient = !live && recipientName === 'Dr. Chidi Okafor';
+  // Live: start with an empty draft and no sample booking attached.
+  const [draft, setDraft] = useState(() => (live ? '' : DEFAULT_DRAFT.split('{name}').join(firstName)));
+  const [contextVisible, setContextVisible] = useState(!live);
+  const { start, pending } = useStartChat();
+  const business = useMyBusiness();
   const [recipientVisible, setRecipientVisible] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -86,6 +97,20 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
 
   const handleSend = () => {
     if (!draft.trim()) return;
+    if (live) {
+      if (pending) return;
+      if (!recipientId || !recipientVisible) {
+        showToast('Pick a customer to message first');
+        return;
+      }
+      start(recipientId, draft)
+        .then((threadId) => {
+          setDraft('');
+          onSent(threadId);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not send the message.')));
+      return;
+    }
     showToast(`Message sent to ${recipientName}!`);
     setDraft('');
     if (sendTimer.current !== null) window.clearTimeout(sendTimer.current);
@@ -179,6 +204,10 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
               className="inline-flex items-center gap-1 text-primary hover:text-surface-tint font-label-sm text-label-sm px-space-xs py-1 rounded-full hover:bg-surface-tint-blue transition-colors ml-auto"
               type="button"
               onClick={() => {
+                if (live) {
+                  showToast('Attaching an order or booking is coming soon');
+                  return;
+                }
                 setContextVisible((current) => !current);
                 showToast(contextVisible ? 'Context hidden' : 'Booking #BK-77402 attached');
               }}
@@ -247,7 +276,8 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
           </div>
         )}
 
-        {/* Context Shortcuts & Quick Attachment Carousel */}
+        {/* Context Shortcuts & Quick Attachment Carousel (demo only) */}
+        {!live && (
         <div className="mb-space-md">
           <div className="px-margin flex items-center justify-between mb-space-2xs">
             <span className="font-caption text-caption font-semibold tracking-wider uppercase text-text-tertiary">
@@ -272,6 +302,7 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
             ))}
           </div>
         </div>
+        )}
 
         {/* Message Body Drafting Area */}
         <div className="px-margin mb-space-md flex flex-col">
@@ -306,7 +337,8 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
           </div>
         </div>
 
-        {/* Quick Message Templates */}
+        {/* Quick Message Templates (demo only — they reference sample bookings) */}
+        {!live && (
         <div className="mb-space-lg">
           <div className="px-margin flex items-center justify-between mb-space-2xs">
             <div className="flex items-center gap-1 text-text-primary">
@@ -334,22 +366,29 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
             ))}
           </div>
         </div>
+        )}
 
         {/* Client Preview Card */}
         <div className="px-margin mb-space-lg">
           <div className="bg-surface-canvas rounded-2xl p-space-sm shadow-sm flex items-center gap-space-sm">
             <div className="w-12 h-12 rounded-xl bg-surface-container overflow-hidden shrink-0">
-              <img alt={HOST_ALT} className="w-full h-full object-cover" src={HOST_IMG} />
+              {live ? (
+                <span className="w-full h-full flex items-center justify-center text-primary">
+                  <Icon name="storefront" className="text-[22px]" />
+                </span>
+              ) : (
+                <img alt={HOST_ALT} className="w-full h-full object-cover" src={HOST_IMG} />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
-                <span className="font-label-md text-label-md font-semibold text-text-primary">The Oak & Cellar</span>
+                <span className="font-label-md text-label-md font-semibold text-text-primary">{live ? (business.data?.name ?? 'Your business') : 'The Oak & Cellar'}</span>
                 <span className="inline-flex px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption">
                   Verified Host
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary truncate">
-                Replying as General Manager • Typical response under 2m
+                {live ? 'Replying in the in-app chat' : 'Replying as General Manager • Typical response under 2m'}
               </p>
             </div>
             <div className="text-right shrink-0">
@@ -371,7 +410,7 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
               className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container active:scale-90 transition-all text-text-primary"
               title="Attach file or photo"
               type="button"
-              onClick={() => showToast('Media picker opened')}
+              onClick={() => showToast(live ? 'Attachments are coming soon' : 'Media picker opened')}
             >
               <Icon name="add_circle" className="text-[22px]" />
             </button>
@@ -380,7 +419,7 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
               className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container active:scale-90 transition-all text-text-secondary"
               title="Attach catalog link or offer"
               type="button"
-              onClick={() => showToast('Product & voucher picker')}
+              onClick={() => showToast(live ? 'Sharing products and deals is coming soon' : 'Product & voucher picker')}
             >
               <Icon name="storefront" className="text-[22px]" />
             </button>
@@ -389,7 +428,7 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
               className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container active:scale-90 transition-all text-text-secondary"
               title="Record voice note"
               type="button"
-              onClick={() => showToast('Voice note recorder ready')}
+              onClick={() => showToast(live ? 'Voice notes are coming soon' : 'Voice note recorder ready')}
             >
               <Icon name="mic" className="text-[22px]" />
             </button>
@@ -397,7 +436,7 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
           <div className="flex items-center gap-space-xs">
             <div className="flex flex-col text-right">
               <span className="font-caption text-caption text-text-tertiary">Channel</span>
-              <span className="font-label-sm text-label-sm font-semibold text-primary">In-App + SMS</span>
+              <span className="font-label-sm text-label-sm font-semibold text-primary">{live ? 'In-App' : 'In-App + SMS'}</span>
             </div>
             <button
               aria-label="Send message"

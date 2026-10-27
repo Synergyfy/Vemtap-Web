@@ -1,5 +1,9 @@
 import { useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../components/ui/Icon';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { supportService, type SupportTicket } from '../../services/supportService';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopBusinessHelpSupportScreenProps {
@@ -193,6 +197,31 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
     window.setTimeout(() => setToast((current) => (current === messageText ? null : current)), 3000);
   };
 
+  // Live: the account's real tickets (`GET /support/tickets`); new ones go to `POST /support/tickets`.
+  const live = hasApiConfig();
+  const queryClient = useQueryClient();
+  const ticketsQuery = useQuery({ queryKey: ['support', 'tickets'], queryFn: supportService.tickets, enabled: live });
+  const createTicket = useMutation({
+    mutationFn: supportService.createTicket,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['support', 'tickets'] }),
+  });
+  const ticketStatus = (ticket: SupportTicket) =>
+    String(ticket.status)
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/^\w/, (letter) => letter.toUpperCase());
+  const ticketDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleString('en-NG', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
+  const ticketRows = live
+    ? (ticketsQuery.data ?? []).map((ticket) => ({
+        id: ticket.id.slice(0, 8).toUpperCase(),
+        topic: ticket.category || ticket.subject,
+        message: ticket.subject,
+        date: ticketDate(ticket.createdAt),
+        status: ticketStatus(ticket),
+      }))
+    : submittedTickets;
+
   const needle = query.trim().toLowerCase();
   const faqs = needle
     ? FAQS.filter((faq) => faq.question.toLowerCase().includes(needle) || faq.keywords.includes(needle))
@@ -230,6 +259,22 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
     setChatMessages((prev) => [...prev, { sender: 'user', text: userMsg, time: 'Just now' }]);
     setChatInput('');
 
+    if (live) {
+      // Live: the automated support bot answers; it offers a human hand-off when unsure.
+      supportService
+        .queryBot({ query: userMsg, context: 'Business Help & Support' })
+        .then((reply) => {
+          const body = (reply ?? {}) as { content?: unknown; message?: unknown };
+          const text =
+            (typeof body.content === 'string' && body.content) ||
+            (typeof body.message === 'string' && body.message) ||
+            'Support is unavailable right now — please open a ticket below.';
+          setChatMessages((prev) => [...prev, { sender: 'support', text, time: 'Just now' }]);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not reach support.')));
+      return;
+    }
+
     setTimeout(() => {
       setChatMessages((prev) => [
         ...prev,
@@ -245,6 +290,20 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
   const submitTicket = () => {
     if (message.trim().length < 10) {
       showToast('Add a little more detail (at least 10 characters)');
+      return;
+    }
+    if (live) {
+      const body = message.trim();
+      createTicket.mutate(
+        { subject: body.length > 80 ? `${body.slice(0, 77)}…` : body, category: topic, message: body },
+        {
+          onSuccess: (ticket) => {
+            setMessage('');
+            showToast(`Ticket ${ticket.id.slice(0, 8).toUpperCase()} created — our team will respond via email.`);
+          },
+          onError: (error) => showToast(apiErrorMessage(error, 'Could not create your ticket.')),
+        },
+      );
       return;
     }
     const id = `VT-${Math.floor(100000 + Math.random() * 899999)}`;
@@ -440,13 +499,13 @@ export function DesktopBusinessHelpSupportScreen({ onNav }: DesktopBusinessHelpS
               </p>
 
               {/* Recent Active Tickets */}
-              {submittedTickets.length > 0 && (
+              {ticketRows.length > 0 && (
                 <div className="mt-space-md pt-space-md border-t border-border-subtle flex flex-col gap-space-xs">
                   <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    Your Support Tickets ({submittedTickets.length})
+                    Your Support Tickets ({ticketRows.length})
                   </span>
                   <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
-                    {submittedTickets.map((t) => (
+                    {ticketRows.map((t) => (
                       <div
                         key={t.id}
                         className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle flex flex-col gap-1 text-xs"

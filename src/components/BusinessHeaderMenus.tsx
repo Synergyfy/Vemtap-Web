@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { Icon } from './ui/Icon';
 import { MOBILE_ACCOUNT_NAV_EVENT, SIGN_OUT_EVENT, type MobileAccountNavKey } from '../utils/appEvents';
-import { NOTIFICATION_FEED } from '../utils/notificationFeed';
+import { useHeaderNotifications } from '../hooks/business/useHeaderNotifications';
 
 /**
  * Shared mobile/tablet dashboard header menus.
@@ -38,7 +38,7 @@ interface MobileLocationMenuProps {
  * only names the branch they are operating in.
  */
 export function MobileLocationMenu({ className }: MobileLocationMenuProps) {
-  const { branch, branches, canSwitchLocations, switchTo } = useBusinessBranch();
+  const { branch, branches, canSwitchLocations, switchTo, isLive } = useBusinessBranch();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export function MobileLocationMenu({ className }: MobileLocationMenuProps) {
                         option.key === branch.key ? 'text-primary/80' : 'text-text-secondary'
                       }`}
                     >
-                      {option.area}
+                      {option.area || (isLive ? 'No address added' : '')}
                     </span>
                   </span>
                   {option.key === branch.key && <Icon name="check" className="text-[18px] shrink-0" />}
@@ -127,7 +127,7 @@ export function MobileLocationMenu({ className }: MobileLocationMenuProps) {
                   {branch.name}
                 </span>
                 <span className="font-caption text-caption text-text-secondary leading-snug mt-0.5">
-                  {branch.area}
+                  {branch.area || (isLive ? 'No address added' : '')}
                 </span>
                 <span className="font-caption text-caption text-text-tertiary leading-snug mt-space-2xs">
                   Your account operates in this location only.
@@ -156,12 +156,8 @@ export function MobileNotificationBell({
   className,
 }: MobileNotificationBellProps) {
   const [open, setOpen] = useState(false);
-  const [readIds, setReadIds] = useState<Set<string>>(() => {
-    const initialRead = new Set<string>();
-    NOTIFICATION_FEED.slice(unreadStartCount).forEach((item) => initialRead.add(item.id));
-    return initialRead;
-  });
-  const unreadCount = NOTIFICATION_FEED.filter((item) => !readIds.has(item.id)).length;
+  const notifications = useHeaderNotifications(unreadStartCount);
+  const unreadCount = notifications.unreadCount;
 
   useEffect(() => {
     if (!open) return;
@@ -217,21 +213,27 @@ export function MobileNotificationBell({
               disabled={unreadCount === 0}
               type="button"
               className="font-label-sm text-label-sm text-primary active:underline disabled:text-text-tertiary disabled:no-underline"
-              onClick={() => setReadIds(new Set(NOTIFICATION_FEED.map((item) => item.id)))}
+              onClick={notifications.markAllRead}
             >
               Mark all read
             </button>
           </div>
 
           <div className="overflow-y-auto overscroll-contain divide-y divide-border-subtle min-h-0 grow">
-            {NOTIFICATION_FEED.map((item) => {
-              const unread = !readIds.has(item.id);
+            {!notifications.items.length && (
+              <p className="px-space-md py-space-md font-caption text-caption text-text-secondary">No notifications yet.</p>
+            )}
+            {notifications.items.map((item) => {
+              const unread = !notifications.isRead(item.id);
               return (
                 <button
                   className="w-full flex items-start gap-space-sm px-space-md py-space-sm text-left active:bg-surface-subtle transition-colors"
                   key={item.id}
                   type="button"
-                  onClick={openAll}
+                  onClick={() => {
+                    notifications.markRead(item.id);
+                    openAll();
+                  }}
                 >
                   <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${item.iconClass}`}>
                     <Icon name={item.icon} className="text-[18px]" />

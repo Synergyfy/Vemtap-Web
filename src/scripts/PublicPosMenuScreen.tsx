@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { naira } from './catalogueData';
 import { PUBLIC_IMAGES, publicCartCount, publicCartTotals, type PublicCartLine } from './publicPosData';
+import { apiErrorMessage } from '../services/errorMessages';
+import { GUEST_NO_IMAGE, guestTotals, useGuestMenu } from './publicPosLive';
 
 interface PublicPosMenuScreenProps {
   cart: PublicCartLine[];
@@ -20,7 +22,8 @@ interface MenuEntry {
   was?: number;
   desc: string;
   image: string;
-  cat: CategoryKey;
+  /** A demo category key, or (live) the catalogue category id. */
+  cat: CategoryKey | string;
   kind: CardKind;
 }
 
@@ -91,7 +94,16 @@ const MENU: MenuEntry[] = [
 ];
 
 export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMenuScreenProps) {
-  const [category, setCategory] = useState<CategoryKey>('combos');
+  const [category, setCategory] = useState<CategoryKey | string>('combos');
+  const guest = useGuestMenu();
+  const live = guest.live;
+  const venue = guest.info?.businessName ?? guest.info?.branchName ?? 'Your table';
+  const tableLabel = guest.table ? `Table ${guest.table}` : 'Your table';
+  // Live: "Popular" is the whole menu; the first two dishes get the big cards.
+  const menu: MenuEntry[] = live ? guest.menu.map((item, index) => ({ ...item, kind: index < 2 ? 'hero' : 'list' })) : MENU;
+  const categories: { key: string; label: string; icon?: string }[] = live
+    ? [{ key: 'combos', label: 'Popular', icon: 'local_fire_department' }, ...guest.categories]
+    : CATEGORIES;
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -109,13 +121,21 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
     toastTimer.current = window.setTimeout(() => setToast(null), 1800);
   };
 
+  useEffect(() => {
+    if (!live) return;
+    if (!guest.branchId) showToast('Scan the QR code on your table to see the menu');
+    else if (guest.error) showToast(apiErrorMessage(guest.error, 'Could not load the menu.'));
+    else if (guest.info && !guest.info.acceptingOrders) showToast('This venue is not taking table orders right now');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, guest.branchId, guest.error, guest.info?.acceptingOrders]);
+
   const add = (item: MenuEntry) => {
     onAddItem({ id: item.id, name: item.name, price: item.price, image: item.image });
     showToast(`${item.name} added to your order`);
   };
 
   const q = query.trim().toLowerCase();
-  const visible = MENU.filter((item) => {
+  const visible = menu.filter((item) => {
     const matchesQuery = !q || item.name.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q);
     const matchesCategory = category === 'combos' || item.cat === category;
     return matchesQuery && matchesCategory;
@@ -125,7 +145,7 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
   const lists = visible.filter((item) => item.kind === 'list');
   const minis = visible.filter((item) => item.kind === 'mini');
   const count = publicCartCount(cart);
-  const totals = publicCartTotals(cart);
+  const totals = live ? guestTotals(cart, guest.info?.pricing) : publicCartTotals(cart);
 
   return (
     <AppScreen>
@@ -138,11 +158,11 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
             </span>
             <div className="flex flex-col min-w-0">
               <h1 className="font-heading-sm text-heading-sm text-text-primary leading-tight truncate">
-                Urban Grill &amp; Bistro
+                {live ? venue : 'Urban Grill & Bistro'}
               </h1>
               <div className="flex items-center gap-space-2xs">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                <span className="font-caption text-caption text-text-secondary">Table 04 • Dine-in</span>
+                <span className="font-caption text-caption text-text-secondary">{live ? `${tableLabel} • Dine-in` : 'Table 04 • Dine-in'}</span>
               </div>
             </div>
           </div>
@@ -175,7 +195,7 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
               className="w-full h-full bg-cover bg-center"
               role="img"
               aria-label="Modern upscale bistro interior with warm ambient lighting and open woodfire grill"
-              style={{ backgroundImage: `url('${PUBLIC_IMAGES.hero}')` }}
+              style={{ backgroundImage: `url('${live ? (guest.info?.logo ?? GUEST_NO_IMAGE) : PUBLIC_IMAGES.hero}')` }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-surface-container-low via-surface-container-low/40 to-transparent" />
             <div className="absolute top-space-sm left-margin right-margin flex items-center justify-between">
@@ -186,7 +206,10 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
               <button
                 type="button"
                 aria-label="Share menu"
-                onClick={() => showToast('Menu link copied to clipboard')}
+                onClick={() => {
+                  if (live) void navigator.clipboard?.writeText(window.location.href).catch(() => undefined);
+                  showToast('Menu link copied to clipboard');
+                }}
                 className="w-9 h-9 rounded-full bg-surface-canvas/90 backdrop-blur-md shadow-sm flex items-center justify-center text-text-secondary active:scale-90 transition-transform"
               >
                 <Icon name="share" className="text-[19px]" />
@@ -199,26 +222,32 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
             <div className="p-space-md bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.06)] flex flex-col gap-space-sm">
               <div className="flex items-start gap-space-sm">
                 <span className="w-14 h-14 rounded-xl overflow-hidden bg-primary/10 shrink-0 shadow-sm block">
-                  <img src={PUBLIC_IMAGES.logo} alt="Urban Grill &amp; Bistro logo" className="w-full h-full object-cover" />
+                  <img
+                    src={live ? (guest.info?.logo ?? GUEST_NO_IMAGE) : PUBLIC_IMAGES.logo}
+                    alt={`${live ? venue : 'Urban Grill & Bistro'} logo`}
+                    className="w-full h-full object-cover"
+                  />
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-space-2xs">
-                    <h2 className="font-heading-md text-heading-md text-text-primary truncate">Urban Grill &amp; Bistro</h2>
+                    <h2 className="font-heading-md text-heading-md text-text-primary truncate">{live ? venue : 'Urban Grill & Bistro'}</h2>
                     <Icon name="verified" filled className="text-primary text-[19px] shrink-0" />
                   </div>
                   <p className="font-label-sm text-label-sm text-text-secondary truncate">
-                    Wuse II, Abuja • Open Now (Closes 10:00 PM)
+                    {live
+                      ? `${guest.info?.branchName ?? '—'} • ${guest.info?.acceptingOrders ? 'Taking orders now' : 'Not taking orders right now'}`
+                      : 'Wuse II, Abuja • Open Now (Closes 10:00 PM)'}
                   </p>
                   <div className="flex items-center gap-space-xs mt-1 flex-wrap">
                     <span className="flex items-center font-label-sm text-label-sm">
                       <Icon name="star" filled className="text-[15px] text-tertiary-container" />
-                      <span className="font-semibold text-text-primary ml-1">4.9</span>
-                      <span className="text-text-tertiary ml-1">(420+)</span>
+                      <span className="font-semibold text-text-primary ml-1">{live ? '—' : '4.9'}</span>
+                      <span className="text-text-tertiary ml-1">{live ? '' : '(420+)'}</span>
                     </span>
                     <span className="text-text-tertiary text-caption">•</span>
                     <span className="font-caption text-caption text-text-secondary flex items-center gap-0.5">
                       <Icon name="schedule" className="text-[13px]" />
-                      <span>15-25 min avg</span>
+                      <span>{live ? `${guest.info?.prepMinutes ?? 15} min avg` : '15-25 min avg'}</span>
                     </span>
                   </div>
                 </div>
@@ -232,7 +261,7 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
                   </span>
                   <div className="flex flex-col min-w-0">
                     <span className="font-label-sm text-label-sm font-semibold text-text-primary truncate">
-                      Table 04 (Dine-in)
+                      {live ? `${tableLabel} (Dine-in)` : 'Table 04 (Dine-in)'}
                     </span>
                     <span className="font-caption text-caption text-text-secondary truncate">
                       Instant server dispatch
@@ -266,14 +295,14 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
             <button
               type="button"
               aria-label="Filter menu"
-              onClick={() => showToast('Dietary and price filters opened')}
+              onClick={() => showToast(live ? 'Filters are coming soon' : 'Dietary and price filters opened')}
               className="absolute right-space-sm text-text-tertiary flex items-center justify-center p-1 active:scale-90"
             >
               <Icon name="tune" className="text-[17px]" />
             </button>
           </div>
           <div className="flex items-center gap-space-2xs overflow-x-auto py-1 -mx-margin px-margin no-scrollbar">
-            {CATEGORIES.map((item) => {
+            {categories.map((item) => {
               const isActive = category === item.key;
               return (
                 <button
@@ -300,7 +329,7 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
             <span className="flex items-center gap-space-xs min-w-0">
               <Icon name="table_bar" className="text-primary text-[19px] shrink-0" />
               <p className="font-label-sm text-label-sm text-text-primary truncate">
-                Ordering for <strong>Table 04</strong> • Dishes arrive hot to your seat
+                Ordering for <strong>{live ? tableLabel : 'Table 04'}</strong> • Dishes arrive hot to your seat
               </p>
             </span>
             <span className="text-caption font-bold text-primary tracking-wide uppercase shrink-0">Dine Free</span>
@@ -362,7 +391,7 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
                   <div className="flex items-center gap-space-2xs shrink-0">
                     <button
                       type="button"
-                      onClick={() => showToast('Customization options opened')}
+                      onClick={() => showToast(live ? 'Add a note for the kitchen in your cart' : 'Customization options opened')}
                       className="h-10 px-space-sm rounded-xl bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold flex items-center gap-1.5 active:scale-95 transition-all shadow-sm"
                     >
                       <Icon name="tune" className="text-[16px]" />

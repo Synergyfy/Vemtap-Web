@@ -14,6 +14,7 @@ export interface LoyaltyReward {
   remainingQuantity?: number | null;
   isActive?: boolean;
   expiryDate?: string | null;
+  coverImage?: string | null;
 }
 
 /** `GET /loyalty/rules` — one row per business (or branch); created on first read. */
@@ -31,7 +32,9 @@ export interface LoyaltyRules {
 export type LoyaltyRulesPatch = Partial<LoyaltyRules>;
 
 export interface LoyaltyStats {
+  /** Total Customers, Points Issued, Rewards Redeemed, Active Programs (by label). */
   stats?: { label?: string | null; value?: string | null; change?: number | null }[] | null;
+  tierDistribution?: { label: string; value: number }[] | null;
   growthForecast?: string | null;
 }
 
@@ -71,6 +74,6 @@ export const loyaltyService = {
   removeReward: (id: string) => api.del<unknown>(`/loyalty/rewards/${id}`),
   logs: (businessId: string, branchId?: string) =>
     api
-      .get<{ data?: PointLog[] | null }>('/loyalty/points/business-logs', { params: { businessId, ...(branchId ? { branchId } : {}), page: 1, limit: 10 } })
+      .get<{ data?: PointLog[] | null }>('/loyalty/points/business-logs', { params: { businessId, ...(branchId ? { branchId } : {}), page: 1, limit: 20 } })
       .then(asList),
 };

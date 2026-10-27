@@ -1,6 +1,7 @@
 import { hasApiConfig, uploadFile } from './api/client';
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Matches the server's `POST /uploads` cap (kept under the serverless body limit). */
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 /** Opens the file picker and resolves with the chosen image (null when cancelled). */
 export function pickImage(): Promise<File | null> {
@@ -27,12 +28,23 @@ export function pickImage(): Promise<File | null> {
  */
 export async function uploadImage(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Choose a PNG, JPG or WebP image.');
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('Images must be 5MB or smaller.');
+  if (file.size > MAX_IMAGE_BYTES) throw new Error('Images must be 4MB or smaller.');
   if (!hasApiConfig()) return URL.createObjectURL(file);
   const result = await uploadFile<{ url?: string; data?: { url?: string } }>('/uploads', file);
   const url = result.url ?? result.data?.url;
   if (!url) throw new Error('The upload did not return an image URL.');
   return url;
+}
+
+/**
+ * Uploads an image held as a `data:` URL (e.g. from an inline image field)
+ * and returns the hosted URL. Hosted URLs are returned unchanged.
+ */
+export async function uploadDataUrlImage(value: string, fileName = 'image'): Promise<string> {
+  if (!value.startsWith('data:')) return value;
+  const blob = await (await fetch(value)).blob();
+  const extension = blob.type.split('/')[1] || 'png';
+  return uploadImage(new File([blob], `${fileName}.${extension}`, { type: blob.type }));
 }
 
 /** Picks and uploads in one go; null when the user cancels. */

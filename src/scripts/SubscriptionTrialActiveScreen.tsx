@@ -1,5 +1,8 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { hasApiConfig } from '../services/api/client';
+import { useActiveSubscription, useSubscriptionPlans } from '../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, renewalDate, trialDaysLeft } from './subscriptionLive';
 import { SubscriptionHeader } from './SubscriptionHeader';
 
 interface SubscriptionTrialActiveScreenProps {
@@ -31,6 +34,25 @@ export function SubscriptionTrialActiveScreen({
   onSubscribe,
   onCreateCampaign,
 }: SubscriptionTrialActiveScreenProps) {
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  const plans = useSubscriptionPlans();
+
+  // Live: the real trial subscription drives the timeline; demo keeps the
+  // scripted "day 7 of 30" snapshot.
+  const sub = subscription.data ?? null;
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = sub?.plan?.name ?? featured?.name ?? 'Growth';
+  const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
+  const totalDays = featured?.trialDurationDays ?? 30;
+  const daysLeft = live ? trialDaysLeft(sub) ?? 0 : 23;
+  const elapsed = Math.max(0, totalDays - daysLeft);
+  const widthPct = totalDays ? Math.round((elapsed / totalDays) * 1000) / 10 : 0;
+  const startText = sub?.startDate
+    ? new Date(sub.startDate).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+  const endText = renewalDate(sub?.trialEndsAt ?? sub?.endDate);
+
   return (
     <AppScreen surface="bg-surface-canvas">
       <SubscriptionHeader title="Subscription Plans" onBack={onBack} />
@@ -41,14 +63,16 @@ export function SubscriptionTrialActiveScreen({
             <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
             <span className="font-label-sm text-label-sm tracking-wide uppercase font-semibold">Live Subscription</span>
           </div>
-          <span className="font-caption text-caption text-text-tertiary">ID: #VEM-88204</span>
+          <span className="font-caption text-caption text-text-tertiary">
+            {live && sub?.id ? `ID: #VEM-${sub.id.replace(/-/g, '').slice(0, 6).toUpperCase()}` : 'ID: #VEM-88204'}
+          </span>
         </div>
         <div className="flex flex-col gap-1 mb-5">
           <h2 className="font-heading-md text-heading-md font-semibold text-text-primary tracking-tight">
-            VEMTAP Growth Trial Active
+            {planName} Trial Active
           </h2>
           <p className="font-label-sm text-label-sm text-text-secondary">
-            You're currently exploring VEMTAP Growth for free.
+            You're currently exploring VEMTAP {planName} for free.
           </p>
         </div>
 
@@ -61,7 +85,7 @@ export function SubscriptionTrialActiveScreen({
                 Plan Timeline
               </span>
               <div className="flex items-baseline gap-1 mt-0.5">
-                <span className="font-heading-lg text-heading-lg text-primary-container font-bold">23</span>
+                <span className="font-heading-lg text-heading-lg text-primary-container font-bold">{daysLeft}</span>
                 <span className="font-label-md text-label-md text-text-primary font-semibold">days remaining</span>
               </div>
             </div>
@@ -73,23 +97,27 @@ export function SubscriptionTrialActiveScreen({
             <div className="w-full bg-surface-container rounded-full h-2 overflow-hidden p-0.5">
               <div
                 className="bg-primary-container h-full rounded-full transition-all duration-700 ease-out"
-                style={{ width: '23.33%' }}
+                style={{ width: `${live ? widthPct : 23.33}%` }}
               />
             </div>
             <div className="flex justify-between items-center text-text-secondary">
-              <span className="font-caption text-caption">Day 7 of 30 used</span>
-              <span className="font-caption text-caption font-medium text-text-primary">23% elapsed</span>
+              <span className="font-caption text-caption">
+                Day {live ? elapsed : 7} of {totalDays} used
+              </span>
+              <span className="font-caption text-caption font-medium text-text-primary">
+                {live ? widthPct : 23}% elapsed
+              </span>
             </div>
           </div>
           <div className="flex items-center justify-between pt-2.5 text-text-secondary bg-surface-canvas/60 rounded-xl px-3 py-1.5">
             <div className="flex items-center gap-1.5">
               <Icon name="calendar_today" className="text-[15px] text-text-tertiary" />
-              <span className="font-caption text-caption">Oct 18, 2024</span>
+              <span className="font-caption text-caption">{startText ?? 'Oct 18, 2024'}</span>
             </div>
             <span className="font-caption text-caption text-text-tertiary">•</span>
             <div className="flex items-center gap-1.5">
               <Icon name="event_available" className="text-[15px] text-text-tertiary" />
-              <span className="font-caption text-caption font-medium text-text-primary">Nov 17, 2024</span>
+              <span className="font-caption text-caption font-medium text-text-primary">{endText ?? 'Nov 17, 2024'}</span>
             </div>
           </div>
         </div>
@@ -138,7 +166,10 @@ export function SubscriptionTrialActiveScreen({
             onClick={onSubscribe}
           >
             <Icon name="verified" className="text-[18px]" />
-            <span>Subscribe Now & Lock In Growth (₦5,000/mo)</span>
+            <span>
+              Subscribe Now & Lock In {planName}
+              {priceLine ? ` (${priceLine.split(' / ')[0]}/mo)` : ' (₦5,000/mo)'}
+            </span>
           </button>
         </div>
 

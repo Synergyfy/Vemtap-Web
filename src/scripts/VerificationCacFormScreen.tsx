@@ -24,6 +24,12 @@ const ENTITY_TYPES: { key: CacEntityType; icon: string; label: string; descripti
 export function VerificationCacFormScreen({ onBack, draft, onDraftChange, onVerified, onNeedsReview }: VerificationCacFormScreenProps) {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Verification failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!error) return;
+    const timeout = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
   const verification = useVerificationActions();
   const [verified, setVerified] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -264,11 +270,6 @@ export function VerificationCacFormScreen({ onBack, draft, onDraftChange, onVeri
 
           {/* Action Decks */}
           <div className="mt-auto pt-space-xs space-y-3">
-            {error ? (
-              <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
-                {error}
-              </p>
-            ) : null}
             <button
               className={`w-full h-11 rounded-xl text-on-primary font-button-primary text-button-primary font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all ${
                 verified
@@ -314,6 +315,11 @@ export function VerificationCacFormScreen({ onBack, draft, onDraftChange, onVeri
           </div>
         </form>
       </div>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </AppScreen>
   );
 }

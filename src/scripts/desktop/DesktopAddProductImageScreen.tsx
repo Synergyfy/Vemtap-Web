@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -57,12 +58,18 @@ export function DesktopAddProductImageScreen({
   onDraftChange,
 }: DesktopAddProductImageScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
-  // Live: a real photo upload instead of the sample cover.
+  // Live: the photo tiles upload a real image into the draft's `mainImage`.
   const editor = useLiveItemEditor('product');
   const changePhoto = async () => {
+    if (!editor.live || editor.uploading) return;
     const url = await editor.uploadPhoto();
     if (url) onDraftChange?.({ mainImage: url });
   };
+  useEffect(() => {
+    if (!editor.uploadError) return;
+    const timer = window.setTimeout(editor.clearUploadError, 4000);
+    return () => window.clearTimeout(timer);
+  }, [editor.uploadError]);
 
   /** Product facts from the draft — business facts come from setup state. */
   const aiProductContext: AiPromptContext = {
@@ -161,17 +168,7 @@ export function DesktopAddProductImageScreen({
               </div>
 
               <div className="relative w-full h-80 rounded-xl overflow-hidden bg-surface-container-high group shadow-sm mb-space-md">
-                {editor.live && !draft.mainImage ? (
-                  <button
-                    type="button"
-                    onClick={changePhoto}
-                    className="w-full h-full flex flex-col items-center justify-center gap-space-xs text-text-secondary hover:text-primary"
-                  >
-                    <Icon name="add_photo_alternate" className="text-[40px]" />
-                    <span className="font-label-md text-label-md font-semibold">{editor.uploading ? 'Uploading…' : 'Add a product photo'}</span>
-                    <span className="font-caption text-caption">JPG or PNG, landscape works best</span>
-                  </button>
-                ) : (
+                {(!editor.live || draft.mainImage) && (
                   <img
                     alt={editor.live ? draft.title || 'Product photo' : COVER_ALT}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -199,16 +196,21 @@ export function DesktopAddProductImageScreen({
                 </div>
                 <div className="absolute bottom-space-md left-space-md right-space-md flex items-center justify-between text-on-primary">
                   <div>
-                    <p className="font-label-md text-label-md font-semibold text-on-primary">woodfire_lamb_chops_master.jpg</p>
-                    <p className="font-caption text-caption text-on-primary/80">3840 × 2160 • 2.4 MB • High Resolution SRGB</p>
+                    <p className="font-label-md text-label-md font-semibold text-on-primary">
+                      {editor.live ? (draft.mainImage ? draft.title || 'Product photo' : 'No photo yet') : 'woodfire_lamb_chops_master.jpg'}
+                    </p>
+                    <p className="font-caption text-caption text-on-primary/80">
+                      {editor.live ? 'JPG or PNG, landscape works best' : '3840 × 2160 • 2.4 MB • High Resolution SRGB'}
+                    </p>
                   </div>
                   <div className="flex items-center gap-space-xs">
                     <button
                       type="button"
+                      onClick={changePhoto}
                       className="px-space-md py-space-xs rounded-xl bg-surface-canvas text-text-primary font-label-md text-label-md font-semibold shadow hover:bg-surface-tint-blue transition-colors flex items-center gap-1"
                     >
                       <Icon name="cached" className="text-[18px] text-primary" />
-                      <span>Change Photo</span>
+                      <span>{editor.uploading ? 'Uploading…' : editor.live && !draft.mainImage ? 'Add Photo' : 'Change Photo'}</span>
                     </button>
                   </div>
                 </div>
@@ -224,7 +226,7 @@ export function DesktopAddProductImageScreen({
                   </span>
                 </div>
                 <div className="grid grid-cols-5 gap-space-sm">
-                  {GALLERY_THUMBNAILS.map((thumb) => (
+                  {(editor.live ? [] : GALLERY_THUMBNAILS).map((thumb) => (
                     <div
                       key={thumb.order}
                       className="relative aspect-square rounded-xl overflow-hidden bg-surface-container group cursor-grab shadow-sm"
@@ -240,6 +242,7 @@ export function DesktopAddProductImageScreen({
                   ))}
                   <button
                     type="button"
+                    onClick={changePhoto}
                     className="aspect-square rounded-xl bg-surface-container-low hover:bg-surface-tint-blue text-primary flex flex-col items-center justify-center gap-1 transition-all group"
                   >
                     <Icon name="add_photo_alternate" className="text-[24px] group-hover:scale-110 transition-transform" />
@@ -327,6 +330,11 @@ export function DesktopAddProductImageScreen({
           </button>
         </div>
       </div>
+      {editor.uploadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {editor.uploadError}
+        </div>
+      )}
     </Shell>
   );
 }

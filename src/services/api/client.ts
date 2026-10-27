@@ -159,7 +159,9 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
 
   if (!response.ok) {
     const refreshToken = getRefreshToken();
-    const isAuthAttempt = path === '/auth/login' || path === '/auth/refresh' || path === '/auth/logout';
+    // A wrong supervisor PIN is a 401 too, but it says nothing about the session.
+    const isAuthAttempt =
+      path === '/auth/login' || path === '/auth/refresh' || path === '/auth/logout' || path === '/pos/staff-pins/verify';
 
     if (response.status === 401 && !requestOptions.__retry && !isAuthAttempt && refreshToken) {
       try {

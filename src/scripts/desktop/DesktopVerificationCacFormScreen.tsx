@@ -59,6 +59,12 @@ export function DesktopVerificationCacFormScreen({
 }: DesktopVerificationCacFormScreenProps) {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Verification failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!error) return;
+    const timeout = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
   const verification = useVerificationActions();
   const [verified, setVerified] = useState(false);
   const [fileName, setFileName] = useState<string | null>('CAC_BN_Certificate.pdf');
@@ -323,12 +329,6 @@ export function DesktopVerificationCacFormScreen({
                   </p>
                 </div>
               </div>
-
-              {error ? (
-                <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
-                  {error}
-                </p>
-              ) : null}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-space-md pt-space-xs">
                 <button
                   className="w-full sm:w-auto px-space-lg py-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-all flex items-center justify-center gap-space-2xs"
@@ -475,6 +475,11 @@ export function DesktopVerificationCacFormScreen({
           </div>
         </div>
       </div>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </BusinessVerificationChrome>
   );
 }

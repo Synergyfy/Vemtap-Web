@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { exportEncryptedBackup, printOfflineXTape } from '../../utils/posOffline';
+import { hasApiConfig } from '../../services/api/client';
+import { timeLabel, useLivePos } from '../posLive';
 
 interface DesktopPosBufferScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -99,6 +101,39 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
   const [backupState, setBackupState] = useState<ActionState>('idle');
   const [toast, setToast] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  // Live: the sales actually waiting on this device (PosOfflineContext).
+  const queued: QueuedTxn[] = live
+    ? pos.offline.queue.map((order, index, list) => {
+        const cash = order.tender.toLowerCase().includes('cash');
+        return {
+          id: order.ref,
+          time: `${timeLabel(new Date(order.takenAt).toISOString())}${index === list.length - 1 ? ' (First offline ticket)' : ''}`,
+          first: index === list.length - 1,
+          amount: order.total,
+          type: cash ? 'cash' : 'card',
+          method: order.tender,
+          items: order.items,
+          meta: `Cashier: ${pos.cashierName}`,
+          metaAccent: false,
+          metaMono: false,
+        };
+      })
+    : QUEUED_TXNS;
+  const queuedCash = queued.filter((txn) => txn.type === 'cash').length;
+  const queueTabs = live
+    ? [
+        { key: 'all' as const, label: `All Queued (${queued.length})` },
+        { key: 'cash' as const, label: `Cash Sales (${queuedCash})` },
+        { key: 'card' as const, label: `Card Swipes (${queued.length - queuedCash})` },
+        { key: 'audit' as const, label: 'Audit Trail' },
+      ]
+    : QUEUE_TABS;
+  const where = live ? `${pos.branchName} • ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse Branch • Till #01';
+  const tillMetaLabel = live ? `${pos.isOpen ? pos.tillName : 'No till'} (${pos.branchName})` : 'Till 01 (Wuse II)';
+  const cashierLabel = live ? pos.cashierName : 'Emeka Okafor';
+  const queuedTotal = queued.reduce((sum, txn) => sum + txn.amount, 0);
   const toastTimer = useRef<number | null>(null);
 
   useEffect(
@@ -133,20 +168,20 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
     );
   };
 
-  const rows = QUEUED_TXNS.filter((txn) => tab === 'all' || tab === 'audit' || txn.type === tab);
+  const rows = queued.filter((txn) => tab === 'all' || tab === 'audit' || txn.type === tab);
 
   /**
    * Serialize the offline queue into a portable .dat vault file.
    * Delegates to the shared AES-GCM vault helper in utils/posOffline.
    */
   const exportVault = () =>
-    exportEncryptedBackup(QUEUED_TXNS, { till: 'Till 01 (Wuse II)', cashier: 'Emeka Okafor' });
+    exportEncryptedBackup(queued, { till: tillMetaLabel, cashier: cashierLabel });
 
   /** Local X-tape summary printed straight from the till. */
   const printXTape = () =>
-    printOfflineXTape(QUEUED_TXNS, {
-      till: 'Till 01 (Wuse II)',
-      cashier: 'Emeka Okafor',
+    printOfflineXTape(queued, {
+      till: tillMetaLabel,
+      cashier: cashierLabel,
       networkNote: 'Offline — transactions buffered locally',
     });
 
@@ -158,7 +193,7 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
           <div className="flex items-center gap-space-xs min-w-0">
             <Icon name="cloud_off" className="text-[17px] shrink-0 animate-pulse" />
             <div className="flex flex-col min-w-0">
-              <span className="font-label-md text-label-md font-semibold truncate">Wuse Branch • Till #01</span>
+              <span className="font-label-md text-label-md font-semibold truncate">{where}</span>
               <span className="font-caption text-caption truncate opacity-90">
                 Offline (Encrypted Local Storage Active)
               </span>
@@ -197,7 +232,7 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">POS Offline Buffer</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              5 pending tickets totalling ₦68,450.00 are encrypted on this device and batch-sync to VEMTAP Cloud HQ
+              {live ? `${queued.length} pending tickets totalling ${amountLabel(queuedTotal)}` : '5 pending tickets totalling ₦68,450.00'} are encrypted on this device and batch-sync to VEMTAP Cloud HQ
               without manual intervention.
             </p>
           </div>
@@ -229,7 +264,7 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
               </div>
             </div>
             <div className="mt-space-md">
-              <span className="font-display-hero text-display-hero text-on-surface leading-none">5 Pending</span>
+              <span className="font-display-hero text-display-hero text-on-surface leading-none">{live ? queued.length : 5} Pending</span>
               <div className="mt-space-2xs flex items-center justify-between text-text-tertiary font-caption text-caption">
                 <span>First offline ticket 02:15 PM</span>
                 <span>Audit Trail</span>
@@ -251,7 +286,7 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
               </div>
             </div>
             <div className="mt-space-md">
-              <span className="font-display-hero text-display-hero text-primary leading-none">₦68,450.00</span>
+              <span className="font-display-hero text-display-hero text-primary leading-none">{live ? amountLabel(queuedTotal) : '₦68,450.00'}</span>
               <div className="mt-space-2xs flex items-center justify-between text-text-tertiary font-caption text-caption">
                 <span>Cash Sales (3)</span>
                 <span>Card Swipes (2)</span>
@@ -295,7 +330,7 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
               </div>
             </div>
             <span className="font-label-sm text-label-sm mt-space-md opacity-90">
-              Wuse Branch • Till #01 — encrypted local storage active
+              {where} — encrypted local storage active
             </span>
           </div>
         </div>
@@ -315,7 +350,7 @@ export function DesktopPosBufferScreen({ onNav, onReturnToRegister }: DesktopPos
           <div className="lg:col-span-7 flex flex-col gap-space-sm">
             {/* Filter tabs */}
             <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-0.5">
-              {QUEUE_TABS.map((item) => {
+              {queueTabs.map((item) => {
                 const isActive = tab === item.key;
                 return (
                   <button

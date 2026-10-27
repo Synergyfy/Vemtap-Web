@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { TILL_STATUS_LABEL, tillMeta, timeLabel, useLivePos } from '../posLive';
 
 interface DesktopPosSwitchScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -58,8 +62,40 @@ const TILLS = [
 ];
 
 export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosSwitchScreenProps) {
+  const pos = useLivePos();
+  const live = pos.live;
+  const { branch, branches: liveBranchList, switchTo } = useBusinessBranch();
+  const currentTillId = pos.session?.tillId ?? null;
+  const branchOptions: BranchOption[] = live
+    ? liveBranchList.map((item) => ({
+        key: item.key,
+        name: item.name,
+        shortName: item.shortName,
+        area: item.area || '—',
+        orders: '—',
+        revenue: '—',
+      }))
+    : BRANCHES;
+  const currentBranchKey = live ? branch.key : CURRENT_BRANCH_KEY;
+  const currentBranch = branchOptions.find((item) => item.key === currentBranchKey) ?? branchOptions[0] ?? CURRENT_BRANCH;
+  const tillOptions = live
+    ? pos.tills.length
+      ? pos.tills.map((till) => ({
+          key: till.id,
+          name: till.name,
+          meta: tillMeta(till),
+          status: till.id === currentTillId ? 'Active' : TILL_STATUS_LABEL[till.status],
+          active: till.id === currentTillId,
+        }))
+      : [{ key: 'new', name: 'Till 01', meta: 'New till · created when you start', status: 'Idle', active: false }]
+    : TILLS;
   const [selectedTill, setSelectedTill] = useState('till-01');
-  const [selectedBranchKey, setSelectedBranchKey] = useState(CURRENT_BRANCH_KEY);
+  const [selectedBranchKey, setSelectedBranchKey] = useState(currentBranchKey);
+
+  useEffect(() => {
+    if (!live || !pos.tillsLoaded) return;
+    setSelectedTill(currentTillId ?? pos.tills.find((till) => till.status !== 'disabled')?.id ?? 'new');
+  }, [live, pos.tillsLoaded, currentTillId, pos.tills]);
   const [verifying, setVerifying] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -81,13 +117,46 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  const selectedBranch = BRANCHES.find((item) => item.key === selectedBranchKey) ?? CURRENT_BRANCH;
-  const selectedTillData = TILLS.find((item) => item.key === selectedTill) ?? TILLS[0];
+  const selectedBranch = branchOptions.find((item) => item.key === selectedBranchKey) ?? currentBranch;
+  const selectedTillData = tillOptions.find((item) => item.key === selectedTill) ?? tillOptions[0];
   const tillName = selectedTillData.name;
-  const changed = selectedBranchKey !== CURRENT_BRANCH_KEY || selectedTill !== 'till-01';
+  const changed = live
+    ? selectedBranchKey !== currentBranchKey || selectedTill !== (currentTillId ?? '') || !pos.isOpen
+    : selectedBranchKey !== CURRENT_BRANCH_KEY || selectedTill !== 'till-01';
+
+  /** Live: open the register on the chosen till (creating the branch's first till if needed). */
+  const confirmLive = async () => {
+    if (selectedBranchKey !== currentBranchKey) {
+      switchTo(selectedBranchKey);
+      showToast(`Switched to ${selectedBranch.shortName} — now pick a till`);
+      return;
+    }
+    if (currentTillId && currentTillId !== selectedTill) {
+      showToast(`Close the register on ${pos.tillName} first (Till & Cash Drawer on the POS home).`);
+      return;
+    }
+    if (currentTillId === selectedTill) {
+      onConfirm();
+      return;
+    }
+    setVerifying(true);
+    try {
+      await pos.openOnTill(selectedTill === 'new' ? undefined : selectedTill);
+      showToast(`Register open on ${tillName}`);
+      window.setTimeout(() => onConfirm(), 500);
+    } catch (error) {
+      showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not open the register.'));
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const confirm = () => {
     if (verifying) return;
+    if (live) {
+      void confirmLive();
+      return;
+    }
     setVerifying(true);
     if (verifyTimer.current !== null) window.clearTimeout(verifyTimer.current);
     verifyTimer.current = window.setTimeout(() => {
@@ -117,9 +186,9 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
             <div className="flex flex-wrap items-center gap-space-xs text-text-tertiary font-caption text-caption uppercase tracking-wider mb-space-2xs">
               <span>Active Checkout</span>
               <span>•</span>
-              <span>{CURRENT_BRANCH.name}</span>
+              <span>{currentBranch.name}</span>
               <span>•</span>
-              <span>Shift since 08:00</span>
+              <span>{live ? (pos.session ? `Shift since ${timeLabel(pos.session.openedAt)}` : 'Register closed') : 'Shift since 08:00'}</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Switch Branch &amp; Till</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
@@ -146,7 +215,11 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
               ) : (
                 <>
                   <Icon name="swap_horiz" className="text-[18px]" />
-                  <span>{changed ? `Switch to ${selectedBranch.shortName} · ${tillName}` : 'No change selected'}</span>
+                  <span>{live && !pos.isOpen && selectedBranchKey === currentBranchKey
+                    ? `Open Register on ${tillName}`
+                    : changed
+                      ? `Switch to ${selectedBranch.shortName} · ${tillName}`
+                      : 'No change selected'}</span>
                 </>
               )}
             </button>
@@ -163,7 +236,7 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
                   Active Checkout
                 </span>
                 <span className="font-heading-sm text-heading-sm text-on-surface mt-space-2xs truncate">
-                  {CURRENT_BRANCH.name} · Till 01
+                  {currentBranch.name} · {live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Till 01'}
                 </span>
               </div>
               <div className="w-10 h-10 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
@@ -172,7 +245,7 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
             </div>
             <span className="mt-space-md inline-flex items-center gap-space-2xs self-start px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
               <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-              <span>Live</span>
+              <span>{live ? (pos.isOpen ? 'Open' : 'Closed') : 'Live'}</span>
             </span>
           </div>
 
@@ -183,14 +256,18 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
                 <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary">
                   Cashier On Duty
                 </span>
-                <span className="font-heading-sm text-heading-sm text-on-surface mt-space-2xs">Emeka O.</span>
+                <span className="font-heading-sm text-heading-sm text-on-surface mt-space-2xs">{live ? pos.cashierName : 'Emeka O.'}</span>
               </div>
               <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-text-secondary shrink-0">
                 <Icon name="person" className="text-[20px]" />
               </div>
             </div>
             <span className="mt-space-md font-caption text-caption text-text-tertiary">
-              Signed in · shift since 08:00
+              {live
+                ? pos.session
+                  ? `Signed in · shift since ${timeLabel(pos.session.openedAt)}`
+                  : 'Signed in · register closed'
+                : 'Signed in · shift since 08:00'}
             </span>
           </div>
 
@@ -250,7 +327,7 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
                 </span>
               </div>
               <div className="flex flex-col gap-space-xs">
-                {TILLS.map((till) => {
+                {tillOptions.map((till) => {
                   const isSelected = till.key === selectedTill;
                   const isOffline = till.status === 'Offline';
                   return (
@@ -304,9 +381,9 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
                 Switch to Another Branch
               </span>
               <div className="flex flex-col gap-space-xs">
-                {BRANCHES.map((item) => {
+                {branchOptions.map((item) => {
                   const isSelected = item.key === selectedBranchKey;
-                  const isCurrent = item.key === CURRENT_BRANCH_KEY;
+                  const isCurrent = item.key === currentBranchKey;
                   return (
                     <button
                       key={item.key}
@@ -415,7 +492,11 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
                   <>
                     <Icon name="swap_horiz" className="text-[17px]" />
                     <span>
-                      {changed ? `Switch to ${selectedBranch.shortName} · ${tillName}` : 'No change selected'}
+                      {live && !pos.isOpen && selectedBranchKey === currentBranchKey
+                    ? `Open Register on ${tillName}`
+                    : changed
+                      ? `Switch to ${selectedBranch.shortName} · ${tillName}`
+                      : 'No change selected'}
                     </span>
                   </>
                 )}

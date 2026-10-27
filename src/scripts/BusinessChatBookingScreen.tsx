@@ -7,6 +7,7 @@ import {
   ChatOptionsSheet,
 } from '../components/sheets/ChatSheets';
 import { BusinessChatHeader } from './BusinessChatHeader';
+import { statusLabel, useChatCustomer, useLiveChat } from './messagesLive';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatBookingScreenProps {
@@ -16,7 +17,7 @@ interface BusinessChatBookingScreenProps {
 }
 
 interface ThreadMessage {
-  id: number;
+  id: string;
   direction: 'in' | 'out';
   text: string;
   time: string;
@@ -33,7 +34,7 @@ const WINE_ALT =
 
 const buildInitialMessages = (contactName: string, firstName: string): ThreadMessage[] => [
   {
-    id: 1,
+    id: '1',
     direction: 'in',
     text: 'Do you have the 2018 vintage available for this weekend?',
     time: 'Oct 10, 4:18 PM',
@@ -41,7 +42,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     bubbleClass: 'bg-surface-canvas text-text-primary',
   },
   {
-    id: 2,
+    id: '2',
     direction: 'out',
     text: `Yes ${firstName}, we have 3 bottles reserved in our cellar.`,
     time: 'Oct 10, 4:21 PM',
@@ -49,7 +50,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     status: 'read',
   },
   {
-    id: 3,
+    id: '3',
     direction: 'in',
     text: 'Good morning. We have 2 additional guests joining us for our anniversary dinner on Saturday. Can we expand our Table 08 reservation to 6 seats?',
     time: '11:05 AM',
@@ -57,7 +58,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     bubbleClass: 'bg-surface-canvas text-text-primary',
   },
   {
-    id: 4,
+    id: '4',
     direction: 'out',
     text: `Good morning ${firstName}! Yes, we have merged Table 08 & 09 to comfortably seat party of 6. We look forward to celebrating with you!`,
     time: '11:08 AM',
@@ -65,7 +66,7 @@ const buildInitialMessages = (contactName: string, firstName: string): ThreadMes
     status: 'read',
   },
   {
-    id: 5,
+    id: '5',
     direction: 'out',
     text: "We've also chilled the reserve bottle for your arrival 🍷",
     time: '11:10 AM',
@@ -85,22 +86,49 @@ const formatNow = () => {
 export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBookingScreenProps) {
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.booking;
   const firstName = contactFirstName(activeContact.name);
-  const [messages, setMessages] = useState<ThreadMessage[]>(() =>
+  const [demoMessages, setDemoMessages] = useState<ThreadMessage[]>(() =>
     buildInitialMessages(activeContact.name, firstName),
   );
-  const [input, setInput] = useState('Looking forward to seeing you!');
+  const liveChat = useLiveChat(activeContact.threadId);
+  const [input, setInput] = useState(activeContact.threadId ? '' : 'Looking forward to seeing you!');
+
+  // Live: the customer's CRM record and what this chat is about.
+  const chat = useChatCustomer(activeContact.threadId, activeContact.customerId);
+  const live = chat.live;
+  const phone = live ? (chat.phone ?? '—') : '+234 802 771 9044';
+  const callCustomer = () => {
+    if (live && !chat.phone) return;
+    window.location.href = `tel:${live ? chat.phone : '+2348027719044'}`;
+  };
+  const booking = chat.order;
+  const shortDate = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short' }) : '—');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
 
+  // Live threads stream from the inbox; demo chats keep the scripted thread.
+  const messages: ThreadMessage[] = liveChat.live
+    ? liveChat.messages.map((message) => ({
+        id: message.id,
+        direction: message.direction,
+        text: message.text,
+        time: message.time || formatNow(),
+        status: message.direction === 'out' ? (message.read ? ('read' as const) : ('delivered' as const)) : undefined,
+      }))
+    : demoMessages;
+
   const handleSend = () => {
     const value = input.trim();
     if (!value) return;
-    setMessages((current) => [
-      ...current,
-      { id: Date.now(), direction: 'out', text: value, time: formatNow(), bubbleClass: 'bg-primary-container text-on-primary', status: 'read' },
-    ]);
     setInput('');
+    if (liveChat.live) {
+      liveChat.send(value);
+      return;
+    }
+    setDemoMessages((current) => [
+      ...current,
+      { id: String(Date.now()), direction: 'out', text: value, time: formatNow(), bubbleClass: 'bg-primary-container text-on-primary', status: 'read' },
+    ]);
     window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
   };
 
@@ -111,17 +139,18 @@ export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBooki
         title={activeContact.name}
         avatar={activeContact.avatar}
         isBusiness={activeContact.isBusiness}
-        subtitle="Active inquiry • Booking #BK-77402"
+        subtitle={live ? chat.subtitle : 'Active inquiry • Booking #BK-77402'}
         onAvatar={() => setDrawerOpen(true)}
-        onCall={() => (window.location.href = 'tel:+2348027719044')}
+        onCall={callCustomer}
         onMore={() => setOptionsOpen(true)}
       />
-      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone="+234 802 771 9044" />
+      <CustomerProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} name={activeContact.name} phone={phone} stats={chat.drawer} />
       <AttachmentSheet open={attachOpen} onClose={() => setAttachOpen(false)} />
       <ChatOptionsSheet open={optionsOpen} onClose={() => setOptionsOpen(false)} />
 
       <div className="flex flex-col w-full flex-1">
-        {/* Offline Sync Pill */}
+        {/* Offline Sync Pill (demo only — live chats sync over the socket) */}
+        {!live && (
         <aside aria-label="Network status banner" className="mx-margin mt-space-sm mb-space-xs">
           <div className="flex items-center justify-between gap-space-xs px-space-md py-space-xs rounded-xl bg-surface-container-high text-on-surface shadow-sm">
             <div className="flex items-center gap-space-xs min-w-0">
@@ -136,6 +165,7 @@ export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBooki
             <Icon name="cloud_sync" className="text-[16px] text-text-tertiary flex-shrink-0" />
           </div>
         </aside>
+        )}
 
         {/* Sticky Multi-Context Active Deck */}
         <section aria-labelledby="active-booking-heading" className="mx-margin mb-space-md">
@@ -147,31 +177,49 @@ export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBooki
                   Booking Context
                 </span>
                 <span className="font-caption text-caption text-text-tertiary">•</span>
-                <span className="font-caption text-caption text-text-secondary font-medium">Ref: #BK-77402</span>
+                <span className="font-caption text-caption text-text-secondary font-medium">Ref: {live ? (booking?.reference ?? '—') : '#BK-77402'}</span>
               </div>
               <span className="inline-flex items-center px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                Confirmed
+                {live ? (booking ? statusLabel(booking.status) : 'No linked booking') : 'Confirmed'}
               </span>
             </div>
             <h2 className="font-heading-sm text-heading-sm text-text-primary mt-space-2xs" id="active-booking-heading">
-              Dining Table Reservation — Party of 4
+              {live
+                ? booking
+                  ? booking.items.map((item) => (item.quantity > 1 ? `${item.name} ×${item.quantity}` : item.name)).join(', ') || 'Booking'
+                  : 'This chat is not linked to a booking'
+                : 'Dining Table Reservation — Party of 4'}
             </h2>
             <div className="flex flex-col gap-1 py-space-2xs bg-surface-subtle px-space-sm rounded-lg mt-space-2xs">
               <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm">
                 <Icon name="calendar_month" className="text-[16px] text-primary flex-shrink-0" />
-                <span className="truncate">Saturday, Oct 19 · 7:30 PM (Table 08 Indoor)</span>
+                <span className="truncate">
+                  {live
+                    ? booking
+                      ? `${shortDate(booking.bookingDate)}${booking.bookingTime ? ` · ${booking.bookingTime}` : ''}${booking.tableNumber ? ` (${booking.tableNumber})` : ''}`
+                      : '—'
+                    : 'Saturday, Oct 19 · 7:30 PM (Table 08 Indoor)'}
+                </span>
               </div>
               <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm">
                 <Icon name="celebration" className="text-[16px] text-tertiary flex-shrink-0" />
-                <span className="truncate">Special Anniversary Request</span>
+                <span className="truncate">{live ? (chat.person?.note?.note || 'No special requests') : 'Special Anniversary Request'}</span>
               </div>
               <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm">
                 <Icon name="payments" className="text-[16px] text-badge-discount-text flex-shrink-0" />
-                <span className="truncate">Direct Settle at Restaurant</span>
+                <span className="truncate">
+                  {live
+                    ? booking
+                      ? `₦${booking.totalAmount.toLocaleString('en-NG')} · ${statusLabel(booking.paymentStatus ?? 'unpaid')}`
+                      : '—'
+                    : 'Direct Settle at Restaurant'}
+                </span>
               </div>
             </div>
             <div className="flex items-center justify-between pt-space-2xs mt-space-2xs">
-              <span className="font-caption text-caption text-text-tertiary">Table locked with host team</span>
+              <span className="font-caption text-caption text-text-tertiary">
+                {live ? (booking ? `Booked ${shortDate(booking.createdAt)}` : '—') : 'Table locked with host team'}
+              </span>
               <button
                 className="inline-flex items-center gap-1 font-label-md text-label-md text-primary font-semibold hover:opacity-80 transition-opacity"
                 type="button"
@@ -185,7 +233,9 @@ export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBooki
 
         {/* Message Thread */}
         <div className="flex flex-col px-margin pb-32 gap-space-md">
-          {/* Previous Context Divider */}
+          {/* Previous Context Divider + product snippet (demo only) */}
+          {!live && (
+          <>
           <div className="flex items-center justify-center my-space-xs">
             <div className="flex items-center gap-space-2xs px-space-md py-1 rounded-full bg-surface-container text-on-secondary-container shadow-sm">
               <Icon name="history" className="text-[14px]" />
@@ -214,6 +264,9 @@ export function BusinessChatBookingScreen({ onBack, contact }: BusinessChatBooki
               </div>
             </div>
           </div>
+
+          </>
+          )}
 
           {messages.map((message) =>
             message.direction === 'in' ? (

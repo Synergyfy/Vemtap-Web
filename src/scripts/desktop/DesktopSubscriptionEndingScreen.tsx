@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { hasApiConfig } from '../../services/api/client';
+import { useActiveSubscription, useSubscriptionPlans } from '../../hooks/business/useSubscription';
+import { featuredPlan, planPriceLine, renewalDate, trialDaysLeft } from '../subscriptionLive';
 import { SubscriptionChrome } from './SubscriptionChrome';
 
 interface DesktopSubscriptionEndingScreenProps {
@@ -53,6 +56,22 @@ export function DesktopSubscriptionEndingScreen({
 }: DesktopSubscriptionEndingScreenProps) {
   const [paying, setPaying] = useState(false);
   const timer = useRef<number | null>(null);
+  const live = hasApiConfig();
+  const subscription = useActiveSubscription();
+  const plans = useSubscriptionPlans();
+
+  // Live: the real trial's countdown and plan; demo keeps the scripted
+  // "3 days left" snapshot and simulated renewal timer.
+  const sub = subscription.data ?? null;
+  const featured = featuredPlan(plans.data ?? []);
+  const planName = featured?.name ?? 'Growth';
+  const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
+  const totalDays = featured?.trialDurationDays ?? 30;
+  const daysLeft = live ? (trialDaysLeft(sub) ?? 0) : 3;
+  const completed = Math.max(0, totalDays - daysLeft);
+  const elapsedPct = totalDays ? Math.round((completed / totalDays) * 100) : 0;
+  const endText = renewalDate(sub?.trialEndsAt ?? sub?.endDate);
+  const dueText = priceLine ? `${priceLine.split(' / ')[0]}.00` : '₦5,000.00';
 
   useEffect(
     () => () => {
@@ -63,6 +82,11 @@ export function DesktopSubscriptionEndingScreen({
 
   const handleRenew = () => {
     if (paying) return;
+    if (live) {
+      // The real checkout runs on the payment screen — go straight there.
+      onContinue();
+      return;
+    }
     setPaying(true);
     timer.current = window.setTimeout(() => onContinue(), 2400);
   };
@@ -80,8 +104,9 @@ export function DesktopSubscriptionEndingScreen({
                 Your VEMTAP trial is ending
               </span>
               <p className="font-body-md text-body-md text-on-tertiary-fixed-variant leading-relaxed mt-space-2xs">
-                Your free trial ends in <span className="font-bold text-tertiary">3 days</span> (Oct 21, 2024). Keep
-                your momentum going without losing store visibility.
+                Your free trial ends in <span className="font-bold text-tertiary">{daysLeft} days</span>
+                {endText ? ` (${endText})` : live ? '' : ' (Oct 21, 2024)'}. Keep your momentum going without losing
+                store visibility.
               </p>
             </div>
             <svg className="shrink-0" height="72" viewBox="0 0 72 72" width="72" aria-hidden="true">
@@ -93,23 +118,25 @@ export function DesktopSubscriptionEndingScreen({
                 fill="none"
                 stroke="currentColor"
                 className="text-tertiary"
-                strokeDasharray={`${0.9 * 2 * Math.PI * 30} ${2 * Math.PI * 30}`}
+                strokeDasharray={`${(live ? elapsedPct / 100 : 0.9) * 2 * Math.PI * 30} ${2 * Math.PI * 30}`}
                 strokeLinecap="round"
                 strokeWidth="7"
                 transform="rotate(-90 36 36)"
               />
               <text className="fill-tertiary" fontSize="14" fontWeight="700" textAnchor="middle" x="36" y="41">
-                90%
+                {live ? elapsedPct : 90}%
               </text>
             </svg>
           </div>
           <div className="mt-space-sm pt-space-sm flex items-center justify-between border-t border-tertiary/10">
             <div className="flex items-center gap-space-2xs text-on-tertiary-fixed-variant">
               <Icon name="event_available" className="text-[15px] text-tertiary" />
-              <span className="font-caption text-caption">Day 27 of 30 completed</span>
+              <span className="font-caption text-caption">
+                Day {live ? completed : 27} of {totalDays} completed
+              </span>
             </div>
             <span className="inline-flex items-center px-space-xs py-space-2xs rounded-full font-caption text-caption font-bold bg-tertiary text-on-tertiary">
-              3 Days Left
+              {daysLeft} Days Left
             </span>
           </div>
         </section>
@@ -139,7 +166,7 @@ export function DesktopSubscriptionEndingScreen({
           <div className="lg:col-span-7 flex flex-col gap-space-lg">
             <section className="rounded-xl bg-surface-canvas p-space-lg shadow-sm border border-border-subtle/60">
               <h2 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">
-                Continue with VEMTAP Growth
+                Continue with VEMTAP {planName}
               </h2>
               <div className="flex flex-col gap-space-xs">
                 {KEEP_BENEFITS.map((benefit) => (
@@ -196,9 +223,9 @@ export function DesktopSubscriptionEndingScreen({
               <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">Order Summary</h3>
               <div className="flex flex-col gap-space-2xs">
                 {[
-                  { label: 'Plan', value: 'VEMTAP Growth' },
+                  { label: 'Plan', value: `VEMTAP ${planName}` },
                   { label: 'Billing', value: 'Monthly' },
-                  { label: 'Renews', value: 'Oct 21, 2024' },
+                  { label: 'Renews', value: endText ?? (live ? '—' : 'Oct 21, 2024') },
                   { label: 'Setup fee', value: 'Waived' },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between py-space-2xs">
@@ -209,7 +236,7 @@ export function DesktopSubscriptionEndingScreen({
               </div>
               <div className="mt-space-xs pt-space-xs border-t border-border-subtle flex items-center justify-between">
                 <span className="font-label-md text-label-md text-text-primary font-semibold">Due Today</span>
-                <span className="font-heading-md text-heading-md text-text-primary font-bold">₦5,000.00</span>
+                <span className="font-heading-md text-heading-md text-text-primary font-bold">{dueText}</span>
               </div>
               <div className="mt-space-sm flex items-center gap-space-xs rounded-lg bg-surface-container-low px-space-xs py-space-2xs">
                 <Icon name="credit_card" className="text-text-secondary text-[16px]" />
@@ -233,7 +260,7 @@ export function DesktopSubscriptionEndingScreen({
                 ) : (
                   <>
                     <Icon name="autorenew" className="text-[18px]" />
-                    <span>Continue with Growth</span>
+                    <span>Continue with {planName}</span>
                   </>
                 )}
               </button>

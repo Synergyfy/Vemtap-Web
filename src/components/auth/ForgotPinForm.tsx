@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Icon } from '../ui/Icon';
 import { authService } from '../../services/authService';
+import { hasApiConfig } from '../../services/api/client';
 
 const CODE_LENGTH = 6;
 const RESEND_SECONDS = 45;
@@ -14,9 +15,10 @@ const errorMessage = (error: unknown, fallback: string) =>
 const digitsOnly = (value: string) => value.replace(/\D/g, '').slice(0, CODE_LENGTH);
 
 /**
- * Customer PIN reset, shared by the mobile-web and desktop screens. One flow,
- * two API calls: POST /auth/customer/pin/forgot sends a 6-digit code, then
- * POST /auth/customer/pin/reset verifies it and stores the new PIN.
+ * PIN reset for customers and owners, shared by the mobile-web and desktop
+ * screens. Two API calls: POST /auth/customer/pin/forgot sends a 6-digit code,
+ * then POST /auth/customer/pin/reset verifies it and stores the new PIN.
+ * Demo mode (no API) walks the same steps without sending anything.
  */
 export function useForgotPin(initialEmail = '') {
   const [phase, setPhase] = useState<ForgotPinPhase>('email');
@@ -27,6 +29,12 @@ export function useForgotPin(initialEmail = '') {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(RESEND_SECONDS);
+
+  useEffect(() => {
+    if (!error) return;
+    const id = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [error]);
 
   useEffect(() => {
     if (phase !== 'code' || timeLeft <= 0) return;
@@ -43,7 +51,7 @@ export function useForgotPin(initialEmail = '') {
     setError(null);
     setBusy(true);
     try {
-      await authService.requestPinReset({ email: trimmed });
+      if (hasApiConfig()) await authService.requestPinReset({ email: trimmed });
       setPhase('code');
       setTimeLeft(RESEND_SECONDS);
     } catch (e) {
@@ -57,7 +65,7 @@ export function useForgotPin(initialEmail = '') {
     setError(null);
     setBusy(true);
     try {
-      await authService.resetPin({ email: email.trim(), otp: code, newPin });
+      if (hasApiConfig()) await authService.resetPin({ email: email.trim(), otp: code, newPin });
       setPhase('done');
     } catch (e) {
       setError(errorMessage(e, 'That code did not work. Check it and try again.'));
@@ -165,14 +173,11 @@ export function ForgotPinForm({ state, onBackToSignIn }: { state: ForgotPinState
 
   return (
     <form className="flex flex-col gap-space-md" onSubmit={handleSubmit} noValidate>
-      {state.error ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md"
-        >
+      {state.error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {state.error}
         </div>
-      ) : null}
+      )}
 
       {state.phase === 'email' ? (
         <div className="flex flex-col gap-space-2xs">

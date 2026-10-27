@@ -2,11 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { formatNaira, VAT_RATE } from './posTerminalData';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useLivePos, useLiveStock, useShiftProductId } from '../posLive';
 
 interface DesktopPosProductShiftScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
   onBack: () => void;
-  onAddToSale: () => void;
+  /** Live screens hand over the product so the register adds the real item. */
+  onAddToSale: (line?: { id: string; name: string; unit: number }) => void;
 }
 
 type StockState = 'in' | 'low' | 'out';
@@ -79,8 +83,34 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const liveStock = useLiveStock();
+  const shiftId = useShiftProductId();
+  const liveRow = live ? (liveStock.rows.find((row) => row.item.id === shiftId) ?? liveStock.rows[0] ?? null) : null;
+  const tillLabel = live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Till 01';
+  const shiftLabel = live ? (pos.session ? 'Shift active' : 'No open shift') : 'Shift #2 Active';
+  const productName = liveRow ? liveRow.product.name : 'Woodfire Aged Ribeye Steak';
+  const basePrice = liveRow ? liveRow.product.price : BASE_PRICE;
+  const stationLine = live ? (pos.offline.isOnline ? 'Online' : 'Offline') : 'Station online · 4 sold today';
+  const addToSale = () => (liveRow ? onAddToSale({ id: liveRow.item.id, name: productName, unit: basePrice }) : onAddToSale());
+
+  // Live: start from the product's real count and state.
+  useEffect(() => {
+    if (!liveRow) return;
+    setCount(liveRow.quantity ?? 0);
+    setState(liveRow.availability);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRow?.item.id, liveRow?.quantity]);
+
+  useEffect(() => {
+    if (live && liveStock.error) showToast(apiErrorMessage(liveStock.error, 'Could not load this product.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStock.error]);
+
   const bump = (delta: number) => {
     setCount((value) => Math.max(0, value + delta));
+    if (live) return; // saved with Save
     setSaving(true);
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -90,6 +120,19 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
   };
 
   const save = () => {
+    if (live) {
+      if (!liveRow) {
+        showToast('Pick a product from the stock view first');
+        return;
+      }
+      setSaving(true);
+      liveStock
+        .setQuantity(liveRow.item.id, count, 'Till shift count')
+        .then(() => showToast(`Stock saved · ${count} on hand`))
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not save stock.')))
+        .finally(() => setSaving(false));
+      return;
+    }
     setSaving(true);
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -119,11 +162,11 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
             <Icon name="barcode_scanner" className="text-primary text-[17px]" />
             <span className="uppercase tracking-wider font-semibold">Shift Stock Status</span>
             <span className="text-text-tertiary">•</span>
-            <span>Till 01 · Shift #2 Active</span>
+            <span>{tillLabel} · {shiftLabel}</span>
           </div>
           <div className="flex items-center gap-space-xs font-caption text-caption text-text-secondary">
             <span className="inline-block w-2 h-2 rounded-full bg-badge-discount-text" />
-            <span>Station online · 4 sold today</span>
+            <span>{stationLine}</span>
           </div>
         </div>
       </section>
@@ -145,13 +188,13 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
             <div className="flex flex-wrap items-center gap-space-xs text-text-tertiary font-caption text-caption uppercase tracking-wider mb-space-2xs">
               <span>Catalogue Control</span>
               <span>•</span>
-              <span>Till 01</span>
+              <span>{tillLabel}</span>
               <span>•</span>
-              <span>Shift #2 Active</span>
+              <span>{shiftLabel}</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Shift Stock Status</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              Tune pricing, register availability and the shift-local stock signal for Woodfire Aged Ribeye Steak
+              Tune pricing, register availability and the shift-local stock signal for {productName}
               without touching the master catalogue.
             </p>
           </div>
@@ -159,19 +202,19 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
             <button
               type="button"
               aria-label="Scan barcode"
-              onClick={() => showToast('Barcode scanner ready for SKU input')}
+              onClick={() => showToast(live ? 'Barcode scanning is coming soon' : 'Barcode scanner ready for SKU input')}
               className="w-11 h-11 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary hover:bg-surface-container-high transition-colors shadow-sm"
             >
               <Icon name="barcode_scanner" className="text-[20px]" />
             </button>
             <button
               type="button"
-              onClick={onAddToSale}
+              onClick={addToSale}
               disabled={!available || state === 'out'}
               className="inline-flex items-center gap-space-xs px-space-lg h-11 rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-md hover:bg-primary transition-all active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100"
             >
               <Icon name="add_shopping_cart" className="text-[18px]" />
-              <span>Add to Sale · {formatNaira(BASE_PRICE)}</span>
+              <span>Add to Sale · {formatNaira(basePrice)}</span>
             </button>
           </div>
         </div>
@@ -184,7 +227,7 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
               <div className="flex flex-col">
                 <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary">Pricing</span>
                 <span className="font-heading-sm text-heading-sm text-on-surface mt-space-2xs font-bold tracking-tight">
-                  {formatNaira(BASE_PRICE)}
+                  {formatNaira(basePrice)}
                 </span>
               </div>
               <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shrink-0">
@@ -192,7 +235,7 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
               </span>
             </div>
             <span className="mt-space-md font-caption text-caption text-text-secondary">
-              Base price · member {formatNaira(MEMBER_PRICE)}
+              {live ? 'Base price' : `Base price · member ${formatNaira(MEMBER_PRICE)}`}
             </span>
           </div>
 
@@ -247,7 +290,7 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
                   Available on this register
                 </span>
                 <span className="font-heading-sm text-heading-sm text-primary mt-space-2xs font-semibold truncate">
-                  {available ? 'Visible in Till 01 grid' : 'Hidden from Till 01 grid'}
+                  {available ? `Visible in ${tillLabel} grid` : `Hidden from ${tillLabel} grid`}
                 </span>
               </div>
               <div className="w-10 h-10 rounded-full bg-surface-canvas flex items-center justify-center text-primary shrink-0">
@@ -259,6 +302,10 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
               role="switch"
               aria-checked={available}
               onClick={() => {
+                if (live) {
+                  showToast('Hiding items from one register is coming soon');
+                  return;
+                }
                 setAvailable((value) => !value);
                 showToast(available ? 'Item hidden from this register' : 'Item published to this register');
               }}
@@ -282,21 +329,23 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
             {/* Product hero */}
             <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm border border-border-subtle flex items-center gap-space-md">
               <img
-                src={PRODUCT_IMG}
-                alt="Woodfire Aged Ribeye Steak"
+                src={liveRow ? liveRow.product.image : PRODUCT_IMG}
+                alt={productName}
                 className="w-20 h-20 rounded-xl object-cover shrink-0 bg-surface-container-high"
               />
               <div className="flex flex-col min-w-0 gap-0.5">
                 <span className="font-heading-sm text-heading-sm text-on-surface truncate">
-                  Woodfire Aged Ribeye Steak
+                  {productName}
                 </span>
                 <span className="font-caption text-caption text-text-secondary truncate">
-                  400g · Grills station · SKU WRS-400
+                  {liveRow
+                    ? `${liveRow.item.category?.name ?? 'Uncategorised'} · SKU ${liveRow.item.sku ?? '—'}`
+                    : '400g · Grills station · SKU WRS-400'}
                 </span>
                 <span className="flex items-center gap-space-2xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
                   <span className="font-caption text-caption text-badge-discount-text">
-                    Station online · 4 sold today
+                    {stationLine}
                   </span>
                 </span>
               </div>
@@ -318,7 +367,7 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
                         setState(item.key);
                         if (item.key === 'out') setCount(0);
                         if (item.key === 'in' && count === 0) setCount(18);
-                        showToast(`${item.label} set for this shift`);
+                        showToast(live ? `${item.label} — press Save to publish` : `${item.label} set for this shift`);
                       }}
                       className={`rounded-xl px-space-sm py-space-xs flex flex-col items-center gap-0.5 border-2 transition-all hover:scale-[1.01] ${
                         isActive ? item.active : `bg-surface-canvas border-transparent shadow-sm ${item.chip}`
@@ -342,7 +391,7 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
             <div className="flex items-start gap-space-2xs bg-surface-tint-blue rounded-xl px-space-sm py-space-xs">
               <Icon name="policy" className="text-primary text-[15px] mt-0.5 shrink-0" />
               <span className="font-caption text-caption text-on-surface">
-                Shift overrides are logged against Till 01 · manager approval needed to edit base stock.
+                Shift overrides are logged against {tillLabel} · manager approval needed to edit base stock.
               </span>
             </div>
           </div>
@@ -422,12 +471,12 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
             <div className="p-space-md rounded-xl bg-surface-canvas border border-border-subtle shadow-md flex gap-space-xs">
               <button
                 type="button"
-                onClick={onAddToSale}
+                onClick={addToSale}
                 disabled={!available || state === 'out'}
                 className="flex-1 h-12 rounded-xl bg-primary-container text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs shadow-md hover:bg-primary transition-all active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100"
               >
                 <Icon name="add_shopping_cart" className="text-[17px]" />
-                <span>Add to Sale · {formatNaira(BASE_PRICE)}</span>
+                <span>Add to Sale · {formatNaira(basePrice)}</span>
               </button>
               <button
                 type="button"

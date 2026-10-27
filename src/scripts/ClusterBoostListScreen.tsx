@@ -12,7 +12,7 @@
  * run (see clusterBoostData) so the page is populated for walkthroughs.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessPortalChrome } from './desktop/BusinessPortalChrome';
@@ -28,6 +28,8 @@ import {
   type ClusterBoostCampaign,
   type ClusterBoostStatus,
 } from './clusterBoostData';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useLiveClusterBoosts } from './clusterLive';
 
 interface ClusterBoostListScreenProps {
   onBack: () => void;
@@ -113,8 +115,21 @@ export function ClusterBoostListScreen({
   const [tab, setTab] = useState<BoostListTab>('active');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const campaigns = useMemo(() => listClusterBoostCampaigns(), []);
+  const liveBoosts = useLiveClusterBoosts();
+  const live = liveBoosts.live;
+  const localCampaigns = useMemo(() => listClusterBoostCampaigns(), []);
+  const campaigns = live ? liveBoosts.campaigns : localCampaigns;
   const capacity = useMemo(() => getBoostCapacity(), []);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!liveBoosts.error) return;
+    setLoadError(apiErrorMessage(liveBoosts.error, 'Could not load your boosts.'));
+    const timer = window.setTimeout(() => setLoadError(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [liveBoosts.error]);
+  /** Days a run lasts, for live boosts (which have no duration preset). */
+  const runDays = (campaign: ClusterBoostCampaign) =>
+    Math.max(1, Math.round((new Date(campaign.endDate).getTime() - new Date(campaign.startDate).getTime()) / 86_400_000));
 
   const { byTab, liveCount, investedTotal, pendingCount } = useMemo(() => {
     const groups: Record<BoostListTab, ClusterBoostCampaign[]> = {
@@ -137,7 +152,11 @@ export function ClusterBoostListScreen({
   }, [campaigns]);
 
   const visible = byTab[tab];
-  const selected = selectedId ? getClusterBoostCampaign(selectedId) : undefined;
+  const selected = selectedId
+    ? live
+      ? campaigns.find((campaign) => campaign.id === selectedId)
+      : getClusterBoostCampaign(selectedId)
+    : undefined;
 
   const openNewBoost = () => {
     if (onBoostItem) onBoostItem();
@@ -196,13 +215,13 @@ export function ClusterBoostListScreen({
         {/* Chips */}
         <div className="flex flex-wrap gap-1.5 mt-2.5">
           <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary text-[9px] font-bold uppercase tracking-wider">
-            {tier.label} · {campaign.weight}×
+            {live ? '—' : `${tier.label} · ${campaign.weight}×`}
           </span>
           <span className="px-2 py-0.5 rounded-full bg-surface-canvas border border-border-subtle text-text-secondary text-[9px] font-bold uppercase tracking-wider">
-            {duration.label}
+            {live ? `${runDays(campaign)} days` : duration.label}
           </span>
           <span className="px-2 py-0.5 rounded-full bg-surface-canvas border border-border-subtle text-text-secondary text-[9px] font-bold uppercase tracking-wider">
-            ~{campaign.estimatedSharePct}% est. share
+            {live ? '—' : `~${campaign.estimatedSharePct}%`} est. share
           </span>
         </div>
 
@@ -285,10 +304,13 @@ export function ClusterBoostListScreen({
           Campaign details
         </h3>
         {[
-          { label: 'Priority', value: `${getTierByKey(selected.tierKey).label} (${selected.weight}× weight)` },
+          {
+            label: 'Priority',
+            value: live ? '—' : `${getTierByKey(selected.tierKey).label} (${selected.weight}× weight)`,
+          },
           {
             label: 'Duration',
-            value: `${getDurationByKey(selected.durationKey).label} · ${formatDateLong(selected.startDate)} – ${formatDateLong(selected.endDate)}`,
+            value: `${live ? `${runDays(selected)} days` : getDurationByKey(selected.durationKey).label} · ${formatDateLong(selected.startDate)} – ${formatDateLong(selected.endDate)}`,
           },
           ...(selected.extensions && selected.extensions.length > 0
             ? [
@@ -298,11 +320,13 @@ export function ClusterBoostListScreen({
                 },
               ]
             : []),
-          { label: 'Estimated share', value: `~${selected.estimatedSharePct}% (provisional)` },
+          { label: 'Estimated share', value: live ? '—' : `~${selected.estimatedSharePct}% (provisional)` },
           { label: 'Amount', value: formatNaira(selected.amount) },
           {
             label: 'Payment',
-            value: `${selected.paymentMethod === 'wallet' ? 'VEMTAP Wallet' : 'Debit/Credit Card (sandbox)'} · ${selected.reference}`,
+            value: live
+              ? selected.reference
+              : `${selected.paymentMethod === 'wallet' ? 'VEMTAP Wallet' : 'Debit/Credit Card (sandbox)'} · ${selected.reference}`,
           },
         ].map((row) => (
           <div key={row.label} className="flex justify-between gap-3 text-xs">
@@ -327,7 +351,7 @@ export function ClusterBoostListScreen({
           </div>
           <div className="p-2.5 rounded-xl bg-surface-canvas border border-border-subtle text-center">
             <span className="text-sm font-bold text-text-primary">
-              {(selected.featuredStats?.impressions ?? 0).toLocaleString()}
+              {live ? '—' : (selected.featuredStats?.impressions ?? 0).toLocaleString()}
             </span>
             <p className="text-[10px] text-text-secondary mt-0.5">Featured slots</p>
           </div>
@@ -354,7 +378,7 @@ export function ClusterBoostListScreen({
         {
           icon: 'sync',
           iconClass: 'bg-surface-tint-blue text-primary',
-          value: `${capacity.remainingBoostSlots}/${capacity.maxBoostSlots}`,
+          value: live ? '—' : `${capacity.remainingBoostSlots}/${capacity.maxBoostSlots}`,
           label: 'Cluster slots open',
           sub: 'Boost inventory this cluster',
         },
@@ -567,8 +591,22 @@ export function ClusterBoostListScreen({
     return (
       <BusinessPortalChrome activeNav="cluster-system" onNav={() => undefined}>
         {content}
+        {loadError && (
+          <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+            {loadError}
+          </div>
+        )}
       </BusinessPortalChrome>
     );
   }
-  return <AppScreen surface="bg-surface-canvas">{content}</AppScreen>;
+  return (
+    <AppScreen surface="bg-surface-canvas">
+      {content}
+      {loadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {loadError}
+        </div>
+      )}
+    </AppScreen>
+  );
 }

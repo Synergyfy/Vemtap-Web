@@ -23,6 +23,12 @@ export function DesktopVerificationIdFormScreen({
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<'selfie' | 'checking' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Verification failures show briefly in the screen's toast.
+  useEffect(() => {
+    if (!error) return;
+    const timeout = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
   const verification = useVerificationActions();
   const [uploaded, setUploaded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -299,11 +305,6 @@ export function DesktopVerificationIdFormScreen({
                 )}
               </button>
             </div>
-            {error ? (
-              <p role="alert" className="rounded-lg bg-error-container text-on-error-container px-space-sm py-space-xs font-caption text-caption">
-                {error}
-              </p>
-            ) : null}
             <div className="flex items-center justify-center gap-space-2xs text-text-tertiary font-caption text-caption pt-space-2xs">
               <Icon name="speed" className="text-[16px] text-badge-discount-text" />
               <span>Instant verification usually takes under 15 seconds.</span>
@@ -407,6 +408,11 @@ export function DesktopVerificationIdFormScreen({
           </div>
         </div>
       </div>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </BusinessVerificationChrome>
   );
 }

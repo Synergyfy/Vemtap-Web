@@ -6,6 +6,7 @@ import { BusinessModeHeader } from './BusinessModeHeader';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { useOverviewData } from '../hooks/business/useOverviewData';
 import { greeting, todayLabel } from '../utils/format';
+import { apiErrorMessage } from '../services/errorMessages';
 
 interface BusinessOverviewScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -41,13 +42,24 @@ export function BusinessOverviewScreen({
 }: BusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
+  const overview = useOverviewData();
+  // A business already on a paid plan doesn't need the Subscribe slide.
+  const bannerCount = overview.onPaidPlan ? 1 : 2;
 
   useEffect(() => {
-    const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % 2), 5000);
+    setBannerIndex(0);
+    if (bannerCount < 2) return;
+    const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % bannerCount), 5000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [bannerCount]);
 
-  const overview = useOverviewData();
+  useEffect(() => {
+    if (!overview.error) return;
+    setToast(apiErrorMessage(overview.error, 'Could not load your overview.'));
+    const timer = window.setTimeout(() => setToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [overview.error]);
   const stats = overview.stats;
   // Sample rows are demo-only; live mode shows the branch's latest orders and chats.
   const recentOrders = overview.isLive ? overview.recentOrders : RECENT_ORDERS;
@@ -109,7 +121,8 @@ export function BusinessOverviewScreen({
     },
   ];
 
-  const banner = banners[bannerIndex];
+  const visibleBanners = overview.onPaidPlan ? banners.filter((slide) => slide.key !== 'growth') : banners;
+  const banner = visibleBanners[bannerIndex] ?? visibleBanners[0];
 
   return (
     <div className="biz-flow">
@@ -164,7 +177,7 @@ export function BusinessOverviewScreen({
                 </button>
               </div>
               <div className="relative z-10 flex items-center gap-1.5 mt-3">
-                {banners.map((slide, index) => (
+                {visibleBanners.map((slide, index) => (
                   <button
                     aria-label={`Banner ${index + 1}`}
                     className={`h-1.5 rounded-full transition-all ${
@@ -264,7 +277,7 @@ export function BusinessOverviewScreen({
               </div>
               <div className="flex flex-col gap-1.5">
                 {!recentOrders.length ? (
-                  <p className="font-caption text-caption text-text-secondary px-1 py-2">No orders yet today.</p>
+                  <p className="font-caption text-caption text-text-secondary px-1 py-2">{overview.isLive ? 'No orders yet.' : 'No orders yet today.'}</p>
                 ) : null}
                 {recentOrders.map((order) => (
                   <button
@@ -340,6 +353,11 @@ export function BusinessOverviewScreen({
             </div>
           </div>
         </div>
+        {toast && (
+          <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+            {toast}
+          </div>
+        )}
         <BusinessTabBar active="overview" onTab={onTab} />
       </AppScreen>
     </div>

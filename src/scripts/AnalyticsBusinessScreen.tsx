@@ -3,6 +3,19 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { AnalyticsHeader, AnalyticsSection, type AnalyticsTabKey } from '../components/AnalyticsChrome';
+import { apiErrorMessage } from '../services/errorMessages';
+import {
+  changeLabel,
+  count,
+  isUp,
+  lastSevenDays,
+  naira,
+  overviewInsights,
+  periodLabel,
+  share,
+  sourceShares,
+  useLiveAnalytics,
+} from './analyticsLive';
 
 interface AnalyticsBusinessScreenProps {
   onAnalyticsTab: (tab: AnalyticsTabKey) => void;
@@ -52,6 +65,14 @@ const INSIGHTS = [
 ];
 
 const TREND_METRICS = ['Revenue', 'Orders', 'Visits', 'Customers', 'Views'];
+/** Which daily series each trend chip reads when live ("Views" has no daily series). */
+const TREND_FIELD = { Revenue: 'revenue', Orders: 'orders', Visits: 'visits', Customers: 'customers' } as const;
+const SOURCE_BARS = ['bg-primary', 'bg-primary-container', 'bg-badge-discount-text', 'bg-secondary', 'bg-tertiary'];
+const INSIGHT_ICON_CLASSES = [
+  'bg-surface-tint-blue text-primary',
+  'bg-badge-discount-bg text-badge-discount-text',
+  'bg-tertiary-fixed text-tertiary',
+];
 const TREND_DAYS = [
   { day: 'Mon', value: 44 },
   { day: 'Tue', value: 58 },
@@ -93,6 +114,49 @@ export function AnalyticsBusinessScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  const { live, filter, data: overview, error } = useLiveAnalytics('overview');
+  useEffect(() => {
+    if (error) showToast(apiErrorMessage(error, 'Could not load your analytics.'));
+  }, [error]);
+
+  const period = periodLabel(filter);
+  const activity = live
+    ? [
+        { ...ACTIVITY[0], label: 'Deal Views', value: count(overview?.activity.dealViews) },
+        { ...ACTIVITY[1], value: count(overview?.activity.newCustomers) },
+        { ...ACTIVITY[2], value: count(overview?.activity.returningCustomers) },
+        { ...ACTIVITY[3], value: count(overview?.activity.claims) },
+        { ...ACTIVITY[4], label: 'Visits', icon: 'storefront', value: count(overview?.activity.visits) },
+      ]
+    : ACTIVITY;
+  const field = TREND_FIELD[metric as keyof typeof TREND_FIELD];
+  const trend = live && field ? lastSevenDays(overview, field) : null;
+  const trendDays = live ? (trend?.days ?? []) : TREND_DAYS;
+  const peakValue =
+    trend?.peak && field ? (field === 'revenue' ? naira(trend.peak.revenue) : count(trend.peak[field])) : '—';
+  const peakDay = trend?.peak
+    ? new Date(`${trend.peak.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' })
+    : '—';
+  const newCount = overview?.customers.new ?? 0;
+  const returningCount = overview?.customers.returning ?? 0;
+  const mixTotal = newCount + returningCount;
+  const newPct = live ? share(newCount, mixTotal) : 42.6;
+  const returningPct = live ? (mixTotal ? Math.round((100 - newPct) * 10) / 10 : 0) : 57.4;
+  const sources = live
+    ? sourceShares(overview).map((source, index) => ({
+        name: source.name,
+        pct: source.pct,
+        amount: `${source.count.toLocaleString('en-US')} interactions`,
+        bar: SOURCE_BARS[index % SOURCE_BARS.length],
+      }))
+    : SOURCES;
+  const insights = live
+    ? overviewInsights(overview).map((insight, index) => ({
+        ...insight,
+        iconClass: INSIGHT_ICON_CLASSES[index % INSIGHT_ICON_CLASSES.length],
+      }))
+    : INSIGHTS;
+
   return (
     <AppScreen>
       <AnalyticsHeader active="business" onTab={onAnalyticsTab} onOpenFilter={onOpenFilter} onOpenExport={onOpenExport} />
@@ -109,32 +173,32 @@ export function AnalyticsBusinessScreen({
           <span className="font-label-md text-label-md text-text-secondary">Gross Revenue</span>
           <div className="flex items-end justify-between gap-space-sm mt-1">
             <span className="font-heading-md text-heading-md text-text-primary font-bold tracking-tight">
-              ₦4,850,000
+              {live ? naira(overview?.revenue.current) : '₦4,850,000'}
             </span>
             <span className="flex items-center gap-1 font-label-sm text-label-sm font-semibold text-badge-discount-text bg-badge-discount-bg px-2 py-0.5 rounded-full">
-              <Icon name="north_east" className="text-[13px]" />
-              <span>18.4%</span>
+              <Icon name={live && !isUp(overview?.revenue) ? 'south_east' : 'north_east'} className="text-[13px]" />
+              <span>{live ? changeLabel(overview?.revenue) : '18.4%'}</span>
             </span>
           </div>
           <span className="font-caption text-caption text-text-tertiary mt-1 block">
-            vs ₦4,095,000 last 30 days
+            {live ? `vs ${naira(overview?.revenue.previous)} previous ${filter.days} days` : 'vs ₦4,095,000 last 30 days'}
           </span>
 
           <div className="grid grid-cols-2 gap-space-xs mt-space-sm">
             <div className="bg-surface-canvas rounded-xl p-space-sm border border-border-subtle">
               <span className="font-caption text-caption text-text-secondary">Total Orders</span>
-              <div className="font-heading-sm text-heading-sm text-text-primary font-bold">512</div>
+              <div className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? count(overview?.orders.current) : '512'}</div>
             </div>
             <div className="bg-surface-canvas rounded-xl p-space-sm border border-border-subtle">
               <span className="font-caption text-caption text-text-secondary">Interactions</span>
-              <div className="font-heading-sm text-heading-sm text-text-primary font-bold">4,820</div>
+              <div className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? count(overview?.interactions.current) : '4,820'}</div>
             </div>
           </div>
         </Card>
 
         {/* Activity counters */}
         <div className="flex gap-space-xs overflow-x-auto no-scrollbar -mx-margin px-margin">
-          {ACTIVITY.map((item) => (
+          {activity.map((item) => (
             <button
               className="shrink-0 bg-surface-canvas border border-border-subtle rounded-xl px-space-sm py-space-xs flex flex-col items-start gap-0.5 min-w-[104px] active:scale-95 transition-transform"
               key={item.label}
@@ -180,7 +244,10 @@ export function AnalyticsBusinessScreen({
             </div>
 
             <div className="mt-space-sm flex items-end justify-between gap-space-2xs h-32">
-              {TREND_DAYS.map((day) => (
+              {live && !field && (
+                <span className="font-caption text-caption text-text-tertiary self-center mx-auto">No daily view counts yet</span>
+              )}
+              {trendDays.map((day) => (
                 <div className="flex-1 flex flex-col items-center gap-1" key={day.day}>
                   <div className="w-full flex items-end justify-center h-24">
                     <div
@@ -195,8 +262,12 @@ export function AnalyticsBusinessScreen({
               ))}
             </div>
             <div className="flex items-center justify-between mt-space-sm pt-space-xs border-t border-border-subtle">
-              <span className="font-caption text-caption text-text-secondary">Weekly high · Saturday</span>
-              <span className="font-label-sm text-label-sm text-text-primary font-semibold">₦1,140,000</span>
+              <span className="font-caption text-caption text-text-secondary">
+                Weekly high · {live ? peakDay : 'Saturday'}
+              </span>
+              <span className="font-label-sm text-label-sm text-text-primary font-semibold">
+                {live ? peakValue : '₦1,140,000'}
+              </span>
             </div>
           </Card>
         </AnalyticsSection>
@@ -205,12 +276,12 @@ export function AnalyticsBusinessScreen({
         <AnalyticsSection title="Growth & Retention" meta="Customer mix across the period">
           <Card>
             <div className="flex items-center justify-between font-label-sm text-label-sm font-semibold mb-space-2xs">
-              <span className="text-primary">New 42.6%</span>
-              <span className="text-secondary">Returning 57.4%</span>
+              <span className="text-primary">New {newPct}%</span>
+              <span className="text-secondary">Returning {returningPct}%</span>
             </div>
             <div className="h-3 rounded-full overflow-hidden flex bg-surface-container-low">
-              <div className="h-full bg-primary" style={{ width: '42.6%' }} />
-              <div className="h-full bg-secondary" style={{ width: '57.4%' }} />
+              <div className="h-full bg-primary" style={{ width: `${newPct}%` }} />
+              <div className="h-full bg-secondary" style={{ width: `${returningPct}%` }} />
             </div>
             <div className="grid grid-cols-2 gap-space-xs mt-space-sm">
               <div className="bg-surface-container-low rounded-xl p-space-sm">
@@ -218,7 +289,7 @@ export function AnalyticsBusinessScreen({
                   <Icon name="person_add" className="text-[15px]" />
                   <span className="font-caption text-caption font-semibold">New</span>
                 </div>
-                <div className="font-heading-sm text-heading-sm text-text-primary font-bold">218</div>
+                <div className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? count(newCount) : '218'}</div>
                 <span className="font-caption text-caption text-text-tertiary">first-time buyers</span>
               </div>
               <div className="bg-surface-container-low rounded-xl p-space-sm">
@@ -226,7 +297,7 @@ export function AnalyticsBusinessScreen({
                   <Icon name="replay" className="text-[15px]" />
                   <span className="font-caption text-caption font-semibold">Returning</span>
                 </div>
-                <div className="font-heading-sm text-heading-sm text-text-primary font-bold">294</div>
+                <div className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? count(returningCount) : '294'}</div>
                 <span className="font-caption text-caption text-text-tertiary">repeat visits</span>
               </div>
             </div>
@@ -234,10 +305,16 @@ export function AnalyticsBusinessScreen({
         </AnalyticsSection>
 
         {/* Activity by source */}
-        <AnalyticsSection title="Activity by Source" meta="₦4,850,000 attributed revenue">
+        <AnalyticsSection
+          title="Activity by Source"
+          meta={live ? `${count(overview?.interactions.current)} interactions · ${period}` : '₦4,850,000 attributed revenue'}
+        >
           <Card>
             <div className="flex flex-col gap-space-sm">
-              {SOURCES.map((source) => (
+              {live && !sources.length && (
+                <span className="font-caption text-caption text-text-tertiary">No activity in this period</span>
+              )}
+              {sources.map((source) => (
                 <div className="flex flex-col gap-1" key={source.name}>
                   <div className="flex items-center justify-between gap-space-xs">
                     <span className="font-label-sm text-label-sm text-on-surface truncate">{source.name}</span>
@@ -256,9 +333,15 @@ export function AnalyticsBusinessScreen({
         </AnalyticsSection>
 
         {/* Key factual insights */}
-        <AnalyticsSection title="Key Factual Insights" meta="Based on 30 days of store data">
+        <AnalyticsSection
+          title="Key Factual Insights"
+          meta={live ? `Based on ${filter.days} days of store data` : 'Based on 30 days of store data'}
+        >
           <div className="flex flex-col gap-space-xs">
-            {INSIGHTS.map((insight) => (
+            {live && !insights.length && (
+              <span className="font-caption text-caption text-text-tertiary">Not enough activity yet</span>
+            )}
+            {insights.map((insight) => (
               <Card key={insight.title}>
                 <div className="flex items-start gap-space-sm">
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${insight.iconClass}`}>

@@ -6,8 +6,9 @@ import { productDraftToInput, serviceDraftToInput, toPrice, type CatalogueItem }
 import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 import { formatNaira } from '../../utils/format';
-import { CategoriesPanel } from '../../components/business/CategoriesPanel';
-import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategories';
+import { useCatalogueCategories, useCategoryMutation } from '../../hooks/business/useCatalogueCategories';
+import { useStorefrontPreview } from '../../hooks/business/useStorefrontPreview';
+import { uploadDataUrlImage } from '../../services/uploadService';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -56,8 +57,13 @@ import type { ImportedProduct } from '../productImport/importTypes';
 
 interface DesktopBusinessCatalogHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
-  onOpenBranchPricing?: () => void;
+  /** Live: receives the item whose branch prices to edit. */
+  onOpenBranchPricing?: (itemId?: string) => void;
   onOpenServices?: () => void;
+  /** Live: start a deal for this real item. */
+  onMakeDeal?: (item: CatalogueItem) => void;
+  /** A message to show once when the screen opens (e.g. "pick an item"). */
+  notice?: string | null;
 }
 
 type CatalogChip = 'all' | 'published' | 'deals' | 'low' | 'dinein' | 'takeaway' | 'oos';
@@ -606,6 +612,8 @@ export function DesktopBusinessCatalogHubScreen({
   onNav,
   onOpenBranchPricing,
   onOpenServices: _onOpenServices,
+  onMakeDeal,
+  notice,
 }: DesktopBusinessCatalogHubScreenProps) {
   const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
   // Live: rows come from `/catalogue/items` for the active branch; demo keeps the sample rows.
@@ -627,12 +635,38 @@ export function DesktopBusinessCatalogHubScreen({
   const importedRows = useMemo(() => importedProducts.map(importedProductToRow), [importedProducts]);
   /** Imported products still awaiting review/publish. */
   const draftImportCount = useMemo(
-    () => importedProducts.filter((product) => product.status === 'draft').length,
-    [importedProducts],
+    () => (live ? 0 : importedProducts.filter((product) => product.status === 'draft').length),
+    [importedProducts, live],
   );
-  /** Seed rows + bulk-imported products (imported ones render first). */
-  const allProductRows = useMemo(() => [...importedRows, ...productRows], [importedRows, productRows]);
-  const [centralCategories, setCentralCategories] = useState<CentralCategory[]>(() => getCentralCategories());
+  /** Seed rows + bulk-imported products (imported ones render first). Live: server items only. */
+  const allProductRows = useMemo(() => (live ? productRows : [...importedRows, ...productRows]), [importedRows, productRows, live]);
+  const [demoCategories, setCentralCategories] = useState<CentralCategory[]>(() => getCentralCategories());
+  // Live: the business's own categories with real item counts; demo keeps the sample set.
+  const categoryMutation = useCategoryMutation();
+  const storefront = useStorefrontPreview();
+  const liveCatalogueItems = [...(productItems.data ?? []), ...(serviceItems.data ?? [])];
+  const centralCategories: CentralCategory[] = live
+    ? (liveCategories.data ?? []).map((category) => {
+        const items = liveCatalogueItems.filter((item) => item.categoryId === category.id || item.category?.id === category.id);
+        const kind = category.kind ?? (items.some((item) => item.itemType === 'service') ? 'service' : 'product');
+        return {
+          id: category.id,
+          name: category.name,
+          slug: category.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+          type: kind,
+          description: category.description ?? '',
+          icon: category.icon ?? (kind === 'service' ? 'spa' : 'category'),
+          image: category.imageUrl ?? undefined,
+          productCount: items.length,
+          activeBranches: ['all'],
+          qrDestinationUrl: storefront.publicUrl ? `${storefront.publicUrl}?category=${category.id}` : '',
+          // No per-category scan or order data exists yet; the table shows "—" live.
+          stats: { scans: 0, uniqueScans: 0, ordersCount: 0, unitsOrdered: 0, totalRevenue: 0 },
+        };
+      })
+    : demoCategories;
+  const categoryLink = (cat: CentralCategory) =>
+    /^https?:/.test(cat.qrDestinationUrl) ? cat.qrDestinationUrl : window.location.origin + cat.qrDestinationUrl;
   const [categoryTypeFilter, setCategoryTypeFilter] = useState<'all' | 'product' | 'service'>('all');
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryModal, setCategoryModal] = useState<{
@@ -664,9 +698,32 @@ export function DesktopBusinessCatalogHubScreen({
     setCategoryModal({ mode: 'edit', category: cat });
   };
 
+  /** Live: upload the image (if new), then create or update the category. */
+  const saveLiveCategory = async () => {
+    const name = catFormName.trim();
+    try {
+      const imageUrl = catFormImage ? await uploadDataUrlImage(catFormImage, 'category') : undefined;
+      const details = { kind: catFormType, description: catFormDesc.trim(), icon: catFormIcon, ...(imageUrl ? { imageUrl } : {}) };
+      if (categoryModal?.mode === 'edit' && categoryModal.category) {
+        await categoryMutation.mutateAsync({ type: 'update', id: categoryModal.category.id, name, details });
+        setToastMessage(`Category "${name}" updated successfully.`);
+      } else {
+        await categoryMutation.mutateAsync({ type: 'create', name, details });
+        setToastMessage(`Category "${name}" created successfully.`);
+      }
+      setCategoryModal(null);
+    } catch (error) {
+      setToastMessage(apiErrorMessage(error, 'Could not save the category.'));
+    }
+  };
+
   const handleSaveCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!catFormName.trim()) return;
+    if (live) {
+      void saveLiveCategory();
+      return;
+    }
     if (categoryModal?.mode === 'add') {
       const slug = catFormName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
       addCentralCategory({
@@ -699,6 +756,16 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handleArchiveCategory = (id: string, name: string) => {
+    if (live) {
+      categoryMutation.mutate(
+        { type: 'remove', id },
+        {
+          onSuccess: () => setToastMessage(`Category "${name}" removed. Its items are kept, uncategorised.`),
+          onError: (error) => setToastMessage(apiErrorMessage(error, 'Could not remove the category.')),
+        },
+      );
+      return;
+    }
     archiveCentralCategory(id);
     setCentralCategories(getCentralCategories());
     setToastMessage(`Category "${name}" archived.`);
@@ -781,6 +848,13 @@ export function DesktopBusinessCatalogHubScreen({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  /** The item just published, so its "Make a deal" can start from it. */
+  const [lastPublished, setLastPublished] = useState<CatalogueItem | null>(null);
+  const makeDealFromPublished = () => {
+    if (live && lastPublished && onMakeDeal) return onMakeDeal(lastPublished);
+    onNav('deals');
+  };
+
   /** Live publish: create or update the item, then refresh the list from the API. */
   const publishLive = (kind: 'product' | 'service') => {
     if (!activeBranchId) return showToast('Choose a branch first.');
@@ -799,7 +873,13 @@ export function DesktopBusinessCatalogHubScreen({
     if (editingRowId) {
       itemMutations.update.mutate({ id: editingRowId, input }, { onSuccess: () => done(input.name, true), onError });
     } else {
-      itemMutations.create.mutate(input, { onSuccess: () => done(input.name, false), onError });
+      itemMutations.create.mutate(input, {
+        onSuccess: (created) => {
+          setLastPublished(created);
+          done(input.name, false);
+        },
+        onError,
+      });
     }
   };
 
@@ -1204,7 +1284,7 @@ export function DesktopBusinessCatalogHubScreen({
     return (
       <DesktopProductPublishedScreen
         draft={productDraft}
-        onMakeDeal={() => onNav('deals')}
+        onMakeDeal={makeDealFromPublished}
         onViewCatalog={() => {
           setActiveTab('products');
           setSubFlow('none');
@@ -1288,7 +1368,7 @@ export function DesktopBusinessCatalogHubScreen({
     return (
       <DesktopServicePublishedScreen
         draft={serviceDraft}
-        onMakeDeal={() => onNav('deals')}
+        onMakeDeal={makeDealFromPublished}
         onViewCatalog={() => {
           setActiveTab('services');
           setSubFlow('none');
@@ -1388,6 +1468,10 @@ export function DesktopBusinessCatalogHubScreen({
     setTimeout(() => setToastMessage(null), 4500);
   };
 
+  useEffect(() => {
+    if (notice) flash(notice);
+  }, [notice]);
+
   /** Applies a change to the selected rows held in local catalogue state. */
   const updateSeedRows = (ids: string[], updater: (row: CatalogRow) => CatalogRow) => {
     const idSet = new Set(ids);
@@ -1416,6 +1500,15 @@ export function DesktopBusinessCatalogHubScreen({
     if (action === 'delete') {
       setBulkDelete({ ids: rows.map((row) => row.id), count: rows.length });
       return;
+    }
+
+    if (live && (action === 'addToDeals' || action === 'removeFromDeals')) {
+      // Live deals are built on one item in the deal studio.
+      const item = rows.length === 1 ? liveItem(rows[0].id) : undefined;
+      setSelected([]);
+      if (action === 'removeFromDeals') return flash('End or pause the deal from Deals to stop it.');
+      if (!item || !onMakeDeal) return flash('Select one item to make a deal from.');
+      return onMakeDeal(item);
     }
 
     const importedRowsSelected = rows.filter((row) => isImportedRow(row.id));
@@ -1749,9 +1842,7 @@ export function DesktopBusinessCatalogHubScreen({
           </div>
         </div>
 
-        {activeTab === 'categories' && live ? (
-          <CategoriesPanel />
-        ) : activeTab === 'categories' ? (
+        {activeTab === 'categories' ? (
           <div className="flex flex-col gap-space-md">
             {/* Category Search & Action Console */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
@@ -1873,7 +1964,7 @@ export function DesktopBusinessCatalogHubScreen({
                                 type="button"
                                 onClick={() => {
                                   if (typeof window !== 'undefined') {
-                                    navigator.clipboard?.writeText(window.location.origin + cat.qrDestinationUrl);
+                                    navigator.clipboard?.writeText(categoryLink(cat));
                                   }
                                   setToastMessage(`QR Destination URL for ${cat.name} copied.`);
                                 }}
@@ -1887,10 +1978,10 @@ export function DesktopBusinessCatalogHubScreen({
                           <td className="py-3 px-4 whitespace-nowrap">
                             <div className="flex flex-col text-[12px]">
                               <span className="font-medium text-text-primary">
-                                {cat.stats?.scans || 0} scans • {cat.stats?.ordersCount || 0} orders
+                                {live ? '— scans • — orders' : `${cat.stats?.scans || 0} scans • ${cat.stats?.ordersCount || 0} orders`}
                               </span>
                               <span className="text-[11px] text-badge-discount-text font-semibold">
-                                ₦{(cat.stats?.totalRevenue || 0).toLocaleString()} GMV
+                                {live ? '— GMV' : `₦${(cat.stats?.totalRevenue || 0).toLocaleString()} GMV`}
                               </span>
                             </div>
                           </td>
@@ -2412,7 +2503,7 @@ export function DesktopBusinessCatalogHubScreen({
                             <button
                               type="button"
                               title="Branch Pricing Matrix"
-                              onClick={onOpenBranchPricing}
+                              onClick={() => onOpenBranchPricing?.(live ? row.id : undefined)}
                               className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                             >
                               <Icon name="tune" className="text-[20px]" />
@@ -2675,7 +2766,7 @@ export function DesktopBusinessCatalogHubScreen({
                         <button
                           type="button"
                           title="Branch Pricing Matrix"
-                          onClick={onOpenBranchPricing}
+                          onClick={() => onOpenBranchPricing?.(live ? row.id : undefined)}
                           className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
                         >
                           <Icon name="tune" className="text-[18px]" />
@@ -2810,7 +2901,7 @@ export function DesktopBusinessCatalogHubScreen({
               </p>
               <button
                 type="button"
-                onClick={onOpenBranchPricing}
+                onClick={() => onOpenBranchPricing?.(live ? productItems.data?.[0]?.id : undefined)}
                 className="inline-flex items-center gap-space-2xs text-primary font-label-sm text-label-sm font-semibold mt-space-xs hover:underline"
               >
                 <span>Configure regional price matrices</span>

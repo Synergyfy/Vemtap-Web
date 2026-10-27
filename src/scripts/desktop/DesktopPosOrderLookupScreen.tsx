@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
-import { useOrders, type SubmittedOrder } from '../../context/OrdersContext';
+import { type SubmittedOrder } from '../../context/OrdersContext';
+import { useLookupOrders } from '../posOrderLookupLive';
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -29,7 +30,7 @@ const money = (value: number) => `₦${value.toLocaleString('en-US')}`;
 
 /** BUG-016 (desktop): idempotent cashier order lookup + verified-payment actions. */
 export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLookupScreenProps) {
-  const orders = useOrders();
+  const orders = useLookupOrders();
   const [mode, setMode] = useState<LookupMode>('qr');
   const [input, setInput] = useState('');
   const [searched, setSearched] = useState(false);

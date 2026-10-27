@@ -1,11 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { reviewService } from '../../services';
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
 
 export interface CommentsSheetProps {
   open: boolean;
   onClose: () => void;
+  deal?: {
+    id?: string | number;
+    title?: string;
+    business?: string;
+    location?: string;
+    price?: number | string;
+  } | null;
 }
 
 const QUICK_EMOJIS = ['❤️', '🔥', '👏', '😍', '🤤'];
@@ -14,6 +22,28 @@ interface PostedComment {
   id: number;
   text: string;
 }
+
+const toSheetComments = (payload: unknown): PostedComment[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    if (!item || typeof item !== 'object') {
+      return { id: index + 1, text: 'Helpful review from a verified customer.' };
+    }
+
+    const entry = item as Record<string, unknown>;
+    const text = typeof entry.comment === 'string'
+      ? entry.comment
+      : typeof entry.message === 'string'
+        ? entry.message
+        : 'Helpful review from a verified customer.';
+
+    return {
+      id: Number(entry.id ?? index + 1),
+      text,
+    };
+  });
+};
 
 function LikeButton({ label, size }: { label: string; size: string }) {
   const [liked, setLiked] = useState(false);
@@ -33,16 +63,55 @@ function LikeButton({ label, size }: { label: string; size: string }) {
   );
 }
 
-export function CommentsSheet({ open, onClose }: CommentsSheetProps) {
+export function CommentsSheet({ open, onClose, deal }: CommentsSheetProps) {
   const [draft, setDraft] = useState('');
   const [posted, setPosted] = useState<PostedComment[]>([]);
+  const [loadedComments, setLoadedComments] = useState<PostedComment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const offerId = deal?.id ? String(deal.id) : '';
 
-  const postComment = (event: FormEvent) => {
+  useEffect(() => {
+    let ignore = false;
+
+    const load = async () => {
+      if (!open || !offerId) {
+        setLoadedComments([]);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const next = await reviewService.listByOffer(offerId);
+        if (!ignore) {
+          setLoadedComments(toSheetComments(next));
+        }
+      } catch {
+        if (!ignore) setLoadedComments([]);
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      ignore = true;
+    };
+  }, [open, offerId]);
+
+  const postComment = async (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();
-    if (!text) return;
-    setPosted((prev) => [...prev, { id: Date.now(), text }]);
-    setDraft('');
+    if (!text || !offerId) return;
+
+    try {
+      await reviewService.create(offerId, { rating: 5, comment: text, tags: ['Community comment'] });
+      const refreshed = await reviewService.listByOffer(offerId);
+      setLoadedComments(toSheetComments(refreshed));
+      setDraft('');
+    } catch {
+      setPosted((prev) => [...prev, { id: Date.now(), text }]);
+      setDraft('');
+    }
   };
 
   return (
@@ -55,7 +124,7 @@ export function CommentsSheet({ open, onClose }: CommentsSheetProps) {
         <div className="flex items-center gap-2">
           <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold tracking-tight">Comments</h2>
           <span className="bg-surface-container px-2.5 py-0.5 rounded-full font-label-sm text-label-sm text-primary font-bold">
-            32
+            {loadedComments.length}
           </span>
         </div>
         <button
@@ -84,6 +153,29 @@ export function CommentsSheet({ open, onClose }: CommentsSheetProps) {
       </div>
 
       <div className="px-margin pt-2 pb-4 space-y-5">
+        {loading ? <p className="font-body-md text-body-md text-text-secondary">Loading discussion…</p> : null}
+        {loadedComments.length ? loadedComments.map((comment) => (
+          <article key={comment.id} className="flex items-start gap-3 group">
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
+              <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm">
+                Y
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2">
+                <span className="font-label-md text-label-md font-bold text-on-surface">You</span>
+                <span className="font-caption text-caption text-text-tertiary">@you</span>
+              </div>
+              <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">{comment.text}</p>
+              <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
+                <span>Just now</span>
+                <span className="font-medium text-text-primary">0 likes</span>
+                <button type="button" className="font-semibold text-text-secondary">Reply</button>
+              </div>
+            </div>
+            <LikeButton label="Like comment" size="text-[20px]" />
+          </article>
+        )) : null}
         <article className="flex items-start gap-3 group">
           <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
             <img

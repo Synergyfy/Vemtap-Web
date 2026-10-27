@@ -2,12 +2,31 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import type { CustomerSegment } from '../services/businessCustomersService';
+import type { SegmentSummary } from '../services/types';
+import { useBusinessCustomers } from '../hooks/business/useBusinessCustomers';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import {
+  useSegmentCriteriaOptions,
+  useSegmentInsights,
+  useSegmentMutations,
+  useSegments,
+} from '../hooks/business/useSegments';
+import { liveSegmentCards, optionNames } from './segmentsLive';
 
 export interface SegmentRef {
   name: string;
   count: string;
   meta: string;
   desc: string;
+  /** Live: a saved segment's id (and the segment itself, for editing its rules). */
+  id?: string;
+  segment?: SegmentSummary;
+  /** Live: a built-in directory segment. */
+  systemKey?: CustomerSegment;
 }
 
 interface BusinessSegmentsHubScreenProps {
@@ -16,7 +35,7 @@ interface BusinessSegmentsHubScreenProps {
   onOpenCampaigns: () => void;
   onCreate: () => void;
   onUseSegment: (segment: SegmentRef) => void;
-  onViewCohort: () => void;
+  onViewCohort: (segment?: SegmentRef) => void;
 }
 
 type SegmentCategory = 'default' | 'custom';
@@ -285,14 +304,46 @@ export function BusinessSegmentsHubScreen({
     timers.current.push(timer);
   };
 
-  const visibleSegments = SEGMENTS.filter((entry) => filter === 'all' || entry.category === filter);
-  const defaultCount = SEGMENTS.filter((entry) => entry.category === 'default').length;
-  const customCount = SEGMENTS.filter((entry) => entry.category === 'custom').length;
+  const live = hasApiConfig();
+  const business = useMyBusiness();
+  const { branch } = useBusinessBranch();
+  const directory = useBusinessCustomers({ limit: 1 });
+  const saved = useSegments();
+  const options = useSegmentCriteriaOptions();
+  const returning = useSegmentInsights(live ? { systemKey: 'returning' } : null);
+  const { remove } = useSegmentMutations();
+  const loadError = directory.error ?? saved.error;
+
+  useEffect(() => {
+    if (loadError) showToast(apiErrorMessage(loadError, 'Could not load your segments.'));
+  }, [loadError]);
+
+  const cards = live
+    ? liveSegmentCards(SEGMENTS, directory.data, saved.data ?? [], optionNames(options.data), returning.data)
+    : SEGMENTS;
+  const businessLabel = live
+    ? [business.data?.name, branch.shortName].filter(Boolean).join(' • ') || '—'
+    : 'Urban Grill & Bistro • Wuse II';
+
+  const deleteSegment = (entry: SegmentCard) => {
+    if (!entry.ref.id || !window.confirm(`Delete the segment "${entry.title}"?`)) return;
+    remove.mutate(
+      { id: entry.ref.id },
+      {
+        onSuccess: () => showToast(`Deleted ${entry.title}`),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not delete the segment.')),
+      },
+    );
+  };
+
+  const visibleSegments = cards.filter((entry) => filter === 'all' || entry.category === filter);
+  const defaultCount = cards.filter((entry) => entry.category === 'default').length;
+  const customCount = cards.filter((entry) => entry.category === 'custom').length;
   const showDefaultSection = filter !== 'custom';
   const showCustomSection = filter !== 'default';
 
   const FILTER_TABS: { key: 'all' | 'default' | 'custom'; label: string }[] = [
-    { key: 'all', label: `All Segments (${SEGMENTS.length})` },
+    { key: 'all', label: `All Segments (${cards.length})` },
     { key: 'default', label: `Default (${defaultCount})` },
     { key: 'custom', label: `Custom (${customCount})` },
   ];
@@ -355,7 +406,7 @@ export function BusinessSegmentsHubScreen({
           <button
             className="h-11 rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary font-medium active:scale-[0.98] transition-transform"
             type="button"
-            onClick={onViewCohort}
+            onClick={() => onViewCohort(entry.ref)}
           >
             View Cohort
           </button>
@@ -377,7 +428,7 @@ export function BusinessSegmentsHubScreen({
             aria-label={`More options for ${entry.title}`}
             className="w-11 h-11 rounded-xl bg-surface-subtle flex items-center justify-center text-text-secondary active:bg-surface-container shrink-0"
             type="button"
-            onClick={() => showToast(`${entry.title} — options menu opened`)}
+            onClick={() => (live ? deleteSegment(entry) : showToast(`${entry.title} — options menu opened`))}
           >
             <Icon name="more_horiz" className="text-[20px]" />
           </button>
@@ -439,7 +490,7 @@ export function BusinessSegmentsHubScreen({
           <div className="flex items-center gap-space-2xs">
             <Icon name="verified" className="text-primary text-[18px]" />
             <span className="text-label-sm font-label-sm text-text-secondary font-medium">
-              Urban Grill & Bistro • Wuse II
+              {businessLabel}
             </span>
           </div>
           <h2 className="text-heading-md font-heading-md text-text-primary tracking-tight">Customer Segments</h2>
@@ -465,8 +516,10 @@ export function BusinessSegmentsHubScreen({
                   <Icon name="group" className="text-[18px] text-primary" />
                 </div>
                 <div className="mt-space-2xs flex items-baseline gap-1.5">
-                  <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">1,482</span>
-                  <span className="text-caption font-caption text-badge-discount-text font-medium">+14%</span>
+                  <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">
+                    {live ? (directory.data?.meta.insight?.customers.toLocaleString('en-US') ?? '—') : '1,482'}
+                  </span>
+                  <span className="text-caption font-caption text-badge-discount-text font-medium">{live ? '' : '+14%'}</span>
                 </div>
               </div>
               <div className="p-space-sm rounded-xl bg-surface-subtle flex flex-col justify-between">
@@ -476,7 +529,7 @@ export function BusinessSegmentsHubScreen({
                 </div>
                 <div className="mt-space-2xs flex items-baseline gap-1.5">
                   <span className="font-heading-md text-heading-md text-text-primary font-bold leading-none">
-                    {SEGMENTS.length}
+                    {cards.length}
                   </span>
                   <span className="text-caption font-caption text-text-tertiary">Total</span>
                 </div>
@@ -490,7 +543,7 @@ export function BusinessSegmentsHubScreen({
                 </span>
                 <span className="text-caption font-caption text-primary font-medium">Real-time CRM Sync Active</span>
               </div>
-              <span className="text-caption font-caption text-text-secondary">Updated 3m ago</span>
+              <span className="text-caption font-caption text-text-secondary">{live ? 'Live' : 'Updated 3m ago'}</span>
             </div>
             <button
               className="w-full h-11 rounded-2xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-2xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.28)] active:scale-[0.98] transition-all"
@@ -573,7 +626,9 @@ export function BusinessSegmentsHubScreen({
               <button
                 className="inline-flex items-center gap-1 text-label-sm font-label-sm text-primary font-semibold hover:underline"
                 type="button"
-                onClick={() => showToast('Opening Customer CRM directory...')}
+                onClick={() =>
+                  showToast(live ? 'Open Customers from the Business Hub to manage profiles.' : 'Opening Customer CRM directory...')
+                }
               >
                 <span>Manage Profiles in Customer CRM</span>
                 <Icon name="north_east" className="text-[16px]" />
@@ -648,7 +703,7 @@ export function BusinessSegmentsHubScreen({
               type="button"
               onClick={() => {
                 setDrawerSegment(null);
-                showToast('Direct in-app message composer opened');
+                showToast(live ? 'Messaging a whole segment is coming soon.' : 'Direct in-app message composer opened');
               }}
             >
               <div className="w-11 h-11 rounded-xl bg-badge-discount-bg flex items-center justify-center text-badge-discount-text shrink-0">
@@ -669,7 +724,7 @@ export function BusinessSegmentsHubScreen({
               type="button"
               onClick={() => {
                 setDrawerSegment(null);
-                showToast('VIP voucher drop generated');
+                showToast(live ? 'Voucher drops are coming soon.' : 'VIP voucher drop generated');
               }}
             >
               <div className="w-11 h-11 rounded-xl bg-tertiary-fixed flex items-center justify-center text-tertiary shrink-0">

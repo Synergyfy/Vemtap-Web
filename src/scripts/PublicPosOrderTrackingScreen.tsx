@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { naira } from './catalogueData';
 import { publicCartTotals, type PublicCartLine } from './publicPosData';
+import { apiErrorMessage } from '../services/errorMessages';
+import { GUEST_NO_IMAGE, trackingSteps, useGuestTracking } from './publicPosLive';
 
 interface PublicPosOrderTrackingScreenProps {
   cart: PublicCartLine[];
@@ -30,7 +32,39 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
   const [toast, setToast] = useState<string | null>(null);
   const callTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const tracking = useGuestTracking();
+  const live = tracking.live;
+  const order = tracking.order;
   const totals = publicCartTotals(cart);
+  const steps = live && order ? trackingSteps(order, STEPS) : STEPS;
+  const tableLabel = live ? (order?.tableNumber ?? 'your table') : 'Table 04';
+  const venue = live ? (order?.venue.businessName ?? order?.venue.branchName ?? 'The venue') : 'Urban Grill & Bistro';
+  const lines = live
+    ? (order?.lines ?? []).map((line, index) => ({
+        id: `${line.name}-${index}`,
+        name: line.name,
+        qty: line.quantity,
+        price: line.unitPrice,
+        image: GUEST_NO_IMAGE,
+        note: undefined as string | undefined,
+      }))
+    : cart;
+  const totalPayable = live ? (order?.totalAmount ?? 0) : totals.total;
+
+  useEffect(() => {
+    if (!live) return;
+    const message = !tracking.trackingToken
+      ? 'Place an order from your table to track it here'
+      : tracking.error
+        ? apiErrorMessage(tracking.error, 'Could not load your order.')
+        : order?.cancelled
+          ? 'This order was cancelled — please ask a server'
+          : null;
+    if (!message) return;
+    setToast(message);
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3200);
+  }, [live, tracking.trackingToken, tracking.error, order?.cancelled]);
 
   useEffect(
     () => () => {
@@ -43,7 +77,7 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
   const callWaiter = () => {
     if (calling) return;
     setCalling(true);
-    setToast('Attendant alerted for Table 04!');
+    setToast(live ? 'Calling a server is coming soon — please wave to the team' : 'Attendant alerted for Table 04!');
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 3200);
     callTimer.current = window.setTimeout(() => setCalling(false), 3200);
@@ -82,15 +116,17 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
               <Icon name="restaurant" filled className="text-badge-discount-text text-[27px]" />
             </span>
           </div>
-          <h2 className="font-heading-md text-heading-md text-text-primary mb-space-2xs">Order Sent to Kitchen!</h2>
+          <h2 className="font-heading-md text-heading-md text-text-primary mb-space-2xs">
+            {live && order?.status === 'ready' ? 'Your Order is Ready!' : live && order?.status === 'completed' ? 'Enjoy Your Meal!' : 'Order Sent to Kitchen!'}
+          </h2>
           <p className="font-body-md text-body-md text-text-secondary max-w-xs mb-space-sm">
-            Urban Grill &amp; Bistro has received your ticket for{' '}
-            <span className="font-label-md text-label-md text-text-primary">Table 04</span>.
+            {venue} has received your ticket for{' '}
+            <span className="font-label-md text-label-md text-text-primary">{tableLabel}</span>.
           </p>
           <span className="inline-flex items-center gap-space-2xs px-space-md py-space-2xs rounded-full bg-surface-canvas shadow-sm">
             <Icon name="timer" className="text-primary text-[17px]" />
             <span className="font-caption text-caption text-text-secondary">Estimated Prep Time:</span>
-            <span className="font-label-md text-label-md text-primary font-bold">15 - 20 mins</span>
+            <span className="font-label-md text-label-md text-primary font-bold">{live ? `${order?.prepMinutes ?? 15} mins` : '15 - 20 mins'}</span>
           </span>
         </div>
 
@@ -107,8 +143,8 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
           </div>
 
           <div className="relative flex flex-col space-y-space-sm">
-            {STEPS.map((step, index) => {
-              const isLast = index === STEPS.length - 1;
+            {steps.map((step, index) => {
+              const isLast = index === steps.length - 1;
               return (
                 <div key={step.title} className="flex items-start gap-space-sm relative">
                   <div className="flex flex-col items-center">
@@ -184,7 +220,7 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
           <div className="flex items-center justify-between gap-space-xs pb-space-2xs">
             <div className="min-w-0">
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Summary</h3>
-              <p className="font-caption text-caption text-text-tertiary">Order #UG-1085 • Table 04</p>
+              <p className="font-caption text-caption text-text-tertiary">{live ? `Order ${order?.reference ?? '—'} • ${tableLabel}` : 'Order #UG-1085 • Table 04'}</p>
             </div>
             <span className="font-caption text-caption px-space-xs py-space-2xs rounded-lg bg-surface-container text-text-secondary shrink-0">
               Server: Emeka O.
@@ -192,7 +228,7 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
           </div>
 
           <div className="flex flex-col gap-space-2xs">
-            {cart.map((line) => (
+            {lines.map((line) => (
               <div key={line.id} className="flex items-center gap-space-sm p-space-2xs rounded-xl bg-surface-subtle">
                 <img
                   src={line.image}
@@ -215,7 +251,7 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
                 </div>
               </div>
             ))}
-            {cart.length === 0 && (
+            {lines.length === 0 && (
               <p className="font-caption text-caption text-text-tertiary text-center py-space-sm">
                 No items left on this ticket.
               </p>
@@ -225,7 +261,7 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
           <div className="rounded-xl bg-surface-container-low p-space-md flex flex-col gap-space-2xs">
             <div className="flex justify-between items-center gap-space-xs">
               <span className="font-body-md text-body-md text-text-secondary">Total Payable</span>
-              <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{naira(totals.total)}</span>
+              <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{naira(totalPayable)}</span>
             </div>
             <p className="font-caption text-caption text-text-tertiary">
               Direct settlement at table / counter upon completion
@@ -249,7 +285,7 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
             ) : (
               <>
                 <Icon name="notifications_active" filled className="text-[19px]" />
-                <span>Call Waiter to Table 04</span>
+                <span>Call Waiter to {live ? tableLabel : 'Table 04'}</span>
               </>
             )}
           </button>
@@ -276,10 +312,10 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
             <span className="flex items-center gap-space-xs min-w-0">
               <Icon name="check_circle" filled className="text-inverse-primary text-[20px] shrink-0" />
               <span className="font-label-sm text-label-sm text-inverse-on-surface truncate">
-                Attendant alerted for Table 04!
+                {live ? toast : 'Attendant alerted for Table 04!'}
               </span>
             </span>
-            <span className="font-caption text-caption text-inverse-primary shrink-0">On the way</span>
+            {!live && <span className="font-caption text-caption text-inverse-primary shrink-0">On the way</span>}
           </div>
         </div>
       )}

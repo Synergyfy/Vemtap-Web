@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSwitchToCustomer } from '../components/business/SwitchToCustomerDialog';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { URBAN_BUSINESS } from './businessData';
-import { useMoreSummary } from '../hooks/business/useMoreSummary';
+import { hasApiConfig } from '../services/api/client';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useActiveSubscription } from '../hooks/business/useSubscription';
+import { useLivePos } from './posLive';
 
 interface BusinessMoreScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -19,8 +21,6 @@ interface BusinessMoreScreenProps {
   onOpenSupport: () => void;
   onOpenSettings: () => void;
   onOpenCluster?: () => void;
-  /** Opens a page by its business nav key (same keys as the desktop sidebar). */
-  onNavKey: (key: string) => void;
   onSwitchConsumer: () => void;
   onSignOut: () => void;
 }
@@ -64,34 +64,10 @@ export function BusinessMoreScreen({
   onOpenSupport,
   onOpenSettings,
   onOpenCluster,
-  onNavKey,
   onSwitchConsumer,
   onSignOut,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
-  const more = useMoreSummary();
-  const card = more.live
-    ? {
-        name: more.name ?? 'Your business',
-        code: more.code,
-        plan: more.planName,
-        location: more.location,
-        logo: more.logoUrl,
-        verified: more.verified,
-        status: `${more.branchName} · Online`,
-        synced: 'Live data',
-      }
-    : {
-        name: URBAN_BUSINESS.name,
-        code: '#VG-80492',
-        plan: 'Growth Plan',
-        location: branch.area,
-        logo: LOGO_SRC,
-        verified: true,
-        status: 'Terminal 01 Online',
-        synced: 'Synced 2m ago',
-      };
-  const switchToCustomer = useSwitchToCustomer(onSwitchConsumer, card.name);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -121,7 +97,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-tint-blue text-primary',
           title: 'Cluster System',
           sub: 'Mall network, shared QR & deal rotator pool',
-          badge: more.live ? more.clusterName ?? undefined : 'Amaka Mall',
+          badge: 'Amaka Mall',
           badgeClass: GREEN_BADGE,
           onClick: onOpenCluster || (() => {}),
         },
@@ -143,67 +119,6 @@ export function BusinessMoreScreen({
       ],
     },
     {
-      key: 'network',
-      label: 'Business Network',
-      rows: [
-        {
-          key: 'network-dashboard',
-          icon: 'diversity_3',
-          title: 'Business Network',
-          sub: 'Invite businesses & climb the milestone ladder',
-          onClick: () => onNavKey('network-dashboard'),
-        },
-        {
-          key: 'network-referrals',
-          icon: 'group_add',
-          title: 'My Referrals',
-          sub: 'Businesses that joined with your code',
-          onClick: () => onNavKey('network-referrals'),
-        },
-        {
-          key: 'network-discovery',
-          icon: 'travel_explore',
-          title: 'Discovery Presence',
-          sub: 'How customers find you nearby',
-          onClick: () => onNavKey('network-discovery'),
-        },
-      ],
-    },
-    {
-      key: 'catalogue',
-      label: 'Catalogue',
-      rows: [
-        {
-          key: 'categories',
-          icon: 'category',
-          title: 'Catalogue Categories',
-          sub: 'Group items & set your menu order',
-          onClick: () => onNavKey('business-categories'),
-        },
-      ],
-    },
-    {
-      key: 'reputation',
-      label: 'Reputation',
-      rows: [
-        {
-          key: 'reviews',
-          icon: 'reviews',
-          iconClass: 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
-          title: 'Reviews & Reputation',
-          sub: 'Moderate deal reviews & reply to guests',
-          onClick: () => onNavKey('more-reviews'),
-        },
-        {
-          key: 'deal-ledger',
-          icon: 'receipt_long',
-          title: 'Deal Redemption Ledger',
-          sub: 'Every claim, redemption & discount given',
-          onClick: () => onNavKey('business-deal-ledger'),
-        },
-      ],
-    },
-    {
       key: 'analytics',
       label: 'Analytics',
       rows: [
@@ -213,13 +128,6 @@ export function BusinessMoreScreen({
           title: 'Analytics & Intelligence',
           sub: 'Revenue, sales reports & customer metrics',
           onClick: onOpenAnalytics,
-        },
-        {
-          key: 'intelligence',
-          icon: 'auto_awesome',
-          title: 'Vemtap Intelligence',
-          sub: 'Live trends, comparisons & what to act on',
-          onClick: () => onNavKey('more-intelligence'),
         },
       ],
     },
@@ -232,7 +140,7 @@ export function BusinessMoreScreen({
           icon: 'credit_card',
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Subscription & Billing',
-          sub: more.live ? more.planLine ?? 'View your plan & billing' : 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
+          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
           onClick: onOpenSubscription,
         },
         {
@@ -255,7 +163,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Notifications Center',
           sub: 'Till alerts, payout updates & staff clock-ins',
-          badge: more.live ? (more.unread ? `${more.unread} unread` : undefined) : '4 unread',
+          badge: '4 unread',
           badgeClass: ERROR_BADGE,
           onClick: onOpenNotifications,
         },
@@ -270,8 +178,8 @@ export function BusinessMoreScreen({
           icon: 'verified_user',
           iconClass: GREEN_BADGE,
           title: 'Business Verification',
-          sub: !more.live || more.verified ? 'CAC, Director ID & Bank Settlement Approved' : 'Verify your business to earn the badge',
-          badge: more.live ? (more.verified ? 'Verified' : 'Not verified') : 'Tier 3',
+          sub: 'CAC, Director ID & Bank Settlement Approved',
+          badge: 'Tier 3',
           badgeClass: GREEN_BADGE,
           onClick: onOpenVerification,
         },
@@ -373,6 +281,15 @@ export function BusinessMoreScreen({
     </div>
   );
 
+  // Live: the signed-in business's identity, plan and till instead of the demo venue.
+  const live = hasApiConfig();
+  const business = useMyBusiness().data;
+  const subscription = useActiveSubscription().data;
+  const pos = useLivePos();
+  const businessName = live ? business?.name || 'Your business' : URBAN_BUSINESS.name;
+  const businessLogo = live ? business?.logoUrl ?? null : LOGO_SRC;
+  const planLabel = live ? subscription?.plan?.name ? `${subscription.plan.name} Plan` : 'No plan yet' : 'Growth Plan';
+
   return (
     <div className="biz-flow">
       <AppScreen>
@@ -399,29 +316,31 @@ export function BusinessMoreScreen({
               <div className="flex items-start justify-between gap-space-sm">
                 <div className="flex items-center gap-space-sm min-w-0">
                   <div className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-surface-container-high shadow-inner">
-                    {card.logo ? (
-                      <img alt={`${card.name} logo`} className="w-full h-full object-cover" src={card.logo} />
+                    {businessLogo ? (
+                      <img alt={`${businessName} logo`} className="w-full h-full object-cover" src={businessLogo} />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center font-heading-sm text-heading-sm text-primary">
-                        {card.name.charAt(0).toUpperCase()}
+                      <div className="w-full h-full bg-surface-tint-blue text-primary flex items-center justify-center font-heading-sm text-heading-sm">
+                        {businessName.charAt(0).toUpperCase()}
                       </div>
                     )}
                   </div>
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate">
-                        {card.name}
+                        {businessName}
                       </span>
-                      {card.verified && <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />}
+                      {(!live || business?.isVerified) && <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      {card.code && <span className="font-caption text-caption text-text-tertiary">{card.code}</span>}
-                      {card.code && card.plan && <span className="w-1 h-1 rounded-full bg-outline-variant" />}
-                      {card.plan && <span className="font-caption text-caption text-primary font-medium">{card.plan}</span>}
+                      <span className="font-caption text-caption text-text-tertiary">
+                        #{live ? business?.uniqueCode ?? '—' : 'VG-80492'}
+                      </span>
+                      <span className="w-1 h-1 rounded-full bg-outline-variant" />
+                      <span className="font-caption text-caption text-primary font-medium">{planLabel}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-1 text-text-secondary min-w-0">
                       <Icon name="location_on" className="text-[15px] text-text-tertiary shrink-0" />
-                      <span className="font-label-sm text-label-sm truncate">{card.location ?? 'Add your address'}</span>
+                      <span className="font-label-sm text-label-sm truncate">{live ? branch.area || branch.name : branch.area}</span>
                     </div>
                   </div>
                 </div>
@@ -439,12 +358,14 @@ export function BusinessMoreScreen({
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />
                   <span className="font-caption text-caption text-text-primary font-medium truncate">
-                    {card.status}
+                    {live ? (pos.isOpen ? `${pos.tillName} Open` : 'No register open') : 'Terminal 01 Online'}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 text-text-tertiary">
-                  <Icon name="cloud_done" className="text-[14px]" />
-                  <span className="font-caption text-caption">{card.synced}</span>
+                  <Icon name={live && pos.offline.pendingCount ? 'cloud_upload' : 'cloud_done'} className="text-[14px]" />
+                  <span className="font-caption text-caption">
+                    {live ? (pos.offline.pendingCount ? `${pos.offline.pendingCount} to sync` : 'All synced') : 'Synced 2m ago'}
+                  </span>
                 </div>
               </div>
             </section>
@@ -467,7 +388,7 @@ export function BusinessMoreScreen({
               <button
                 className="w-full h-11 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-2 shadow-md active:scale-95 transition-transform"
                 type="button"
-                onClick={switchToCustomer.request}
+                onClick={onSwitchConsumer}
               >
                 <span>Open Consumer Experience</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
@@ -508,7 +429,6 @@ export function BusinessMoreScreen({
 
         <BusinessTabBar active="more" onTab={onTab} />
       </AppScreen>
-      {switchToCustomer.dialog}
     </div>
   );
 }

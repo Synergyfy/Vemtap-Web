@@ -4,11 +4,23 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 
 import { BusinessModeHeader } from './BusinessModeHeader';
+import { hasApiConfig } from '../services/api/client';
+import { money, type PosSale } from '../services/posService';
+import { usePosSales } from '../hooks/business/usePos';
+import { useBusinessOrders } from '../hooks/business/useBusinessOrders';
+import { useOfferSummary } from '../hooks/business/useOffers';
+import { methodLabel, naira, saleCustomer, saleItemsLine, saleStatusLabel, setSelectedSaleId, timeLabel, useLivePos } from './posLive';
+
+const METHOD_ICON: Record<string, string> = { cash: 'payments', card: 'contactless', transfer: 'account_balance', split: 'call_split' };
+
+const isToday = (iso?: string | null) => Boolean(iso) && new Date(iso as string).toDateString() === new Date().toDateString();
 
 interface BusinessPosOrdersScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   onOpenOrder: () => void;
   onOpenDisplay?: () => void;
+  /** Live: opens the POS transaction detail for the sale picked. */
+  onOpenSale?: () => void;
 }
 
 type PosChipKey = 'all' | 'online' | 'pos' | 'deals';
@@ -20,9 +32,31 @@ const POS_CHIPS: { key: PosChipKey; label: string; icon?: string }[] = [
   { key: 'deals', label: 'Deals Redeemed (9)' },
 ];
 
-export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay }: BusinessPosOrdersScreenProps) {
+export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay, onOpenSale }: BusinessPosOrdersScreenProps) {
   const [chip, setChip] = useState<PosChipKey>('pos');
   const [search, setSearch] = useState('');
+  // Live: today's till sales at the active branch, plus channel counts for the chips.
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const sales = usePosSales({ limit: 100, search: search.trim() || undefined });
+  const storeOrders = useBusinessOrders();
+  const offers = useOfferSummary().data;
+  const todaySales: PosSale[] = (sales.data?.data ?? []).filter((sale) => isToday(sale.createdAt));
+  const onlineToday = (storeOrders.data ?? []).filter((order) => isToday(order.createdAt) && !order.payment?.posSaleId).length;
+  const dealSales = todaySales.filter((sale) => money(sale.discountAmount) > 0);
+  const visibleSales = chip === 'online' ? [] : chip === 'deals' ? dealSales : todaySales;
+  const chips = live
+    ? [
+        { key: 'all' as const, label: `All Orders (${onlineToday + todaySales.length})` },
+        { key: 'online' as const, label: `Online Only (${onlineToday})` },
+        { key: 'pos' as const, label: `POS In-Store (${todaySales.length})`, icon: 'point_of_sale' },
+        { key: 'deals' as const, label: `Deals Redeemed (${offers?.redeemedToday ?? dealSales.length})` },
+      ]
+    : POS_CHIPS;
+  const openSale = (id: string) => {
+    setSelectedSaleId(id);
+    (onOpenSale ?? onOpenOrder)();
+  };
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -72,7 +106,7 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay }: B
 
         {/* Filter Chips Row */}
         <div className="w-full overflow-x-auto no-scrollbar pl-margin pr-margin mb-space-md flex items-center gap-space-xs">
-          {POS_CHIPS.map((posChip) => {
+          {chips.map((posChip) => {
             const active = posChip.key === chip;
             return (
               <button
@@ -103,19 +137,21 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay }: B
                   <span className="absolute w-4 h-4 rounded-full bg-badge-discount-text/40 animate-ping" />
                 </div>
                 <span className="font-label-md text-label-md font-semibold text-inverse-on-surface">
-                  POS Terminal 01 (Cashier Counter)
+                  {live ? (pos.isOpen ? `${pos.tillName} (${pos.cashierName})` : 'No register open') : 'POS Terminal 01 (Cashier Counter)'}
                 </span>
               </div>
               <span className="font-caption text-caption px-space-xs py-0.5 rounded-full bg-surface-canvas/10 text-badge-discount-bg font-medium">
-                Online • 0s Latency
+                {live ? (pos.isOpen ? 'Register open' : 'Register closed') : 'Online • 0s Latency'}
               </span>
             </div>
             <div className="flex items-baseline justify-between pt-space-2xs">
               <div>
                 <span className="font-caption text-caption text-inverse-primary block">Daily In-Store Volume</span>
                 <div className="flex items-baseline gap-space-2xs">
-                  <span className="font-heading-sm text-heading-sm font-bold text-on-primary">₦142,500</span>
-                  <span className="font-caption text-caption text-inverse-on-surface/80">/ 12 transactions</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-on-primary">{live ? naira(pos.todaySales) : '₦142,500'}</span>
+                  <span className="font-caption text-caption text-inverse-on-surface/80">
+                    / {live ? pos.todayCount : 12} transactions
+                  </span>
                 </div>
               </div>
               <button
@@ -138,15 +174,121 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay }: B
                 Today's In-Store Activity
               </span>
               <span className="w-5 h-5 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption flex items-center justify-center font-bold">
-                12
+                {live ? todaySales.length : 12}
               </span>
             </div>
-            <button className="font-caption text-caption text-primary font-semibold flex items-center gap-0.5" type="button" onClick={() => showToast('Orders stream refreshed — all terminals in sync')}>
+            <button className="font-caption text-caption text-primary font-semibold flex items-center gap-0.5" type="button" onClick={() => {
+                if (live) {
+                  void sales.refetch();
+                  void storeOrders.refetch();
+                  showToast('Sales refreshed');
+                  return;
+                }
+                showToast('Orders stream refreshed — all terminals in sync');
+              }}>
               <Icon name="sync" className="text-[16px]" />
               Live sync on
             </button>
           </div>
 
+          {live && !visibleSales.length && (
+            <div className="rounded-xl bg-surface-canvas p-space-md shadow-sm text-center flex flex-col items-center gap-space-2xs">
+              <Icon name={chip === 'online' ? 'storefront' : 'point_of_sale'} className="text-[28px] text-text-tertiary" />
+              <span className="font-label-md text-label-md font-semibold text-text-primary">
+                {sales.isLoading ? 'Loading sales…' : chip === 'online' ? 'Online orders live on the Orders tab' : 'No in-store sales yet today'}
+              </span>
+              {!sales.isLoading && chip !== 'online' && (
+                <span className="font-caption text-caption text-text-secondary">Sales rung up at the till appear here.</span>
+              )}
+            </div>
+          )}
+          {live &&
+            visibleSales.map((sale) => {
+              const discount = money(sale.discountAmount);
+              const cash = sale.paymentMethod === 'cash' && money(sale.amountPaid) > 0;
+              return (
+                <button
+                  className="rounded-xl bg-surface-canvas p-space-md shadow-sm flex flex-col gap-space-sm hover:shadow-md transition-shadow text-left"
+                  key={sale.id}
+                  type="button"
+                  onClick={() => openSale(sale.id)}
+                >
+                  <div className="flex items-start justify-between gap-space-xs">
+                    <div className="flex flex-wrap items-center gap-space-2xs">
+                      <span className="h-6 px-space-xs rounded bg-primary-container text-on-primary font-caption text-caption font-bold flex items-center gap-1">
+                        <Icon name="point_of_sale" className="text-[14px]" />
+                        POS
+                      </span>
+                      <span className="h-6 px-space-xs rounded bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center gap-1">
+                        <Icon name={sale.orderType === 'takeaway' ? 'shopping_bag' : 'table_restaurant'} className="text-[15px] text-text-secondary" />
+                        {sale.orderType === 'takeaway' ? 'Counter Takeaway' : 'Dine-In'}
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary">#{sale.receiptNumber}</span>
+                    </div>
+                    <span className="font-caption text-caption text-text-tertiary whitespace-nowrap">{timeLabel(sale.createdAt)}</span>
+                  </div>
+                  <div className="flex flex-col gap-1 py-space-2xs">
+                    {(sale.items ?? []).map((item) => (
+                      <div className="flex justify-between items-baseline" key={item.id}>
+                        <span className="font-body-md text-body-md font-medium text-text-primary">
+                          {item.quantity}x {item.productName ?? 'Item'}
+                        </span>
+                        <span className="font-label-md text-label-md font-medium text-text-secondary">
+                          {naira(money(item.totalPrice) || money(item.unitPrice) * item.quantity)}
+                        </span>
+                      </div>
+                    ))}
+                    {!sale.items?.length && (
+                      <span className="font-body-md text-body-md font-medium text-text-primary">{saleItemsLine(sale)}</span>
+                    )}
+                  </div>
+                  {discount > 0 && (
+                    <div className="rounded-lg bg-badge-discount-bg p-space-xs flex items-center gap-space-xs">
+                      <div className="w-8 h-8 rounded-full bg-badge-discount-text/10 text-badge-discount-text flex items-center justify-center shrink-0">
+                        <Icon name="local_offer" filled className="text-[20px]" />
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="font-label-sm text-label-sm font-bold text-badge-discount-text truncate">Discount applied</span>
+                        <span className="font-caption text-caption text-badge-discount-text/90">Saved {naira(discount)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="rounded-lg bg-surface-subtle p-space-xs flex flex-col gap-1 font-caption text-caption">
+                    <div className="flex items-center gap-1.5 text-text-primary font-medium">
+                      <Icon name={METHOD_ICON[sale.paymentMethod] ?? 'payments'} className="text-[16px] text-primary" />
+                      <span>
+                        Paid with {methodLabel(sale.paymentMethod)}
+                        {cash ? ` (${naira(money(sale.amountPaid))} tendered • ${naira(money(sale.change))} change)` : ''}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-text-secondary">
+                      <span>{saleCustomer(sale) || 'Walk-in guest'}</span>
+                      <span className="font-medium">Cashier: {sale.cashierName || '—'}</span>
+                    </div>
+                  </div>
+                  <div className="pt-space-2xs flex items-center justify-between">
+                    <div>
+                      <span className="font-caption text-caption text-text-tertiary block">Total Collected</span>
+                      <span className="font-heading-md text-heading-md font-bold text-text-primary">{naira(money(sale.total))}</span>
+                    </div>
+                    <span
+                      className={`h-8 px-space-xs rounded-full font-caption text-caption font-semibold flex items-center gap-1 ${
+                        sale.status === 'completed' ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container-high text-text-primary'
+                      }`}
+                    >
+                      <Icon name={sale.status === 'completed' ? 'check_circle' : 'undo'} className="text-[16px]" />
+                      {saleStatusLabel(sale)}
+                    </span>
+                  </div>
+                  <span className="w-full h-10 rounded-lg bg-surface-container text-on-secondary-container font-button-secondary text-button-secondary flex items-center justify-center gap-1">
+                    <Icon name="receipt_long" className="text-[18px]" />
+                    View Receipt Details
+                  </span>
+                </button>
+              );
+            })}
+          {!live && (
+            <>
           {/* Card 1: POS Dine-In with Verified Deal */}
           <button
             className="rounded-xl bg-surface-canvas p-space-md shadow-sm flex flex-col gap-space-sm hover:shadow-md transition-shadow relative overflow-hidden text-left"
@@ -339,6 +481,8 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay }: B
               </div>
             </div>
           </button>
+            </>
+          )}
         </div>
 
         {/* Micro Prompt: Unified Channel Assurance */}

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { LOYALTY_REWARDS, nextReward, unlockedRewards } from './desktop/posRegisterExtras';
 import { usePosSettings } from '../context/PosSettingsContext';
+import { rewardNext, rewardsUnlocked, useTillRewards } from './posLive';
 
 /**
  * Shared loyalty modals used by the POS payment flows (desktop + mobile/tablet):
@@ -179,20 +180,25 @@ export function PosAddPointsModal({
 /** Small modal listing the rewards the customer has already unlocked. */
 export function PosRewardsModal({
   customerName,
+  customerId,
   points,
   projectedTotal,
   onClose,
 }: {
   customerName: string;
+  /** Live: the API customer, whose real rewards replace the demo list. */
+  customerId?: string | null;
   points: number;
   /** Balance after this order's points land — marks rewards this sale unlocks. */
   projectedTotal?: number;
   onClose: () => void;
 }) {
-  const eligible = unlockedRewards(points);
+  const liveRewards = useTillRewards(customerId);
+  const rewardList = liveRewards ?? LOYALTY_REWARDS;
+  const eligible = liveRewards ? rewardsUnlocked(liveRewards, points) : unlockedRewards(points);
   const cap = projectedTotal ?? points;
-  const afterOrder = cap > points ? LOYALTY_REWARDS.filter((reward) => reward.points > points && reward.points <= cap) : [];
-  const next = nextReward(points);
+  const afterOrder = cap > points ? rewardList.filter((reward) => reward.points > points && reward.points <= cap) : [];
+  const next = liveRewards ? rewardNext(liveRewards, points) : nextReward(points);
   const { redemptionThreshold } = usePosSettings();
   const canRedeem = points >= redemptionThreshold;
 
@@ -217,7 +223,7 @@ export function PosRewardsModal({
         <div className="flex flex-col gap-space-xs">
           {eligible.map((reward) => (
             <div
-              key={reward.points}
+              key={`${reward.label}-${reward.points}`}
               className="rounded-xl bg-badge-discount-bg p-space-sm flex items-center justify-between gap-space-xs"
             >
               <span className="flex items-center gap-space-xs min-w-0">
@@ -244,7 +250,7 @@ export function PosRewardsModal({
           ))}
           {afterOrder.map((reward) => (
             <div
-              key={reward.points}
+              key={`${reward.label}-${reward.points}`}
               className="rounded-xl bg-surface-subtle border border-dashed border-border-subtle p-space-sm flex items-center justify-between gap-space-xs"
             >
               <span className="flex items-center gap-space-xs min-w-0">

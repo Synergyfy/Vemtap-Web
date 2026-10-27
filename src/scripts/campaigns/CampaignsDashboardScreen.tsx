@@ -45,6 +45,13 @@ export function CampaignsDashboardScreen({
 }: CampaignsDashboardScreenProps) {
   const { listForChannel, live } = useCampaigns();
   const campaigns = listForChannel(channel);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!live?.error) return;
+    setLoadError(live.error);
+    const timer = window.setTimeout(() => setLoadError(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [live?.error]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilterKey>('all');
 
@@ -155,16 +162,6 @@ export function CampaignsDashboardScreen({
             ? 'Campaigns are saved to your business account and sent through VEMTAP using your SMS and email credits; scheduled ones go out automatically. Sent counts show once a campaign goes out — delivery and click reports are not available yet.'
             : 'Campaigns are stored in this browser. A connected SMS or email provider is required for real sending, scheduling and delivery reports.'}
         </p>
-
-        {live?.error ? (
-          <p role="alert" className="flex items-center justify-between gap-space-sm rounded-xl bg-red-50 px-space-md py-space-sm font-label-md text-label-md text-red-700">
-            <span>{live.error}</span>
-            <button type="button" onClick={live.retry} className="underline shrink-0">
-              Try again
-            </button>
-          </p>
-        ) : null}
-        {live?.isLoading ? <p className="font-body-md text-body-md text-text-secondary">Loading campaigns…</p> : null}
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-space-sm">
@@ -301,6 +298,11 @@ export function CampaignsDashboardScreen({
           </div>
         )}
       </div>
+      {loadError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {loadError}
+        </div>
+      )}
     </CampaignShell>
   );
 }

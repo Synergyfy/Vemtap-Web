@@ -58,9 +58,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     // Order mirrors the mobile Business menu — keep both lists in sync.
     items: [
       { key: 'business-catalog', label: 'Products & Services', icon: 'inventory_2' },
-      { key: 'business-categories', label: 'Categories', icon: 'category' },
       { key: 'business-deals', label: 'Deals', icon: 'local_offer' },
-      { key: 'business-deal-ledger', label: 'Redemption Ledger', icon: 'receipt_long' },
       { key: 'business-customers', label: 'Customers', icon: 'group' },
       { key: 'business-loyalty', label: 'Loyalty & Rewards', icon: 'stars' },
       { key: 'business-staff', label: 'Staff & Permissions', icon: 'shield_person' },
@@ -86,8 +84,6 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
       { key: 'orders-bookings', label: 'Bookings', icon: 'calendar_month' },
       { key: 'pos-transactions', label: 'Transactions', icon: 'receipt' },
       { key: 'pos-settings', label: 'POS Settings', icon: 'settings' },
-      { key: 'pos-taxes', label: 'Taxes & Surcharges', icon: 'account_balance' },
-      { key: 'pos-receipt', label: 'Receipt Settings', icon: 'receipt' },
     ],
   },
   {
@@ -114,27 +110,13 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     link: true,
   },
   {
-    key: 'network',
-    label: 'Business Network',
-    icon: 'diversity_3',
-    defaultKey: 'network-dashboard',
-    items: [
-      { key: 'network-dashboard', label: 'Network Dashboard', icon: 'hub' },
-      { key: 'network-referrals', label: 'My Referrals', icon: 'group_add' },
-      { key: 'network-milestones', label: 'Milestones', icon: 'military_tech' },
-      { key: 'network-discovery', label: 'Discovery Presence', icon: 'travel_explore' },
-    ],
-  },
-  {
     key: 'more',
     label: 'More',
     icon: 'more_horiz',
     defaultKey: 'more-marketing',
     items: [
       { key: 'more-marketing', label: 'Marketing & Growth', icon: 'campaign' },
-      { key: 'more-reviews', label: 'Reviews & Reputation', icon: 'reviews' },
       { key: 'more-analytics', label: 'Analytics', icon: 'query_stats' },
-      { key: 'more-intelligence', label: 'Vemtap Intelligence', icon: 'auto_awesome' },
       { key: 'more-subscription', label: 'Subscription & Billing', icon: 'credit_card' },
       { key: 'more-addons', label: 'Add-ons & Credits', icon: 'extension' },
       { key: 'more-notifications', label: 'Notifications', icon: 'notifications' },

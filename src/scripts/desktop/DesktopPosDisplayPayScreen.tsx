@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { CheckoutHubShell } from './CheckoutHubShell';
+import { naira, useLiveDisplay } from '../posLive';
 
 interface DesktopPosDisplayPayScreenProps {
   onSplit?: () => void;
@@ -57,6 +58,9 @@ const formatTime = (totalSeconds: number) => {
 };
 
 export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScreenProps) {
+  const display = useLiveDisplay();
+  const live = display.live;
+  const accountNumber = live ? (display.transfer?.accountNumber ?? '') : '9042817290';
   const [secondsLeft, setSecondsLeft] = useState(102);
   const [copied, setCopied] = useState(false);
   const [tapVisible, setTapVisible] = useState(false);
@@ -88,7 +92,8 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
   }, [toast]);
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText('9042817290');
+    if (!accountNumber) return;
+    navigator.clipboard?.writeText(accountNumber);
     setCopied(true);
   };
 
@@ -112,7 +117,7 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
             <div className="flex flex-col">
               <div className="flex items-center gap-space-xs flex-wrap">
                 <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight font-bold">
-                  Urban Grill &amp; Bistro
+                  {live ? display.venueName : 'Urban Grill & Bistro'}
                 </h1>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
                   <Icon name="verified" className="text-[15px]" filled />
@@ -121,7 +126,7 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
               </div>
               <div className="flex items-center gap-space-xs text-text-secondary font-label-md text-label-md mt-1">
                 <Icon name="location_on" className="text-text-tertiary text-[17px]" />
-                <span>Victoria Island • Terminal #01</span>
+                <span>{live ? display.whereLine : 'Victoria Island • Terminal #01'}</span>
                 <span className="text-text-tertiary">•</span>
                 <span className="text-text-secondary">Cashier: Amaka O.</span>
               </div>
@@ -136,7 +141,9 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
                 Online • 256-bit Secure
               </div>
               <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">
-                Order Reference: #TK-108 • 3 Items
+                {live
+                  ? `Order Reference: #${display.ticket?.reference ?? '—'} • ${display.ticket?.itemCount ?? 0} Items`
+                  : 'Order Reference: #TK-108 • 3 Items'}
               </span>
             </div>
             <div className="bg-primary-container text-on-primary-container px-space-lg py-space-sm rounded-xl shadow-md flex flex-col items-start sm:items-end min-w-[220px]">
@@ -144,7 +151,7 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
                 Total Amount Due
               </span>
               <div className="font-display-hero text-display-hero font-bold tracking-tight leading-none mt-1">
-                ₦27,628.00
+                {live ? `${naira(display.total)}.00` : '₦27,628.00'}
               </div>
             </div>
           </div>
@@ -226,14 +233,14 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
                     <div className="bg-surface-canvas p-space-sm rounded-lg shadow-sm flex flex-col justify-center">
                       <span className="font-caption text-caption text-text-tertiary">Designated Bank</span>
                       <span className="font-heading-sm text-heading-sm font-semibold text-text-primary">
-                        Stanbic IBTC / Moniepoint
+                        {live ? (display.transfer?.bankName ?? 'Transfer not set up') : 'Stanbic IBTC / Moniepoint'}
                       </span>
                     </div>
                     <div className="bg-surface-canvas p-space-sm rounded-lg shadow-sm flex items-center justify-between">
                       <div className="flex flex-col">
                         <span className="font-caption text-caption text-text-tertiary">Virtual Account Number</span>
                         <span className="font-heading-sm text-heading-sm font-bold tracking-wider text-text-primary">
-                          9042 817 290
+                          {live ? (accountNumber || '—') : '9042 817 290'}
                         </span>
                       </div>
                       <button
@@ -250,7 +257,9 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
                     <Icon name="verified_user" className="text-primary text-[16px]" />
                     <span>
                       Beneficiary:{' '}
-                      <strong className="text-text-primary font-medium">Urban Grill &amp; Bistro Till 01</strong> •
+                      <strong className="text-text-primary font-medium">
+                        {live ? (display.transfer?.accountName ?? display.whereLine) : 'Urban Grill & Bistro Till 01'}
+                      </strong> •
                       Auto-matches in 4 seconds
                     </span>
                   </div>
@@ -373,7 +382,7 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
                 </button>
                 <button
                   type="button"
-                  onClick={() => setToast('Tender choice signaled to Terminal #01 checkout operator.')}
+                  onClick={() => setToast(live ? 'Tell the cashier how you would like to pay.' : 'Tender choice signaled to Terminal #01 checkout operator.')}
                   className="w-full sm:w-1/2 h-[52px] rounded-xl bg-surface-subtle text-text-secondary font-button-secondary text-button-secondary font-semibold flex items-center justify-center gap-2 hover:bg-surface-container hover:text-text-primary transition-all active:scale-[0.98] shadow-sm"
                 >
                   <Icon name="swap_horiz" className="text-[20px]" />✕ Change Tender Method
@@ -387,7 +396,9 @@ export function DesktopPosDisplayPayScreen({ onSplit }: DesktopPosDisplayPayScre
         <div className="w-full py-space-xs flex items-center justify-between text-text-tertiary font-caption text-caption px-space-xs">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-            <span>VEMTAP Verified CFD Terminal #01 • End-to-End Encrypted Hardware Tokenization</span>
+            <span>
+              {live ? `VEMTAP Verified CFD • ${display.whereLine}` : 'VEMTAP Verified CFD Terminal #01 • End-to-End Encrypted Hardware Tokenization'}
+            </span>
           </div>
           <div className="flex items-center gap-4">
             <span>PCI-DSS Validated</span>

@@ -217,7 +217,7 @@ export function BusinessProductPublishedScreen({
                 Boost Foot Traffic with a VEMTAP Deal 🔥
               </h4>
               <p className="font-body-md text-body-md text-text-secondary mt-1 leading-snug">
-                Transform {draft.title || 'this item'} into a featured promotional voucher. Photos, pricing, and
+                Transform this Ribeye Steak into a featured promotional voucher. Photos, pricing, and
                 branches will pre-fill into Deal Studio automatically.
               </p>
             </div>

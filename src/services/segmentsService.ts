@@ -1,6 +1,7 @@
 import { api } from './api/client';
 import { API_ENDPOINTS } from './api/endpoints';
 import type { SegmentCriteria, SegmentInsights, SegmentReach, SegmentSummary } from './types';
+import type { CustomerSegment } from './businessCustomersService';
 
 export const segmentsService = {
   list: async (params?: Record<string, string | number | boolean | undefined>) =>
@@ -9,8 +10,12 @@ export const segmentsService = {
   create: async (payload: { name: string; description?: string; branchId?: string; type?: 'static' | 'dynamic'; criteria?: SegmentCriteria }) =>
     api.post<SegmentSummary>(API_ENDPOINTS.segments.root, payload),
 
-  update: async (id: string, payload: Partial<{ name: string; type?: 'static' | 'dynamic'; criteria?: SegmentCriteria }>) =>
-    api.patch<SegmentSummary>(API_ENDPOINTS.segments.byId(id), payload),
+  update: async (
+    id: string,
+    payload: Partial<{ name: string; description?: string; type?: 'static' | 'dynamic'; criteria?: SegmentCriteria }>,
+    branchId?: string,
+  ) =>
+    api.patch<SegmentSummary>(API_ENDPOINTS.segments.byId(id), payload, { params: { branchId } }),
 
   remove: async (id: string, branchId?: string) => api.del<unknown>(API_ENDPOINTS.segments.byId(id), { params: { branchId } }),
 
@@ -22,4 +27,8 @@ export const segmentsService = {
 
   getInsights: async (id: string, branchId?: string) =>
     api.get<SegmentInsights>(API_ENDPOINTS.segments.insights(id), { params: { branchId } }),
+
+  /** Insights for a built-in directory segment (frequent, returning, …). */
+  getSystemInsights: async (segment: CustomerSegment) =>
+    api.get<SegmentInsights>(`/business-customers/segments/${segment}/insights`),
 };

@@ -1,10 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hasApiConfig } from '../services/api/client';
+import { catalogueItemsService } from '../services/catalogueItemsService';
+import { catalogueItemKeys, useCatalogueItems } from '../hooks/business/useCatalogueItems';
+import { useBranches } from '../hooks/business/useBranchesAndTeam';
+import { apiErrorMessage } from '../services/errorMessages';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 
 interface BusinessProductAssignmentScreenProps {
   onBack: () => void;
   itemName: string;
+  /** Live: the catalogue item whose branch availability and prices are edited. */
+  itemId?: string | null;
+}
+
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
+const naira = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
+
+/** One branch row of the live assignment. */
+interface LiveRow {
+  branchId: string;
+  name: string;
+  area: string;
+  on: boolean;
+  custom: boolean;
+  price: string;
+  stock: number | null;
 }
 
 const ITEM_IMG =
@@ -12,8 +36,47 @@ const ITEM_IMG =
 const ITEM_ALT =
   'Gourmet prime woodfire aged ribeye steak cooked to medium rare with charred grill lines, garnished with fresh rosemary sprigs and Maldon flaky salt on a dark rustic slate presentation board with warm cinematic restaurant lighting';
 
-export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessProductAssignmentScreenProps) {
+export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: BusinessProductAssignmentScreenProps) {
   const [scope, setScope] = useState<'selected' | 'all'>('selected');
+  // Live: the item's real per-branch availability, price and stock; demo keeps the samples.
+  const live = hasApiConfig() && Boolean(itemId);
+  const id = itemId ?? '';
+  const itemsQuery = useCatalogueItems();
+  const item = (itemsQuery.data ?? []).find((entry) => entry.id === id);
+  const queryClient = useQueryClient();
+  const pricingQuery = useQuery({
+    queryKey: ['catalogue-items', 'branch-pricing', id],
+    queryFn: () => catalogueItemsService.branchPricing(id),
+    enabled: live,
+  });
+  const branchesQuery = useBranches();
+  const savePricing = useMutation({
+    mutationFn: (input: Parameters<typeof catalogueItemsService.setBranchPricing>[1]) => catalogueItemsService.setBranchPricing(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all }),
+  });
+  const [rows, setRows] = useState<LiveRow[]>([]);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const base = Number(pricingQuery.data?.basePrice ?? item?.price ?? 0);
+  useEffect(() => {
+    const pricing = pricingQuery.data;
+    if (!live || !pricing) return;
+    const areaOf = new Map((branchesQuery.data ?? []).map((branch) => [branch.id, [branch.city, branch.state].filter(Boolean).join(', ')]));
+    setRows(
+      pricing.branches.map((row) => ({
+        branchId: row.branchId,
+        name: row.branchName,
+        area: areaOf.get(row.branchId) || '—',
+        on: row.isAvailable,
+        custom: row.hasOverride === true,
+        price: String(Math.round(Number(row.price))),
+        stock: row.stockQuantity ?? null,
+      })),
+    );
+  }, [live, pricingQuery.data, branchesQuery.data]);
+  const updateRow = (branchId: string, patch: Partial<LiveRow>) =>
+    setRows((current) => current.map((row) => (row.branchId === branchId ? { ...row, ...patch } : row)));
+  const activeRows = rows.filter((row) => (scope === 'all' ? true : row.on));
+  const totalStock = activeRows.reduce((sum, row) => sum + (row.stock ?? 0), 0);
   const [maitamaOn, setMaitamaOn] = useState(true);
   const [victoriaOn, setVictoriaOn] = useState(true);
   const [garkiOn, setGarkiOn] = useState(false);
@@ -25,6 +88,31 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
 
   const handleSave = () => {
     if (saved) return;
+    if (live) {
+      const anyCustom = rows.some((row) => row.custom);
+      savePricing.mutate(
+        {
+          pricingMode: anyCustom ? 'per_branch' : 'uniform',
+          branches: rows.map((row) => ({
+            branchId: row.branchId,
+            isAvailable: scope === 'all' ? true : row.on,
+            price: row.custom && Number(row.price) ? Number(row.price) : null,
+            stockQuantity: row.stock,
+          })),
+        },
+        {
+          onSuccess: () => {
+            setSaved(true);
+            window.setTimeout(() => setSaved(false), 2000);
+          },
+          onError: (error) => {
+            setLiveError(apiErrorMessage(error, 'Could not save the branch assignment.'));
+            window.setTimeout(() => setLiveError(null), 4000);
+          },
+        },
+      );
+      return;
+    }
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
   };
@@ -57,17 +145,17 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
         {/* Item Summary Card */}
         <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md flex items-center gap-space-md">
           <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-            <img alt={ITEM_ALT} className="w-full h-full object-cover" src={ITEM_IMG} />
+            <img alt={live ? item?.name ?? itemName : ITEM_ALT} className="w-full h-full object-cover" src={live ? item?.mainImage || LIVE_IMAGE_PLACEHOLDER : ITEM_IMG} />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-space-2xs text-text-tertiary">
               <Icon name="restaurant_menu" className="text-[14px]" />
-              <span className="font-caption text-caption tracking-wide uppercase">Steaks & Grills</span>
+              <span className="font-caption text-caption tracking-wide uppercase">{live ? item?.category?.name ?? 'Product' : 'Steaks & Grills'}</span>
             </div>
-            <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{itemName}</h2>
+            <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{live ? item?.name ?? 'Item' : itemName}</h2>
             <div className="flex items-baseline gap-space-2xs mt-space-2xs">
               <span className="font-caption text-caption text-text-secondary">Base Default:</span>
-              <span className="font-label-md text-label-md text-primary font-semibold">₦12,000</span>
+              <span className="font-label-md text-label-md text-primary font-semibold">{live ? naira(base) : '₦12,000'}</span>
             </div>
           </div>
         </div>
@@ -144,10 +232,109 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
               </p>
             </div>
             <span className="font-label-sm text-label-sm px-space-xs py-space-2xs rounded-full bg-surface-container text-on-surface-variant font-medium shrink-0">
-              3 Branches
+              {live ? `${rows.length} ${rows.length === 1 ? 'Branch' : 'Branches'}` : '3 Branches'}
             </span>
           </div>
 
+          {live &&
+            rows.map((row) => {
+              const on = scope === 'all' ? true : row.on;
+              const diff = (Number(row.price) || base) - base;
+              return (
+                <div
+                  key={row.branchId}
+                  className={on ? 'bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-md' : 'bg-surface-container-low rounded-xl p-space-md space-y-space-sm opacity-75'}
+                >
+                  <div className="flex items-start justify-between gap-space-sm">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-space-2xs">
+                        <span className={`w-2 h-2 rounded-full ${on ? 'bg-badge-discount-text' : 'bg-text-tertiary'}`} />
+                        <span className={`font-label-sm text-label-sm font-semibold uppercase ${on ? 'text-badge-discount-text' : 'text-text-tertiary'}`}>
+                          {on ? 'Stocked Here' : 'Not Stocked'}
+                        </span>
+                      </div>
+                      <h4 className={`font-heading-sm text-heading-sm truncate mt-space-2xs ${on ? 'text-text-primary' : 'text-text-secondary'}`}>{row.name}</h4>
+                      <span className="font-caption text-caption text-text-tertiary">{row.area}</span>
+                    </div>
+                    <button
+                      aria-checked={on}
+                      className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${on ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'}`}
+                      role="switch"
+                      type="button"
+                      onClick={() => updateRow(row.branchId, { on: !row.on })}
+                    >
+                      <span className="w-6 h-6 rounded-full bg-surface-container-lowest shadow-md flex items-center justify-center">
+                        <Icon name={on ? 'check' : 'close'} filled={on} className={`text-[14px] ${on ? 'text-primary' : 'text-outline'}`} />
+                      </span>
+                    </button>
+                  </div>
+                  {on && (
+                    <>
+                      <div className="grid grid-cols-2 gap-space-xs">
+                        <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center gap-space-xs">
+                          <Icon name="inventory_2" className="text-text-tertiary text-[18px]" />
+                          <div className="min-w-0">
+                            <span className="block font-caption text-caption text-text-tertiary">In-Stock</span>
+                            <span className="font-label-sm text-label-sm text-text-primary font-medium">
+                              {row.stock == null ? '—' : `${row.stock} units in stock`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center gap-space-xs">
+                          <Icon name="timer" className="text-text-tertiary text-[18px]" />
+                          <div className="min-w-0">
+                            <span className="block font-caption text-caption text-text-tertiary">Lead Prep</span>
+                            <span className="font-label-sm text-label-sm text-text-primary font-medium">—</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className={`${row.custom ? 'bg-surface-tint-blue rounded-xl p-space-md' : 'bg-surface-container-low rounded-lg p-space-sm'} space-y-space-xs`}>
+                        <button className="w-full flex items-center gap-space-sm text-left select-none" type="button" onClick={() => updateRow(row.branchId, { custom: !row.custom })}>
+                          <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${row.custom ? 'bg-primary' : 'bg-surface-container-lowest'}`}>
+                            <Icon
+                              name={row.custom ? 'check_box' : 'check_box_outline_blank'}
+                              filled={row.custom}
+                              className={`text-[16px] ${row.custom ? 'text-on-primary' : 'text-outline-variant'}`}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className={`font-label-md text-label-md font-medium ${row.custom ? 'text-primary' : 'text-text-primary'}`}>
+                              Use custom price for this branch
+                            </span>
+                            <p className="font-caption text-caption text-text-secondary">
+                              {row.custom ? 'Custom retail rate for this branch' : 'Using standard base catalog price'}
+                            </p>
+                          </div>
+                          {!row.custom && <span className="font-label-md text-label-md text-text-primary font-semibold">{naira(base)}</span>}
+                        </button>
+                        {row.custom && (
+                          <div className="relative flex items-center bg-surface-container-lowest rounded-lg shadow-sm">
+                            <span className="pl-space-md font-label-md text-label-md text-text-secondary font-semibold select-none">₦</span>
+                            <input
+                              className="w-full bg-transparent py-space-sm pl-space-xs pr-space-md font-heading-sm text-heading-sm text-text-primary focus:outline-none"
+                              type="text"
+                              value={row.price}
+                              onChange={(event) => updateRow(row.branchId, { price: event.target.value.replace(/\D/g, '') })}
+                            />
+                            {diff !== 0 && (
+                              <div className="pr-space-sm shrink-0">
+                                <span className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                                  <Icon name={diff > 0 ? 'trending_up' : 'trending_down'} className="text-[13px]" />
+                                  {diff > 0 ? '+' : '-'}
+                                  {naira(Math.abs(diff))} vs base
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          {!live && (
+            <>
           {/* Branch 1: Maitama Flagship */}
           <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-md">
             <div className="flex items-start justify-between gap-space-sm">
@@ -398,6 +585,8 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
               </p>
             </div>
           </div>
+            </>
+          )}
         </div>
 
         {/* Section 3: Online Order & POS Routing */}
@@ -418,8 +607,34 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
         <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-sm">
           <div className="flex items-center justify-between">
             <span className="font-label-sm text-label-sm text-text-secondary">Live Network Capacity</span>
-            <span className="font-label-sm text-label-sm text-primary font-semibold">60 Total Ribeye Steaks</span>
+            <span className="font-label-sm text-label-sm text-primary font-semibold">
+              {live ? `${totalStock} Total Units` : '60 Total Ribeye Steaks'}
+            </span>
           </div>
+          {live ? (
+            <>
+              <div className="h-2 w-full rounded-full bg-surface-container-low overflow-hidden flex">
+                {activeRows.map((row, index) => (
+                  <div
+                    key={row.branchId}
+                    className={`${index % 2 ? 'bg-secondary-container' : 'bg-primary'} h-full`}
+                    style={{ width: totalStock ? `${((row.stock ?? 0) / totalStock) * 100}%` : '0%' }}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center justify-between font-caption text-caption text-text-tertiary pt-space-2xs flex-wrap gap-space-2xs">
+                {rows.map((row, index) => (
+                  <div key={row.branchId} className="flex items-center gap-space-2xs">
+                    <span className={`w-2 h-2 rounded-full ${row.on ? (index % 2 ? 'bg-secondary-container' : 'bg-primary') : 'bg-surface-container-highest'}`} />
+                    <span>
+                      {row.name} ({totalStock && row.on ? Math.round(((row.stock ?? 0) / totalStock) * 100) : 0}%)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
           <div className="h-2 w-full rounded-full bg-surface-container-low overflow-hidden flex">
             <div className="bg-primary h-full" style={{ width: '70%' }} />
             <div className="bg-secondary-container h-full" style={{ width: '30%' }} />
@@ -438,6 +653,8 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
               <span>Garki (0%)</span>
             </div>
           </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -453,7 +670,11 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
           >
             <Icon name={saved ? 'check_circle' : 'save'} className="text-[20px]" />
             <span>
-              {saved ? 'Saved — Syncing to Terminals...' : 'Save Location Assignment (2 Active Branches)'}
+              {saved
+                ? 'Saved — Syncing to Terminals...'
+                : live
+                  ? `Save Location Assignment (${activeRows.length} Active ${activeRows.length === 1 ? 'Branch' : 'Branches'})`
+                  : 'Save Location Assignment (2 Active Branches)'}
             </span>
           </button>
           <div className="flex items-center justify-center gap-space-2xs text-text-tertiary">
@@ -462,6 +683,11 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
           </div>
         </div>
       </div>
+      {liveError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {liveError}
+        </div>
+      )}
     </AppScreen>
   );
 }

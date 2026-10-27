@@ -3,6 +3,9 @@ import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { computeTotals, formatNaira, type PosTerminalLine } from './posTerminalData';
 import { usePosSettings } from '../../context/PosSettingsContext';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { useHeldTicket, useLivePos, usePosCartMirror } from '../posLive';
 
 interface DesktopPosCartScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -77,7 +80,28 @@ export function DesktopPosCartScreen({
     showToast(`${line?.name ?? 'Item'} removed from ticket`);
   };
 
+  const live = hasApiConfig();
+  const pos = useLivePos();
+  const heldTicket = useHeldTicket();
+  usePosCartMirror(cart, customer);
+
   const holdTicket = () => {
+    if (live) {
+      if (!cart.length) {
+        showToast('Add an item before holding the ticket');
+        return;
+      }
+      heldTicket
+        .hold(cart)
+        .then(() => {
+          onCartChange([]);
+          showToast('Ticket held — resume it with Hold on the register');
+          if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+          holdTimer.current = window.setTimeout(onBack, 700);
+        })
+        .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not hold the ticket.')));
+      return;
+    }
     showToast('Ticket parked safely to Tab 04');
     if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
     holdTimer.current = window.setTimeout(onBack, 700);
@@ -90,13 +114,13 @@ export function DesktopPosCartScreen({
         <div className="w-full py-2.5 flex flex-wrap items-center gap-space-xs">
           <span className="h-6 px-space-xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center gap-1 shrink-0">
             <Icon name="receipt_long" className="text-[13px]" />
-            <span>Ticket #POS-1049</span>
+            <span>{live ? 'New ticket' : 'Ticket #POS-1049'}</span>
           </span>
           <span className="h-6 px-space-xs rounded-full bg-surface-container-high text-text-secondary font-caption text-caption flex items-center shrink-0">
             Walk-in · Dine-in
           </span>
           <span className="h-6 px-space-xs rounded-full bg-surface-container-high text-text-secondary font-caption text-caption flex items-center shrink-0">
-            Till 01 · Emeka O.
+            {live ? `${pos.isOpen ? pos.tillName : 'No till open'} · ${pos.cashierName}` : 'Till 01 · Emeka O.'}
           </span>
           <span className="h-6 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center shrink-0">
             Open 06:12
@@ -130,15 +154,16 @@ export function DesktopPosCartScreen({
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Current Sale</h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              Item customizer for ticket #POS-1049 — review every line, apply quick actions and charge the walk-in
-              dine-in ticket when the order rings true.
+              {live
+                ? 'Review every line on the current ticket, apply quick actions and charge it when the order is right.'
+                : 'Item customizer for ticket #POS-1049 — review every line, apply quick actions and charge the walk-in dine-in ticket when the order rings true.'}
             </p>
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
             <button
               type="button"
               aria-label="More ticket options"
-              onClick={() => showToast('Ticket options opened')}
+              onClick={() => showToast(live ? 'Ticket options are coming soon.' : 'Ticket options opened')}
               className="w-11 h-11 rounded-xl bg-surface-canvas border border-border-subtle flex items-center justify-center text-on-surface-variant hover:bg-surface-tint-blue hover:text-primary transition-colors shadow-sm"
             >
               <Icon name="more_vert" className="text-[20px]" />
@@ -390,7 +415,7 @@ export function DesktopPosCartScreen({
                     <button
                       key={action.key}
                       type="button"
-                      onClick={() => showToast(ACTION_TOASTS[action.key])}
+                      onClick={() => showToast(live ? `${action.label} is coming soon.` : ACTION_TOASTS[action.key])}
                       className="h-16 rounded-xl bg-surface-canvas border border-border-subtle shadow-sm flex flex-col items-center justify-center gap-0.5 hover:bg-surface-tint-blue hover:text-primary transition-colors"
                     >
                       <Icon name={action.icon} className="text-primary text-[18px]" />
@@ -448,7 +473,7 @@ export function DesktopPosCartScreen({
                 </button>
                 <button
                   type="button"
-                  onClick={() => showToast('Split bill opened for this ticket')}
+                  onClick={() => showToast(live ? 'Split bill is coming soon — use Split on the payment screen.' : 'Split bill opened for this ticket')}
                   disabled={empty}
                   className="h-11 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs hover:bg-surface-container-high transition-colors disabled:opacity-40"
                 >

@@ -7,11 +7,36 @@ import {
   type CustomDayHours,
   type StandardHours,
 } from '../components/ui/OperatingHoursEditor';
+import { hasApiConfig } from '../services/api/client';
+import { useBranchMutations, useTeamMutations } from '../hooks/business/useBranchesAndTeam';
+import { apiErrorMessage } from '../services/errorMessages';
+import { planErrorMessage } from '../services/planErrors';
+import type { Branch } from '../services/branchService';
 
 interface BusinessAddBranchScreenProps {
   onBack: () => void;
-  onSaved: () => void;
+  /** Live: receives the branch the API created. */
+  onSaved: (branch?: Branch) => void;
 }
+
+/** "8:00 AM" → "08:00" for the API's opening hours. */
+const to24h = (value: string) => {
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value.trim());
+  if (!match) return value;
+  let hour = Number(match[1]) % 12;
+  if (match[3].toUpperCase() === 'PM') hour += 12;
+  return `${String(hour).padStart(2, '0')}:${match[2]}`;
+};
+
+/** Reads a form field by id (the form's inputs are uncontrolled). */
+const field = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value.trim() ?? '';
+
+/** Nigerian numbers as `+234…`. */
+const phoneValue = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return undefined;
+  return `+234${digits.startsWith('234') ? digits.slice(3) : digits.replace(/^0/, '')}`;
+};
 
 type SaveStatus = 'idle' | 'publishing' | 'success';
 
@@ -35,9 +60,65 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
   });
   const [customDayHours, setCustomDayHours] = useState<CustomDayHours[]>([]);
   const [status, setStatus] = useState<SaveStatus>('idle');
+  // Live: the form creates a real branch (and invites its lead when access is granted).
+  const live = hasApiConfig();
+  const sample = (value: string) => (live ? '' : value);
+  const { create, update } = useBranchMutations();
+  const { invite } = useTeamMutations();
+  const [error, setError] = useState<string | null>(null);
+  const showError = (message: string) => {
+    setError(message);
+    window.setTimeout(() => setError(null), 4500);
+  };
+
+  const saveLive = async () => {
+    const name = field('branch-name');
+    if (!name) return showError('Give the branch a name.');
+    const hours = Object.fromEntries(
+      WEEKDAYS.map((day) => {
+        const custom = customHours ? customDayHours.find((entry) => entry.day === day) : undefined;
+        const open = custom ? custom.open : standardHours.days.includes(day) ? standardHours.open : '';
+        const close = custom ? custom.close : standardHours.days.includes(day) ? standardHours.close : '';
+        return [day.toLowerCase(), open && close ? { open: to24h(open), close: to24h(close) } : { closed: true }];
+      }),
+    );
+    const leadName = field('lead-name');
+    const leadEmail = field('lead-email');
+    const leadPhone = phoneValue(field('lead-phone'));
+    setStatus('publishing');
+    try {
+      const branch = await create.mutateAsync({
+        name,
+        address: [field('branch-street'), field('branch-landmark')].filter(Boolean).join(' — ') || undefined,
+        district: field('branch-district') || undefined,
+        phone: phoneValue(field('branch-phone')),
+        officialEmail: field('branch-email') || undefined,
+        managerName: leadName || undefined,
+        managerEmail: leadEmail || undefined,
+        managerPhone: leadPhone,
+      });
+      // Opening hours are set on the branch once it exists.
+      await update.mutateAsync({ id: branch.id, input: { businessHours: hours } });
+      if (grantAccess && leadName && leadEmail) {
+        const [firstName, ...rest] = leadName.split(/\s+/);
+        await invite
+          .mutateAsync({ firstName, lastName: rest.join(' ') || firstName, email: leadEmail, phone: leadPhone, role: 'Manager', jobTitle: role, branchId: branch.id })
+          .catch(() => showError('Branch saved, but the lead invite could not be sent. Invite them from Staff.'));
+      }
+      setStatus('success');
+      window.setTimeout(() => onSaved(branch), 900);
+    } catch (e) {
+      setStatus('idle');
+      showError(planErrorMessage(e) ?? apiErrorMessage(e, 'Could not add the branch.'));
+    }
+  };
 
   const handleSave = () => {
     if (status !== 'idle') return;
+    if (live) {
+      void saveLive();
+      return;
+    }
     setStatus('publishing');
     window.setTimeout(() => {
       setStatus('success');
@@ -113,7 +194,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
               <div className="relative flex items-center">
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas shadow-inner"
-                  defaultValue="Garki District Flagship"
+                  defaultValue={sample('Garki District Flagship')}
                   id="branch-name"
                   placeholder="e.g. Garki Branch, Victoria Island Annex"
                   type="text"
@@ -143,7 +224,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 </label>
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="Plot 742, Tafawa Balewa Way, Area 11"
+                  defaultValue={sample('Plot 742, Tafawa Balewa Way, Area 11')}
                   id="branch-street"
                   placeholder="e.g. Suite 4B, Garki Mall, Area 11"
                   type="text"
@@ -155,7 +236,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 </label>
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="Directly opposite Area 11 Post Office, Wing B"
+                  defaultValue={sample('Directly opposite Area 11 Post Office, Wing B')}
                   id="branch-landmark"
                   placeholder="e.g. Opposite National Hospital, Ground Floor"
                   type="text"
@@ -167,7 +248,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 </label>
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="Abuja Municipal • Garki District, FCT"
+                  defaultValue={sample('Abuja Municipal • Garki District, FCT')}
                   id="branch-district"
                   placeholder="e.g. Abuja Municipal • Garki District"
                   type="text"
@@ -179,16 +260,18 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 aria-label={BRANCH_IMAGES[0].alt}
                 className="w-full h-36 bg-cover bg-center"
                 role="img"
-                style={{ backgroundImage: `url('${BRANCH_IMAGES[0].src}')` }}
+                style={live ? undefined : { backgroundImage: `url('${BRANCH_IMAGES[0].src}')` }}
               />
               <div className="p-space-sm bg-surface-canvas flex items-center justify-between">
                 <div className="flex items-center gap-space-xs min-w-0">
                   <Icon name="pin_drop" className="text-primary-container text-[20px] shrink-0" />
                   <div className="flex flex-col min-w-0">
                     <span className="font-label-sm text-label-sm text-text-primary truncate">
-                      9.0348° N, 7.4891° E
+                      {live ? 'Location' : '9.0348° N, 7.4891° E'}
                     </span>
-                    <span className="font-caption text-caption text-text-tertiary">Pinned with ±3m accuracy</span>
+                    <span className="font-caption text-caption text-text-tertiary">
+                      {live ? 'Pinned from the address you enter' : 'Pinned with ±3m accuracy'}
+                    </span>
                   </div>
                 </div>
                 <button
@@ -220,7 +303,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                   </div>
                   <input
                     className="flex-1 h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                    defaultValue="809 111 4455"
+                    defaultValue={sample('809 111 4455')}
                     id="branch-phone"
                     placeholder="801 234 5678"
                     type="tel"
@@ -234,7 +317,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 <div className="relative flex items-center">
                   <input
                     className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                    defaultValue="garki.store@urbangrill.ng"
+                    defaultValue={sample('garki.store@urbangrill.ng')}
                     id="branch-email"
                     placeholder="e.g. garki@urbangrill.ng"
                     type="email"
@@ -300,7 +383,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
               <div className="relative flex items-center">
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="Chidinma Okafor"
+                  defaultValue={sample('Chidinma Okafor')}
                   id="lead-name"
                   placeholder="e.g. Chidinma Okafor"
                   type="text"
@@ -315,7 +398,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
               <div className="relative flex items-center">
                 <input
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="chidinma@urbangrill.ng"
+                  defaultValue={sample('chidinma@urbangrill.ng')}
                   id="lead-email"
                   placeholder="e.g. chidinma@urbangrill.ng"
                   type="email"
@@ -335,7 +418,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 </div>
                 <input
                   className="flex-1 h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue="803 762 9901"
+                  defaultValue={sample('803 762 9901')}
                   id="lead-phone"
                   placeholder="803 000 0000"
                   type="tel"
@@ -419,6 +502,11 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
           </div>
         </div>
       </div>
+      {error && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {error}
+        </div>
+      )}
     </AppScreen>
   );
 }

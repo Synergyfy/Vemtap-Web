@@ -99,8 +99,8 @@ export function DesktopProductDealScreen({
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden flex-shrink-0 bg-surface-container">
               <img
                 className="w-full h-full object-cover"
-                alt={draft.mainImage ? draft.title : DEAL_IMAGES[0].alt}
-                src={draft.mainImage || DEAL_IMAGES[0].src}
+                alt={DEAL_IMAGES[0].alt}
+                src={DEAL_IMAGES[0].src}
               />
             </div>
             <div className="flex flex-col">
@@ -328,7 +328,7 @@ export function DesktopProductDealScreen({
                 </div>
                 <p className="font-body-md text-body-md text-on-surface-variant">
                   You do not have to discount everything. Pick signature dishes like this{' '}
-                  <strong className="text-on-surface">{draft.title || 'item'}</strong> as magnet offers to pull first-time
+                  <strong className="text-on-surface">Ribeye Steak</strong> as magnet offers to pull first-time
                   diners through your doors. Once seated, guests average 2.4× their ticket on drinks and sides at
                   regular margins!
                 </p>

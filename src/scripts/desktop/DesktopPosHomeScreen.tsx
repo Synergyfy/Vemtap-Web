@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
+import { useQuery } from '@tanstack/react-query';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { planErrorMessage } from '../../services/planErrors';
+import { posService } from '../../services/posService';
+import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { isLowStock } from '../catalogueLive';
+import { naira, timeLabel, useLivePos } from '../posLive';
 
 interface DesktopPosHomeScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -93,8 +101,76 @@ export function DesktopPosHomeScreen({
 }: DesktopPosHomeScreenProps) {
   const [drawerState, setDrawerState] = useState<'idle' | 'popping' | 'open'>('idle');
   const [kioskArmed, setKioskArmed] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const pos = useLivePos();
+  const live = pos.live;
+  const { activeBranchId } = useBusinessBranch();
+  const catalogue = useCatalogueItems();
+  const patrons = useQuery({
+    queryKey: ['pos', 'customer-page', activeBranchId ?? 'all'],
+    queryFn: () => posService.customerPage({ branchId: activeBranchId, limit: 1 }),
+    enabled: live && Boolean(activeBranchId),
+  });
+  const items = catalogue.data ?? [];
+  const lowStock = items.filter(isLowStock).length;
+  const outOfStock = items.filter((item) => typeof item.stockQuantity === 'number' && item.stockQuantity <= 0);
+  const kitchenOrders = (pos.kitchen?.data ?? []).filter((order) => order.status !== 'completed');
+  const openingCash = pos.zReport?.openingCash != null ? Number(pos.zReport.openingCash) : null;
+  const expectedCash = pos.zReport?.expectedCash != null ? Number(pos.zReport.expectedCash) : null;
+  const variance = pos.zReport?.variance != null ? Number(pos.zReport.variance) : null;
+  const tenderRows = live
+    ? pos.breakdown.slice(0, 3).map((row, index) => ({
+        dot: TENDER_ROWS[index]?.dot ?? 'bg-secondary',
+        label: row.label,
+        value: naira(row.amount),
+        meta: `${row.share}%`,
+      }))
+    : TENDER_ROWS;
+  const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+
+  useEffect(() => {
+    if (pos.error) showToast(apiErrorMessage(pos.error, 'Could not load the register.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pos.error]);
+
+  /** Live: the drawer button opens the register on a till, or closes the open one. */
+  const toggleRegister = () => {
+    if (pos.isOpen) {
+      if (!window.confirm(`Close the register on ${pos.tillName} and end this shift?`)) return;
+      pos.mutations.closeRegister.mutate(
+        {},
+        {
+          onSuccess: (session) =>
+            showToast(`Register closed · ${naira(Number(session.totalSales) || 0)} in ${session.transactionCount ?? 0} sales`),
+          onError: (error) => showToast(apiErrorMessage(error, 'Could not close the register.')),
+        },
+      );
+      return;
+    }
+    pos
+      .openOnTill()
+      .then(() => showToast('Register open — you can start selling'))
+      .catch((error: unknown) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not open the register.')));
+  };
+
+  const startSale = () => {
+    if (live && !pos.isOpen) {
+      showToast('Open the register first (Till & Cash Drawer).');
+      return;
+    }
+    onNewSale();
+  };
 
   const popDrawer = () => {
+    if (live) {
+      toggleRegister();
+      return;
+    }
     if (drawerState === 'popping') return;
     setDrawerState('popping');
     window.setTimeout(() => {
@@ -107,7 +183,7 @@ export function DesktopPosHomeScreen({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'F1') {
         event.preventDefault();
-        onNewSale();
+        startSale();
       } else if (event.key === 'F2') {
         event.preventDefault();
         onOpenLedger();
@@ -128,6 +204,10 @@ export function DesktopPosHomeScreen({
   }, [onNewSale, onOpenLedger, onOpenProducts, onOpenCustomers]);
 
   const toggleKiosk = () => {
+    if (live) {
+      showToast('Kiosk lock is coming soon.');
+      return;
+    }
     if (kioskArmed) {
       setKioskArmed(false);
       return;
@@ -153,24 +233,25 @@ export function DesktopPosHomeScreen({
             <div className="flex flex-col">
               <div className="flex flex-wrap items-center gap-space-xs">
                 <span className="font-heading-md text-heading-md text-text-primary tracking-tight">
-                  Urban Grill & Bistro • Wuse II Flagship #01
+                  {v(`${pos.businessName} • ${pos.branchName}`, 'Urban Grill & Bistro • Wuse II Flagship #01')}
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-                  Live Shift Online
+                  {v(pos.isOpen ? 'Live Shift Online' : 'Register Closed', 'Live Shift Online')}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-x-space-md gap-y-1 mt-1 text-text-secondary font-caption text-caption">
                 <span className="font-medium text-text-primary flex items-center gap-1">
                   <Icon name="point_of_sale" className="text-[15px] text-primary" />
-                  Terminal #01 Active
+                  {v(pos.isOpen ? `${pos.tillName} Active` : 'No till open', 'Terminal #01 Active')}
                 </span>
                 <span className="text-outline-variant">•</span>
                 <span>
-                  Cashier: <strong className="text-text-primary font-medium">Emeka Okafor</strong> (Shift ID: #SH-4092)
+                  Cashier: <strong className="text-text-primary font-medium">{v(pos.cashierName, 'Emeka Okafor')}</strong>{' '}
+                  {v(pos.session ? `(Shift ID: #${pos.session.id.slice(0, 6).toUpperCase()})` : '', '(Shift ID: #SH-4092)')}
                 </span>
                 <span className="text-outline-variant">•</span>
-                <span>Opened 08:30 AM Today (WAT)</span>
+                <span>{v(pos.session ? `Opened ${timeLabel(pos.session.openedAt)} Today` : 'Not opened', 'Opened 08:30 AM Today (WAT)')}</span>
               </div>
             </div>
           </div>
@@ -178,13 +259,28 @@ export function DesktopPosHomeScreen({
             <div className="flex items-center gap-2 px-space-sm py-2 rounded-lg bg-surface-container-low text-text-secondary font-caption text-caption">
               <Icon name="sync" className="text-[16px] text-primary-container" />
               <span>
-                Shift Synced <strong className="text-text-primary font-medium">18ms</strong> (142 tickets ledgered)
+                {live ? (
+                  <>
+                    {pos.offline.pendingCount ? 'Sync pending' : 'Shift Synced'}{' '}
+                    <strong className="text-text-primary font-medium">{pos.offline.pendingCount}</strong> waiting ({pos.todayCount} tickets today)
+                  </>
+                ) : (
+                  <>
+                    Shift Synced <strong className="text-text-primary font-medium">18ms</strong> (142 tickets ledgered)
+                  </>
+                )}
               </span>
             </div>
             <div className="flex items-center gap-2 px-space-sm py-2 rounded-lg bg-surface-container-low text-text-secondary font-caption text-caption">
               <Icon name="shield" className="text-[16px] text-badge-discount-text" />
               <span>
-                Offline Guard <strong className="text-text-primary font-medium">AES-256</strong> (500 tap/cash slots buffered)
+                {live ? (
+                  <>Offline Guard {pos.offline.isOnline ? 'ready' : 'active — saving sales on this device'}</>
+                ) : (
+                  <>
+                    Offline Guard <strong className="text-text-primary font-medium">AES-256</strong> (500 tap/cash slots buffered)
+                  </>
+                )}
               </span>
             </div>
           </div>
@@ -214,7 +310,7 @@ export function DesktopPosHomeScreen({
             <div className="mt-space-lg pt-space-xs">
               <button
                 type="button"
-                onClick={onNewSale}
+                onClick={startSale}
                 className="w-full py-3 px-space-md rounded-lg bg-surface-canvas text-primary-container font-button-primary text-button-primary hover:bg-surface-subtle active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-sm font-semibold"
               >
                 <span>Launch POS Terminal</span>
@@ -236,10 +332,10 @@ export function DesktopPosHomeScreen({
                 Shift Transactions
               </span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="font-display-hero text-display-hero text-text-primary tracking-tight font-bold">₦342,850</span>
+                <span className="font-display-hero text-display-hero text-text-primary tracking-tight font-bold">{v(naira(pos.todaySales), '₦342,850')}</span>
               </div>
               <span className="inline-block mt-1 font-caption text-caption text-badge-discount-text font-medium bg-badge-discount-bg px-2 py-0.5 rounded-full">
-                142 completed tickets
+                {v(`${pos.todayCount} completed tickets`, '142 completed tickets')}
               </span>
             </div>
             <div className="mt-space-md pt-space-xs">
@@ -267,15 +363,28 @@ export function DesktopPosHomeScreen({
                 Catalog & 86'd Items
               </span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="font-display-hero text-display-hero text-text-primary tracking-tight font-bold">184</span>
+                <span className="font-display-hero text-display-hero text-text-primary tracking-tight font-bold">{v(String(items.length), '184')}</span>
                 <span className="font-label-md text-label-md text-text-secondary">Live</span>
                 <span className="font-caption text-caption text-tertiary font-medium bg-tertiary-fixed px-2 py-0.5 rounded-full">
-                  6 Low Stock
+                  {v(`${lowStock} Low Stock`, '6 Low Stock')}
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary mt-1.5 leading-snug">
-                2 kitchen items toggled 86'd (<strong className="text-tertiary font-medium">Oxtail</strong>,{' '}
-                <strong className="text-tertiary font-medium">Tiger Prawns</strong>)
+                {live ? (
+                  outOfStock.length ? (
+                    <>
+                      {outOfStock.length} items out of stock (
+                      <strong className="text-tertiary font-medium">{outOfStock.slice(0, 2).map((item) => item.name).join(', ')}</strong>)
+                    </>
+                  ) : (
+                    'No items out of stock'
+                  )
+                ) : (
+                  <>
+                    2 kitchen items toggled 86'd (<strong className="text-tertiary font-medium">Oxtail</strong>,{' '}
+                    <strong className="text-tertiary font-medium">Tiger Prawns</strong>)
+                  </>
+                )}
               </p>
             </div>
             <div className="mt-space-md pt-space-xs">
@@ -303,11 +412,11 @@ export function DesktopPosHomeScreen({
                 Patron Directory
               </span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="font-display-hero text-display-hero text-text-primary tracking-tight font-bold">2,490</span>
+                <span className="font-display-hero text-display-hero text-text-primary tracking-tight font-bold">{v(String(patrons.data?.segmentCounts.vip ?? '—'), '2,490')}</span>
                 <span className="font-label-md text-label-md text-text-secondary">VIPs</span>
               </div>
               <p className="font-caption text-caption text-text-secondary mt-1.5 leading-snug">
-                18 loyalty discounts redeemed today (₦18,200 saved)
+                {v(`${patrons.data?.segmentCounts.all ?? '—'} customers on record`, '18 loyalty discounts redeemed today (₦18,200 saved)')}
               </p>
             </div>
             <div className="mt-space-md pt-space-xs flex flex-col gap-2">
@@ -350,40 +459,51 @@ export function DesktopPosHomeScreen({
                 </div>
                 <span className="inline-flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                   <Icon name="verified" className="text-[14px]" />
-                  100% Audit Match
+                  {v(pos.isOpen ? 'Shift open' : 'No open shift', '100% Audit Match')}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-space-sm p-space-md bg-surface-subtle rounded-xl mb-space-md">
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary uppercase font-medium">Gross Shift Volume</span>
-                  <span className="font-heading-md text-heading-md text-text-primary font-bold mt-1">₦342,850</span>
+                  <span className="font-heading-md text-heading-md text-text-primary font-bold mt-1">{v(naira(pos.todaySales), '₦342,850')}</span>
                   <span className="font-caption text-caption text-badge-discount-text font-medium mt-0.5">Net Realized</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary uppercase font-medium">Total Orders</span>
-                  <span className="font-heading-md text-heading-md text-text-primary font-bold mt-1">142</span>
-                  <span className="font-caption text-caption text-text-secondary mt-0.5">0 voids / 0 returns</span>
+                  <span className="font-heading-md text-heading-md text-text-primary font-bold mt-1">{v(String(pos.todayCount), '142')}</span>
+                  <span className="font-caption text-caption text-text-secondary mt-0.5">{v('today', '0 voids / 0 returns')}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-caption text-caption text-text-tertiary uppercase font-medium">Avg Ticket Size</span>
-                  <span className="font-heading-md text-heading-md text-text-primary font-bold mt-1">₦2,414</span>
-                  <span className="font-caption text-caption text-primary font-medium mt-0.5">+4.2% vs Yesterday</span>
+                  <span className="font-heading-md text-heading-md text-text-primary font-bold mt-1">{v(naira(pos.averageTicket), '₦2,414')}</span>
+                  <span className="font-caption text-caption text-primary font-medium mt-0.5">{v('per sale', '+4.2% vs Yesterday')}</span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-space-xs">
                 <div className="flex justify-between items-center text-caption font-caption text-text-secondary">
                   <span>Tender Share Breakdown</span>
-                  <span className="font-medium text-text-primary">₦342,850 Settled</span>
+                  <span className="font-medium text-text-primary">{v(`${naira(pos.todaySales)} Settled`, '₦342,850 Settled')}</span>
                 </div>
                 <div className="w-full h-3 rounded-full overflow-hidden bg-surface-container flex">
-                  <div className="h-full bg-primary-container" style={{ width: '62.4%' }} title="Card / NFC 62.4%" />
-                  <div className="h-full bg-badge-discount-text" style={{ width: '26.9%' }} title="Cash Tender 26.9%" />
-                  <div className="h-full bg-secondary" style={{ width: '10.7%' }} title="VEMTAP Direct QR & NIP 10.7%" />
+                  {live ? (
+                    tenderRows.map((row, index) => (
+                      <div className={`h-full ${row.dot}`} key={row.label} style={{ width: `${pos.breakdown[index]?.share ?? 0}%` }} title={`${row.label} ${row.meta}`} />
+                    ))
+                  ) : (
+                    <>
+                      <div className="h-full bg-primary-container" style={{ width: '62.4%' }} title="Card / NFC 62.4%" />
+                      <div className="h-full bg-badge-discount-text" style={{ width: '26.9%' }} title="Cash Tender 26.9%" />
+                      <div className="h-full bg-secondary" style={{ width: '10.7%' }} title="VEMTAP Direct QR & NIP 10.7%" />
+                    </>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-space-sm mt-space-sm pt-space-xs">
-                  {TENDER_ROWS.map((row) => (
+                  {live && !tenderRows.length && (
+                    <span className="font-caption text-caption text-text-tertiary">{pos.isOpen ? 'No sales this shift yet' : 'Open the register to see this shift'}</span>
+                  )}
+                  {tenderRows.map((row) => (
                     <div key={row.label} className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
                       <div className="flex items-center gap-1.5 mb-1">
                         <span className={`w-2.5 h-2.5 rounded-full ${row.dot}`} />
@@ -405,7 +525,7 @@ export function DesktopPosHomeScreen({
                     Live Kitchen Queue
                   </span>
                   <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold">
-                    3 Active
+                    {v(`${kitchenOrders.length} Active`, '3 Active')}
                   </span>
                 </div>
                 <button
@@ -418,7 +538,19 @@ export function DesktopPosHomeScreen({
                 </button>
               </div>
               <div className="space-y-space-sm">
-                {KITCHEN_QUEUE.map((ticket) => (
+                {(live
+                  ? kitchenOrders.slice(0, 3).map((order) => ({
+                      id: `#${order.reference}`,
+                      table: order.tableNumber ? `Table ${order.tableNumber}` : order.guestName || 'Takeaway',
+                      station: order.status.charAt(0).toUpperCase() + order.status.slice(1),
+                      stationClass: 'bg-surface-container text-text-primary',
+                      items: (order.lines ?? []).map((line) => `${line.quantity}x ${line.name}`).join(', ') || '—',
+                      total: naira(Number(order.totalAmount) || 0),
+                      time: order.elapsedMinutes != null ? `${order.elapsedMinutes}m ago` : '—',
+                      timeClass: 'text-text-secondary',
+                    }))
+                  : KITCHEN_QUEUE
+                ).map((ticket) => (
                   <div
                     key={ticket.id}
                     className="p-space-md rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-sm"
@@ -479,7 +611,7 @@ export function DesktopPosHomeScreen({
                   ) : (
                     <>
                       <Icon name="lock_open" className="text-[18px]" />
-                      <span>Pop Drawer (F5)</span>
+                      <span>{v(pos.isOpen ? 'Close Register (F5)' : 'Open Register (F5)', 'Pop Drawer (F5)')}</span>
                     </>
                   )}
                 </button>
@@ -488,22 +620,24 @@ export function DesktopPosHomeScreen({
                 <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-subtle">
                   <span className="font-body-md text-body-md text-text-secondary">Opening Shift Float</span>
                   <div className="text-right">
-                    <span className="font-label-md text-label-md font-bold text-text-primary">₦50,000</span>
-                    <span className="block font-caption text-caption text-text-tertiary">Verified 08:30 AM</span>
+                    <span className="font-label-md text-label-md font-bold text-text-primary">{v(naira(openingCash), '₦50,000')}</span>
+                    <span className="block font-caption text-caption text-text-tertiary">
+                      {v(pos.session ? `Opened ${timeLabel(pos.session.openedAt)}` : '—', 'Verified 08:30 AM')}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-subtle">
                   <span className="font-body-md text-body-md text-text-secondary">Current Cash in Drawer</span>
                   <div className="text-right">
-                    <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">₦142,400</span>
-                    <span className="block font-caption text-caption text-badge-discount-text">Exact float + sales match</span>
+                    <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">{v(naira(expectedCash), '₦142,400')}</span>
+                    <span className="block font-caption text-caption text-badge-discount-text">{v('Float + cash sales', 'Exact float + sales match')}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-subtle">
                   <span className="font-body-md text-body-md text-text-secondary">Float Variance</span>
                   <div className="text-right">
-                    <span className="font-label-md text-label-md font-semibold text-text-primary">₦0.00 Over / Short</span>
-                    <span className="block font-caption text-caption text-text-tertiary">Next drop audit: 16:00</span>
+                    <span className="font-label-md text-label-md font-semibold text-text-primary">{v(variance == null ? '—' : `${naira(variance)} Over / Short`, '₦0.00 Over / Short')}</span>
+                    <span className="block font-caption text-caption text-text-tertiary">{v('Counted at close', 'Next drop audit: 16:00')}</span>
                   </div>
                 </div>
               </div>
@@ -521,11 +655,11 @@ export function DesktopPosHomeScreen({
                   </span>
                 </div>
                 <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                  3/3 Connected
+                  {v('—', '3/3 Connected')}
                 </span>
               </div>
               <div className="space-y-space-sm">
-                {FLEET.map((device) => (
+                {(live ? FLEET.map((device) => ({ ...device, meta: '—', status: '—' })) : FLEET).map((device) => (
                   <div key={device.name} className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between">
                     <div className="flex items-center gap-space-sm">
                       <div className="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center text-primary-container shadow-sm">
@@ -605,6 +739,11 @@ export function DesktopPosHomeScreen({
           </div>
         </div>
       </section>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          {toast}
+        </div>
+      )}
     </PosTerminalChrome>
   );
 }

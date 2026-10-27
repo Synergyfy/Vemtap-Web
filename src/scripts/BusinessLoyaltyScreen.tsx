@@ -3,6 +3,26 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
+import { hasApiConfig } from '../services/api/client';
+import { apiErrorMessage } from '../services/errorMessages';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import {
+  useLoyaltyLogs,
+  useLoyaltyMutations,
+  useLoyaltyRewards,
+  useLoyaltyRules,
+  useLoyaltyStats,
+} from '../hooks/business/useLoyalty';
+import {
+  DEFAULT_BONUS,
+  earnsOnSpend,
+  earnsOnVisit,
+  logEntry,
+  rewardStatus,
+  ruleTypeFor,
+  spendRuleLabel,
+  statValue,
+} from './loyaltyLive';
 
 interface BusinessLoyaltyScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -44,6 +64,63 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
+  const live = hasApiConfig();
+  const business = useMyBusiness();
+  const liveRules = useLoyaltyRules();
+  const stats = useLoyaltyStats();
+  const logs = useLoyaltyLogs();
+  const rewards = useLoyaltyRewards();
+  const { updateRules } = useLoyaltyMutations();
+  // Live: which earning rules are on, edited here and saved together.
+  const [draft, setDraft] = useState<Record<string, boolean> | null>(null);
+  const loadError = liveRules.error ?? stats.error ?? logs.error;
+
+  useEffect(() => {
+    const data = liveRules.data;
+    if (!data) return;
+    setActive(data.isActive);
+    setDraft({
+      spend: earnsOnSpend(data),
+      visit: earnsOnVisit(data),
+      birthday: data.birthdayBonus > 0,
+      referral: data.referralBonus > 0,
+    });
+  }, [liveRules.data]);
+
+  useEffect(() => {
+    if (loadError) showToast(apiErrorMessage(loadError, 'Could not load your loyalty programme.'));
+  }, [loadError]);
+
+  const data = liveRules.data;
+  const shownRules =
+    live && data
+      ? [
+          { key: 'spend', label: spendRuleLabel(data), desc: 'Earned on every settled order', enabled: draft?.spend ?? false },
+          {
+            key: 'birthday',
+            label: `+${(data.birthdayBonus || DEFAULT_BONUS.birthdayBonus).toLocaleString('en-US')} birthday points`,
+            desc: 'Credited during the member birthday week',
+            enabled: draft?.birthday ?? false,
+          },
+          {
+            key: 'visit',
+            label: `+${data.visitPoints} points per visit`,
+            desc: `Once every ${data.visitCooldownHours} hours per member`,
+            enabled: draft?.visit ?? false,
+          },
+          {
+            key: 'referral',
+            label: `+${(data.referralBonus || DEFAULT_BONUS.referralBonus).toLocaleString('en-US')} points for referrals`,
+            desc: 'When a referred guest makes a first order',
+            enabled: draft?.referral ?? false,
+          },
+        ]
+      : live
+        ? []
+        : rules;
+  const firstReward = (rewards.data ?? []).find((reward) => rewardStatus(reward) === 'active');
+  const activity = live ? (logs.data ?? []).slice(0, 5).map(logEntry) : ACTIVITY;
+
   useEffect(
     () => () => {
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -58,6 +135,10 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
   };
 
   const toggleRule = (key: string) => {
+    if (live) {
+      setDraft((current) => (current ? { ...current, [key]: !current[key] } : current));
+      return;
+    }
     setRules((current) => current.map((rule) => (rule.key === key ? { ...rule, enabled: !rule.enabled } : rule)));
   };
 
@@ -71,6 +152,36 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
 
   const save = () => {
     if (saving !== 'idle') return;
+    if (live) {
+      if (!data || !draft) return;
+      const ruleType = ruleTypeFor(draft.spend, draft.visit);
+      if (!ruleType) {
+        showToast('Keep points on spend or visits switched on.');
+        return;
+      }
+      setSaving('saving');
+      updateRules.mutate(
+        {
+          ruleType,
+          birthdayBonus: draft.birthday ? data.birthdayBonus || DEFAULT_BONUS.birthdayBonus : 0,
+          referralBonus: draft.referral ? data.referralBonus || DEFAULT_BONUS.referralBonus : 0,
+        },
+        {
+          onSuccess: () => {
+            setSaving('saved');
+            window.setTimeout(() => {
+              setSaving('idle');
+              showToast('Loyalty settings saved');
+            }, 800);
+          },
+          onError: (error) => {
+            setSaving('idle');
+            showToast(apiErrorMessage(error, 'Could not save your loyalty settings.'));
+          },
+        },
+      );
+      return;
+    }
     setSaving('saving');
     window.setTimeout(() => setSaving('saved'), 800);
     window.setTimeout(() => {
@@ -141,6 +252,16 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
                   }`}
                   type="button"
                   onClick={() => {
+                    if (live) {
+                      updateRules.mutate(
+                        { isActive: !active },
+                        {
+                          onSuccess: () => showToast(active ? 'Programme paused' : 'Programme activated'),
+                          onError: (error) => showToast(apiErrorMessage(error, 'Could not update the programme.')),
+                        },
+                      );
+                      return;
+                    }
                     setActive((current) => !current);
                     showToast(active ? 'Programme paused' : 'Programme activated');
                   }}
@@ -157,7 +278,7 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
             <section className="px-margin pt-space-md">
               <h3 className="font-label-md text-label-md text-text-primary font-semibold">Points Earning Rules</h3>
               <div className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm mt-space-xs divide-y divide-border-subtle">
-                {rules.map((rule) => (
+                {shownRules.map((rule) => (
                   <button
                     className="w-full flex items-center justify-between gap-space-xs py-2 px-1.5 text-left"
                     key={rule.key}
@@ -198,7 +319,13 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
                       className="flex items-center gap-space-xs py-2 px-1.5 text-left"
                       key={option.key}
                       type="button"
-                      onClick={() => setBranchMode(option.key as 'all' | 'selected')}
+                      onClick={() => {
+                        if (live && option.key === 'selected') {
+                          showToast('Choosing branches for loyalty is coming soon.');
+                          return;
+                        }
+                        setBranchMode(option.key as 'all' | 'selected');
+                      }}
                     >
                       <span
                         className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
@@ -238,8 +365,14 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
               <div className="relative mt-space-xs">
                 <select
                   className="w-full h-11 px-space-sm pr-9 rounded-xl bg-surface-canvas border border-border-subtle text-text-primary font-label-sm text-label-sm outline-none focus:border-primary appearance-none"
-                  value={expiry}
-                  onChange={(event) => setExpiry(event.target.value)}
+                  value={live ? EXPIRY_OPTIONS[0] : expiry}
+                  onChange={(event) => {
+                    if (live) {
+                      showToast('Points expiry is coming soon. Points never expire for now.');
+                      return;
+                    }
+                    setExpiry(event.target.value);
+                  }}
                 >
                   {EXPIRY_OPTIONS.map((option) => (
                     <option key={option} value={option}>
@@ -265,8 +398,22 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
                   <span className="font-caption text-caption font-semibold uppercase tracking-wide">Member preview</span>
                 </div>
                 <p className="font-label-sm text-label-sm mt-1 leading-relaxed">
-                  Earn 1 point for every ₦1 spent at Urban Grill Bistro. Redeem 500 points for a free appetiser — points{' '}
-                  {expiry.toLowerCase()}.
+                  {live ? (
+                    <>
+                      {data && draft?.spend
+                        ? `Earn ${spendRuleLabel(data).replace(' = ', ' gets ')} at ${business.data?.name ?? 'your business'}.`
+                        : `Earn points at ${business.data?.name ?? 'your business'}.`}{' '}
+                      {firstReward
+                        ? `Redeem ${firstReward.pointsRequired.toLocaleString('en-US')} points for ${firstReward.name}.`
+                        : 'Add a reward so members have something to redeem.'}{' '}
+                      Points never expire.
+                    </>
+                  ) : (
+                    <>
+                      Earn 1 point for every ₦1 spent at Urban Grill Bistro. Redeem 500 points for a free appetiser — points{' '}
+                      {expiry.toLowerCase()}.
+                    </>
+                  )}
                 </p>
               </div>
             </section>
@@ -293,11 +440,18 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
           /* Activity tab */
           <>
             <section className="px-margin pt-space-sm grid grid-cols-3 gap-space-xs">
-              {[
-                { label: 'Points issued', value: '18,420' },
-                { label: 'Points redeemed', value: '6,150' },
-                { label: 'Active members', value: '312' },
-              ].map((metric) => (
+              {(live
+                ? [
+                    { label: 'Points issued', value: statValue(stats.data, 'Points Issued') },
+                    { label: 'Rewards redeemed', value: statValue(stats.data, 'Rewards Redeemed') },
+                    { label: 'Members', value: statValue(stats.data, 'Total Customers') },
+                  ]
+                : [
+                    { label: 'Points issued', value: '18,420' },
+                    { label: 'Points redeemed', value: '6,150' },
+                    { label: 'Active members', value: '312' },
+                  ]
+              ).map((metric) => (
                 <div className="bg-surface-canvas rounded-xl p-space-xs shadow-sm" key={metric.label}>
                   <p className="font-heading-sm text-heading-sm text-text-primary leading-none">{metric.value}</p>
                   <p className="font-caption text-caption text-text-secondary mt-1">{metric.label}</p>
@@ -308,10 +462,10 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
             <section className="px-margin pt-space-sm flex flex-col gap-space-xs">
               <div className="flex items-center justify-between">
                 <h3 className="font-label-md text-label-md text-text-primary font-semibold">Recent point activity</h3>
-                <span className="font-caption text-caption text-text-tertiary">Last 48 hours</span>
+                <span className="font-caption text-caption text-text-tertiary">{live ? 'Latest' : 'Last 48 hours'}</span>
               </div>
               <div className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm divide-y divide-border-subtle">
-                {ACTIVITY.map((item) => (
+                {activity.map((item) => (
                   <div className="flex items-center justify-between gap-space-xs py-2 px-1.5" key={`${item.member}-${item.date}`}>
                     <div className="min-w-0">
                       <p className="font-label-sm text-label-sm text-text-primary truncate">{item.member}</p>
@@ -332,7 +486,7 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
               <button
                 className="h-10 rounded-xl bg-surface-container-low text-on-surface font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1.5"
                 type="button"
-                onClick={() => showToast('Full loyalty ledger opening…')}
+                onClick={() => showToast(live ? 'The full loyalty ledger is coming soon.' : 'Full loyalty ledger opening…')}
               >
                 <Icon name="receipt_long" className="text-[15px]" />
                 <span>View full ledger</span>
