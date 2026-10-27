@@ -14,6 +14,7 @@ import {
 } from '../clusterData';
 import { ClusterQrCode } from '../../components/ClusterQrCode';
 import { hasApiConfig } from '../../services/api/client';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 import type { ClusterKind } from '../../services/clustersService';
@@ -61,15 +62,23 @@ export function DesktopClusterOnboardingScreen({
   // Detection state
   const [detectProgress, setDetectProgress] = useState(0);
   const [detectedCluster, setDetectedCluster] = useState<Cluster | null>(null);
-  const [unitOrSuite, setUnitOrSuite] = useState('Shop G-12, Ground Floor');
+  const [unitOrSuite, setUnitOrSuite] = useState(hasApiConfig() ? '' : 'Shop G-12, Ground Floor');
 
   // Create form state
   const [createName, setCreateName] = useState('');
   const [createType, setCreateType] = useState<ClusterType>('mall');
-  const [createAddress, setCreateAddress] = useState(
-    'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja'
-  );
-  const [createCity, setCreateCity] = useState('Abuja');
+  const [createAddress, setCreateAddress] = useState(live ? '' : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja');
+  const [createCity, setCreateCity] = useState(live ? '' : 'Abuja');
+  // Live: start from the business's own address; demo keeps the sample venue.
+  const myBusiness = useMyBusiness().data;
+  const businessAddress = [myBusiness?.address, myBusiness?.city].filter(Boolean).join(', ');
+  const registeredAddress = live ? businessAddress || 'your registered business address' : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja';
+  useEffect(() => {
+    if (!live || !myBusiness) return;
+    setCreateAddress((current) => current || myBusiness.address || '');
+    setCreateCity((current) => current || myBusiness.city || '');
+  }, [live, myBusiness]);
+
   const [createState, setCreateState] = useState('FCT');
   const [createRadius, setCreateRadius] = useState(500);
   const [agreedGuidelines, setAgreedGuidelines] = useState(false);
@@ -342,18 +351,18 @@ export function DesktopClusterOnboardingScreen({
                       <Icon name="hub" className="text-[22px]" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-sm text-text-primary">Amaka Mall Cluster</h4>
-                      <p className="text-[11px] text-text-secondary">Area 11, Garki, Abuja</p>
+                      <h4 className="font-bold text-sm text-text-primary">{live ? 'Your area cluster' : 'Amaka Mall Cluster'}</h4>
+                      <p className="text-[11px] text-text-secondary">{live ? businessAddress || 'Matched from your address' : 'Area 11, Garki, Abuja'}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-center text-xs">
                     <div className="p-2 rounded-lg bg-surface-subtle">
-                      <p className="font-bold text-text-primary">24 Merchants</p>
+                      <p className="font-bold text-text-primary">{live ? '—' : '24'} Merchants</p>
                       <p className="text-[10px] text-text-tertiary">Active Members</p>
                     </div>
                     <div className="p-2 rounded-lg bg-surface-subtle">
-                      <p className="font-bold text-emerald-600">18 Deals</p>
+                      <p className="font-bold text-emerald-600">{live ? '—' : '18'} Deals</p>
                       <p className="text-[10px] text-text-tertiary">In Rotator Pool</p>
                     </div>
                   </div>
@@ -393,7 +402,7 @@ export function DesktopClusterOnboardingScreen({
                 Verifying registered coordinates for:
                 <br />
                 <span className="font-semibold text-text-primary">
-                  Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja
+                  {registeredAddress}
                 </span>
               </p>
             </div>
@@ -495,8 +504,8 @@ export function DesktopClusterOnboardingScreen({
                 </div>
               </div>
 
-              {/* Member businesses preview */}
-              <div>
+              {/* Member businesses preview (demo only — live members are listed once you join) */}
+              <div className={live ? 'hidden' : undefined}>
                 <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-3">
                   Participating Center Merchants:
                 </p>
@@ -577,7 +586,7 @@ export function DesktopClusterOnboardingScreen({
               <p className="text-sm text-text-secondary leading-relaxed">
                 We didn't detect an active merchant cluster at your registered location (
                 <span className="font-semibold text-text-primary">
-                  Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja
+                  {registeredAddress}
                 </span>
                 ).
               </p>

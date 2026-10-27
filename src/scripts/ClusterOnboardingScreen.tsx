@@ -14,6 +14,7 @@ import {
 } from './clusterData';
 import { ClusterQrCode } from '../components/ClusterQrCode';
 import { hasApiConfig } from '../services/api/client';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { apiErrorMessage } from '../services/errorMessages';
 import { planErrorMessage } from '../services/planErrors';
 import type { ClusterKind } from '../services/clustersService';
@@ -43,15 +44,13 @@ export function ClusterOnboardingScreen({
   // Detection state
   const [detectProgress, setDetectProgress] = useState(0);
   const [detectedCluster, setDetectedCluster] = useState<Cluster | null>(null);
-  const [unitOrSuite, setUnitOrSuite] = useState('Shop G-12, Ground Floor');
+  const [unitOrSuite, setUnitOrSuite] = useState(hasApiConfig() ? '' : 'Shop G-12, Ground Floor');
 
   // Create form state
   const [createName, setCreateName] = useState('');
   const [createType, setCreateType] = useState<ClusterType>('mall');
-  const [createAddress, setCreateAddress] = useState(
-    'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja'
-  );
-  const [createCity, setCreateCity] = useState('Abuja');
+  const [createAddress, setCreateAddress] = useState(hasApiConfig() ? '' : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja');
+  const [createCity, setCreateCity] = useState(hasApiConfig() ? '' : 'Abuja');
   const [createState, setCreateState] = useState('FCT');
   const [createRadius, setCreateRadius] = useState(500);
   const [agreedGuidelines, setAgreedGuidelines] = useState(false);
@@ -64,6 +63,15 @@ export function ClusterOnboardingScreen({
   const [selectedShowcaseType, setSelectedShowcaseType] = useState<ShowcaseEntityType>('deal');
   const [localState, setClusterState] = useState(getClusterState());
   const live = hasApiConfig();
+  // Live: start from the business's own address; demo keeps the sample venue.
+  const myBusiness = useMyBusiness().data;
+  const businessAddress = [myBusiness?.address, myBusiness?.city].filter(Boolean).join(', ');
+  const registeredAddress = live ? businessAddress || 'your registered business address' : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja';
+  useEffect(() => {
+    if (!live || !myBusiness) return;
+    setCreateAddress((current) => current || myBusiness.address || '');
+    setCreateCity((current) => current || myBusiness.city || '');
+  }, [live, myBusiness]);
   const liveCluster = useLiveCluster();
   const clusterState = live ? liveCluster.state : localState;
   const [notice, setNotice] = useState<string | null>(null);
@@ -362,7 +370,7 @@ export function ClusterOnboardingScreen({
                 Checking your physical address:
                 <br />
                 <span className="font-semibold text-text-primary">
-                  Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja
+                  {registeredAddress}
                 </span>
               </p>
             </div>
@@ -518,7 +526,7 @@ export function ClusterOnboardingScreen({
               </h2>
               <p className="text-xs text-text-secondary leading-relaxed">
                 We couldn't detect an active merchant cluster at your registered address (
-                <span className="font-semibold text-text-primary">Area 11, Garki</span>).
+                <span className="font-semibold text-text-primary">{live ? registeredAddress : 'Area 11, Garki'}</span>).
               </p>
             </div>
 
@@ -713,7 +721,7 @@ export function ClusterOnboardingScreen({
               </h2>
               <p className="text-xs text-text-secondary mt-0.5">
                 Select whether you want to showcase promotional deals, catalog products, or your
-                storefront profile in the Amaka Mall rotator.
+                storefront profile in the {live ? 'cluster' : 'Amaka Mall'} rotator.
               </p>
             </div>
 

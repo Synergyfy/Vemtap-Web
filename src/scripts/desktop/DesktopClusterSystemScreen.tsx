@@ -343,7 +343,7 @@ export function DesktopClusterSystemScreen({
                   <p className="text-3xl font-extrabold text-primary">
                     {fig(analytics.clusterClicks.toLocaleString())}
                   </p>
-                  <p className="text-xs text-text-secondary mt-0.5">16.2% overall engagement</p>
+                  {!live && <p className="text-xs text-text-secondary mt-0.5">16.2% overall engagement</p>}
                 </div>
               </div>
 
@@ -529,7 +529,7 @@ export function DesktopClusterSystemScreen({
                     <p className="text-2xl font-extrabold text-text-primary mt-1">
                       {fig(analytics.businessViews.toLocaleString())}
                     </p>
-                    <p className="text-[10px] text-emerald-600 mt-0.5">+18% this month</p>
+                    {!live && <p className="text-[10px] text-emerald-600 mt-0.5">+18% this month</p>}
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-surface-canvas border border-border-subtle">

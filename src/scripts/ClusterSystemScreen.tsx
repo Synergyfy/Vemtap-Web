@@ -554,7 +554,7 @@ export function ClusterSystemScreen({
                   <p className="text-xl font-extrabold text-text-primary mt-1">
                     {fig(analytics.clusterViews.toLocaleString())}
                   </p>
-                  <p className="text-[10px] text-emerald-600 mt-0.5">+14% vs last week</p>
+                  {!live && <p className="text-[10px] text-emerald-600 mt-0.5">+14% vs last week</p>}
                 </div>
                 <div className="p-3 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-xs text-text-tertiary">Total Impressions</p>
@@ -568,7 +568,7 @@ export function ClusterSystemScreen({
                   <p className="text-xl font-extrabold text-primary mt-1">
                     {fig(analytics.clusterClicks.toLocaleString())}
                   </p>
-                  <p className="text-[10px] text-text-secondary mt-0.5">16.2% overall CTR</p>
+                  {!live && <p className="text-[10px] text-text-secondary mt-0.5">16.2% overall CTR</p>}
                 </div>
                 <div className="p-3 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-xs text-text-tertiary">Shared QR Scans</p>
