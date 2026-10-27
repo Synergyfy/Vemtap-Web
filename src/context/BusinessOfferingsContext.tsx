@@ -30,7 +30,7 @@ export const DEFAULT_BUSINESS_ID = 'urban-grill-bistro-104';
 
 const DEFAULT_OFFERINGS: BusinessOfferings = {
   hasProducts: true,
-  hasServices: false,
+  hasServices: true,
 };
 
 const DEFAULT_BRANCH_OFFERINGS: Record<string, OfferingType[]> = {

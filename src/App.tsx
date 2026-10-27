@@ -712,6 +712,8 @@ const ROUTE_PATH: Record<Route, string> = {
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
+PATH_ROUTE.set('/business/hub/services', 'hub-services');
+PATH_ROUTE.set('/business/services', 'hub-services');
 
 const OVERLAY_ROUTES = new Set<Route>([
   'comments',
@@ -1603,7 +1605,14 @@ function AppInner() {
         break;
       case 'catalog':
       case 'business-catalog':
+      case 'products':
+      case 'business-products':
         setRoute('hub-catalog');
+        break;
+      case 'services':
+      case 'business-services':
+      case 'hub-services':
+        setRoute('hub-services');
         break;
       case 'deals':
       case 'business-deals':

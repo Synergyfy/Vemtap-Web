@@ -10,15 +10,6 @@ import { DesktopProductReviewScreen } from './DesktopProductReviewScreen';
 import { DesktopProductPublishedScreen } from './DesktopProductPublishedScreen';
 import { DesktopProductPricingConfigScreen } from './DesktopProductPricingConfigScreen';
 import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
-import { DesktopAddServiceStep1Screen } from './DesktopAddServiceStep1Screen';
-import { DesktopAddServiceStep2Screen } from './DesktopAddServiceStep2Screen';
-import { DesktopAddServiceStep3Screen } from './DesktopAddServiceStep3Screen';
-import { DesktopServiceReviewScreen } from './DesktopServiceReviewScreen';
-import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
-import { INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
-import { getBusinessSetupSnapshot } from '../businessSetup';
-import { classifyServiceFromBusiness } from '../serviceClassification';
-import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 import {
   getCentralCategories,
   getCategoryImageByName,
@@ -279,125 +270,6 @@ const ROWS: CatalogRow[] = [
   },
 ];
 
-const SERVICES_ROWS: CatalogRow[] = [
-  {
-    id: 's1',
-    name: 'Moroccan Hammam & Body Glow Polish',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuB4wRhk7Z2awcljAxG1LjsDB3N2bAN7rQlDkEXDILlYF6i09D_DE0_JDmPFddvIXLKfZ-TtuSypTz0Kl3jUy7knUpU3HB4NuSb137foMDpgotXoiK7w3GVbU1FRlvDkCRSfNt7lLHtinSDkQaVQwt40lHDAj3DUxzf9tBWYtOf7qlTY-_mE9_3gDNIH9wVJF72-OJb0k0sqg-vLThSLsh7dq90yBqvw9fzIB1gXV-Fo2ZXSueR6oLefog',
-    alt: 'Luxury aesthetic spa suite with aromatic bath, warm candlelight and natural stone therapy.',
-    verified: true,
-    sku: 'VG-SRV-01',
-    sub: '75 min session',
-    category: 'Spa & Wellness',
-    categoryIcon: 'spa',
-    price: '₦28,000',
-    was: '₦35,000',
-    dealBadge: '20% Off Perk',
-    branchDot: 'ok',
-    branchLabel: 'All 3 Branches',
-    branchNote: 'Private Suites Available',
-    stock: { tone: 'ok', label: 'Slots Open Today', units: '6 slots available', bar: 75, barTone: 'ok' },
-    sync: true,
-    filters: ['all', 'published', 'deals'],
-  },
-  {
-    id: 's2',
-    name: 'Aromatherapy Deep Muscle Release',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuD2k-0GygPR7thrr6kQT5yTqoGDw0NcxF2dP0AlXRwce_9v75rvKjTFCOII2nYkQknciVnh52IMyXZtpFEzCOC6Sc0ZFQf8bwDaVJM2likf3N9H6Yf4CtRNeAYa6jwXLogctOB85hy8oxyDnz-IvnlOo7GjU_Ij8kfKJBzE9Lqhpjxks9aQ7vHEEYWcFEkDqE1E9UzAJhRl3UfANQ6pD0rmV-2EbDY3S2bIgoQ14Il52tS12xywmcy8cw',
-    alt: 'Therapeutic warm botanical oil massage session with organic aromatherapy essence.',
-    sku: 'VG-SRV-02',
-    sub: '60 min session',
-    category: 'Massage & Therapy',
-    categoryIcon: 'self_improvement',
-    price: '₦22,500',
-    priceNote: 'Therapist Choice',
-    branchDot: 'ok',
-    branchLabel: 'Wuse & Maitama Only',
-    branchNote: '2 branches active',
-    stock: { tone: 'ok', label: 'Available', units: '9 slots open', bar: 60, barTone: 'ok' },
-    sync: true,
-    filters: ['all', 'published'],
-  },
-  {
-    id: 's3',
-    name: 'Signature HydraFacial & Collagen Boost',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuB6BaZG7YzMbQArQWnt4edHnV9aCqK3a7xIIh-c8OV4tFJBToZ7tcF2Nlpag653DPDvv1YwAEFvyZWLEWjhh3JKXPU_39La5FCCObsJ2bXVvYHYwRfdfbXPyrgvSgRX4XxMhc27qVEA_iTG43lTtzd34YcQozjDBHcuV7C7GWsm1WeMhPRtYcC2-I3NREV_8QfVRodpcjS7DvAGEn1vrjQohXldZ8Ghr28n4UXThhCL24s-z5spmv5Wbg',
-    alt: 'Dermatological medical-grade facial rejuvenation treatment with ultrasonic infusion.',
-    sku: 'VG-SRV-03',
-    sub: '45 min session',
-    category: 'Skin & Aesthetics',
-    categoryIcon: 'face',
-    price: '₦35,000',
-    priceNote: 'Includes LED Light Therapy',
-    branchDot: 'ok',
-    branchLabel: 'All 3 Branches',
-    branchNote: 'Certified Aesthetician',
-    stock: { tone: 'ok', label: 'Available', units: '4 slots left', bar: 40, barTone: 'ok' },
-    sync: true,
-    filters: ['all', 'published', 'low'],
-  },
-  {
-    id: 's4',
-    name: 'Executive Precision Haircut & Beard Sculpt',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBO6jJ9p4hR6rNGDGRINEHScNzfF8QX9958juImpMv7docBzJhIFFTSv0EqqohPlk21qedzh0yj6VoV4ENinMd8PtWdjbgLvTNyW6DzMNzVWBBdNwnHXR5xFauu5gHS1bVOzDmta7grAM4POxOXeEhzPSB90eU3jwqP8X35nF3AyPhKakI43tDrWub1fzx-gNhATtVwdkcjO3Hjz7arXt2eY8pvnSwKjc_HdpZEuUQH_y3nRojTdPeUQg',
-    alt: 'Gentleman luxury grooming salon session with hot towel and beard oil balm.',
-    sku: 'VG-SRV-04',
-    sub: '40 min session',
-    category: 'Grooming & Barber',
-    categoryIcon: 'content_cut',
-    price: '₦8,500',
-    priceChip: 'Hot Towel Incl.',
-    branchDot: 'ok',
-    branchLabel: 'All Branches',
-    branchNote: 'Walk-ins & Bookings',
-    stock: { tone: 'ok', label: 'Walk-in & Bookings', units: 'Barbers on Duty', bar: 85, barTone: 'ok' },
-    sync: true,
-    filters: ['all', 'published'],
-  },
-  {
-    id: 's5',
-    name: 'Russian Manicure & Gel Polish Duo',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuC6trtXFp0MMJwWku9jLYDwdIp28fGzHTmDO0RUE47jOl9iydBvF7jC1uRok91vQ_a6YHaxw4BDUNnwjZjepIJqde7592zFopV-N30aLGLAkzyvljtnJ1fLl5Pxy_BHumGgYbahvqugs4Q1hW9TTACnFpjlk5pxuNHrRFbxC07olPXnXlN-PrXlK9_FwVnZsQcJzb-TwkpEm5q383Eftusf4vv5jvGGhsBKrpbEAYulvhhXJvoaQRairA',
-    alt: 'Impeccable clean e-file manicure with glossy long-lasting nude gel coat.',
-    sku: 'VG-SRV-05',
-    sub: '60 min session',
-    category: 'Nails & Beauty',
-    categoryIcon: 'brush',
-    price: '₦15,000',
-    branchDot: 'ok',
-    branchLabel: 'All Branches',
-    branchNote: 'Choice of 120+ Gel Colors',
-    stock: { tone: 'ok', label: 'Slots Open', units: 'Nail Artists Available', bar: 90, barTone: 'ok' },
-    sync: true,
-    filters: ['all', 'published'],
-  },
-  {
-    id: 's6',
-    name: 'Swedish Relaxation Full Body Massage',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDcpJ2c7dvjW1lzsXtOkizM9pbVdGGWEiMmh1UyBM6Qyd_a7HJHN9pYrI0s4OC7t1D52fmKiwCl0_EW9Qugz_jyIIIXo0L3JfccsRlSlOmwgv2C6MkI2vnSFj1ji-q5FQ6Yqs8YUeIiIe1jQ5hpZL4naxtfledRh2j3Nq1C5E6wUF9iHI6e5wVcRvSUF_gX7hELTdOD8VEpNtx8S93rNUj1Z-0YH06xP2fKgi9-dccpqRQVrf3449_Eig',
-    alt: 'Gentle long stroke swedish therapeutic body session with heated calming stones.',
-    draft: true,
-    hidden: true,
-    sku: 'VG-SRV-06',
-    sub: '60 min session',
-    category: 'Massage & Therapy',
-    categoryIcon: 'spa',
-    price: '₦18,000',
-    branchDot: 'tertiary',
-    branchLabel: 'Maitama Flagship Only',
-    branchNote: 'Draft launch scheduled',
-    stock: { tone: 'off', label: 'Unpublished Draft', note: 'Configuring room schedules' },
-    sync: false,
-    filters: ['all'],
-  },
-];
-
 const STATS = [
   {
     label: 'Total Active SKUs',
@@ -553,9 +425,8 @@ export function DesktopBusinessCatalogHubScreen({
   onOpenBranchPricing,
   onOpenServices: _onOpenServices,
 }: DesktopBusinessCatalogHubScreenProps) {
-  const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'categories'>('products');
   const [productRows, setProductRows] = useState<CatalogRow[]>(ROWS);
-  const [serviceRows, setServiceRows] = useState<CatalogRow[]>(SERVICES_ROWS);
   const importedProducts = useImportedProducts();
   const importedRows = useMemo(() => importedProducts.map(importedProductToRow), [importedProducts]);
   /** Imported products still awaiting review/publish. */
@@ -658,36 +529,13 @@ export function DesktopBusinessCatalogHubScreen({
     | 'productPricingConfig'
     | 'productPublished'
     | 'importReview'
-    | 'service1'
-    | 'service2'
-    | 'service3'
-    | 'serviceReview'
-    | 'servicePublished'
   >('none');
   const [addMethodsOpen, setAddMethodsOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
 
-  const businessSnapshot = getBusinessSetupSnapshot();
-  const businessDraft = businessSnapshot?.data.draft as BusinessProfileDraft | undefined;
-  const businessCategories = businessDraft?.categories ?? [];
-  const businessSubcategories = businessDraft?.tags ?? [];
-
-  const getInitialServiceDraft = (): ServiceDraft => {
-    const classification = classifyServiceFromBusiness(businessCategories, businessSubcategories);
-    if (classification) {
-      return {
-        ...INITIAL_SERVICE_DRAFT,
-        primaryCategory: classification.primaryCategory,
-        subCategory: classification.subCategory,
-      };
-    }
-    return { ...INITIAL_SERVICE_DRAFT };
-  };
-
   const [productDraft, setProductDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
-  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(getInitialServiceDraft);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  // When set, the add-product/add-service flow is being used to edit this existing row.
+  // When set, the add-product flow is being used to edit this existing row.
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
@@ -700,7 +548,7 @@ export function DesktopBusinessCatalogHubScreen({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [advanced, setAdvanced] = useState<CatalogAdvancedFilters>(EMPTY_ADVANCED_FILTERS);
   const [sync, setSync] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries([...ROWS, ...SERVICES_ROWS].map((row) => [row.id, row.sync])),
+    Object.fromEntries(ROWS.map((row) => [row.id, row.sync])),
   );
 
   const handlePublishProduct = () => {
@@ -748,53 +596,8 @@ export function DesktopBusinessCatalogHubScreen({
     setSubFlow('productPublished');
   };
 
-  const handlePublishService = () => {
-    const isEdit = Boolean(editingRowId);
-    const updatedFields = {
-      name: serviceDraft.title || 'New Service Session',
-      alt: serviceDraft.title || 'Service Item',
-      sku: serviceDraft.skuCode || `VG-SRV-${Math.floor(10 + Math.random() * 90)}`,
-      sub: `${serviceDraft.durationMins || 60} min session`,
-      category: serviceDraft.primaryCategory || 'Spa & Wellness',
-      price: serviceDraft.basePrice ? `₦${Number(serviceDraft.basePrice).toLocaleString('en-US')}` : '₦18,000',
-      was: serviceDraft.comparePrice ? `₦${Number(serviceDraft.comparePrice).toLocaleString('en-US')}` : undefined,
-      dealBadge: serviceDraft.comparePrice ? 'Introductory Offer' : undefined,
-    };
-    if (isEdit) {
-      setServiceRows((prev) =>
-        prev.map((item) => (item.id === editingRowId ? { ...item, ...updatedFields } : item)),
-      );
-      setEditingRowId(null);
-      setSubFlow('none');
-      setToastMessage(`"${updatedFields.name}" updated successfully.`);
-      setTimeout(() => setToastMessage(null), 3000);
-      return;
-    }
-    const newServiceRow: CatalogRow = {
-      id: `s_${Date.now()}`,
-      ...updatedFields,
-      image: SERVICES_ROWS[0].image,
-      categoryIcon: 'spa',
-      branchDot: 'ok',
-      branchLabel: 'All 3 Branches',
-      branchNote: 'Bookings Enabled',
-      stock: {
-        tone: 'ok',
-        label: 'Slots Open Today',
-        units: 'Available for Booking',
-        bar: 85,
-        barTone: 'ok',
-      },
-      sync: true,
-      filters: ['all', 'published'],
-    };
-    setServiceRows((prev) => [newServiceRow, ...prev]);
-    setSync((prev) => ({ ...prev, [newServiceRow.id]: true }));
-    setSubFlow('servicePublished');
-  };
-
   const handleExportCSV = () => {
-    const currentList = activeTab === 'products' ? allProductRows : serviceRows;
+    const currentList = allProductRows;
     const headers = ['ID', 'SKU', 'Name', 'Category', 'Price', 'Was Price', 'Branches', 'Stock Status', 'Units', 'Terminal Sync'];
     const csvRows = [
       headers.join(','),
@@ -847,33 +650,18 @@ export function DesktopBusinessCatalogHubScreen({
       return;
     }
     setEditingRowId(row.id);
-    if (row.id.startsWith('s')) {
-      const durationMatch = row.sub.match(/(\d+)\s*min/i);
-      setServiceDraft((prev) => ({
-        ...prev,
-        title: row.name,
-        skuCode: row.sku,
-        primaryCategory: row.category,
-        basePrice: parseAmount(row.price),
-        comparePrice: row.was ? parseAmount(row.was) : '',
-        image: row.image || prev.image,
-        durationMins: durationMatch ? Number(durationMatch[1]) : prev.durationMins,
-      }));
-      setSubFlow('service1');
-    } else {
-      setProductDraft((prev) => ({
-        ...prev,
-        title: row.name,
-        sku: row.sku,
-        skuCode: row.sku,
-        primaryCategory: row.category,
-        classification: row.sub,
-        description: row.alt,
-        basePrice: parseAmount(row.price),
-        comparePrice: row.was ? parseAmount(row.was) : '',
-      }));
-      setSubFlow('addProduct1');
-    }
+    setProductDraft((prev) => ({
+      ...prev,
+      title: row.name,
+      sku: row.sku,
+      skuCode: row.sku,
+      primaryCategory: row.category,
+      classification: row.sub,
+      description: row.alt,
+      basePrice: parseAmount(row.price),
+      comparePrice: row.was ? parseAmount(row.was) : '',
+    }));
+    setSubFlow('addProduct1');
   };
 
   const handleDuplicateItem = (row: CatalogRow) => {
@@ -892,12 +680,7 @@ export function DesktopBusinessCatalogHubScreen({
       name: `${row.name} (Copy)`,
     };
 
-    if (activeTab === 'products') {
-      setProductRows((prev) => [duplicated, ...prev]);
-    } else {
-      setServiceRows((prev) => [duplicated, ...prev]);
-    }
-
+    setProductRows((prev) => [duplicated, ...prev]);
     setToastMessage(`Duplicated "${row.name}" as "${duplicated.name}".`);
     setTimeout(() => setToastMessage(null), 3500);
   };
@@ -914,12 +697,7 @@ export function DesktopBusinessCatalogHubScreen({
     const updater = (prev: CatalogRow[]) =>
       prev.map((item) => (item.id === row.id ? { ...item, hidden: nextHidden } : item));
 
-    if (activeTab === 'products') {
-      setProductRows(updater);
-    } else {
-      setServiceRows(updater);
-    }
-
+    setProductRows(updater);
     setActionMenuRowId(null);
     setToastMessage(`"${row.name}" is now ${nextHidden ? 'hidden from storefront' : 'visible in storefront'}.`);
     setTimeout(() => setToastMessage(null), 3000);
@@ -933,12 +711,7 @@ export function DesktopBusinessCatalogHubScreen({
       setTimeout(() => setToastMessage(null), 3000);
       return;
     }
-    if (activeTab === 'products') {
-      setProductRows((prev) => prev.filter((item) => item.id !== row.id));
-    } else {
-      setServiceRows((prev) => prev.filter((item) => item.id !== row.id));
-    }
-
+    setProductRows((prev) => prev.filter((item) => item.id !== row.id));
     setToastMessage(`"${row.name}" removed from catalog.`);
     setTimeout(() => setToastMessage(null), 3000);
   };
@@ -1053,83 +826,7 @@ export function DesktopBusinessCatalogHubScreen({
     );
   }
 
-  if (subFlow === 'service1') {
-    return (
-      <DesktopAddServiceStep1Screen
-        draft={serviceDraft}
-        onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => exitSubFlow()}
-        onNext={() => setSubFlow('service2')}
-        onSaveDraft={() => exitSubFlow()}
-        onNav={onNav}
-        businessCategories={businessCategories}
-        businessSubcategories={businessSubcategories}
-      />
-    );
-  }
-
-  if (subFlow === 'service2') {
-    return (
-      <DesktopAddServiceStep2Screen
-        draft={serviceDraft}
-        onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => setSubFlow('service1')}
-        onNext={() => setSubFlow('service3')}
-        onSaveDraft={() => exitSubFlow()}
-        onNav={onNav}
-      />
-    );
-  }
-
-  if (subFlow === 'service3') {
-    return (
-      <DesktopAddServiceStep3Screen
-        draft={serviceDraft}
-        onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
-        onBack={() => setSubFlow('service2')}
-        onNext={() => setSubFlow('serviceReview')}
-        onSaveDraft={() => exitSubFlow()}
-        onNav={onNav}
-      />
-    );
-  }
-
-  if (subFlow === 'serviceReview') {
-    return (
-      <DesktopServiceReviewScreen
-        draft={serviceDraft}
-        onBack={() => setSubFlow('service3')}
-        onEditBasics={() => setSubFlow('service1')}
-        onEditPricing={() => setSubFlow('service2')}
-        onEditBranches={() => setSubFlow('service3')}
-        onEditDescription={() => setSubFlow('service1')}
-        onPublish={handlePublishService}
-        onSaveDraft={() => exitSubFlow()}
-        onNav={onNav}
-      />
-    );
-  }
-
-  if (subFlow === 'servicePublished') {
-    return (
-      <DesktopServicePublishedScreen
-        draft={serviceDraft}
-        onMakeDeal={() => onNav('deals')}
-        onViewCatalog={() => {
-          setActiveTab('services');
-          setSubFlow('none');
-        }}
-        onAddAnother={() => {
-          setServiceDraft(getInitialServiceDraft());
-          setEditingRowId(null);
-          setSubFlow('service1');
-        }}
-        onNav={onNav}
-      />
-    );
-  }
-
-  const currentDataset = activeTab === 'products' ? allProductRows : serviceRows;
+  const currentDataset = allProductRows;
 
   const toggleRow = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
@@ -1173,8 +870,8 @@ export function DesktopBusinessCatalogHubScreen({
    * "N selected" count always matches exactly what will change.
    */
   const visibleSelectedRows = visibleRows.filter((row) => selected.includes(row.id));
-  const bulkNoun = activeTab === 'products' ? 'products' : 'services';
-  const bulkSingular = activeTab === 'products' ? 'product' : 'service';
+  const bulkNoun = 'products';
+  const bulkSingular = 'product';
 
   const bulkActions: BulkAction[] = [
     {
@@ -1202,9 +899,7 @@ export function DesktopBusinessCatalogHubScreen({
   /** Applies a change to the selected rows held in local catalogue state. */
   const updateSeedRows = (ids: string[], updater: (row: CatalogRow) => CatalogRow) => {
     const idSet = new Set(ids);
-    const map = (previous: CatalogRow[]) => previous.map((row) => (idSet.has(row.id) ? updater(row) : row));
-    if (activeTab === 'products') setProductRows(map);
-    else setServiceRows(map);
+    setProductRows((previous) => previous.map((row) => (idSet.has(row.id) ? updater(row) : row)));
   };
 
   /** Keeps the Terminal Sync column in step with publish/draft changes. */
@@ -1315,8 +1010,7 @@ export function DesktopBusinessCatalogHubScreen({
     const seedIds = bulkDelete.ids.filter((id) => !isImportedRow(id));
     const removedImported = importedIds.length > 0 ? removeImportedProducts(importedIds) : 0;
     if (seedIds.length > 0) {
-      if (activeTab === 'products') setProductRows((previous) => previous.filter((row) => !idSet.has(row.id)));
-      else setServiceRows((previous) => previous.filter((row) => !idSet.has(row.id)));
+      setProductRows((previous) => previous.filter((row) => !idSet.has(row.id)));
     }
     const total = removedImported + seedIds.length;
     setBulkDelete(null);
@@ -1353,7 +1047,7 @@ export function DesktopBusinessCatalogHubScreen({
             <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
             <span className="hover:text-primary transition-colors">Catalog</span>
             <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
-            <span className="text-on-surface font-label-sm text-label-sm font-semibold">Products & Services</span>
+            <span className="text-on-surface font-label-sm text-label-sm font-semibold">Products</span>
           </div>
           <div className="flex items-center gap-space-sm self-start sm:self-auto">
             <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption">
@@ -1375,10 +1069,10 @@ export function DesktopBusinessCatalogHubScreen({
               <span>Enterprise SKU Multi-Tenancy</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Central Products &amp; Services Catalogue
+              Central Products Catalogue
             </h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              Centralized multi-location catalog. Manage dishes, retail merchandise, and services across Abuja and Lagos
+              Centralized multi-location catalog. Manage dishes, retail merchandise, and product inventory across Abuja and Lagos
               branches.
             </p>
           </div>
@@ -1392,18 +1086,6 @@ export function DesktopBusinessCatalogHubScreen({
               >
                 <Icon name="create_new_folder" className="text-primary text-[20px]" />
                 <span>+ Add Category</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setServiceDraft(getInitialServiceDraft());
-                  setEditingRowId(null);
-                  setSubFlow('service1');
-                }}
-                className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"
-              >
-                <Icon name="room_service" className="text-primary text-[20px]" />
-                <span>+ Add Service</span>
               </button>
               <button
                 type="button"
@@ -1439,7 +1121,7 @@ export function DesktopBusinessCatalogHubScreen({
           ))}
         </div>
 
-        {/* Navigation Tabs & View Options - Only Products & Services */}
+        {/* Navigation Tabs & View Options - Products & Categories */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md bg-surface-container-lowest p-space-xs rounded-xl shadow-sm">
           <div className="flex items-center gap-space-2xs overflow-x-auto">
             <button
@@ -1461,27 +1143,6 @@ export function DesktopBusinessCatalogHubScreen({
                 }`}
               >
                 {allProductRows.length} active
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('services')}
-              className={`flex items-center gap-space-xs px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'services'
-                  ? 'bg-primary-container text-on-primary-container'
-                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-              }`}
-            >
-              <Icon name="spa" className="text-[18px]" />
-              <span>Services</span>
-              <span
-                className={`px-space-xs py-space-2xs rounded-full font-caption text-caption font-bold ${
-                  activeTab === 'services'
-                    ? 'bg-surface-canvas/20 text-on-primary'
-                    : 'bg-surface-container text-text-secondary'
-                }`}
-              >
-                {serviceRows.length} active
               </span>
             </button>
             <button
