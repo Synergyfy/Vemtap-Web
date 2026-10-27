@@ -8,8 +8,6 @@ interface DesktopSignInScreenProps {
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
-  onCustomerSignIn: () => void;
-  onBusinessSignIn: () => void;
   /** Returns to wherever sign-in was opened from (mobile parity). */
   onBack?: () => void;
 }
@@ -72,8 +70,6 @@ export function DesktopSignInScreen({
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
-  onCustomerSignIn,
-  onBusinessSignIn,
   onBack,
 }: DesktopSignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
@@ -205,46 +201,6 @@ export function DesktopSignInScreen({
                 <p className="font-body-md text-body-md text-text-secondary">
                   Sign in to access your claimed deals, saved favorites, and local offers.
                 </p>
-              </div>
-
-              <div className="flex flex-col gap-space-2xs">
-                <span className="font-label-sm text-label-sm text-text-tertiary uppercase tracking-wider">
-                  Continue as
-                </span>
-                <div className="grid grid-cols-2 gap-space-xs">
-                  <button
-                    className="flex items-center gap-space-sm p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-high border border-border-subtle transition-all duration-200 text-left active:scale-[0.99] disabled:opacity-75"
-                    type="button"
-                    onClick={onCustomerSignIn}
-                    disabled={busy}
-                  >
-                    <span className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
-                      <Icon name="person" className="text-[20px]" />
-                    </span>
-                    <span className="flex flex-col min-w-0">
-                      <span className="font-label-md text-label-sm text-text-primary font-semibold">Customer</span>
-                      <span className="font-caption text-caption text-text-secondary truncate">
-                        Open customer dashboard
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    className="flex items-center gap-space-sm p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-high border border-border-subtle transition-all duration-200 text-left active:scale-[0.99] disabled:opacity-75"
-                    type="button"
-                    onClick={onBusinessSignIn}
-                    disabled={busy}
-                  >
-                    <span className="w-9 h-9 rounded-lg bg-secondary-fixed text-on-secondary-fixed-variant flex items-center justify-center shrink-0">
-                      <Icon name="storefront" className="text-[20px]" />
-                    </span>
-                    <span className="flex flex-col min-w-0">
-                      <span className="font-label-md text-label-sm text-text-primary font-semibold">Business</span>
-                      <span className="font-caption text-caption text-text-secondary truncate">
-                        Open business dashboard
-                      </span>
-                    </span>
-                  </button>
-                </div>
               </div>
 
               <button

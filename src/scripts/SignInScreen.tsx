@@ -10,8 +10,6 @@ interface SignInScreenProps {
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
-  onCustomerSignIn: () => void;
-  onBusinessSignIn: () => void;
 }
 
 type Status = 'idle' | 'submitting';
@@ -68,8 +66,6 @@ export function SignInScreen({
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
-  onCustomerSignIn,
-  onBusinessSignIn,
 }: SignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -139,41 +135,6 @@ export function SignInScreen({
         </div>
 
         <div className="flex flex-col gap-space-md">
-          <div className="flex flex-col gap-space-2xs">
-            <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
-              Continue as
-            </span>
-            <div className="grid grid-cols-2 gap-space-xs">
-              <button
-                type="button"
-                onClick={onCustomerSignIn}
-                disabled={busy}
-                className="flex flex-col items-start gap-space-2xs p-space-sm rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm text-left active:scale-[0.98] transition-all duration-150 hover:border-primary/40 hover:shadow-md disabled:opacity-70"
-              >
-                <span className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
-                  <Icon name="person" className="text-[20px]" />
-                </span>
-                <span className="font-label-md text-label-md font-semibold text-text-primary">Customer</span>
-                <span className="font-caption text-caption text-text-secondary leading-4">
-                  Open customer dashboard
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={onBusinessSignIn}
-                disabled={busy}
-                className="flex flex-col items-start gap-space-2xs p-space-sm rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm text-left active:scale-[0.98] transition-all duration-150 hover:border-primary/40 hover:shadow-md disabled:opacity-70"
-              >
-                <span className="w-9 h-9 rounded-lg bg-secondary-fixed text-on-secondary-fixed-variant flex items-center justify-center">
-                  <Icon name="storefront" className="text-[20px]" />
-                </span>
-                <span className="font-label-md text-label-md font-semibold text-text-primary">Business</span>
-                <span className="font-caption text-caption text-text-secondary leading-4">
-                  Open business dashboard
-                </span>
-              </button>
-            </div>
-          </div>
 
           <button
             type="button"
