@@ -143,7 +143,11 @@ const clearStoredProfile = () => {
 const AuthContext = createContext<AuthContextValue>(DEFAULT_VALUE);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [authed, setAuthed] = useState(() => readFlag(AUTHED_KEY) || Boolean(getAccessToken()));
+  // Live mode trusts only a stored access token; a leftover "authed" flag (from
+  // demo mode or an old session) must not count as being signed in.
+  const [authed, setAuthed] = useState(() =>
+    hasApiConfig() ? Boolean(getAccessToken()) : readFlag(AUTHED_KEY) || Boolean(getAccessToken()),
+  );
   const [claimed, setClaimed] = useState(() => readClaimedState());
 
   // The API rejected the token (expired or revoked): drop the local session.

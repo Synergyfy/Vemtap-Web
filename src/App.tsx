@@ -896,6 +896,9 @@ function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
       isDesktop,
     );
   }
+  // Live mode: the customer home is for signed-in users only — "onboarded on
+  // this device before" survives sign-out and expired sessions.
+  if (hasApiConfig()) return authed ? 'home' : 'welcome';
   return (authed || hasOnboarded()) ? 'home' : 'welcome';
 }
 
@@ -1226,9 +1229,12 @@ function AppInner() {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
   }, []);
 
-  // Opening a portal page signed out (with the API configured) goes to sign in.
+  // Opening a portal page signed out (with the API configured) goes to sign in;
+  // the customer home without a session (signed out, expired) goes to onboarding.
   useEffect(() => {
-    if (hasApiConfig() && !authed && isPortalRoute(route)) setRouteState('sign-in');
+    if (!hasApiConfig() || authed) return;
+    if (isPortalRoute(route)) setRouteState('sign-in');
+    else if (route === 'home') setRouteState('welcome');
   }, [authed, route]);
 
   useEffect(() => {
@@ -1541,7 +1547,9 @@ function AppInner() {
   useEffect(() => {
     if (route === 'discovering') {
       window.localStorage.setItem(ONBOARDED_KEY, '1');
-      signIn();
+      // Demo mode signs the visitor in here; live users are already signed in
+      // by sign-up (a credential-less live sign-in would only throw).
+      if (!hasApiConfig()) signIn();
     }
   }, [route, signIn]);
 
@@ -2536,17 +2544,6 @@ function AppInner() {
               setRoute('business-onboarding');
             }}
             onForgotPin={() => setRoute('forgot-pin')}
-            onCustomerSignIn={async () => {
-              setRoute('dashboard');
-            }}
-            onBusinessSignIn={async () => {
-              if (isBusinessSession) {
-                setRoute('business-overview');
-                return;
-              }
-              setBusinessOnboardingFrom('sign-in');
-              setRoute('business-onboarding');
-            }}
           />
         );
       return (
@@ -2581,17 +2578,6 @@ function AppInner() {
             setRoute('business-onboarding');
           }}
           onForgotPin={() => setRoute('forgot-pin')}
-          onCustomerSignIn={async () => {
-            setRoute('dashboard');
-          }}
-          onBusinessSignIn={async () => {
-            if (isBusinessSession) {
-              setRoute('business-overview');
-              return;
-            }
-            setBusinessOnboardingFrom('sign-in');
-            setRoute('business-onboarding');
-          }}
         />
       );
 
