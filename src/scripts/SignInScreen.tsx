@@ -22,7 +22,7 @@ const getAuthErrorMessage = (error: unknown) => {
   if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
     return (error as { message: string }).message;
   }
-  return 'We could not sign you in. Please check your email or password and try again.';
+  return 'We could not sign you in. Please check your email or phone and your 6-digit PIN.';
 };
 
 function GoogleIcon() {
@@ -91,6 +91,12 @@ export function SignInScreen({
     }
     if (!credential?.value) {
       credential?.focus();
+      return;
+    }
+    // Customer and business accounts sign in with a 6-digit PIN only.
+    if (!/^\d{6}$/.test(credential.value)) {
+      setError('Enter your 6-digit PIN.');
+      credential.focus();
       return;
     }
     const nextIdentifier = identifier.value.trim();
@@ -225,7 +231,7 @@ export function SignInScreen({
             <div className="flex flex-col gap-space-2xs">
               <div className="flex items-center justify-between">
                 <label className="font-label-md text-label-md text-text-primary" htmlFor="security-credential">
-                  PIN or Password
+                  6-digit PIN
                 </label>
                 <button type="button" className="font-label-sm text-label-sm text-primary hover:underline" onClick={onForgotPin}>
                   Forgot?
@@ -239,13 +245,18 @@ export function SignInScreen({
                   className="w-full h-[52px] pl-[44px] pr-[48px] bg-surface-container-lowest text-text-primary rounded-xl font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue shadow-sm transition-colors"
                   id="security-credential"
                   name="security-credential"
-                  maxLength={32}
+                  maxLength={6}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder="••••••"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
+                  onInput={(event) => {
+                    event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 6);
+                  }}
                 />
                 <button
-                  aria-label={showPassword ? 'Hide PIN or password' : 'Show PIN or password'}
+                  aria-label={showPassword ? 'Hide PIN' : 'Show PIN'}
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-0 top-0 bottom-0 px-space-md flex items-center justify-center text-outline hover:text-text-primary transition-colors"

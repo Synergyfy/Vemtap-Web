@@ -51,7 +51,7 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 
 /**
  * Shared modal for the two credential changes on Business Settings: the
- * 4-digit transaction PIN and the account password.
+ * 4-digit transaction PIN and the 6-digit sign-in PIN.
  */
 function CredentialModal({
   mode,
@@ -83,18 +83,20 @@ function CredentialModal({
       if (!/^\d{4}$/.test(next)) return setError('The new PIN must be 4 digits');
       if (next === current) return setError('The new PIN must differ from the current one');
     } else {
-      if (current.length < 8) return setError('Current password must be at least 8 characters');
-      if (next.length < 8) return setError('New password must be at least 8 characters');
+      // The sign-in secret is a 6-digit PIN (customer and business accounts are PIN-only).
+      if (!/^\d{6}$/.test(current)) return setError('Your current sign-in PIN is 6 digits');
+      if (!/^\d{6}$/.test(next)) return setError('The new sign-in PIN must be exactly 6 digits');
+      if (next === current) return setError('The new PIN must differ from the current one');
     }
     if (next !== confirm) return setError('Confirmation does not match');
     setError(null);
-    // Live: the password change goes to the API; the PIN has no endpoint (its button shows "coming soon").
+    // Live: the sign-in PIN change goes to the API; the transaction PIN has no endpoint (its button shows "coming soon").
     if (hasApiConfig() && !isPin) {
       setSaving(true);
       authService
         .changePassword({ currentPassword: current, newPassword: next })
         .then(() => onSaved())
-        .catch((changeError: unknown) => setError(apiErrorMessage(changeError, 'Could not change your password.')))
+        .catch((changeError: unknown) => setError(apiErrorMessage(changeError, 'Could not change your sign-in PIN.')))
         .finally(() => setSaving(false));
       return;
     }
@@ -107,11 +109,11 @@ function CredentialModal({
       <span className="font-label-sm text-label-sm text-text-secondary font-semibold">{label}</span>
       <input
         type="password"
-        inputMode={isPin ? 'numeric' : undefined}
-        maxLength={isPin ? 4 : 64}
+        inputMode="numeric"
+        maxLength={isPin ? 4 : 6}
         value={value}
-        onChange={(event) => setter(event.target.value)}
-        placeholder={isPin ? '••••' : '••••••••'}
+        onChange={(event) => setter(event.target.value.replace(/\D/g, '').slice(0, isPin ? 4 : 6))}
+        placeholder={isPin ? '••••' : '••••••'}
         className={`h-11 px-space-sm rounded-xl bg-surface-canvas border-2 ${
           isPin ? 'border-outline-variant focus:border-primary-container focus:ring-4 focus:ring-primary-container/15' : 'border-border-subtle focus:border-primary'
         } font-body-md text-body-md text-on-surface tracking-widest outline-none transition-all shadow-sm`}
@@ -125,7 +127,7 @@ function CredentialModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={isPin ? 'Change transaction PIN' : 'Change password'}
+        aria-label={isPin ? 'Change transaction PIN' : 'Change sign-in PIN'}
         className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md"
       >
         <div className="flex items-start justify-between gap-space-sm">
@@ -135,7 +137,7 @@ function CredentialModal({
             </span>
             <div className="flex flex-col">
               <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">
-                {isPin ? 'Change transaction PIN' : 'Change password'}
+                {isPin ? 'Change transaction PIN' : 'Change sign-in PIN'}
               </h2>
               <p className="font-caption text-caption text-text-secondary">
                 {isPin ? 'Used to authorise refunds, payouts & voids' : 'Used to sign in to your business account'}
@@ -153,9 +155,9 @@ function CredentialModal({
         </div>
 
         <div className="flex flex-col gap-space-sm">
-          {field(`Current ${isPin ? 'PIN' : 'password'}`, current, setCurrent)}
-          {field(`New ${isPin ? 'PIN' : 'password'}`, next, setNext, isPin ? 'Exactly 4 digits' : 'At least 8 characters')}
-          {field(`Confirm new ${isPin ? 'PIN' : 'password'}`, confirm, setConfirm)}
+          {field('Current PIN', current, setCurrent)}
+          {field('New PIN', next, setNext, isPin ? 'Exactly 4 digits' : 'Exactly 6 digits')}
+          {field('Confirm new PIN', confirm, setConfirm)}
         </div>
 
         {error && (
@@ -179,7 +181,7 @@ function CredentialModal({
             disabled={saving}
             className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform disabled:opacity-60"
           >
-            <span>{saving ? 'Updating…' : isPin ? 'Update PIN' : 'Update password'}</span>
+            <span>{saving ? 'Updating…' : 'Update PIN'}</span>
             <Icon name="check" className="text-[18px]" />
           </button>
         </div>
@@ -404,9 +406,9 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
             <SettingRow
               icon="lock"
               iconClass="bg-surface-container-high text-on-surface-variant"
-              title="Account password"
-              desc={live ? 'Use a unique passphrase you don’t use elsewhere' : 'Last changed 3 months ago · use a unique passphrase'}
-              trailing={<ActionButton label="Change password" onClick={() => setCredential('password')} />}
+              title="Sign-in PIN"
+              desc="The 6-digit PIN you sign in with — don’t share it or reuse it elsewhere"
+              trailing={<ActionButton label="Change PIN" onClick={() => setCredential('password')} />}
             />
             <SettingRow
               icon="sms"
@@ -695,7 +697,7 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
           onSaved={() => {
             const savedMode = credential;
             setCredential(null);
-            showToast(savedMode === 'pin' ? 'Transaction PIN updated successfully' : 'Password updated successfully');
+            showToast(savedMode === 'pin' ? 'Transaction PIN updated successfully' : 'Sign-in PIN updated successfully');
           }}
         />
       )}
