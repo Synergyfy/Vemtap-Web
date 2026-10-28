@@ -1343,10 +1343,9 @@ function AppInner() {
    * secured attribution.
    */
   useEffect(() => {
+    // The link just opened wins over any code saved earlier.
     const fromUrl = normaliseReferralCode(readReferralCodeFromUrl());
-    if (fromUrl && !getProvisionalReferralCode()) {
-      setProvisionalReferralCode(fromUrl, 'url');
-    }
+    if (fromUrl) setProvisionalReferralCode(fromUrl, 'url');
   }, []);
 
   useEffect(() => {

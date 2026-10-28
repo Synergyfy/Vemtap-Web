@@ -112,12 +112,14 @@ export function buildDemoReferralCode(seed: string): string {
 }
 
 /**
- * The link a code points at. Customers land on the customer sign-up flow,
- * businesses on the business onboarding. Built from the current origin so
- * staging, production and local links all scan and share correctly.
+ * The link a code points at: the sign-up page itself (customers: "Create
+ * account", businesses: business sign-up), so the invited person starts
+ * signing up straight away and Profile Setup prefills the code. Built from the
+ * current origin so staging, production and local links all scan and share
+ * correctly.
  */
 export function buildReferralLink(code: string, audience: ReferralAudience = 'customer'): string {
-  const base = `${window.location.origin}${audience === 'business' ? '/business-onboarding' : '/start-vemtap'}`;
+  const base = `${window.location.origin}${audience === 'business' ? '/business-auth' : '/auth-code'}`;
   return code ? `${base}?${REFERRAL_URL_PARAM}=${encodeURIComponent(code)}` : base;
 }
 
