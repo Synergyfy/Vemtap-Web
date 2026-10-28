@@ -94,7 +94,7 @@ export const authService = {
     return api.post('/auth/customer/register/request-otp', payload);
   },
 
-  verifyCustomerPin: async (payload: { email: string; code: string; pin: string; firstName?: string; lastName?: string; branchId?: string }) => {
+  verifyCustomerPin: async (payload: { email: string; code: string; pin: string; firstName?: string; lastName?: string; branchId?: string; referralCode?: string }) => {
     const response = await api.post<AuthTokensResponse>('/auth/customer/register/verify-and-set-pin', payload);
 
     const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);

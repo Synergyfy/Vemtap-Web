@@ -70,6 +70,7 @@ import {
   readReferralCodeFromUrl,
   setProvisionalReferralCode,
 } from './scripts/referralData';
+import { referralsService } from './services/referralsService';
 import { ActivityScreen } from './scripts/ActivityScreen';
 import { NotificationsScreen } from './scripts/NotificationsScreen';
 import { HelpCentreScreen } from './scripts/HelpCentreScreen';
@@ -2242,6 +2243,7 @@ function AppInner() {
     }
 
     const email = customerSignup.email;
+    const referralCode = getProvisionalReferralCode() || undefined;
     try {
       adoptSession(
         await ownerAuthService.register({
@@ -2250,7 +2252,7 @@ function AppInner() {
           ...(firstName ? { firstName } : {}),
           ...(lastName ? { lastName } : {}),
           ...(phone ? { businessNumber: `+${phone}` } : {}),
-          referralCode: getProvisionalReferralCode() || undefined,
+          referralCode,
         }),
       );
     } catch (error) {
@@ -2261,6 +2263,9 @@ function AppInner() {
       }
       throw error;
     }
+
+    // The code was consumed with the sign-up above.
+    if (referralCode) clearProvisionalReferralCode();
 
     // The account exists now: setup progress takes over (saved on the account).
     clearBusinessSignup();
@@ -2333,6 +2338,7 @@ function AppInner() {
       ...(firstName ? { firstName } : {}),
       ...(lastName ? { lastName } : {}),
       ...(phone ? { phone: `+${phone}` } : {}),
+      referralCode: getProvisionalReferralCode() || undefined,
     };
 
     if (hasApiConfig()) {
@@ -2341,6 +2347,8 @@ function AppInner() {
       } catch (error) {
         throw signupCodeError(error, 'profile');
       }
+      // The code was recorded with the sign-up above.
+      clearProvisionalReferralCode();
     }
 
     profile.update({
@@ -2432,6 +2440,18 @@ function AppInner() {
         }
         const user = adoptSession(response);
         const isNew = Boolean(response.isNewUser);
+        // A new account can still claim the code captured from a referral
+        // link before Google redirected away — best effort, so a rejected or
+        // unknown code never blocks the sign-in flow.
+        const pendingReferral = getProvisionalReferralCode();
+        if (isNew && pendingReferral) {
+          void referralsService
+            .claim(pendingReferral)
+            .then(() => clearProvisionalReferralCode())
+            .catch(() => {
+              // Leave the stored code; the confirm screen can still take one.
+            });
+        }
         const business = isBusinessRole(user?.role);
         if (business && user?.businessId && !isNew) {
           await routeSignedInOwner();
@@ -4101,7 +4121,19 @@ function AppInner() {
      */
     case 'google-confirm': {
       const finishGoogleConfirm = (details: GoogleConfirmDetails) => {
-        if (details.referralCode) setProvisionalReferralCode(details.referralCode, 'manual');
+        if (details.referralCode) {
+          setProvisionalReferralCode(details.referralCode, 'manual');
+          // Google accounts already exist by this screen, so a typed code is
+          // claimed here instead of with a later register call — best effort,
+          // the account's own code and an already-claimed code just resolve
+          // to a server-side 400 that is ignored.
+          void referralsService
+            .claim(details.referralCode)
+            .then(() => clearProvisionalReferralCode())
+            .catch(() => {
+              // Best effort — an unknown or already-claimed code is ignored.
+            });
+        }
         profile.update({ phone: details.phone });
         // Merchant sign-up — the confirmed Google identity belongs to the
         // business, so it enters setup instead of the customer feed.

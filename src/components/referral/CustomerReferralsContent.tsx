@@ -1,8 +1,11 @@
 import { HowItWorks } from './HowItWorks';
 import { ReferralCodeCard } from './ReferralCodeCard';
+import { ReferralRecordsPanel } from './ReferralRecordsPanel';
 import { ReferralShareRow } from './ReferralShareRow';
 import { ReferralStatGrid } from './ReferralStatGrid';
 import { useReferralIdentity } from '../../hooks/useReferralIdentity';
+import { useMyReferrals } from '../../hooks/useMyReferrals';
+import { hasApiConfig } from '../../services/api/client';
 import { CUSTOMER_HOW_IT_WORKS, REFERRAL_REWARDS_DISCLAIMER } from '../../scripts/referralData';
 import { Icon } from '../ui/Icon';
 
@@ -35,15 +38,48 @@ function EmptyPanel({
   );
 }
 
+const shortDate = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
 /**
  * Body of the customer "Referrals & Rewards" page, shared by the mobile and
  * desktop shells.
  *
- * Points, rewards and challenges are all rendered as empty states — the
- * programme has no backend yet, so no balance, business or offer is invented.
+ * Live: the account's stored referral code, its link and the people who
+ * signed up with it (`GET /referrals/me`). Points, rewards and challenges
+ * stay as empty states — the programme has no rewards backend yet, so no
+ * balance, business or offer is invented.
  */
 export function CustomerReferralsContent() {
   const identity = useReferralIdentity();
+  const myReferrals = useMyReferrals();
+  const live = hasApiConfig();
+  const me = myReferrals.data ?? null;
+  const stats = live
+    ? [
+        POINT_STATS[0],
+        { ...POINT_STATS[1], value: me ? String(me.totalReferrals) : '—' },
+        { ...POINT_STATS[2], value: me ? String(me.referrals.filter((r) => r.type === 'business').length) : '—' },
+        { ...POINT_STATS[3], value: me ? String(me.referrals.filter((r) => r.type === 'customer').length) : '—' },
+        POINT_STATS[4],
+        POINT_STATS[5],
+      ]
+    : POINT_STATS;
+  const recordsStatus = live ? (myReferrals.isLoading ? 'loading' : myReferrals.error ? 'error' : 'ready') : 'empty';
+  const rows = me
+    ? me.referrals.map((entry) => ({
+        id: entry.id,
+        cells: [entry.name, entry.type === 'business' ? 'Business' : 'Customer', shortDate(entry.joinedAt)],
+        card: (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-label-md text-label-md text-text-primary font-semibold">{entry.name}</span>
+            <span className="font-caption text-caption text-text-secondary">
+              {entry.type === 'business' ? 'Business' : 'Customer'} • joined {shortDate(entry.joinedAt)}
+            </span>
+          </div>
+        ),
+      }))
+    : [];
 
   return (
     <div className="flex flex-col gap-space-lg">
@@ -58,8 +94,12 @@ export function CustomerReferralsContent() {
 
       <ReferralStatGrid
         columns={6}
-        stats={POINT_STATS}
-        note="Points aren’t live yet, so every tile starts at zero. Your balance and referral history appear here once the programme launches."
+        stats={stats}
+        note={
+          live
+            ? 'People and businesses who sign up with your code are counted here.'
+            : 'Points aren’t live yet, so every tile starts at zero. Your balance and referral history appear here once the programme launches.'
+        }
       />
 
       {/* Invite a business */}
@@ -70,6 +110,7 @@ export function CustomerReferralsContent() {
         accountType="customer"
         code={identity.code}
         link={identity.link}
+        isPreview={identity.isPreview}
         title="Invite a business"
         description="Know a business that should be on VEMTAP? Send them your link — it helps local customers find them through deals, menus and offers."
       />
@@ -98,6 +139,22 @@ export function CustomerReferralsContent() {
       </section>
 
       <HowItWorks disclaimer={REFERRAL_REWARDS_DISCLAIMER} steps={CUSTOMER_HOW_IT_WORKS} />
+
+      <ReferralRecordsPanel
+        description="Friends and businesses who signed up with your referral code will be listed here."
+        emptyIcon="person_search"
+        emptyMessage={
+          live
+            ? 'No one has joined with your code yet. Share your link or QR to get started.'
+            : 'Referral tracking will become available when the programme launches. Until then, keep sharing your link — it’s ready to use.'
+        }
+        emptyTitle="No referrals yet"
+        headers={['Name', 'Type', 'Joined']}
+        onRetry={live ? myReferrals.refetch : undefined}
+        rows={rows}
+        status={recordsStatus}
+        title="My Referrals"
+      />
 
       <EmptyPanel
         icon="redeem"

@@ -47,7 +47,9 @@ export function BusinessReferralsContent() {
   const referrals = useBusinessReferrals();
   const live = referrals.live;
   const code = live ? (referrals.stats?.referralCode ?? '') : preview.code;
-  const identity = live ? { code, link: buildReferralLink(code), isPreview: false } : preview;
+  const identity = live
+    ? { code, link: buildReferralLink(code, 'business'), isPreview: false }
+    : preview;
   const naira = (value: number) => `₦${value.toLocaleString('en-NG')}`;
   const stats = live
     ? [
@@ -106,6 +108,7 @@ export function BusinessReferralsContent() {
         accountType="business"
         code={identity.code}
         link={identity.link}
+        isPreview={identity.isPreview}
         title="Your business referral link"
         description="Share this link with another business. They sign up through it and complete onboarding — that’s all we need to connect them to you."
       />

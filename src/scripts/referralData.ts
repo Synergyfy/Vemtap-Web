@@ -1,43 +1,28 @@
 /**
  * VEMTAP Referral System — frontend model.
  *
- * FRONTEND ONLY. There is no backend yet: nothing here talks to a server,
- * verifies a code, tracks an attribution or accounts for a reward. Everything
- * is a clearly-labelled *preview* so the screens, navigation and interactions
- * can be built now and wired to a real API later without rebuilding the UI.
- *
- * Integration notes for the future backend:
- *  - `buildDemoReferralCode()` / `useReferralIdentity()` → replace with the
- *    code returned by `GET /referrals/me`.
- *  - `validateReferralCode()` → add a server lookup before returning `ok`.
- *    The local checks below are format-only and deliberately say so.
- *  - `buildReferralLink()` → replace the constant origin with the one the
- *    backend issues; the query parameter name is already centralised in
- *    `REFERRAL_URL_PARAM`.
- *  - Referral stats / rewards / challenges on the dashboards are all rendered
- *    from empty states — point them at their endpoints when they exist.
- *
- * The provisional code captured during onboarding lives in module memory only
- * (`provisionalReferralCode` below). It is intentionally NOT written to
- * localStorage: a code typed during sign-up is a hint, not secured
- * attribution, and must not look like a permanent record until the backend
- * confirms it.
+ * Codes, links and QR codes work against the live backend:
+ *  - `useReferralIdentity()` reads the code stored on the account
+ *    (`GET /referrals/me`); `buildDemoReferralCode()` remains only as the
+ *    stand-in when no API is configured (demo mode).
+ *  - The provisional code captured from a referral URL or typed during
+ *    sign-up is kept in localStorage (`vemtap_referral`, 30-day TTL) so it
+ *    survives a reload mid-sign-up. It is sent with the sign-up request (or
+ *    claimed with `POST /referrals/claim` for Google) and cleared once the
+ *    account is registered or the claim succeeds.
+ *  - `validateReferralCode()` stays format-only; the server decides whether a
+ *    code exists, and an unknown code never blocks sign-up.
  */
 
 export const REFERRAL_URL_PARAM = 'ref';
 
-export const REFERRAL_ORIGIN = 'https://vemtap.com';
-
-/** Base path a referral URL points at (the public join page). */
-export const REFERRAL_JOIN_PATH = '/join';
-
 export type ReferralAudience = 'customer' | 'business';
 
 export interface ReferralIdentity {
-  /** Preview code shown in the UI. Not issued or verified by a server. */
+  /** The account's referral code — stored on the server, empty while it loads. */
   code: string;
   link: string;
-  /** Always true until a backend issues real codes — drives the UI badges. */
+  /** True only for the demo-mode preview code (no API configured). */
   isPreview: boolean;
 }
 
@@ -51,9 +36,9 @@ const CODE_LENGTH = 6;
  * Codes
  * ------------------------------------------------------------------ */
 
-/** Uppercases and strips formatting so `vem tap-1234` compares as `VEMTAP1234`. */
+/** Uppercases, keeps letters/digits/dashes (`VEM-8OGUU4` stays intact), max 16 chars. */
 export function normaliseReferralCode(input: string): string {
-  return input.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 12);
+  return input.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase().slice(0, 16);
 }
 
 export interface ReferralCodeValidation {
@@ -76,8 +61,8 @@ export function validateReferralCode(input: string): ReferralCodeValidation {
     return { ok: false, code: normaliseReferralCode(trimmed), message: 'Referral codes use letters, numbers and dashes only.' };
   }
   const code = normaliseReferralCode(trimmed);
-  if (code.length < 4 || code.length > 12) {
-    return { ok: false, code, message: 'Referral codes are 4 to 12 characters long.' };
+  if (code.length < 4 || code.length > 16) {
+    return { ok: false, code, message: 'Referral codes are 4 to 16 characters long.' };
   }
   return { ok: true, code };
 }
@@ -126,8 +111,13 @@ export function buildDemoReferralCode(seed: string): string {
   return out.join('');
 }
 
-export function buildReferralLink(code: string): string {
-  const base = `${REFERRAL_ORIGIN}${REFERRAL_JOIN_PATH}`;
+/**
+ * The link a code points at. Customers land on the customer sign-up flow,
+ * businesses on the business onboarding. Built from the current origin so
+ * staging, production and local links all scan and share correctly.
+ */
+export function buildReferralLink(code: string, audience: ReferralAudience = 'customer'): string {
+  const base = `${window.location.origin}${audience === 'business' ? '/business-onboarding' : '/start-vemtap'}`;
   return code ? `${base}?${REFERRAL_URL_PARAM}=${encodeURIComponent(code)}` : base;
 }
 
@@ -137,30 +127,70 @@ export function buildReferralIdentity(seed: string): ReferralIdentity {
 }
 
 /* ------------------------------------------------------------------ *
- * Provisional code carried through onboarding (in-memory, never persisted)
+ * Provisional code carried through onboarding (localStorage, 30 days)
  * ------------------------------------------------------------------ */
 
-let provisionalReferralCode = '';
-/** Where the provisional code came from — drives the "prefilled" hint in the UI. */
-let provisionalReferralSource: 'url' | 'manual' | null = null;
+/** localStorage key holding the provisional referral code between reloads. */
+const PROVISIONAL_STORAGE_KEY = 'vemtap_referral';
+
+/** A provisional code expires after 30 days. */
+const PROVISIONAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** What is written to localStorage — `savedAt` drives the TTL. */
+interface StoredProvisionalReferral {
+  code: string;
+  source: 'url' | 'manual';
+  savedAt: number;
+}
+
+function readStoredProvisional(): StoredProvisionalReferral | null {
+  try {
+    const raw = window.localStorage.getItem(PROVISIONAL_STORAGE_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as StoredProvisionalReferral;
+    if (!stored || typeof stored.code !== 'string' || !stored.code) return null;
+    if (typeof stored.savedAt !== 'number' || Date.now() - stored.savedAt > PROVISIONAL_TTL_MS) {
+      window.localStorage.removeItem(PROVISIONAL_STORAGE_KEY);
+      return null;
+    }
+    return stored;
+  } catch {
+    return null;
+  }
+}
 
 export function getProvisionalReferralCode(): string {
-  return provisionalReferralCode;
+  return readStoredProvisional()?.code ?? '';
 }
 
 /** True when the provisional code was prefilled from a referral URL. */
 export function provisionalReferralIsFromUrl(): boolean {
-  return provisionalReferralSource === 'url';
+  return readStoredProvisional()?.source === 'url';
 }
 
 export function setProvisionalReferralCode(code: string, source: 'url' | 'manual' = 'manual'): void {
-  provisionalReferralCode = normaliseReferralCode(code);
-  provisionalReferralSource = provisionalReferralCode ? source : null;
+  const stored = normaliseReferralCode(code);
+  try {
+    if (stored) {
+      window.localStorage.setItem(
+        PROVISIONAL_STORAGE_KEY,
+        JSON.stringify({ code: stored, source, savedAt: Date.now() } satisfies StoredProvisionalReferral),
+      );
+    } else {
+      window.localStorage.removeItem(PROVISIONAL_STORAGE_KEY);
+    }
+  } catch {
+    // Storage can be unavailable (private mode); the code then only lives for
+    // this page load, which still covers a single sign-up session.
+  }
 }
 
 export function clearProvisionalReferralCode(): void {
-  provisionalReferralCode = '';
-  provisionalReferralSource = null;
+  try {
+    window.localStorage.removeItem(PROVISIONAL_STORAGE_KEY);
+  } catch {
+    // ignore storage errors in restricted contexts
+  }
 }
 
 /* ------------------------------------------------------------------ *
