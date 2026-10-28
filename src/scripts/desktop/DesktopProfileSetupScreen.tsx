@@ -1,4 +1,5 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import type { ProfileSetupDraft } from '../ProfileSetupScreen';
 import { Icon } from '../../components/ui/Icon';
 import { ReferralField } from '../../components/referral/ReferralField';
 import { ReferralConfirmSheet } from '../../components/referral/ReferralConfirmSheet';
@@ -11,6 +12,10 @@ interface DesktopProfileSetupScreenProps {
   onBusinessSetup: () => void;
   email?: string;
   code?: string;
+  /** Details typed on an earlier visit (business sign-up resumes with them filled in). */
+  initialValues?: ProfileSetupDraft;
+  /** Called as name and phone change, so leaving and coming back keeps them (never the PIN). */
+  onDraftChange?: (draft: ProfileSetupDraft) => void;
 }
 
 const PIN_LENGTH = 6;
@@ -96,16 +101,22 @@ function PinGroup({ label, hint, value, onChange, revealed }: PinGroupProps) {
   );
 }
 
-export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: DesktopProfileSetupScreenProps) {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
+export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initialValues, onDraftChange }: DesktopProfileSetupScreenProps) {
+  const [firstName, setFirstName] = useState(initialValues?.firstName ?? '');
+  const [lastName, setLastName] = useState(initialValues?.lastName ?? '');
+  const [phone, setPhone] = useState(initialValues?.phone ?? '');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [pinRevealed, setPinRevealed] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<'idle' | 'saving' | 'verified'>('idle');
   const referral = useReferralStep();
+  // Keep what's typed so a return visit refills it (the PIN is never passed on).
+  useEffect(() => {
+    onDraftChange?.({ firstName, lastName, phone });
+    // Only the typed values matter; the callback may be a fresh closure each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstName, lastName, phone]);
   /** Which button opened the referral sheet, so it completes the same way. */
   const [pendingAction, setPendingAction] = useState<'submit' | 'next' | null>(null);
 

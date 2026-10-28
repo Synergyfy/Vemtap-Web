@@ -6,7 +6,7 @@ import { SESSION_EXPIRED_EVENT } from '../services/api/client';
 import { queryClient } from '../services/queryClient';
 import type { SessionUser } from '../services/sessionService';
 import { socketService } from '../services/socketService';
-import { clearBusinessSetupSnapshot } from '../scripts/businessSetup';
+import { forgetLocalBusinessSetup } from '../scripts/businessSetup';
 
 interface AuthCredentials {
   identifier?: string;
@@ -225,8 +225,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } finally {
             clearStoredProfile();
             clearStoredClaims();
-            // Setup progress belongs to this owner; the next person starts clean.
-            clearBusinessSetupSnapshot();
+            // Setup progress belongs to this owner; the next person starts clean
+            // (their account keeps a copy, so signing back in resumes it).
+            forgetLocalBusinessSetup();
             clearAuthTokens();
             queryClient.clear();
             writeFlag(AUTHED_KEY, false);
