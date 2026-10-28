@@ -98,7 +98,8 @@ export function LocationRadiusModal({
   };
 
   const applyLive = async () => {
-    const typed = query.trim().replace(/,.*$/, '').trim();
+    // Live: send the full text so "Garki, Abuja" isn't read as plain "Garki".
+    const typed = query.trim();
     const next = await picker.resolve(typed);
     if (!next) return;
     onApply?.(next.district, radius, { city: next.city, lat: next.lat, lng: next.lng });
