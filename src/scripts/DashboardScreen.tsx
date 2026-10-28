@@ -3,7 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { useLocation } from '../context/LocationContext';
+import { useLocation, useLocationQuery } from '../context/LocationContext';
 import { useOrders } from '../context/OrdersContext';
 import { useProfile } from '../context/ProfileContext';
 import { useBooking } from '../context/BookingContext';
@@ -174,6 +174,8 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
   const { orders } = useOrders();
   const { appointments } = useBooking();
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
     const loadOffers = async () => {
@@ -183,7 +185,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
       }
 
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 4 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -193,7 +195,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
   // Live: the real unread count; demo keeps its sample "3".

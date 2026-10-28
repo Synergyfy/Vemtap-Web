@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from './ui/Icon';
+import type { LocationPlace } from '../context/LocationContext';
+import { useLocationPicker } from '../hooks/useLocationPicker';
 
 interface DesktopLocationRadiusModalProps {
   open: boolean;
@@ -9,7 +11,7 @@ interface DesktopLocationRadiusModalProps {
    * `onClose`, so the selection was discarded and every header label stayed
    * permanently hardcoded to "Apo, Abuja • Within 5 km".
    */
-  onApply?: (district: string, radius: number) => void;
+  onApply?: (district: string, radius: number, place?: LocationPlace) => void;
   district?: string;
   radius?: number;
 }
@@ -34,10 +36,44 @@ export function DesktopLocationRadiusModal({
   const [radius, setRadius] = useState(radiusProp ?? 5);
   const [district, setDistrict] = useState(districtProp ?? 'Your area');
   const [query, setQuery] = useState(`${districtProp ?? 'Your area'}`);
+  // Live: Auto-Detect and typed areas resolve to real places; demo keeps the sample picker.
+  const picker = useLocationPicker(open);
+  const { live } = picker;
+
+  useEffect(() => {
+    if (!open || !live) return;
+    setDistrict(districtProp ?? 'Your area');
+    setQuery(districtProp ?? 'Your area');
+    setRadius(radiusProp ?? 5);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) {
     return null;
   }
+
+  const liveGps = picker.place.lat !== undefined && query.trim() === picker.place.district;
+  const busy = picker.detecting || picker.searching;
+
+  const autoDetect = () => {
+    if (!live) {
+      selectDistrict('Your area');
+      return;
+    }
+    void picker.detect().then((found) => {
+      if (!found) return;
+      setDistrict(found.district);
+      setQuery(found.district);
+    });
+  };
+
+  const applyLive = async () => {
+    const typed = query.trim().replace(/,.*$/, '').trim();
+    const next = await picker.resolve(typed);
+    if (!next) return;
+    onApply?.(next.district, radius, { city: next.city, lat: next.lat, lng: next.lng });
+    onClose();
+  };
 
   const metrics = metricsFor(radius);
 
@@ -75,7 +111,8 @@ export function DesktopLocationRadiusModal({
           <button
             className="w-full bg-surface-tint-blue rounded-xl p-space-md flex items-center justify-between cursor-pointer hover:bg-secondary-fixed/50 transition-colors text-left"
             type="button"
-            onClick={() => selectDistrict('Your area')}
+            onClick={autoDetect}
+            disabled={busy}
           >
             <div className="flex items-center gap-space-sm">
               <div className="w-11 h-11 rounded-xl bg-primary-container text-on-primary flex items-center justify-center shadow-sm">
@@ -84,22 +121,34 @@ export function DesktopLocationRadiusModal({
               <div>
                 <div className="flex items-center gap-space-2xs">
                   <span className="font-heading-sm text-heading-sm font-semibold text-text-primary">Auto-Detect Location</span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" /> GPS Active
-                  </span>
+                  {(!live || liveGps) && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" /> GPS Active
+                    </span>
+                  )}
                 </div>
-                <p className="font-body-md text-body-md text-text-secondary mt-0.5">Your current area • Live location</p>
+                <p className="font-body-md text-body-md text-text-secondary mt-0.5">
+                  {!live
+                    ? 'Your current area • Live location'
+                    : picker.detecting
+                      ? 'Detecting your location…'
+                      : liveGps
+                        ? `${[picker.place.district, picker.place.city].filter(Boolean).join(', ')} • Live location`
+                        : 'Click to use your current location'}
+                </p>
               </div>
             </div>
-            <div className="w-7 h-7 rounded-full bg-primary-container text-on-primary flex items-center justify-center">
-              <Icon name="check" className="text-[18px]" />
-            </div>
+            {(!live || liveGps) && (
+              <div className="w-7 h-7 rounded-full bg-primary-container text-on-primary flex items-center justify-center">
+                <Icon name="check" className="text-[18px]" />
+              </div>
+            )}
           </button>
 
           <div className="space-y-space-2xs">
             <label className="font-label-md text-label-md font-semibold text-text-primary flex items-center gap-1" htmlFor="district-search-field">
               <span>Or Select / Search District</span>
-              <span className="font-caption text-caption font-normal text-text-tertiary">(Your area)</span>
+              {!live && <span className="font-caption text-caption font-normal text-text-tertiary">(Your area)</span>}
             </label>
             <div className="relative flex items-center w-full">
               <Icon name="location_city" className="absolute left-space-md text-outline text-[20px] pointer-events-none" />
@@ -121,6 +170,7 @@ export function DesktopLocationRadiusModal({
             </div>
           </div>
 
+          {!live && (
           <div className="space-y-space-xs">
             <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-semibold">
               Popular Local Hubs
@@ -152,6 +202,7 @@ export function DesktopLocationRadiusModal({
               })}
             </div>
           </div>
+          )}
 
           <div className="space-y-space-sm pt-space-xs">
             <div className="flex items-center justify-between">
@@ -211,14 +262,23 @@ export function DesktopLocationRadiusModal({
                 <Icon name="storefront" className="text-[20px]" />
               </div>
               <div className="space-y-0.5">
-                <p className="font-body-md text-body-md text-text-primary font-medium">
-                  Found <span className="text-primary font-bold">{metrics.deals} active deals</span> and{' '}
-                  <span className="text-primary font-bold">{metrics.stores} local businesses</span> within {radius} km of{' '}
-                  {district} District.
-                </p>
-                <p className="font-caption text-caption text-text-secondary">
-                  Deals automatically refresh as you move around your local area.
-                </p>
+                {live ? (
+                  <p className="font-body-md text-body-md text-text-primary font-medium">
+                    Deals and businesses within <span className="text-primary font-bold">{radius} km</span> of{' '}
+                    {query.trim() || district} show nearest first.
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-body-md text-body-md text-text-primary font-medium">
+                      Found <span className="text-primary font-bold">{metrics.deals} active deals</span> and{' '}
+                      <span className="text-primary font-bold">{metrics.stores} local businesses</span> within {radius} km of{' '}
+                      {district} District.
+                    </p>
+                    <p className="font-caption text-caption text-text-secondary">
+                      Deals automatically refresh as you move around your local area.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -229,15 +289,26 @@ export function DesktopLocationRadiusModal({
             className="w-full h-[52px] rounded-2xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] hover:shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"
             type="button"
             onClick={() => {
+              if (live) {
+                void applyLive();
+                return;
+              }
               // Prefer whatever the customer actually typed; fall back to the
               // district chip they last tapped.
               const typed = query.trim().replace(/,.*$/, '').trim();
               onApply?.(typed || district, radius);
               onClose();
             }}
+            disabled={busy}
           >
             <Icon name="near_me" className="text-[20px]" />
-            <span>Apply Location &amp; Radius ({metrics.deals} Deals)</span>
+            <span>
+              {live
+                ? picker.searching
+                  ? 'Finding area…'
+                  : 'Apply Location & Radius'
+                : `Apply Location & Radius (${metrics.deals} Deals)`}
+            </span>
           </button>
           <div className="text-center pt-1">
             <button
@@ -250,6 +321,12 @@ export function DesktopLocationRadiusModal({
           </div>
         </div>
       </div>
+      {picker.toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 pointer-events-none max-w-[90vw]">
+          <Icon name="location_off" className="text-[18px] text-badge-discount-text" />
+          <span className="font-caption text-caption font-medium">{picker.toast}</span>
+        </div>
+      )}
     </div>
   );
 }

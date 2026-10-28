@@ -3,7 +3,7 @@ import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { AnnouncementBanner } from '../../components/AnnouncementBanner';
 import { useBooking } from '../../context/BookingContext';
-import { useLocation } from '../../context/LocationContext';
+import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { useOrders } from '../../context/OrdersContext';
 import { useProfile } from '../../context/ProfileContext';
 import { hasApiConfig } from '../../services/api/client';
@@ -133,6 +133,8 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
     const loadOffers = async () => {
@@ -142,7 +144,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
       }
 
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 4 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 4 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -152,7 +154,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   const curatedDeals = useMemo(() => publicOffers.slice(0, 2).map(toCuratedDeal), [publicOffers]);
   const activeDeals = useMemo(() => publicOffers.slice(0, 2).map(toActiveDeal), [publicOffers]);

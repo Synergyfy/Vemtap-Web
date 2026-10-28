@@ -1,5 +1,6 @@
 import { api } from './api/client';
 import { API_ENDPOINTS } from './api/endpoints';
+import { formatDistanceKm } from '../context/LocationContext';
 import type {
   ApiListResponse,
   CatalogueItemBranchPrice,
@@ -8,6 +9,27 @@ import type {
   UpdateCatalogueItemDto,
   UpdateCatalogueOfferDto,
 } from './types';
+
+/**
+ * Gives each feed row a readable `distance` ("1.2 km") from the API's
+ * `distanceKm`, which screens already show in place of a generic label.
+ */
+const withDistanceLabels = <T>(response: T): T => {
+  const label = (row: unknown) => {
+    if (!row || typeof row !== 'object') return row;
+    const record = row as Record<string, unknown>;
+    const distance = formatDistanceKm(record.distanceKm);
+    return distance && !record.distance ? { ...record, distance } : row;
+  };
+  if (Array.isArray(response)) return response.map(label) as T;
+  if (response && typeof response === 'object') {
+    const record = response as Record<string, unknown>;
+    for (const key of ['data', 'items']) {
+      if (Array.isArray(record[key])) return { ...record, [key]: (record[key] as unknown[]).map(label) } as T;
+    }
+  }
+  return response;
+};
 
 export const catalogueService = {
   getItems: async (params?: Record<string, string | number | boolean | undefined>) =>
@@ -29,7 +51,9 @@ export const catalogueService = {
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicCategoriesByBranch(branchId), { params }),
 
   getPublicOffers: async (params?: Record<string, string | number | boolean | undefined>) =>
-    api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffers, { params }),
+    withDistanceLabels(
+      await api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffers, { params }),
+    ),
 
   getPublicOffersByBranch: async (branchId: string, params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffersByBranch(branchId), { params }),
@@ -38,7 +62,9 @@ export const catalogueService = {
     api.get<Record<string, unknown>>(API_ENDPOINTS.catalogue.publicOfferDetails(id)),
 
   getPublicBusinesses: async (params?: Record<string, string | number | boolean | undefined>) =>
-    api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.public.businesses, { params }),
+    withDistanceLabels(
+      await api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.public.businesses, { params }),
+    ),
 
   searchPublicBusinesses: async (params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.public.search, { params }),

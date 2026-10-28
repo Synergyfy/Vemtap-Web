@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
-import { useLocation } from '../context/LocationContext';
+import { useLocation, useLocationQuery } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
@@ -580,6 +580,8 @@ export function HomeScreen({
   const featuredSlides = useMemo(() => publicOffers.slice(0, 3).map(toFeaturedSlide), [publicOffers]);
   const liveDeals = useMemo(() => publicOffers.slice(0, 4).map(toDealSummary), [publicOffers]);
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
 
@@ -594,7 +596,7 @@ export function HomeScreen({
 
       setOffersLoading(true);
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 8 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 8 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -606,7 +608,7 @@ export function HomeScreen({
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   useEffect(() => {
     if (featuredSlides.length < 2) return;

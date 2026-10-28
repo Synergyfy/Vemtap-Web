@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
-import { useLocation } from '../context/LocationContext';
+import { useLocation, useLocationQuery } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useAuth } from '../context/AuthContext';
 import { hasApiConfig } from '../services/api/client';
@@ -345,6 +345,8 @@ export function DealsScreen({
   const { district, city, radius, setLocation } = useLocation();
   const apiReady = hasApiConfig();
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
 
@@ -355,7 +357,7 @@ export function DealsScreen({
       }
 
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 6 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 6 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -365,7 +367,7 @@ export function DealsScreen({
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 6), [publicOffers]);
   const featuredDeal = displayDeals[0] ? toDealCardModel(displayDeals[0]) : null;
