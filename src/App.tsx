@@ -2494,7 +2494,8 @@ function AppInner() {
           return;
         }
         setAuthIntent('customer');
-        setRoute(isNew ? 'google-confirm' : 'discovering');
+        // New accounts confirm their phone; returning customers go straight home.
+        setRoute(isNew ? 'google-confirm' : 'home');
       } catch (error) {
         fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
       }
@@ -2730,7 +2731,8 @@ function AppInner() {
                 await routeSignedInOwner();
                 return;
               }
-              setRoute('discovering');
+              // A returning customer goes straight home; onboarding is for sign-up.
+              setRoute(hasApiConfig() ? 'home' : 'discovering');
             }}
             onGoogleSignIn={async () => {
               if (hasApiConfig()) {
@@ -2773,7 +2775,8 @@ function AppInner() {
               await routeSignedInOwner();
               return;
             }
-            setRoute('discovering');
+            // A returning customer goes straight home; onboarding is for sign-up.
+            setRoute(hasApiConfig() ? 'home' : 'discovering');
           }}
           onGoogleSignIn={async () => {
             if (hasApiConfig()) {
