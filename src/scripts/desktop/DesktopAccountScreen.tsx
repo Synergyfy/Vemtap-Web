@@ -2,6 +2,7 @@ import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../../components/AccountRows';
 import { useProfile } from '../../context/ProfileContext';
+import { hasApiConfig } from '../../services/api/client';
 
 interface DesktopAccountScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -80,6 +81,9 @@ const UTILITY_ROWS: AccountRow[] = [
 
 export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: DesktopAccountScreenProps) {
   const { fullName, email, initials, phone } = useProfile();
+  // Live: no sample counts or totals until real figures are wired; demo keeps them.
+  const live = hasApiConfig();
+  const activityRows = live ? ACTIVITY_ROWS.map(({ badge: _badge, trail: _trail, ...row }) => row) : ACTIVITY_ROWS;
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
@@ -175,7 +179,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                     </div>
                     <div className="min-w-0">
                       <span className="font-caption text-caption text-text-secondary block">Total Saved</span>
-                      <span className="font-label-md text-label-md font-bold text-badge-discount-text">₦18,500</span>
+                      <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? '—' : '₦18,500'}</span>
                     </div>
                   </div>
                   <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center gap-space-xs">
@@ -184,7 +188,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                     </div>
                     <div className="min-w-0">
                       <span className="font-caption text-caption text-text-secondary block">Active Deals</span>
-                      <span className="font-label-md text-label-md font-bold text-text-primary">3 Live</span>
+                      <span className="font-label-md text-label-md font-bold text-text-primary">{live ? '—' : '3 Live'}</span>
                     </div>
                   </div>
                 </div>
@@ -193,7 +197,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
 
             <div className="w-full flex flex-col gap-6">
               <RowGroup title="Activity & Deals">
-                {ACTIVITY_ROWS.map((row) => (
+                {activityRows.map((row) => (
                   <AccountRowButton key={row.label} row={row} onSelect={onNavigate} />
                 ))}
               </RowGroup>

@@ -8,6 +8,7 @@ import { useOrders } from '../context/OrdersContext';
 import { useProfile } from '../context/ProfileContext';
 import { useBooking } from '../context/BookingContext';
 import { hasApiConfig } from '../services/api/client';
+import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
 import {
   activeAnnouncements,
@@ -195,6 +196,9 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
   }, []);
 
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
+  // Live: the real unread count; demo keeps its sample "3".
+  const { live: liveUnread, count: unreadCount } = useUnreadNotifications();
+  const bellBadge = liveUnread ? (unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : null) : '3';
   const profileInitials = fullName.trim() ? fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase().slice(0, 2) : 'U';
   const recommendedDeals = useMemo(() => publicOffers.slice(0, 2).map(toDashboardRecommended), [publicOffers]);
 
@@ -316,9 +320,11 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
               className="relative w-10 h-10 rounded-full bg-surface-subtle flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors shadow-sm active:scale-95"
             >
               <Icon name="notifications" className="text-[20px]" />
-              <span className="absolute top-0.5 right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-error text-on-error font-caption text-[10px] font-bold flex items-center justify-center leading-none">
-                3
-              </span>
+              {bellBadge && (
+                <span className="absolute top-0.5 right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-error text-on-error font-caption text-[10px] font-bold flex items-center justify-center leading-none">
+                  {bellBadge}
+                </span>
+              )}
             </button>
             <button
               aria-label="Account"
