@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { Logo } from '../components/ui/Logo';
@@ -9,6 +9,8 @@ interface AuthCodeScreenProps {
   /** Requests the email code; omitted by the business sign-up modal. */
   onSubmitEmail?: (email: string) => Promise<void> | void;
   onGoogle: () => void;
+  /** A failed live Google sign-in to show (set again for each failure). */
+  googleError?: { message: string } | null;
   /** Customer sign-up only — swaps into the business registration flow. */
   onBusinessRegister?: () => void;
   /** Business sign-up only (`mode="business"`) — swaps into customer registration. */
@@ -75,6 +77,7 @@ export function AuthCodeScreen({
   onContinue,
   onSubmitEmail,
   onGoogle,
+  googleError,
   onBusinessRegister,
   onCustomerRegister,
   onSignIn,
@@ -82,6 +85,11 @@ export function AuthCodeScreen({
 }: AuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!googleError) return;
+    setError(googleError.message);
+  }, [googleError]);
   const business = mode === 'business';
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

@@ -12,6 +12,8 @@ import { hasApiConfig } from './lib/api';
 import { authService } from './services';
 import type { CatalogueItem } from './services/catalogueItemsService';
 import { ownerAuthService, OTP_GATE_MESSAGE } from './services/ownerAuthService';
+import { apiErrorMessage } from './services/errorMessages';
+import { startGoogleSignIn, takeGoogleRedirectResult, type GoogleIntent } from './services/googleAuth';
 import { catalogueService } from './services/catalogueService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
@@ -935,6 +937,9 @@ export default function App() {
   );
 }
 
+/** The result Google sent back to `/google-callback`, read once per page load. */
+const GOOGLE_REDIRECT = takeGoogleRedirectResult();
+
 function AppInner() {
   const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession } = useAuth();
   const sessionUser = useSessionUser().data;
@@ -947,7 +952,13 @@ function AppInner() {
   const claims = useClaims();
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
-  const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const [route, setRouteState] = useState<Route>(() =>
+    GOOGLE_REDIRECT
+      ? ((GOOGLE_REDIRECT.pending.from in ROUTE_PATH ? GOOGLE_REDIRECT.pending.from : 'welcome') as Route)
+      : entryRoute(window.location.pathname, authed, isDesktop),
+  );
+  /** A failed "Continue with Google", shown on the screen it started from. */
+  const [googleError, setGoogleError] = useState<{ route: Route; message: string } | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return match?.business ?? null;
@@ -2318,6 +2329,75 @@ function AppInner() {
     setRoute('business-onboarding');
   };
 
+  /** Live "Continue with Google": leaves for Google, or shows why it can't. */
+  const continueWithGoogle = (intent: GoogleIntent, from: Route) => {
+    setGoogleError(null);
+    try {
+      startGoogleSignIn(intent, from);
+    } catch (error) {
+      setGoogleError({ route: from, message: apiErrorMessage(error) });
+    }
+  };
+
+  // Back from Google: sign in through the API, then continue the journey the
+  // visitor started (new accounts confirm their phone first).
+  const googleHandled = useRef(false);
+  useEffect(() => {
+    const result = GOOGLE_REDIRECT;
+    if (!result || googleHandled.current) return;
+    googleHandled.current = true;
+    const from = (result.pending.from in ROUTE_PATH ? result.pending.from : 'welcome') as Route;
+    const fail = (message: string) => setGoogleError({ route: from, message });
+    if (result.error) {
+      // Closing Google's page is a cancel, not an error.
+      if (result.error !== 'access_denied') fail('Google sign-in didn’t complete. Please try again.');
+      return;
+    }
+    const { intent } = result.pending;
+    void (async () => {
+      try {
+        const response = (await authService.googleSignIn({
+          token: result.idToken,
+          ...(intent === 'business' ? { role: 'OWNER' } : intent === 'customer' ? { role: 'CUSTOMER' } : {}),
+        })) as Parameters<typeof adoptSession>[0] & { isNewUser?: boolean; requiresTwoFactor?: boolean };
+        if (response.requiresTwoFactor) {
+          fail('This account uses two-factor sign-in. Sign in with your email and PIN instead.');
+          return;
+        }
+        const user = adoptSession(response);
+        const isNew = Boolean(response.isNewUser);
+        const business = isBusinessRole(user?.role);
+        if (business && user?.businessId && !isNew) {
+          setRoute('business-overview');
+          return;
+        }
+        if (intent === 'business') {
+          setAuthIntent('business');
+          if (isNew) setRoute('google-confirm');
+          else if (business) enterBusinessProfile();
+          else {
+            // An existing customer account: the usual "use this account or a
+            // new business identity" question decides.
+            setBusinessOnboardingFrom(from);
+            setRoute('business-onboarding');
+            setBusinessChoiceOpen(true);
+          }
+          return;
+        }
+        if (business) {
+          enterBusinessProfile();
+          return;
+        }
+        setAuthIntent('customer');
+        setRoute(isNew ? 'google-confirm' : 'discovering');
+      } catch (error) {
+        fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
+      }
+    })();
+    // Runs once for the page Google returned to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const renderClaimed = () =>
     isDesktop ? (
       <DesktopClaimedDealScreen
@@ -2399,10 +2479,15 @@ function AppInner() {
               setRoute('verify-email');
             }}
             onGoogle={() => {
+              if (hasApiConfig()) {
+                continueWithGoogle('customer', 'auth-code');
+                return;
+              }
               signIn();
               setAuthIntent('customer');
               setRoute('google-confirm');
             }}
+            googleError={googleError?.route === 'auth-code' ? googleError : null}
             onSignIn={() => {
               setSignInFrom('auth-code');
               setRoute('sign-in');
@@ -2423,10 +2508,15 @@ function AppInner() {
             setRoute('verify-email');
           }}
           onGoogle={() => {
+            if (hasApiConfig()) {
+            continueWithGoogle('customer', 'auth-code');
+            return;
+            }
             signIn();
             setAuthIntent('customer');
             setRoute('google-confirm');
           }}
+          googleError={googleError?.route === 'auth-code' ? googleError : null}
           // "Already have an account? Sign In" reuses the shared sign-in
           // screen instead of continuing into verification (desktop parity).
           onSignIn={() => {
@@ -2463,10 +2553,15 @@ function AppInner() {
               setRoute('verify-email');
             }}
             onGoogle={() => {
+              if (hasApiConfig()) {
+                continueWithGoogle('business', 'business-auth');
+                return;
+              }
               signIn();
               setAuthIntent('business');
               setRoute('google-confirm');
             }}
+            googleError={googleError?.route === 'business-auth' ? googleError : null}
             onSignIn={() => {
               setSignInFrom('business-auth');
               setRoute('sign-in');
@@ -2491,10 +2586,15 @@ function AppInner() {
             setRoute('verify-email');
           }}
           onGoogle={() => {
+            if (hasApiConfig()) {
+            continueWithGoogle('business', 'business-auth');
+            return;
+            }
             signIn();
             setAuthIntent('business');
             setRoute('google-confirm');
           }}
+          googleError={googleError?.route === 'business-auth' ? googleError : null}
           onSignIn={() => {
             setSignInFrom('business-auth');
             setRoute('sign-in');
@@ -2524,6 +2624,10 @@ function AppInner() {
               setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
             }}
             onGoogleSignIn={async () => {
+              if (hasApiConfig()) {
+                continueWithGoogle(resumeBusinessSetup ? 'business' : 'sign-in', 'sign-in');
+                return;
+              }
               if (!hasApiConfig()) {
                 await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
               }
@@ -2544,6 +2648,7 @@ function AppInner() {
               setRoute('business-onboarding');
             }}
             onForgotPin={() => setRoute('forgot-pin')}
+            googleError={googleError?.route === 'sign-in' ? googleError : null}
           />
         );
       return (
@@ -2558,6 +2663,10 @@ function AppInner() {
             setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
           }}
           onGoogleSignIn={async () => {
+            if (hasApiConfig()) {
+            continueWithGoogle(resumeBusinessSetup ? 'business' : 'sign-in', 'sign-in');
+            return;
+            }
             if (!hasApiConfig()) {
               await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
             }
@@ -2578,6 +2687,7 @@ function AppInner() {
             setRoute('business-onboarding');
           }}
           onForgotPin={() => setRoute('forgot-pin')}
+            googleError={googleError?.route === 'sign-in' ? googleError : null}
         />
       );
 
