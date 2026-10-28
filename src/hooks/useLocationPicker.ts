@@ -1,29 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, type LocationPlace } from '../context/LocationContext';
+import { useLocation } from '../context/LocationContext';
 import { hasApiConfig } from '../services/api/client';
-import { geocodingService } from '../services/geocodingService';
+import {
+  AREA_NOT_FOUND,
+  LOCATION_UNAVAILABLE,
+  findPlace,
+  getCurrentPlace,
+  type PickedPlace,
+} from '../services/currentLocation';
 
-/** The place being chosen in the location sheet. */
-export interface PickedPlace extends LocationPlace {
-  district: string;
-}
-
-const DENIED = 'Location access is off. Allow it in your browser, or pick your area below.';
-const UNAVAILABLE = "Couldn't get your location. Try again or pick your area below.";
-const NOT_FOUND = "We couldn't find that area. Try a nearby landmark or district.";
-
-const currentPosition = () =>
-  new Promise<GeolocationPosition>((resolve, reject) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      reject(new Error(UNAVAILABLE));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, (error) => reject(new Error(error.code === error.PERMISSION_DENIED ? DENIED : UNAVAILABLE)), {
-      enableHighAccuracy: false,
-      timeout: 10_000,
-      maximumAge: 5 * 60_000,
-    });
-  });
+export type { PickedPlace };
 
 /**
  * Live location picking for the Location & Radius sheets: Auto-Detect from the
@@ -65,20 +51,11 @@ export function useLocationPicker(open: boolean) {
   const detect = useCallback(async (): Promise<PickedPlace | null> => {
     setDetecting(true);
     try {
-      const { coords } = await currentPosition();
-      const lat = Number(coords.latitude.toFixed(5));
-      const lng = Number(coords.longitude.toFixed(5));
-      const named = await geocodingService.reverse(lat, lng).catch(() => null);
-      const next: PickedPlace = {
-        district: named?.district || named?.city || 'Your location',
-        city: named?.city || undefined,
-        lat,
-        lng,
-      };
+      const next = await getCurrentPlace();
       setPlace(next);
       return next;
     } catch (error) {
-      showToast(error instanceof Error && error.message ? error.message : UNAVAILABLE);
+      showToast(error instanceof Error && error.message ? error.message : LOCATION_UNAVAILABLE);
       return null;
     } finally {
       setDetecting(false);
@@ -94,19 +71,16 @@ export function useLocationPicker(open: boolean) {
     if (!text || text.toLowerCase() === place.district.toLowerCase()) return place;
     setSearching(true);
     try {
-      const found = await geocodingService.search(text).catch(() => null);
-      if (!found) {
-        showToast(NOT_FOUND);
+      const next = await findPlace(text);
+      if (!next) {
+        showToast(AREA_NOT_FOUND);
         return null;
       }
-      const next: PickedPlace = {
-        district: found.district || text,
-        city: found.city || undefined,
-        lat: found.lat,
-        lng: found.lng,
-      };
       setPlace(next);
       return next;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : AREA_NOT_FOUND);
+      return null;
     } finally {
       setSearching(false);
     }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './ui/Icon';
+import { Toast } from './ui/Toast';
 import type { LocationPlace } from '../context/LocationContext';
 import { useLocationPicker } from '../hooks/useLocationPicker';
 
@@ -321,12 +322,7 @@ export function DesktopLocationRadiusModal({
           </div>
         </div>
       </div>
-      {picker.toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 pointer-events-none max-w-[90vw]">
-          <Icon name="location_off" className="text-[18px] text-badge-discount-text" />
-          <span className="font-caption text-caption font-medium">{picker.toast}</span>
-        </div>
-      )}
+      <Toast message={picker.toast} icon="location_off" />
     </div>
   );
 }

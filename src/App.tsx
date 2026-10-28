@@ -19,7 +19,8 @@ import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessB
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
-import { LocationProvider } from './context/LocationContext';
+import { LocationProvider, useLocation } from './context/LocationContext';
+import { AREA_NOT_FOUND, findPlace, getCurrentPlace, type PickedPlace } from './services/currentLocation';
 import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
 import { parsePrice } from './utils/format';
@@ -2403,6 +2404,24 @@ function AppInner() {
     setRoute('business-overview');
   };
 
+  // Sign-up location (live): the browser's position or a typed area becomes
+  // the customer's saved location; failures reject with a message the screen shows.
+  const savedLocation = useLocation();
+  const savePlace = (place: PickedPlace, radius = savedLocation.radius) =>
+    savedLocation.setLocation(place.district, radius, { city: place.city, lat: place.lat, lng: place.lng });
+  const saveCurrentPlace = async () => savePlace(await getCurrentPlace());
+  const saveTypedPlace = async (area: string) => {
+    const place = await findPlace(area);
+    if (!place) throw new Error(AREA_NOT_FOUND);
+    savePlace(place);
+  };
+  const confirmPlace = hasApiConfig()
+    ? {
+        district: savedLocation.district,
+        city: savedLocation.city === 'Your city' ? undefined : savedLocation.city,
+      }
+    : {};
+
   /** Live "Continue with Google": leaves for Google, or shows why it can't. */
   const continueWithGoogle = (intent: GoogleIntent, from: Route) => {
     setGoogleError(null);
@@ -2893,7 +2912,8 @@ function AppInner() {
         return (
           <DesktopLocationPermissionScreen
             onNav={nav('confirm-location')}
-            onUseLocation={() => {
+            onUseLocation={async () => {
+              if (hasApiConfig()) await saveCurrentPlace();
               setConfirmFrom('location-permission');
               setRoute('confirm-location');
             }}
@@ -2903,7 +2923,8 @@ function AppInner() {
       return (
         <LocationPermissionScreen
           onBack={() => setRoute('profile-setup')}
-          onUseLocation={() => {
+          onUseLocation={async () => {
+            if (hasApiConfig()) await saveCurrentPlace();
             setConfirmFrom('location-permission');
             setRoute('confirm-location');
           }}
@@ -2917,8 +2938,14 @@ function AppInner() {
           <DesktopManualLocationScreen
             onNav={nav('confirm-location')}
             onBack={() => setRoute('location-permission')}
-            onContinue={() => {
+            onContinue={async (area) => {
+              if (hasApiConfig()) await saveTypedPlace(area);
               setConfirmFrom('manual-location');
+              setRoute('confirm-location');
+            }}
+            onUseCurrentLocation={async () => {
+              await saveCurrentPlace();
+              setConfirmFrom('location-permission');
               setRoute('confirm-location');
             }}
           />
@@ -2926,8 +2953,14 @@ function AppInner() {
       return (
         <ManualLocationScreen
           onBack={() => setRoute('location-permission')}
-          onContinue={() => {
+          onContinue={async (area) => {
+            if (hasApiConfig()) await saveTypedPlace(area);
             setConfirmFrom('manual-location');
+            setRoute('confirm-location');
+          }}
+          onUseCurrentLocation={async () => {
+            await saveCurrentPlace();
+            setConfirmFrom('location-permission');
             setRoute('confirm-location');
           }}
           onBusinessSetup={() => setRoute('business-onboarding')}
@@ -2941,8 +2974,16 @@ function AppInner() {
             onNav={nav('discovering')}
             onBack={() => setRoute(confirmFrom)}
             onChangeLocation={() => setRoute('manual-location')}
-            onContinue={() => setRoute('discovering')}
+            onContinue={(radius) => {
+              // Keep the radius picked here with the saved place.
+              if (hasApiConfig() && radius !== savedLocation.radius) {
+                savePlace({ district: savedLocation.district, city: confirmPlace.city, lat: savedLocation.lat, lng: savedLocation.lng }, radius);
+              }
+              setRoute('discovering');
+            }}
             onBusinessSetup={() => setRoute('business-onboarding')}
+            {...confirmPlace}
+            initialRadius={savedLocation.radius}
           />
         );
       return (
@@ -2951,6 +2992,8 @@ function AppInner() {
           onChangeLocation={() => setRoute('manual-location')}
           onContinue={() => setRoute('discovering')}
           onBusinessSetup={() => setRoute('business-onboarding')}
+          {...confirmPlace}
+          radius={savedLocation.radius}
         />
       );
 
