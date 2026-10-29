@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
+import { PRODUCT_TAG_CHIPS } from './productTags';
 import { Icon } from '../components/ui/Icon';
 import type { ProductDraft } from './productDraft';
 
@@ -42,6 +44,31 @@ export function BusinessAddProductStep1Screen({
     { caption: 'Sub-Category', value: draft.subCategory, icon: 'outdoor_grill', active: false },
     { caption: 'Item Classification', value: draft.classification, icon: 'local_fire_department', active: false },
   ];
+
+  // Live: a business with no categories yet can create one here instead of hitting a dead end.
+  const [newCategory, setNewCategory] = useState('');
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const createCategory = async () => {
+    const name = newCategory.trim();
+    if (!name || creatingCategory) return;
+    setCreatingCategory(true);
+    setCategoryError(null);
+    try {
+      const created = await editor.createCategory(name);
+      onDraftChange({ categoryId: created.id, subCategory: created.name });
+      setNewCategory('');
+    } catch {
+      setCategoryError('Could not create the category. Try again.');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  // The chips are the product's tags, kept on the draft so they're saved with it.
+  const tags = draft.tags ?? [];
+  const toggleTag = (label: string) =>
+    onDraftChange({ tags: tags.includes(label) ? tags.filter((tag) => tag !== label) : [...tags, label] });
 
   const addBullet = (text: string) => {
     onDraftChange({ description: `${draft.description}\n• ${text}` });
@@ -235,6 +262,31 @@ export function BusinessAddProductStep1Screen({
                 </div>
               ))}
             </div>
+            {editor.live && (
+              <div className="flex flex-col gap-1 pt-space-xs">
+                <div className="flex items-center gap-space-xs">
+                  <input
+                    aria-label="New category name"
+                    placeholder="+ New category (e.g. Grills)"
+                    value={newCategory}
+                    onChange={(event) => setNewCategory(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') void createCategory();
+                    }}
+                    className="flex-1 h-10 px-space-sm rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void createCategory()}
+                    disabled={!newCategory.trim() || creatingCategory}
+                    className="h-10 px-space-sm rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold disabled:opacity-50"
+                  >
+                    {creatingCategory ? 'Adding…' : 'Add'}
+                  </button>
+                </div>
+                {categoryError && <span className="font-caption text-caption text-error">{categoryError}</span>}
+              </div>
+            )}
           </div>
 
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-2xs">
@@ -267,6 +319,32 @@ export function BusinessAddProductStep1Screen({
                   <Icon name="add" className="text-[13px]" /> {bullet.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-xs">
+            <div>
+              <h2 className="font-heading-sm text-heading-sm text-text-primary">Product Badges</h2>
+              <span className="font-caption text-caption text-text-secondary">Shown to customers on the product</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {PRODUCT_TAG_CHIPS.map((chip) => {
+                const active = tags.includes(chip.label);
+                return (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleTag(chip.label)}
+                    className={`px-2.5 py-1 rounded-full font-caption text-caption flex items-center gap-1 transition-colors ${
+                      active ? 'bg-surface-tint-blue text-primary font-semibold' : 'bg-surface-container-low text-text-secondary'
+                    }`}
+                  >
+                    <Icon name={active ? 'check' : chip.icon} className="text-[13px]" />
+                    {chip.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

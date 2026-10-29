@@ -31,6 +31,10 @@ export function BusinessAddProductStep2Screen({
     0,
   );
 
+  const updateVariant = (id: string, patch: Partial<ProductDraft['variants'][number]>) => {
+    onDraftChange({ variants: draft.variants.map((variant) => (variant.id === id ? { ...variant, ...patch } : variant)) });
+  };
+
   const removeVariant = (id: string) => {
     onDraftChange({ variants: draft.variants.filter((variant) => variant.id !== id) });
   };
@@ -41,10 +45,10 @@ export function BusinessAddProductStep2Screen({
         ...draft.variants,
         {
           id: `variant-${Date.now()}`,
-          name: 'New Option',
-          cut: 'Size',
-          price: '0',
-          inventory: '0',
+          name: '',
+          cut: '',
+          price: '',
+          inventory: '',
         },
       ],
     });
@@ -252,11 +256,22 @@ export function BusinessAddProductStep2Screen({
                       className="flex flex-col p-space-sm rounded-xl bg-surface-subtle gap-space-xs"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-primary" />
-                          <span className="font-label-md text-label-md text-on-surface font-semibold">
-                            {variant.name} ({variant.cut})
-                          </span>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                          <input
+                            aria-label="Option name"
+                            placeholder="Option name (e.g. Large)"
+                            value={variant.name}
+                            onChange={(event) => updateVariant(variant.id, { name: event.target.value })}
+                            className="flex-1 min-w-0 bg-transparent font-label-md text-label-md text-on-surface font-semibold outline-none focus:bg-surface-canvas rounded px-1"
+                          />
+                          <input
+                            aria-label="Option detail"
+                            placeholder="Detail (e.g. 450g)"
+                            value={variant.cut}
+                            onChange={(event) => updateVariant(variant.id, { cut: event.target.value })}
+                            className="w-24 bg-transparent font-caption text-caption text-text-secondary outline-none focus:bg-surface-canvas rounded px-1"
+                          />
                         </div>
                         <button
                           aria-label={`Remove ${variant.name}`}
@@ -270,18 +285,26 @@ export function BusinessAddProductStep2Screen({
                       <div className="grid grid-cols-2 gap-space-xs pt-1">
                         <div className="flex flex-col">
                           <span className="font-caption text-caption text-text-secondary mb-1">Variant Price (₦)</span>
-                          <div className="h-10 px-3 rounded-lg bg-surface-container-lowest flex items-center shadow-sm">
-                            <span className="font-label-md text-label-md text-on-surface font-medium">
-                              {variant.price}
-                            </span>
-                          </div>
+                          <input
+                            aria-label="Variant price"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={variant.price}
+                            onChange={(event) => updateVariant(variant.id, { price: event.target.value })}
+                            className="h-10 px-3 rounded-lg bg-surface-container-lowest shadow-sm font-label-md text-label-md text-on-surface font-medium outline-none focus:ring-2 focus:ring-primary/20"
+                          />
                         </div>
                         <div className="flex flex-col">
                           <span className="font-caption text-caption text-text-secondary mb-1">Inventory Qty</span>
-                          <div className="h-10 px-3 rounded-lg bg-surface-container-lowest flex items-center justify-between shadow-sm">
-                            <span className="font-label-md text-label-md text-on-surface font-medium">
-                              {variant.inventory}
-                            </span>
+                          <div className="h-10 px-3 rounded-lg bg-surface-container-lowest flex items-center justify-between shadow-sm focus-within:ring-2 focus-within:ring-primary/20">
+                            <input
+                              aria-label="Variant stock"
+                              inputMode="numeric"
+                              placeholder="0"
+                              value={variant.inventory}
+                              onChange={(event) => updateVariant(variant.id, { inventory: event.target.value.replace(/[^0-9]/g, '') })}
+                              className="w-full bg-transparent font-label-md text-label-md text-on-surface font-medium outline-none"
+                            />
                             <span className="font-caption text-caption text-text-tertiary">units</span>
                           </div>
                         </div>
@@ -336,9 +359,18 @@ export function BusinessAddProductStep2Screen({
                   <span className="font-caption text-caption text-text-secondary">
                     {draft.variantsEnabled ? 'Combined Variant Stock' : 'Standard Product Stock'}
                   </span>
-                  <span className="font-heading-sm text-heading-sm text-on-surface">
-                    {draft.variantsEnabled ? `${combinedStock} units available` : 'Single item — no variants'}
-                  </span>
+                  {draft.variantsEnabled ? (
+                    <span className="font-heading-sm text-heading-sm text-on-surface">{combinedStock} units available</span>
+                  ) : (
+                    <input
+                      aria-label="Stock on hand"
+                      inputMode="numeric"
+                      placeholder="Units on hand (blank = not tracked)"
+                      value={draft.stock ?? ''}
+                      onChange={(event) => onDraftChange({ stock: event.target.value.replace(/[^0-9]/g, '') })}
+                      className="h-9 px-2 rounded-lg bg-surface-container-lowest font-label-md text-label-md text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  )}
                 </div>
               </div>
               <Icon name="check_circle" className="text-text-tertiary text-[20px]" />

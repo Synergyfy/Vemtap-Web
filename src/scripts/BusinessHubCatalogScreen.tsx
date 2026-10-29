@@ -397,11 +397,29 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         return;
       }
       const edited = Boolean(serviceDraft.publishedItemId);
-      sync.publishService(serviceDraft, () => {
-        closeService();
-        setServiceDraft({ ...BLANK_SERVICE_DRAFT });
-        showToast(`“${name}” ${edited ? 'updated' : 'published to your catalogue'}.`);
-      });
+      sync.publishService(
+        serviceDraft,
+        () => {
+          closeService();
+          setServiceDraft({ ...BLANK_SERVICE_DRAFT });
+          showToast(`“${name}” ${edited ? 'updated' : 'published to your catalogue'}.`);
+        },
+        { asDraft: false },
+      );
+    };
+    /** Live: keep the work as a hidden service (needs a name); otherwise just close. */
+    const saveServiceDraft = () => {
+      const name = serviceDraft.title.trim();
+      if (!live || !name) return closeService();
+      sync.publishService(
+        serviceDraft,
+        () => {
+          closeService();
+          setServiceDraft({ ...BLANK_SERVICE_DRAFT });
+          showToast(`“${name}” saved as a draft — hidden from customers until you publish it.`);
+        },
+        { asDraft: true },
+      );
     };
     return (
       <AppScreen>
@@ -411,7 +429,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeServiceDraft}
             onBack={closeService}
             onNext={() => setServiceStep(2)}
-            onSaveDraft={closeService}
+            onSaveDraft={saveServiceDraft}
           />
         )}
         {serviceStep === 2 && (
@@ -420,7 +438,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeServiceDraft}
             onBack={() => setServiceStep(1)}
             onNext={() => setServiceStep(3)}
-            onSaveDraft={closeService}
+            onSaveDraft={saveServiceDraft}
           />
         )}
         {serviceStep === 3 && (
@@ -429,7 +447,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeServiceDraft}
             onBack={() => setServiceStep(2)}
             onNext={() => setServiceStep(4)}
-            onSaveDraft={closeService}
+            onSaveDraft={saveServiceDraft}
           />
         )}
         {serviceStep === 4 && (
@@ -440,7 +458,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onEditPricing={() => setServiceStep(2)}
             onEditBranches={() => setServiceStep(3)}
             onPublish={handleServicePublish}
-            onSaveDraft={closeService}
+            onSaveDraft={saveServiceDraft}
           />
         )}
         {sync.error && (
@@ -460,11 +478,20 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
       if (live) {
         // Live: the same publish as setup — the active branch plus any branches ticked.
         const edited = Boolean(manualDraft.publishedItemId);
-        sync.publishProduct(manualDraft, () => {
-          setManualStep(0);
-          setManualDraft({ ...BLANK_PRODUCT_DRAFT });
-          showToast(`“${manualDraft.title || 'Product'}” ${edited ? 'updated' : 'published to your catalogue'}.`);
-        });
+        const perBranch = manualDraft.pricingMode === 'custom';
+        sync.publishProduct(
+          manualDraft,
+          () => {
+            setManualStep(0);
+            setManualDraft({ ...BLANK_PRODUCT_DRAFT });
+            showToast(
+              `“${manualDraft.title || 'Product'}” ${edited ? 'updated' : 'published to your catalogue'}.${
+                perBranch ? ' Set its branch prices in the item options → Manage Location Pricing.' : ''
+              }`,
+            );
+          },
+          { asDraft: false },
+        );
         return;
       }
       const { saved } = saveImportedProducts(
@@ -498,6 +525,20 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
       setManualDraft({ ...INITIAL_PRODUCT_DRAFT });
       showToast(saved.length > 0 ? `“${manualDraft.title || 'Product'}” published to your catalogue.` : 'This product already exists (same SKU).');
     };
+    /** Live: keep the work as a hidden product (needs a name); otherwise just close. */
+    const saveManualDraft = () => {
+      const name = manualDraft.title.trim();
+      if (!live || !name) return setManualStep(0);
+      sync.publishProduct(
+        manualDraft,
+        () => {
+          setManualStep(0);
+          setManualDraft({ ...BLANK_PRODUCT_DRAFT });
+          showToast(`“${name}” saved as a draft — hidden from customers until you publish it.`);
+        },
+        { asDraft: true },
+      );
+    };
     return (
       <AppScreen>
         {manualStep === 1 && (
@@ -506,7 +547,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(0)}
             onNext={() => setManualStep(2)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 2 && (
@@ -515,7 +556,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(1)}
             onNext={() => setManualStep(3)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 3 && (
@@ -524,7 +565,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(2)}
             onNext={() => setManualStep(4)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 4 && (
@@ -533,7 +574,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(3)}
             onNext={() => setManualStep(5)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 5 && (
@@ -547,7 +588,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onEditFulfillment={() => setManualStep(4)}
             onEditDescription={() => setManualStep(1)}
             onPublish={handleManualPublish}
-            onSaveDraft={() => setManualStep(0)}
+            publishing={sync.saving}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {sync.error && (
