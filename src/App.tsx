@@ -317,6 +317,7 @@ import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealL
 import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
 import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
 import { BusinessStorefrontPreviewScreen } from './scripts/desktop/BusinessStorefrontPreviewScreen';
+import { dealImageList, dealPrimaryImage } from './utils/dealImages';
 import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
 import { MOBILE_ACCOUNT_NAV_EVENT } from './utils/appEvents';
 import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
@@ -1413,12 +1414,9 @@ function AppInner() {
                   : nextDeal?.oldPrice,
             discountLabel:
               typeof payload.badge === 'string' && payload.badge.trim() ? payload.badge : nextDeal?.discountLabel,
-            image:
-              typeof payload.image === 'string' && payload.image.trim()
-                ? payload.image
-                : typeof nestedItem?.image === 'string' && nestedItem.image.trim()
-                  ? nestedItem.image
-                  : nextDeal?.image,
+            // Same rule as the deal cards, so the card photo and the detail hero match.
+            image: dealPrimaryImage(payload) ?? nextDeal?.image,
+            images: dealImageList(payload),
           };
         }
       } catch {
@@ -3127,7 +3125,7 @@ function AppInner() {
           <DesktopFeaturedDealsScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'featured-deals')}
-            onOpenDeal={() => openDeal('featured-deals')}
+            onOpenDeal={(deal) => openDeal('featured-deals', deal)}
           />
         );
       return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)} />;

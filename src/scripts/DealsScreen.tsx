@@ -9,6 +9,7 @@ import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
+import { dealPrimaryImage } from '../utils/dealImages';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCg_httfgNB7CfMJOzfjKekJGnxgvueamRqqNg-Qyw7QV2HTVvlh6rZ845BYSp5dsQClaPlSKNd4B0_3aYGUcjlu-OUBeq56PilIeD6B9e1a0GFgvTtnkB0d8i16nw-kagt5rZUqAHNUNQUsH0WcGsyf8zaqNe1yx2Go9tQcdI6QPEzXRp2aZLqYGswotDnV391PXTZI3oVx9jzWC_ZogeqCUxsw3wWsr-xRkh4q33Ljntdo0P9MsadSA';
@@ -33,23 +34,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-const getOfferImage = (offer: Record<string, unknown>): string => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const imageValue =
-    offer.image ??
-    offer.coverImage ??
-    offer.heroImage ??
-    offer.mediaUrl ??
-    item?.image ??
-    item?.mainImage ??
-    (offer.business && typeof offer.business === 'object'
-      ? ((offer.business as Record<string, unknown>).logo ?? (offer.business as Record<string, unknown>).image)
-      : undefined) ??
-    IMAGES.tasting;
-  return typeof imageValue === 'string' && imageValue.trim() ? imageValue : IMAGES.tasting;
-};
+/** Same rule as the home cards and the detail page: the deal's own photo first. */
+const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? IMAGES.tasting;
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};

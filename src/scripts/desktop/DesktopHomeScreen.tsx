@@ -5,6 +5,7 @@ import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadi
 import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
+import { dealPrimaryImage } from '../../utils/dealImages';
 
 interface DesktopHomeScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -54,25 +55,8 @@ const getApiImage = (value: unknown): string => {
   return HERO_LIST_IMAGE;
 };
 
-const getNestedImage = (offer: Record<string, unknown>): string => {
-  const itemList = Array.isArray(offer.items) ? offer.items : [];
-  for (const item of itemList) {
-    if (item && typeof item === 'object') {
-      const current = item as Record<string, unknown>;
-      const image = getApiImage(current.mainImage ?? current.image ?? current.mediaUrl);
-      if (image !== HERO_LIST_IMAGE || current.mainImage || current.image) return image;
-    }
-  }
-
-  const business = offer.business;
-  if (business && typeof business === 'object') {
-    const current = business as Record<string, unknown>;
-    const image = getApiImage(current.logo ?? current.image ?? current.coverImage);
-    if (image !== HERO_LIST_IMAGE || current.logo || current.image) return image;
-  }
-
-  return getApiImage(offer.image ?? offer.coverImage ?? offer.mediaUrl ?? offer.photo);
-};
+/** The deal's own photo first, then an item photo, then the business logo (shared with the detail page). */
+const getNestedImage = (offer: Record<string, unknown>): string => getApiImage(dealPrimaryImage(offer));
 
 const getApiBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business;
@@ -1174,6 +1158,7 @@ export function DesktopHomeScreen({
                 role="button"
                 tabIndex={0}
                 onClick={() => onOpenDeal({
+                  id: deal.id,
                   title: deal.title,
                   business: deal.store,
                   location: `${city}, ${district}`,
@@ -1186,6 +1171,7 @@ export function DesktopHomeScreen({
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     onOpenDeal({
+                      id: deal.id,
                       title: deal.title,
                       business: deal.store,
                       location: `${city}, ${district}`,

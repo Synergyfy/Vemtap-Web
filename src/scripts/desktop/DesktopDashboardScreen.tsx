@@ -9,6 +9,7 @@ import { useProfile } from '../../context/ProfileContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 import type { AnnouncementDestination } from '../../scripts/announcementsData';
+import { dealPrimaryImage } from '../../utils/dealImages';
 
 interface DesktopDashboardScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -36,13 +37,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-const getOfferImage = (offer: Record<string, unknown>): string => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? FALLBACK_IMAGE;
-  return typeof image === 'string' && image.trim() ? image : FALLBACK_IMAGE;
-};
+/** Same rule as the home cards and the detail page: the deal's own photo first. */
+const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? FALLBACK_IMAGE;
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
@@ -374,7 +370,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                   </div>
                   {activeDeals.length > 0 ? activeDeals.map((deal) => (
                     <div
-                      key={deal.title}
+                      key={deal.id}
                       className="bg-surface-canvas rounded-xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6"
                     >
                       <div className="md:w-52 h-44 rounded-lg overflow-hidden shrink-0 relative">

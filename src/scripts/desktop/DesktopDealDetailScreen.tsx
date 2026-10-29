@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { parsePrice } from '../../utils/format';
+import { hasApiConfig } from '../../services/api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useClaims, type ClaimKind, type ClaimRecord } from '../../context/ClaimsContext';
 import { useProfile } from '../../context/ProfileContext';
@@ -169,6 +170,12 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     discountLabel: deal?.discountLabel?.trim() || (parsePrice(deal?.oldPrice) > parsePrice(deal?.price) ? `Save ${formatCurrency(Math.max(parsePrice(deal?.oldPrice) - parsePrice(deal?.price), 0))}` : 'Save on this deal'),
     image: deal?.image || MAIN_IMAGE,
   };
+  // Live: the deal's own photos (main first, so it matches the card); demo keeps the sample gallery.
+  const gallery: GalleryImage[] = deal?.images?.length
+    ? deal.images.map((thumb, index) => ({ thumb, alt: `${deal?.title || 'Deal'} photo ${index + 1}` }))
+    : deal?.image && hasApiConfig()
+      ? [{ thumb: deal.image, alt: deal.title || 'Deal photo' }]
+      : GALLERY;
   const dealTitle = selectedDeal.title || 'Featured local deal';
   const dealBusiness = selectedDeal.business || 'Local dining partner';
   const dealLocation = selectedDeal.location || 'Your selected area';
@@ -273,8 +280,9 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
 
   const selectImage = (index: number) => {
     setSelectedImage(index);
-    setMainImage(index === 0 ? (selectedDeal.image || MAIN_IMAGE) : GALLERY[index].thumb);
-    setMainAlt(index === 0 ? `${dealTitle} at ${dealBusiness}` : GALLERY[index].alt);
+    const live = gallery !== GALLERY;
+    setMainImage(index === 0 && !live ? selectedDeal.image || MAIN_IMAGE : gallery[index].thumb);
+    setMainAlt(index === 0 ? `${dealTitle} at ${dealBusiness}` : gallery[index].alt);
   };
 
   const tabButtonClass = (key: Tab) =>
@@ -341,14 +349,17 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
 
                   <div className="absolute bottom-space-md right-space-md bg-surface-canvas/90 backdrop-blur-md text-text-primary px-space-sm py-1 rounded-lg text-caption font-caption font-semibold shadow-sm flex items-center gap-1">
                     <Icon name="photo_camera" className="text-[16px]" />
-                    <span>{selectedImage + 1} of 4 Photos</span>
+                    <span>
+                      {selectedImage + 1} of {gallery.length} Photo{gallery.length === 1 ? '' : 's'}
+                    </span>
                   </div>
                 </div>
 
+                {gallery.length > 1 && (
                 <div className="grid grid-cols-4 gap-space-sm mt-space-md">
-                  {GALLERY.map((image, index) => (
+                  {gallery.map((image, index) => (
                     <button
-                      key={image.thumb}
+                      key={`${index}-${image.thumb}`}
                       type="button"
                       aria-label={image.alt}
                       onClick={() => selectImage(index)}
@@ -362,6 +373,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                     </button>
                   ))}
                 </div>
+                )}
               </div>
 
               <div className="bg-surface-canvas rounded-2xl p-space-xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">

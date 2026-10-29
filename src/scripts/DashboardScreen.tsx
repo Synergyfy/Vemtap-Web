@@ -15,6 +15,7 @@ import {
   type AnnouncementDestination,
   type AnnouncementTone,
 } from './announcementsData';
+import { dealPrimaryImage } from '../utils/dealImages';
 
 export type DashboardTarget =
   | 'my-deals'
@@ -84,13 +85,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-const getOfferImage = (offer: Record<string, unknown>): string => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? FALLBACK_IMAGE;
-  return typeof image === 'string' && image.trim() ? image : FALLBACK_IMAGE;
-};
+/** Same rule as the home cards and the detail page: the deal's own photo first. */
+const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? FALLBACK_IMAGE;
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};

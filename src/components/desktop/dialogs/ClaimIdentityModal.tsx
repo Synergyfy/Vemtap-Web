@@ -12,6 +12,8 @@ export interface ClaimDealSummary {
   oldPrice?: number | string;
   discountLabel?: string;
   image?: string;
+  /** Every photo of the deal (its own, gallery, then items'), for the detail gallery. */
+  images?: string[];
   commentCount?: number | string;
   commentsCount?: number | string;
 }
