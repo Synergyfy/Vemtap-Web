@@ -232,7 +232,7 @@ export function DesktopAddServiceStep3Screen({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-7 flex flex-col gap-6">
+          <div className="lg:col-span-12 flex flex-col gap-6">
             <section className="bg-surface-canvas rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between pb-4">
                 <div>
