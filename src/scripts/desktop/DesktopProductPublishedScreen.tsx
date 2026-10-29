@@ -5,6 +5,7 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
+import { draftImage, draftImageAlt } from './draftImage';
 
 interface DesktopProductPublishedScreenProps {
   draft: ProductDraft;
@@ -138,8 +139,8 @@ export function DesktopProductPublishedScreen({
                 <div className="relative rounded-xl overflow-hidden aspect-[16/10] bg-surface-container mb-space-md group">
                   <img
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    alt={PUBLISHED_IMAGES[0].alt}
-                    src={PUBLISHED_IMAGES[0].src}
+                    alt={draftImageAlt(draft.title, PUBLISHED_IMAGES[0].alt)}
+                    src={draftImage(draft.mainImage, PUBLISHED_IMAGES[0].src)}
                   />
                   <div className="absolute top-3 left-3 flex items-center gap-2">
                     <span className="px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm">
@@ -280,8 +281,8 @@ export function DesktopProductPublishedScreen({
                   <div className="w-20 h-16 rounded-lg bg-surface-container overflow-hidden shrink-0">
                     <img
                       className="w-full h-full object-cover"
-                      alt={PUBLISHED_IMAGES[1].alt}
-                      src={PUBLISHED_IMAGES[1].src}
+                      alt={draftImageAlt(draft.title, PUBLISHED_IMAGES[1].alt)}
+                      src={draftImage(draft.mainImage, PUBLISHED_IMAGES[1].src)}
                     />
                   </div>
                   <div className="flex-1 min-w-0">

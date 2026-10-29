@@ -1,4 +1,6 @@
 export interface ProductDraft {
+  /** Live: the catalogue item this draft already published — publishing again updates it. */
+  publishedItemId?: string;
   title: string;
   /** Uploaded photo URL (live). */
   mainImage?: string;

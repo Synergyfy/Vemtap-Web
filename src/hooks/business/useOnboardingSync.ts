@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { hasApiConfig } from '../../services/api/client';
+import { ApiError, hasApiConfig } from '../../services/api/client';
 import { businessService, type MyBusiness } from '../../services/businessService';
 import { useBusinessCategoryOptions } from './useBusinessCategoryOptions';
 import { myBusinessKeys } from './useMyBusiness';
@@ -15,6 +15,7 @@ import {
   type ProductDraftLike,
   type ServiceDraftLike,
   type CatalogueItem,
+  type CatalogueItemInput,
 } from '../../services/catalogueItemsService';
 import { catalogueItemKeys } from './useCatalogueItems';
 import { useAuth } from '../../context/AuthContext';
@@ -99,6 +100,22 @@ export function useOnboardingSync() {
     await queryClient.invalidateQueries({ queryKey: myBusinessKeys.all });
   };
 
+  /**
+   * Creates the item, or updates the one this draft already published so going
+   * back and publishing again doesn't duplicate it. An item deleted meanwhile
+   * is created afresh.
+   */
+  const upsertItem = async (input: CatalogueItemInput, publishedItemId?: string) => {
+    if (publishedItemId) {
+      try {
+        return await catalogueItemsService.update(publishedItemId, input);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) throw e;
+      }
+    }
+    return catalogueItemsService.create(input);
+  };
+
   const saveThen = (save: () => Promise<void>, next: () => void) => {
     if (saving) return;
     setSaving(true);
@@ -162,25 +179,40 @@ export function useOnboardingSync() {
           }),
         next,
       ),
-    /** Publishes the setup's product at the active branch (plus any others ticked), then moves on. */
-    publishProduct: (draft: ProductDraftLike & { branches?: Record<string, boolean> }, next: () => void) =>
+    /**
+     * Publishes the setup's product at the active branch (plus any others ticked), then moves on.
+     * `next` receives the saved item (null in demo mode) so the draft can remember it.
+     */
+    publishProduct: (
+      draft: ProductDraftLike & { branches?: Record<string, boolean>; publishedItemId?: string },
+      next: (item: CatalogueItem | null) => void,
+    ) => {
+      let saved: CatalogueItem | null = null;
       saveThen(async () => {
         if (!live) return;
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
-        const item = await catalogueItemsService.create(productDraftToInput(draft, activeBranchId));
+        const item = await upsertItem(productDraftToInput(draft, activeBranchId), draft.publishedItemId);
+        saved = item;
         await sellAtBranches(item.id, Object.keys(draft.branches ?? {}).filter((id) => draft.branches?.[id]));
         setLastPublished(item);
         await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
-      }, next),
-    publishService: (draft: ServiceDraftLike & { locations?: string[] }, next: () => void) =>
+      }, () => next(saved));
+    },
+    publishService: (
+      draft: ServiceDraftLike & { locations?: string[]; publishedItemId?: string },
+      next: (item: CatalogueItem | null) => void,
+    ) => {
+      let saved: CatalogueItem | null = null;
       saveThen(async () => {
         if (!live) return;
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
-        const item = await catalogueItemsService.create(serviceDraftToInput(draft, activeBranchId));
+        const item = await upsertItem(serviceDraftToInput(draft, activeBranchId), draft.publishedItemId);
+        saved = item;
         await sellAtBranches(item.id, draft.locations ?? []);
         setLastPublished(item);
         await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
-      }, next),
+      }, () => next(saved));
+    },
     saveLocation: (location: { address?: string; city?: string; state?: string; latitude?: number; longitude?: number }, next: () => void) =>
       saveThen(async () => {
         await patch(location);

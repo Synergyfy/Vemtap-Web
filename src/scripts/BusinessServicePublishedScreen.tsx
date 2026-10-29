@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ServiceDraft } from './serviceDraft';
+import { draftImage, draftImageAlt } from './desktop/draftImage';
 
 interface BusinessServicePublishedScreenProps {
   draft: ServiceDraft;
@@ -140,7 +141,7 @@ export function BusinessServicePublishedScreen({
           <div className="w-full rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-sm">
             <div className="flex items-start gap-space-sm">
               <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                <img className="w-full h-full object-cover" alt={PUBLISHED_IMAGE.alt} src={PUBLISHED_IMAGE.src} />
+                <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, PUBLISHED_IMAGE.alt)} src={draftImage(draft.image, PUBLISHED_IMAGE.src)} />
                 <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-inverse-surface/80 text-inverse-on-surface font-caption text-[10px] font-medium backdrop-blur-xs">
                   {activeBranchCount} Studios
                 </span>

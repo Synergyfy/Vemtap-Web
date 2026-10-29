@@ -4,6 +4,7 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
+import { draftImage, draftImageAlt } from './draftImage';
 
 interface DesktopServicePublishedScreenProps {
   draft: ServiceDraft;
@@ -200,7 +201,7 @@ export function DesktopServicePublishedScreen({
               </div>
               <div className="flex flex-col sm:flex-row gap-5">
                 <div className="relative w-full sm:w-44 h-44 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                  <img alt={PUBLISHED_ALT} className="w-full h-full object-cover" src={PUBLISHED_IMAGE} />
+                  <img alt={draftImageAlt(draft.title, PUBLISHED_ALT)} className="w-full h-full object-cover" src={draftImage(draft.image, PUBLISHED_IMAGE)} />
                   <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-inverse-surface/80 backdrop-blur-sm text-inverse-on-surface font-caption text-caption font-medium flex items-center gap-1">
                     <Icon name="photo_camera" className="text-[12px]" />
                     4 Photos

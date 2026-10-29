@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { isVariantProduct, getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { draftImage, draftImageAlt } from './desktop/draftImage';
 
 interface BusinessProductPublishedScreenProps {
   draft: ProductDraft;
@@ -38,7 +39,10 @@ export function BusinessProductPublishedScreen({
   const variantPrices = activeVariants.map((variant) => parseAmount(variant.price)).filter((price) => price > 0);
   const lowPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : parseAmount(draft.basePrice);
   const highPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : lowPrice;
-  const thumbnail = PUBLISHED_IMAGES[0];
+  const thumbnail = {
+    src: draftImage(draft.mainImage, PUBLISHED_IMAGES[0].src),
+    alt: draftImageAlt(draft.title, PUBLISHED_IMAGES[0].alt),
+  };
 
   return (
     <AppScreen>

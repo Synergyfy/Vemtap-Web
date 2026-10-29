@@ -7,6 +7,7 @@ import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 import { validateAllServiceSteps, hasServiceValidationErrors } from '../serviceStudioShared';
+import { draftImage } from './draftImage';
 
 interface DesktopServiceReviewScreenProps {
   draft: ServiceDraft;
@@ -200,7 +201,7 @@ export function DesktopServiceReviewScreen({
           <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
             <div className="bg-surface-canvas rounded-2xl shadow-sm overflow-hidden flex flex-col">
               <div className="relative w-full h-72 sm:h-80 bg-surface-container">
-                <img alt={REVIEW_ALT} className="w-full h-full object-cover" src={draft.image || REVIEW_IMAGE} />
+                <img alt={REVIEW_ALT} className="w-full h-full object-cover" src={draftImage(draft.image, REVIEW_IMAGE)} />
                 <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/90 via-inverse-surface/30 to-transparent" />
                 <div className="absolute top-4 left-4 flex flex-wrap gap-2 items-center">
                   <span className="px-3 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md text-on-surface font-label-sm text-label-sm font-semibold flex items-center gap-1.5 shadow-sm">
@@ -531,7 +532,7 @@ export function DesktopServiceReviewScreen({
                 </div>
                 <div className="bg-surface-canvas rounded-xl shadow-sm overflow-hidden flex flex-col">
                   <div className="relative h-32 w-full bg-surface-container">
-                    <img alt={SIMULATOR_ALT} className="w-full h-full object-cover" src={draft.image || SIMULATOR_IMAGE} />
+                    <img alt={SIMULATOR_ALT} className="w-full h-full object-cover" src={draftImage(draft.image, SIMULATOR_IMAGE)} />
                     <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-xs">
                       -20% TODAY
                     </div>

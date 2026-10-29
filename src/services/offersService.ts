@@ -1,6 +1,6 @@
 import { api } from './api/client';
-import type { DealDuration, DealStudioDraft } from '../scripts/deals/dealStudioShared';
-import { resolveDealPricing } from '../scripts/deals/dealStudioShared';
+import type { ComboProduct, DealStudioDraft } from '../scripts/deals/dealStudioShared';
+import { claimLimitPeriod, dealValidityRange, resolveDealPricing } from '../scripts/deals/dealStudioShared';
 
 export type OfferPricingType = 'sum' | 'percentage_discount' | 'fixed_discount_price' | 'fixed_discount_amount';
 
@@ -58,12 +58,16 @@ export interface CreateOfferInput {
   discountValue?: number;
   fixedPrice?: number;
   branchId: string;
+  /** Publish at several branches at once: one offer each, sharing a `dealGroupId`. */
+  branchIds?: string[];
   startDate?: string;
   endDate?: string;
   offerType?: string;
   terms?: string[];
   claimSteps?: string[];
   maxClaimsPerCustomer?: number;
+  /** Window `maxClaimsPerCustomer` is counted over (API default: lifetime). */
+  claimLimitPeriod?: 'lifetime' | 'day' | 'week' | 'month';
   minOrderAmount?: number;
   autoPauseWhenSoldOut?: boolean;
   allowGifting?: boolean;
@@ -158,15 +162,6 @@ export const offersService = {
 // Deal Studio → offer
 // ---------------------------------------------------------------------------
 
-const DURATION_DAYS: Record<DealDuration, number | null> = {
-  '7-days': 7,
-  '14-days': 14,
-  '30-days': 30,
-  '3-months': 91,
-  '6-months': 182,
-  forever: null,
-};
-
 const WEEKDAY: Record<keyof DealStudioDraft['days'], number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 
 /** "12:00 PM" / "17:30" → "12:00" / "17:30"; undefined when unreadable. */
@@ -179,28 +174,29 @@ export function toHhMm(value: string): string | undefined {
   return `${String(hours).padStart(2, '0')}:${match[2]}`;
 }
 
-const endOfDay = (date: Date) => {
-  const copy = new Date(date);
-  copy.setHours(23, 59, 59, 0);
-  return copy;
-};
+/**
+ * The source item plus, for a multi-product bundle, the other catalogue items
+ * it pairs (`current` is the source; ids not in the catalogue are dropped).
+ */
+function dealItemIds(studio: DealStudioDraft, sourceId: string, catalog?: ComboProduct[]) {
+  if (studio.strategy !== 'combo' || studio.combo.mode !== 'bundle' || !catalog) return [sourceId];
+  const known = new Set(catalog.map((product) => product.id));
+  const ids = studio.combo.items
+    .filter((line) => line.productId !== 'current' && known.has(line.productId))
+    .map((line) => line.productId);
+  return [...new Set([sourceId, ...ids])];
+}
 
 /** The deal for one catalogue item, built from the Deal Studio settings. */
 export function studioToOfferInput(
   studio: DealStudioDraft,
   source: { itemId: string; name: string; basePrice: number; mainImage?: string | null },
   branchId: string,
+  options: { branchIds?: string[]; catalog?: ComboProduct[] } = {},
 ): CreateOfferInput {
-  const start = studio.strategy === 'tiered' && studio.flash.startDate ? new Date(`${studio.flash.startDate}T00:00:00`) : new Date();
-  const days = DURATION_DAYS[studio.duration];
-  const end =
-    studio.strategy === 'tiered' && studio.flash.endDate
-      ? endOfDay(new Date(`${studio.flash.endDate}T00:00:00`))
-      : days === null
-        ? undefined
-        : endOfDay(new Date(start.getTime() + days * 86_400_000));
+  const { start, end } = dealValidityRange(studio);
 
-  const pricing = resolveDealPricing(studio, source.basePrice);
+  const pricing = resolveDealPricing(studio, source.basePrice, options.catalog);
   let pricingType: OfferPricingType = 'percentage_discount';
   let discountValue: number | undefined;
   let fixedPrice: number | undefined;
@@ -240,7 +236,7 @@ export function studioToOfferInput(
     name,
     description: studio.terms[0] ?? name,
     sourceProductId: source.itemId,
-    itemIds: [source.itemId],
+    itemIds: dealItemIds(studio, source.itemId, options.catalog),
     mainImage: source.mainImage ?? undefined,
     quantity: studio.vouchers || undefined,
     pricingType,
@@ -248,12 +244,14 @@ export function studioToOfferInput(
     fixedPrice,
     minOrderAmount,
     branchId,
+    ...(options.branchIds && options.branchIds.length > 1 ? { branchIds: options.branchIds } : {}),
     startDate: start.toISOString(),
     endDate: end?.toISOString(),
     offerType: 'discount',
     terms: studio.terms.filter(Boolean),
     claimSteps: studio.claimSteps.filter(Boolean).slice(0, 10),
     maxClaimsPerCustomer: studio.claimOnce ? 1 : studio.unlimitedClaims ? undefined : studio.maxClaims,
+    claimLimitPeriod: claimLimitPeriod(studio),
     autoPauseWhenSoldOut: studio.autoPause,
     allowGifting: studio.gifting,
     requireGiftRecipientVerification: studio.otpVerify,

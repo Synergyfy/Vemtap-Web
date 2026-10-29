@@ -4,6 +4,7 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
+import { draftImage, draftImageAlt } from './draftImage';
 
 interface DesktopProductPricingConfigScreenProps {
   draft: ProductDraft;
@@ -100,8 +101,8 @@ export function DesktopProductPricingConfigScreen({
                 <div className="relative group w-36 h-36 flex-shrink-0 rounded-xl overflow-hidden bg-surface-container shadow-inner">
                   <img
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    alt={PRODUCT_IMAGE_ALT}
-                    src={PRODUCT_IMAGE}
+                    alt={draftImageAlt(draft.title, PRODUCT_IMAGE_ALT)}
+                    src={draftImage(draft.mainImage, PRODUCT_IMAGE)}
                   />
                   <div className="absolute inset-0 bg-text-primary/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-on-primary">
                     <Icon name="photo_camera" className="text-[24px]" />

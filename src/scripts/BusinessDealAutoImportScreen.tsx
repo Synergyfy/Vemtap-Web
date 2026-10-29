@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
 import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { draftImage, draftImageAlt } from './desktop/draftImage';
 
 interface BusinessDealAutoImportScreenProps {
   draft: ProductDraft;
@@ -154,7 +155,7 @@ export function BusinessDealAutoImportScreen({
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
             <div className="flex items-center gap-space-md">
               <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                <img className="w-full h-full object-cover" alt={SNAPSHOT_IMAGE.alt} src={SNAPSHOT_IMAGE.src} />
+                <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, SNAPSHOT_IMAGE.alt)} src={draftImage(draft.mainImage, SNAPSHOT_IMAGE.src)} />
                 <div className="absolute bottom-1 right-1 bg-surface/90 rounded px-1 py-0.5 shadow-sm">
                   <Icon name="sync" className="text-primary text-[12px] block" />
                 </div>
@@ -438,7 +439,7 @@ export function BusinessDealAutoImportScreen({
             </div>
             <div className="max-w-[340px] mx-auto w-full bg-surface-canvas rounded-2xl overflow-hidden shadow-lg">
               <div className="relative w-full h-48 bg-surface-dim overflow-hidden">
-                <img className="w-full h-full object-cover" alt={FEED_IMAGE.alt} src={FEED_IMAGE.src} />
+                <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, FEED_IMAGE.alt)} src={draftImage(draft.mainImage, FEED_IMAGE.src)} />
                 <div className="absolute top-3 left-3 flex flex-col gap-1 items-start">
                   <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm flex items-center gap-1">
                     <Icon name="local_offer" className="text-[13px]" />
