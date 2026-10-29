@@ -17,6 +17,11 @@ import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
 import { BusinessAddProductImageScreen } from './BusinessAddProductImageScreen';
 import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
 import { BusinessProductReviewScreen } from './BusinessProductReviewScreen';
+import { BusinessAddServiceStep1Screen } from './BusinessAddServiceStep1Screen';
+import { BusinessAddServiceStep2Screen } from './BusinessAddServiceStep2Screen';
+import { BusinessAddServiceStep3Screen } from './BusinessAddServiceStep3Screen';
+import { BusinessServiceReviewScreen } from './BusinessServiceReviewScreen';
+import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT, type ServiceDraft } from './serviceDraft';
 import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import { hasApiConfig } from '../services/api/client';
 import { useCatalogueItemMutations, useCatalogueItems } from '../hooks/business/useCatalogueItems';
@@ -24,7 +29,7 @@ import { useOffers } from '../hooks/business/useOffers';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { apiErrorMessage } from '../services/errorMessages';
-import type { CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
+import { itemToProductDraft, itemToServiceDraft, type CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
 import type { BusinessOffer } from '../services/offersService';
 import {
   activeDealFor,
@@ -274,6 +279,24 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
   // Manual add-product flow: reuses the same onboarding wizard steps.
   const [manualStep, setManualStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [manualDraft, setManualDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
+  // Add / edit a service: the same four steps as onboarding, published into the catalogue.
+  const [serviceStep, setServiceStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ ...INITIAL_SERVICE_DRAFT });
+  const startService = () => {
+    setAddOpen(false);
+    setServiceDraft({ ...(live ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT) });
+    setServiceStep(1);
+  };
+  /** Live: open a saved item in the form that created it; publishing then updates it. */
+  const editLiveItem = (item: LiveCatalogueItem) => {
+    if (item.itemType === 'service') {
+      setServiceDraft({ ...BLANK_SERVICE_DRAFT, ...itemToServiceDraft(item) });
+      setServiceStep(1);
+    } else {
+      setManualDraft({ ...BLANK_PRODUCT_DRAFT, ...itemToProductDraft(item) });
+      setManualStep(1);
+    }
+  };
 
   const importedItems = importedProducts.map(importedToItem);
   const importedKeys = new Set(importedProducts.map((product) => product.id));
@@ -363,6 +386,72 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
     );
   }
 
+  if (serviceStep > 0) {
+    const changeServiceDraft = (patch: Partial<ServiceDraft>) => setServiceDraft((previous) => ({ ...previous, ...patch }));
+    const closeService = () => setServiceStep(0);
+    const handleServicePublish = () => {
+      const name = serviceDraft.title || 'Service';
+      if (!live) {
+        closeService();
+        showToast(`“${name}” published to your catalogue.`);
+        return;
+      }
+      const edited = Boolean(serviceDraft.publishedItemId);
+      sync.publishService(serviceDraft, () => {
+        closeService();
+        setServiceDraft({ ...BLANK_SERVICE_DRAFT });
+        showToast(`“${name}” ${edited ? 'updated' : 'published to your catalogue'}.`);
+      });
+    };
+    return (
+      <AppScreen>
+        {serviceStep === 1 && (
+          <BusinessAddServiceStep1Screen
+            draft={serviceDraft}
+            onDraftChange={changeServiceDraft}
+            onBack={closeService}
+            onNext={() => setServiceStep(2)}
+            onSaveDraft={closeService}
+          />
+        )}
+        {serviceStep === 2 && (
+          <BusinessAddServiceStep2Screen
+            draft={serviceDraft}
+            onDraftChange={changeServiceDraft}
+            onBack={() => setServiceStep(1)}
+            onNext={() => setServiceStep(3)}
+            onSaveDraft={closeService}
+          />
+        )}
+        {serviceStep === 3 && (
+          <BusinessAddServiceStep3Screen
+            draft={serviceDraft}
+            onDraftChange={changeServiceDraft}
+            onBack={() => setServiceStep(2)}
+            onNext={() => setServiceStep(4)}
+            onSaveDraft={closeService}
+          />
+        )}
+        {serviceStep === 4 && (
+          <BusinessServiceReviewScreen
+            draft={serviceDraft}
+            onBack={() => setServiceStep(3)}
+            onEditBasics={() => setServiceStep(1)}
+            onEditPricing={() => setServiceStep(2)}
+            onEditBranches={() => setServiceStep(3)}
+            onPublish={handleServicePublish}
+            onSaveDraft={closeService}
+          />
+        )}
+        {sync.error && (
+          <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
+            {sync.error}
+          </div>
+        )}
+      </AppScreen>
+    );
+  }
+
   // Manual add-product: same five steps as onboarding, published into the catalogue.
   if (manualStep > 0) {
     const changeManualDraft = (patch: Partial<ProductDraft>) =>
@@ -370,10 +459,11 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
     const handleManualPublish = () => {
       if (live) {
         // Live: the same publish as setup — the active branch plus any branches ticked.
+        const edited = Boolean(manualDraft.publishedItemId);
         sync.publishProduct(manualDraft, () => {
           setManualStep(0);
           setManualDraft({ ...BLANK_PRODUCT_DRAFT });
-          showToast(`“${manualDraft.title || 'Product'}” published to your catalogue.`);
+          showToast(`“${manualDraft.title || 'Product'}” ${edited ? 'updated' : 'published to your catalogue'}.`);
         });
         return;
       }
@@ -504,7 +594,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                 <button
                   className="w-full text-left px-space-sm py-space-xs rounded-lg hover:bg-surface-container text-text-primary font-label-sm text-label-sm flex items-center gap-space-xs"
                   type="button"
-                  onClick={() => setAddOpen(false)}
+                  onClick={startService}
                 >
                   <Icon name="room_service" className="text-tertiary-container text-[18px]" />
                   <span>+ Add Service</span>
@@ -747,7 +837,9 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                     className="flex items-center gap-1 px-space-xs py-1 rounded-md bg-surface-canvas shadow-sm text-primary font-label-sm text-label-sm font-medium hover:bg-surface-container-high transition-colors"
                     type="button"
                     onClick={() => {
+                      const liveItem = live ? liveById.get(item.key) : undefined;
                       if (importedKeys.has(item.key)) setView('importReview');
+                      else if (liveItem && item.actionLabel === 'Edit') editLiveItem(liveItem);
                       else onOpenAssignment(live ? item.key : item.name);
                     }}
                   >
@@ -808,10 +900,16 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
               </button>
             </div>
             {[
-              ...(live ? [{ icon: 'local_offer', iconClass: 'text-badge-discount-text', label: 'Make a Deal' }] : []),
+              ...(live
+                ? [
+                    { icon: 'edit', iconClass: 'text-primary', label: 'Edit Details' },
+                    { icon: 'local_offer', iconClass: 'text-badge-discount-text', label: 'Make a Deal' },
+                  ]
+                : []),
               { icon: 'content_copy', iconClass: 'text-primary', label: 'Duplicate Product' },
               { icon: 'price_change', iconClass: 'text-primary-container', label: 'Manage Location Pricing' },
-              { icon: 'qr_code_2', iconClass: 'text-secondary', label: 'View Table Order QR' },
+              // No table-order QR per item yet — sample only.
+              ...(live ? [] : [{ icon: 'qr_code_2', iconClass: 'text-secondary', label: 'View Table Order QR' }]),
               { icon: 'archive', iconClass: 'text-error', label: 'Archive from Catalogue', danger: true },
             ].map((action) => (
               <button
@@ -825,6 +923,9 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                   if (action.label === 'Manage Location Pricing') {
                     setSheetItem(null);
                     onOpenAssignment(liveItem ? liveItem.id : sheetItem);
+                  } else if (liveItem && action.label === 'Edit Details') {
+                    setSheetItem(null);
+                    editLiveItem(liveItem);
                   } else if (liveItem && action.label === 'Make a Deal') {
                     setSheetItem(null);
                     onMakeDeal?.(liveItem);
@@ -867,6 +968,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
           <button
             className="flex items-center gap-1.5 px-space-sm py-2 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold hover:bg-surface-container-highest active:scale-95 transition-all"
             type="button"
+            onClick={startService}
           >
             <Icon name="design_services" className="text-[18px] text-tertiary-container" />
             <span>+ Add Service</span>
