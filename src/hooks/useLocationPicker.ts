@@ -3,7 +3,9 @@ import { useLocation } from '../context/LocationContext';
 import { hasApiConfig } from '../services/api/client';
 import {
   AREA_NOT_FOUND,
+  AREA_UNNAMED,
   LOCATION_UNAVAILABLE,
+  UNNAMED_DISTRICT,
   findPlace,
   getCurrentPlace,
   type PickedPlace,
@@ -53,6 +55,8 @@ export function useLocationPicker(open: boolean) {
     try {
       const next = await getCurrentPlace();
       setPlace(next);
+      // The coordinates still filter the feeds; say why the area has no name.
+      if (next.district === UNNAMED_DISTRICT) showToast(AREA_UNNAMED);
       return next;
     } catch (error) {
       showToast(error instanceof Error && error.message ? error.message : LOCATION_UNAVAILABLE);
