@@ -1,5 +1,6 @@
-import { api } from './api/client';
+import { api, ApiError } from './api/client';
 import { API_ENDPOINTS } from './api/endpoints';
+import { formatDistanceKm } from '../context/LocationContext';
 import type {
   ApiListResponse,
   CatalogueItemBranchPrice,
@@ -8,6 +9,58 @@ import type {
   UpdateCatalogueItemDto,
   UpdateCatalogueOfferDto,
 } from './types';
+
+/**
+ * Gives each feed row a readable `distance` ("1.2 km") from the API's
+ * `distanceKm`, which screens already show in place of a generic label.
+ */
+const withDistanceLabels = <T>(response: T): T => {
+  const label = (row: unknown) => {
+    if (!row || typeof row !== 'object') return row;
+    const record = row as Record<string, unknown>;
+    const distance = formatDistanceKm(record.distanceKm);
+    return distance && !record.distance ? { ...record, distance } : row;
+  };
+  if (Array.isArray(response)) return response.map(label) as T;
+  if (response && typeof response === 'object') {
+    const record = response as Record<string, unknown>;
+    for (const key of ['data', 'items']) {
+      if (Array.isArray(record[key])) return { ...record, [key]: (record[key] as unknown[]).map(label) } as T;
+    }
+  }
+  return response;
+};
+
+type FeedParams = Record<string, string | number | boolean | undefined>;
+
+const feedRows = (response: unknown): unknown[] => {
+  if (Array.isArray(response)) return response;
+  if (response && typeof response === 'object') {
+    const record = response as Record<string, unknown>;
+    for (const key of ['data', 'items']) if (Array.isArray(record[key])) return record[key] as unknown[];
+  }
+  return [];
+};
+
+/**
+ * A public feed that never goes empty just because of the customer's location:
+ * nothing within the radius → the nearest rows anywhere (still nearest first,
+ * with real distances); location params rejected (an older API) → the plain feed.
+ */
+const nearestFeed = async <T>(params: FeedParams | undefined, load: (query?: FeedParams) => Promise<T>): Promise<T> => {
+  const hasPoint = params?.lat !== undefined && params?.lng !== undefined;
+  if (!hasPoint) return withDistanceLabels(await load(params));
+  try {
+    const nearby = await load(params);
+    if (params?.radius === undefined || feedRows(nearby).length > 0) return withDistanceLabels(nearby);
+    const { radius: _radius, ...anywhere } = params ?? {};
+    return withDistanceLabels(await load(anywhere));
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 400) throw error;
+    const { lat: _lat, lng: _lng, radius: _radius, sortBy: _sortBy, ...plain } = params ?? {};
+    return withDistanceLabels(await load(plain));
+  }
+};
 
 export const catalogueService = {
   getItems: async (params?: Record<string, string | number | boolean | undefined>) =>
@@ -28,8 +81,10 @@ export const catalogueService = {
   getPublicCategoriesByBranch: async (branchId: string, params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicCategoriesByBranch(branchId), { params }),
 
-  getPublicOffers: async (params?: Record<string, string | number | boolean | undefined>) =>
-    api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffers, { params }),
+  getPublicOffers: async (params?: FeedParams) =>
+    nearestFeed(params, (query) =>
+      api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffers, { params: query }),
+    ),
 
   getPublicOffersByBranch: async (branchId: string, params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffersByBranch(branchId), { params }),
@@ -37,8 +92,10 @@ export const catalogueService = {
   getPublicOfferDetails: async (id: string) =>
     api.get<Record<string, unknown>>(API_ENDPOINTS.catalogue.publicOfferDetails(id)),
 
-  getPublicBusinesses: async (params?: Record<string, string | number | boolean | undefined>) =>
-    api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.public.businesses, { params }),
+  getPublicBusinesses: async (params?: FeedParams) =>
+    nearestFeed(params, (query) =>
+      api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.public.businesses, { params: query }),
+    ),
 
   searchPublicBusinesses: async (params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.public.search, { params }),

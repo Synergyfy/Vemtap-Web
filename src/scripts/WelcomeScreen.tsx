@@ -14,8 +14,8 @@ interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
   return (
-    <AppScreen>
-      <div className="flex flex-col w-full px-6 justify-between flex-1 pb-6 pt-2">
+    <AppScreen fit>
+      <div className="flex flex-col w-full px-6 justify-between flex-1 pb-6 pt-2 [@media(max-height:700px)]:pb-3">
         <header className="w-full flex items-center justify-between pt-1">
           <Logo variant="full" className="h-6 w-auto" />
           <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-surface-container-high">
@@ -24,11 +24,11 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
           </div>
         </header>
 
-        <div className="relative w-full my-auto py-4 flex flex-col items-center justify-center">
+        <div className="relative w-full my-auto py-4 [@media(max-height:700px)]:py-2 flex flex-col items-center justify-center flex-1 min-h-0">
           <div className="absolute -top-6 w-64 h-64 rounded-full bg-surface-container blur-3xl opacity-70 pointer-events-none" />
 
-          <div className="relative w-full h-[300px] rounded-[32px] bg-surface-canvas shadow-xl p-3 flex flex-col justify-between overflow-hidden">
-            <div className="w-full flex items-center justify-between px-2 pt-1 pb-2">
+          <div className="relative w-full flex-1 min-h-[200px] max-h-[300px] rounded-[32px] bg-surface-canvas shadow-xl p-3 flex flex-col justify-between overflow-hidden">
+            <div className="w-full flex items-center justify-between px-2 pt-1 pb-2 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-primary-container" />
                 <div className="h-2 w-16 bg-surface-container rounded-full" />
@@ -42,7 +42,7 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
               </div>
             </div>
 
-            <div className="relative w-full h-[130px] rounded-2xl overflow-hidden shadow-sm">
+            <div className="relative w-full flex-1 min-h-[92px] max-h-[130px] rounded-2xl overflow-hidden shadow-sm">
               <img className="w-full h-full object-cover" alt="Modern boutique storefront in Victoria Island, Lagos" src={HERO_IMAGE} />
               <div className="absolute inset-0 bg-gradient-to-t from-on-background/70 via-transparent to-transparent" />
               <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-badge-discount-bg flex items-center gap-1 shadow-sm">
@@ -65,7 +65,7 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="grid grid-cols-2 gap-2 mt-2 shrink-0">
               <div className="p-2.5 rounded-xl bg-surface-subtle shadow-sm flex items-center gap-2">
                 <div className="w-9 h-9 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
                   <Icon name="storefront" filled className="text-primary text-[20px]" />
@@ -116,7 +116,7 @@ export function WelcomeScreen({ onGetStarted, onSignIn }: WelcomeScreenProps) {
           <p className="font-body-md text-body-md text-text-secondary mt-2 px-3">
             Find great deals, products and businesses around you — all in one place.
           </p>
-          <div className="flex items-center justify-center gap-2 my-5">
+          <div className="flex items-center justify-center gap-2 my-5 [@media(max-height:700px)]:my-3">
             <ProgressDots activeIndex={0} label="Onboarding step 1 of 2" />
           </div>
         </div>

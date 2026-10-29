@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { useLocation } from '../context/LocationContext';
+import { useLocation, useLocationQuery } from '../context/LocationContext';
 import { hasApiConfig } from '../services/api/client';
 import { catalogueService } from '../services/catalogueService';
 
@@ -31,6 +31,8 @@ export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNot
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
 
@@ -55,12 +57,12 @@ export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNot
 
       try {
         const [businessResponse, statsResponse] = await Promise.all([
-          catalogueService.getPublicBusinesses({ page: 1, limit: 4 }).catch(() => null),
+          catalogueService.getPublicBusinesses({ ...locationQuery, page: 1, limit: 4 }).catch(() => null),
           catalogueService.getPublicStats({ page: 1, limit: 4 }).catch(() => null),
         ]);
 
         const rows = extractRows(businessResponse ?? statsResponse);
-        const cards = buildDiscoverCardsFromOffers(rows.length > 0 ? rows : (await catalogueService.getPublicOffers({ page: 1, limit: 4 }).catch(() => ({ data: [] }))).data ?? []);
+        const cards = buildDiscoverCardsFromOffers(rows.length > 0 ? rows : (await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 4 }).catch(() => ({ data: [] }))).data ?? []);
 
         if (!ignore) {
           setBusinessCards(cards.length > 0 ? cards : []);
@@ -76,7 +78,7 @@ export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNot
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   const showToast = (message: string) => {
     setToast(message);

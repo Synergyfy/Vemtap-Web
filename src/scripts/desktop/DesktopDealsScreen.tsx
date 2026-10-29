@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
-import { useLocation } from '../../context/LocationContext';
+import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 import { dealEngagementService } from '../../services/dealEngagementService';
@@ -246,6 +246,8 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   const claimTimers = useRef<Record<string, number>>({});
   const apiReady = hasApiConfig();
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
     const loadOffers = async () => {
@@ -256,7 +258,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
       }
       try {
         console.log('[DesktopDealsScreen] Requesting public offers...');
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 6 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 6 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         console.log('[DesktopDealsScreen] Raw public offers payload:', rows);
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
@@ -270,7 +272,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [locationQuery]);
 
   const discoveryDeals = useMemo(() => {
     const filtered = publicOffers.filter(isUsableOffer);

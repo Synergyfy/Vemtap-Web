@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
-import { useLocation } from '../../context/LocationContext';
+import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 
@@ -301,6 +301,8 @@ export function DesktopHomeScreen({
     image: deal.image,
   });
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
     const loadOffers = async () => {
@@ -314,7 +316,7 @@ export function DesktopHomeScreen({
 
       setOffersLoading(true);
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 8 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 8 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -328,7 +330,7 @@ export function DesktopHomeScreen({
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [locationQuery]);
 
   const spotlightDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toSpotlightSlide(offer, index)), [publicOffers]);
   const listDeals = useMemo(() => publicOffers.slice(0, 4).map((offer, index) => toListDeal(offer, index)), [publicOffers]);

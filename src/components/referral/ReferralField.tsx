@@ -43,8 +43,8 @@ export function ReferralField({
             autoComplete="off"
             className="w-full bg-transparent border-none outline-none font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:ring-0 tracking-[0.08em] uppercase"
             id={inputId}
-            maxLength={12}
-            placeholder="e.g. VEMTAP1234"
+            maxLength={16}
+            placeholder="e.g. VEM-8OGUU4"
             spellCheck={false}
             type="text"
             value={value}
@@ -54,10 +54,10 @@ export function ReferralField({
 
         <p className="font-caption text-caption text-text-tertiary leading-snug mt-space-2xs">
           {fromUrl
-            ? 'Prefilled from your referral link — letters and numbers, checked when you finish setup.'
+            ? 'Prefilled from your referral link — letters, numbers and dashes, checked when you finish setup.'
             : compact
-              ? 'Letters and numbers, 4–12 characters. We check it when you finish setup — you can also skip it.'
-              : 'Have a code from a friend or business? Letters and numbers, 4–12 characters. We check it when you finish setup, and you can skip it.'}
+              ? 'Letters, numbers and dashes, 4–16 characters. We check it when you finish setup — you can also skip it.'
+              : 'Have a code from a friend or business? Letters, numbers and dashes, 4–16 characters. We check it when you finish setup, and you can skip it.'}
         </p>
       </div>
     </div>

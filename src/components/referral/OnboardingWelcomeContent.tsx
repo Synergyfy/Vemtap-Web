@@ -168,6 +168,7 @@ export function OnboardingWelcomeContent({ audience, business, onEnterDashboard 
         accountType={audience}
         code={identity.code}
         link={identity.link}
+        isPreview={identity.isPreview}
         title="Refer Others & Earn Rewards"
         description={
           isBusiness

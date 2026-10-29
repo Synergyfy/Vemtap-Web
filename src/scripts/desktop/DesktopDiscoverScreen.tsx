@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { Icon } from '../../components/ui/Icon';
-import { useLocation } from '../../context/LocationContext';
+import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 import { DISCOVER_CATEGORIES, buildDiscoverCardsFromOffers, type BusinessCard } from '../discoverData';
@@ -20,6 +20,8 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
   const [bookmarked, setBookmarked] = useState<boolean[]>([]);
   const { district, city, radius } = useLocation();
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
 
@@ -44,12 +46,12 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
 
       try {
         const [businessResponse, statsResponse] = await Promise.all([
-          catalogueService.getPublicBusinesses({ page: 1, limit: 4 }).catch(() => null),
+          catalogueService.getPublicBusinesses({ ...locationQuery, page: 1, limit: 4 }).catch(() => null),
           catalogueService.getPublicStats({ page: 1, limit: 4 }).catch(() => null),
         ]);
 
         const rows = extractRows(businessResponse ?? statsResponse);
-        const cards = buildDiscoverCardsFromOffers(rows.length > 0 ? rows : (await catalogueService.getPublicOffers({ page: 1, limit: 4 }).catch(() => ({ data: [] }))).data ?? []);
+        const cards = buildDiscoverCardsFromOffers(rows.length > 0 ? rows : (await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 4 }).catch(() => ({ data: [] }))).data ?? []);
 
         if (!ignore) {
           setBusinessCards(cards.length > 0 ? cards : []);
@@ -65,7 +67,7 @@ export function DesktopDiscoverScreen({ onNav, onOpenFilters, onOpenBusiness, on
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   const toggleBookmark = (index: number) =>
     setBookmarked((prev) => prev.map((value, i) => (i === index ? !value : value)));

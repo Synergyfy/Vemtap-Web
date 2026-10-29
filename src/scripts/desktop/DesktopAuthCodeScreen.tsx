@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 
@@ -7,6 +7,8 @@ interface DesktopAuthCodeScreenProps {
   /** Requests the email code; omitted by the business sign-up modal. */
   onSubmitEmail?: (email: string) => Promise<void> | void;
   onGoogle: () => void;
+  /** A failed live Google sign-in to show (set again for each failure). */
+  googleError?: { message: string } | null;
   onSignIn: () => void;
   /** Customer sign-up only — swaps into the business registration flow. */
   onBusinessRegister?: () => void;
@@ -145,6 +147,7 @@ export function DesktopAuthCodeScreen({
   onContinue,
   onSubmitEmail,
   onGoogle,
+  googleError,
   onSignIn,
   onBusinessRegister,
   onCustomerRegister,
@@ -153,6 +156,11 @@ export function DesktopAuthCodeScreen({
 }: DesktopAuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!googleError) return;
+    setError(googleError.message);
+  }, [googleError]);
   const business = mode === 'business';
   const copy = AUDIENCE_COPY[mode];
 

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { Toast } from '../components/ui/Toast';
+import { hasApiConfig } from '../services/api/client';
 
 interface LocationPermissionScreenProps {
   onBack: () => void;
-  onUseLocation: () => void;
+  /** Live: resolves once the location is saved; rejects with a customer-facing message. */
+  onUseLocation: () => Promise<void> | void;
   onManualLocation: () => void;
 }
 
@@ -16,12 +19,30 @@ export function LocationPermissionScreen({
   onManualLocation,
 }: LocationPermissionScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+  }, []);
 
   const handleUseLocation = () => {
     if (status !== 'idle') return;
     setStatus('locating');
-    window.setTimeout(() => setStatus('located'), 1200);
-    window.setTimeout(onUseLocation, 2100);
+    if (!hasApiConfig()) {
+      window.setTimeout(() => setStatus('located'), 1200);
+      window.setTimeout(onUseLocation, 2100);
+      return;
+    }
+    // Live: wait for the real position (and its name) before moving on.
+    Promise.resolve(onUseLocation())
+      .then(() => setStatus('located'))
+      .catch((error: unknown) => {
+        setStatus('idle');
+        setToast(error instanceof Error && error.message ? error.message : "Couldn't get your location.");
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setToast(null), 3200);
+      });
   };
 
   return (
@@ -151,6 +172,7 @@ export function LocationPermissionScreen({
           </footer>
         </div>
       </div>
+      <Toast message={toast} icon="location_off" />
     </AppScreen>
   );
 }

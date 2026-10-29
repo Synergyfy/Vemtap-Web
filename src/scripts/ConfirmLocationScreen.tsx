@@ -7,6 +7,10 @@ interface ConfirmLocationScreenProps {
   onChangeLocation: () => void;
   onContinue: () => void;
   onBusinessSetup: () => void;
+  /** Live: the saved area and city; demo shows the sample area. */
+  district?: string;
+  city?: string;
+  radius?: number;
 }
 
 const MAP_PREVIEW =
@@ -17,7 +21,11 @@ export function ConfirmLocationScreen({
   onChangeLocation,
   onContinue,
   onBusinessSetup,
+  district,
+  city,
+  radius = 5,
 }: ConfirmLocationScreenProps) {
+  const placeName = district ? [district, city].filter(Boolean).join(', ') : 'Apo, Abuja';
   return (
     <AppScreen>
       <ScreenHeader title="Confirm Location" onBack={onBack} />
@@ -42,10 +50,10 @@ export function ConfirmLocationScreen({
                 <Icon name="location_on" filled className="text-primary text-[22px]" />
               </div>
               <div className="flex flex-col min-w-0">
-                <h3 className="font-heading-md text-heading-md text-on-surface truncate">Apo, Abuja</h3>
+                <h3 className="font-heading-md text-heading-md text-on-surface truncate">{placeName}</h3>
                 <p className="font-body-md text-body-md text-text-secondary line-clamp-1">Federal Capital Territory</p>
                 <div className="flex items-center gap-space-2xs mt-space-2xs">
-                  <span className="font-caption text-caption text-text-tertiary">5 km discovery radius</span>
+                  <span className="font-caption text-caption text-text-tertiary">{radius} km discovery radius</span>
                 </div>
               </div>
             </div>
@@ -59,7 +67,7 @@ export function ConfirmLocationScreen({
         <div className="relative w-full h-64 rounded-xl overflow-hidden shadow-sm mb-space-md bg-surface-container-low">
           <div
             className="w-full h-full bg-cover bg-center opacity-70"
-            data-location="Apo District, Abuja, Nigeria"
+            data-location={district ? placeName : 'Apo District, Abuja, Nigeria'}
             style={{ backgroundImage: `url('${MAP_PREVIEW}')` }}
           />
           <div className="absolute inset-0 bg-gradient-to-b from-surface-canvas/20 via-transparent to-surface-canvas/40 pointer-events-none" />
@@ -72,7 +80,7 @@ export function ConfirmLocationScreen({
               </div>
               <div className="relative z-10 flex flex-col items-center">
                 <div className="px-space-xs py-0.5 mb-1 rounded-full bg-surface-canvas shadow-md">
-                  <span className="font-caption text-caption text-primary font-semibold">Apo Hub</span>
+                  <span className="font-caption text-caption text-primary font-semibold">{district ?? 'Apo Hub'}</span>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg transform -translate-y-1">
                   <Icon name="storefront" className="text-[24px]" />
@@ -102,7 +110,7 @@ export function ConfirmLocationScreen({
           <div className="absolute bottom-2 inset-x-0 flex justify-center pointer-events-none">
             <div className="px-3 py-1 rounded-full bg-surface-canvas/95 backdrop-blur-md shadow-sm flex items-center gap-1.5">
               <Icon name="radar" className="text-primary text-[14px]" />
-              <span className="font-caption text-caption text-text-secondary">Deals &amp; Stores within 5km</span>
+              <span className="font-caption text-caption text-text-secondary">Deals &amp; Stores within {radius}km</span>
             </div>
           </div>
         </div>

@@ -6,7 +6,12 @@ interface DesktopConfirmLocationScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
   onChangeLocation: () => void;
-  onContinue: () => void;
+  /** Reports the radius picked here so live mode can save it. */
+  onContinue: (radius: number) => void;
+  /** Live: the saved area and city; demo shows the sample area. */
+  district?: string;
+  city?: string;
+  initialRadius?: number;
   onBusinessSetup: () => void;
 }
 
@@ -72,9 +77,13 @@ export function DesktopConfirmLocationScreen({
   onBack,
   onChangeLocation,
   onContinue,
+  district,
+  city,
+  initialRadius,
   onBusinessSetup,
 }: DesktopConfirmLocationScreenProps) {
-  const [radius, setRadius] = useState(5);
+  const [radius, setRadius] = useState(initialRadius ?? 5);
+  const placeName = district ? [district, city].filter(Boolean).join(', ') : 'Apo, Abuja';
   const [slide, setSlide] = useState(0);
 
   const metrics = metricsFor(radius);
@@ -118,7 +127,7 @@ export function DesktopConfirmLocationScreen({
                 Location Confirmed
               </div>
               <h1 className="font-display-hero text-display-hero text-on-surface font-bold tracking-tight mt-space-2xs">
-                You&apos;re exploring around Apo, Abuja
+                You&apos;re exploring around {placeName}
               </h1>
               <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
                 We&apos;ve calibrated your local discovery feed. You can adjust your discovery radius anytime.
@@ -133,7 +142,7 @@ export function DesktopConfirmLocationScreen({
                   </div>
                   <div className="flex flex-col">
                     <div className="flex items-center gap-space-xs">
-                      <span className="font-heading-sm text-heading-sm text-on-surface font-semibold">Apo, Abuja</span>
+                      <span className="font-heading-sm text-heading-sm text-on-surface font-semibold">{placeName}</span>
                       <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                         Active Area
                       </span>
@@ -224,9 +233,15 @@ export function DesktopConfirmLocationScreen({
                     Verified Active Opportunities
                   </span>
                   <span className="font-body-md text-body-md text-on-surface font-semibold">
-                    Found <strong className="text-primary font-bold">{metrics.deals} Deals</strong>,{' '}
-                    <strong className="text-primary font-bold">{metrics.stores} Stores</strong>, and{' '}
-                    <strong className="text-primary font-bold">{metrics.cafes} Cafes</strong> within {radius}km
+                    {district ? (
+                      <>Deals and stores within <strong className="text-primary font-bold">{radius} km</strong> show nearest first</>
+                    ) : (
+                      <>
+                        Found <strong className="text-primary font-bold">{metrics.deals} Deals</strong>,{' '}
+                        <strong className="text-primary font-bold">{metrics.stores} Stores</strong>, and{' '}
+                        <strong className="text-primary font-bold">{metrics.cafes} Cafes</strong> within {radius}km
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
@@ -236,7 +251,7 @@ export function DesktopConfirmLocationScreen({
               <button
                 className="w-full h-[52px] rounded-xl bg-primary-container hover:bg-on-primary-fixed-variant text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-md active:scale-[0.99] transition-all"
                 type="button"
-                onClick={onContinue}
+                onClick={() => onContinue(radius)}
               >
                 <span>Continue to Deals &amp; Stores</span>
                 <Icon name="arrow_forward" className="text-[20px]" />
@@ -319,7 +334,7 @@ export function DesktopConfirmLocationScreen({
                   <span className="absolute -inset-2 rounded-full bg-primary-container/30 animate-pulse" />
                   <div className="relative px-space-md py-space-xs rounded-full bg-primary text-on-primary shadow-xl flex items-center gap-space-xs">
                     <Icon name="storefront" filled className="text-[20px]" />
-                    <span className="font-label-md text-label-md font-bold tracking-tight">Apo Hub</span>
+                    <span className="font-label-md text-label-md font-bold tracking-tight">{district ?? 'Apo Hub'}</span>
                     <span className="w-1.5 h-1.5 rounded-full bg-on-primary" />
                     <span className="font-caption text-caption text-primary-fixed">Active Center</span>
                   </div>
