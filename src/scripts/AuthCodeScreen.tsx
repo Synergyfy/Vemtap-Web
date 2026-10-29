@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { Logo } from '../components/ui/Logo';
@@ -9,6 +9,8 @@ interface AuthCodeScreenProps {
   /** Requests the email code; omitted by the business sign-up modal. */
   onSubmitEmail?: (email: string) => Promise<void> | void;
   onGoogle: () => void;
+  /** A failed live Google sign-in to show (set again for each failure). */
+  googleError?: { message: string } | null;
   /** Customer sign-up only — swaps into the business registration flow. */
   onBusinessRegister?: () => void;
   /** Business sign-up only (`mode="business"`) — swaps into customer registration. */
@@ -75,6 +77,7 @@ export function AuthCodeScreen({
   onContinue,
   onSubmitEmail,
   onGoogle,
+  googleError,
   onBusinessRegister,
   onCustomerRegister,
   onSignIn,
@@ -82,6 +85,11 @@ export function AuthCodeScreen({
 }: AuthCodeScreenProps) {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!googleError) return;
+    setError(googleError.message);
+  }, [googleError]);
   const business = mode === 'business';
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -112,9 +120,9 @@ export function AuthCodeScreen({
   };
 
   return (
-    <AppScreen>
-      <div className="flex flex-col w-full px-margin pb-space-xl">
-        <div className="flex items-center justify-between py-space-sm">
+    <AppScreen fit>
+      <div className="flex flex-col w-full px-margin pb-space-xl [@media(max-height:700px)]:pb-space-sm flex-1 min-h-0">
+        <div className="flex items-center justify-between py-space-sm [@media(max-height:700px)]:py-0.5 shrink-0">
           <button
             aria-label="Go back"
             type="button"
@@ -132,34 +140,34 @@ export function AuthCodeScreen({
           <div className="w-10" />
         </div>
 
-        <div className="w-full bg-surface-container-low h-1 rounded-full mt-2 mb-space-lg overflow-hidden">
+        <div className="w-full bg-surface-container-low h-1 rounded-full mt-2 mb-space-lg [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:mb-1.5 overflow-hidden shrink-0">
           <div className="bg-primary h-full rounded-full transition-all duration-500 ease-out" style={{ width: '33.3%' }} />
         </div>
 
-        <div className="flex flex-col items-center text-center mt-2 mb-space-xl">
-          <Logo variant="mark" className="h-11 w-auto mb-space-md" />
-          <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mb-2">
+        <div className="flex flex-col items-center text-center mt-2 mb-space-xl [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:mb-space-sm shrink-0">
+          <Logo variant="mark" className="h-11 [@media(max-height:700px)]:h-8 w-auto mb-space-md [@media(max-height:700px)]:mb-2" />
+          <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mb-2 [@media(max-height:700px)]:mb-1">
             {business ? 'Welcome to VEMTAP for Business' : 'Welcome to VEMTAP'}
           </h1>
-          <p className="font-body-md text-body-md text-text-secondary max-w-[280px]">
+          <p className="font-body-md text-body-md text-text-secondary max-w-[280px] [@media(max-height:700px)]:max-w-[300px]">
             {business
               ? 'Create your business account to list your store, publish offers, and turn nearby foot traffic into lifetime customers.'
               : 'Create your account or sign in to save deals and claim exclusive offers near you.'}
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 w-full">
+        <div className="flex flex-col gap-3 w-full shrink-0">
           <button
             type="button"
             onClick={onGoogle}
-            className="w-full h-[52px] bg-surface-container-lowest text-text-primary rounded-xl flex items-center justify-center gap-3 shadow-sm active:scale-[0.99] transition-all duration-150 relative"
+            className="w-full h-[52px] [@media(max-height:700px)]:h-12 bg-surface-container-lowest text-text-primary rounded-xl flex items-center justify-center gap-3 shadow-sm active:scale-[0.99] transition-all duration-150 relative"
           >
             <GoogleIcon />
             <span className="font-button-secondary text-button-secondary font-medium">Continue with Google</span>
           </button>
         </div>
 
-        <div className="flex items-center my-space-lg">
+        <div className="flex items-center my-space-lg [@media(max-height:700px)]:my-1.5 shrink-0">
           <div className="flex-1 h-[1px] bg-surface-dim opacity-40" />
           <span className="px-3 font-caption text-caption text-text-tertiary tracking-wider font-medium uppercase">
             or
@@ -189,12 +197,12 @@ export function AuthCodeScreen({
                 autoComplete="email"
                 inputMode="email"
                 placeholder="name@example.com"
-                className="w-full h-[52px] bg-surface-subtle text-text-primary rounded-xl pl-11 pr-4 font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue/30 transition-all duration-150"
+                className="w-full h-[52px] [@media(max-height:700px)]:h-12 bg-surface-subtle text-text-primary rounded-xl pl-11 pr-4 font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue/30 transition-all duration-150"
               />
             </div>
           </div>
 
-          <p className="font-caption text-caption text-text-secondary flex items-start gap-1.5 mb-space-xl">
+          <p className="font-caption text-caption text-text-secondary flex items-start gap-1.5 mb-space-xl [@media(max-height:700px)]:mb-2">
             <Icon name="verified_user" className="text-[15px] text-primary shrink-0 mt-0.5" />
             <span>We'll send you a 6-digit verification code to confirm your email.</span>
           </p>
@@ -203,7 +211,7 @@ export function AuthCodeScreen({
             id="submit-btn"
             type="submit"
             disabled={status !== 'idle'}
-            className="w-full h-[52px] bg-primary-container text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] transition-all duration-150 disabled:opacity-80 disabled:cursor-progress"
+            className="w-full h-[52px] [@media(max-height:700px)]:h-12 bg-primary-container text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] transition-all duration-150 disabled:opacity-80 disabled:cursor-progress"
           >
             {status === 'idle' && (
               <>
@@ -225,7 +233,7 @@ export function AuthCodeScreen({
             )}
           </button>
 
-          <div className="text-center mt-space-md">
+          <div className="text-center mt-space-md [@media(max-height:700px)]:mt-2">
             <p className="font-body-md text-body-md text-text-secondary">
               Already have an account?{' '}
               <button
@@ -239,7 +247,7 @@ export function AuthCodeScreen({
           </div>
         </form>
 
-        <div className="mt-space-2xl text-center px-2">
+        <div className="mt-auto pt-space-lg [@media(max-height:700px)]:pt-space-sm text-center px-2 shrink-0">
           <p className="font-caption text-caption text-text-secondary leading-relaxed">
             By continuing, you agree to VEMTAP's{' '}
             <a className="text-primary font-medium underline underline-offset-2" href="#terms">
@@ -257,12 +265,12 @@ export function AuthCodeScreen({
           </div>
         </div>
 
-        <div className="mt-space-xl pt-space-xs">
+        <div className="mt-space-xl [@media(max-height:700px)]:mt-2 pt-space-xs shrink-0">
           {business ? (
             <button
               type="button"
               onClick={onCustomerRegister}
-              className="w-full p-space-md bg-surface-tint-blue rounded-xl flex items-center justify-between gap-3 border border-border-active active:bg-surface-container-low transition-colors duration-150 text-left"
+              className="w-full p-space-md [@media(max-height:700px)]:py-2 bg-surface-tint-blue rounded-xl flex items-center justify-between gap-3 border border-border-active active:bg-surface-container-low transition-colors duration-150 text-left"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-secondary shadow-sm shrink-0">
@@ -282,7 +290,7 @@ export function AuthCodeScreen({
             <button
               type="button"
               onClick={onBusinessRegister}
-              className="w-full p-space-md bg-surface-tint-blue rounded-xl flex items-center justify-between gap-3 border border-border-active active:bg-surface-container-low transition-colors duration-150 text-left"
+              className="w-full p-space-md [@media(max-height:700px)]:py-2 bg-surface-tint-blue rounded-xl flex items-center justify-between gap-3 border border-border-active active:bg-surface-container-low transition-colors duration-150 text-left"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-primary shadow-sm shrink-0">

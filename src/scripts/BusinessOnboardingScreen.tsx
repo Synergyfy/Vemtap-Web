@@ -35,8 +35,10 @@ import { BusinessServiceReviewScreen } from './BusinessServiceReviewScreen';
 import { SEED_DESCRIPTION } from './businessOnboardingSeed';
 import { BusinessSetupProgress } from '../components/BusinessSetupProgress';
 import {
+  getBusinessSetupResumeStep,
   getBusinessSetupSnapshot,
   getSectionStates,
+  recordBusinessSetupAdvance,
   saveBusinessSetupSnapshot,
   setBusinessSetupVerificationState,
   type BusinessSetupSectionId,
@@ -203,13 +205,19 @@ export function BusinessOnboardingScreen({
   // Restore saved progress from the module snapshot (if any) so returning from
   // verification (or another route) resumes where the merchant left off.
   const stored = getBusinessSetupSnapshot();
-  const [stepIndex, setStepIndex] = useState(() => {
+  // A saved run reopens on the page after the last one completed.
+  const [stepIndex, setStepIndexState] = useState(() => {
     if (stored) {
-      const index = (STEPS as readonly string[]).indexOf(stored.step);
+      const index = (STEPS as readonly string[]).indexOf(getBusinessSetupResumeStep(stored) ?? '');
       if (index >= 0) return index;
     }
     return initialStep === 'basic' ? 1 : 0;
   });
+  // Moving forward completes the page being left (Back changes nothing saved).
+  const setStepIndex = (next: number) => {
+    if (next > stepIndex) recordBusinessSetupAdvance(STEPS[stepIndex], STEPS[next]);
+    setStepIndexState(next);
+  };
   const [draft, setDraft] = useState<BusinessProfileDraft>(
     () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
   );

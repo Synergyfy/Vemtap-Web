@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -14,6 +14,16 @@ interface ProfileSetupScreenProps {
   code?: string;
   /** "Set up your business on VEMTAP" shortcut (desktop parity). */
   onBusinessSetup?: () => void;
+  /** Details typed on an earlier visit (business sign-up resumes with them filled in). */
+  initialValues?: ProfileSetupDraft;
+  /** Called as name and phone change, so leaving and coming back keeps them (never the PIN). */
+  onDraftChange?: (draft: ProfileSetupDraft) => void;
+}
+
+export interface ProfileSetupDraft {
+  firstName: string;
+  lastName: string;
+  phone: string;
 }
 
 type Status = 'idle' | 'saving';
@@ -77,10 +87,10 @@ function PinBoxes({
   );
 }
 
-export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: ProfileSetupScreenProps) {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
+export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initialValues, onDraftChange }: ProfileSetupScreenProps) {
+  const [firstName, setFirstName] = useState(initialValues?.firstName ?? '');
+  const [lastName, setLastName] = useState(initialValues?.lastName ?? '');
+  const [phone, setPhone] = useState(initialValues?.phone ?? '');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [pinFocused, setPinFocused] = useState(false);
@@ -89,6 +99,12 @@ export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup }: Prof
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const referral = useReferralStep();
+  // Keep what's typed so a return visit refills it (the PIN is never passed on).
+  useEffect(() => {
+    onDraftChange?.({ firstName, lastName, phone });
+    // Only the typed values matter; the callback may be a fresh closure each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstName, lastName, phone]);
 
   const ownIdentity = useReferralIdentity();
 

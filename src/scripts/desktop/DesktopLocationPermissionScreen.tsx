@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Toast } from '../../components/ui/Toast';
+import { hasApiConfig } from '../../services/api/client';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 
 interface DesktopLocationPermissionScreenProps {
   onNav: (key: DesktopNavKey) => void;
-  onUseLocation: () => void;
+  /** Live: resolves once the location is saved; rejects with a customer-facing message. */
+  onUseLocation: () => Promise<void> | void;
   onManualLocation: () => void;
 }
 
@@ -48,13 +51,32 @@ export function DesktopLocationPermissionScreen({
   const [modalOpen, setModalOpen] = useState(false);
   const [query, setQuery] = useState('');
 
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+  }, []);
+
   const handleUseLocation = () => {
     if (geoState !== 'idle') return;
     setGeoState('locating');
-    window.setTimeout(() => {
-      setGeoState('calibrated');
-      window.setTimeout(onUseLocation, 700);
-    }, 1100);
+    if (!hasApiConfig()) {
+      window.setTimeout(() => {
+        setGeoState('calibrated');
+        window.setTimeout(onUseLocation, 700);
+      }, 1100);
+      return;
+    }
+    // Live: wait for the real position (and its name) before moving on.
+    Promise.resolve(onUseLocation())
+      .then(() => setGeoState('calibrated'))
+      .catch((error: unknown) => {
+        setGeoState('idle');
+        setToast(error instanceof Error && error.message ? error.message : "Couldn't get your location.");
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setToast(null), 3200);
+      });
   };
 
   const saveManualLocation = () => {
@@ -354,6 +376,7 @@ export function DesktopLocationPermissionScreen({
           </div>
         </div>
       )}
+      <Toast message={toast} icon="location_off" />
     </DesktopPage>
   );
 }

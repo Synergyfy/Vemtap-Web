@@ -2,25 +2,15 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
-import { useLocation } from '../context/LocationContext';
+import { useLocation, useLocationQuery } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { hasApiConfig } from '../services/api/client';
+import { useProfile } from '../context/ProfileContext';
+import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCg_httfgNB7CfMJOzfjKekJGnxgvueamRqqNg-Qyw7QV2HTVvlh6rZ845BYSp5dsQClaPlSKNd4B0_3aYGUcjlu-OUBeq56PilIeD6B9e1a0GFgvTtnkB0d8i16nw-kagt5rZUqAHNUNQUsH0WcGsyf8zaqNe1yx2Go9tQcdI6QPEzXRp2aZLqYGswotDnV391PXTZI3oVx9jzWC_ZogeqCUxsw3wWsr-xRkh4q33Ljntdo0P9MsadSA';
-
-const IMAGES = {
-  dining:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuBjiY_iENnE0_gULcgR0NDCqk6Kq3rgCPj9DF359T-LyeFJWB7z4VMHdARNHQeTTxaT4MiH_xMPLODviqw6_g4l50CwXnKwBrq6CQIuKBPTJ5PaasBnvsfniUvz2Oy9Vn5eguCjJ_CuTMKeUodWVLfHa5QV5UaTWJOtOFkXuzN4cYIDGKMq-sweeOEBfus9N8WLC_OkWiUkIw3S5qhnVtMq670laaL_UzGfesQ-k5inJfjattlJVEofGA',
-  burger:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuBjiY_iENnE0_gULcgR0NDCqk6Kq3rgCPj9DF359T-LyeFJWB7z4VMHdARNHQeTTxaT4MiH_xMPLODviqw6_g4l50CwXnKwBrq6CQIuKBPTJ5PaasBnvsfniUvz2Oy9Vn5eguCjJ_CuTMKeUodWVLfHa5QV5UaTWJOtOFkXuzN4cYIDGKMq-sweeOEBfus9N8WLC_OkWiUkIw3S5qhnVtMq670laaL_UzGfesQ-k5inJfjattlJVEofGA',
-  sneakers:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuD0uBBlT-uAfF0xrF1R99Fygm4HWKLPrmL3WWpZt71dQGS3NkBlOQ4kU1osW9GuFYORifIsd4FKPUSG5g0t3TLX3YCVkdzeSvXt8QGqexEQ1P-sIUWyEygPSrdpBw8m264KPQ8HPkV4WdVLSEFg85dV-lo5N986QTpH7FkxewwUwqnLessEGS_HR1U8_BQumYABPPSiKY4F_J8kKkA5DPYDJSiPWrecAlMg5bja0jfXHc29cF55C8j7AQ',
-  spa: 'https://lh3.googleusercontent.com/aida-public/AB6AXuApSo_d-6tUpRdyPfedGt9FAOlIdJc5ZDlE8rU2ZXsK3L_Ngq-PkICWqvfgL4jRE5FKwg9eHcpFiQ6YSnP-Umn_itGHcmoD9cZnzcCU1GNk7vtchytPdKH2G5zC-nNqqtPDmUtp7UTnSn_qFQ5nlenJBVonmFpDAwZcJarDcov4sO9lX4TmZJexfLK08XOnsNsho-AhfccOs9h7pJEtq2JaTsp6Z0SEs_DgoMwbM3PQoV6Yqk-9EcDuEQ',
-  coffee:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuDhaveynjDuWtPu2JE7hXGvL4JUNYbbcSzUA_e17tE-fQ2ekG5_Bmpiq2FT5U99sDs4VVEYLgM9SedUAzXAR8xYGa2WmPIAVHHLHm5fWEAbFTRgkq4ECuGkRFZXPaj6susJy4hs1U_ga0O2fsnB6yIbLLXil_gLH47nnCpUvo7xTQfoLwPb2A56609PWjT7OTe4zOBInx0APBPGBDi49B3GWJHlIBCLXKmVZGsOCyGIC5X6_O31zQUZxw',
-};
 
 const CATEGORIES: { label: string; icon: string }[] = [
   { label: 'All', icon: '' },
@@ -45,6 +35,7 @@ interface FeaturedSlide {
   distance: string;
   likes: number;
   comments: number;
+  verified: boolean;
 }
 
 interface DealSummary {
@@ -63,6 +54,11 @@ interface DealSummary {
   rating?: string;
   reviews?: string;
   deals?: string;
+  ends: string;
+  verified: boolean;
+  /** Groups a business's offers into one "Businesses Around You" row. */
+  businessKey: string;
+  businessLogo?: string;
 }
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat('en-NG', {
@@ -77,31 +73,56 @@ const formatCurrency = (value: number | string | undefined): string => {
   return CURRENCY_FORMATTER.format(numeric);
 };
 
-const getApiImage = (value: unknown): string => {
-  if (typeof value === 'string' && value.trim()) return value;
-  return IMAGES.dining;
+/** Neutral stand-in when a live offer has no photo, instead of a stock image. */
+const NO_IMAGE =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'><rect width='16' height='9' fill='%23eef0f4'/></svg>";
+
+const firstImage = (...values: unknown[]): string | undefined =>
+  values.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+/** The deal's own photo first, then an item photo, then the business logo. */
+const getNestedImage = (offer: Record<string, unknown>): string => {
+  const items = Array.isArray(offer.items) ? offer.items.map(asRecord) : [];
+  const gallery = Array.isArray(offer.galleryImages) ? offer.galleryImages : [];
+  const business = asRecord(offer.business);
+  return (
+    firstImage(
+      offer.mainImage,
+      offer.image,
+      offer.coverImage,
+      gallery[0],
+      ...items.flatMap((item) => [item.mainImage, item.image, item.mediaUrl]),
+      business.logo,
+      business.logoUrl,
+      business.image,
+      business.coverImage,
+    ) ?? NO_IMAGE
+  );
 };
 
-const getNestedImage = (offer: Record<string, unknown>): string => {
-  const itemList = Array.isArray(offer.items) ? offer.items : [];
-  for (const item of itemList) {
-    if (item && typeof item === 'object') {
-      const image = getApiImage((item as Record<string, unknown>).mainImage ?? (item as Record<string, unknown>).image ?? (item as Record<string, unknown>).mediaUrl);
-      if (image !== IMAGES.dining || (item as Record<string, unknown>).mainImage || (item as Record<string, unknown>).image) {
-        return image;
-      }
-    }
-  }
+/** "Ends 30 Oct" from the offer's end date; "Ongoing" when it has none. */
+const getEndsLabel = (offer: Record<string, unknown>): string => {
+  if (typeof offer.ends === 'string' && offer.ends.trim()) return offer.ends;
+  const end = offer.endDate ?? offer.expiresAt;
+  const date = typeof end === 'string' || typeof end === 'number' ? new Date(end) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'Ongoing';
+  return `Ends ${date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}`;
+};
 
-  const business = offer.business;
-  if (business && typeof business === 'object') {
-    const businessImage = getApiImage((business as Record<string, unknown>).logo ?? (business as Record<string, unknown>).image ?? (business as Record<string, unknown>).coverImage);
-    if (businessImage !== IMAGES.dining || (business as Record<string, unknown>).logo || (business as Record<string, unknown>).image) {
-      return businessImage;
-    }
-  }
+/** Where the offer is: its distance when the API sends one, else the business's city. */
+const getLocationLabel = (offer: Record<string, unknown>): string => {
+  const business = asRecord(offer.business);
+  return (
+    firstImage(offer.distance, offer.location, business.city, offer.city) ?? 'Nearby'
+  );
+};
 
-  return getApiImage(offer.image ?? offer.coverImage ?? offer.mediaUrl ?? offer.photo);
+const isVerified = (offer: Record<string, unknown>): boolean => {
+  const business = asRecord(offer.business);
+  return Boolean(business.isVerified ?? business.verified ?? offer.isVerified ?? offer.verified);
 };
 
 const getApiTitle = (offer: Record<string, unknown>): string => {
@@ -118,11 +139,11 @@ const getApiBusinessName = (offer: Record<string, unknown>): string => {
 
   const value =
     offer.businessName ??
+    fromBusinessObject ??
     offer.merchantName ??
-    offer.branchName ??
     offer.vendorName ??
     offer.companyName ??
-    fromBusinessObject ??
+    offer.branchName ??
     'Nearby business';
 
   return typeof value === 'string' && value.trim() ? value : 'Nearby business';
@@ -188,14 +209,15 @@ const toFeaturedSlide = (offer: Record<string, unknown>, index: number): Feature
     image: getNestedImage(offer),
     imageAlt: `${title} by ${business}`,
     badge: typeof offer.badge === 'string' && offer.badge.trim() ? offer.badge : 'Live Deal',
-    ends: typeof offer.ends === 'string' && offer.ends.trim() ? offer.ends : 'Limited time',
-    merchant: `${business} • ${typeof offer.location === 'string' ? offer.location : 'Nearby'}`,
+    ends: getEndsLabel(offer),
+    merchant: `${business} • ${getLocationLabel(offer)}`,
     title,
     price: formatCurrency(price),
     was: compareAtPrice > price ? formatCurrency(compareAtPrice) : '',
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    distance: getLocationLabel(offer),
     likes: Number.isFinite(likes) ? likes : 0,
     comments: Number.isFinite(comments) ? comments : 0,
+    verified: isVerified(offer),
   };
 };
 
@@ -213,7 +235,7 @@ const toDealSummary = (offer: Record<string, unknown>, index: number): DealSumma
     business,
     price: formatCurrency(basePrice),
     was: comparePrice > basePrice ? formatCurrency(comparePrice) : '',
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    distance: getLocationLabel(offer),
     likes: Number(offer.likes ?? offer.favorites ?? 0),
     comments: Number(offer.comments ?? 0),
     badge: typeof offer.badge === 'string' && offer.badge.trim() ? offer.badge : 'Live Deal',
@@ -221,7 +243,28 @@ const toDealSummary = (offer: Record<string, unknown>, index: number): DealSumma
     rating: typeof offer.rating === 'string' ? offer.rating : undefined,
     reviews: typeof offer.reviews === 'string' ? offer.reviews : undefined,
     deals: typeof offer.deals === 'string' ? offer.deals : undefined,
+    ends: getEndsLabel(offer),
+    verified: isVerified(offer),
+    businessKey: String(asRecord(offer.business).id ?? offer.businessId ?? business),
+    businessLogo: firstImage(asRecord(offer.business).logo, asRecord(offer.business).logoUrl),
   };
+};
+
+/** One row per business, labelled with how many live offers it has. */
+const toBusinessRows = (deals: DealSummary[]): DealSummary[] => {
+  const rows = new Map<string, { deal: DealSummary; count: number }>();
+  for (const deal of deals) {
+    const row = rows.get(deal.businessKey);
+    if (row) row.count += 1;
+    else rows.set(deal.businessKey, { deal, count: 1 });
+  }
+  return Array.from(rows.values()).map(({ deal, count }) => ({
+    ...deal,
+    id: deal.businessKey,
+    image: deal.businessLogo ?? deal.image,
+    imageAlt: deal.business,
+    deals: deal.deals ?? `${count} Live Offer${count === 1 ? '' : 's'}`,
+  }));
 };
 
 export interface HomeScreenProps {
@@ -266,15 +309,23 @@ function LikeButton({ count, liked, onToggle }: { count: number; liked: boolean;
   );
 }
 
+const greeting = () => {
+  const hour = new Date().getHours();
+  return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+};
+
 function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation: () => void; onNotifications: () => void; onAccount: () => void }) {
   const { district, city, radius } = useLocation();
+  const { initials } = useProfile();
+  // Live: the real unread count and the user's initials; demo keeps its sample dot and photo.
+  const { live, count: unreadCount } = useUnreadNotifications();
 
   return (
     <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="px-margin py-3 flex items-center justify-between gap-space-2xs min-w-0">
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-space-2xs">
-            <span className="font-caption text-caption text-text-secondary">Good evening</span>
+            <span className="font-caption text-caption text-text-secondary">{greeting()}</span>
             <Icon name="waving_hand" className="text-sm" />
           </div>
           <button
@@ -303,11 +354,19 @@ function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation
             className="relative w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-text-primary shadow-sm active:scale-95 transition-transform"
           >
             <Icon name="notifications" className="text-[22px]" />
-            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest" />
+            {(!live || unreadCount > 0) && (
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest" />
+            )}
           </button>
           <button type="button" aria-label="Account" onClick={onAccount} className="relative w-10 h-10 rounded-full p-0.5 bg-primary-fixed flex items-center justify-center active:scale-95 transition-transform">
             <span className="w-full h-full rounded-full overflow-hidden bg-secondary-fixed block">
-              <img className="w-full h-full object-cover" alt="" src={AVATAR} />
+              {live ? (
+                <span className="w-full h-full flex items-center justify-center text-on-secondary-fixed text-[13px] font-bold">
+                  {initials || 'U'}
+                </span>
+              ) : (
+                <img className="w-full h-full object-cover" alt="" src={AVATAR} />
+              )}
             </span>
           </button>
         </div>
@@ -417,11 +476,13 @@ function BusinessesSection({
                   <div className="flex flex-col min-w-0">
                     <h3 className="font-label-md text-label-md text-text-primary font-semibold truncate">{business.business}</h3>
                     <span className="font-caption text-caption text-text-secondary">{business.meta ?? business.distance}</span>
-                    <div className="flex items-center gap-1 pt-0.5">
-                      <Icon name="star" className="text-amber-500 text-[14px]" filled />
-                      <span className="font-caption text-caption text-text-primary font-semibold">{business.rating ?? '4.8'}</span>
-                      <span className="font-caption text-caption text-text-tertiary">{business.reviews ?? '(24)'}</span>
-                    </div>
+                    {business.rating && (
+                      <div className="flex items-center gap-1 pt-0.5">
+                        <Icon name="star" className="text-amber-500 text-[14px]" filled />
+                        <span className="font-caption text-caption text-text-primary font-semibold">{business.rating}</span>
+                        {business.reviews && <span className="font-caption text-caption text-text-tertiary">{business.reviews}</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <span className="shrink-0 px-2.5 py-1 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
@@ -519,6 +580,8 @@ export function HomeScreen({
   const featuredSlides = useMemo(() => publicOffers.slice(0, 3).map(toFeaturedSlide), [publicOffers]);
   const liveDeals = useMemo(() => publicOffers.slice(0, 4).map(toDealSummary), [publicOffers]);
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
 
@@ -533,7 +596,7 @@ export function HomeScreen({
 
       setOffersLoading(true);
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 8 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 8 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -545,7 +608,7 @@ export function HomeScreen({
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   useEffect(() => {
     if (featuredSlides.length < 2) return;
@@ -654,9 +717,11 @@ export function HomeScreen({
                       <div className="p-4 flex flex-col space-y-2.5">
                         <div className="flex items-center justify-between text-text-secondary">
                           <span className="font-label-sm text-label-sm font-medium">{slide.merchant}</span>
-                          <span className="flex items-center gap-0.5 font-caption text-caption text-primary font-semibold">
-                            <Icon name="verified" className="text-[14px]" /> Partner
-                          </span>
+                          {slide.verified && (
+                            <span className="flex items-center gap-0.5 font-caption text-caption text-primary font-semibold">
+                              <Icon name="verified" className="text-[14px]" /> Partner
+                            </span>
+                          )}
                         </div>
                         <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug">{slide.title}</h3>
                         <div className="flex items-baseline gap-2">
@@ -739,13 +804,13 @@ export function HomeScreen({
                         </div>
                         <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-surface-canvas/90 text-tertiary font-label-sm text-label-sm font-medium shadow-sm backdrop-blur-sm flex items-center gap-1">
                           <Icon name="schedule" className="text-[15px]" />
-                          <span>Limited time</span>
+                          <span>{deal.ends}</span>
                         </div>
                       </div>
                       <div className="p-4 flex flex-col space-y-2.5">
                         <div className="flex items-center justify-between text-text-secondary">
                           <span className="font-label-sm text-label-sm font-medium">{deal.business}</span>
-                          <span className="flex items-center gap-0.5 font-caption text-caption text-primary"><Icon name="verified" className="text-[14px]" /> Verified</span>
+                          {deal.verified && <span className="flex items-center gap-0.5 font-caption text-caption text-primary"><Icon name="verified" className="text-[14px]" /> Verified</span>}
                         </div>
                         <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug">{deal.title}</h3>
                         <div className="flex items-baseline gap-2">
@@ -832,7 +897,7 @@ export function HomeScreen({
           </section>
 
           <TrendingSection items={liveDeals.slice(0, 3)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
-          <BusinessesSection items={liveDeals} onSeeAll={onOpenDeals} onOpenBusiness={onOpenBusiness} />
+          <BusinessesSection items={toBusinessRows(liveDeals)} onSeeAll={onOpenDeals} onOpenBusiness={onOpenBusiness} />
           <PopularSection items={liveDeals.slice(0, 2)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
           <EnrollmentPrompt onEnroll={onEnroll} />
         </div>

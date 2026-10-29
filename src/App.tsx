@@ -12,12 +12,15 @@ import { hasApiConfig } from './lib/api';
 import { authService } from './services';
 import type { CatalogueItem } from './services/catalogueItemsService';
 import { ownerAuthService, OTP_GATE_MESSAGE } from './services/ownerAuthService';
+import { apiErrorMessage } from './services/errorMessages';
+import { startGoogleSignIn, takeGoogleRedirectResult, type GoogleIntent } from './services/googleAuth';
 import { catalogueService } from './services/catalogueService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
-import { LocationProvider } from './context/LocationContext';
+import { LocationProvider, useLocation } from './context/LocationContext';
+import { AREA_NOT_FOUND, findPlace, getCurrentPlace, type PickedPlace } from './services/currentLocation';
 import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
 import { parsePrice } from './utils/format';
@@ -68,6 +71,7 @@ import {
   readReferralCodeFromUrl,
   setProvisionalReferralCode,
 } from './scripts/referralData';
+import { referralsService } from './services/referralsService';
 import { ActivityScreen } from './scripts/ActivityScreen';
 import { NotificationsScreen } from './scripts/NotificationsScreen';
 import { HelpCentreScreen } from './scripts/HelpCentreScreen';
@@ -165,11 +169,18 @@ import { MenuProductsScreen } from './scripts/MenuProductsScreen';
 import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
 import { BusinessAccountChoiceScreen } from './scripts/BusinessAccountChoiceScreen';
 import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
+import type { ProfileSetupDraft } from './scripts/ProfileSetupScreen';
 import { BusinessDealStudioFlow } from './scripts/BusinessDealStudioFlow';
 import {
   BusinessSetupNavContext,
   clearBusinessSetupSnapshot,
+  clearBusinessSignup,
   getBusinessSetupSnapshot,
+  getBusinessSignup,
+  hasUnfinishedBusinessSetup,
+  hydrateBusinessSetupFromServer,
+  markBusinessSetupScreensDone,
+  saveBusinessSignup,
   setBusinessSetupSnapshotStep,
   setBusinessSetupVerificationState,
   type BusinessSetupNavValue,
@@ -880,7 +891,11 @@ function dealDetailPath(deal?: ClaimDealSummary | null): string {
   return `/deals/${encodeURIComponent(slug)}`;
 }
 
-function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
+/**
+ * The route a URL opens. `resume` (the first page load only, never Back/Forward)
+ * reopens an unfinished business sign-up or setup from the bare entry URL.
+ */
+function entryRoute(path: string, authed: boolean, isDesktop: boolean, resume = false): Route {
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
   if (path.startsWith('/deals/')) return 'deal-detail';
@@ -897,8 +912,12 @@ function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
     );
   }
   // Live mode: the customer home is for signed-in users only — "onboarded on
-  // this device before" survives sign-out and expired sessions.
-  if (hasApiConfig()) return authed ? 'home' : 'welcome';
+  // this device before" survives sign-out and expired sessions. An unfinished
+  // business sign-up or setup reopens on the page after the last one completed.
+  if (hasApiConfig()) {
+    if (!authed) return (resume && getBusinessSignup()?.stage) || 'welcome';
+    return resume && hasUnfinishedBusinessSetup() ? 'business-onboarding' : 'home';
+  }
   return (authed || hasOnboarded()) ? 'home' : 'welcome';
 }
 
@@ -935,6 +954,9 @@ export default function App() {
   );
 }
 
+/** The result Google sent back to `/google-callback`, read once per page load. */
+const GOOGLE_REDIRECT = takeGoogleRedirectResult();
+
 function AppInner() {
   const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession } = useAuth();
   const sessionUser = useSessionUser().data;
@@ -947,7 +969,13 @@ function AppInner() {
   const claims = useClaims();
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
-  const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const [route, setRouteState] = useState<Route>(() =>
+    GOOGLE_REDIRECT
+      ? ((GOOGLE_REDIRECT.pending.from in ROUTE_PATH ? GOOGLE_REDIRECT.pending.from : 'welcome') as Route)
+      : entryRoute(window.location.pathname, authed, isDesktop, true),
+  );
+  /** A failed "Continue with Google", shown on the screen it started from. */
+  const [googleError, setGoogleError] = useState<{ route: Route; message: string } | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return match?.business ?? null;
@@ -955,7 +983,8 @@ function AppInner() {
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
   const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
   const [customerSignup, setCustomerSignup] = useState({
-    email: '',
+    // A business sign-up resumed on the code or details screen keeps its email.
+    email: getBusinessSignup()?.email ?? '',
     code: '',
     firstName: '',
     lastName: '',
@@ -971,7 +1000,11 @@ function AppInner() {
     // Restored on load so a hard refresh mid-flow (e.g. on /verify-email)
     // still completes into the right journey instead of dropping merchants
     // into the customer one.
-    () => (window.localStorage.getItem(AUTH_INTENT_KEY) === 'business' ? 'business' : 'customer'),
+    // A business sign-up resumed past its email screen is always the business journey.
+    () =>
+      window.localStorage.getItem(AUTH_INTENT_KEY) === 'business' || (getBusinessSignup()?.email ?? '') !== ''
+        ? 'business'
+        : 'customer',
   );
   const setAuthIntent = (intent: 'customer' | 'business') => {
     setAuthIntentState(intent);
@@ -1016,7 +1049,10 @@ function AppInner() {
   const [serviceFrom, setServiceFrom] = useState<Route>('spa-services');
   const [bookingFrom, setBookingFrom] = useState<Route>('spa-profile');
   const [orderSummary, setOrderSummary] = useState<SubmittedOrder | null>(null);
-  const [businessSetupSkipIntro, setBusinessSetupSkipIntro] = useState(false);
+  // A signed-in owner reopening unfinished setup is already past the intro.
+  const [businessSetupSkipIntro, setBusinessSetupSkipIntro] = useState(
+    () => hasApiConfig() && authed && hasUnfinishedBusinessSetup(),
+  );
   /**
    * "Reuse this account or register a fresh business identity?" is asked from
    * the business intro's primary button — i.e. once the merchant has actually
@@ -1229,6 +1265,25 @@ function AppInner() {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
   }, []);
 
+  // Signed in: a sign-up left unfinished on this device is done (or replaced).
+  useEffect(() => {
+    if (authed) clearBusinessSignup();
+  }, [authed]);
+
+  // Live: an owner opening the app with setup unfinished (saved on their
+  // account, e.g. on another device) goes back to it, once per page load.
+  const setupResumeChecked = useRef(false);
+  useEffect(() => {
+    if (!isBusinessSession || setupResumeChecked.current) return;
+    setupResumeChecked.current = true;
+    void hydrateBusinessSetupFromServer().then((saved) => {
+      const current = routeRef.current;
+      if (!hasUnfinishedBusinessSetup(saved) || (current !== 'home' && current !== 'welcome')) return;
+      setBusinessSetupSkipIntro(true);
+      setRouteState('business-onboarding');
+    });
+  }, [isBusinessSession]);
+
   // Opening a portal page signed out (with the API configured) goes to sign in;
   // the customer home without a session (signed out, expired) goes to onboarding.
   useEffect(() => {
@@ -1288,10 +1343,9 @@ function AppInner() {
    * secured attribution.
    */
   useEffect(() => {
+    // The link just opened wins over any code saved earlier.
     const fromUrl = normaliseReferralCode(readReferralCodeFromUrl());
-    if (fromUrl && !getProvisionalReferralCode()) {
-      setProvisionalReferralCode(fromUrl, 'url');
-    }
+    if (fromUrl) setProvisionalReferralCode(fromUrl, 'url');
   }, []);
 
   useEffect(() => {
@@ -2136,6 +2190,8 @@ function AppInner() {
     }
 
     setCustomerSignup((current) => ({ ...current, email: nextEmail }));
+    // A customer sign-up replaces any business one left unfinished here.
+    clearBusinessSignup();
 
     if (!hasApiConfig()) {
       return;
@@ -2153,11 +2209,9 @@ function AppInner() {
 
     setCustomerSignup((current) => ({ ...current, email: nextEmail }));
 
-    if (!hasApiConfig()) {
-      return;
-    }
-
-    await ownerAuthService.requestOtp(nextEmail);
+    if (hasApiConfig()) await ownerAuthService.requestOtp(nextEmail);
+    // Email screen done: a return visit opens the code screen for this email.
+    saveBusinessSignup({ stage: 'verify-email', email: nextEmail });
   };
 
   /**
@@ -2166,12 +2220,15 @@ function AppInner() {
    */
   const verifyOwnerSignupCode = async (code: string) => {
     if (!hasApiConfig()) {
+      clearBusinessSignup();
       enterBusinessProfile();
       return;
     }
     const nextCode = code.trim();
     await ownerAuthService.verifyOtp(customerSignup.email, nextCode);
     setCustomerSignup((current) => ({ ...current, code: nextCode }));
+    // Code screen done: a return visit opens the details screen.
+    saveBusinessSignup({ stage: 'profile-setup', email: customerSignup.email });
     setRoute('profile-setup');
   };
 
@@ -2186,6 +2243,7 @@ function AppInner() {
     }
 
     const email = customerSignup.email;
+    const referralCode = getProvisionalReferralCode() || undefined;
     try {
       adoptSession(
         await ownerAuthService.register({
@@ -2194,16 +2252,23 @@ function AppInner() {
           ...(firstName ? { firstName } : {}),
           ...(lastName ? { lastName } : {}),
           ...(phone ? { businessNumber: `+${phone}` } : {}),
-          referralCode: getProvisionalReferralCode() || undefined,
+          referralCode,
         }),
       );
     } catch (error) {
       if (error instanceof Error && error.message.includes(OTP_GATE_MESSAGE)) {
+        // The code step has to be redone, so a return visit reopens it.
+        saveBusinessSignup({ stage: 'verify-email' });
         throw new Error('Your code has expired. Go back, request a new one and try again.');
       }
       throw error;
     }
 
+    // The code was consumed with the sign-up above.
+    if (referralCode) clearProvisionalReferralCode();
+
+    // The account exists now: setup progress takes over (saved on the account).
+    clearBusinessSignup();
     profile.update({ firstName: firstName || 'User', lastName, email, phone: phone ? `+${phone}` : '' });
     enterBusinessProfile();
   };
@@ -2273,6 +2338,7 @@ function AppInner() {
       ...(firstName ? { firstName } : {}),
       ...(lastName ? { lastName } : {}),
       ...(phone ? { phone: `+${phone}` } : {}),
+      referralCode: getProvisionalReferralCode() || undefined,
     };
 
     if (hasApiConfig()) {
@@ -2281,6 +2347,8 @@ function AppInner() {
       } catch (error) {
         throw signupCodeError(error, 'profile');
       }
+      // The code was recorded with the sign-up above.
+      clearProvisionalReferralCode();
     }
 
     profile.update({
@@ -2314,9 +2382,126 @@ function AppInner() {
     // Live, the owner-account step on setup signs the merchant in.
     if (!hasApiConfig()) void signIn();
     setAuthIntent('customer');
-    resumeAtBusinessProfile();
-    setRoute('business-onboarding');
+    const open = () => {
+      resumeAtBusinessProfile();
+      setRoute('business-onboarding');
+    };
+    // Live: pick up a run saved on the account (signed out, or another device).
+    if (hasApiConfig()) void hydrateBusinessSetupFromServer().then(open);
+    else open();
   };
+
+  /** A signed-in owner with setup still to finish goes back to it; otherwise the dashboard. */
+  const routeSignedInOwner = async () => {
+    const saved = await hydrateBusinessSetupFromServer();
+    if (hasUnfinishedBusinessSetup(saved)) {
+      setAuthIntent('customer');
+      setBusinessSetupSkipIntro(true);
+      setRoute('business-onboarding');
+      return;
+    }
+    setRoute('business-overview');
+  };
+
+  // Sign-up location (live): the browser's position or a typed area becomes
+  // the customer's saved location; failures reject with a message the screen shows.
+  const savedLocation = useLocation();
+  const savePlace = (place: PickedPlace, radius = savedLocation.radius) =>
+    savedLocation.setLocation(place.district, radius, { city: place.city, lat: place.lat, lng: place.lng });
+  const saveCurrentPlace = async () => savePlace(await getCurrentPlace());
+  const saveTypedPlace = async (area: string) => {
+    const place = await findPlace(area);
+    if (!place) throw new Error(AREA_NOT_FOUND);
+    savePlace(place);
+  };
+  const confirmPlace = hasApiConfig()
+    ? {
+        district: savedLocation.district,
+        city: savedLocation.city === 'Your city' ? undefined : savedLocation.city,
+      }
+    : {};
+
+  /** Live "Continue with Google": leaves for Google, or shows why it can't. */
+  const continueWithGoogle = (intent: GoogleIntent, from: Route) => {
+    setGoogleError(null);
+    try {
+      startGoogleSignIn(intent, from);
+    } catch (error) {
+      setGoogleError({ route: from, message: apiErrorMessage(error) });
+    }
+  };
+
+  // Back from Google: sign in through the API, then continue the journey the
+  // visitor started (new accounts confirm their phone first).
+  const googleHandled = useRef(false);
+  useEffect(() => {
+    const result = GOOGLE_REDIRECT;
+    if (!result || googleHandled.current) return;
+    googleHandled.current = true;
+    const from = (result.pending.from in ROUTE_PATH ? result.pending.from : 'welcome') as Route;
+    const fail = (message: string) => setGoogleError({ route: from, message });
+    if (result.error) {
+      // Closing Google's page is a cancel, not an error.
+      if (result.error !== 'access_denied') fail('Google sign-in didn’t complete. Please try again.');
+      return;
+    }
+    const { intent } = result.pending;
+    void (async () => {
+      try {
+        const response = (await authService.googleSignIn({
+          token: result.idToken,
+          ...(intent === 'business' ? { role: 'OWNER' } : intent === 'customer' ? { role: 'CUSTOMER' } : {}),
+        })) as Parameters<typeof adoptSession>[0] & { isNewUser?: boolean; requiresTwoFactor?: boolean };
+        if (response.requiresTwoFactor) {
+          fail('This account uses two-factor sign-in. Sign in with your email and PIN instead.');
+          return;
+        }
+        const user = adoptSession(response);
+        const isNew = Boolean(response.isNewUser);
+        // A new account can still claim the code captured from a referral
+        // link before Google redirected away — best effort, so a rejected or
+        // unknown code never blocks the sign-in flow.
+        const pendingReferral = getProvisionalReferralCode();
+        if (isNew && pendingReferral) {
+          void referralsService
+            .claim(pendingReferral)
+            .then(() => clearProvisionalReferralCode())
+            .catch(() => {
+              // Leave the stored code; the confirm screen can still take one.
+            });
+        }
+        const business = isBusinessRole(user?.role);
+        if (business && user?.businessId && !isNew) {
+          await routeSignedInOwner();
+          return;
+        }
+        if (intent === 'business') {
+          setAuthIntent('business');
+          if (isNew) setRoute('google-confirm');
+          else if (business) enterBusinessProfile();
+          else {
+            // An existing customer account: the usual "use this account or a
+            // new business identity" question decides.
+            setBusinessOnboardingFrom(from);
+            setRoute('business-onboarding');
+            setBusinessChoiceOpen(true);
+          }
+          return;
+        }
+        if (business) {
+          enterBusinessProfile();
+          return;
+        }
+        setAuthIntent('customer');
+        // New accounts confirm their phone; returning customers go straight home.
+        setRoute(isNew ? 'google-confirm' : 'home');
+      } catch (error) {
+        fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
+      }
+    })();
+    // Runs once for the page Google returned to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const renderClaimed = () =>
     isDesktop ? (
@@ -2399,10 +2584,15 @@ function AppInner() {
               setRoute('verify-email');
             }}
             onGoogle={() => {
+              if (hasApiConfig()) {
+                continueWithGoogle('customer', 'auth-code');
+                return;
+              }
               signIn();
               setAuthIntent('customer');
               setRoute('google-confirm');
             }}
+            googleError={googleError?.route === 'auth-code' ? googleError : null}
             onSignIn={() => {
               setSignInFrom('auth-code');
               setRoute('sign-in');
@@ -2423,10 +2613,15 @@ function AppInner() {
             setRoute('verify-email');
           }}
           onGoogle={() => {
+            if (hasApiConfig()) {
+            continueWithGoogle('customer', 'auth-code');
+            return;
+            }
             signIn();
             setAuthIntent('customer');
             setRoute('google-confirm');
           }}
+          googleError={googleError?.route === 'auth-code' ? googleError : null}
           // "Already have an account? Sign In" reuses the shared sign-in
           // screen instead of continuing into verification (desktop parity).
           onSignIn={() => {
@@ -2463,10 +2658,15 @@ function AppInner() {
               setRoute('verify-email');
             }}
             onGoogle={() => {
+              if (hasApiConfig()) {
+                continueWithGoogle('business', 'business-auth');
+                return;
+              }
               signIn();
               setAuthIntent('business');
               setRoute('google-confirm');
             }}
+            googleError={googleError?.route === 'business-auth' ? googleError : null}
             onSignIn={() => {
               setSignInFrom('business-auth');
               setRoute('sign-in');
@@ -2491,10 +2691,15 @@ function AppInner() {
             setRoute('verify-email');
           }}
           onGoogle={() => {
+            if (hasApiConfig()) {
+            continueWithGoogle('business', 'business-auth');
+            return;
+            }
             signIn();
             setAuthIntent('business');
             setRoute('google-confirm');
           }}
+          googleError={googleError?.route === 'business-auth' ? googleError : null}
           onSignIn={() => {
             setSignInFrom('business-auth');
             setRoute('sign-in');
@@ -2521,9 +2726,18 @@ function AppInner() {
                 enterBusinessProfile();
                 return;
               }
-              setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
+              if (isBusinessRole(user?.role)) {
+                await routeSignedInOwner();
+                return;
+              }
+              // A returning customer goes straight home; onboarding is for sign-up.
+              setRoute(hasApiConfig() ? 'home' : 'discovering');
             }}
             onGoogleSignIn={async () => {
+              if (hasApiConfig()) {
+                continueWithGoogle(resumeBusinessSetup ? 'business' : 'sign-in', 'sign-in');
+                return;
+              }
               if (!hasApiConfig()) {
                 await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
               }
@@ -2544,6 +2758,7 @@ function AppInner() {
               setRoute('business-onboarding');
             }}
             onForgotPin={() => setRoute('forgot-pin')}
+            googleError={googleError?.route === 'sign-in' ? googleError : null}
           />
         );
       return (
@@ -2555,9 +2770,18 @@ function AppInner() {
               enterBusinessProfile();
               return;
             }
-            setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
+            if (isBusinessRole(user?.role)) {
+              await routeSignedInOwner();
+              return;
+            }
+            // A returning customer goes straight home; onboarding is for sign-up.
+            setRoute(hasApiConfig() ? 'home' : 'discovering');
           }}
           onGoogleSignIn={async () => {
+            if (hasApiConfig()) {
+            continueWithGoogle(resumeBusinessSetup ? 'business' : 'sign-in', 'sign-in');
+            return;
+            }
             if (!hasApiConfig()) {
               await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
             }
@@ -2578,6 +2802,7 @@ function AppInner() {
             setRoute('business-onboarding');
           }}
           onForgotPin={() => setRoute('forgot-pin')}
+            googleError={googleError?.route === 'sign-in' ? googleError : null}
         />
       );
 
@@ -2637,13 +2862,22 @@ function AppInner() {
       );
     }
 
-    case 'profile-setup':
+    case 'profile-setup': {
+      // Business sign-up keeps the name and phone typed here across visits.
+      const businessSignup = authIntent === 'business';
+      const savedSignup = businessSignup ? getBusinessSignup() : null;
+      const signupDraft = savedSignup
+        ? { firstName: savedSignup.firstName ?? '', lastName: savedSignup.lastName ?? '', phone: savedSignup.phone ?? '' }
+        : undefined;
+      const saveSignupDraft = businessSignup ? (draft: ProfileSetupDraft) => saveBusinessSignup(draft) : undefined;
       if (isDesktop)
         return (
           <DesktopProfileSetupScreen
             onBack={() => setRoute('verify-email')}
             email={customerSignup.email}
             code={customerSignup.code}
+            initialValues={signupDraft}
+            onDraftChange={saveSignupDraft}
             onComplete={async (details) => {
               if (authIntent === 'business') {
                 await completeOwnerSignup(details);
@@ -2660,6 +2894,8 @@ function AppInner() {
           onBack={() => setRoute('verify-email')}
           email={customerSignup.email}
           code={customerSignup.code}
+          initialValues={signupDraft}
+          onDraftChange={saveSignupDraft}
           onComplete={async (details) => {
             if (authIntent === 'business') {
               await completeOwnerSignup(details);
@@ -2671,13 +2907,15 @@ function AppInner() {
           onBusinessSetup={authIntent === 'business' ? undefined : () => setRoute('business-onboarding')}
         />
       );
+    }
 
     case 'location-permission':
       if (isDesktop)
         return (
           <DesktopLocationPermissionScreen
             onNav={nav('confirm-location')}
-            onUseLocation={() => {
+            onUseLocation={async () => {
+              if (hasApiConfig()) await saveCurrentPlace();
               setConfirmFrom('location-permission');
               setRoute('confirm-location');
             }}
@@ -2687,7 +2925,8 @@ function AppInner() {
       return (
         <LocationPermissionScreen
           onBack={() => setRoute('profile-setup')}
-          onUseLocation={() => {
+          onUseLocation={async () => {
+            if (hasApiConfig()) await saveCurrentPlace();
             setConfirmFrom('location-permission');
             setRoute('confirm-location');
           }}
@@ -2701,8 +2940,14 @@ function AppInner() {
           <DesktopManualLocationScreen
             onNav={nav('confirm-location')}
             onBack={() => setRoute('location-permission')}
-            onContinue={() => {
+            onContinue={async (area) => {
+              if (hasApiConfig()) await saveTypedPlace(area);
               setConfirmFrom('manual-location');
+              setRoute('confirm-location');
+            }}
+            onUseCurrentLocation={async () => {
+              await saveCurrentPlace();
+              setConfirmFrom('location-permission');
               setRoute('confirm-location');
             }}
           />
@@ -2710,8 +2955,14 @@ function AppInner() {
       return (
         <ManualLocationScreen
           onBack={() => setRoute('location-permission')}
-          onContinue={() => {
+          onContinue={async (area) => {
+            if (hasApiConfig()) await saveTypedPlace(area);
             setConfirmFrom('manual-location');
+            setRoute('confirm-location');
+          }}
+          onUseCurrentLocation={async () => {
+            await saveCurrentPlace();
+            setConfirmFrom('location-permission');
             setRoute('confirm-location');
           }}
           onBusinessSetup={() => setRoute('business-onboarding')}
@@ -2725,8 +2976,16 @@ function AppInner() {
             onNav={nav('discovering')}
             onBack={() => setRoute(confirmFrom)}
             onChangeLocation={() => setRoute('manual-location')}
-            onContinue={() => setRoute('discovering')}
+            onContinue={(radius) => {
+              // Keep the radius picked here with the saved place.
+              if (hasApiConfig() && radius !== savedLocation.radius) {
+                savePlace({ district: savedLocation.district, city: confirmPlace.city, lat: savedLocation.lat, lng: savedLocation.lng }, radius);
+              }
+              setRoute('discovering');
+            }}
             onBusinessSetup={() => setRoute('business-onboarding')}
+            {...confirmPlace}
+            initialRadius={savedLocation.radius}
           />
         );
       return (
@@ -2735,6 +2994,8 @@ function AppInner() {
           onChangeLocation={() => setRoute('manual-location')}
           onContinue={() => setRoute('discovering')}
           onBusinessSetup={() => setRoute('business-onboarding')}
+          {...confirmPlace}
+          radius={savedLocation.radius}
         />
       );
 
@@ -3905,7 +4166,19 @@ function AppInner() {
      */
     case 'google-confirm': {
       const finishGoogleConfirm = (details: GoogleConfirmDetails) => {
-        if (details.referralCode) setProvisionalReferralCode(details.referralCode, 'manual');
+        if (details.referralCode) {
+          setProvisionalReferralCode(details.referralCode, 'manual');
+          // Google accounts already exist by this screen, so a typed code is
+          // claimed here instead of with a later register call — best effort,
+          // the account's own code and an already-claimed code just resolve
+          // to a server-side 400 that is ignored.
+          void referralsService
+            .claim(details.referralCode)
+            .then(() => clearProvisionalReferralCode())
+            .catch(() => {
+              // Best effort — an unknown or already-claimed code is ignored.
+            });
+        }
         profile.update({ phone: details.phone });
         // Merchant sign-up — the confirmed Google identity belongs to the
         // business, so it enters setup instead of the customer feed.
@@ -4154,6 +4427,7 @@ function AppInner() {
       };
       const finishOnboarding = () => {
         setBusinessSetupSkipIntro(false);
+        markBusinessSetupScreensDone();
         setBusinessSetupVerificationState('in-progress');
         setRoute('business-verification');
       };
@@ -4201,7 +4475,11 @@ function AppInner() {
        * a merchant already inside their own run continues where they left off.
        */
       const startBusinessSignup = !authed
-        ? () => setRoute('business-auth')
+        ? () => {
+            // Intro done: a return visit opens the sign-up email screen.
+            saveBusinessSignup({ stage: 'business-auth' });
+            setRoute('business-auth');
+          }
         : businessSetupSkipIntro
           ? undefined
           : () => setBusinessChoiceOpen(true);

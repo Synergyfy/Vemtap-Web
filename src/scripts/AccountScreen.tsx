@@ -3,6 +3,7 @@ import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../components/AccountRows';
 import { useProfile } from '../context/ProfileContext';
+import { hasApiConfig } from '../services/api/client';
 
 export type { AccountTarget };
 
@@ -82,6 +83,9 @@ const UTILITY_ROWS: AccountRow[] = [
 
 export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenProps) {
   const { fullName, email, initials, phone } = useProfile();
+  // Live: no sample counts or totals until real figures are wired; demo keeps them.
+  const live = hasApiConfig();
+  const activityRows = live ? ACTIVITY_ROWS.map(({ badge: _badge, trail: _trail, ...row }) => row) : ACTIVITY_ROWS;
 
   return (
     <AppScreen>
@@ -161,7 +165,7 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
                 </div>
                 <div className="min-w-0">
                   <span className="font-caption text-caption text-text-secondary block">Total Saved</span>
-                  <span className="font-label-md text-label-md font-bold text-badge-discount-text">₦18,500</span>
+                  <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? '—' : '₦18,500'}</span>
                 </div>
               </div>
               <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center gap-space-xs">
@@ -170,14 +174,14 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
                 </div>
                 <div className="min-w-0">
                   <span className="font-caption text-caption text-text-secondary block">Active Deals</span>
-                  <span className="font-label-md text-label-md font-bold text-on-surface">3 Live</span>
+                  <span className="font-label-md text-label-md font-bold text-on-surface">{live ? '—' : '3 Live'}</span>
                 </div>
               </div>
             </div>
           </section>
 
           <RowGroup title="Activity & Deals">
-            {ACTIVITY_ROWS.map((row) => (
+            {activityRows.map((row) => (
               <AccountRowButton key={row.label} row={row} onSelect={onNavigate} />
             ))}
           </RowGroup>

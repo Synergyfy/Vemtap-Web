@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 
 interface DesktopSignInScreenProps {
   onSignIn: (credentials: { identifier: string; password: string }) => Promise<void> | void;
   onGoogleSignIn: () => void;
+  /** A failed live Google sign-in to show (set again for each failure). */
+  googleError?: { message: string } | null;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
@@ -67,6 +69,7 @@ function GoogleIcon() {
 export function DesktopSignInScreen({
   onSignIn,
   onGoogleSignIn,
+  googleError,
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
@@ -76,6 +79,12 @@ export function DesktopSignInScreen({
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>('idle');
   const [googleStatus, setGoogleStatus] = useState<Status>('idle');
+
+  useEffect(() => {
+    if (!googleError) return;
+    setError(googleError.message);
+    setGoogleStatus('idle');
+  }, [googleError]);
   const [error, setError] = useState<string | null>(null);
 
   const busy = status !== 'idle' || googleStatus !== 'idle';

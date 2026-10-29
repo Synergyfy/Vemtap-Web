@@ -23,6 +23,8 @@ export const API_ENDPOINTS = {
   public: {
     businesses: '/public/businesses',
     search: '/public/search',
+    reverseGeocode: '/public/geocode/reverse',
+    searchGeocode: '/public/geocode/search',
     stats: '/public/stats',
     businessByCode: (code: string) => `/public/businesses/code/${encodeURIComponent(code)}`,
     branchByCode: (code: string) => `/public/branches/code/${encodeURIComponent(code)}`,

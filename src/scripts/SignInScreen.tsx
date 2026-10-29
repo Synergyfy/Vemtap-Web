@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -7,6 +7,8 @@ interface SignInScreenProps {
   onBack: () => void;
   onSignIn: (credentials: { identifier: string; password: string }) => Promise<void> | void;
   onGoogleSignIn: () => void;
+  /** A failed live Google sign-in to show (set again for each failure). */
+  googleError?: { message: string } | null;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
@@ -63,6 +65,7 @@ export function SignInScreen({
   onBack,
   onSignIn,
   onGoogleSignIn,
+  googleError,
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
@@ -71,6 +74,12 @@ export function SignInScreen({
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>('idle');
   const [googleStatus, setGoogleStatus] = useState<Status>('idle');
+
+  useEffect(() => {
+    if (!googleError) return;
+    setError(googleError.message);
+    setGoogleStatus('idle');
+  }, [googleError]);
   const [error, setError] = useState<string | null>(null);
 
   const busy = status !== 'idle' || googleStatus !== 'idle';

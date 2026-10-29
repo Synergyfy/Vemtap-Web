@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
-import { useLocation } from '../../context/LocationContext';
+import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 
@@ -130,6 +130,8 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
     const loadOffers = async () => {
@@ -139,7 +141,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
       }
 
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 5 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 5 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -151,7 +153,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [locationQuery]);
 
   const featuredDeals = useMemo(() => publicOffers.slice(0, 5).map(toFeaturedDeal), [publicOffers]);
 

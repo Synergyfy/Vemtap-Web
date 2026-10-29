@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
-import { useLocation } from '../context/LocationContext';
+import { useLocation, useLocationQuery } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useAuth } from '../context/AuthContext';
 import { hasApiConfig } from '../services/api/client';
+import { useProfile } from '../context/ProfileContext';
+import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
 
 const AVATAR =
@@ -177,6 +179,9 @@ function GreetingHeader({
   onAccount: () => void;
 }) {
   const { district, city, radius } = useLocation();
+  const { initials } = useProfile();
+  // Live: the real unread count and the user's initials; demo keeps its sample dot and photo.
+  const { live, count: unreadCount } = useUnreadNotifications();
   return (
     <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="px-margin py-3 flex items-center justify-between gap-space-2xs min-w-0">
@@ -211,7 +216,9 @@ function GreetingHeader({
             className="relative w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-text-primary shadow-sm active:scale-95 transition-transform"
           >
             <Icon name="notifications" className="text-[22px]" />
-            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest" />
+            {(!live || unreadCount > 0) && (
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-error ring-2 ring-surface-container-lowest" />
+            )}
           </button>
           <button
             type="button"
@@ -220,11 +227,13 @@ function GreetingHeader({
             className="relative w-10 h-10 rounded-full p-0.5 bg-primary-fixed flex items-center justify-center active:scale-95 transition-transform"
           >
             <span className="w-full h-full rounded-full overflow-hidden bg-secondary-fixed block">
-              <img
-                className="w-full h-full object-cover"
-                alt=""
-                src={AVATAR}
-              />
+              {live ? (
+                <span className="w-full h-full flex items-center justify-center text-on-secondary-fixed text-[13px] font-bold">
+                  {initials || 'U'}
+                </span>
+              ) : (
+                <img className="w-full h-full object-cover" alt="" src={AVATAR} />
+              )}
             </span>
           </button>
         </div>
@@ -329,12 +338,15 @@ export function DealsScreen({
   onAccount,
 }: DealsScreenProps) {
   const { claimed } = useAuth();
+  const { live, count: unreadCount } = useUnreadNotifications();
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [locationOpen, setLocationOpen] = useState(false);
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const { district, city, radius, setLocation } = useLocation();
   const apiReady = hasApiConfig();
 
+  // Nearest first within the radius once the customer has a location.
+  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
 
@@ -345,7 +357,7 @@ export function DealsScreen({
       }
 
       try {
-        const response = await catalogueService.getPublicOffers({ page: 1, limit: 6 });
+        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 6 });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -355,7 +367,7 @@ export function DealsScreen({
 
     loadOffers();
     return () => { ignore = true; };
-  }, []);
+  }, [locationQuery]);
 
   const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 6), [publicOffers]);
   const featuredDeal = displayDeals[0] ? toDealCardModel(displayDeals[0]) : null;
@@ -385,7 +397,9 @@ export function DealsScreen({
                 className="relative w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
               >
                 <Icon name="notifications" className="text-[24px]" />
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+                {(!live || unreadCount > 0) && (
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+                )}
               </button>
               <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-label-sm shadow-xs cursor-pointer">
                 <Icon name="person" className="text-[20px]" />
@@ -443,7 +457,9 @@ export function DealsScreen({
                 className="relative w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
               >
                 <Icon name="notifications" className="text-[24px]" />
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+                {(!live || unreadCount > 0) && (
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+                )}
               </button>
               <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-label-sm shadow-xs cursor-pointer">
                 <Icon name="person" className="text-[20px]" />
@@ -506,7 +522,9 @@ export function DealsScreen({
                 className="relative w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
               >
                 <Icon name="notifications" className="text-[24px]" />
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+                {(!live || unreadCount > 0) && (
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error ring-2 ring-surface-canvas" />
+                )}
               </button>
               <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-label-sm shadow-xs cursor-pointer">
                 <Icon name="person" className="text-[20px]" />

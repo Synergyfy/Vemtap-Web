@@ -38,8 +38,10 @@ import { DesktopBusinessQrScreen } from './DesktopBusinessQrScreen';
 import { SEED_DESCRIPTION } from './businessOnboardingData';
 import {
   BusinessSetupNavContext,
+  getBusinessSetupResumeStep,
   getBusinessSetupSnapshot,
   getSectionStates,
+  recordBusinessSetupAdvance,
   saveBusinessSetupSnapshot,
   setBusinessSetupVerificationState,
   type BusinessSetupNavValue,
@@ -235,12 +237,22 @@ export function DesktopBusinessOnboardingScreen({
   // Restore saved progress (if any) so returning from verification or another
   // route resumes at the correct step instead of restarting setup.
   const stored = getBusinessSetupSnapshot();
-  const [step, setStep] = useState<BusinessOnboardingStep>(() => {
-    if (stored && (ONBOARDING_STEPS as readonly string[]).includes(stored.step)) {
-      return stored.step as BusinessOnboardingStep;
+  // A saved run reopens on the page after the last one completed.
+  const [step, setStepState] = useState<BusinessOnboardingStep>(() => {
+    const resume = getBusinessSetupResumeStep(stored);
+    if (resume && (ONBOARDING_STEPS as readonly string[]).includes(resume)) {
+      return resume as BusinessOnboardingStep;
     }
     return initialStep;
   });
+  // Moving forward completes the page being left (Back changes nothing saved).
+  // Pricing config is a side trip from the product review, not progress.
+  const setStep = (next: BusinessOnboardingStep) => {
+    if (next !== 'productPricingConfig' && ONBOARDING_STEPS.indexOf(next) > ONBOARDING_STEPS.indexOf(step)) {
+      recordBusinessSetupAdvance(step, next);
+    }
+    setStepState(next);
+  };
   const [draft, setDraft] = useState<BusinessProfileDraft>(
     () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
   );

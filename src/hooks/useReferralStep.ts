@@ -11,9 +11,9 @@ import {
  *
  * The field is inert on its own: nothing is validated or stored while the user
  * types. Submitting pauses the step and opens `ReferralConfirmSheet`; only
- * Confirm or Skip releases it. The code stays in module memory (never
- * localStorage) so it keeps reading as a provisional hint rather than secured
- * attribution.
+ * Confirm or Skip releases it. The confirmed code is kept in localStorage
+ * (30-day TTL) so a reload mid-sign-up keeps it; it is only sent to the
+ * server with the sign-up request itself.
  */
 export function useReferralStep() {
   const [prefilledCode] = useState(() => (provisionalReferralIsFromUrl() ? getProvisionalReferralCode() : ''));
