@@ -370,7 +370,15 @@ export function BusinessProfileBrandingScreen({
             </div>
             <div className="bg-surface-canvas rounded-xl shadow-md overflow-hidden">
               <div className="relative h-32 w-full">
-                <img alt={FEED_ALT} className="w-full h-full object-cover" src={FEED_IMG} />
+                {live ? (
+                  cover ? (
+                    <img alt="Your cover photo" className="w-full h-full object-cover" src={cover} />
+                  ) : (
+                    <div className="w-full h-full bg-surface-container" aria-label="No cover photo yet" role="img" />
+                  )
+                ) : (
+                  <img alt={FEED_ALT} className="w-full h-full object-cover" src={FEED_IMG} />
+                )}
                 <div className="absolute top-2 left-2 flex items-center gap-1.5">
                   <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold px-2 py-0.5 rounded-full shadow-sm">
                     20% OFF FIRST VISIT
@@ -382,9 +390,17 @@ export function BusinessProfileBrandingScreen({
                 </div>
               </div>
               <div className="p-space-sm flex items-start gap-space-sm">
-                <div className="w-11 h-11 rounded-xl bg-primary text-on-primary flex-shrink-0 flex items-center justify-center shadow -mt-6 relative z-10">
-                  <Icon name="restaurant_menu" className="text-[20px]" />
-                </div>
+                {hasLogo && logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt="Your logo"
+                    className="w-11 h-11 rounded-xl object-cover bg-surface-canvas flex-shrink-0 shadow -mt-6 relative z-10"
+                  />
+                ) : (
+                  <div className="w-11 h-11 rounded-xl bg-primary text-on-primary flex-shrink-0 flex items-center justify-center shadow -mt-6 relative z-10">
+                    <Icon name="restaurant_menu" className="text-[20px]" />
+                  </div>
+                )}
                 <div className="flex-grow min-w-0">
                   <div className="flex items-center justify-between">
                     <h4 className="font-heading-sm text-heading-sm text-text-primary truncate">{previewTitle}</h4>

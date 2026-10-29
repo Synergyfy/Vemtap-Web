@@ -10,6 +10,7 @@ import {
   type ChannelPlatformId,
 } from '../../utils/socialChannels';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 
 interface DesktopBusinessProfileContactScreenProps {
@@ -40,6 +41,10 @@ const seedChannels = (draft: BusinessProfileDraft): ChannelDraft[] =>
 const LAUNCH_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCNczFLc0faRiEg4jO8sXFdg1kenSyM1sPXHoySM_AZy0ALkQgOd5Rz9poPpMDFASLZ-lonWkAaADj9SsuBiiphhxFqofAmKSvGnwvS87VQPjE4FPWUubVLH3Ex-PmTHoXYS3DH-NvdMggquKPlwNLFV-pGyoxF8uwY4afUg_ifquogK2A90GDeEQEeyipYTwK7ucgRwD_uy_HLw8_aQjJN1e1QQtNO7AzVw8QIbMIu';
 
+/** Neutral tile while the business has no cover photo yet. */
+const NO_COVER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
 export function DesktopBusinessProfileContactScreen({
   draft,
   onDraftChange,
@@ -48,6 +53,8 @@ export function DesktopBusinessProfileContactScreen({
   onSaveDraft,
 }: DesktopBusinessProfileContactScreenProps) {
   const profile = useProfile();
+  // Live: the banner uploaded on the branding step (saved to the business straight away).
+  const coverImage = useMyBusiness().data?.coverImage ?? null;
   const [status, setStatus] = useState<'idle' | 'saving'>('idle');
   const [channels, setChannels] = useState<ChannelDraft[]>(() => seedChannels(draft));
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -485,8 +492,14 @@ export function DesktopBusinessProfileContactScreen({
                 <div className="relative rounded-xl overflow-hidden mb-space-md shadow-sm">
                   <img
                     className="w-full h-44 object-cover"
-                    alt="A modern upscale restaurant interior with warm ambient lighting, timber wooden tables, glowing bar in background, vibrant Lagos urban culinary dining experience with guests in stylish casual attire"
-                    src={LAUNCH_IMAGE}
+                    alt={
+                      hasApiConfig()
+                        ? coverImage
+                          ? 'Your storefront cover photo'
+                          : 'No cover photo yet'
+                        : 'A modern upscale restaurant interior with warm ambient lighting, timber wooden tables, glowing bar in background, vibrant Lagos urban culinary dining experience with guests in stylish casual attire'
+                    }
+                    src={hasApiConfig() ? coverImage || NO_COVER : LAUNCH_IMAGE}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/90 via-inverse-surface/40 to-transparent flex flex-col justify-end p-space-md">
                     <div className="flex items-center gap-space-2xs text-on-primary">
