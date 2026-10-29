@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { useCatalogueItemMutations, useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
-import { productDraftToInput, serviceDraftToInput, toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
+import {
+  applyItemBranches,
+  itemToProductDraft,
+  itemToServiceDraft,
+  productDraftToInput,
+  serviceDraftToInput,
+  toPrice,
+  type CatalogueItem,
+} from '../../services/catalogueItemsService';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 import { formatNaira } from '../../utils/format';
@@ -870,14 +878,31 @@ export function DesktopBusinessCatalogHubScreen({
       }
     };
     const onError = (error: unknown) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, `Could not save the ${kind}.`));
+    // The branches ticked in the form: switch the item on there (and off elsewhere on edit).
+    const selected =
+      kind === 'product'
+        ? Object.keys(productDraft.branches).filter((id) => productDraft.branches[id])
+        : serviceDraft.locations;
+    const applyBranches = (itemId: string) =>
+      applyItemBranches(itemId, selected, {
+        branchIds: branches.filter((branch) => branch.id).map((branch) => branch.id as string),
+        activeBranchId,
+        pricingMode: kind === 'product' && productDraft.pricingMode === 'custom' ? 'per_branch' : 'uniform',
+        isUpdate: Boolean(editingRowId),
+      });
     if (editingRowId) {
-      itemMutations.update.mutate({ id: editingRowId, input }, { onSuccess: () => done(input.name, true), onError });
+      const id = editingRowId;
+      itemMutations.update.mutate(
+        { id, input },
+        { onSuccess: () => applyBranches(id).then(() => done(input.name, true), onError), onError },
+      );
     } else {
       itemMutations.create.mutate(input, {
-        onSuccess: (created) => {
-          setLastPublished(created);
-          done(input.name, false);
-        },
+        onSuccess: (created) =>
+          applyBranches(created.id).then(() => {
+            setLastPublished(created);
+            done(input.name, false);
+          }, onError),
         onError,
       });
     }
@@ -1035,33 +1060,11 @@ export function DesktopBusinessCatalogHubScreen({
     const item = live ? liveItem(row.id) : undefined;
     if (item) {
       // Live: prefill from the stored item so saving never drops fields the row doesn't show.
-      const amount = (v: unknown) => (toPrice(v as string) ?? '').toString();
       if (item.itemType === 'service') {
-        const minutes = Number(/(\d+)/.exec(item.duration ?? '')?.[1]);
-        setServiceDraft({
-          ...BLANK_SERVICE_DRAFT,
-          title: item.name,
-          description: item.description ?? '',
-          standardPrice: amount(item.price),
-          basePrice: amount(item.price),
-          comparePrice: amount(item.compareAtPrice),
-          skuCode: item.sku ?? '',
-          image: item.mainImage ?? '',
-          durationMins: Number.isFinite(minutes) && minutes > 0 ? minutes : BLANK_SERVICE_DRAFT.durationMins,
-        });
+        setServiceDraft({ ...BLANK_SERVICE_DRAFT, ...itemToServiceDraft(item) });
         setSubFlow('service1');
       } else {
-        setProductDraft({
-          ...BLANK_PRODUCT_DRAFT,
-          title: item.name,
-          description: item.description ?? '',
-          basePrice: amount(item.price),
-          comparePrice: amount(item.compareAtPrice),
-          sku: item.sku ?? '',
-          skuCode: item.sku ?? '',
-          lowStock: item.minStock !== null && item.minStock !== undefined ? String(item.minStock) : '',
-          backorder: item.allowBackOrder === true,
-        });
+        setProductDraft({ ...BLANK_PRODUCT_DRAFT, ...itemToProductDraft(item) });
         setSubFlow('addProduct1');
       }
       return;
