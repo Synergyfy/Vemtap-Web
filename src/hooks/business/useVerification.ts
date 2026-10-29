@@ -9,6 +9,7 @@ import {
   type VerificationCheckStatus,
 } from '../../services/verificationService';
 import { useMyBusiness } from './useMyBusiness';
+import { useSessionUser } from '../useSessionUser';
 
 export const verificationKeys = { status: ['verification', 'status'] as const };
 
@@ -184,5 +185,88 @@ export function useVerificationSummary() {
     checksVerified: Number(identity.ok) + Number(registration.ok),
     identity,
     registration,
+  };
+}
+
+/** Verification flow step "Start verification" resumes at. */
+export type VerificationResumeStep = 'idType' | 'cacStatus' | 'inReview' | 'complete';
+
+/**
+ * The verification intro's live facts: where the owner left off, the button
+ * and note that match it, and the business shown on the badge preview.
+ * Demo mode always starts fresh with the sample copy.
+ */
+export function useVerificationIntro() {
+  const live = hasApiConfig();
+  const status = useVerificationStatus();
+  const business = useMyBusiness();
+  const data = live ? status.data : undefined;
+  const done = Boolean(data?.isVerified) || data?.nextStep === 'done';
+  const resumeStep: VerificationResumeStep = done
+    ? 'complete'
+    : data?.nextStep === 'review'
+      ? 'inReview'
+      : data?.nextStep === 'business'
+        ? 'cacStatus'
+        : 'idType';
+  const rejected = data?.status === 'rejected';
+  const copy: Record<VerificationResumeStep, { cta: string; note: string | null }> = {
+    idType: {
+      cta: rejected ? 'Try Verification Again' : 'Start Verification',
+      note: rejected ? 'Your last verification attempt wasn’t approved. You can try again.' : null,
+    },
+    cacStatus: { cta: 'Continue Verification', note: 'Your identity is verified. Next: your business registration.' },
+    inReview: { cta: 'View Review Status', note: 'Your details are with our team for review.' },
+    complete: { cta: 'View Verification', note: 'Your business is verified.' },
+  };
+  return {
+    live,
+    loading: live && status.isLoading,
+    resumeStep,
+    verified: done,
+    started: live && resumeStep !== 'idType',
+    ...copy[resumeStep],
+    businessName: live ? business.data?.name?.trim() || 'Your business' : 'Your Store Name',
+    logoUrl: live ? business.data?.logoUrl ?? null : null,
+  };
+}
+
+/** What each ID type actually needs, as the verification API checks it. */
+export const ID_TYPE_REQUIREMENTS: Record<IdentityIdType, string> = {
+  nin: 'Your 11-digit NIN and a quick selfie — checked against the NIMC registry.',
+  drivers_license: 'Your licence number and a quick selfie — checked against the FRSC registry.',
+  voters_card: 'Your 19-character VIN and a quick selfie — checked against the INEC registry.',
+  passport: 'A clear photo of your passport data page and a quick selfie (no registry lookup).',
+};
+
+const ID_TYPE_NAMES: Record<string, string> = {
+  nin: 'NIN',
+  drivers_license: "Driver's Licence",
+  voters_card: "Voter's Card",
+  passport: 'Passport',
+};
+
+/**
+ * Live facts for the ID-type step: the name the ID must match, and the last
+ * identity attempt when it didn't go through. Empty in demo mode.
+ */
+export function useIdTypeStep() {
+  const live = hasApiConfig();
+  const status = useVerificationStatus();
+  const user = useSessionUser().data;
+  const identity = live ? status.data?.identity : null;
+  const lastAttempt =
+    identity && identity.status !== 'verified'
+      ? {
+          idType: identity.idType,
+          label: [ID_TYPE_NAMES[identity.idType] ?? identity.idType, identity.maskedId].filter(Boolean).join(' '),
+          underReview: identity.status === 'needs_review' || identity.status === 'pending',
+          reasons: reasonCopy(identity.reasons),
+        }
+      : null;
+  return {
+    live,
+    accountName: live ? [user?.firstName, user?.lastName].filter(Boolean).join(' ') || null : null,
+    lastAttempt,
   };
 }
