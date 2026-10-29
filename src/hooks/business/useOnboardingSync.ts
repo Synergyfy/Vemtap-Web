@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import {
+  applyItemBranches,
   catalogueItemsService,
   productDraftToInput,
   serviceDraftToInput,
@@ -64,18 +65,16 @@ export function useOnboardingSync() {
 
   /** Runs a save, then `next` on success; failures stay on the step with a message. */
   /**
-   * Items are created at the active branch; switch them on at any other real
-   * branches the owner ticked (same price everywhere — per-branch prices are
-   * set later in Branch pricing).
+   * Items are created at the active branch; switch them on at exactly the real
+   * branches the owner ticked (per-branch prices are set later in Branch pricing).
    */
-  const sellAtBranches = async (itemId: string, selected: string[]) => {
-    const others = selected.filter((id) => id !== activeBranchId);
-    if (!isLive || !others.length) return;
-    await catalogueItemsService.setBranchPricing(itemId, {
-      pricingMode: 'uniform',
-      branches: branches
-        .filter((b) => b.id)
-        .map((b) => ({ branchId: b.id as string, isAvailable: b.id === activeBranchId || others.includes(b.id as string) })),
+  const sellAtBranches = async (itemId: string, selected: string[], isUpdate = false, pricingMode?: 'uniform' | 'per_branch') => {
+    if (!isLive) return;
+    await applyItemBranches(itemId, selected, {
+      branchIds: branches.filter((b) => b.id).map((b) => b.id as string),
+      activeBranchId,
+      isUpdate,
+      pricingMode,
     });
   };
 
@@ -193,7 +192,7 @@ export function useOnboardingSync() {
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
         const item = await upsertItem(productDraftToInput(draft, activeBranchId), draft.publishedItemId);
         saved = item;
-        await sellAtBranches(item.id, Object.keys(draft.branches ?? {}).filter((id) => draft.branches?.[id]));
+        await sellAtBranches(item.id, Object.keys(draft.branches ?? {}).filter((id) => draft.branches?.[id]), Boolean(draft.publishedItemId), draft.pricingMode === 'custom' ? 'per_branch' : 'uniform');
         setLastPublished(item);
         await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
       }, () => next(saved));
@@ -208,7 +207,7 @@ export function useOnboardingSync() {
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
         const item = await upsertItem(serviceDraftToInput(draft, activeBranchId), draft.publishedItemId);
         saved = item;
-        await sellAtBranches(item.id, draft.locations ?? []);
+        await sellAtBranches(item.id, draft.locations ?? [], Boolean(draft.publishedItemId));
         setLastPublished(item);
         await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
       }, () => next(saved));

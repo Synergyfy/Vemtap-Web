@@ -24,6 +24,8 @@ export interface ProductDraft {
   branches: Record<string, boolean>;
   pricingMode: 'uniform' | 'custom';
   prepWindow: string;
+  /** How customers can get it: collect at the counter and/or delivery. */
+  fulfillment: { pickup: boolean; delivery: boolean };
 }
 
 export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
@@ -52,6 +54,7 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   backorder: false,
   branches: { wuse: true, garki: true, maitama: false },
   pricingMode: 'custom',
+  fulfillment: { pickup: true, delivery: true },
   prepWindow: '20 – 30 Mins',
 };
 

@@ -211,6 +211,7 @@ const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
   backorder: false,
   branches: { ...service.branches },
   pricingMode: service.pricingMode === 'tiered' ? 'custom' : 'uniform',
+  fulfillment: { pickup: true, delivery: false },
   prepWindow: `${service.durationMins} Mins`,
 });
 
