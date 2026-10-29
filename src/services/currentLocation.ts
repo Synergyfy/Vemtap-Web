@@ -23,7 +23,8 @@ const currentPosition = () =>
     navigator.geolocation.getCurrentPosition(
       resolve,
       (error) => reject(new Error(error.code === error.PERMISSION_DENIED ? LOCATION_DENIED : LOCATION_UNAVAILABLE)),
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 5 * 60_000 },
+      // A fresh, precise fix: a cached or coarse (IP-based) position can be kilometres off.
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
     );
   });
 
