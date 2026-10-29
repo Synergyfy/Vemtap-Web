@@ -72,6 +72,11 @@ interface DesktopBusinessCatalogHubScreenProps {
   onMakeDeal?: (item: CatalogueItem) => void;
   /** A message to show once when the screen opens (e.g. "pick an item"). */
   notice?: string | null;
+  /** Opens the create-product page (its own route); without it the form opens in place. */
+  onAddProduct?: () => void;
+  /** Route mode: open straight on the new-product form, and leave via `onCloseForm` when it closes. */
+  startWithNewProduct?: boolean;
+  onCloseForm?: () => void;
 }
 
 type CatalogChip = 'all' | 'published' | 'deals' | 'low' | 'dinein' | 'takeaway' | 'oos';
@@ -622,6 +627,9 @@ export function DesktopBusinessCatalogHubScreen({
   onOpenServices: _onOpenServices,
   onMakeDeal,
   notice,
+  onAddProduct,
+  startWithNewProduct = false,
+  onCloseForm,
 }: DesktopBusinessCatalogHubScreenProps) {
   const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
   // Live: rows come from `/catalogue/items` for the active branch; demo keeps the sample rows.
@@ -805,7 +813,7 @@ export function DesktopBusinessCatalogHubScreen({
     | 'service3'
     | 'serviceReview'
     | 'servicePublished'
-  >('none');
+  >(startWithNewProduct ? 'addProduct1' : 'none');
   const [addMethodsOpen, setAddMethodsOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
 
@@ -832,6 +840,8 @@ export function DesktopBusinessCatalogHubScreen({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   // When set, the add-product/add-service flow is being used to edit this existing row.
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  /** Live: a create/update is in flight (the review's Publish button waits on it). */
+  const [savingItem, setSavingItem] = useState(false);
 
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState<CatalogChip>('all');
@@ -863,53 +873,62 @@ export function DesktopBusinessCatalogHubScreen({
     onNav('deals');
   };
 
-  /** Live publish: create or update the item, then refresh the list from the API. */
-  const publishLive = (kind: 'product' | 'service') => {
+  /**
+   * Live publish: create or update the item, switch it on at the ticked branches, then set
+   * its status — `active` when published, `inactive` (hidden from customers) for a draft.
+   */
+  const publishLive = async (kind: 'product' | 'service', asDraft = false) => {
+    if (savingItem) return;
     if (!activeBranchId) return showToast('Choose a branch first.');
     const input = kind === 'product' ? productDraftToInput(productDraft, activeBranchId) : serviceDraftToInput(serviceDraft, activeBranchId);
     if (!input.name) return showToast(`Give the ${kind} a name first.`);
-    const done = (name: string, edited: boolean) => {
-      setEditingRowId(null);
-      if (edited) {
-        setSubFlow('none');
-        showToast(`"${name}" updated.`);
-      } else {
-        setSubFlow(kind === 'product' ? 'productPublished' : 'servicePublished');
-      }
-    };
-    const onError = (error: unknown) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, `Could not save the ${kind}.`));
     // The branches ticked in the form: switch the item on there (and off elsewhere on edit).
     const selected =
       kind === 'product'
         ? Object.keys(productDraft.branches).filter((id) => productDraft.branches[id])
         : serviceDraft.locations;
-    const applyBranches = (itemId: string) =>
-      applyItemBranches(itemId, selected, {
+    const edited = Boolean(editingRowId);
+    setSavingItem(true);
+    try {
+      const saved = editingRowId
+        ? await itemMutations.update.mutateAsync({ id: editingRowId, input: { ...input, status: asDraft ? 'inactive' : 'active' } })
+        : await itemMutations.create.mutateAsync(input);
+      const itemId = editingRowId ?? saved.id;
+      await applyItemBranches(itemId, selected, {
         branchIds: branches.filter((branch) => branch.id).map((branch) => branch.id as string),
         activeBranchId,
         pricingMode: kind === 'product' && productDraft.pricingMode === 'custom' ? 'per_branch' : 'uniform',
-        isUpdate: Boolean(editingRowId),
+        isUpdate: edited,
       });
-    if (editingRowId) {
-      const id = editingRowId;
-      itemMutations.update.mutate(
-        { id, input },
-        { onSuccess: () => applyBranches(id).then(() => done(input.name, true), onError), onError },
-      );
-    } else {
-      itemMutations.create.mutate(input, {
-        onSuccess: (created) =>
-          applyBranches(created.id).then(() => {
-            setLastPublished(created);
-            done(input.name, false);
-          }, onError),
-        onError,
-      });
+      // New items start active; a draft is hidden straight away.
+      if (asDraft && !edited) await itemMutations.update.mutateAsync({ id: itemId, input: { status: 'inactive' } });
+      setEditingRowId(null);
+      if (asDraft) {
+        setSubFlow('none');
+        showToast(`"${input.name}" saved as a draft — hidden from customers until you publish it.`);
+      } else if (edited) {
+        setSubFlow('none');
+        showToast(`"${input.name}" updated.`);
+      } else {
+        setLastPublished(saved);
+        setSubFlow(kind === 'product' ? 'productPublished' : 'servicePublished');
+      }
+    } catch (error) {
+      showToast(planErrorMessage(error) ?? apiErrorMessage(error, `Could not save the ${kind}.`));
+    } finally {
+      setSavingItem(false);
     }
   };
 
+  /** Save as Draft: live keeps the work as a hidden item (needs a name); demo just closes the form. */
+  const saveDraftAndExit = (kind: 'product' | 'service') => {
+    const name = kind === 'product' ? productDraft.title : serviceDraft.title;
+    if (live && name.trim()) return void publishLive(kind, true);
+    exitSubFlow();
+  };
+
   const handlePublishProduct = () => {
-    if (live) return publishLive('product');
+    if (live) return void publishLive('product');
     const isEdit = Boolean(editingRowId);
     const updatedFields = {
       name: productDraft.title || 'New Product Item',
@@ -955,7 +974,7 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handlePublishService = () => {
-    if (live) return publishLive('service');
+    if (live) return void publishLive('service');
     const isEdit = Boolean(editingRowId);
     const updatedFields = {
       name: serviceDraft.title || 'New Service Session',
@@ -1200,6 +1219,17 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   // Replicated Onboarding flows inside Hub Catalog
+  // Hooks must run on every render: keep them above the sub-flow returns below,
+  // or switching sub-flow (e.g. Add Manually) changes the hook count and crashes the page.
+  useEffect(() => {
+    if (notice) flash(notice);
+  }, [notice]);
+
+  // Route mode: once the form closes (cancel, save, or "view catalogue"), go back to the catalogue route.
+  useEffect(() => {
+    if (startWithNewProduct && subFlow === 'none') onCloseForm?.();
+  }, [startWithNewProduct, subFlow, onCloseForm]);
+
   if (subFlow === 'addProduct1') {
     return (
       <DesktopAddProductStep1Screen
@@ -1207,7 +1237,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => exitSubFlow()}
         onNext={() => setSubFlow('addProduct2')}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('product')}
         onNav={onNav}
       />
     );
@@ -1220,7 +1250,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct1')}
         onNext={() => setSubFlow('addProductImage')}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('product')}
         onNav={onNav}
       />
     );
@@ -1233,7 +1263,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProduct2')}
         onNext={() => setSubFlow('addProduct3')}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('product')}
         onNav={onNav}
       />
     );
@@ -1246,7 +1276,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setProductDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('addProductImage')}
         onNext={() => setSubFlow('productReview')}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('product')}
         onNav={onNav}
       />
     );
@@ -1258,14 +1288,16 @@ export function DesktopBusinessCatalogHubScreen({
         draft={productDraft}
         onBack={() => setSubFlow('addProduct3')}
         onEditBasics={() => setSubFlow('addProduct1')}
-        onEditPricing={() => setSubFlow('productPricingConfig')}
-        onEditBranches={() => setSubFlow('productPricingConfig')}
+        // Live: prices and branches are edited in their real steps (the pricing panel is sample-only).
+        onEditPricing={() => setSubFlow(live ? 'addProduct2' : 'productPricingConfig')}
+        onEditBranches={() => setSubFlow(live ? 'addProduct3' : 'productPricingConfig')}
         onEditFulfillment={() => setSubFlow('addProduct3')}
         onEditDescription={() => setSubFlow('addProduct1')}
         onEditImage={() => setSubFlow('addProductImage')}
         onEditSteps={() => setSubFlow('addProduct3')}
         onPublish={handlePublishProduct}
-        onSaveDraft={() => exitSubFlow()}
+        publishing={savingItem}
+        onSaveDraft={() => saveDraftAndExit('product')}
         onNav={onNav}
       />
     );
@@ -1288,6 +1320,7 @@ export function DesktopBusinessCatalogHubScreen({
       <DesktopProductPublishedScreen
         draft={productDraft}
         onMakeDeal={makeDealFromPublished}
+        onSetBranchPrices={lastPublished && onOpenBranchPricing ? () => onOpenBranchPricing(lastPublished.id) : undefined}
         onViewCatalog={() => {
           setActiveTab('products');
           setSubFlow('none');
@@ -1317,7 +1350,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => exitSubFlow()}
         onNext={() => setSubFlow('service2')}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('service')}
         onNav={onNav}
         businessCategories={businessCategories}
         businessSubcategories={businessSubcategories}
@@ -1332,7 +1365,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('service1')}
         onNext={() => setSubFlow('service3')}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('service')}
         onNav={onNav}
       />
     );
@@ -1345,7 +1378,7 @@ export function DesktopBusinessCatalogHubScreen({
         onDraftChange={(patch) => setServiceDraft((prev) => ({ ...prev, ...patch }))}
         onBack={() => setSubFlow('service2')}
         onNext={() => setSubFlow('serviceReview')}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('service')}
         onNav={onNav}
       />
     );
@@ -1361,7 +1394,7 @@ export function DesktopBusinessCatalogHubScreen({
         onEditBranches={() => setSubFlow('service3')}
         onEditDescription={() => setSubFlow('service1')}
         onPublish={handlePublishService}
-        onSaveDraft={() => exitSubFlow()}
+        onSaveDraft={() => saveDraftAndExit('service')}
         onNav={onNav}
       />
     );
@@ -1470,10 +1503,6 @@ export function DesktopBusinessCatalogHubScreen({
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 4500);
   };
-
-  useEffect(() => {
-    if (notice) flash(notice);
-  }, [notice]);
 
   /** Applies a change to the selected rows held in local catalogue state. */
   const updateSeedRows = (ids: string[], updater: (row: CatalogRow) => CatalogRow) => {
@@ -3114,6 +3143,7 @@ export function DesktopBusinessCatalogHubScreen({
           onClose={() => setAddMethodsOpen(false)}
           onAddManually={() => {
             setAddMethodsOpen(false);
+            if (onAddProduct) return onAddProduct();
             setProductDraft({ ...(live ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT) });
             setEditingRowId(null);
             setSubFlow('addProduct1');

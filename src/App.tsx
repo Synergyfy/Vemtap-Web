@@ -442,6 +442,7 @@ type Route =
   | 'hub-locations'
   | 'hub-branch-detail'
   | 'hub-catalog'
+  | 'hub-catalog-new-product'
   | 'hub-services'
   | 'hub-deals'
   | 'hub-customers'
@@ -616,6 +617,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'hub-locations': '/business/hub/locations',
   'hub-branch-detail': '/business/hub/locations/branch',
   'hub-catalog': '/business/hub/catalog',
+  'hub-catalog-new-product': '/business/hub/catalog/products/new',
   'hub-services': '/business/hub/catalog/services',
   'hub-deals': '/business/hub/deals',
   'hub-customers': '/business/hub/customers',
@@ -5053,9 +5055,12 @@ function AppInner() {
       return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-catalog':
+    case 'hub-catalog-new-product':
       if (isDesktop)
         return (
           <DesktopBusinessCatalogHubScreen
+            // Remount on the route change so the new-product form starts fresh.
+            key={route}
             onNav={businessPortalNav}
             onOpenBranchPricing={(itemId) => {
               setPricingItemId(itemId ?? null);
@@ -5063,7 +5068,10 @@ function AppInner() {
             }}
             onOpenServices={() => setRoute('hub-services')}
             onMakeDeal={(item) => openDealStudio(item)}
-            notice={catalogNotice}
+            notice={route === 'hub-catalog' ? catalogNotice : null}
+            onAddProduct={() => setRoute('hub-catalog-new-product')}
+            startWithNewProduct={route === 'hub-catalog-new-product'}
+            onCloseForm={() => setRoute('hub-catalog')}
           />
         );
       return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
