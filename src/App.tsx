@@ -443,6 +443,7 @@ type Route =
   | 'hub-branch-detail'
   | 'hub-catalog'
   | 'hub-catalog-new-product'
+  | 'hub-catalog-new-service'
   | 'hub-services'
   | 'hub-deals'
   | 'hub-customers'
@@ -618,6 +619,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'hub-branch-detail': '/business/hub/locations/branch',
   'hub-catalog': '/business/hub/catalog',
   'hub-catalog-new-product': '/business/hub/catalog/products/new',
+  'hub-catalog-new-service': '/business/hub/catalog/services/new',
   'hub-services': '/business/hub/catalog/services',
   'hub-deals': '/business/hub/deals',
   'hub-customers': '/business/hub/customers',
@@ -5056,10 +5058,11 @@ function AppInner() {
 
     case 'hub-catalog':
     case 'hub-catalog-new-product':
+    case 'hub-catalog-new-service':
       if (isDesktop)
         return (
           <DesktopBusinessCatalogHubScreen
-            // Remount on the route change so the new-product form starts fresh.
+            // Remount on the route change so the new form starts fresh.
             key={route}
             onNav={businessPortalNav}
             onOpenBranchPricing={(itemId) => {
@@ -5071,6 +5074,7 @@ function AppInner() {
             notice={route === 'hub-catalog' ? catalogNotice : null}
             onAddProduct={() => setRoute('hub-catalog-new-product')}
             startWithNewProduct={route === 'hub-catalog-new-product'}
+            startWithNewService={route === 'hub-catalog-new-service'}
             onCloseForm={() => setRoute('hub-catalog')}
           />
         );
@@ -5082,6 +5086,7 @@ function AppInner() {
           <DesktopServicesCategoriesScreen
             onNav={businessPortalNav}
             onBackToCatalog={() => setRoute('hub-catalog')}
+            onAddService={() => setRoute('hub-catalog-new-service')}
           />
         );
       return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;

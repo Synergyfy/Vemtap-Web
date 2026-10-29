@@ -76,6 +76,8 @@ interface DesktopBusinessCatalogHubScreenProps {
   onAddProduct?: () => void;
   /** Route mode: open straight on the new-product form, and leave via `onCloseForm` when it closes. */
   startWithNewProduct?: boolean;
+  /** Route mode: open straight on the create-service form (same exit contract as `startWithNewProduct`). */
+  startWithNewService?: boolean;
   onCloseForm?: () => void;
 }
 
@@ -629,6 +631,7 @@ export function DesktopBusinessCatalogHubScreen({
   notice,
   onAddProduct,
   startWithNewProduct = false,
+  startWithNewService = false,
   onCloseForm,
 }: DesktopBusinessCatalogHubScreenProps) {
   const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
@@ -813,7 +816,7 @@ export function DesktopBusinessCatalogHubScreen({
     | 'service3'
     | 'serviceReview'
     | 'servicePublished'
-  >(startWithNewProduct ? 'addProduct1' : 'none');
+  >(startWithNewProduct ? 'addProduct1' : startWithNewService ? 'service1' : 'none');
   const [addMethodsOpen, setAddMethodsOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
 
@@ -1227,8 +1230,8 @@ export function DesktopBusinessCatalogHubScreen({
 
   // Route mode: once the form closes (cancel, save, or "view catalogue"), go back to the catalogue route.
   useEffect(() => {
-    if (startWithNewProduct && subFlow === 'none') onCloseForm?.();
-  }, [startWithNewProduct, subFlow, onCloseForm]);
+    if ((startWithNewProduct || startWithNewService) && subFlow === 'none') onCloseForm?.();
+  }, [startWithNewProduct, startWithNewService, subFlow, onCloseForm]);
 
   if (subFlow === 'addProduct1') {
     return (
