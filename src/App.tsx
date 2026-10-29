@@ -5257,6 +5257,7 @@ function AppInner() {
             onBoost={() => openBoost('Weekend Prime Lunch Combo')}
             // Live: an existing deal is edited on its branch pricing page.
             onEditDeal={() => (hasApiConfig() ? setRoute('deal-location-pricing') : setRoute('deal-studio'))}
+            onDeleted={() => setRoute('hub-deals')}
           />
         );
       return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;

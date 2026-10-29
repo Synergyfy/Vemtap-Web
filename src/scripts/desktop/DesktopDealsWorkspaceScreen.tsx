@@ -5,6 +5,7 @@ import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { hasApiConfig } from '../../services/api/client';
 import { useOfferMutations, useOfferSummary, useOffers } from '../../hooks/business/useOffers';
+import { DealEndDialog, type DealEndRequest } from '../../components/DealEndDialog';
 import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { apiErrorMessage } from '../../services/errorMessages';
@@ -81,6 +82,8 @@ interface DealCardProps {
   onEdit?: () => void;
   onPause?: () => void;
   onMore?: () => void;
+  /** Live: the ⋮ button opens these actions instead of calling `onMore`. */
+  menu?: Array<{ label: string; icon: string; onSelect: () => void; danger?: boolean; disabled?: boolean; hint?: string }>;
   paused: boolean;
 }
 
@@ -107,8 +110,10 @@ function DealCard({
   onEdit,
   onPause,
   onMore,
+  menu,
   paused,
 }: DealCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <article className="bg-surface-canvas rounded-2xl overflow-hidden shadow-[0_4px_20px_-2px_rgba(13,37,76,0.06)] hover:shadow-[0_12px_32px_-4px_rgba(13,37,76,0.12)] transition-all duration-300 flex flex-col justify-between group relative">
       {accent}
@@ -174,14 +179,46 @@ function DealCard({
         >
           <Icon name={paused ? 'play_arrow' : 'pause'} className="text-[18px]" />
         </button>
-        <button
-          type="button"
-          onClick={onMore}
-          className="h-11 w-11 rounded-xl bg-surface-container-low hover:bg-surface-container text-text-secondary flex items-center justify-center transition-colors"
-          title="More Options"
-        >
-          <Icon name="more_vert" className="text-[20px]" />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={menu ? () => setMenuOpen((open) => !open) : onMore}
+            aria-expanded={menu ? menuOpen : undefined}
+            className="h-11 w-11 rounded-xl bg-surface-container-low hover:bg-surface-container text-text-secondary flex items-center justify-center transition-colors"
+            title="More Options"
+          >
+            <Icon name="more_vert" className="text-[20px]" />
+          </button>
+          {menu && menuOpen && (
+            <>
+              <button type="button" aria-label="Close menu" className="fixed inset-0 z-30 cursor-default" onClick={() => setMenuOpen(false)} />
+              <div role="menu" className="absolute right-0 bottom-full mb-2 z-40 w-60 rounded-xl bg-surface-canvas shadow-xl p-1.5 flex flex-col">
+                {menu.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    role="menuitem"
+                    disabled={item.disabled}
+                    title={item.hint}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      item.onSelect();
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-left font-label-md text-label-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      item.danger ? 'text-error hover:bg-error-container/40' : 'text-text-primary hover:bg-surface-subtle'
+                    }`}
+                  >
+                    <Icon name={item.icon} className="text-[18px]" />
+                    <span className="flex flex-col">
+                      <span>{item.label}</span>
+                      {item.disabled && item.hint && <span className="font-caption text-caption text-text-tertiary">{item.hint}</span>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -213,6 +250,7 @@ export function DesktopDealsWorkspaceScreen({
   const liveOffers = offersQuery.data ?? [];
   const summary = summaryQuery.data;
   const [liveToast, setLiveToast] = useState<string | null>(null);
+  const [endRequest, setEndRequest] = useState<DealEndRequest | null>(null);
   const showLiveToast = (message: string) => {
     setLiveToast(message);
     window.setTimeout(() => setLiveToast(null), 3500);
@@ -550,6 +588,25 @@ export function DesktopDealsWorkspaceScreen({
                   onPause={() => toggleLivePause(offer)}
                   onEdit={() => onEditDeal?.(groupId(offer))}
                   onMore={() => onOpenDealDetail?.(groupId(offer))}
+                  menu={[
+                    { label: 'View Details', icon: 'insights', onSelect: () => onOpenDealDetail?.(groupId(offer)) },
+                    {
+                      label: 'Close Deal',
+                      icon: 'stop_circle',
+                      danger: true,
+                      disabled: offerSlot(offer) === 'expired',
+                      hint: 'Already closed',
+                      onSelect: () => setEndRequest({ kind: 'close', dealGroupId: groupId(offer), name: offer.name }),
+                    },
+                    {
+                      label: 'Delete Deal',
+                      icon: 'delete',
+                      danger: true,
+                      disabled: (offer.claimedCount ?? 0) > 0,
+                      hint: 'Has claims — close it instead',
+                      onSelect: () => setEndRequest({ kind: 'delete', dealGroupId: groupId(offer), name: offer.name }),
+                    },
+                  ]}
                   image={offer.mainImage || LIVE_IMAGE_PLACEHOLDER}
                   imageAlt={offer.name}
                   badges={
@@ -948,6 +1005,7 @@ export function DesktopDealsWorkspaceScreen({
           </div>
         </section>
       </div>
+      <DealEndDialog request={endRequest} onClose={() => setEndRequest(null)} onDone={showLiveToast} onError={showLiveToast} />
       {liveToast && (
         <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {liveToast}

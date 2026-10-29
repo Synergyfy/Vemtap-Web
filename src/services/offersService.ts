@@ -147,7 +147,8 @@ export const offersService = {
     api.get<OfferPriceChange[]>(`/catalogue/offers/groups/${dealGroupId}/price-history`),
   groupStats: (dealGroupId: string) => api.get<DealGroupStats>(`/catalogue/offers/groups/${dealGroupId}/stats`),
   /** Applies the same edit to every branch of a deal. */
-  updateGroup: (dealGroupId: string, input: Partial<Omit<CreateOfferInput, 'branchId'>>) => api.patch<unknown>(`/catalogue/offers/groups/${dealGroupId}`, input),
+  updateGroup: (dealGroupId: string, input: Partial<Omit<CreateOfferInput, 'branchId'>> & { status?: 'active' | 'inactive' }) =>
+    api.patch<unknown>(`/catalogue/offers/groups/${dealGroupId}`, input),
   setGroupStatus: (dealGroupId: string, status: 'active' | 'inactive') => api.patch<unknown>(`/catalogue/offers/groups/${dealGroupId}/status`, { status }),
   list: (branchId?: string) =>
     api.get<BusinessOffer[] | { data: BusinessOffer[] }>('/catalogue/offers/admin', { params: { branchId, limit: 100 } }).then(asList),

@@ -6,6 +6,7 @@ import { FilterMenu } from '../components/FilterMenu';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { hasApiConfig } from '../services/api/client';
 import { useOfferMutations, useOfferSummary, useOffers } from '../hooks/business/useOffers';
+import { DealEndDialog, type DealEndRequest } from '../components/DealEndDialog';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { apiErrorMessage } from '../services/errorMessages';
 import type { BusinessOffer } from '../services/offersService';
@@ -194,6 +195,7 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
   const [category, setCategory] = useState('');
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsDeal, setActionsDeal] = useState<DealCard | null>(null);
+  const [endRequest, setEndRequest] = useState<DealEndRequest | null>(null);
   const [paused, setPaused] = useState<Record<string, boolean>>({});
 
   const query = search.trim().toLowerCase();
@@ -622,35 +624,57 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
                 </span>
               </div>
             </button>
-            <button
-              className="flex items-center gap-space-sm p-space-xs rounded-xl hover:bg-error-container/20 text-left"
-              type="button"
-              onClick={() => {
+            {(() => {
+              // Live: close or delete the whole deal (every branch) after confirming.
+              const offer = live && actionsDeal ? liveById.get(actionsDeal.key) : undefined;
+              const closed = offer ? offerSlot(offer) === 'expired' : false;
+              const claimed = (offer?.claimedCount ?? 0) > 0;
+              const open = (kind: DealEndRequest['kind']) => {
                 setActionsOpen(false);
-                const offer = live && actionsDeal ? liveById.get(actionsDeal.key) : undefined;
-                if (!offer) return;
-                // Ends the deal now: it stops issuing vouchers; existing claims are kept.
-                offerMutations.setStatus.mutate(
-                  { id: offer.id, status: 'inactive' },
-                  {
-                    onSuccess: () => showToast(`“${offer.name}” has ended.`),
-                    onError: (error) => showToast(apiErrorMessage(error, 'Could not end this deal.')),
-                  },
-                );
-              }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-error-container text-on-error-container flex items-center justify-center shrink-0">
-                <Icon name="stop_circle" className="text-[20px]" />
-              </div>
-              <div className="flex flex-col">
-                <span className="font-label-md text-label-md font-semibold text-error">End Deal Permanently</span>
-                <span className="font-caption text-caption text-text-secondary">Close voucher generation now</span>
-              </div>
-            </button>
+                if (offer) setEndRequest({ kind, dealGroupId: offer.dealGroupId ?? offer.id, name: offer.name });
+              };
+              return (
+                <>
+                  <button
+                    className="flex items-center gap-space-sm p-space-xs rounded-xl hover:bg-error-container/20 text-left disabled:opacity-40"
+                    type="button"
+                    disabled={live && closed}
+                    onClick={() => open('close')}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-error-container text-on-error-container flex items-center justify-center shrink-0">
+                      <Icon name="stop_circle" className="text-[20px]" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-label-md text-label-md font-semibold text-error">{closed ? 'Deal Closed' : 'Close Deal'}</span>
+                      <span className="font-caption text-caption text-text-secondary">
+                        {closed ? 'It has already ended' : 'Stop it now at every branch — existing claims stay valid'}
+                      </span>
+                    </div>
+                  </button>
+                  <button
+                    className="flex items-center gap-space-sm p-space-xs rounded-xl hover:bg-error-container/20 text-left disabled:opacity-40"
+                    type="button"
+                    disabled={live && claimed}
+                    onClick={() => open('delete')}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-error-container text-on-error-container flex items-center justify-center shrink-0">
+                      <Icon name="delete" className="text-[20px]" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-label-md text-label-md font-semibold text-error">Delete Deal</span>
+                      <span className="font-caption text-caption text-text-secondary">
+                        {claimed ? 'Has claims — close it instead' : 'Remove it for good (no claims yet)'}
+                      </span>
+                    </div>
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
 
+      <DealEndDialog request={endRequest} onClose={() => setEndRequest(null)} onDone={showToast} onError={showToast} />
       {toast && (
         <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
           {toast}

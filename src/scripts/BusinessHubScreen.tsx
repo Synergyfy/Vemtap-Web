@@ -146,6 +146,7 @@ export function BusinessHubScreen({
             onBoost={() => onBoost('Weekend Prime Lunch Combo')}
             onEditAssignment={() => setStep('dealAssignment')}
             onEditDeal={() => setStep('dealCreate')}
+            onDeleted={() => setStep('deals')}
           />
         );
       case 'dealCreate':
