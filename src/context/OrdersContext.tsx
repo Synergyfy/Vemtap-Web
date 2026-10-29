@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { hasApiConfig } from '../lib/api';
 import { ordersService } from '../services/ordersService';
+import { useSessionUser } from '../hooks/useSessionUser';
 import {
   estimateReadyBy,
   newOrderRef,
@@ -173,9 +174,12 @@ const OrdersContext = createContext<OrdersContextValue | null>(null);
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<SubmittedOrder[]>(() => readOrders());
+  // `GET /catalogue/orders/my-orders` is customer-only: business accounts and
+  // signed-out visitors would only get a 403/401, so they don't ask.
+  const isCustomer = useSessionUser().data?.role === 'Customer';
 
   useEffect(() => {
-    if (!hasApiConfig()) {
+    if (!hasApiConfig() || !isCustomer) {
       setOrders([]);
       return;
     }
@@ -185,7 +189,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     const hydrate = async () => {
       try {
         const remoteOrders = await ordersService.getMyOrders({ page: 1, limit: 20 });
-        console.log('orders api payload', remoteOrders);
         if (!ignore) {
           setOrders(Array.isArray(remoteOrders) ? remoteOrders : []);
           writeOrders(Array.isArray(remoteOrders) ? remoteOrders : []);
@@ -203,7 +206,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [isCustomer]);
 
   useEffect(() => {
     writeOrders(orders);
