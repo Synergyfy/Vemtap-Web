@@ -26,6 +26,10 @@ export interface ProductDraft {
   prepWindow: string;
   /** How customers can get it: collect at the counter and/or delivery. */
   fulfillment: { pickup: boolean; delivery: boolean };
+  /** Attribute badges customers see ("Halal certified", "Gluten-free", …). */
+  tags: string[];
+  /** Units on hand when the product has no variants. */
+  stock: string;
 }
 
 export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
@@ -53,6 +57,8 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   branches: { wuse: true, garki: true, maitama: false },
   pricingMode: 'uniform',
   fulfillment: { pickup: true, delivery: true },
+  tags: ['Halal certified', 'Medium Spicy'],
+  stock: '',
   prepWindow: '20-30',
 };
 
@@ -71,4 +77,5 @@ export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   lowStock: '',
   branches: {},
   pricingMode: 'uniform',
+  tags: [],
 };

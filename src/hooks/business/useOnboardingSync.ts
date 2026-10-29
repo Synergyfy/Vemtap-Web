@@ -104,16 +104,22 @@ export function useOnboardingSync() {
    * back and publishing again doesn't duplicate it. An item deleted meanwhile
    * is created afresh.
    */
-  const upsertItem = async (input: CatalogueItemInput, publishedItemId?: string) => {
+  const upsertItem = async (input: CatalogueItemInput, publishedItemId?: string, status?: 'active' | 'inactive') => {
     if (publishedItemId) {
       try {
-        return await catalogueItemsService.update(publishedItemId, input);
+        return await catalogueItemsService.update(publishedItemId, status ? { ...input, status } : input);
       } catch (e) {
         if (!(e instanceof ApiError && e.status === 404)) throw e;
       }
     }
-    return catalogueItemsService.create(input);
+    const created = await catalogueItemsService.create(input);
+    // New items start active; the create endpoint takes no status, so a draft is hidden right after.
+    if (status === 'inactive') await catalogueItemsService.update(created.id, { status });
+    return created;
   };
+
+  /** Dashboard saves set the status (published = active, draft = hidden); setup leaves it as is. */
+  const statusFor = (options?: { asDraft?: boolean }) => (options ? (options.asDraft ? 'inactive' : 'active') : undefined);
 
   const saveThen = (save: () => Promise<void>, next: () => void) => {
     if (saving) return;
@@ -185,12 +191,13 @@ export function useOnboardingSync() {
     publishProduct: (
       draft: ProductDraftLike & { branches?: Record<string, boolean>; publishedItemId?: string },
       next: (item: CatalogueItem | null) => void,
+      options?: { asDraft?: boolean },
     ) => {
       let saved: CatalogueItem | null = null;
       saveThen(async () => {
         if (!live) return;
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
-        const item = await upsertItem(productDraftToInput(draft, activeBranchId), draft.publishedItemId);
+        const item = await upsertItem(productDraftToInput(draft, activeBranchId), draft.publishedItemId, statusFor(options));
         saved = item;
         await sellAtBranches(item.id, Object.keys(draft.branches ?? {}).filter((id) => draft.branches?.[id]), Boolean(draft.publishedItemId), draft.pricingMode === 'custom' ? 'per_branch' : 'uniform');
         setLastPublished(item);
@@ -200,12 +207,13 @@ export function useOnboardingSync() {
     publishService: (
       draft: ServiceDraftLike & { locations?: string[]; publishedItemId?: string },
       next: (item: CatalogueItem | null) => void,
+      options?: { asDraft?: boolean },
     ) => {
       let saved: CatalogueItem | null = null;
       saveThen(async () => {
         if (!live) return;
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
-        const item = await upsertItem(serviceDraftToInput(draft, activeBranchId), draft.publishedItemId);
+        const item = await upsertItem(serviceDraftToInput(draft, activeBranchId), draft.publishedItemId, statusFor(options));
         saved = item;
         await sellAtBranches(item.id, draft.locations ?? [], Boolean(draft.publishedItemId));
         setLastPublished(item);

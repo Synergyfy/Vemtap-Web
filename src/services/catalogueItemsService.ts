@@ -25,6 +25,7 @@ export interface CatalogueItem {
   isSuspended?: boolean | null;
   costPrice?: number | string | null;
   brand?: string | null;
+  tags?: string[] | null;
   variants?: ItemVariant[] | null;
   fulfillmentModes?: FulfillmentMode[] | null;
   pricingMode?: 'uniform' | 'per_branch' | null;
@@ -203,6 +204,9 @@ export interface ProductDraftLike {
   /** How customers can get it (unset on drafts saved before this existed). */
   fulfillment?: { pickup: boolean; delivery: boolean };
   pricingMode?: 'uniform' | 'custom';
+  tags?: string[];
+  /** Units on hand when there are no variants. */
+  stock?: string;
 }
 
 /** Variant label "Regular — 300g Cut": name and cut travel together as the API has one name field. */
@@ -233,7 +237,7 @@ const apiCategoryId = (id?: string) => (id && UUID.test(id) ? id : undefined);
 export function productDraftToInput(draft: ProductDraftLike, branchId: string, extra: { mainImage?: string; categoryId?: string } = {}): CatalogueItemInput {
   const stock = draft.variantsEnabled && draft.variants?.length
     ? draft.variants.reduce((sum, v) => sum + (toPrice(v.inventory) ?? 0), 0)
-    : undefined;
+    : toPrice(draft.stock);
   return clean({
     name: draft.title.trim(),
     // The backend requires a description; fall back to the name.
@@ -250,6 +254,7 @@ export function productDraftToInput(draft: ProductDraftLike, branchId: string, e
     mainImage: extra.mainImage ?? draft.mainImage,
     categoryId: extra.categoryId ?? apiCategoryId(draft.categoryId),
     variants: productVariants(draft),
+    tags: draft.tags?.length ? draft.tags : undefined,
     fulfillmentModes: fulfillmentModes(draft.fulfillment),
     pricingMode: draft.pricingMode ? (draft.pricingMode === 'custom' ? ('per_branch' as const) : ('uniform' as const)) : undefined,
     branchId,
@@ -388,6 +393,8 @@ export function itemToProductDraft(item: CatalogueItem) {
     backorder: Boolean(item.allowBackOrder),
     variantsEnabled: variants.length > 0,
     variants,
+    tags: item.tags ?? [],
+    stock: variants.length === 0 && item.stockQuantity != null ? String(item.stockQuantity) : '',
     branches: Object.fromEntries(soldAt(item).map((id) => [id, true])),
     pricingMode: item.pricingMode === 'per_branch' ? ('custom' as const) : ('uniform' as const),
     ...(modes ? { fulfillment: { pickup: modes.includes('pickup'), delivery: modes.includes('delivery') } } : {}),
