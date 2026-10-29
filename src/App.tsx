@@ -316,6 +316,7 @@ import { DesktopBusinessOverviewScreen } from './scripts/desktop/DesktopBusiness
 import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealLocationPricingScreen';
 import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
 import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
+import { BusinessStorefrontPreviewScreen } from './scripts/desktop/BusinessStorefrontPreviewScreen';
 import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
 import { MOBILE_ACCOUNT_NAV_EVENT } from './utils/appEvents';
 import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
@@ -445,6 +446,7 @@ type Route =
   | 'hub-customers'
   | 'customer-invite-join'
   | 'hub-profile'
+  | 'hub-storefront-preview'
   | 'deal-location-pricing'
   | 'deal-create-locations'
   | 'deal-studio'
@@ -620,6 +622,7 @@ const ROUTE_PATH: Record<Route, string> = {
   // URL-sync effect never overwrites it (see renderRoute effect).
   'customer-invite-join': '/join',
   'hub-profile': '/business/hub/profile',
+  'hub-storefront-preview': '/business/hub/profile/preview',
   'deal-location-pricing': '/business/deals/location-pricing',
   'deal-create-locations': '/business/deals/create/locations',
   'deal-studio': '/business/deals/create/studio',
@@ -4564,7 +4567,7 @@ function AppInner() {
           onBack={backFromVerification}
           onComplete={finishVerification}
           onActivate={() => setRoute('subscription')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
           onCreateDeal={() => setRoute('deals')}
           onQrStands={() => setRoute('business-overview')}
@@ -4574,7 +4577,7 @@ function AppInner() {
           onBack={backFromVerification}
           onComplete={finishVerification}
           onActivate={() => setRoute('subscription')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
           onCreateDeal={() => setRoute('deals')}
           onQrStands={() => setRoute('business-overview')}
@@ -4998,7 +5001,7 @@ function AppInner() {
             onBackToCatalog={() => setRoute('hub-catalog')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'business-hub':
       if (isDesktop)
@@ -5006,7 +5009,7 @@ function AppInner() {
           <DesktopBusinessHubScreen
             onNav={businessPortalNav}
             onBoost={(item) => openBoost(item)}
-            onPreviewStorefront={() => setRoute('storefront')}
+            onPreviewStorefront={() => setRoute('hub-storefront-preview')}
             onOpenModule={openHubModule}
           />
         );
@@ -5016,7 +5019,7 @@ function AppInner() {
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
           onOpenMessages={() => setRoute('business-messages')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onOpenModule={openHubModule}
         />
       );
@@ -5038,7 +5041,7 @@ function AppInner() {
             />
           )
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-branch-detail':
       if (isDesktop)
@@ -5049,7 +5052,7 @@ function AppInner() {
             onBackToLocations={() => setRoute('hub-locations')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-catalog':
       if (isDesktop)
@@ -5065,7 +5068,7 @@ function AppInner() {
             notice={catalogNotice}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-services':
       if (isDesktop)
@@ -5075,7 +5078,7 @@ function AppInner() {
             onBackToCatalog={() => setRoute('hub-catalog')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-deals':
       if (isDesktop)
@@ -5090,7 +5093,7 @@ function AppInner() {
             onBoost={(dealName) => openBoost(dealName)}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'deal-studio': {
       const leaveStudio = () => {
@@ -5113,7 +5116,7 @@ function AppInner() {
               notice={notice}
             />
           );
-        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
       }
       if (isDesktop)
         return (
@@ -5144,7 +5147,7 @@ function AppInner() {
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
           onOpenMessages={() => setRoute('business-messages')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onOpenModule={openHubModule}
           onViewCustomerProfile={(name, userId) => {
             setHubCustomerName(name);
@@ -5171,11 +5174,20 @@ function AppInner() {
         return (
           <DesktopBusinessProfilePreviewStudioScreen
             onNav={businessPortalNav}
-            onPreviewStorefront={() => setRoute('storefront')}
+            onPreviewStorefront={() => setRoute('hub-storefront-preview')}
             onEditProfile={() => setRoute('business-profile-studio')}
           />
         );
-      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+
+    case 'hub-storefront-preview':
+      return (
+        <BusinessStorefrontPreviewScreen
+          onNav={businessPortalNav}
+          onBack={() => setRoute('hub-profile')}
+          onEditProfile={() => setRoute(isDesktop ? 'business-profile-studio' : 'hub-profile')}
+        />
+      );
 
     case 'deal-location-pricing':
       if (isDesktop)
@@ -5187,7 +5199,7 @@ function AppInner() {
             onSave={() => setRoute('hub-deals')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'deal-create-locations':
       // Live deals are created in the studio from a catalogue item, which has its own branch step.
@@ -5205,7 +5217,7 @@ function AppInner() {
               notice="Pick an item to make a deal from."
             />
           );
-        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
       }
       if (isDesktop)
         return (
@@ -5215,7 +5227,7 @@ function AppInner() {
             onReview={() => setRoute('hub-deal-detail')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'business-profile-studio':
       if (isDesktop)
@@ -5225,7 +5237,7 @@ function AppInner() {
             onDiscard={() => setRoute('business-overview')}
           />
         );
-      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-deal-detail':
       if (isDesktop)
@@ -5241,7 +5253,7 @@ function AppInner() {
             onEditDeal={() => (hasApiConfig() ? setRoute('deal-location-pricing') : setRoute('deal-studio'))}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-customer-profile':
       if (isDesktop)
@@ -5260,7 +5272,7 @@ function AppInner() {
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
           onOpenMessages={() => setRoute('business-messages')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onOpenModule={openHubModule}
           onViewCustomerProfile={(name, userId) => {
             setHubCustomerName(name);
