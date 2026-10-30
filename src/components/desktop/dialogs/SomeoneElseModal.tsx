@@ -22,10 +22,10 @@ const inputClass =
 const labelClass = 'block font-label-sm text-label-sm text-text-secondary mb-1.5 font-medium';
 
 export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModalProps) {
-  const [firstName, setFirstName] = useState('Samuel');
-  const [lastName, setLastName] = useState('Adeleke');
-  const [email, setEmail] = useState('samuel.adeleke@example.com');
-  const [phone, setPhone] = useState('802 345 6789');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
 
   return (
     <DesktopModal
@@ -44,7 +44,6 @@ export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModal
           <span className="px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold uppercase tracking-wider">
             Voucher Assignment
           </span>
-          <span className="font-caption text-caption text-text-tertiary">• Apo District Venue</span>
         </div>
 
         <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
@@ -63,7 +62,7 @@ export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModal
               Why do we need recipient details?
             </p>
             <p className="font-caption text-caption text-on-surface-variant mt-0.5 leading-relaxed">
-              Urban Grill &amp; Bistro matches the guest's name and verification code at counter checkout to prevent
+              The venue matches the guest's name and verification code at counter checkout to prevent
               unauthorized claims.
             </p>
           </div>
@@ -176,7 +175,7 @@ export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModal
                 Send an instant copy of the pass and redemption directions to recipient's WhatsApp
               </span>
               <span className="font-caption text-caption text-text-tertiary block mt-0.5">
-                Includes interactive Google Map pin to the Apo outlet.
+                Includes interactive Google Map pin to the venue.
               </span>
             </div>
           </label>

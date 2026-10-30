@@ -27,7 +27,7 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient,
   const recipientName = recipient?.name ?? 'Gift Recipient';
   const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : 'Phone not provided';
   const firstName = recipientName.split(/\s+/)[0] || recipientName || 'recipient';
-  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+  const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This local partner';
   const dealLocation = deal?.location?.trim() || 'Your selected area';
   const dealImage =
@@ -147,9 +147,9 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient,
               <div className="flex items-start gap-2">
                 <Icon name="format_quote" className="text-[20px] text-primary mt-0.5 shrink-0" />
                 <p className="font-body-md text-body-md text-on-surface italic">
-                  "Enjoy this lunch on me! Hope you love the woodfire steaks at Urban Grill."
+                  "Enjoy this {dealTitle.toLowerCase()} on me! Hope you love it at {businessName}."
                   <span className="block text-right font-label-sm text-label-sm not-italic font-bold text-text-primary mt-1">
-                    - Zainab
+                    - {firstName}
                   </span>
                 </p>
               </div>

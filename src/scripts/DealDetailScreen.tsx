@@ -88,6 +88,13 @@ export function DealDetailScreen({
   const dealImage = photos[Math.min(photoIndex, photos.length - 1)];
   const commentsCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
 
+  // Compute discount percentage from prices when available.
+  const dealPrice = Number(String(deal?.price ?? '').replace(/[^\d.]/g, '')) || 0;
+  const dealOldPrice = Number(String(deal?.oldPrice ?? '').replace(/[^\d.]/g, '')) || 0;
+  const discountPercent = dealOldPrice > dealPrice && dealOldPrice > 0
+    ? Math.round(((dealOldPrice - dealPrice) / dealOldPrice) * 100)
+    : 0;
+
   return (
     <AppScreen>
       <ScreenHeader
@@ -124,13 +131,11 @@ export function DealDetailScreen({
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
         <div className="absolute bottom-4 left-margin right-margin flex items-center justify-between">
           <div className="flex items-center gap-space-xs">
-            <span className="inline-flex items-center px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-md text-label-md font-bold shadow-sm">
-              20% OFF
-            </span>
-            <span className="inline-flex items-center gap-1 px-space-sm py-1 rounded-full bg-inverse-surface/80 backdrop-blur-md text-inverse-on-surface font-caption text-caption shadow-sm">
-              <Icon name="schedule" className="text-[14px]" />
-              Ends in 3 days
-            </span>
+            {discountPercent > 0 && (
+              <span className="inline-flex items-center px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-md text-label-md font-bold shadow-sm">
+                {discountPercent}% OFF
+              </span>
+            )}
           </div>
           <div className="bg-surface-canvas/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
             <Icon name="local_fire_department" className="text-[16px] text-tertiary-container" filled />

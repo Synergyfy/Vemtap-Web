@@ -207,7 +207,7 @@ const STOREFRONT_DEALS: StorefrontDeal[] = [
 export function DesktopUrbanGrillStorefrontScreen({ business, onNav, activeNav = 'businesses', onClaim, onCheckout: _onCheckout }: DesktopUrbanGrillStorefrontScreenProps) {
   const isKnownBusiness = !!business?.slug && !!findBusinessBySlug(business.slug);
 
-  if (!business || !isKnownBusiness) {
+  if (business && !isKnownBusiness) {
     return (
       <DesktopPage withHeader withFooter onNav={onNav} activeNav={activeNav} withCustomerRail>
         <div className="w-full min-h-[calc(100vh-80px)] bg-surface px-6 py-16">

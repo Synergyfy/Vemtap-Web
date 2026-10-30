@@ -170,6 +170,22 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
 
   const featuredDeals = useMemo(() => publicOffers.slice(0, 5).map(toFeaturedDeal), [publicOffers]);
 
+  // Category pills — live categories extracted from the current deals feed.
+  const categories = useMemo(() => {
+    const storeNames = featuredDeals
+      .map((deal) => deal.store)
+      .filter((name) => name && name !== 'Nearby business');
+    const unique = [...new Set(storeNames)].sort();
+    return [{ value: '', label: 'All' }, ...unique.map((name) => ({ value: name, label: name }))];
+  }, [featuredDeals]);
+
+  const [selectedCategory, setSelectedCategory] = useState('');
+
+  const filteredDeals = useMemo(() => {
+    if (selectedCategory === '') return featuredDeals;
+    return featuredDeals.filter((deal) => deal.store === selectedCategory);
+  }, [featuredDeals, selectedCategory]);
+
   const toggleSave = (store: string) => {
     setSaved((prev) => ({ ...prev, [store]: !prev[store] }));
   };
@@ -187,7 +203,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                   PROMOTED / SPONSORED
                 </span>
                 <span className="text-text-tertiary font-body-md text-body-md hidden sm:inline">•</span>
-                <span className="font-label-md text-label-md text-text-secondary">5 Curated Local Offers</span>
+                <span className="font-label-md text-label-md text-text-secondary">{filteredDeals.length} Curated Local Offer{filteredDeals.length === 1 ? '' : 's'}</span>
               </div>
 
               <div className="flex items-center gap-space-xs self-start md:self-auto">
@@ -240,7 +256,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                   <span>Within 10km</span>
                 </button>
                 <span className="text-badge-discount-text font-label-sm text-label-sm bg-badge-discount-bg px-2.5 py-1 rounded-full font-medium">
-                  5 Live Deals Active Now
+                  {filteredDeals.length} Live Deal{filteredDeals.length === 1 ? '' : 's'} Active Now
                 </span>
               </div>
 
@@ -266,6 +282,29 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
               </div>
             </div>
 
+            {/* Category pills — live categories from the deals feed */}
+            {categories.length > 1 && (
+              <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar pb-1">
+                {categories.map((choice) => {
+                  const isSelected = selectedCategory === choice.value;
+                  return (
+                    <button
+                      key={choice.value}
+                      className={`flex items-center gap-1.5 px-space-sm py-1.5 rounded-full font-label-sm text-label-sm whitespace-nowrap transition-colors ${
+                        isSelected
+                          ? 'bg-primary text-on-primary shadow-sm font-semibold'
+                          : 'bg-surface-container-low hover:bg-surface-container text-text-secondary'
+                      }`}
+                      type="button"
+                      onClick={() => setSelectedCategory(choice.value)}
+                    >
+                      <span>{choice.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="w-full flex items-start sm:items-center justify-between gap-space-sm p-space-sm rounded-xl bg-surface-container-low text-on-surface-variant text-caption font-caption">
               <div className="flex items-center gap-space-xs">
                 <Icon name="qr_code_2" className="text-primary text-[20px] shrink-0" />
@@ -290,11 +329,11 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
               view === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'
             }`}
           >
-            {featuredDeals.length === 0 ? (
+            {filteredDeals.length === 0 ? (
               <article className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                Live featured deals will appear here once the public offers feed is available.
+                {selectedCategory !== '' ? `No live deals from ${selectedCategory} right now.` : 'Live featured deals will appear here once the public offers feed is available.'}
               </article>
-            ) : featuredDeals.map((deal) => (
+            ) : filteredDeals.map((deal) => (
               <article
                 key={deal.id}
                 role="button"

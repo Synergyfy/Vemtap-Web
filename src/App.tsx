@@ -2168,6 +2168,15 @@ function AppInner() {
         onShare={() => setRoute('share')}
         onClaim={() => startClaim('deal-detail')}
         onMerchant={() => {
+          const businessName = selectedDeal?.business?.trim() || 'Business storefront';
+          const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `business-${Date.now()}`;
+          const businessRef: BusinessProfileRef = {
+            slug,
+            id: slug,
+            name: businessName,
+            venue: 'urban',
+          };
+          setSelectedBusiness(businessRef);
           setProfileFrom('deal-detail');
           setRoute('business-profile');
         }}
@@ -3145,6 +3154,18 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute(dealFrom)}
             onClaimComplete={handleClaimComplete}
+            onOpenBusiness={() => {
+              const businessName = selectedDeal?.business?.trim() || 'Business storefront';
+              const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `business-${Date.now()}`;
+              const businessRef: BusinessProfileRef = {
+                slug,
+                id: slug,
+                name: businessName,
+                venue: 'urban',
+              };
+              setSelectedBusiness(businessRef);
+              setRoute('storefront');
+            }}
             deal={selectedDeal}
           />
         );
@@ -3630,7 +3651,7 @@ function AppInner() {
       );
 
     case 'storefront':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
+      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen business={selectedBusiness} onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
       return (
         <MerchantDealsScreen
           business={selectedBusiness}

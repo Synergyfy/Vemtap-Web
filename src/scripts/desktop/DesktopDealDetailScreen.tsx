@@ -28,6 +28,8 @@ interface DesktopDealDetailScreenProps {
    * gift sent) instead of a transient toast.
    */
   onClaimComplete?: (claim: ClaimRecord) => void;
+  /** Opens the business storefront for the deal's merchant. */
+  onOpenBusiness?: () => void;
 }
 
 type Dialog =
@@ -94,7 +96,7 @@ const INCLUDED: Array<{ strong: string; rest: string; primary?: boolean }> = [
   { strong: '1x Dry-aged Angus burger', rest: ' or char-grilled herb chicken plate' },
   { strong: '1x Truffle parmesan', rest: ' fresh hand-cut artisan fries' },
   { strong: '1x Cold-pressed', rest: ' house iced craft peach cooler' },
-  { strong: 'Zero reservation fee', rest: ' • Pay ₦9,600 directly at venue', primary: true },
+  { strong: 'Zero reservation fee', rest: ' • Pay directly at venue', primary: true },
 ];
 
 const PRACTICAL_BADGES: Array<{ icon: string; label: string }> = [
@@ -107,7 +109,7 @@ const PRACTICAL_BADGES: Array<{ icon: string; label: string }> = [
 const RULES: Array<{ lead: string; rest: string }> = [
   {
     lead: 'No Prepayment Required:',
-    rest: ' Claim this pass for free on VEMTAP. Settle the discounted total of ₦9,600 on arrival at the restaurant.',
+    rest: ' Claim this pass for free on VEMTAP. Settle the discounted total on arrival at the venue.',
   },
   {
     lead: 'Validation Window:',
@@ -134,28 +136,12 @@ const AMENITIES: Array<{ icon: string; label: string }> = [
   { icon: 'deck', label: 'Outdoor Terrace' },
 ];
 
-const RATING_BARS: Array<{ label: string; width: string; value: string; muted?: boolean }> = [
-  { label: '5 Stars', width: '88%', value: '88%' },
-  { label: '4 Stars', width: '10%', value: '10%' },
-  { label: '3 Stars', width: '2%', value: '2%' },
-  { label: '2 Stars', width: '0%', value: '0%', muted: true },
-  { label: '1 Star', width: '0%', value: '0%', muted: true },
-];
-
-const FILTER_CHIPS: Array<{ label: string; count: string; icon?: string }> = [
-  { label: 'All', count: '(184)' },
-  { label: 'With Photos', count: '(42)', icon: 'photo_camera' },
-  { label: 'Food Quality', count: '(112)' },
-  { label: 'Portion Size', count: '(64)' },
-  { label: 'Fast Service', count: '(58)' },
-];
-
-export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }: DesktopDealDetailScreenProps) {
+export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete, onOpenBusiness }: DesktopDealDetailScreenProps) {
   const commentCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
   const TABS: Array<{ key: Tab; icon: string; label: string }> = [
     { key: 'overview', icon: 'info', label: 'Deal Overview' },
     { key: 'rules', icon: 'rule', label: 'How It Works & Rules' },
-    { key: 'reviews', icon: 'reviews', label: 'Reviews (4.9 ★ • 184)' },
+    { key: 'reviews', icon: 'reviews', label: 'Reviews' },
     { key: 'comments', icon: 'chat_bubble_outline', label: `Community Q&A (${commentCount})` },
   ];
   const { authed, claimed, signIn, markClaimed } = useAuth();
@@ -187,7 +173,6 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
   const [pendingStep, setPendingStep] = useState<PendingStep>('identity');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
-  const [chip, setChip] = useState('All');
   const [selectedImage, setSelectedImage] = useState(0);
   const [mainImage, setMainImage] = useState(selectedDeal.image || MAIN_IMAGE);
   const [mainAlt, setMainAlt] = useState(MAIN_ALT);
@@ -330,10 +315,12 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                   />
 
                   <div className="absolute top-space-md left-space-md flex flex-wrap items-center gap-space-xs z-10">
-                    <span className="inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm font-semibold tracking-wide">
-                      <Icon name="percent" className="text-[16px]" />
-                      <span>20% OFF DEAL</span>
-                    </span>
+                    {dealSavings > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm font-semibold tracking-wide">
+                        <Icon name="percent" className="text-[16px]" />
+                        <span>{Math.round((dealSavings / dealOldPrice) * 100)}% OFF DEAL</span>
+                      </span>
+                    )}
                     <span className="inline-flex items-center gap-1 bg-primary text-on-primary font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm font-semibold">
                       <Icon name="verified" filled className="text-[15px]" />
                       <span>VERIFIED MERCHANT</span>
@@ -382,11 +369,12 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                     className="flex items-center gap-space-sm cursor-pointer"
                     role="button"
                     tabIndex={0}
-                    onClick={() => onNav('storefront')}
+                    onClick={() => onOpenBusiness ? onOpenBusiness() : onNav('storefront')}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        onNav('storefront');
+                        if (onOpenBusiness) onOpenBusiness();
+                        else onNav('storefront');
                       }
                     }}
                   >
@@ -399,13 +387,6 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                         <Icon name="verified" filled className="text-[18px] text-primary" />
                       </div>
                       <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm">
-                        <span className="flex items-center text-tertiary font-semibold">
-                          <Icon name="star" filled className="text-[16px] text-tertiary-container" />
-                          <span>4.9</span>
-                        </span>
-                        <span className="text-text-tertiary">•</span>
-                        <span className="hover:underline cursor-pointer">184 Verified Reviews</span>
-                        <span className="text-text-tertiary">•</span>
                         <span className="flex items-center gap-0.5 text-text-secondary">
                           <Icon name="near_me" className="text-[15px] text-primary" />
                           <span>{dealLocation}</span>
@@ -639,270 +620,18 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           Real dining reviews exclusively from confirmed VEMTAP in-store redemptions.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        className="self-start md:self-auto px-space-md py-space-xs bg-surface-container text-primary font-label-md text-label-md rounded-xl hover:bg-surface-container-high transition-colors flex items-center gap-space-xs"
-                      >
-                        <Icon name="verified_user" className="text-[18px]" />
-                        <span>How Redemptions Are Verified</span>
-                      </button>
                     </div>
 
-                    <div className="bg-surface-subtle rounded-2xl p-space-lg shadow-sm">
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-space-lg items-center">
-                        <div className="md:col-span-4 flex flex-col items-center md:items-start text-center md:text-left bg-surface-canvas rounded-xl p-space-md shadow-sm">
-                          <div className="flex items-baseline gap-space-xs">
-                            <span className="font-display-hero text-display-hero font-extrabold text-text-primary leading-none">
-                              4.9
-                            </span>
-                            <span className="font-heading-sm text-heading-sm text-text-tertiary">/ 5.0</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-tertiary my-space-xs">
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                          </div>
-                          <p className="font-caption text-caption text-text-secondary leading-snug">
-                            Based on{' '}
-                            <strong className="text-text-primary font-semibold">
-                              184 verified customer redemptions
-                            </strong>{' '}
-                            in Apo, Abuja
-                          </p>
-                          <div className="mt-space-sm w-full pt-space-xs flex items-center gap-space-xs bg-badge-discount-bg text-badge-discount-text px-space-sm py-space-2xs rounded-lg">
-                            <Icon name="thumb_up" className="text-[18px]" />
-                            <span className="font-label-sm text-label-sm font-semibold">
-                              98% diners recommend this
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="md:col-span-8 flex flex-col gap-space-xs">
-                          {RATING_BARS.map((bar) => (
-                            <div key={bar.label} className="flex items-center gap-space-sm">
-                              <span className="font-label-sm text-label-sm text-text-secondary w-14">{bar.label}</span>
-                              <div className="flex-1 h-3 rounded-full bg-surface-container overflow-hidden">
-                                <div
-                                  className="h-full bg-primary-container rounded-full"
-                                  style={{ width: bar.width }}
-                                />
-                              </div>
-                              <span
-                                className={`font-label-sm text-label-sm font-medium w-10 text-right ${
-                                  bar.muted ? 'text-text-secondary' : 'text-text-primary'
-                                }`}
-                              >
-                                {bar.value}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                    <div className="bg-surface-subtle rounded-2xl p-space-xl shadow-sm flex flex-col items-center text-center">
+                      <div className="w-16 h-16 rounded-full bg-surface-canvas flex items-center justify-center text-primary mb-4">
+                        <Icon name="reviews" className="text-[32px]" />
                       </div>
-                    </div>
-
-                    <div className="flex flex-col gap-space-sm">
-                      <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-semibold">
-                        Filter Verified Customer Reviews
-                      </span>
-                      <div className="flex flex-wrap items-center gap-space-xs">
-                        {FILTER_CHIPS.map((item) => (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => setChip(item.label)}
-                            className={`h-9 px-space-md rounded-full font-label-md text-label-md transition-all flex items-center gap-1 ${
-                              chip === item.label
-                                ? 'bg-surface-tint-blue text-primary font-semibold shadow-sm'
-                                : 'bg-surface-subtle text-text-secondary hover:bg-surface-container-low'
-                            }`}
-                          >
-                            {item.icon ? <Icon name={item.icon} className="text-[16px]" /> : null}
-                            <span>{item.label}</span>
-                            <span
-                              className={`font-normal ${
-                                chip === item.label ? 'text-secondary' : 'text-text-tertiary'
-                              }`}
-                            >
-                              {item.count}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-                      <article className="bg-surface-canvas rounded-2xl p-space-lg shadow-sm flex flex-col justify-between gap-space-md">
-                        <div className="flex flex-col gap-space-sm">
-                          <div className="flex items-start justify-between gap-space-xs">
-                            <div className="flex items-center gap-space-sm">
-                              <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center text-primary font-bold font-heading-sm text-heading-sm">
-                                VE
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-space-2xs">
-                                  <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Verified guest
-                                  </h3>
-                                  <Icon name="verified" className="text-primary text-[18px]" />
-                                </div>
-                                <p className="font-caption text-caption text-text-secondary">
-                                  Local diner • Nearby area
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 text-tertiary">
-                              <Icon name="star" filled className="text-[18px]" />
-                              <span className="font-label-md text-label-md font-bold text-text-primary">5.0</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                            <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed recently</span>
-                            <span>•</span>
-                            <span className="text-badge-discount-text font-medium">On-site redemption</span>
-                          </div>
-                          <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                            The value was strong and the experience at {dealBusiness} felt easy from claim to checkout. The
-                            offer was clearly explained and the redemption was quick and stress-free.
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
-                          <span className="text-text-tertiary">Was this review helpful?</span>
-                          <div className="flex items-center gap-space-sm">
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                            >
-                              <Icon name="thumb_up" className="text-[16px] text-primary" />
-                              <span>24</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                            >
-                              <Icon name="chat_bubble_outline" className="text-[16px]" />
-                              <span>2</span>
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-
-                      <article className="bg-surface-canvas rounded-2xl p-space-lg shadow-sm flex flex-col justify-between gap-space-md">
-                        <div className="flex flex-col gap-space-sm">
-                          <div className="flex items-start justify-between gap-space-xs">
-                            <div className="flex items-center gap-space-sm">
-                              <div className="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold font-heading-sm text-heading-sm">
-                                LS
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-space-2xs">
-                                  <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Local saver
-                                  </h3>
-                                  <Icon name="verified" className="text-primary text-[18px]" />
-                                </div>
-                                <p className="font-caption text-caption text-text-secondary">
-                                  Verified customer • {dealLocation}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 text-tertiary">
-                              <Icon name="star" filled className="text-[18px]" />
-                              <span className="font-label-md text-label-md font-bold text-text-primary">5.0</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                            <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed this week</span>
-                            <span>•</span>
-                            <span className="text-badge-discount-text font-medium">Fast QR check-in</span>
-                          </div>
-                          <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                            Claiming {dealTitle.toLowerCase()} was quick and clear. The discount was easy to redeem at {dealBusiness},
-                            and the staff explained the offer without any confusion.
-                          </p>
-                          <div className="p-space-md rounded-xl bg-surface-subtle flex items-center gap-space-md mt-space-2xs">
-                            <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-primary shadow-sm flex-shrink-0">
-                              <Icon name="point_of_sale" className="text-[20px]" />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                                Smooth redemption
-                              </span>
-                              <span className="font-caption text-caption text-text-secondary">
-                                Fast queue, clear discount, easy follow-through.
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
-                          <span className="text-text-tertiary">Was this review helpful?</span>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                          >
-                            <Icon name="thumb_up" className="text-[16px] text-primary" />
-                            <span>18</span>
-                          </button>
-                        </div>
-                      </article>
-
-                      <article className="bg-surface-canvas rounded-2xl p-space-lg shadow-sm flex flex-col justify-between gap-space-md md:col-span-2">
-                        <div className="flex flex-col gap-space-sm">
-                          <div className="flex items-start justify-between gap-space-xs">
-                            <div className="flex items-center gap-space-sm">
-                              <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center text-secondary font-bold font-heading-sm text-heading-sm">
-                                RD
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-space-2xs">
-                                  <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Repeat diner
-                                  </h3>
-                                  <Icon name="verified" className="text-primary text-[18px]" />
-                                </div>
-                                <p className="font-caption text-caption text-text-secondary">Verified local customer</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 text-tertiary">
-                              <Icon name="star" filled className="text-[18px]" />
-                              <span className="font-label-md text-label-md font-bold text-text-primary">4.8</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                            <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed recently</span>
-                            <span>•</span>
-                            <span className="text-badge-discount-text font-medium">Good value offer</span>
-                          </div>
-                          <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed max-w-3xl">
-                            The offer at {dealBusiness} felt worthwhile and well explained. The discount felt easy to redeem,
-                            and the overall experience matched what was promised in the app.
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
-                          <span className="text-text-tertiary">Was this review helpful?</span>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                          >
-                            <Icon name="thumb_up" className="text-[16px] text-primary" />
-                            <span>11</span>
-                          </button>
-                        </div>
-                      </article>
-                    </div>
-
-                    <div className="flex items-center justify-center pt-space-md">
-                      <button
-                        type="button"
-                        className="px-space-xl py-space-sm rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-low transition-colors shadow-sm flex items-center gap-space-xs"
-                      >
-                        <span>Load 10 More Verified Reviews</span>
-                        <Icon name="expand_more" className="text-[18px]" />
-                      </button>
+                      <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold mb-2">
+                        No Reviews Yet
+                      </h3>
+                      <p className="font-body-md text-body-md text-text-secondary max-w-md leading-relaxed">
+                        Reviews will appear here as customers redeem this deal and share their experience at {dealBusiness}.
+                      </p>
                     </div>
                   </div>
                 )}

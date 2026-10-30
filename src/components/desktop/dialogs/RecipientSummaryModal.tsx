@@ -23,7 +23,6 @@ export interface RecipientSummaryModalProps {
 const VALIDITY: Array<{ label: string; value: string; note: string }> = [
   { label: 'Valid Period', value: '48 hours', note: 'From instant issue' },
   { label: 'Redemption Hours', value: 'Mon – Fri', note: '12:00 PM – 4:00 PM' },
-  { label: 'Venue (0.8 km)', value: 'Plot 14 Apo Blvd', note: 'Apo District, Abuja' },
 ];
 
 function ContactTile({ icon, label, value }: { icon: string; label: string; value: string }) {
@@ -41,14 +40,14 @@ function ContactTile({ icon, label, value }: { icon: string; label: string; valu
 }
 
 export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipient, deal }: RecipientSummaryModalProps) {
-  const recipientName = recipient?.name ?? 'Samuel Adeleke';
-  const recipientEmail = recipient?.email ?? 'samuel.adeleke@example.com';
-  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
-  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+  const recipientName = recipient?.name ?? '';
+  const recipientEmail = recipient?.email ?? '';
+  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '';
+  const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This local partner';
   const dealPrice = parsePrice(deal?.price);
   const oldPrice = parsePrice(deal?.oldPrice) || dealPrice;
-  const dealImage = deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBRXg9PQzMVASST6uW5-xyjbVAWUt130eROKykVMAjqADiq69ANPpZstPrtMGjqBiPZ0GntBD-J6CQvBmWzW32gDHZnuNBONvAxv5D10rP0rAdlFP9VStnh2RQtZzWQBOAG70yWBr13IgD_BmDZxIk9okXh2Kw-qVcRT2OeNBK4Rm7DWdc8IX1ksyVs8YrMhA41T0q_Cjx1MOFW21rBfp80554HhJcy6l_OC6R4Okd0';
+  const dealImage = deal?.image ?? '';
   const initials =
     recipientName
       .split(/\s+/)

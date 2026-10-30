@@ -186,6 +186,22 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
 
   const deals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 5).map(toFeaturedDeal), [publicOffers]);
 
+  // Category pills — live categories extracted from the current deals feed.
+  const categories = useMemo(() => {
+    const businessNames = deals
+      .map((deal) => deal.merchant)
+      .filter((name) => name && name !== 'Nearby business');
+    const unique = [...new Set(businessNames)].sort();
+    return [{ value: '', label: 'All' }, ...unique.map((name) => ({ value: name, label: name }))];
+  }, [deals]);
+
+  const [selectedCategory, setSelectedCategory] = useState('');
+
+  const filteredDeals = useMemo(() => {
+    if (selectedCategory === '') return deals;
+    return deals.filter((deal) => deal.merchant === selectedCategory);
+  }, [deals, selectedCategory]);
+
   useEffect(() => {
     setSaved((prev) => {
       if (prev.length === deals.length) return prev;
@@ -266,9 +282,32 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
               </div>
               <div className="flex items-center gap-1 px-space-xs py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-caption text-caption font-semibold flex-shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                <span>{deals.length} live deal{deals.length === 1 ? '' : 's'}</span>
+                <span>{filteredDeals.length} live deal{filteredDeals.length === 1 ? '' : 's'}</span>
               </div>
             </div>
+
+            {/* Category pills — live categories from the deals feed */}
+            {categories.length > 1 && (
+              <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-1 -mx-margin px-margin">
+                {categories.map((choice) => {
+                  const isSelected = selectedCategory === choice.value;
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      onClick={() => setSelectedCategory(choice.value)}
+                      className={`h-9 px-space-md rounded-full font-label-md text-label-md transition-all whitespace-nowrap flex-shrink-0 ${
+                        isSelected
+                          ? 'bg-primary text-on-primary font-semibold shadow-sm'
+                          : 'bg-surface-container-low text-text-secondary'
+                      }`}
+                    >
+                      {choice.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <div
               className={
@@ -327,11 +366,11 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
           </section>
 
           <section className="flex flex-col gap-space-md px-margin py-space-md">
-            {deals.length === 0 ? (
+            {filteredDeals.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                Live featured deals will appear here when the public offers feed is available.
+                {selectedCategory !== '' ? `No live deals from ${selectedCategory} right now.` : 'Live featured deals will appear here when the public offers feed is available.'}
               </div>
-            ) : deals.map((deal, index) => (
+            ) : filteredDeals.map((deal, index) => (
               <article
                 key={`${deal.title}-${deal.merchant}-${index}`}
                 {...dealCardProps(onOpenDeal)}

@@ -43,28 +43,28 @@ const THEMES: Array<{ value: Theme; emoji: string; label: string }> = [
 ];
 
 const CHANNEL_FIELDS: Record<Channel, { label: string; placeholder: string; type: string; pill: boolean }> = {
-  whatsapp: { label: "Recipient's WhatsApp Phone Number", placeholder: '0802 345 6789', type: 'tel', pill: true },
-  email: { label: "Recipient's Email Address", placeholder: 'samuel.adeleke@example.com', type: 'email', pill: false },
-  sms: { label: "Recipient's Mobile Number (SMS)", placeholder: '0802 345 6789', type: 'tel', pill: true },
+  whatsapp: { label: "Recipient's WhatsApp Phone Number", placeholder: 'Enter phone number', type: 'tel', pill: true },
+  email: { label: "Recipient's Email Address", placeholder: 'Enter email address', type: 'email', pill: false },
+  sms: { label: "Recipient's Mobile Number (SMS)", placeholder: 'Enter phone number', type: 'tel', pill: true },
 };
 
-const DEFAULT_MESSAGE = 'Enjoy this lunch on me! Hope you love the woodfire steaks at Urban Grill.';
+const DEFAULT_MESSAGE = 'Enjoy this deal on me! Hope you love it.';
 
 export function GiftRecipientDetailsModal({ open, onClose, onContinue, deal }: GiftRecipientDetailsModalProps) {
   const [channel, setChannel] = useState<Channel>('whatsapp');
   const [theme, setTheme] = useState<Theme>('celebration');
   const [scheduled, setScheduled] = useState(false);
-  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+  const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This local partner';
   const dealPrice = parsePrice(deal?.price);
-  const dealImage = deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuAJMHIARfSRdfmLjooNWrnoGUTZ6S-X-jLmnOg-Yq6LUQXHL9VZRrdMdsIwVV1MnZI6KXGPg-o_JVXHQ7ziQ4WiIfdhJKMjAx7uNK6Phr3p715JBX-rFxFy3vIdKME6C500V8Os_OUkDa7-WBQLg3Ok_5u6aoU4oP18dg7KvlFXL9pU5SNXArhRWWK1tHPerh7nf9YFsjUtdq-ZTWRoIxfOy8KB7FO-t0Ztojlpy6On';
+  const dealImage = deal?.image ?? '';
   const defaultMessage = deal?.title
     ? `Enjoy this ${dealTitle.toLowerCase()} on me! Hope you love it at ${businessName}.`
     : DEFAULT_MESSAGE;
   const [message, setMessage] = useState(defaultMessage);
-  const [fullName, setFullName] = useState('Samuel Adeleke');
-  const [email, setEmail] = useState('samuel.adeleke@example.com');
-  const [phone, setPhone] = useState('0802 345 6789');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
 
   const field = CHANNEL_FIELDS[channel];
   const [firstName = '', ...rest] = fullName.trim().split(/\s+/);
