@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { DealSourceContext } from '../../hooks/business/useDealStudioLive';
+import { hasApiConfig } from '../../services/api/client';
 import { useLiveDealPublish } from '../../hooks/business/useLiveDealPublish';
 import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
-import { INITIAL_DEAL_STUDIO_DRAFT, type DealStudioDraft } from './desktopDealStudio';
+import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT, type DealStudioDraft } from './desktopDealStudio';
 import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
 import { DesktopDealStudioStep1Screen } from './DesktopDealStudioStep1Screen';
 import { DesktopDealStudioStep2Screen } from './DesktopDealStudioStep2Screen';
@@ -37,7 +39,7 @@ export function DesktopDealStudioFlow({
   onNav,
 }: DesktopDealStudioFlowProps) {
   // Live: the deal is built on the chosen catalogue item and published to the API.
-  const liveDeal = useLiveDealPublish(onComplete, sourceItem);
+  const liveDeal = useLiveDealPublish(onComplete, sourceItem, (patch) => setStudio((previous) => ({ ...previous, ...patch })));
   const [draft] = useState<ProductDraft>(() =>
     sourceItem
       ? {
@@ -60,14 +62,18 @@ export function DesktopDealStudioFlow({
     const timer = window.setTimeout(liveDeal.clearError, 4000);
     return () => window.clearTimeout(timer);
   }, [liveDeal.error]);
-  const [studio, setStudio] = useState<DealStudioDraft>(initialStudio ?? INITIAL_DEAL_STUDIO_DRAFT);
+  const [studio, setStudio] = useState<DealStudioDraft>(
+    initialStudio ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
+  );
   const [step, setStep] = useState(1);
+  // The steps read the deal's item (branches it's sold at, bundle partners) from here.
+  const wrap = (node: ReactNode) => <DealSourceContext.Provider value={liveDeal.source}>{node}</DealSourceContext.Provider>;
 
   const handleStudioChange = (patch: Partial<DealStudioDraft>) =>
     setStudio((previous) => ({ ...previous, ...patch }));
 
   if (step === 1)
-    return (
+    return wrap(
       <DesktopDealStudioStep1Screen
         draft={draft}
         studio={studio}
@@ -80,7 +86,7 @@ export function DesktopDealStudioFlow({
     );
 
   if (step === 2)
-    return (
+    return wrap(
       <DesktopDealStudioStep2Screen
         draft={draft}
         studio={studio}
@@ -93,7 +99,7 @@ export function DesktopDealStudioFlow({
     );
 
   if (step === 3)
-    return (
+    return wrap(
       <DesktopDealStudioStep3Screen
         draft={draft}
         studio={studio}
@@ -105,7 +111,7 @@ export function DesktopDealStudioFlow({
       />
     );
 
-  return (
+  return wrap(
     <>
       <DesktopDealStudioStep4Screen
         draft={draft}

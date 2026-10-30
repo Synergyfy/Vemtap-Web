@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLiveDealBranch } from '../../hooks/business/useLiveDealBranch';
+import { useDealBranches } from '../../hooks/business/useDealStudioLive';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -108,6 +108,20 @@ const HOUR_OPTIONS = [
 ];
 
 const SUGGESTED_CLAUSES = ['Valid ID required', 'One per table', 'Not valid on public holidays', 'Subject to seating capacity'];
+/** Live: suggestions that fit any kind of business. */
+const LIVE_SUGGESTED_CLAUSES = ['Valid ID required', 'One per customer per visit', 'Not valid on public holidays', 'While stocks last'];
+
+interface BranchRow {
+  rowKey: string;
+  name: string;
+  address: string;
+  badge: string;
+  hardware: Array<{ icon: string; label: string }>;
+  disabled?: boolean;
+  note?: string;
+  checked: boolean;
+  onToggle: (checked: boolean) => void;
+}
 
 const HEATMAP_ROWS: Array<{ time: string; cells: Array<{ label: string; tone: string }> }> = [
   {
@@ -160,12 +174,34 @@ export function DesktopDealStudioStep3Screen({
   const [newStep, setNewStep] = useState('');
   const [newTerm, setNewTerm] = useState('');
 
-  // Live: the deal runs at the active branch — show that one, not the samples.
-  const liveBranch = useLiveDealBranch();
-  const branchList: typeof BRANCHES = liveBranch.live
-    ? [{ key: 'wuseII', name: liveBranch.name, address: liveBranch.area, badge: 'Your branch', hardware: [], note: 'Switch branch in the top bar to run a deal elsewhere.' }]
-    : BRANCHES;
-  const selectedBranches = liveBranch.live ? 1 : BRANCHES.filter((branch) => studio.branches[branch.key]).length;
+  // Live: the business's own branches (only those selling the item can be picked); demo keeps the samples.
+  const dealBranches = useDealBranches(studio);
+  const live = dealBranches.live;
+  const branchList: BranchRow[] = live
+    ? dealBranches.options.map((option) => ({
+        rowKey: option.id,
+        name: option.name,
+        address: option.area || 'No address on file',
+        badge: !option.sellsItem ? 'Item not sold here' : option.id === dealBranches.activeBranchId ? 'Current branch' : 'Your branch',
+        hardware: [],
+        disabled: !option.sellsItem,
+        note: option.sellsItem ? undefined : 'Add this item to the branch in your catalogue to include it.',
+        checked: dealBranches.selectedIds.includes(option.id),
+        onToggle: () => onStudioChange(dealBranches.toggle(option.id)),
+      }))
+    : BRANCHES.map((branch) => ({
+        rowKey: branch.key,
+        name: branch.name,
+        address: branch.address,
+        badge: branch.badge,
+        hardware: branch.hardware,
+        disabled: branch.disabled,
+        note: branch.note,
+        checked: studio.branches[branch.key],
+        onToggle: (checked: boolean) => onStudioChange({ branches: { ...studio.branches, [branch.key]: checked } }),
+      }));
+  const selectedBranches = live ? dealBranches.selectedIds.length : BRANCHES.filter((branch) => studio.branches[branch.key]).length;
+  const suggestedClauses = live ? LIVE_SUGGESTED_CLAUSES : SUGGESTED_CLAUSES;
 
   const selectedDays = DAYS.filter((day) => studio.days[day.key]);
   const everyDay = selectedDays.length === DAYS.length;
@@ -270,8 +306,8 @@ export function DesktopDealStudioStep3Screen({
             Participating Branches &amp; Redemption Terms
           </h1>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
-            Designate eligible locations, active redemption hours, customer claim steps, and custom restaurant
-            policies.
+            Designate eligible locations, active redemption hours, customer claim steps, and your own
+            {live ? ' policies.' : ' restaurant policies.'}
           </p>
         </div>
 
@@ -287,23 +323,30 @@ export function DesktopDealStudioStep3Screen({
                     </span>
                   </h2>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Toggle merchant outlets enabled for voucher code redemption.
+                    {live
+                      ? 'Pick the branches where customers can redeem this deal. Each branch gets its own copy.'
+                      : 'Toggle merchant outlets enabled for voucher code redemption.'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="text-primary font-label-sm text-label-sm hover:underline flex items-center gap-1"
-                >
-                  <Icon name="add_location_alt" className="text-[16px]" />
-                  <span>Manage Outlets</span>
-                </button>
+                {!live && (
+                  <button
+                    type="button"
+                    className="text-primary font-label-sm text-label-sm hover:underline flex items-center gap-1"
+                  >
+                    <Icon name="add_location_alt" className="text-[16px]" />
+                    <span>Manage Outlets</span>
+                  </button>
+                )}
               </div>
               <div className="flex flex-col gap-space-sm">
+                {live && branchList.length === 0 && (
+                  <p className="font-body-md text-body-md text-text-secondary">Your branches are still loading…</p>
+                )}
                 {branchList.map((branch) => {
-                  const active = liveBranch.live || studio.branches[branch.key];
+                  const active = branch.checked;
                   return (
                     <label
-                      key={branch.key}
+                      key={branch.rowKey}
                       className={`group relative flex items-start gap-space-md p-space-md rounded-xl transition-all ${
                         branch.disabled
                           ? 'bg-surface-subtle cursor-not-allowed opacity-75'
@@ -317,9 +360,7 @@ export function DesktopDealStudioStep3Screen({
                         type="checkbox"
                         disabled={branch.disabled}
                         checked={active}
-                        onChange={(event) =>
-                          liveBranch.live ? undefined : onStudioChange({ branches: { ...studio.branches, [branch.key]: event.target.checked } })
-                        }
+                        onChange={(event) => branch.onToggle(event.target.checked)}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-space-xs">
@@ -736,7 +777,7 @@ export function DesktopDealStudioStep3Screen({
                       Suggested Standard Clauses
                     </span>
                     <div className="flex flex-wrap gap-space-xs">
-                      {SUGGESTED_CLAUSES.map((clause) => (
+                      {suggestedClauses.map((clause) => (
                         <button
                           key={clause}
                           type="button"
@@ -781,6 +822,36 @@ export function DesktopDealStudioStep3Screen({
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-space-xl">
+            {live ? (
+              <section className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg flex flex-col gap-space-md">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Where &amp; When Customers Redeem</h2>
+                  <Icon name="event_available" className="text-primary text-[20px]" />
+                </div>
+                <div className="flex flex-col gap-space-xs">
+                  {dealBranches.selected.map((branch) => (
+                    <div key={branch.id} className="flex items-start gap-space-xs p-space-sm rounded-lg bg-surface-subtle">
+                      <Icon name="pin_drop" className="text-[18px] text-primary mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="font-label-md text-label-md text-on-surface font-semibold">{branch.name}</div>
+                        {branch.area && <div className="font-caption text-caption text-text-secondary">{branch.area}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-space-xs font-body-md text-body-md text-on-surface-variant">
+                  <Icon name="alarm" className="text-[18px]" />
+                  <span>
+                    {daysSummary} • {studio.redeemAllDay ? 'All day' : `${studio.redeemStart} – ${studio.redeemEnd}`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-space-xs font-body-md text-body-md text-on-surface-variant">
+                  <Icon name="calendar_month" className="text-[18px]" />
+                  <span>{dealDurationLabel(studio.duration)}</span>
+                </div>
+              </section>
+            ) : (
+              <>
             <section className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg">
               <div className="flex items-center justify-between mb-space-md">
                 <div>
@@ -856,7 +927,7 @@ export function DesktopDealStudioStep3Screen({
                       <span className="font-caption text-caption uppercase tracking-wider text-primary-fixed font-bold">
                         Coverage Zones
                       </span>
-                      <div className="font-label-md text-label-md font-bold">{liveBranch.live ? liveBranch.area : 'Wuse II • Garki II • Area 11'}</div>
+                      <div className="font-label-md text-label-md font-bold">Wuse II • Garki II • Area 11</div>
                     </div>
                     <div className="px-space-xs py-1 rounded bg-inverse-surface/80 text-on-primary font-caption text-caption font-bold backdrop-blur">
                       3.5 km Geofence
@@ -886,7 +957,7 @@ export function DesktopDealStudioStep3Screen({
                   </div>
                 </div>
                 <div className="p-space-md bg-surface-subtle rounded-xl">
-                  <div className="font-caption text-caption text-text-secondary">{liveBranch.live ? liveBranch.name : 'Maitama / Wuse Apps'}</div>
+                  <div className="font-caption text-caption text-text-secondary">Maitama / Wuse Apps</div>
                   <div className="font-heading-md text-heading-md font-bold text-primary mt-1">19,400</div>
                   <div className="font-caption text-caption text-text-secondary mt-0.5 flex items-center gap-1">
                     <Icon name="smartphone" className="text-[14px]" />
@@ -901,6 +972,8 @@ export function DesktopDealStudioStep3Screen({
                 </span>
               </div>
             </section>
+              </>
+            )}
           </div>
         </div>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLiveDealBranch } from '../hooks/business/useLiveDealBranch';
+import { useDealBranches } from '../hooks/business/useDealStudioLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
@@ -65,6 +65,17 @@ const HOUR_OPTIONS = [
 ];
 
 const SUGGESTED_TERMS = ['Valid ID required', 'One per table', 'Not valid on public holidays'];
+/** Live: suggestions that fit any kind of business. */
+const LIVE_SUGGESTED_TERMS = ['Valid ID required', 'One per customer per visit', 'While stocks last'];
+
+interface BranchRow {
+  rowKey: string;
+  name: string;
+  address: string;
+  disabled?: boolean;
+  checked: boolean;
+  onToggle: () => void;
+}
 
 export function BusinessDealStudioStep3Screen({
   studio,
@@ -79,10 +90,28 @@ export function BusinessDealStudioStep3Screen({
   const [durationOpen, setDurationOpen] = useState(false);
   const [newTerm, setNewTerm] = useState('');
 
-  // Live: the deal runs at the active branch — show that one, not the samples.
-  const liveBranch = useLiveDealBranch();
-  const branchOptions: typeof BRANCH_OPTIONS = liveBranch.live ? [{ key: 'wuseII', name: liveBranch.name, address: liveBranch.area }] : BRANCH_OPTIONS;
-  const selectedBranchCount = liveBranch.live ? 1 : Object.values(studio.branches).filter(Boolean).length;
+  // Live: the business's own branches (only those selling the item can be picked); demo keeps the samples.
+  const dealBranches = useDealBranches(studio);
+  const live = dealBranches.live;
+  const branchOptions: BranchRow[] = live
+    ? dealBranches.options.map((option) => ({
+        rowKey: option.id,
+        name: option.name,
+        address: option.sellsItem ? option.area || 'No address on file' : 'Item not sold at this branch yet',
+        disabled: !option.sellsItem,
+        checked: dealBranches.selectedIds.includes(option.id),
+        onToggle: () => onStudioChange(dealBranches.toggle(option.id)),
+      }))
+    : BRANCH_OPTIONS.map((branch) => ({
+        rowKey: branch.key,
+        name: branch.name,
+        address: branch.address,
+        checked: studio.branches[branch.key],
+        onToggle: () => toggleBranch(branch.key),
+      }));
+  const selectableCount = branchOptions.filter((branch) => !branch.disabled).length;
+  const selectedBranchCount = live ? dealBranches.selectedIds.length : Object.values(studio.branches).filter(Boolean).length;
+  const suggestedTerms = live ? LIVE_SUGGESTED_TERMS : SUGGESTED_TERMS;
 
   const selectedDays = DAY_OPTIONS.filter((day) => studio.days[day.key]);
   const everyDay = selectedDays.length === DAY_OPTIONS.length;
@@ -300,7 +329,7 @@ export function BusinessDealStudioStep3Screen({
                     Quick-add suggested rules:
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {SUGGESTED_TERMS.map((term) => (
+                    {suggestedTerms.map((term) => (
                       <button
                         key={term}
                         className="font-caption text-caption bg-surface-container hover:bg-surface-tint-blue text-text-secondary hover:text-primary px-2.5 py-1 rounded-full transition-colors flex items-center gap-1"
@@ -352,14 +381,22 @@ export function BusinessDealStudioStep3Screen({
               <div className="flex flex-col">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Participating Branches</h2>
                 <p className="font-caption text-caption text-text-secondary mt-0.5">
-                  Toggle merchant outlets enabled for voucher code redemption.
+                  {live
+                    ? 'Pick where customers can redeem this deal. Each branch gets its own copy.'
+                    : 'Toggle merchant outlets enabled for voucher code redemption.'}
                 </p>
               </div>
               <button
                 className="text-primary font-label-sm text-label-sm hover:underline flex items-center gap-1 shrink-0"
                 type="button"
                 onClick={() => {
-                  const allSelected = selectedBranchCount === branchOptions.length;
+                  const allSelected = selectedBranchCount === selectableCount;
+                  if (live) {
+                    // "Clear" keeps the current branch: a deal needs at least one.
+                    const sellable = dealBranches.options.filter((option) => option.sellsItem).map((option) => option.id);
+                    onStudioChange({ branchIds: allSelected ? sellable.slice(0, 1) : sellable });
+                    return;
+                  }
                   onStudioChange({
                     branches: {
                       wuseII: !allSelected,
@@ -370,18 +407,18 @@ export function BusinessDealStudioStep3Screen({
                 }}
               >
                 <Icon name="add_location_alt" className="text-[16px]" />
-                <span>{selectedBranchCount === branchOptions.length ? 'Clear All' : 'Select All'}</span>
+                <span>{selectedBranchCount === selectableCount ? 'Clear All' : 'Select All'}</span>
               </button>
             </div>
             <div className="flex flex-col gap-space-xs">
               {branchOptions.map((branch) => {
-                const isActive = liveBranch.live || studio.branches[branch.key];
+                const isActive = branch.checked;
                 return (
                   <label
-                    key={branch.key}
-                    className={`flex items-center justify-between p-space-sm rounded-xl cursor-pointer transition-all ${
-                      isActive ? 'bg-surface-tint-blue' : 'bg-surface-subtle'
-                    }`}
+                    key={branch.rowKey}
+                    className={`flex items-center justify-between p-space-sm rounded-xl transition-all ${
+                      branch.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                    } ${isActive ? 'bg-surface-tint-blue' : 'bg-surface-subtle'}`}
                   >
                     <div className="flex items-center gap-space-sm min-w-0">
                       <span className="w-8 h-8 rounded-lg bg-surface-canvas text-primary flex items-center justify-center shrink-0 shadow-sm">
@@ -416,7 +453,8 @@ export function BusinessDealStudioStep3Screen({
                       className="w-5 h-5 rounded accent-primary cursor-pointer shrink-0"
                       type="checkbox"
                       checked={isActive}
-                      onChange={() => toggleBranch(branch.key)}
+                      disabled={branch.disabled}
+                      onChange={branch.onToggle}
                     />
                   </label>
                 );

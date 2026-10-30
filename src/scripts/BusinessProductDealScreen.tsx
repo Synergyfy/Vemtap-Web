@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { draftImage, draftImageAlt } from './desktop/draftImage';
 
 interface BusinessProductDealScreenProps {
   draft: ProductDraft;
@@ -64,7 +65,10 @@ export function BusinessProductDealScreen({
   const lowPrice = variantPrices[0] ?? draft.basePrice;
   const highPrice = variantPrices[1] ?? lowPrice;
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
-  const thumbnail = DEAL_IMAGES[0];
+  const thumbnail = {
+    src: draftImage(draft.mainImage, DEAL_IMAGES[0].src),
+    alt: draftImageAlt(draft.title, DEAL_IMAGES[0].alt),
+  };
 
   const openModal = () => setModalOpen(true);
 

@@ -7,11 +7,12 @@ import { summariseImport } from '../productImport/importSummary';
 import { naira } from '../catalogueData';
 import { hasApiConfig } from '../../services/api/client';
 import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
-import { toPrice } from '../../services/catalogueItemsService';
+import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
 
 interface DesktopBusinessCatalogScreenProps {
   onBack: () => void;
-  onNext: () => void;
+  /** Live: receives the item the deal is built on (null when the catalogue is empty — skip deals). */
+  onNext: (dealItem: CatalogueItem | null) => void;
   onSaveDraft: () => void;
   onAddProduct: () => void;
   onAddService: () => void;
@@ -23,6 +24,8 @@ interface CatalogEntry {
   type: 'Product' | 'Service';
   price: string;
   category: string;
+  /** Live entries keep the API item so it can seed a deal. */
+  item?: CatalogueItem;
 }
 
 const SEED_ENTRIES: CatalogEntry[] = [
@@ -36,6 +39,7 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
   const [methodsOpen, setMethodsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [dealItemId, setDealItemId] = useState<string | null>(null);
   const importedProducts = useImportedProducts();
 
   const importedEntries: CatalogEntry[] = importedProducts.map((product) => ({
@@ -55,7 +59,11 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
     type: item.itemType === 'service' ? 'Service' : 'Product',
     price: naira(toPrice(item.price ?? undefined) ?? 0),
     category: item.category?.name || (item.itemType === 'service' ? 'Service' : 'Product'),
+    item,
   }));
+  // Deals need a real item: the one the owner picked, else the first listed.
+  const dealable = liveEntries.filter((entry) => entry.item?.status === 'active' && !entry.item.isSuspended);
+  const dealEntry = dealable.find((entry) => entry.id === dealItemId) ?? dealable[0] ?? null;
   const entries = [...importedEntries, ...(live ? liveEntries : SEED_ENTRIES)];
   const loadingLive = live && (products.isLoading || services.isLoading);
 
@@ -92,7 +100,22 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
                 <span className="font-caption text-caption text-text-secondary">{e.type} • {e.category}</span>
               </div>
             </div>
-            <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{e.price}</span>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{e.price}</span>
+              {live && dealable.some((entry) => entry.id === e.id) && (
+                <button
+                  type="button"
+                  onClick={() => setDealItemId(e.id)}
+                  aria-pressed={dealEntry?.id === e.id}
+                  className={`h-8 px-3 rounded-full font-caption text-caption font-semibold flex items-center gap-1 transition-colors ${
+                    dealEntry?.id === e.id ? 'bg-primary text-on-primary' : 'bg-surface-subtle text-text-secondary hover:bg-surface-container'
+                  }`}
+                >
+                  <Icon name={dealEntry?.id === e.id ? 'check' : 'local_offer'} className="text-[14px]" />
+                  <span>{dealEntry?.id === e.id ? 'Deal item' : 'Use for deal'}</span>
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -176,10 +199,11 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
             <button
               type="button"
-              onClick={onNext}
-              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+              onClick={() => onNext(live ? dealEntry?.item ?? null : null)}
+              disabled={loadingLive}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-60"
             >
-              <span>Continue to Deal Studio</span>
+              <span>{live && !loadingLive && !dealEntry ? 'Skip Deals for Now' : 'Continue to Deal Studio'}</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
           </div>

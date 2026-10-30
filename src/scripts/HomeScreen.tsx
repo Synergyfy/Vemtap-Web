@@ -8,6 +8,7 @@ import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
+import { dealPrimaryImage } from '../utils/dealImages';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCg_httfgNB7CfMJOzfjKekJGnxgvueamRqqNg-Qyw7QV2HTVvlh6rZ845BYSp5dsQClaPlSKNd4B0_3aYGUcjlu-OUBeq56PilIeD6B9e1a0GFgvTtnkB0d8i16nw-kagt5rZUqAHNUNQUsH0WcGsyf8zaqNe1yx2Go9tQcdI6QPEzXRp2aZLqYGswotDnV391PXTZI3oVx9jzWC_ZogeqCUxsw3wWsr-xRkh4q33Ljntdo0P9MsadSA';
@@ -83,25 +84,8 @@ const firstImage = (...values: unknown[]): string | undefined =>
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 
-/** The deal's own photo first, then an item photo, then the business logo. */
-const getNestedImage = (offer: Record<string, unknown>): string => {
-  const items = Array.isArray(offer.items) ? offer.items.map(asRecord) : [];
-  const gallery = Array.isArray(offer.galleryImages) ? offer.galleryImages : [];
-  const business = asRecord(offer.business);
-  return (
-    firstImage(
-      offer.mainImage,
-      offer.image,
-      offer.coverImage,
-      gallery[0],
-      ...items.flatMap((item) => [item.mainImage, item.image, item.mediaUrl]),
-      business.logo,
-      business.logoUrl,
-      business.image,
-      business.coverImage,
-    ) ?? NO_IMAGE
-  );
-};
+/** The deal's own photo first, then an item photo, then the business logo (shared with the detail page). */
+const getNestedImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? NO_IMAGE;
 
 /** "Ends 30 Oct" from the offer's end date; "Ongoing" when it has none. */
 const getEndsLabel = (offer: Record<string, unknown>): string => {

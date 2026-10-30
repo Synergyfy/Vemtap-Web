@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
+import { DealSourceContext } from '../hooks/business/useDealStudioLive';
 import { useLiveDealPublish } from '../hooks/business/useLiveDealPublish';
 import { toPrice, type CatalogueItem } from '../services/catalogueItemsService';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
@@ -44,7 +45,7 @@ import {
   type BusinessSetupSectionId,
   type VerificationSectionState,
 } from './businessSetup';
-import { INITIAL_DEAL_STUDIO_DRAFT } from './dealStudio';
+import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT } from './dealStudio';
 import type { DealStudioDraft } from './dealStudio';
 import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import type { ProductDraft } from './productDraft';
@@ -228,13 +229,13 @@ export function BusinessOnboardingScreen({
     () => (stored?.data.productDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [dealDraft, setDealDraft] = useState<ProductDraft>(
-    () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+    () => (stored?.data.dealDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
     () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? (hasApiConfig() ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT),
   );
   const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
-    () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? INITIAL_DEAL_STUDIO_DRAFT,
+    () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
   );
   const [verificationState, setVerificationState] = useState<VerificationSectionState>(
     () => stored?.verificationState ?? 'not-started',
@@ -268,7 +269,11 @@ export function BusinessOnboardingScreen({
 
   const sync = useOnboardingSync();
   // Live: deals are built on a real catalogue item and published to the API.
-  const liveDeal = useLiveDealPublish(() => setStepIndex(25), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
+  const liveDeal = useLiveDealPublish(
+    () => setStepIndex(25), (stored?.data.dealSource as CatalogueItem | undefined) ?? null,
+    // Remember the published deal so going back and publishing again updates it.
+    (patch) => setDealStudio((prev) => ({ ...prev, ...patch })),
+  );
   // Saved after the deal hook so the picked item survives a reload too.
   useEffect(() => {
     saveBusinessSetupSnapshot(STEPS[stepIndex], {
@@ -283,6 +288,10 @@ export function BusinessOnboardingScreen({
   }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio, liveDeal.source]);
 
   const startLiveDeal = (item: CatalogueItem) => {
+    // A different item is a new deal: forget the one published for the last item.
+    if (liveDeal.source?.id !== item.id) {
+      setDealStudio((prev) => ({ ...prev, branchIds: undefined, publishedDealGroupId: undefined, publishedBranchIds: undefined }));
+    }
     liveDeal.pick(item);
     setDealDraft((prev) => ({
       ...prev,
@@ -429,7 +438,14 @@ export function BusinessOnboardingScreen({
           onAddProduct={() => setStepIndex(8)}
           onAddService={() => setStepIndex(15)}
           onBack={() => setStepIndex(5)}
-          onNext={() => setStepIndex(20)}
+          onNext={(dealItem) => {
+            // Live deals are built on a real item; with none picked, deals wait until later.
+            if (hasApiConfig()) {
+              if (!dealItem) return setStepIndex(25);
+              startLiveDeal(dealItem);
+            }
+            setStepIndex(20);
+          }}
           onSaveDraft={onBack}
         />
       );
@@ -484,7 +500,12 @@ export function BusinessOnboardingScreen({
           onEditBranches={() => setStepIndex(11)}
           onEditFulfillment={() => setStepIndex(11)}
           onEditDescription={() => setStepIndex(8)}
-          onPublish={() => sync.publishProduct(productDraft, () => setStepIndex(13))}
+          onPublish={() =>
+            sync.publishProduct(productDraft, (item) => {
+              if (item) updateProductDraft({ publishedItemId: item.id });
+              setStepIndex(13);
+            })
+          }
           onSaveDraft={onBack}
         />
       );
@@ -498,7 +519,11 @@ export function BusinessOnboardingScreen({
             setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
-          onAddAnother={() => setStepIndex(8)}
+          onAddAnother={() => {
+            // Live: a fresh, blank item — the one just published stays as it is.
+            if (hasApiConfig()) setProductDraft(BLANK_PRODUCT_DRAFT);
+            setStepIndex(8);
+          }}
         />
       );
     case 'productDeal':
@@ -550,7 +575,12 @@ export function BusinessOnboardingScreen({
           onEditBasics={() => setStepIndex(15)}
           onEditPricing={() => setStepIndex(16)}
           onEditBranches={() => setStepIndex(17)}
-          onPublish={() => sync.publishService(serviceDraft, () => setStepIndex(19))}
+          onPublish={() =>
+            sync.publishService(serviceDraft, (item) => {
+              if (item) updateServiceDraft({ publishedItemId: item.id });
+              setStepIndex(19);
+            })
+          }
           onSaveDraft={onBack}
         />
       );
@@ -564,7 +594,10 @@ export function BusinessOnboardingScreen({
             setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
-          onAddAnother={() => setStepIndex(15)}
+          onAddAnother={() => {
+            if (hasApiConfig()) setServiceDraft(BLANK_SERVICE_DRAFT);
+            setStepIndex(15);
+          }}
         />
       );
     case 'dealStudio1':
@@ -643,7 +676,7 @@ export function BusinessOnboardingScreen({
           {apiError}
         </div>
       )}
-      {renderStep()}
+      <DealSourceContext.Provider value={liveDeal.source}>{renderStep()}</DealSourceContext.Provider>
     </div>
   );
 }

@@ -12,6 +12,8 @@ import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 interface DesktopServicesCategoriesScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onBackToCatalog?: () => void;
+  /** Opens the create-service flow (its own route on the catalogue hub). */
+  onAddService?: () => void;
 }
 
 interface ServiceCardData {
@@ -184,6 +186,7 @@ function liveServiceCard(item: CatalogueItem, branchCount: number): ServiceCardD
 export function DesktopServicesCategoriesScreen({
   onNav,
   onBackToCatalog,
+  onAddService,
 }: DesktopServicesCategoriesScreenProps) {
   const [query, setQuery] = useState('');
   const [pill, setPill] = useState<StatusPill>('all');
@@ -279,6 +282,7 @@ export function DesktopServicesCategoriesScreen({
             </button>
             <button
               type="button"
+              onClick={onAddService}
               className="inline-flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] transition-all hover:scale-[1.01] active:scale-[0.98]"
             >
               <Icon name="add_task" className="text-[20px]" />

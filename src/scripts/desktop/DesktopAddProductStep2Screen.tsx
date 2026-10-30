@@ -62,10 +62,10 @@ export function DesktopAddProductStep2Screen({
         ...draft.variants,
         {
           id: `variant-${Date.now()}`,
-          name: 'New Option',
-          cut: 'Custom Cut',
-          price: '0',
-          inventory: '0',
+          name: '',
+          cut: '',
+          price: '',
+          inventory: '',
         },
       ],
     });
@@ -293,11 +293,21 @@ export function DesktopAddProductStep2Screen({
                               <div className="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center text-text-secondary shadow-sm">
                                 <Icon name="scale" className="text-[18px]" />
                               </div>
-                              <div>
-                                <span className="font-label-md text-label-md text-text-primary font-semibold block leading-tight">
-                                  {variant.name}
-                                </span>
-                                <span className="font-caption text-caption text-text-secondary">{variant.cut}</span>
+                              <div className="flex flex-col gap-1 min-w-0 flex-1">
+                                <input
+                                  aria-label="Option name"
+                                  placeholder="Option name (e.g. Large)"
+                                  value={variant.name}
+                                  onChange={(event) => updateVariant(variant.id, { name: event.target.value })}
+                                  className="w-full bg-transparent font-label-md text-label-md text-text-primary font-semibold leading-tight outline-none focus:bg-surface-canvas rounded px-1"
+                                />
+                                <input
+                                  aria-label="Option detail"
+                                  placeholder="Detail (e.g. 450g)"
+                                  value={variant.cut}
+                                  onChange={(event) => updateVariant(variant.id, { cut: event.target.value })}
+                                  className="w-full bg-transparent font-caption text-caption text-text-secondary outline-none focus:bg-surface-canvas rounded px-1"
+                                />
                               </div>
                             </div>
                             <div className="col-span-3">
@@ -394,6 +404,22 @@ export function DesktopAddProductStep2Screen({
                   {draft.variantsEnabled ? `${totalUnits} units available` : 'Single standard item'}
                 </div>
               </div>
+              {!draft.variantsEnabled && (
+                <div className="flex flex-col gap-1.5 pt-space-xs">
+                  <label className="font-label-md text-label-md text-text-primary flex items-center justify-between" htmlFor="stock-on-hand">
+                    <span>Stock on Hand</span>
+                    <span className="font-caption text-caption text-text-tertiary">Leave blank if you don't track stock</span>
+                  </label>
+                  <input
+                    id="stock-on-hand"
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.stock ?? ''}
+                    onChange={(event) => onDraftChange({ stock: event.target.value.replace(/[^0-9]/g, '') })}
+                    className="w-full h-[52px] px-4 rounded-xl bg-surface-subtle font-label-md text-label-md text-text-primary font-semibold focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md pt-space-xs">
                 <div className="flex flex-col gap-1.5">
                   <label className="font-label-md text-label-md text-text-primary flex items-center justify-between" htmlFor="sku-barcode">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { useSessionUser } from '../../hooks/useSessionUser';
-import { useVerificationActions } from '../../hooks/business/useVerification';
+import { useVerificationActions, useVerificationStatus } from '../../hooks/business/useVerification';
 import { DesktopVerificationIntroScreen } from './DesktopVerificationIntroScreen';
 import { DesktopVerificationIdTypeScreen } from './DesktopVerificationIdTypeScreen';
 import { DesktopVerificationIdFormScreen } from './DesktopVerificationIdFormScreen';
@@ -56,6 +56,10 @@ export function DesktopBusinessVerificationScreen({
   onBrand,
 }: DesktopBusinessVerificationScreenProps) {
   const [step, setStep] = useState<DesktopVerificationStep>('intro');
+  // Live: a flow resumed from the intro skips earlier steps, so its Back returns to the intro.
+  const [resumedAt, setResumedAt] = useState<DesktopVerificationStep | null>(null);
+  const backTo = (resumed: DesktopVerificationStep, previous: DesktopVerificationStep) => () => setStep(resumedAt === resumed ? 'intro' : previous);
+  const verificationStatus = useVerificationStatus();
   const session = useSessionUser();
   const verification = useVerificationActions();
   // Live checks start blank (prefilled with the account name); demo keeps sample values.
@@ -76,6 +80,12 @@ export function DesktopBusinessVerificationScreen({
     window.scrollTo(0, 0);
   }, [step]);
 
+  // Resuming after the CAC check: show its (masked) number rather than a blank.
+  useEffect(() => {
+    const masked = verificationStatus.data?.business?.maskedId;
+    if (hasApiConfig() && masked) setDraft((current) => (current.cacNumber ? current : { ...current, cacNumber: masked }));
+  }, [verificationStatus.data]);
+
   const updateDraft = (patch: Partial<VerificationDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   };
@@ -95,7 +105,10 @@ export function DesktopBusinessVerificationScreen({
         <DesktopVerificationIntroScreen
           onBack={onBack}
           onBrand={onBrand}
-          onStart={() => setStep('idType')}
+          onStart={(from) => {
+            setResumedAt(from ?? null);
+            setStep(from ?? 'idType');
+          }}
           onLater={onComplete}
         />
       );
@@ -143,7 +156,7 @@ export function DesktopBusinessVerificationScreen({
       return (
         <DesktopVerificationCacStatusScreen
           onBrand={onBrand}
-          onBack={() => setStep('idSuccess')}
+          onBack={backTo('cacStatus', 'idSuccess')}
           registered={draft.cacRegistered}
           onRegisteredChange={(registered) => updateDraft({ cacRegistered: registered })}
           onContinue={() => setStep(draft.cacRegistered ? 'cacForm' : 'unregistered')}
@@ -176,7 +189,7 @@ export function DesktopBusinessVerificationScreen({
       return (
         <DesktopVerificationReviewScreen
           onBrand={onBrand}
-          onBack={() => setStep('cacSuccess')}
+          onBack={backTo('inReview', 'cacSuccess')}
           onReviewComplete={() => setStep('complete')}
           onCatalog={onConfigureStorefront}
           onDeals={onCreateDeal}
@@ -189,7 +202,7 @@ export function DesktopBusinessVerificationScreen({
       return (
         <DesktopVerificationCompleteScreen
           onBrand={onBrand}
-          onBack={() => setStep('inReview')}
+          onBack={backTo('complete', 'inReview')}
           onActivate={onActivate}
           onPreviewStorefront={onPreviewStorefront}
           legalName={draft.legalName}

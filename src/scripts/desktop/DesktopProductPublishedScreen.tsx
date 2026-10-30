@@ -5,12 +5,16 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
+import { draftImage, draftImageAlt } from './draftImage';
+import { hasApiConfig } from '../../services/api/client';
 
 interface DesktopProductPublishedScreenProps {
   draft: ProductDraft;
   onMakeDeal: () => void;
   onViewCatalog: () => void;
   onAddAnother: () => void;
+  /** Live, per-branch pricing: opens Branch pricing for the item just published. */
+  onSetBranchPrices?: () => void;
   onNav?: (key: BusinessPortalNavKey) => void;
 }
 
@@ -40,9 +44,12 @@ export function DesktopProductPublishedScreen({
   onMakeDeal,
   onViewCatalog,
   onAddAnother,
+  onSetBranchPrices,
   onNav,
 }: DesktopProductPublishedScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  // Live: no sample reach stats or local live/draft toggle (the item's status is set by publishing).
+  const live = hasApiConfig();
   const [mode, setMode] = useState<'live' | 'draft'>('live');
   const [dealState, setDealState] = useState<'idle' | 'importing' | 'success'>('idle');
   const timers = useRef<number[]>([]);
@@ -54,7 +61,8 @@ export function DesktopProductPublishedScreen({
     [],
   );
 
-  const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
+  // New items always run at the active branch, even with nothing ticked.
+  const activeBranchCount = Math.max(Object.values(draft.branches).filter(Boolean).length, live ? 1 : 0);
   const activeVariants = getActiveVariants(draft);
   const variantMode = isVariantProduct(draft);
   const totalStock = activeVariants.reduce((sum, variant) => sum + toNumber(variant.inventory), 0);
@@ -64,6 +72,7 @@ export function DesktopProductPublishedScreen({
 
   const handleMakeDeal = () => {
     if (dealState !== 'idle') return;
+    if (live) return onMakeDeal();
     setDealState('importing');
     timers.current.push(window.setTimeout(() => setDealState('success'), 900));
     timers.current.push(window.setTimeout(() => onMakeDeal(), 2100));
@@ -103,6 +112,7 @@ export function DesktopProductPublishedScreen({
               Shoppers within 3.5 km can now discover, browse, and order this item in real-time. Sync is
               established across your active store terminal network.
             </p>
+            {!live && (
             <div className="mt-space-lg flex items-center p-1 bg-surface-container-high rounded-full shadow-inner">
               <button
                 type="button"
@@ -119,6 +129,17 @@ export function DesktopProductPublishedScreen({
                 <span className="w-2.5 h-2.5 rounded-full bg-outline-variant" /> ○ Saved as Draft
               </button>
             </div>
+            )}
+            {live && draft.pricingMode === 'custom' && onSetBranchPrices && (
+              <button
+                type="button"
+                onClick={onSetBranchPrices}
+                className="mt-space-lg h-11 px-space-lg rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary inline-flex items-center gap-1.5 shadow-sm"
+              >
+                <Icon name="price_change" className="text-[18px]" />
+                <span>Set Branch Prices</span>
+              </button>
+            )}
           </div>
 
           <div className="mt-space-2xl grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-stretch">
@@ -138,8 +159,8 @@ export function DesktopProductPublishedScreen({
                 <div className="relative rounded-xl overflow-hidden aspect-[16/10] bg-surface-container mb-space-md group">
                   <img
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    alt={PUBLISHED_IMAGES[0].alt}
-                    src={PUBLISHED_IMAGES[0].src}
+                    alt={draftImageAlt(draft.title, PUBLISHED_IMAGES[0].alt)}
+                    src={draftImage(draft.mainImage, PUBLISHED_IMAGES[0].src)}
                   />
                   <div className="absolute top-3 left-3 flex items-center gap-2">
                     <span className="px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm">
@@ -240,9 +261,11 @@ export function DesktopProductPublishedScreen({
                   Instant One-Tap Import
                 </p>
                 <p className="font-body-md text-body-md text-text-secondary max-w-xl mb-space-lg">
-                  Transform this Ribeye Steak into a featured promotional voucher. Photos, pricing, and branches
-                  will pre-fill into Deal Studio automatically.
+                  Transform {live ? draft.title || 'this item' : 'this Ribeye Steak'} into a featured promotional voucher. Photos,
+                  pricing, and branches will pre-fill into Deal Studio automatically.
                 </p>
+                {/* Sample benchmarks — no live source, so demo only. */}
+                {!live && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-space-sm mb-space-lg">
                   <div className="p-space-md rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between">
                     <span className="font-caption text-caption text-text-secondary">Expected Reach</span>
@@ -276,12 +299,13 @@ export function DesktopProductPublishedScreen({
                     </span>
                   </div>
                 </div>
+                )}
                 <div className="p-space-md rounded-xl bg-surface-container-lowest shadow-sm mb-space-lg flex items-center gap-space-md">
                   <div className="w-20 h-16 rounded-lg bg-surface-container overflow-hidden shrink-0">
                     <img
                       className="w-full h-full object-cover"
-                      alt={PUBLISHED_IMAGES[1].alt}
-                      src={PUBLISHED_IMAGES[1].src}
+                      alt={draftImageAlt(draft.title, PUBLISHED_IMAGES[1].alt)}
+                      src={draftImage(draft.mainImage, PUBLISHED_IMAGES[1].src)}
                     />
                   </div>
                   <div className="flex-1 min-w-0">

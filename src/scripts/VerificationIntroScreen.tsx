@@ -1,10 +1,12 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { useVerificationIntro, type VerificationResumeStep } from '../hooks/business/useVerification';
 
 interface VerificationIntroScreenProps {
   onBack: () => void;
-  onStart: () => void;
+  /** Live: receives the step to resume at when verification is already under way. */
+  onStart: (from?: VerificationResumeStep) => void;
   onLater: () => void;
 }
 
@@ -27,6 +29,8 @@ const WHY_ITEMS = [
 ];
 
 export function VerificationIntroScreen({ onBack, onStart, onLater }: VerificationIntroScreenProps) {
+  // Live: where this business is in verification, so the button resumes there.
+  const intro = useVerificationIntro();
   return (
     <AppScreen>
       <ScreenHeader title="Verify Your Business" onBack={onBack} />
@@ -70,6 +74,16 @@ export function VerificationIntroScreen({ onBack, onStart, onLater }: Verificati
           <p className="font-label-md text-label-md text-text-secondary mt-space-2xs max-w-[320px] mx-auto">
             Help us keep VEMTAP safe for customers and genuine businesses.
           </p>
+          {intro.note && (
+            <div
+              className={`mt-space-sm p-space-xs rounded-xl text-left flex items-start gap-space-xs ${
+                intro.verified ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-tint-blue text-primary'
+              }`}
+            >
+              <Icon name={intro.verified ? 'verified' : 'pending_actions'} filled={intro.verified} className="text-[18px] mt-0.5 shrink-0" />
+              <p className="font-label-sm text-label-sm font-semibold">{intro.note}</p>
+            </div>
+          )}
           <div className="mt-space-sm p-space-xs rounded-xl bg-surface-container-low text-left flex items-start gap-space-xs">
             <Icon name="info" className="text-primary-container text-[18px] mt-0.5 shrink-0" />
             <p className="font-caption text-caption text-on-surface-variant leading-relaxed">
@@ -115,22 +129,27 @@ export function VerificationIntroScreen({ onBack, onStart, onLater }: Verificati
           <button
             className="w-full h-11 rounded-xl bg-primary-container hover:bg-primary active:scale-[0.98] transition-all text-on-primary font-button-secondary text-button-secondary shadow-md flex items-center justify-center gap-space-xs"
             type="button"
-            onClick={onStart}
+            onClick={() => onStart(intro.started ? intro.resumeStep : undefined)}
+            disabled={intro.loading}
           >
-            <span>Start Verification</span>
+            <span>{intro.loading ? 'Checking your status…' : intro.cta}</span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
-          <button
-            className="h-10 px-space-md text-text-secondary hover:text-text-primary active:scale-95 transition-all font-label-md text-label-md"
-            type="button"
-            onClick={onLater}
-          >
-            I'll do this later
-          </button>
-          <p className="font-caption text-caption text-text-tertiary text-center px-space-sm mt-space-2xs leading-relaxed">
-            You can continue setting up your business, but some features may remain unavailable until verification is
-            completed.
-          </p>
+          {!intro.verified && (
+            <>
+              <button
+                className="h-10 px-space-md text-text-secondary hover:text-text-primary active:scale-95 transition-all font-label-md text-label-md"
+                type="button"
+                onClick={onLater}
+              >
+                I'll do this later
+              </button>
+              <p className="font-caption text-caption text-text-tertiary text-center px-space-sm mt-space-2xs leading-relaxed">
+                You can continue setting up your business, but some features may remain unavailable until verification is
+                completed.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </AppScreen>

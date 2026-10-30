@@ -14,7 +14,8 @@ import { toPrice, type CatalogueItem as LiveCatalogueItem } from '../services/ca
 
 interface BusinessCatalogScreenProps {
   onBack: () => void;
-  onNext: () => void;
+  /** Live: receives the item the deal is built on (null to skip deals for now). */
+  onNext: (dealItem: LiveCatalogueItem | null) => void;
   onSaveDraft: () => void;
   onAddProduct?: () => void;
   onAddService?: () => void;
@@ -153,13 +154,19 @@ export function BusinessCatalogScreen({
   const [methodsOpen, setMethodsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [dealItemId, setDealItemId] = useState<string | null>(null);
 
   // Live: what this business has actually published; demo keeps the samples.
   const live = hasApiConfig();
   const products = useCatalogueItems('product');
   const services = useCatalogueItems('service');
   const { remove } = useCatalogueItemMutations();
-  const liveItems = [...(products.data ?? []), ...(services.data ?? [])].map(liveToCatalogItem);
+  const liveRecords = [...(products.data ?? []), ...(services.data ?? [])];
+  const liveItems = liveRecords.map(liveToCatalogItem);
+  // Deals need a real item: the one the owner picked, else the first active one.
+  const dealable = liveRecords.filter((item) => item.status === 'active' && !item.isSuspended);
+  const dealItem = dealable.find((item) => item.id === dealItemId) ?? dealable[0] ?? null;
+  const loadingLive = live && (products.isLoading || services.isLoading);
 
   const importedProducts = useImportedProducts();
   const allItems = [...importedProducts.map(importedToCatalogItem), ...(live ? liveItems : items)];
@@ -437,7 +444,21 @@ export function BusinessCatalogScreen({
                     <Icon name={item.footerIcon} className="text-[16px]" />
                     <span>{item.footerText}</span>
                   </div>
-                  <span className="font-caption text-caption text-text-secondary">{item.meta}</span>
+                  {live && dealable.some((record) => record.id === item.id) ? (
+                    <button
+                      type="button"
+                      onClick={() => setDealItemId(item.id)}
+                      aria-pressed={dealItem?.id === item.id}
+                      className={`h-8 px-3 rounded-full font-caption text-caption font-semibold flex items-center gap-1 transition-colors ${
+                        dealItem?.id === item.id ? 'bg-primary text-on-primary' : 'bg-surface-canvas text-text-secondary'
+                      }`}
+                    >
+                      <Icon name={dealItem?.id === item.id ? 'check' : 'local_offer'} className="text-[14px]" />
+                      <span>{dealItem?.id === item.id ? 'Deal item' : 'Use for deal'}</span>
+                    </button>
+                  ) : (
+                    <span className="font-caption text-caption text-text-secondary">{item.meta}</span>
+                  )}
                 </div>
               </article>
             ))}
@@ -471,15 +492,16 @@ export function BusinessCatalogScreen({
             <button
               className="w-full h-[52px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-space-2xs"
               type="button"
-              onClick={onNext}
+              onClick={() => onNext(live ? dealItem : null)}
+              disabled={loadingLive}
             >
-              <span>Continue to First Deal Setup</span>
+              <span>{live && !loadingLive && !dealItem ? 'Continue — Add a Deal Later' : 'Continue to First Deal Setup'}</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
             <button
               className="min-h-[44px] px-space-md text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-colors"
               type="button"
-              onClick={onNext}
+              onClick={() => onNext(null)}
             >
               Skip for now, I'll add items later
             </button>
