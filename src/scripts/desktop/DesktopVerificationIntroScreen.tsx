@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
+import { useVerificationIntro, type VerificationResumeStep } from '../../hooks/business/useVerification';
 
 interface DesktopVerificationIntroScreenProps {
   onBack: () => void;
-  onStart: () => void;
+  /** Live: receives the step to resume at when verification is already under way. */
+  onStart: (from?: VerificationResumeStep) => void;
   onLater: () => void;
   onBrand?: () => void;
 }
@@ -43,7 +45,7 @@ const WHY_ITEMS = [
 ];
 
 const REQUIREMENTS = [
-  { icon: 'badge', title: 'Valid Identity Document', desc: "National Identification Number (NIN), Driver's License, or International Passport" },
+  { icon: 'badge', title: 'Valid Identity Document', desc: "National Identification Number (NIN), Driver's License, Voter's Card, or International Passport" },
   { icon: 'apartment', title: 'Business Registration (If Registered)', desc: 'CAC Registration Certificate or RC Number. Sole traders may verify as individuals.' },
   { icon: 'face', title: 'Fast Live Liveness Check', desc: 'A rapid 5-second camera selfie to confirm authorized identity operator' },
 ];
@@ -58,6 +60,18 @@ export function DesktopVerificationIntroScreen({
   const [launching, setLaunching] = useState(false);
   const [deferOpen, setDeferOpen] = useState(false);
   const timer = useRef<number | null>(null);
+  // Live: where this business is in verification, and its own name/logo on the badge preview.
+  const intro = useVerificationIntro();
+  const live = intro.live;
+  const whyItems = live
+    ? WHY_ITEMS.map((item) =>
+        item.title === 'Protect customers'
+          ? { ...item, body: 'Helps prevent fake businesses and fraudulent deals across your local community. Each business is linked to a verified identity.' }
+          : item.title === 'Build trust'
+            ? { ...item, tag: 'Verified Badge', body: 'Verified businesses earn the verified checkmark badge, so customers can see they are dealing with a genuine business.' }
+            : item,
+      )
+    : WHY_ITEMS;
 
   useEffect(
     () => () => {
@@ -67,6 +81,8 @@ export function DesktopVerificationIntroScreen({
   );
 
   const openModal = () => {
+    // Already under way: go straight back to where the owner left off.
+    if (intro.started) return onStart(intro.resumeStep);
     setModalOpen(true);
     setLaunching(false);
   };
@@ -156,16 +172,29 @@ export function DesktopVerificationIntroScreen({
                 </p>
               </div>
             </div>
-            <div className="shrink-0 bg-surface-subtle p-space-md rounded-xl flex items-center gap-space-md shadow-sm">
-              <div className="w-12 h-12 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
-                <Icon name="trending_up" className="text-[26px]" />
+            {/* Sample benchmark — no live source behind it, so demo only. */}
+            {!live && (
+              <div className="shrink-0 bg-surface-subtle p-space-md rounded-xl flex items-center gap-space-md shadow-sm">
+                <div className="w-12 h-12 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
+                  <Icon name="trending_up" className="text-[26px]" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-heading-md text-heading-md text-badge-discount-text tracking-tight">+380%</span>
+                  <span className="font-caption text-caption text-text-secondary">Average buyer trust index</span>
+                </div>
               </div>
-              <div className="flex flex-col">
-                <span className="font-heading-md text-heading-md text-badge-discount-text tracking-tight">+380%</span>
-                <span className="font-caption text-caption text-text-secondary">Average buyer trust index</span>
-              </div>
-            </div>
+            )}
           </div>
+          {intro.note && (
+            <div
+              className={`mt-space-lg flex items-center gap-space-sm p-space-md rounded-lg ${
+                intro.verified ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container-low text-on-surface'
+              }`}
+            >
+              <Icon name={intro.verified ? 'verified' : 'pending_actions'} filled={intro.verified} className="text-[20px] shrink-0" />
+              <p className="font-label-md text-label-md font-semibold">{intro.note}</p>
+            </div>
+          )}
           <div className="mt-space-lg pt-space-md flex items-center gap-space-sm text-text-secondary bg-surface-tint-blue/60 p-space-md rounded-lg">
             <Icon name="info" className="text-primary text-[20px] shrink-0" />
             <p className="font-body-md text-body-md text-on-surface">
@@ -188,7 +217,7 @@ export function DesktopVerificationIntroScreen({
                 3 Key Advantages
               </span>
             </div>
-            {WHY_ITEMS.map((item) => (
+            {whyItems.map((item) => (
               <div
                 key={item.title}
                 className="group relative bg-surface-canvas rounded-xl p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)]"
@@ -228,14 +257,22 @@ export function DesktopVerificationIntroScreen({
                     {item.title === 'Build trust' && (
                       <div className="mt-space-xs bg-surface-subtle p-space-sm rounded-lg flex items-center justify-between flex-wrap gap-space-xs">
                         <div className="flex items-center gap-space-xs">
-                          <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-caption">
-                            V
-                          </div>
-                          <span className="font-label-sm text-label-sm text-text-primary">Your Store Name</span>
-                          <Icon name="check_circle" filled className="text-primary text-[16px]" />
+                          {intro.logoUrl ? (
+                            <img src={intro.logoUrl} alt="" className="w-7 h-7 rounded-full object-cover bg-surface-canvas" />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary font-semibold text-caption">
+                              {live ? intro.businessName.charAt(0).toUpperCase() : 'V'}
+                            </div>
+                          )}
+                          <span className="font-label-sm text-label-sm text-text-primary">{intro.businessName}</span>
+                          <Icon name="check_circle" filled className={`text-[16px] ${!live || intro.verified ? 'text-primary' : 'text-text-tertiary'}`} />
                         </div>
-                        <span className="text-badge-discount-text font-label-sm text-caption font-semibold bg-badge-discount-bg px-space-xs py-space-2xs rounded">
-                          Live Badging Active
+                        <span
+                          className={`font-label-sm text-caption font-semibold px-space-xs py-space-2xs rounded ${
+                            !live || intro.verified ? 'text-badge-discount-text bg-badge-discount-bg' : 'text-text-secondary bg-surface-container'
+                          }`}
+                        >
+                          {!live ? 'Live Badging Active' : intro.verified ? 'Badge Active' : 'Shown once verified'}
                         </span>
                       </div>
                     )}
@@ -243,16 +280,19 @@ export function DesktopVerificationIntroScreen({
                 </div>
               </div>
             ))}
-            <div className="bg-surface-container-low rounded-xl p-space-md flex items-center gap-space-md">
-              <div className="w-10 h-10 rounded-full bg-surface-canvas flex items-center justify-center shrink-0 shadow-sm text-primary">
-                <Icon name="format_quote" className="text-[20px]" />
+            {/* Sample testimonial — never shown to a real business as if it were genuine. */}
+            {!live && (
+              <div className="bg-surface-container-low rounded-xl p-space-md flex items-center gap-space-md">
+                <div className="w-10 h-10 rounded-full bg-surface-canvas flex items-center justify-center shrink-0 shadow-sm text-primary">
+                  <Icon name="format_quote" className="text-[20px]" />
+                </div>
+                <p className="font-caption text-caption text-text-secondary italic">
+                  “Completing verified onboarding took under two minutes. Our footfall jumped within 48 hours of
+                  appearing on local radar feeds.” —{' '}
+                  <span className="font-medium text-text-primary not-italic">Chioma E., Lekki Lifestyle Hub</span>
+                </p>
               </div>
-              <p className="font-caption text-caption text-text-secondary italic">
-                “Completing verified onboarding took under two minutes. Our footfall jumped within 48 hours of
-                appearing on local radar feeds.” —{' '}
-                <span className="font-medium text-text-primary not-italic">Chioma E., Lekki Lifestyle Hub</span>
-              </p>
-            </div>
+            )}
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-space-lg">
@@ -306,21 +346,26 @@ export function DesktopVerificationIntroScreen({
                   className="w-full h-11 bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] hover:bg-primary-container active:scale-[0.99] transition-all cursor-pointer"
                   type="button"
                   onClick={openModal}
+                  disabled={intro.loading}
                 >
-                  <span>Start Verification</span>
+                  <span>{intro.loading ? 'Checking your status…' : intro.cta}</span>
                   <Icon name="arrow_forward" className="text-[18px]" />
                 </button>
-                <button
-                  className="w-full py-space-xs text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-colors cursor-pointer text-center"
-                  type="button"
-                  onClick={() => setDeferOpen(true)}
-                >
-                  I'll do this later
-                </button>
-                <p className="font-caption text-caption text-text-tertiary text-center px-space-xs leading-normal">
-                  You can continue setting up your business profile and catalog, but deals and public discovery will
-                  remain inactive until verification is completed.
-                </p>
+                {!intro.verified && (
+                  <button
+                    className="w-full py-space-xs text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-colors cursor-pointer text-center"
+                    type="button"
+                    onClick={() => setDeferOpen(true)}
+                  >
+                    I'll do this later
+                  </button>
+                )}
+                {!intro.verified && (
+                  <p className="font-caption text-caption text-text-tertiary text-center px-space-xs leading-normal">
+                    You can continue setting up your business profile and catalog, but deals and public discovery will
+                    remain inactive until verification is completed.
+                  </p>
+                )}
               </div>
             </div>
             <div className="bg-surface-subtle p-space-md rounded-xl flex items-center justify-between text-caption font-caption text-text-secondary shadow-sm flex-wrap gap-space-xs">

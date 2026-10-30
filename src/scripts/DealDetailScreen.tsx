@@ -15,7 +15,7 @@ interface DealDetailScreenProps {
   onMerchant: () => void;
   claimed: boolean;
   onViewWallet: () => void;
-  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string; commentCount?: number | string; commentsCount?: number | string } | null;
+  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string; images?: string[]; commentCount?: number | string; commentsCount?: number | string } | null;
 }
 
 const HERO_IMAGE =
@@ -82,7 +82,10 @@ export function DealDetailScreen({
   const dealTitle = deal?.title?.trim() || 'Featured local deal';
   const dealBusiness = deal?.business?.trim() || 'Local dining partner';
   const dealLocation = deal?.location?.trim() || 'Your area';
-  const dealImage = deal?.image || HERO_IMAGE;
+  // The deal's own photos (same main photo as its card); the sample hero only when it has none.
+  const photos = deal?.images?.length ? deal.images : [deal?.image || HERO_IMAGE];
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const dealImage = photos[Math.min(photoIndex, photos.length - 1)];
   const commentsCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
 
   return (
@@ -117,7 +120,7 @@ export function DealDetailScreen({
       />
 
       <div className="relative w-full h-80 bg-surface-container-low overflow-hidden shrink-0">
-        <img className="w-full h-full object-cover" alt={HERO_ALT} src={dealImage} />
+        <img className="w-full h-full object-cover" alt={deal?.image ? dealTitle : HERO_ALT} src={dealImage} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
         <div className="absolute bottom-4 left-margin right-margin flex items-center justify-between">
           <div className="flex items-center gap-space-xs">
@@ -135,6 +138,26 @@ export function DealDetailScreen({
           </div>
         </div>
       </div>
+
+      {photos.length > 1 && (
+        <div className="flex gap-space-xs px-margin pt-space-sm overflow-x-auto no-scrollbar" role="tablist" aria-label="Deal photos">
+          {photos.map((photo, index) => (
+            <button
+              key={`${index}-${photo}`}
+              type="button"
+              role="tab"
+              aria-selected={index === photoIndex}
+              aria-label={`Photo ${index + 1} of ${photos.length}`}
+              onClick={() => setPhotoIndex(index)}
+              className={`w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-container transition-opacity ${
+                index === photoIndex ? 'ring-2 ring-primary' : 'opacity-70'
+              }`}
+            >
+              <img alt="" className="w-full h-full object-cover" src={photo} />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col px-margin pt-space-lg pb-32">
         <div className="flex items-center justify-between">

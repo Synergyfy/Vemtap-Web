@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { useBusinessLocationLookup } from '../../hooks/business/useBusinessLocationLookup';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 
 export interface BusinessLocationResult {
   address: string;
+  /** Resolved from the GPS fix or the typed address when the API could name it. */
+  city?: string;
+  state?: string;
   latitude?: number;
   longitude?: number;
 }
@@ -30,8 +34,8 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
   const [address, setAddress] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent');
   const [street, setStreet] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent');
   const [landmark, setLandmark] = useState(live ? '' : 'Opposite Cubana Suites, Ground Floor (Suite 4)');
-  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [gpsLabel, setGpsLabel] = useState('Use current device location');
+  const lookup = useBusinessLocationLookup(address);
+  const [gpsUsed, setGpsUsed] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [satellite, setSatellite] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -53,25 +57,30 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
     addressRef.current?.focus();
   };
 
-  const handleGps = () => {
-    if (gpsLabel !== 'Use current device location') return;
-    if (!navigator.geolocation) {
-      setGpsLabel('Location is not available on this device');
-      return;
-    }
-    setGpsLabel('Acquiring GPS Fix...');
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-        setGpsLabel('Current Location Locked');
-      },
-      () => {
-        setGpsLabel('Could not get your location');
-        timers.current.push(window.setTimeout(() => setGpsLabel('Use current device location'), 2500));
-      },
-      { enableHighAccuracy: true, timeout: 15_000 },
-    );
+  const handleGps = async () => {
+    if (lookup.status === 'locating') return;
+    setGpsUsed(true);
+    const label = await lookup.locate();
+    if (label) setAddress(label);
   };
+  const gpsLabel =
+    lookup.status === 'locating'
+      ? 'Acquiring GPS Fix...'
+      : gpsUsed && lookup.coords
+        ? 'Current Location Locked'
+        : 'Use current device location';
+
+  // Live: what the API resolved (blank until it has); demo keeps the sample territory.
+  const territory = live
+    ? {
+        country: lookup.place?.country ?? null,
+        state: lookup.place?.state ?? null,
+        city: lookup.place?.city ?? null,
+        district: lookup.place?.district ?? null,
+      }
+    : { country: 'Nigeria', state: 'FCT (Abuja)', city: 'Abuja Municipal', district: 'Wuse 2' };
+  const resolved = !live || lookup.status === 'resolved';
+  const looking = lookup.status === 'locating' || lookup.status === 'searching';
 
   const zoomIn = () => setZoom((value) => Math.min(1.8, Number((value + 0.2).toFixed(1))));
   const zoomOut = () => setZoom((value) => Math.max(0.8, Number((value - 0.2).toFixed(1))));
@@ -142,7 +151,7 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
               </div>
               <button
                 type="button"
-                onClick={handleGps}
+                onClick={() => void handleGps()}
                 className="h-11 px-space-md w-full rounded-xl bg-surface-tint-blue text-primary font-label-md text-label-md flex items-center justify-between hover:bg-surface-container transition-colors"
               >
                 <div className="flex items-center gap-space-xs">
@@ -164,71 +173,84 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
                     Territory Resolution
                   </h2>
                 </div>
-                <span className="inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                  <Icon name="check_circle" className="text-[14px]" />
-                  Auto-Verified
+                <span
+                  className={`inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full font-caption text-caption font-semibold ${
+                    resolved ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-subtle text-text-secondary'
+                  }`}
+                >
+                  <Icon
+                    name={looking ? 'progress_activity' : resolved ? 'check_circle' : 'pending'}
+                    className={`text-[14px] ${looking ? 'animate-spin' : ''}`}
+                  />
+                  {looking ? 'Looking up…' : resolved ? (live ? 'Resolved' : 'Auto-Verified') : 'Not resolved yet'}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-space-sm bg-surface-subtle p-space-md rounded-xl">
                 <div className="flex flex-col gap-1">
                   <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">Country</span>
                   <div className="flex items-center gap-space-2xs">
-                    <span className="text-[14px]">🇳🇬</span>
-                    <span className="font-label-md text-label-md text-text-primary font-medium">Nigeria</span>
+                    {territory.country === 'Nigeria' && <span className="text-[14px]">🇳🇬</span>}
+                    <span className="font-label-md text-label-md text-text-primary font-medium">{territory.country ?? '—'}</span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">
                     State / Region
                   </span>
-                  <span className="font-label-md text-label-md text-text-primary font-medium">FCT (Abuja)</span>
+                  <span className="font-label-md text-label-md text-text-primary font-medium">{territory.state ?? '—'}</span>
                 </div>
                 <div className="flex flex-col gap-1 pt-space-xs">
                   <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">
                     City / Metro
                   </span>
-                  <span className="font-label-md text-label-md text-text-primary font-medium">Abuja Municipal</span>
+                  <span className="font-label-md text-label-md text-text-primary font-medium">{territory.city ?? '—'}</span>
                 </div>
                 <div className="flex flex-col gap-1 pt-space-xs">
                   <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">
                     District / Area
                   </span>
-                  <span className="font-label-md text-label-md text-text-primary font-medium">Wuse 2</span>
+                  <span className="font-label-md text-label-md text-text-primary font-medium">{territory.district ?? '—'}</span>
                 </div>
               </div>
-              <div className="rounded-xl p-space-md bg-surface-tint-blue flex flex-col gap-space-xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-space-2xs">
-                    <Icon name="hub" className="text-primary text-[18px]" />
-                    <span className="font-label-md text-label-md text-primary font-semibold">
-                      District Cluster Assignment
-                    </span>
-                  </div>
-                  <div className="relative group">
-                    <button
-                      type="button"
-                      aria-label="More cluster information"
-                      className="text-text-tertiary hover:text-primary transition-colors flex items-center"
-                    >
-                      <Icon name="info" className="text-[18px]" />
-                    </button>
-                    <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 p-space-sm bg-inverse-surface text-inverse-on-surface font-caption text-caption rounded-lg shadow-xl z-20">
-                      Customers browsing within this 3km retail radius will see your flash offers and tap-to-pay deals
-                      instantly.
+              {lookup.message && (
+                <p className="font-caption text-caption text-text-secondary">{lookup.message}</p>
+              )}
+              {/* Cluster assignment has no backend yet — sample only. */}
+              {!live && (
+                <div className="rounded-xl p-space-md bg-surface-tint-blue flex flex-col gap-space-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-space-2xs">
+                      <Icon name="hub" className="text-primary text-[18px]" />
+                      <span className="font-label-md text-label-md text-primary font-semibold">
+                        District Cluster Assignment
+                      </span>
+                    </div>
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        aria-label="More cluster information"
+                        className="text-text-tertiary hover:text-primary transition-colors flex items-center"
+                      >
+                        <Icon name="info" className="text-[18px]" />
+                      </button>
+                      <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 p-space-sm bg-inverse-surface text-inverse-on-surface font-caption text-caption rounded-lg shadow-xl z-20">
+                        Customers browsing within this 3km retail radius will see your flash offers and tap-to-pay deals
+                        instantly.
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="font-label-sm text-label-sm text-text-primary">Wuse Commercial Hub Cluster</span>
+                    <span className="px-space-xs py-0.5 rounded-full bg-surface-canvas text-primary font-caption text-caption font-semibold shadow-sm">
+                      Assigned
+                    </span>
+                  </div>
+                  <p className="font-caption text-caption text-text-secondary mt-1">
+                    Customers browsing within this 3km retail radius will see your flash offers and tap-to-pay deals
+                    instantly.
+                  </p>
                 </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="font-label-sm text-label-sm text-text-primary">Wuse Commercial Hub Cluster</span>
-                  <span className="px-space-xs py-0.5 rounded-full bg-surface-canvas text-primary font-caption text-caption font-semibold shadow-sm">
-                    Assigned
-                  </span>
-                </div>
-                <p className="font-caption text-caption text-text-secondary mt-1">
-                  Customers browsing within this 3km retail radius will see your flash offers and tap-to-pay deals
-                  instantly.
-                </p>
-              </div>
+              )}
             </div>
 
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
@@ -439,7 +461,9 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
               onClick={() =>
                 onComplete({
                   address: [street.trim() || address.trim(), landmark.trim()].filter(Boolean).join(' — '),
-                  ...(coords ?? {}),
+                  ...(lookup.place?.city ? { city: lookup.place.city } : {}),
+                  ...(lookup.place?.state ? { state: lookup.place.state } : {}),
+                  ...(lookup.coords ?? {}),
                 })
               }
               className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"

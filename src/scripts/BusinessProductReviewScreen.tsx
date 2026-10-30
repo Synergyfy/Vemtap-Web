@@ -17,6 +17,8 @@ interface BusinessProductReviewScreenProps {
   /** Jumps to the dedicated image step; falls back to basics when unwired. */
   onEditImage?: () => void;
   onPublish: () => void;
+  /** Live: true while the parent is saving, so the button reflects the real request. */
+  publishing?: boolean;
   onSaveDraft: () => void;
 }
 
@@ -75,6 +77,7 @@ export function BusinessProductReviewScreen({
   onEditDescription,
   onEditImage,
   onPublish,
+  publishing = false,
   onSaveDraft,
 }: BusinessProductReviewScreenProps) {
   const [publishStatus, setPublishStatus] = useState<'idle' | 'publishing' | 'published'>('idle');
@@ -90,7 +93,9 @@ export function BusinessProductReviewScreen({
   );
 
   const handlePublish = () => {
-    if (publishStatus !== 'idle') return;
+    if (shownStatus !== 'idle') return;
+    // Live: publish for real; the parent closes the flow on success or shows the error.
+    if (live) return onPublish();
     setPublishStatus('publishing');
     publishTimer.current = window.setTimeout(() => {
       setPublishStatus('published');
@@ -103,6 +108,8 @@ export function BusinessProductReviewScreen({
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
   // Live: the real branches ticked in the previous step, at this item's price.
   const live = hasApiConfig();
+  // Live: the button follows the real request (no simulated "Published Live!" before the API answers).
+  const shownStatus = live ? (publishing ? 'publishing' : 'idle') : publishStatus;
   const { branches: liveBranches } = useBusinessBranch();
   const reviewBranches: ReviewBranch[] = live
     ? liveBranches
@@ -428,58 +435,96 @@ export function BusinessProductReviewScreen({
                 Edit
               </button>
             </div>
-            <div className="flex flex-col gap-space-xs">
-              <div className="flex items-center justify-between p-space-sm bg-surface-subtle rounded-lg">
-                <div className="flex items-center gap-space-sm">
-                  <div className="w-7 h-7 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
-                    <Icon name="check" className="text-[16px]" />
+            {live ? (
+              <div className="flex flex-col gap-space-xs">
+                {draft.fulfillment?.pickup !== false && (
+                  <div className="flex items-center justify-between p-space-sm bg-surface-subtle rounded-lg">
+                    <div className="flex items-center gap-space-sm">
+                      <div className="w-7 h-7 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
+                        <Icon name="store" className="text-[16px]" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-label-md text-label-md font-semibold text-text-primary">In-Store Pickup</span>
+                        
+                      </div>
+                    </div>
+                    
                   </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md font-semibold text-text-primary">
-                      In-Store Pickup / Dine-In Walk
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">
-                      Ready in 15 mins upon confirmation
-                    </span>
+                )}
+                {draft.fulfillment?.delivery !== false && (
+                  <div className="flex items-center justify-between p-space-sm bg-surface-subtle rounded-lg">
+                    <div className="flex items-center gap-space-sm">
+                      <div className="w-7 h-7 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
+                        <Icon name="moped" className="text-[16px]" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-label-md text-label-md font-semibold text-text-primary">Delivery</span>
+                        
+                      </div>
+                    </div>
+                    {draft.prepWindow && (
+                      <span className="font-label-sm text-label-sm font-bold text-primary">{draft.prepWindow} mins</span>
+                    )}
                   </div>
-                </div>
-                <span className="font-label-sm text-label-sm font-bold text-badge-discount-text">
-                  Instant
-                </span>
+                )}
+                {draft.fulfillment?.pickup === false && draft.fulfillment?.delivery === false && (
+                  <p className="font-caption text-caption text-error">No way to get it yet — turn on pickup or delivery.</p>
+                )}
               </div>
-              <div className="flex items-center justify-between p-space-sm bg-surface-subtle rounded-lg">
-                <div className="flex items-center gap-space-sm">
-                  <div className="w-7 h-7 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
-                    <Icon name="check" className="text-[16px]" />
+            ) : (
+              <div className="flex flex-col gap-space-xs">
+                <div className="flex items-center justify-between p-space-sm bg-surface-subtle rounded-lg">
+                  <div className="flex items-center gap-space-sm">
+                    <div className="w-7 h-7 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
+                      <Icon name="check" className="text-[16px]" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-label-md text-label-md font-semibold text-text-primary">
+                        In-Store Pickup / Dine-In Walk
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary">
+                        Ready in 15 mins upon confirmation
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md font-semibold text-text-primary">
-                      Local Delivery / Express Dispatch
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">
-                      Hot insulated bike courier
-                    </span>
-                  </div>
+                  <span className="font-label-sm text-label-sm font-bold text-badge-discount-text">
+                    Instant
+                  </span>
                 </div>
-                <span className="font-label-sm text-label-sm font-bold text-primary">20 - 30 mins</span>
-              </div>
-              <div className="flex items-center justify-between p-space-sm bg-surface-container-low/70 rounded-lg opacity-80">
-                <div className="flex items-center gap-space-sm">
-                  <div className="w-7 h-7 rounded-full bg-error-container text-error flex items-center justify-center">
-                    <Icon name="block" className="text-[16px]" />
+                <div className="flex items-center justify-between p-space-sm bg-surface-subtle rounded-lg">
+                  <div className="flex items-center gap-space-sm">
+                    <div className="w-7 h-7 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
+                      <Icon name="check" className="text-[16px]" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-label-md text-label-md font-semibold text-text-primary">
+                        Local Delivery / Express Dispatch
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary">
+                        Hot insulated bike courier
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md font-medium text-text-secondary">
-                      Interstate Cargo Waybill
-                    </span>
-                    <span className="font-caption text-caption text-text-tertiary">
-                      Fresh cooked items cannot travel interstate
-                    </span>
-                  </div>
+                  <span className="font-label-sm text-label-sm font-bold text-primary">20 - 30 mins</span>
                 </div>
-                <span className="font-label-sm text-label-sm font-semibold text-error">Perishable</span>
+                <div className="flex items-center justify-between p-space-sm bg-surface-container-low/70 rounded-lg opacity-80">
+                  <div className="flex items-center gap-space-sm">
+                    <div className="w-7 h-7 rounded-full bg-error-container text-error flex items-center justify-center">
+                      <Icon name="block" className="text-[16px]" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-label-md text-label-md font-medium text-text-secondary">
+                        Interstate Cargo Waybill
+                      </span>
+                      <span className="font-caption text-caption text-text-tertiary">
+                        Fresh cooked items cannot travel interstate
+                      </span>
+                    </div>
+                  </div>
+                  <span className="font-label-sm text-label-sm font-semibold text-error">Perishable</span>
+                </div>
               </div>
-            </div>
+            )}
           </section>
 
           <section className="bg-surface-canvas rounded-xl p-space-md shadow-md flex flex-col gap-space-md">
@@ -503,20 +548,36 @@ export function BusinessProductReviewScreen({
             <p className="font-body-md text-body-md text-text-secondary leading-relaxed bg-surface-subtle p-space-sm rounded-xl">
               “{draft.description}”
             </p>
-            <div className="flex flex-wrap gap-space-xs">
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-medium">
-                <Icon name="eco" className="text-primary text-[15px]" />
-                Gluten-free
+            {live ? (
+              (draft.tags?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-space-xs">
+                  {draft.tags.map((tag) => (
+                    <div
+                      key={tag}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-medium"
+                    >
+                      <Icon name="sell" className="text-primary text-[15px]" />
+                      {tag}
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="flex flex-wrap gap-space-xs">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-medium">
+                  <Icon name="eco" className="text-primary text-[15px]" />
+                  Gluten-free
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-medium">
+                  <Icon filled name="stars" className="text-badge-discount-text text-[15px]" />
+                  Halal certified
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-medium">
+                  <Icon name="recycling" className="text-tertiary text-[15px]" />
+                  Eco packaging
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-medium">
-                <Icon filled name="stars" className="text-badge-discount-text text-[15px]" />
-                Halal certified
-              </div>
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-on-surface font-label-sm text-label-sm font-medium">
-                <Icon name="recycling" className="text-tertiary text-[15px]" />
-                Eco packaging
-              </div>
-            </div>
+            )}
           </section>
 
           <div className="bg-gradient-to-br from-primary-fixed/30 to-surface-tint-blue rounded-xl p-space-md flex items-center justify-between shadow-sm">
@@ -547,27 +608,27 @@ export function BusinessProductReviewScreen({
         <div className="flex flex-col gap-space-sm">
           <button
             className={`w-full h-[52px] rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-              publishStatus === 'published'
+              shownStatus === 'published'
                 ? 'bg-badge-discount-text text-on-primary'
                 : 'bg-primary hover:bg-on-primary-fixed-variant text-on-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)]'
             }`}
             type="button"
-            disabled={publishStatus !== 'idle'}
+            disabled={shownStatus !== 'idle'}
             onClick={handlePublish}
           >
-            {publishStatus === 'idle' && (
+            {shownStatus === 'idle' && (
               <>
                 <span>Publish Product to Storefront</span>
                 <span className="text-base">🚀</span>
               </>
             )}
-            {publishStatus === 'publishing' && (
+            {shownStatus === 'publishing' && (
               <>
                 <Icon name="sync" className="text-[20px] animate-spin" />
                 <span>Broadcasting to VEMTAP...</span>
               </>
             )}
-            {publishStatus === 'published' && (
+            {shownStatus === 'published' && (
               <>
                 <Icon name="check_circle" className="text-[20px]" />
                 <span>Published Live! 🎉</span>

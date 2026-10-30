@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiGet, apiPost, hasApiConfig } from '../lib/api';
 import { claimsService } from '../services/claimsService';
+import { useSessionUser } from '../hooks/useSessionUser';
 
 /**
  * Claim, gift and redemption records for the signed-in customer.
@@ -227,9 +228,12 @@ const ClaimsContext = createContext<ClaimsContextValue | null>(null);
 
 export function ClaimsProvider({ children }: { children: ReactNode }) {
   const [claims, setClaims] = useState<ClaimRecord[]>(readClaims);
+  // `/me/claims` and `/me/gifts` are customer-only: business accounts and
+  // signed-out visitors would only get a 403/401, so they don't ask.
+  const isCustomer = useSessionUser().data?.role === 'Customer';
 
   useEffect(() => {
-    if (!hasApiConfig()) return;
+    if (!hasApiConfig() || !isCustomer) return;
 
     let ignore = false;
 
@@ -272,7 +276,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [isCustomer]);
 
   const recordClaim = useCallback(
     async (input: ClaimInput): Promise<ClaimRecord> => {

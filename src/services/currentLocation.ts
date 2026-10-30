@@ -10,6 +10,9 @@ export const LOCATION_DENIED = 'Location access is off. Allow it in your browser
 export const LOCATION_UNAVAILABLE = "Couldn't get your location. Try again or pick your area below.";
 export const AREA_NOT_FOUND = "We couldn't find that area. Try a nearby landmark or district.";
 export const SEARCH_UNAVAILABLE = "Location search isn't available right now. Try again shortly.";
+export const AREA_UNNAMED = "Couldn't name your area. Showing deals near you.";
+/** The district used when the API can't name the customer's position. */
+export const UNNAMED_DISTRICT = 'Current location';
 
 const currentPosition = () =>
   new Promise<GeolocationPosition>((resolve, reject) => {
@@ -20,7 +23,8 @@ const currentPosition = () =>
     navigator.geolocation.getCurrentPosition(
       resolve,
       (error) => reject(new Error(error.code === error.PERMISSION_DENIED ? LOCATION_DENIED : LOCATION_UNAVAILABLE)),
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 5 * 60_000 },
+      // A fresh, precise fix: a cached or coarse (IP-based) position can be kilometres off.
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
     );
   });
 
@@ -36,7 +40,7 @@ export async function getCurrentPlace(): Promise<PickedPlace> {
   const lng = Number(coords.longitude.toFixed(5));
   const named = await geocodingService.reverse(lat, lng).catch(() => null);
   return {
-    district: named?.district || named?.city || 'Current location',
+    district: named?.district || named?.city || UNNAMED_DISTRICT,
     city: named?.city || undefined,
     lat,
     lng,

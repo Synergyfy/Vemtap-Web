@@ -5,14 +5,19 @@ import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadi
 import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
+import { dealPrimaryImage } from '../../utils/dealImages';
 
 interface DesktopFeaturedDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenFilters: () => void;
-  onOpenDeal: () => void;
+  /** Receives the clicked deal so the detail page loads that deal (and its photos). */
+  onOpenDeal: (deal: { id: string; title: string; business: string; price: number; oldPrice: number; discountLabel: string; image: string }) => void;
 }
 
 interface FeaturedDeal {
+  id: string;
+  priceValue: number;
+  oldPriceValue: number;
   image: string;
   imageAlt: string;
   discount: string;
@@ -39,13 +44,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-const getOfferImage = (offer: Record<string, unknown>): string => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
-  return typeof image === 'string' && image.trim() ? image : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
-};
+/** Same rule as the home cards and the detail page: the deal's own photo first. */
+const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
@@ -87,6 +87,16 @@ const getOfferComparePrice = (offer: Record<string, unknown>): number => {
   return getOfferPrice(offer);
 };
 
+const toDealSummary = (deal: FeaturedDeal) => ({
+  id: deal.id,
+  title: deal.title,
+  business: deal.store,
+  price: deal.priceValue,
+  oldPrice: deal.oldPriceValue,
+  discountLabel: deal.save,
+  image: deal.image,
+});
+
 const toFeaturedDeal = (offer: Record<string, unknown>): FeaturedDeal => {
   const title = getOfferTitle(offer);
   const price = getOfferPrice(offer);
@@ -95,6 +105,9 @@ const toFeaturedDeal = (offer: Record<string, unknown>): FeaturedDeal => {
   const discountValue = Math.max(comparePrice - price, 0);
 
   return {
+    id: String(offer.id ?? `${business}-${title}`),
+    priceValue: price,
+    oldPriceValue: comparePrice,
     image: getOfferImage(offer),
     imageAlt: `${title} by ${business}`,
     discount: price > 0 ? 'Live Deal' : 'Offer',
@@ -283,14 +296,14 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
               </article>
             ) : featuredDeals.map((deal) => (
               <article
-                key={deal.title}
+                key={deal.id}
                 role="button"
                 tabIndex={0}
-                onClick={onOpenDeal}
+                onClick={() => onOpenDeal(toDealSummary(deal))}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    onOpenDeal();
+                    onOpenDeal(toDealSummary(deal));
                   }
                 }}
                 className="group flex flex-col rounded-2xl bg-surface-container-lowest shadow-[0_4px_20px_-4px_rgba(13,37,76,0.06)] hover:shadow-[0_12px_28px_-6px_rgba(6,108,244,0.12)] transition-all duration-300 overflow-hidden cursor-pointer"

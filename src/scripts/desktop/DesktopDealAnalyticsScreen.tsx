@@ -4,9 +4,10 @@ import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { useOfferGroup, useOfferGroupMutations, useOffers } from '../../hooks/business/useOffers';
+import { DealEndDialog, type DealEndRequest } from '../../components/DealEndDialog';
 import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 import { apiErrorMessage } from '../../services/errorMessages';
-import { dealBadgeLabel, isOfferPaused, offerClaimStats, redemptionWindowLabel } from '../catalogueLive';
+import { dealBadgeLabel, isOfferPaused, offerClaimStats, offerSlot, redemptionWindowLabel } from '../catalogueLive';
 
 interface DesktopDealAnalyticsScreenProps {
   /** Live: the deal group to show; demo shows the sample deal. */
@@ -19,6 +20,8 @@ interface DesktopDealAnalyticsScreenProps {
   onBoost?: () => void;
   /** Opens the deal studio so every part of the deal can be edited. */
   onEditDeal?: () => void;
+  /** Live: the deal was deleted — leave this page. */
+  onDeleted?: () => void;
 }
 
 const HERO_IMAGE =
@@ -53,6 +56,7 @@ export function DesktopDealAnalyticsScreen({
   onChat,
   onBoost,
   onEditDeal,
+  onDeleted,
 }: DesktopDealAnalyticsScreenProps) {
   // Live: the deal's real stats, branches and copy; demo keeps the sample deal.
   const live = hasApiConfig() && Boolean(dealGroupId);
@@ -80,6 +84,10 @@ export function DesktopDealAnalyticsScreen({
   const activeRows = pricingRows.filter((row) => row.isActive);
   const bundled = (offer?.itemIds ?? []).map((id) => (itemsQuery.data ?? []).find((item) => item.id === id));
   const paused = offer ? isOfferPaused(offer) : false;
+  // Closed = ended early or past its end date; it can't be resumed or closed again.
+  const closed = offer ? offerSlot(offer) === 'expired' : false;
+  const [endRequest, setEndRequest] = useState<DealEndRequest | null>(null);
+  const dealName = offer?.name ?? 'This deal';
   const setStatus = (status: 'active' | 'inactive', done: string) =>
     groupMutations.setStatus.mutate(status, {
       onSuccess: () => showToast(done),
@@ -167,19 +175,31 @@ export function DesktopDealAnalyticsScreen({
             </button>
             <button
               type="button"
-              title={paused ? 'Resume Deal' : 'Pause Deal'}
+              title={closed ? 'Closed deals can’t be resumed' : paused ? 'Resume Deal' : 'Pause Deal'}
+              disabled={live && closed}
               onClick={live ? () => setStatus(paused ? 'active' : 'inactive', paused ? 'Deal resumed.' : 'Deal paused.') : undefined}
-              className="h-[48px] px-space-sm rounded-xl bg-surface-canvas text-text-secondary font-button-secondary text-button-secondary shadow-sm hover:bg-surface-subtle transition-colors flex items-center justify-center"
+              className="h-[48px] px-space-sm rounded-xl bg-surface-canvas text-text-secondary font-button-secondary text-button-secondary shadow-sm hover:bg-surface-subtle transition-colors flex items-center justify-center disabled:opacity-40"
             >
               <Icon name={paused ? 'play_circle' : 'pause_circle'} className="text-[20px]" />
             </button>
             <button
               type="button"
-              title="End Promotion"
-              onClick={live ? () => setStatus('inactive', 'Deal ended. Existing claims are kept.') : undefined}
-              className="h-[48px] px-space-sm rounded-xl bg-surface-canvas text-error font-button-secondary text-button-secondary shadow-sm hover:bg-error-container hover:text-on-error-container transition-colors flex items-center justify-center"
+              title={closed ? 'Already closed' : 'Close Deal'}
+              disabled={live && closed}
+              onClick={live && dealGroupId ? () => setEndRequest({ kind: 'close', dealGroupId, name: dealName }) : undefined}
+              className="h-[48px] px-space-md rounded-xl bg-surface-canvas text-error font-button-secondary text-button-secondary shadow-sm hover:bg-error-container hover:text-on-error-container transition-colors flex items-center gap-1.5 disabled:opacity-40"
             >
               <Icon name="stop_circle" className="text-[20px]" />
+              <span>{closed ? 'Closed' : 'Close Deal'}</span>
+            </button>
+            <button
+              type="button"
+              title={claims > 0 ? 'Deals with claims can’t be deleted — close it instead' : 'Delete Deal'}
+              disabled={live && claims > 0}
+              onClick={live && dealGroupId ? () => setEndRequest({ kind: 'delete', dealGroupId, name: dealName }) : undefined}
+              className="h-[48px] px-space-sm rounded-xl bg-surface-canvas text-error font-button-secondary text-button-secondary shadow-sm hover:bg-error-container hover:text-on-error-container transition-colors flex items-center justify-center disabled:opacity-40"
+            >
+              <Icon name="delete" className="text-[20px]" />
             </button>
           </div>
         </div>
@@ -913,6 +933,15 @@ export function DesktopDealAnalyticsScreen({
           {toast}
         </div>
       )}
+      <DealEndDialog
+        request={endRequest}
+        onClose={() => setEndRequest(null)}
+        onDone={(message, kind) => {
+          showToast(message);
+          if (kind === 'delete') onDeleted?.();
+        }}
+        onError={showToast}
+      />
     </MerchantWorkspaceChrome>
   );
 }

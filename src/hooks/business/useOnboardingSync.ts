@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { hasApiConfig } from '../../services/api/client';
+import { ApiError, hasApiConfig } from '../../services/api/client';
 import { businessService, type MyBusiness } from '../../services/businessService';
 import { useBusinessCategoryOptions } from './useBusinessCategoryOptions';
 import { myBusinessKeys } from './useMyBusiness';
@@ -9,12 +9,14 @@ import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import {
+  applyItemBranches,
   catalogueItemsService,
   productDraftToInput,
   serviceDraftToInput,
   type ProductDraftLike,
   type ServiceDraftLike,
   type CatalogueItem,
+  type CatalogueItemInput,
 } from '../../services/catalogueItemsService';
 import { catalogueItemKeys } from './useCatalogueItems';
 import { useAuth } from '../../context/AuthContext';
@@ -63,18 +65,16 @@ export function useOnboardingSync() {
 
   /** Runs a save, then `next` on success; failures stay on the step with a message. */
   /**
-   * Items are created at the active branch; switch them on at any other real
-   * branches the owner ticked (same price everywhere — per-branch prices are
-   * set later in Branch pricing).
+   * Items are created at the active branch; switch them on at exactly the real
+   * branches the owner ticked (per-branch prices are set later in Branch pricing).
    */
-  const sellAtBranches = async (itemId: string, selected: string[]) => {
-    const others = selected.filter((id) => id !== activeBranchId);
-    if (!isLive || !others.length) return;
-    await catalogueItemsService.setBranchPricing(itemId, {
-      pricingMode: 'uniform',
-      branches: branches
-        .filter((b) => b.id)
-        .map((b) => ({ branchId: b.id as string, isAvailable: b.id === activeBranchId || others.includes(b.id as string) })),
+  const sellAtBranches = async (itemId: string, selected: string[], isUpdate = false, pricingMode?: 'uniform' | 'per_branch') => {
+    if (!isLive) return;
+    await applyItemBranches(itemId, selected, {
+      branchIds: branches.filter((b) => b.id).map((b) => b.id as string),
+      activeBranchId,
+      isUpdate,
+      pricingMode,
     });
   };
 
@@ -98,6 +98,28 @@ export function useOnboardingSync() {
     }
     await queryClient.invalidateQueries({ queryKey: myBusinessKeys.all });
   };
+
+  /**
+   * Creates the item, or updates the one this draft already published so going
+   * back and publishing again doesn't duplicate it. An item deleted meanwhile
+   * is created afresh.
+   */
+  const upsertItem = async (input: CatalogueItemInput, publishedItemId?: string, status?: 'active' | 'inactive') => {
+    if (publishedItemId) {
+      try {
+        return await catalogueItemsService.update(publishedItemId, status ? { ...input, status } : input);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) throw e;
+      }
+    }
+    const created = await catalogueItemsService.create(input);
+    // New items start active; the create endpoint takes no status, so a draft is hidden right after.
+    if (status === 'inactive') await catalogueItemsService.update(created.id, { status });
+    return created;
+  };
+
+  /** Dashboard saves set the status (published = active, draft = hidden); setup leaves it as is. */
+  const statusFor = (options?: { asDraft?: boolean }) => (options ? (options.asDraft ? 'inactive' : 'active') : undefined);
 
   const saveThen = (save: () => Promise<void>, next: () => void) => {
     if (saving) return;
@@ -162,25 +184,42 @@ export function useOnboardingSync() {
           }),
         next,
       ),
-    /** Publishes the setup's product at the active branch (plus any others ticked), then moves on. */
-    publishProduct: (draft: ProductDraftLike & { branches?: Record<string, boolean> }, next: () => void) =>
+    /**
+     * Publishes the setup's product at the active branch (plus any others ticked), then moves on.
+     * `next` receives the saved item (null in demo mode) so the draft can remember it.
+     */
+    publishProduct: (
+      draft: ProductDraftLike & { branches?: Record<string, boolean>; publishedItemId?: string },
+      next: (item: CatalogueItem | null) => void,
+      options?: { asDraft?: boolean },
+    ) => {
+      let saved: CatalogueItem | null = null;
       saveThen(async () => {
         if (!live) return;
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
-        const item = await catalogueItemsService.create(productDraftToInput(draft, activeBranchId));
-        await sellAtBranches(item.id, Object.keys(draft.branches ?? {}).filter((id) => draft.branches?.[id]));
+        const item = await upsertItem(productDraftToInput(draft, activeBranchId), draft.publishedItemId, statusFor(options));
+        saved = item;
+        await sellAtBranches(item.id, Object.keys(draft.branches ?? {}).filter((id) => draft.branches?.[id]), Boolean(draft.publishedItemId), draft.pricingMode === 'custom' ? 'per_branch' : 'uniform');
         setLastPublished(item);
         await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
-      }, next),
-    publishService: (draft: ServiceDraftLike & { locations?: string[] }, next: () => void) =>
+      }, () => next(saved));
+    },
+    publishService: (
+      draft: ServiceDraftLike & { locations?: string[]; publishedItemId?: string },
+      next: (item: CatalogueItem | null) => void,
+      options?: { asDraft?: boolean },
+    ) => {
+      let saved: CatalogueItem | null = null;
       saveThen(async () => {
         if (!live) return;
         if (!activeBranchId) throw new Error('Your branch is still loading. Try again in a moment.');
-        const item = await catalogueItemsService.create(serviceDraftToInput(draft, activeBranchId));
-        await sellAtBranches(item.id, draft.locations ?? []);
+        const item = await upsertItem(serviceDraftToInput(draft, activeBranchId), draft.publishedItemId, statusFor(options));
+        saved = item;
+        await sellAtBranches(item.id, draft.locations ?? [], Boolean(draft.publishedItemId));
         setLastPublished(item);
         await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
-      }, next),
+      }, () => next(saved));
+    },
     saveLocation: (location: { address?: string; city?: string; state?: string; latitude?: number; longitude?: number }, next: () => void) =>
       saveThen(async () => {
         await patch(location);

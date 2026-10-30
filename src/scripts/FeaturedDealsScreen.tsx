@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { useLocation, useLocationQuery } from '../context/LocationContext';
 import { hasApiConfig } from '../services/api/client';
 import { catalogueService } from '../services/catalogueService';
+import { dealPrimaryImage } from '../utils/dealImages';
 
 interface FeaturedDeal {
   img: string;
@@ -34,13 +35,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-const getOfferImage = (offer: Record<string, unknown>): string => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const image = offer.image ?? offer.coverImage ?? offer.heroImage ?? offer.mediaUrl ?? item?.image ?? item?.mainImage ?? item?.coverImage ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
-  return typeof image === 'string' && image.trim() ? image : 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
-};
+/** Same rule as the home cards and the detail page: the deal's own photo first. */
+const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};

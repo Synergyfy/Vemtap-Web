@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { useLiveDealBranch } from '../hooks/business/useLiveDealBranch';
+import { useDealBranches, useDealBundleCatalog } from '../hooks/business/useDealStudioLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
-import { dealDurationLabel } from './dealStudio';
+import { dealDurationLabel, formatDealValidity } from './dealStudio';
 import {
   DEAL_TYPE_OPTIONS,
-  DEFAULT_BUNDLE_CATALOG,
   claimLimitLabel,
   dealTypeTitle,
   describeComboRules,
@@ -17,6 +16,7 @@ import {
 import { DEAL_PUBLICATION_COPY, publishDeal, type DealPublicationResult } from './deals/dealPublication';
 import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { draftImage, draftImageAlt } from './desktop/draftImage';
 
 interface BusinessDealStudioStep4ScreenProps {
   draft: ProductDraft;
@@ -81,7 +81,10 @@ export function BusinessDealStudioStep4Screen({
   const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
   const baseAmount = parseAmount(regularVariant?.price ?? draft.basePrice);
   const pct = studio.discountPct;
-  const bundleCatalog = [{ id: 'current', name: draft.title, price: baseAmount }, ...DEFAULT_BUNDLE_CATALOG];
+  const bundleCatalog = useDealBundleCatalog(draft.title, baseAmount);
+  // Live: the business's branches picked in step 3; demo keeps the sample outlets.
+  const dealBranches = useDealBranches(studio);
+  const live = dealBranches.live;
   const pricing = resolveDealPricing(studio, baseAmount, bundleCatalog);
   const savings = pricing.savings;
   const dealAmount = pricing.dealPrice;
@@ -99,9 +102,8 @@ export function BusinessDealStudioStep4Screen({
         : studio.strategy === 'combo'
           ? (comboRules[0] ?? 'Combo & Bundle Deal')
           : `Percentage Discount (${pct}% Off)`;
-  const liveBranch = useLiveDealBranch();
-  const activeBranches = liveBranch.live
-    ? [{ key: 'wuseII' as const, name: liveBranch.name, address: liveBranch.area }]
+  const activeBranches = live
+    ? dealBranches.selected.map((branch) => ({ key: branch.id, name: branch.name, address: branch.area }))
     : BRANCH_DETAILS.filter((branch) => studio.branches[branch.key]);
   const activeDayKeys = DAY_ORDER.filter((key) => studio.days[key]);
   const weekdayCount = (['mon', 'tue', 'wed', 'thu', 'fri'] as Array<keyof DealStudioDraft['days']>).filter(
@@ -119,7 +121,9 @@ export function BusinessDealStudioStep4Screen({
     ...(studio.vouchers <= 0 ? ['Set the total promotional quantity to at least 1.'] : []),
     ...(studio.claimSteps.length === 0 ? ['Add at least one “how to claim” instruction.'] : []),
     ...(studio.terms.length === 0 ? ['Add at least one term & condition.'] : []),
-    ...(activeBranches.length === 0 ? ['Select at least one participating branch.'] : []),
+    ...(activeBranches.length === 0
+      ? [live ? 'This item isn’t sold at any of your branches yet — add it to a branch first.' : 'Select at least one participating branch.']
+      : []),
     ...(activeDayKeys.length === 0 ? ['Select at least one redemption day.'] : []),
   ];
   const canPublish = readinessErrors.length === 0;
@@ -229,7 +233,7 @@ export function BusinessDealStudioStep4Screen({
           </div>
           <div className="flex gap-space-sm items-start">
             <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-              <img className="w-full h-full object-cover" alt={HERO_IMAGE.alt} src={HERO_IMAGE.src} />
+              <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, HERO_IMAGE.alt)} src={draftImage(draft.mainImage, HERO_IMAGE.src)} />
               <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shadow-sm">
                 {savingsPct}% OFF
               </div>
@@ -247,7 +251,7 @@ export function BusinessDealStudioStep4Screen({
                 {studio.strategy === 'percentage' ? `${pct}% Off ${draft.title}` : `${strategyTitle}: ${draft.title}`}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary line-clamp-1 mt-0.5">
-                {liveBranch.live ? draft.description || draft.title : 'Signature dry-aged prime beef cut with truffle glaze.'}
+                {live ? draft.description || draft.title : 'Signature dry-aged prime beef cut with truffle glaze.'}
               </p>
             </div>
           </div>
@@ -321,13 +325,16 @@ export function BusinessDealStudioStep4Screen({
               </span>
               <span className="font-caption text-caption text-text-tertiary mt-0.5">Per customer</span>
             </div>
-            <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
-              <span className="font-caption text-caption text-text-secondary">Max Per Order</span>
-              <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
-                {studio.maxUnitsPerOrder} Units
-              </span>
-              <span className="font-caption text-caption text-text-tertiary mt-0.5">Per single order</span>
-            </div>
+            {/* Not stored by the API yet — demo only. */}
+            {!live && (
+              <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
+                <span className="font-caption text-caption text-text-secondary">Max Per Order</span>
+                <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
+                  {studio.maxUnitsPerOrder} Units
+                </span>
+                <span className="font-caption text-caption text-text-tertiary mt-0.5">Per single order</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-col space-y-2.5 mt-2">
             {studio.gifting && (
@@ -375,7 +382,8 @@ export function BusinessDealStudioStep4Screen({
                 </div>
               </div>
             </div>
-            {studio.reservation && (
+            {/* No advance-notice setting exists yet — sample only. */}
+            {!live && studio.reservation && (
               <div className="flex items-start gap-space-xs">
                 <div className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center shrink-0 mt-0.5">
                   <Icon name="hourglass_top" className="text-secondary text-[16px]" />
@@ -439,7 +447,7 @@ export function BusinessDealStudioStep4Screen({
                 {studio.duration === 'forever' ? 'Always On' : `${dealDurationLabel(studio.duration)} Window`}
               </span>
               <span className="font-caption text-caption text-text-secondary">
-                {studio.duration === 'forever' ? 'No fixed end date' : 'Oct 19 – Nov 2, 2024'}
+                {studio.duration === 'forever' ? 'No fixed end date' : live ? formatDealValidity(studio) : 'Oct 19 – Nov 2, 2024'}
               </span>
             </div>
           </div>
@@ -509,60 +517,93 @@ export function BusinessDealStudioStep4Screen({
           </article>
         )}
 
-        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-md">
-          <div className="flex items-center justify-between">
+        {live ? (
+          <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
             <div className="flex items-center gap-2">
-              <Icon name="radar" className="text-primary text-[20px]" />
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">Audience Reach &amp; Forecast</h3>
+              <Icon name="rocket_launch" className="text-primary text-[20px]" />
+              <h3 className="font-heading-sm text-heading-sm text-text-primary">Launch Summary</h3>
             </div>
-            <span className="px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-              Hyperlocal Live
-            </span>
-          </div>
-          <div className="p-space-sm rounded-xl bg-surface-tint-blue flex items-center gap-space-sm">
-            <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-[0_4px_16px_rgba(6,108,244,0.3)]">
-              <Icon name="notifications_active" className="text-on-primary text-[24px]" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-baseline gap-1">
-                <span className="font-heading-lg text-heading-lg font-bold text-text-primary">~1,420</span>
-                <span className="font-label-sm text-label-sm text-primary font-medium">foodies</span>
-              </div>
-              <p className="font-caption text-caption text-text-secondary leading-snug">
-                Within 3.5km of your {activeBranches.length} locations will receive a tap broadcast upon publish.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-col space-y-2">
-            <div className="flex items-center gap-2.5">
-              <Icon name="push_pin" className="text-primary text-[18px]" />
-              <span className="font-body-md text-body-md text-text-primary">
-                Pinned to top of <strong className="font-semibold">Apo/Wuse</strong> local deals feed
+            <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-primary">
+              <Icon name="storefront" className="text-primary text-[18px] mt-0.5" />
+              <span>
+                Goes live at{' '}
+                <strong className="font-semibold">
+                  {activeBranches.length > 1 ? `${activeBranches.length} branches` : activeBranches[0]?.name ?? 'no branch yet'}
+                </strong>
+                , where nearby customers can find and claim it.
               </span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <Icon name="verified_user" className="text-badge-discount-text text-[18px]" />
-              <span className="font-body-md text-body-md text-text-primary">
-                <strong className="font-semibold text-badge-discount-text">0% Commission:</strong> Customers pay ₦
-                {formatAmount(dealAmount)} directly to you.
+            <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-primary">
+              <Icon name="calendar_month" className="text-primary text-[18px] mt-0.5" />
+              <span>{formatDealValidity(studio)}</span>
+            </div>
+            <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-primary">
+              <Icon name="verified_user" className="text-badge-discount-text text-[18px] mt-0.5" />
+              <span>Customers pay ₦{formatAmount(dealAmount)} directly to you.</span>
+            </div>
+            {studio.publishedDealGroupId && (
+              <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-secondary">
+                <Icon name="sync" className="text-primary text-[18px] mt-0.5" />
+                <span>Already published — publishing again updates this deal instead of creating a new one.</span>
+              </div>
+            )}
+          </article>
+        ) : (
+          <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Icon name="radar" className="text-primary text-[20px]" />
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Audience Reach &amp; Forecast</h3>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                Hyperlocal Live
               </span>
             </div>
-          </div>
-          <div
-            className="w-full h-28 rounded-xl bg-cover bg-center relative overflow-hidden shadow-inner"
-            data-location="Wuse 2, Abuja, Nigeria"
-            style={{ backgroundImage: `url('${MAP_IMAGE.src}')` }}
-            role="img"
-            aria-label={MAP_IMAGE.alt}
-          >
-            <div className="absolute inset-0 bg-gradient-to-t from-on-background/70 via-transparent to-transparent flex items-end p-2.5">
-              <div className="flex items-center gap-1.5 text-on-primary font-caption text-caption">
-                <Icon name="my_location" className="text-[14px]" />
-                <span>Coverage Zone: 3.5km Radius Active</span>
+            <div className="p-space-sm rounded-xl bg-surface-tint-blue flex items-center gap-space-sm">
+              <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-[0_4px_16px_rgba(6,108,244,0.3)]">
+                <Icon name="notifications_active" className="text-on-primary text-[24px]" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-baseline gap-1">
+                  <span className="font-heading-lg text-heading-lg font-bold text-text-primary">~1,420</span>
+                  <span className="font-label-sm text-label-sm text-primary font-medium">foodies</span>
+                </div>
+                <p className="font-caption text-caption text-text-secondary leading-snug">
+                  Within 3.5km of your {activeBranches.length} locations will receive a tap broadcast upon publish.
+                </p>
               </div>
             </div>
-          </div>
-        </article>
+            <div className="flex flex-col space-y-2">
+              <div className="flex items-center gap-2.5">
+                <Icon name="push_pin" className="text-primary text-[18px]" />
+                <span className="font-body-md text-body-md text-text-primary">
+                  Pinned to top of <strong className="font-semibold">Apo/Wuse</strong> local deals feed
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Icon name="verified_user" className="text-badge-discount-text text-[18px]" />
+                <span className="font-body-md text-body-md text-text-primary">
+                  <strong className="font-semibold text-badge-discount-text">0% Commission:</strong> Customers pay ₦
+                  {formatAmount(dealAmount)} directly to you.
+                </span>
+              </div>
+            </div>
+            <div
+              className="w-full h-28 rounded-xl bg-cover bg-center relative overflow-hidden shadow-inner"
+              data-location="Wuse 2, Abuja, Nigeria"
+              style={{ backgroundImage: `url('${MAP_IMAGE.src}')` }}
+              role="img"
+              aria-label={MAP_IMAGE.alt}
+            >
+              <div className="absolute inset-0 bg-gradient-to-t from-on-background/70 via-transparent to-transparent flex items-end p-2.5">
+                <div className="flex items-center gap-1.5 text-on-primary font-caption text-caption">
+                  <Icon name="my_location" className="text-[14px]" />
+                  <span>Coverage Zone: 3.5km Radius Active</span>
+                </div>
+              </div>
+            </div>
+          </article>
+        )}
       </div>
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pt-space-xs pb-safe flex flex-col gap-space-xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
@@ -584,7 +625,7 @@ export function BusinessDealStudioStep4Screen({
               <span>{DEAL_PUBLICATION_COPY[publication.status].title}</span>
             </>
           ) : canPublish ? (
-            <span>Publish Deal to Nearby Feeds 🔥 🚀</span>
+            <span>{publishing ? 'Publishing…' : studio.publishedDealGroupId ? 'Update Published Deal' : 'Publish Deal to Nearby Feeds 🔥 🚀'}</span>
           ) : (
             <span>Resolve {readinessErrors.length} issue{readinessErrors.length === 1 ? '' : 's'} to publish 🔒</span>
           )}

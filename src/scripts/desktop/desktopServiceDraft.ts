@@ -1,4 +1,6 @@
 export interface ServiceDraft {
+  /** Live: the catalogue item this draft already published — publishing again updates it. */
+  publishedItemId?: string;
   title: string;
   provider: string;
   primaryCategory: string;
