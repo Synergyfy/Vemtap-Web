@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ServiceDraft } from './serviceDraft';
-import { draftImage, draftImageAlt } from './desktop/draftImage';
+import { NO_ITEM_IMAGE, draftImageAlt } from './desktop/draftImage';
 
 interface BusinessServicePublishedScreenProps {
   draft: ServiceDraft;
@@ -10,11 +11,6 @@ interface BusinessServicePublishedScreenProps {
   onViewCatalog: () => void;
   onAddAnother: () => void;
 }
-
-const PUBLISHED_IMAGE = {
-  src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBVYUwMwu8cNy9KLzjQLvJvKQzb6fVQKYs3BJn-JalHAr4WYn7edF6a0Bun3XMOIqhDwPEqvOgpEdYIpC79kiDBlxtyak2o8HuhcTW4ua9w_gExhBjGVvp5bYB5c4JOsWineCW7Kd_w5NBuQK4N_jROYYEqoasReIOnfCJHJ568IQwWN8kB-Dzyr8CxrSKJig1LfXQsGAtu9FgLWTTpay3888DXOfXMWi6LP9YvLKEYY8icOvBtVM-oiw',
-  alt: 'Close up aesthetic shot of a luxury facial treatment at an Abuja beauty clinic with organic hydrating masks, golden warm studio lighting, serene wellness ambiance, and soft clean towels in blue and white tones',
-};
 
 export function BusinessServicePublishedScreen({
   draft,
@@ -24,20 +20,15 @@ export function BusinessServicePublishedScreen({
 }: BusinessServicePublishedScreenProps) {
   const [status, setStatus] = useState<'live' | 'draft'>('live');
   const isLive = status === 'live';
+  // Live: the merchant's real branches backing the locations chosen at publish time.
+  const { branches: liveBranches } = useBusinessBranch();
 
-  const durations = draft.tiers
-    .map((tier) => parseInt(tier.duration, 10))
-    .filter((minutes) => !Number.isNaN(minutes));
-  const lowDuration = durations.length > 0 ? Math.min(...durations) : draft.durationMins;
-  const highDuration = durations.length > 0 ? Math.max(...durations) : draft.durationMins;
   const tierPrices = draft.tiers.map((tier) => tier.price);
   const lowPrice = tierPrices[0] ?? draft.basePrice;
   const highPrice = tierPrices[tierPrices.length - 1] ?? lowPrice;
-  const studioNames = [
-    ...(draft.branches.maitama ? ['Maitama'] : []),
-    ...(draft.branches.wuseII ? ['Wuse'] : []),
-    ...(draft.branches.garki ? ['Garki'] : []),
-  ];
+  const studioNames = liveBranches
+    .filter((branch) => branch.id && draft.locations.includes(branch.id))
+    .map((branch) => branch.name);
   const activeBranchCount = studioNames.length;
 
   return (
@@ -99,7 +90,7 @@ export function BusinessServicePublishedScreen({
             Service is Live on Storefront!
           </h2>
           <p className="font-body-md text-body-md text-text-secondary mt-space-2xs max-w-[320px]">
-            Clients within <span className="font-semibold text-text-primary">4.0 km</span> can now discover,
+            {studioNames.length > 0 ? 'Clients near ' + studioNames.join(' & ') + ' can' : 'Clients can'} now discover,
             schedule, and book appointments in real-time.
           </p>
         </div>
@@ -141,7 +132,7 @@ export function BusinessServicePublishedScreen({
           <div className="w-full rounded-xl bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-sm">
             <div className="flex items-start gap-space-sm">
               <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, PUBLISHED_IMAGE.alt)} src={draftImage(draft.image, PUBLISHED_IMAGE.src)} />
+                <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, '')} src={draft.image || NO_ITEM_IMAGE} />
                 <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-inverse-surface/80 text-inverse-on-surface font-caption text-[10px] font-medium backdrop-blur-xs">
                   {activeBranchCount} Studios
                 </span>
@@ -163,12 +154,12 @@ export function BusinessServicePublishedScreen({
               <div className="flex items-center gap-1">
                 <Icon name="schedule" className="text-[16px] text-primary" />
                 <span>
-                  {lowDuration}–{highDuration} mins duration
+                  {draft.durationMins} mins duration
                 </span>
               </div>
               <div className="flex items-center gap-1">
                 <Icon name="storefront" className="text-[16px] text-primary" />
-                <span>{studioNames.join(' & ')} Studios</span>
+                <span>{draft.locations.length} Locations</span>
               </div>
             </div>
           </div>

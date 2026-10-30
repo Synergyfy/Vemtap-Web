@@ -23,9 +23,16 @@ const DURATION_PILLS: Array<{ mins: number; hint: string }> = [
 
 const TIER_BADGES: Array<{ label: string; className: string }> = [
   { label: 'Default Tier', className: 'bg-surface-container text-primary' },
-  { label: '+31% Upcharge', className: 'bg-badge-discount-bg text-badge-discount-text' },
-  { label: 'Premium', className: 'bg-surface-container-high text-secondary' },
 ];
+
+/** First tier is the default; the rest show the real upcharge over the base price. */
+const tierBadge = (index: number, price: number, base: number) => {
+  if (index < TIER_BADGES.length) return TIER_BADGES[index];
+  const upcharge = base > 0 && price > base ? Math.round(((price - base) / base) * 100) : 0;
+  return upcharge > 0
+    ? { label: `+${upcharge}% Upcharge`, className: 'bg-badge-discount-bg text-badge-discount-text' }
+    : { label: `Tier ${index + 1}`, className: 'bg-surface-container text-primary' };
+};
 
 const toNumber = (value: string) => {
   const parsed = Number.parseInt(value.replace(/\D/g, ''), 10);
@@ -58,7 +65,6 @@ export function DesktopAddServiceStep2Screen({
     draft.tiers.length > 0
       ? draft.tiers.reduce((sum, tier) => sum + toNumber(tier.price), 0) / draft.tiers.length
       : base;
-  const netTakeHome = base - 800;
 
   const removeTier = (id: string) => {
     onDraftChange({ tiers: draft.tiers.filter((tier) => tier.id !== id) });
@@ -95,12 +101,6 @@ export function DesktopAddServiceStep2Screen({
               </h1>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container">
-                <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                <span className="font-caption text-caption text-secondary font-medium">
-                  Draft Auto-saved • 14:28 WAT
-                </span>
-              </div>
               <button
                 type="button"
                 className="px-4 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-button-secondary text-button-secondary transition-all flex items-center gap-2"
@@ -340,7 +340,7 @@ export function DesktopAddServiceStep2Screen({
               </div>
               <div className="flex flex-col gap-3 mb-4">
                 {draft.tiers.map((tier, index) => {
-                  const badge = TIER_BADGES[index] ?? { label: `Tier ${index + 1}`, className: 'bg-surface-container text-primary' };
+                  const badge = tierBadge(index, toNumber(tier.price), base);
                   return (
                     <div
                       key={tier.id}
@@ -436,53 +436,6 @@ export function DesktopAddServiceStep2Screen({
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-surface-subtle mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-label-md text-label-md font-semibold text-on-surface">
-                    Weekly Operating Hours
-                  </span>
-                  <div className="flex items-center gap-2 font-caption text-caption text-text-secondary">
-                    <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text" /> Max Capacity:{' '}
-                    <strong>2 clients / hr</strong>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="p-3 rounded-lg bg-surface-canvas flex items-center justify-between">
-                    <div>
-                      <span className="font-label-md text-label-md font-semibold text-on-surface block">
-                        Monday – Friday
-                      </span>
-                      <span className="font-caption text-caption text-text-secondary">Morning &amp; Afternoon Shifts</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-label-sm text-label-sm font-semibold text-primary">09:00 AM – 01:00 PM</div>
-                      <div className="font-label-sm text-label-sm font-semibold text-primary">02:00 PM – 07:00 PM</div>
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-surface-canvas flex items-center justify-between">
-                    <div>
-                      <span className="font-label-md text-label-md font-semibold text-on-surface block">
-                        Saturday (Peak Day)
-                      </span>
-                      <span className="font-caption text-caption text-text-secondary">Full Weekend Shift</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-label-sm text-label-sm font-semibold text-primary">09:00 AM – 06:00 PM</div>
-                      <span className="font-caption text-caption text-badge-discount-text font-medium">Continuous</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 flex items-center justify-between text-caption font-caption text-text-secondary">
-                  <span className="flex items-center gap-1.5">
-                    <Icon name="block" className="text-[16px] text-text-tertiary" />
-                    Sunday: Closed for routine salon sanitation
-                  </span>
-                  <button type="button" className="text-primary font-medium hover:underline">
-                    Edit schedule slots
-                  </button>
-                </div>
-              </div>
-
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-surface-container-high/60">
                 <div className="flex items-center gap-2.5">
                   <Icon name="event_busy" className="text-secondary text-[20px]" />
@@ -569,57 +522,22 @@ export function DesktopAddServiceStep2Screen({
                 </span>
               </div>
               <div className="mb-5 pb-5 bg-surface-subtle rounded-xl p-4">
-                <span className="font-caption text-caption text-text-secondary block mb-1">
-                  Expected Net Take-home / Treatment
-                </span>
-                <div className="flex items-baseline gap-2">
-                  <span className="font-display-hero text-display-hero text-on-surface font-bold text-primary">
-                    {formatWhole(netTakeHome)}
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-caption text-caption text-text-secondary">Average Session Price</span>
+                  <span className="font-display-sm text-display-sm font-bold text-on-surface">
+                    {formatWhole(averageTier)}
                   </span>
-                  <span className="font-caption text-caption text-text-tertiary">/ session</span>
                 </div>
-                <span className="font-caption text-caption text-badge-discount-text font-medium flex items-center gap-1 mt-1">
-                  <Icon name="check" className="text-[14px]" />
-                  Calculated after standard consumables (₦800 estimated)
+                <span className="font-caption text-caption text-text-tertiary mt-1 flex items-center gap-1">
+                  <Icon name="check_circle" className="text-[14px] text-badge-discount-text" />
+                  {draft.tiers.length > 0
+                    ? 'Averaged across your tier prices'
+                    : 'Matches your base session price'}
                 </span>
               </div>
-              <div className="space-y-3 mb-5">
-                <div className="flex items-center justify-between text-body-md font-body-md">
-                  <span className="text-text-secondary font-label-md text-label-md">Average Session Price</span>
-                  <span className="font-bold text-on-surface">{formatWhole(averageTier)}</span>
-                </div>
-                <div className="flex items-center justify-between text-body-md font-body-md">
-                  <span className="text-text-secondary font-label-md text-label-md">Estimated Gross Margin</span>
-                  <span className="font-bold text-badge-discount-text">72.4% • Highly Profitable</span>
-                </div>
-                <div className="flex items-center justify-between text-body-md font-body-md">
-                  <span className="text-text-secondary font-label-md text-label-md">VEMTAP Platform Fee</span>
-                  <span className="font-bold text-primary">₦0.00 (Zero Gateway Fee)</span>
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-surface-subtle mb-4">
-                <div className="flex items-center justify-between mb-1.5 font-caption text-caption text-text-secondary">
-                  <span>Tier Upgrade Distribution</span>
-                  <span className="font-bold text-on-surface">+38% Lift</span>
-                </div>
-                <svg className="w-full h-12 text-primary" fill="none" viewBox="0 0 200 48">
-                  <path
-                    d="M0 38 Q 40 35, 70 26 T 130 18 T 200 6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeWidth="3"
-                  />
-                  <path d="M0 38 Q 40 35, 70 26 T 130 18 T 200 6 L 200 48 L 0 48 Z" fill="currentColor" fillOpacity="0.08" />
-                  <circle cx="70" cy="26" fill="currentColor" r="3.5" />
-                  <circle cx="130" cy="18" fill="currentColor" r="3.5" />
-                  <circle cx="198" cy="7" fill="currentColor" r="3.5" />
-                </svg>
-                <div className="flex justify-between text-[11px] text-text-tertiary mt-1 px-1">
-                  <span>Tier 1 (45%)</span>
-                  <span>Tier 2 (35%)</span>
-                  <span>Tier 3 (20%)</span>
-                </div>
+              <div className="flex items-center justify-between text-body-md font-body-md mb-5 pb-5 border-b border-border-subtle/60">
+                <span className="text-text-secondary font-label-md text-label-md">VEMTAP Platform Fee</span>
+                <span className="font-bold text-primary">₦0.00 (Zero Gateway Fee)</span>
               </div>
               <div className="p-3.5 rounded-xl bg-surface-tint-blue text-on-surface">
                 <div className="flex items-start gap-2.5">

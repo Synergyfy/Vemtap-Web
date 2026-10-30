@@ -33,7 +33,7 @@ export const PRESET_POLICIES: ServicePolicy[] = [
 ];
 
 export interface ServiceLocation {
-  id: 'main' | 'maitama' | 'wuseII' | 'garki';
+  id: string;
   name: string;
   address: string;
   eligible: boolean;
@@ -70,6 +70,45 @@ export const SERVICE_LOCATIONS: ServiceLocation[] = [
     note: 'Opening June',
   },
 ];
+
+import type { BusinessBranchData } from '../context/BusinessBranchContext';
+
+/**
+ * Live: the business's real branches as a location list. Only branches with a
+ * backend id count — demo/sample branches are excluded so no fake data can leak
+ * into the create-service screens.
+ */
+export function liveServiceLocations(branches: BusinessBranchData[]): ServiceLocation[] {
+  return branches
+    .filter((branch) => branch.id)
+    .map((branch) => ({
+      id: branch.id as string,
+      name: branch.name,
+      address: branch.area || '',
+      eligible: true,
+      badge: branch.isMainBranch ? 'Main Branch' : 'Branch',
+    }));
+}
+
+/**
+ * Live: names for the location ids the merchant ticked, resolved against the
+ * business's real branches. Legacy ids that no longer match a branch fall back
+ * to their raw id so unknown data can never render a made-up address.
+ */
+export function resolveSelectedLocations(
+  locations: string[],
+  branches: BusinessBranchData[],
+): Array<{ id: string; name: string; address: string }> {
+  const byId = new Map(branches.filter((branch) => branch.id).map((branch) => [branch.id as string, branch]));
+  const legacyById = new Map(SERVICE_LOCATIONS.map((loc) => [loc.id, loc]));
+  return locations.map((id) => {
+    const branch = byId.get(id);
+    if (branch) return { id, name: branch.name, address: branch.area || '' };
+    const legacy = legacyById.get(id);
+    if (legacy) return { id, name: legacy.name, address: legacy.address };
+    return { id, name: id, address: '' };
+  });
+}
 
 export interface ServiceValidationErrors {
   identity: string[];

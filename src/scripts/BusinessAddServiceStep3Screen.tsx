@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { hasApiConfig } from '../services/api/client';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -20,24 +19,7 @@ interface OutletCard {
   name: string;
   badge?: string;
   address: string;
-  rooms: string;
 }
-
-const OUTLETS: OutletCard[] = [
-  {
-    key: 'maitama',
-    name: 'Maitama Heights Studio',
-    badge: 'Flagship',
-    address: 'Plot 14 Amazon Street, Maitama',
-    rooms: '3 Treatment Rooms Active',
-  },
-  {
-    key: 'wuseII',
-    name: 'Wuse II Sanctuary',
-    address: 'Plot 1428 Adetokunbo Ademola Cres',
-    rooms: '2 Treatment Rooms Active',
-  },
-];
 
 const LEAD_OPTIONS = ['Same day (2 hrs)', '12 hrs ahead', '24 hrs ahead'];
 const HORIZON_OPTIONS = ['14 days', '30 days in advance', '60 days'];
@@ -107,47 +89,29 @@ export function BusinessAddServiceStep3Screen({
   const preset = getServiceSectorPreset(sector);
 
   // Live: the business's real branches; the choice is kept in `locations` (branch ids).
-  const live = hasApiConfig();
   const { branches: liveBranches } = useBusinessBranch();
-  const outlets: OutletCard[] = live
-    ? liveBranches
-        .filter((branch) => branch.id)
-        .map((branch) => ({
-          key: branch.id as string,
-          name: branch.name,
-          badge: branch.isMainBranch ? 'Main' : undefined,
-          address: branch.area || '—',
-          rooms: '—',
-        }))
-    : OUTLETS;
-  const isOutletOn = (key: string) =>
-    live ? draft.locations.includes(key) : Boolean(draft.branches[key as 'maitama' | 'wuseII']);
+  const outlets: OutletCard[] = liveBranches
+    .filter((branch) => branch.id)
+    .map((branch) => ({
+      key: branch.id as string,
+      name: branch.name,
+      badge: branch.isMainBranch ? 'Main' : undefined,
+      address: branch.area || '—',
+    }));
+  const isOutletOn = (key: string) => draft.locations.includes(key);
 
-  const allSelected = live
-    ? outlets.length > 0 && outlets.every((outlet) => draft.locations.includes(outlet.key))
-    : draft.branches.maitama && draft.branches.wuseII;
+  const allSelected = outlets.length > 0 && outlets.every((outlet) => isOutletOn(outlet.key));
 
   const toggleAll = () => {
-    if (live) {
-      onDraftChange({ locations: allSelected ? [] : outlets.map((outlet) => outlet.key) });
-      return;
-    }
-    onDraftChange({
-      branches: { ...draft.branches, maitama: !allSelected, wuseII: !allSelected },
-    });
+    onDraftChange({ locations: allSelected ? [] : outlets.map((outlet) => outlet.key) });
   };
 
   const toggleOutlet = (key: string) => {
-    if (live) {
-      onDraftChange({
-        locations: draft.locations.includes(key)
-          ? draft.locations.filter((id) => id !== key)
-          : [...draft.locations, key],
-      });
-      return;
-    }
-    const demoKey = key as 'maitama' | 'wuseII';
-    onDraftChange({ branches: { ...draft.branches, [demoKey]: !draft.branches[demoKey] } });
+    onDraftChange({
+      locations: draft.locations.includes(key)
+        ? draft.locations.filter((id) => id !== key)
+        : [...draft.locations, key],
+    });
   };
 
   return (
@@ -216,9 +180,15 @@ export function BusinessAddServiceStep3Screen({
                 type="button"
                 onClick={toggleAll}
               >
-                {allSelected ? 'Deselect all' : 'Select all (2 active)'}
+                {allSelected ? 'Deselect all' : 'Select all'}
               </button>
             </div>
+            {outlets.length === 0 && (
+              <p className="bg-surface-container-lowest rounded-xl p-space-md font-caption text-caption text-text-secondary shadow-sm">
+                No branches yet — add your business locations in your business profile, then they will appear here to
+                serve this service.
+              </p>
+            )}
             <div className="flex flex-col gap-space-sm">
               {outlets.map((outlet) => {
                 const checked = isOutletOn(outlet.key);
@@ -253,12 +223,6 @@ export function BusinessAddServiceStep3Screen({
                         <p className="font-caption text-caption text-text-secondary truncate mt-0.5">
                           {outlet.address}
                         </p>
-                        <div className="flex items-center gap-1.5 mt-2">
-                          <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                          <span className="font-caption text-caption font-medium text-badge-discount-text">
-                            {outlet.rooms}
-                          </span>
-                        </div>
                       </div>
                     </div>
                     <div className="pt-space-xs flex justify-end">
@@ -273,24 +237,6 @@ export function BusinessAddServiceStep3Screen({
                   </div>
                 );
               })}
-              <div className="bg-surface-subtle/80 rounded-xl p-space-md shadow-none flex items-start gap-space-sm opacity-70">
-                <div className="w-5 h-5 rounded-lg bg-surface-container-high flex items-center justify-center text-text-tertiary mt-0.5">
-                  <Icon name="lock" className="text-[14px]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-body-md text-body-md font-semibold text-text-secondary truncate">
-                      Garki Branch
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption">
-                      Opening June
-                    </span>
-                  </div>
-                  <p className="font-caption text-caption text-text-tertiary truncate mt-0.5">
-                    Area 11 Commercial District, Garki
-                  </p>
-                </div>
-              </div>
             </div>
           </section>
 
@@ -316,7 +262,7 @@ export function BusinessAddServiceStep3Screen({
                     Universal Session Price
                   </p>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Uniform ₦16,000 baseline across all active Abuja studios.
+                    Uniform {draft.basePrice ? `₦${draft.basePrice} ` : ''}baseline across all active studios.
                   </p>
                 </div>
               </label>

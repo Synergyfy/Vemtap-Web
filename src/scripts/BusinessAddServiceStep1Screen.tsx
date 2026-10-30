@@ -5,7 +5,9 @@ import { describeServiceSector, getBusinessClassificationOptions } from './servi
 import type { ServiceDraft } from './serviceDraft';
 import { ServiceImageUploader } from '../components/ServiceImageUploader';
 import { ServiceLocationSelectorModal } from '../components/ServiceLocationSelectorModal';
-import { SERVICE_LOCATIONS, locationsToBranches } from './serviceStudioShared';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { liveServiceLocations, locationsToBranches, resolveSelectedLocations } from './serviceStudioShared';
 
 interface BusinessAddServiceStep1ScreenProps {
   draft: ServiceDraft;
@@ -44,6 +46,12 @@ export function BusinessAddServiceStep1Screen({
   businessSubcategories = [],
 }: BusinessAddServiceStep1ScreenProps) {
   const [locationModalOpen, setLocationModalOpen] = useState(false);
+  // Live: this business's own name and branches power the provider card and picker.
+  const myBusiness = useMyBusiness();
+  const { branches } = useBusinessBranch();
+  const businessName = myBusiness.data?.name || 'Your business';
+  const availableLocations = liveServiceLocations(branches);
+  const assignedLocations = resolveSelectedLocations(draft.locations || [], branches);
 
   const handleLocationSave = (selectedIds: string[]) => {
     onDraftChange({
@@ -166,17 +174,19 @@ export function BusinessAddServiceStep1Screen({
             <div className="flex items-center justify-between bg-surface-container-low rounded-lg p-space-xs">
               <div className="flex items-center gap-space-xs min-w-0">
                 <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary shrink-0">
-                  <Icon className="text-[20px]" filled name="spa" />
+                  <Icon className="text-[20px]" filled name="storefront" />
                 </div>
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1">
                     <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
-                      {draft.provider}
+                      {draft.provider || businessName}
                     </span>
                     <Icon className="text-primary text-[16px]" filled name="verified" />
                   </div>
                   <span className="font-caption text-caption text-text-secondary">
-                    Main Branch • Downtown Flagship
+                    {assignedLocations.length > 0
+                      ? `${assignedLocations.length} location${assignedLocations.length === 1 ? '' : 's'} assigned`
+                      : 'No locations assigned yet'}
                   </span>
                 </div>
               </div>
@@ -188,19 +198,16 @@ export function BusinessAddServiceStep1Screen({
                 Change
               </button>
             </div>
-            {draft.locations && draft.locations.length > 0 && (
+            {assignedLocations.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {draft.locations.map((locId) => {
-                  const loc = SERVICE_LOCATIONS.find((l) => l.id === locId);
-                  return (
-                    <span
-                      key={locId}
-                      className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-container text-text-secondary"
-                    >
-                      {loc?.name || locId}
-                    </span>
-                  );
-                })}
+                {assignedLocations.map((loc) => (
+                  <span
+                    key={loc.id}
+                    className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-surface-container text-text-secondary"
+                  >
+                    {loc.name}
+                  </span>
+                ))}
               </div>
             )}
           </div>
@@ -468,7 +475,8 @@ export function BusinessAddServiceStep1Screen({
       <ServiceLocationSelectorModal
         isOpen={locationModalOpen}
         onClose={() => setLocationModalOpen(false)}
-        selectedLocations={draft.locations || ['main']}
+        selectedLocations={draft.locations || []}
+        locations={availableLocations.length ? availableLocations : undefined}
         onSave={handleLocationSave}
       />
     </AppScreen>

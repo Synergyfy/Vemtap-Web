@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
-import { draftImage, draftImageAlt } from './draftImage';
+import { NO_ITEM_IMAGE, draftImageAlt } from './draftImage';
 
 interface DesktopServicePublishedScreenProps {
   draft: ServiceDraft;
@@ -13,44 +14,6 @@ interface DesktopServicePublishedScreenProps {
   onAddAnother: () => void;
   onNav?: (key: BusinessPortalNavKey) => void;
 }
-
-const PUBLISHED_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCr9zyuSKHFEndj9CsvaqxvIfTc5PcA1u9uBNPnT6rWRTJqmsl_LNemKsx6aSX8ZUXQy6AuI3ojXlpE-GFjnN0WnjPpjN0iDH_Fvf2iiy6RXpvFRqlT_S1heyI3Pv-d85eIYxdTdE7yufcGnKbTXLzxTDNf0H0aizSR6seYBjWLjI9AF9geHA6wkMlizfeYL0qcKW09ZgpcGwfE4floYKYVPk2Y8afAZ3NFZFLYrhmBuenCsL7a9Xz5VQ';
-
-const PUBLISHED_ALT =
-  'A luxurious close-up of a client undergoing a deep hydration radiance facial in an upscale aesthetic spa. Soft botanical ambient lighting, fresh steam dew, clean minimalist white and natural stone textures, serene spa environment.';
-
-const ROOMS: Array<{
-  branch: boolean;
-  name: string;
-  specialists: string;
-  slots: Array<{ room: string; state: 'open' | 'booked' | 'walkin'; status: string }>;
-}> = [
-  {
-    branch: true,
-    name: 'Maitama Heights Branch',
-    specialists: '2 Specialists',
-    slots: [
-      { room: 'Room 1 (Esthetics)', state: 'open', status: 'Open 2:00 PM' },
-      { room: 'Room 2 (Laser Care)', state: 'booked', status: 'Booked until 1:15 PM' },
-    ],
-  },
-  {
-    branch: true,
-    name: 'Wuse II Flagship Studio',
-    specialists: '3 Specialists',
-    slots: [
-      { room: 'Room A (VIP Suite)', state: 'open', status: 'Open 3:30 PM' },
-      { room: 'Room B (Facial Bar)', state: 'walkin', status: 'Walk-in Slot 4:00 PM' },
-    ],
-  },
-];
-
-const BRANCH_LABELS: Array<{ key: keyof ServiceDraft['branches']; label: string }> = [
-  { key: 'maitama', label: 'Maitama Heights' },
-  { key: 'wuseII', label: 'Wuse II' },
-  { key: 'garki', label: 'Garki' },
-];
 
 const toNumber = (value: string) => {
   const parsed = Number.parseInt(value.replace(/\D/g, ''), 10);
@@ -71,6 +34,8 @@ export function DesktopServicePublishedScreen({
   onAddAnother,
   onNav,
 }: DesktopServicePublishedScreenProps) {
+  // Live: the merchant's real branches backing the locations chosen at publish time.
+  const { branches: liveBranches } = useBusinessBranch();
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [mode, setMode] = useState<'live' | 'draft'>('live');
   const [dealState, setDealState] = useState<'idle' | 'importing' | 'success'>('idle');
@@ -90,9 +55,13 @@ export function DesktopServicePublishedScreen({
   const tierDurations = draft.tiers.map((tier) => toNumber(tier.duration)).filter((mins) => mins > 0);
   const durationMin = tierDurations.length > 0 ? Math.min(...tierDurations) : draft.durationMins;
   const durationMax = tierDurations.length > 0 ? Math.max(...tierDurations) : draft.durationMins;
-  const activeBranches = BRANCH_LABELS.filter((branch) => draft.branches[branch.key]);
+  const activeBranches = liveBranches.filter((branch) => branch.id && draft.locations.includes(branch.id));
   const activeLocationText =
-    activeBranches.length > 0 ? `${activeBranches.map((branch) => branch.label).join(' & ')} Studios` : 'No active studios';
+    activeBranches.length > 0
+      ? activeBranches.map((branch) => branch.name).join(', ')
+      : 'No active studios';
+  const dealPrice = Math.round(priceMin * 0.8);
+  const dealSave = priceMin - dealPrice;
   const bookingUrl = `vemtap.com/s/${draft.skuCode.toLowerCase()}`;
 
   const handleMakeDeal = () => {
@@ -110,20 +79,6 @@ export function DesktopServicePublishedScreen({
     timers.current.push(window.setTimeout(() => setCopied(false), 1800));
   };
 
-  const slotDotClass = (state: 'open' | 'booked' | 'walkin') =>
-    state === 'booked'
-      ? 'bg-outline-variant'
-      : state === 'walkin'
-        ? 'bg-primary'
-        : 'bg-badge-discount-text';
-
-  const slotStatusClass = (state: 'open' | 'booked' | 'walkin') =>
-    state === 'booked'
-      ? 'text-text-tertiary font-medium'
-      : state === 'walkin'
-        ? 'text-primary font-semibold'
-        : 'text-badge-discount-text font-semibold';
-
   return (
     <Shell activeNav="catalog" onNav={onNav}>
       <div className="max-w-7xl mx-auto w-full px-margin py-space-xl flex flex-col gap-8">
@@ -140,7 +95,7 @@ export function DesktopServicePublishedScreen({
               <span className="text-text-tertiary text-caption">•</span>
               <span className="font-label-md text-label-md text-text-secondary flex items-center gap-1.5">
                 <Icon name="radar" className="text-[16px] text-primary" />
-                Radius: 4.0 km Hyperlocal Discovery
+                Hyperlocal Discovery Active
               </span>
             </div>
           </div>
@@ -178,8 +133,10 @@ export function DesktopServicePublishedScreen({
               Service is Live on Storefront!
             </h1>
             <p className="font-body-lg text-body-lg text-text-secondary max-w-2xl leading-relaxed">
-              Clients within 4.0 km in Maitama &amp; Wuse II can now discover, schedule, and book appointments in
-              real-time. Instant dispatch and sync are fully active across your studio calendars.
+              Clients near{' '}
+              {activeBranches.length > 0 ? activeBranches.map((branch) => branch.name).join(' & ') : 'your studios'} can
+              now discover, schedule, and book appointments in real-time. Instant dispatch and sync are fully active
+              across your studio calendars.
             </p>
           </div>
         </div>
@@ -201,23 +158,27 @@ export function DesktopServicePublishedScreen({
               </div>
               <div className="flex flex-col sm:flex-row gap-5">
                 <div className="relative w-full sm:w-44 h-44 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                  <img alt={draftImageAlt(draft.title, PUBLISHED_ALT)} className="w-full h-full object-cover" src={draftImage(draft.image, PUBLISHED_IMAGE)} />
+                  <img
+                    alt={draftImageAlt(draft.title, '')}
+                    className="w-full h-full object-cover"
+                    src={draft.image || NO_ITEM_IMAGE}
+                  />
                   <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-inverse-surface/80 backdrop-blur-sm text-inverse-on-surface font-caption text-caption font-medium flex items-center gap-1">
                     <Icon name="photo_camera" className="text-[12px]" />
-                    4 Photos
+                    {draft.image ? '1 Photo' : 'No Photo'}
                   </div>
                 </div>
                 <div className="flex flex-col justify-between py-0.5 flex-1 min-w-0">
                   <div>
                     <span className="font-caption text-caption uppercase text-primary font-semibold tracking-wider">
-                      Skin Care • Facial Treatment
+                      {draft.primaryCategory || draft.deliveryFormat}
+                      {draft.subCategory ? ` • ${draft.subCategory}` : ''}
                     </span>
                     <h2 className="font-heading-md text-heading-md text-text-primary font-bold mt-1 leading-snug">
                       {draft.title}
                     </h2>
                     <p className="font-body-md text-body-md text-text-secondary mt-1.5 line-clamp-2">
-                      Multi-tier sonic pore extraction with bioactive hyaluronic infusion, peptide mask, and lymphatic
-                      cryo contouring.
+                      {draft.description || 'No description provided yet.'}
                     </p>
                   </div>
                   <div className="pt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -261,49 +222,6 @@ export function DesktopServicePublishedScreen({
                 </p>
               </div>
             </div>
-
-            <div className="bg-surface-canvas rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <Icon name="calendar_month" className="text-text-secondary text-[20px]" />
-                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                    Live Studio Availability
-                  </h3>
-                </div>
-                <span className="font-caption text-caption text-badge-discount-text font-semibold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                  Real-time feed
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                {ROOMS.map((room, index) => {
-                  const isActive = index === 0 ? draft.branches.maitama : draft.branches.wuseII;
-                  if (!isActive) return null;
-                  return (
-                    <div key={room.name} className="p-4 rounded-xl bg-surface-subtle flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-md text-label-md font-bold text-text-primary">{room.name}</span>
-                        <span className="font-caption text-caption text-text-tertiary">{room.specialists}</span>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {room.slots.map((slot) => (
-                          <div
-                            key={slot.room}
-                            className="flex items-center justify-between text-label-sm font-label-sm p-2 rounded-lg bg-surface-canvas shadow-xs"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${slotDotClass(slot.state)}`} />
-                              <span className="text-text-primary font-medium">{slot.room}</span>
-                            </div>
-                            <span className={slotStatusClass(slot.state)}>{slot.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-6">
@@ -322,8 +240,8 @@ export function DesktopServicePublishedScreen({
                   Fill Empty Slots with a VEMTAP Deal 🔥
                 </h2>
                 <p className="font-body-md text-body-md text-text-secondary mt-2.5 leading-relaxed">
-                  Transform this Radiance Facial into a featured promotional voucher for slow hours or weekdays.
-                  Photos, duration tiers, and studio branches will pre-fill into Deal Studio automatically.
+                  Transform this service into a featured promotional voucher for slow hours or weekdays. Photos,
+                  duration tiers, and studio branches will pre-fill into Deal Studio automatically.
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -364,15 +282,19 @@ export function DesktopServicePublishedScreen({
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-label-md text-label-md font-semibold text-text-primary">
-                      Flash Weekday Facial Voucher
+                      Flash Weekday Voucher
                     </div>
                     <div className="font-caption text-caption text-text-secondary mt-0.5">
                       Valid Mon–Thu, 11:00 AM – 3:30 PM
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-heading-sm text-heading-sm font-bold text-text-primary">₦12,800</div>
-                    <div className="font-caption text-caption text-badge-discount-text font-medium">Save ₦3,200</div>
+                    <div className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                      ₦{dealPrice.toLocaleString('en-US')}
+                    </div>
+                    <div className="font-caption text-caption text-badge-discount-text font-medium">
+                      Save ₦{dealSave.toLocaleString('en-US')}
+                    </div>
                   </div>
                 </div>
               </div>

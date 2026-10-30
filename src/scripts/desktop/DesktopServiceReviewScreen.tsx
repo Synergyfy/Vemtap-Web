@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasApiConfig } from '../../services/api/client';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -7,7 +7,7 @@ import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 import { validateAllServiceSteps, hasServiceValidationErrors } from '../serviceStudioShared';
-import { draftImage } from './draftImage';
+import { NO_ITEM_IMAGE, draftImageAlt } from './draftImage';
 
 interface DesktopServiceReviewScreenProps {
   draft: ServiceDraft;
@@ -21,83 +21,36 @@ interface DesktopServiceReviewScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
 }
 
-const REVIEW_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDwZIDrEuxeYnWmyDFJEcH7N3pa-keuU0o6N4RPkxwuXhSIKYh8sL6dcBRrDjyK_7KEdyr2qvvjPItO1pLuZNmQkga_pdRw2RSqiFOmFVUXc-TzaW_bxMJ2wMkr5ozE3qIz2UGSGZkItsFsb1goKC8wTLl9h_26yklhBeQS3q68pnyeZD0lfM05mkbD8QQRzqmqOvph59IE78EW4WW5Sxpckjio9jDKdJDMxAaBkeQ0UcQ31fW8-Nl6SA';
+/** Live: tier cards rendered from the merchant's own tiers; none configured → a single base-price card. */
+const tierCards = (draft: ServiceDraft): Array<{ badge: string; name: string; body: string; price: string }> =>
+  draft.tiers.length > 0
+    ? draft.tiers.map((tier, index) => ({
+        badge: `Tier ${index + 1}`,
+        name: tier.name,
+        body: tier.note,
+        price: tier.price,
+      }))
+    : [
+        {
+          badge: 'Base',
+          name: draft.title || 'Base session',
+          body: 'Standard session at the base price.',
+          price: draft.basePrice,
+        },
+      ];
 
-const REVIEW_ALT =
-  'A luxurious, tranquil spa setting showing high-end aesthetic facial equipment, clean minimalist ceramic treatment bowls, organic botanical glass vials, and warm ambient sunlight highlighting gentle mist and fresh white towels in an Abuja upscale aesthetic clinic.';
-
-const SIMULATOR_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCqEDnE2nHn_36Hs3EqV3-XV69CRlqJ6_iaXc6z--4WpFxQeTb8GtXcfUQM7x5g1eRbDochCw1nOFAz8CG9JCu4kBXKeCg_Nl6vOIudSXSHI2JxJrKb4cK3BMCDl6AiZ-jf_5NoMwpGjA12ZwmzWs1Km4iEWmqb7Y3bWuDYDbaRNKN0ZfbbAV5AGfAYx_61vGE9FcUQYNixENudCNCEP0CF5rBpCsQxZRUwLsxuXRceDduiaOtgJOD71g';
-
-const SIMULATOR_ALT =
-  'A tranquil serene facial esthetics studio treatment in an upscale African day spa with soft natural lighting and fresh botanical details.';
-
-const REVIEW_TIERS: Array<{
-  badge: string;
-  badgeClass: string;
-  cardClass: string;
-  name: string;
-  body: string;
-  footer: string;
-  footerClass: string;
-}> = [
+/** Narrative chips from the merchant's own highlights plus the real suitability setting. */
+const narrativeChips = (draft: ServiceDraft): Array<{ icon: string; label: string }> => [
+  ...draft.highlights.map((highlight) => ({ icon: highlight.icon, label: highlight.label })),
   {
-    badge: 'Tier 1 • Base',
-    badgeClass: 'bg-surface-container-high text-on-surface-variant',
-    cardClass: 'bg-surface-subtle hover:bg-surface-tint-blue/30',
-    name: 'Essential Glow',
-    body: 'Pure botanical cleansing, double exfoliation steam, and hyaluronic hydra-infusion.',
-    footer: 'Standard',
-    footerClass: 'text-text-secondary font-medium',
+    icon: 'group',
+    label:
+      draft.genderSuitability === 'women'
+        ? 'Women Only'
+        : draft.genderSuitability === 'men'
+          ? 'Men Only'
+          : 'Unisex (All Welcome)',
   },
-  {
-    badge: 'Tier 2 • Popular',
-    badgeClass: 'bg-primary text-on-primary',
-    cardClass: 'bg-surface-tint-blue/60 hover:bg-surface-tint-blue',
-    name: 'Deluxe Radiance + LED',
-    body: 'Essential facial extended with collagen booster ampoule and medical-grade red LED therapy.',
-    footer: '+LED Booster',
-    footerClass: 'text-badge-discount-text font-semibold',
-  },
-  {
-    badge: 'Tier 3 • VIP',
-    badgeClass: 'bg-surface-container-high text-on-surface-variant',
-    cardClass: 'bg-surface-subtle hover:bg-surface-tint-blue/30',
-    name: 'VIP Serenity + Scalp',
-    body: 'Deluxe facial protocol paired with aromatic cranial scalp massage & cryo-sculpt globes.',
-    footer: 'Full Holistic',
-    footerClass: 'text-text-secondary font-medium',
-  },
-];
-
-const POLICY_ROWS: Array<{ icon: string; iconClass: string; title: string; body: string }> = [
-  {
-    icon: 'point_of_sale',
-    iconClass: 'text-primary',
-    title: 'Pay at Reception Enabled',
-    body: '₦0 upfront payment required on VEMTAP Instant Booking.',
-  },
-  {
-    icon: 'event_available',
-    iconClass: 'text-badge-discount-text',
-    title: 'Flexible Cancellation',
-    body: 'Clients cancel free up to 2 hours before scheduled slot.',
-  },
-  {
-    icon: 'sanitizer',
-    iconClass: 'text-secondary',
-    title: '15-Minute Turnaround Buffer',
-    body: 'Automatic sanitization slot reserved after each client.',
-  },
-];
-
-const NARRATIVE_CHIPS: Array<{ icon: string; label: string; className: string }> = [
-  { icon: 'spa', label: 'Sensitive Skin Safe', className: 'bg-surface-tint-blue text-primary font-semibold' },
-  { icon: 'eco', label: '100% Organic Botanicals', className: 'bg-surface-tint-blue text-primary font-semibold' },
-  { icon: 'wb_sunny', label: 'LED Phototherapy', className: 'bg-surface-tint-blue text-primary font-semibold' },
-  { icon: 'group', label: 'Unisex (All Welcome)', className: 'bg-surface-tint-blue text-primary font-semibold' },
-  { icon: 'brush', label: 'Pre-Makeup Friendly', className: 'bg-surface-subtle text-text-secondary font-medium' },
 ];
 
 const toNumber = (value: string) => {
@@ -116,9 +69,10 @@ export function DesktopServiceReviewScreen({
   onSaveDraft,
   onNav,
 }: DesktopServiceReviewScreenProps) {
-  // Live: the real branches chosen in the previous step (`locations`).
-  const live = hasApiConfig();
+  // Live: the real branches chosen in the previous step (`locations`) and the real business name.
   const { branches: liveBranches } = useBusinessBranch();
+  const myBusiness = useMyBusiness();
+  const businessName = myBusiness.data?.name || 'Your business';
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const [publishState, setPublishState] = useState<'idle' | 'publishing' | 'success'>('idle');
   const timers = useRef<number[]>([]);
@@ -161,8 +115,6 @@ export function DesktopServiceReviewScreen({
                 <span className="hover:text-primary cursor-pointer transition-colors">Catalog Workflow</span>
                 <span>/</span>
                 <span className="text-primary font-medium">Final Review</span>
-                <span>/</span>
-                <span className="text-text-secondary">Service ID #VMT-9842</span>
               </div>
               <div className="flex items-center gap-3">
                 <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold tracking-tight">
@@ -201,14 +153,24 @@ export function DesktopServiceReviewScreen({
           <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
             <div className="bg-surface-canvas rounded-2xl shadow-sm overflow-hidden flex flex-col">
               <div className="relative w-full h-72 sm:h-80 bg-surface-container">
-                <img alt={REVIEW_ALT} className="w-full h-full object-cover" src={draftImage(draft.image, REVIEW_IMAGE)} />
+                <img
+                  alt={draftImageAlt(draft.title, '')}
+                  className="w-full h-full object-cover"
+                  src={draft.image || NO_ITEM_IMAGE}
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/90 via-inverse-surface/30 to-transparent" />
                 <div className="absolute top-4 left-4 flex flex-wrap gap-2 items-center">
                   <span className="px-3 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md text-on-surface font-label-sm text-label-sm font-semibold flex items-center gap-1.5 shadow-sm">
-                    <Icon name="photo_library" className="text-[16px] text-primary" /> 3 High-Res Media
+                    <Icon name="photo_library" className="text-[16px] text-primary" />
+                    {draft.image ? '1 Photo' : 'No Photo Yet'}
                   </span>
                   <span className="px-3 py-1 rounded-full bg-surface-tint-blue/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold flex items-center gap-1.5 shadow-sm">
-                    <Icon name="home_repair_service" className="text-[16px]" /> In-Studio &amp; Mobile Concierge
+                    <Icon name="home_repair_service" className="text-[16px]" />
+                    {draft.deliveryFormat === 'both'
+                      ? 'In-Studio & Mobile Concierge'
+                      : draft.deliveryFormat === 'mobile'
+                        ? 'Mobile Concierge'
+                        : 'In-Studio'}
                   </span>
                 </div>
                 <div className="absolute top-4 right-4">
@@ -224,10 +186,8 @@ export function DesktopServiceReviewScreen({
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
                     <span className="font-caption text-caption uppercase tracking-wider text-inverse-on-surface font-semibold">
-                      {draft.provider}
+                      {draft.provider || businessName}
                     </span>
-                    <span className="text-inverse-on-surface/60">•</span>
-                    <span className="font-caption text-caption text-inverse-on-surface/80">Abuja Flagship</span>
                   </div>
                   <h2 className="font-heading-lg text-heading-lg font-bold text-on-primary text-shadow-sm leading-snug">
                     {draft.title}
@@ -267,11 +227,9 @@ export function DesktopServiceReviewScreen({
                   </div>
                   <div className="h-8 w-px bg-surface-container-highest" />
                   <div className="flex flex-col">
-                    <span className="font-caption text-caption text-text-secondary font-medium">
-                      Therapist Selection
-                    </span>
-                    <span className="font-label-md text-label-md font-bold text-badge-discount-text flex items-center gap-1">
-                      <Icon name="check_circle" className="text-[16px]" /> Enabled
+                    <span className="font-caption text-caption text-text-secondary font-medium">Buffer</span>
+                    <span className="font-label-md text-label-md font-bold text-on-surface">
+                      {draft.bufferMins} Minutes
                     </span>
                   </div>
                 </div>
@@ -302,54 +260,31 @@ export function DesktopServiceReviewScreen({
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                {REVIEW_TIERS.map((tier, index) => {
-                  const tierData = draft.tiers[index];
-                  return (
-                    <div
-                      key={tier.badge}
-                      className={`p-4 rounded-xl flex flex-col justify-between gap-3 relative transition-colors ${tier.cardClass}`}
-                    >
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between">
-                          <span
-                            className={`px-2 py-0.5 rounded-md font-caption text-caption font-bold uppercase tracking-wider ${tier.badgeClass}`}
-                          >
-                            {tier.badge}
-                          </span>
-                          <span className="font-caption text-caption text-text-secondary font-medium">
-                            {tierData ? tierData.duration : ''}
-                          </span>
-                        </div>
-                        <h4 className="font-label-md text-label-md font-bold text-on-surface mt-1">{tier.name}</h4>
-                        <p className="font-caption text-caption text-text-secondary line-clamp-2">{tier.body}</p>
-                      </div>
-                      <div className="pt-2 flex items-baseline justify-between">
-                        <span className="font-heading-sm text-heading-sm font-bold text-primary">
-                          ₦{tierData ? tierData.price : draft.basePrice}
+                {tierCards(draft).map((tier, index) => (
+                  <div
+                    key={tier.badge}
+                    className={`p-4 rounded-xl flex flex-col justify-between gap-3 relative transition-colors ${
+                      index === 1 ? 'bg-surface-tint-blue/60 hover:bg-surface-tint-blue' : 'bg-surface-subtle hover:bg-surface-tint-blue/30'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`px-2 py-0.5 rounded-md font-caption text-caption font-bold uppercase tracking-wider ${
+                            index === 1 ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
+                          }`}
+                        >
+                          {tier.badge}
                         </span>
-                        <span className={`font-caption text-caption ${tier.footerClass}`}>{tier.footer}</span>
                       </div>
+                      <h4 className="font-label-md text-label-md font-bold text-on-surface mt-1">{tier.name}</h4>
+                      {tier.body && <p className="font-caption text-caption text-text-secondary line-clamp-2">{tier.body}</p>}
                     </div>
-                  );
-                })}
-              </div>
-              <div className="p-4 rounded-xl bg-surface-container-low flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                    <Icon name="badge" className="text-[18px]" />
+                    <div className="pt-2 flex items-baseline justify-between">
+                      <span className="font-heading-sm text-heading-sm font-bold text-primary">₦{tier.price}</span>
+                    </div>
                   </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-sm text-label-sm font-semibold text-on-surface">
-                      Allocated Staff Specialists
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">
-                      Amara K. (Lead Esthetician) &amp; Zainab T. (Senior Skincare Specialist)
-                    </span>
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 rounded-full bg-surface-canvas text-primary font-caption text-caption font-semibold shadow-sm">
-                  Client Choice Allowed
-                </span>
+                ))}
               </div>
             </div>
 
@@ -370,65 +305,28 @@ export function DesktopServiceReviewScreen({
                     </button>
                   </div>
                   <div className="flex flex-col gap-3">
-                    {live &&
-                      liveBranches
-                        .filter((branch) => branch.id && draft.locations.includes(branch.id))
-                        .map((branch) => (
-                          <div key={branch.id} className="p-3.5 rounded-xl bg-surface-subtle flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-2.5">
-                              <Icon name="domain" className="text-text-secondary text-[18px] mt-0.5" />
-                              <div className="flex flex-col">
-                                <span className="font-label-md text-label-md font-bold text-on-surface">{branch.name}</span>
-                                <span className="font-caption text-caption text-text-secondary">{branch.area || '—'}</span>
-                              </div>
+                    {liveBranches
+                      .filter((branch) => branch.id && draft.locations.includes(branch.id))
+                      .map((branch) => (
+                        <div key={branch.id} className="p-3.5 rounded-xl bg-surface-subtle flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5">
+                            <Icon name="domain" className="text-text-secondary text-[18px] mt-0.5" />
+                            <div className="flex flex-col">
+                              <span className="font-label-md text-label-md font-bold text-on-surface">{branch.name}</span>
+                              <span className="font-caption text-caption text-text-secondary">{branch.area || '—'}</span>
                             </div>
-                            <span className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-caption text-caption font-semibold whitespace-nowrap">
-                              —
-                            </span>
                           </div>
-                        ))}
-                    {!live && draft.branches.maitama && (
-                      <div className="p-3.5 rounded-xl bg-surface-subtle flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2.5">
-                          <Icon name="domain" className="text-text-secondary text-[18px] mt-0.5" />
-                          <div className="flex flex-col">
-                            <span className="font-label-md text-label-md font-bold text-on-surface">
-                              Maitama Heights Studio
-                            </span>
-                            <span className="font-caption text-caption text-text-secondary">
-                              Plot 418 Aguiyi Ironsi Way, Maitama, Abuja
-                            </span>
-                          </div>
+                          <span className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-caption text-caption font-semibold whitespace-nowrap">
+                            —
+                          </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-caption text-caption font-semibold whitespace-nowrap">
-                          3 Suites
-                        </span>
-                      </div>
-                    )}
-                    {!live && draft.branches.wuseII && (
-                      <div className="p-3.5 rounded-xl bg-surface-subtle flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2.5">
-                          <Icon name="domain" className="text-text-secondary text-[18px] mt-0.5" />
-                          <div className="flex flex-col">
-                            <span className="font-label-md text-label-md font-bold text-on-surface">
-                              Wuse II Sanctuary
-                            </span>
-                            <span className="font-caption text-caption text-text-secondary">
-                              Aminu Kano Crescent, Wuse II, Abuja
-                            </span>
-                          </div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-caption text-caption font-semibold whitespace-nowrap">
-                          2 Suites
-                        </span>
-                      </div>
-                    )}
+                      ))}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 pt-2 text-text-secondary font-caption text-caption">
                   <Icon name="schedule" className="text-[16px] text-primary" />
                   <span>
-                    Requires minimum <strong className="text-on-surface">2 hours advance booking notice</strong>
+                    Booking lead notice: <strong className="text-on-surface">{draft.leadNotice}</strong>
                   </span>
                 </div>
               </div>
@@ -451,10 +349,7 @@ export function DesktopServiceReviewScreen({
                     </button>
                   </div>
                   <div className="flex flex-col gap-3">
-                    {(draft.policies && draft.policies.length > 0
-                      ? draft.policies
-                      : POLICY_ROWS.map((r, idx) => ({ id: `row-${idx}`, title: r.title, body: r.body }))
-                    ).map((policy) => (
+                    {draft.policies.map((policy) => (
                       <div key={policy.id || policy.title} className="flex items-start gap-3 p-2.5 rounded-xl bg-surface-subtle">
                         <Icon name="verified_user" className="text-primary text-[18px] mt-0.5" />
                         <div className="flex flex-col">
@@ -467,7 +362,7 @@ export function DesktopServiceReviewScreen({
                 </div>
                 <div className="flex items-center gap-2 pt-2 text-badge-discount-text font-caption text-caption font-medium">
                   <Icon name="check_circle" className="text-[16px]" />
-                  <span>All 3 compliance checks passed</span>
+                  <span>All compliance checks passed</span>
                 </div>
               </div>
             </div>
@@ -489,16 +384,13 @@ export function DesktopServiceReviewScreen({
                 </button>
               </div>
               <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                Our multi-action Deep Hydration Radiance Facial utilizes micro-fine ultrasound cavitation to gently
-                dislodge micro-comedones, followed immediately by multi-weight hyaluronic acid serum delivery. A
-                lymphatic facial massage stimulates dermal micro-circulation, sealing active ingredients under
-                clinical-grade phototherapy light to restore natural dermal radiance in dusty or dry weather conditions.
+                {draft.description || 'No description provided yet.'}
               </p>
               <div className="flex flex-wrap gap-2 pt-2">
-                {NARRATIVE_CHIPS.map((chip) => (
+                {narrativeChips(draft).map((chip) => (
                   <span
                     key={chip.label}
-                    className={`px-3 py-1 rounded-full font-label-sm text-label-sm flex items-center gap-1.5 ${chip.className}`}
+                    className="px-3 py-1 rounded-full font-label-sm text-label-sm flex items-center gap-1.5 bg-surface-tint-blue text-primary font-semibold"
                   >
                     <Icon name={chip.icon} className="text-[16px]" />
                     {chip.label}
@@ -532,61 +424,22 @@ export function DesktopServiceReviewScreen({
                 </div>
                 <div className="bg-surface-canvas rounded-xl shadow-sm overflow-hidden flex flex-col">
                   <div className="relative h-32 w-full bg-surface-container">
-                    <img alt={SIMULATOR_ALT} className="w-full h-full object-cover" src={draftImage(draft.image, SIMULATOR_IMAGE)} />
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-xs">
-                      -20% TODAY
-                    </div>
-                    <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-inverse-surface/80 text-inverse-on-surface font-caption text-caption backdrop-blur-sm">
-                      Maitama • 0.8 km
-                    </div>
+                    <img
+                      alt={draftImageAlt(draft.title, '')}
+                      className="w-full h-full object-cover"
+                      src={draft.image || NO_ITEM_IMAGE}
+                    />
                   </div>
                   <div className="p-3.5 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-caption text-caption font-bold text-primary uppercase tracking-wide">
-                        {draft.provider || 'Glow & Serenity Spa'}
-                      </span>
-                      <div className="flex items-center gap-0.5 text-tertiary">
-                        <Icon name="star" className="text-[14px]" filled />
-                        <span className="font-caption text-caption font-bold text-on-surface">4.9</span>
-                        <span className="font-caption text-caption text-text-tertiary">(184)</span>
-                      </div>
-                    </div>
+                    <span className="font-caption text-caption font-bold text-primary uppercase tracking-wide">
+                      {draft.provider || businessName}
+                    </span>
                     <div className="font-label-md text-label-md font-bold text-on-surface line-clamp-1">
-                      {draft.title || 'Deep Hydration Radiance Facial'}
+                      {draft.title}
                     </div>
                     <div className="flex items-center gap-2 text-text-secondary font-caption text-caption">
-                      <Icon name="timer" className="text-[14px]" /> {draft.durationMins || 60} mins <span>•</span>
+                      <Icon name="timer" className="text-[14px]" /> {draft.durationMins} mins <span>•</span>
                       <span>Free cancellation</span>
-                    </div>
-                    <div className="mt-1 pt-2 bg-surface-subtle rounded-lg p-2 flex flex-col gap-1.5">
-                      <span className="font-caption text-caption text-text-secondary font-medium">
-                        Select Specialist:
-                      </span>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          className="py-1 px-2 rounded-md bg-surface-tint-blue text-primary font-caption text-caption font-bold flex items-center justify-center gap-1 shadow-xs"
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary" /> Amara K.
-                        </button>
-                        <button
-                          type="button"
-                          className="py-1 px-2 rounded-md bg-surface-canvas text-text-secondary font-caption text-caption font-medium hover:text-on-surface"
-                        >
-                          Zainab T.
-                        </button>
-                      </div>
-                    </div>
-                    <div className="bg-surface-subtle rounded-lg p-2 flex flex-col gap-1">
-                      <span className="font-caption text-caption text-text-secondary font-medium">
-                        Selected Slot (Today):
-                      </span>
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-sm text-label-sm font-bold text-on-surface">Today, 1:15 PM</span>
-                        <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                          Confirmed Available
-                        </span>
-                      </div>
                     </div>
                     <div className="pt-1 flex items-center justify-between">
                       <div className="flex flex-col">
@@ -765,7 +618,7 @@ export function DesktopServiceReviewScreen({
           <div className="flex flex-col">
             <span className="font-label-md text-label-md font-bold">Service Successfully Published!</span>
             <span className="font-caption text-caption text-inverse-on-surface/80">
-              Active across Maitama &amp; Wuse II storefronts now.
+              Live on your storefront{draft.locations.length > 1 ? 's' : ''} now.
             </span>
           </div>
         </div>
