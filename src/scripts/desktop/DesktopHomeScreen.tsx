@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
@@ -332,6 +333,7 @@ export function DesktopHomeScreen({
   onOpenComments,
   onOpenBusiness,
 }: DesktopHomeScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
@@ -1090,10 +1092,10 @@ export function DesktopHomeScreen({
                     Merchant Growth Network
                   </span>
                   <h4 className="font-heading-md text-heading-md text-text-primary tracking-tight">
-                    Own a local business in your area?
+                    {canSwitch ? 'Your business is on VEMTAP' : 'Own a local business in your area?'}
                   </h4>
                   <p className="font-body-md text-body-md text-text-secondary mt-0.5">
-                    Put your neighborhood deals on VEMTAP and welcome high-value repeat walk-ins.
+                    {canSwitch ? 'Manage your deals and customers.' : 'Put your neighborhood deals on VEMTAP and welcome high-value repeat walk-ins.'}
                   </p>
                 </div>
               </div>
@@ -1103,7 +1105,7 @@ export function DesktopHomeScreen({
                   type="button"
                   onClick={() => onNav('for-business')}
                 >
-                  <span>Set up in 3 minutes</span>
+                  <span>{canSwitch ? 'Switch to Business' : 'Set up in 3 minutes'}</span>
                   <Icon name="arrow_forward" className="text-[18px]" />
                 </button>
               </div>
@@ -1648,11 +1650,12 @@ export function DesktopHomeScreen({
                   VEMTAP for Business
                 </span>
                 <h3 className="font-heading-md text-heading-md font-bold text-text-primary">
-                  Own a business in {city || 'your area'}?
+                  {canSwitch ? 'Your business is on VEMTAP' : `Own a business in ${city || 'your area'}?`}
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Publish flash offers, convert nearby walk-in foot traffic, and build lifetime repeat customers with
-                  zero setup fee.
+                  {canSwitch
+                    ? 'Manage your deals and customers.'
+                    : 'Publish flash offers, convert nearby walk-in foot traffic, and build lifetime repeat customers with zero setup fee.'}
                 </p>
               </div>
               <div className="flex items-center gap-space-md shrink-0">
@@ -1661,7 +1664,7 @@ export function DesktopHomeScreen({
                   type="button"
                   onClick={() => onNav('for-business')}
                 >
-                  <span>Set Up Your Store</span>
+                  <span>{canSwitch ? 'Switch to Business' : 'Set Up Your Store'}</span>
                   <Icon name="arrow_forward" className="text-[18px]" />
                 </button>
               </div>

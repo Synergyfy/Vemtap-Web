@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -144,6 +145,7 @@ const SORT_OPTIONS: { key: FeaturedSort; label: string; icon: string }[] = [
 ];
 
 export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }: DesktopFeaturedDealsScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [sort, setSort] = useState<FeaturedSort>('closest');
   const [locationOpen, setLocationOpen] = useState(false);
@@ -497,7 +499,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                 <span className="text-caption font-caption font-semibold uppercase tracking-wider text-primary">
                   For Business Owners
                 </span>
-                <h4 className="font-heading-sm text-heading-sm text-text-primary">Own a business{city && city !== 'Your city' ? ` in ${city}` : ''}?</h4>
+                <h4 className="font-heading-sm text-heading-sm text-text-primary">{canSwitch ? 'Your business is on VEMTAP' : `Own a business${city && city !== 'Your city' ? ` in ${city}` : ''}?`}</h4>
                 <p className="font-body-md text-body-md text-text-secondary">
                   Drive local foot traffic right to your counter during quiet hours by promoting your deals on VEMTAP.
                 </p>
@@ -507,7 +509,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                 type="button"
                 onClick={() => onNav('for-business')}
               >
-                <span>Boost your deals on VEMTAP</span>
+                <span>{canSwitch ? 'Switch to Business' : 'Boost your deals on VEMTAP'}</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
               </button>
             </div>

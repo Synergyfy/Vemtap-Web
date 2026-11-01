@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
@@ -122,6 +123,7 @@ const toActiveDeal = (offer: Record<string, unknown>) => {
 };
 
 export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: DesktopDashboardScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const { fullName } = useProfile();
   const { district, city } = useLocation();
   const { orders } = useOrders();
@@ -694,17 +696,17 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
 
                 <div className="px-4 py-3 text-center">
                   <p className="font-caption text-caption text-text-tertiary">
-                    Own a Business in {district}, {city}?
+                    {canSwitch ? 'Your business is on VEMTAP' : `Own a Business in ${district}, ${city}?`}
                   </p>
                   <p className="mt-1.5 font-label-md text-label-md text-text-secondary">
-                    Switch to a business account.
+                    {canSwitch ? 'Manage your deals and customers.' : 'Switch to a business account.'}
                   </p>
                   <button
                     onClick={onStartBusinessSignup}
                     className="mt-1 font-label-md text-label-md text-primary font-semibold hover:underline inline-flex items-center gap-1.5"
                     type="button"
                   >
-                    <span>Get Started</span>
+                    <span>{canSwitch ? 'Switch to Business' : 'Get Started'}</span>
                     <Icon name="arrow_forward" className="text-[16px]" />
                   </button>
                 </div>

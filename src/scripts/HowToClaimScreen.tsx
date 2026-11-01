@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { useLocation, formatDistanceKm } from '../context/LocationContext';
+import { dealDistanceKm, type DealDetail } from '../hooks/useDealDetail';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -9,9 +11,11 @@ interface HowToClaimScreenProps {
   onClaim?: () => void;
   /** Absent without a specific deal — terms belong to a deal. */
   onTerms?: () => void;
+  /** The live deal; absent when opened without one. */
+  detail?: DealDetail | null;
 }
 
-const STEPS: { step: string; title: string; icon: string; body: string; extra: ReactNode }[] = [
+const buildSteps = (branch: string | null | undefined, distance: string | undefined): { step: string; title: string; icon: string; body: string; extra: ReactNode }[] => [
   {
     step: '1',
     title: 'Claim the Deal',
@@ -29,15 +33,15 @@ const STEPS: { step: string; title: string; icon: string; body: string; extra: R
     title: 'Visit the Business',
     icon: 'near_me',
     body: 'Head to the featured local business in your area anytime before the deal expires.',
-    extra: (
+    extra: branch ? (
       <div className="mt-space-xs flex items-center justify-between gap-2 p-space-xs rounded-lg bg-surface-container-low">
         <div className="flex items-center gap-space-2xs min-w-0">
           <Icon name="location_on" className="text-tertiary-container text-[18px] flex-shrink-0" />
-          <span className="font-caption text-caption text-on-surface truncate">Your local branch</span>
+          <span className="font-caption text-caption text-on-surface truncate">{branch}</span>
         </div>
-        <span className="font-label-sm text-label-sm text-primary flex-shrink-0 font-medium">Nearby</span>
+        {distance && <span className="font-label-sm text-label-sm text-primary flex-shrink-0 font-medium">{distance}</span>}
       </div>
-    ),
+    ) : null,
   },
   {
     step: '3',
@@ -53,7 +57,9 @@ const STEPS: { step: string; title: string; icon: string; body: string; extra: R
   },
 ];
 
-export function HowToClaimScreen({ onBack, onClaim, onTerms }: HowToClaimScreenProps) {
+export function HowToClaimScreen({ onBack, onClaim, onTerms, detail }: HowToClaimScreenProps) {
+  const { lat, lng } = useLocation();
+  const steps = buildSteps(detail?.branchName ?? detail?.address, detail ? formatDistanceKm(dealDistanceKm(detail, lat, lng)) : undefined);
   return (
     <AppScreen>
       <ScreenHeader title="How to Claim" onBack={onBack} />
@@ -73,7 +79,7 @@ export function HowToClaimScreen({ onBack, onClaim, onTerms }: HowToClaimScreenP
         </div>
 
         <div className="px-margin py-space-sm flex flex-col gap-space-sm relative">
-          {STEPS.map((item, index) => (
+          {steps.map((item, index) => (
             <div
               key={item.step}
               className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm relative overflow-hidden"

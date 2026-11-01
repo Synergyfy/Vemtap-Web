@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
@@ -318,6 +319,7 @@ function CredentialModal({
 }
 
 export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const [activeTab, setActiveTab] = useState('personal-profile');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
@@ -553,14 +555,14 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                   <span>Merchant Ecosystem</span>
                 </div>
                 <p className="font-body-md text-body-md text-on-surface-variant text-sm">
-                  Operate a store or artisanal service in Apo?
+                  {canSwitch ? 'Your business is on VEMTAP' : 'Operate a store or artisanal service in Apo?'}
                 </p>
                 <button
                   onClick={() => onNav('for-merchants')}
                   className="inline-flex items-center gap-1.5 text-primary hover:text-on-primary-fixed-variant font-label-sm text-label-sm font-semibold mt-0.5 group self-start"
                   type="button"
                 >
-                  <span>Set up your business on VEMTAP</span>
+                  <span>{canSwitch ? 'Switch to Business' : 'Set up your business on VEMTAP'}</span>
                   <Icon
                     name="arrow_forward"
                     className="text-[16px] group-hover:translate-x-0.5 transition-transform"

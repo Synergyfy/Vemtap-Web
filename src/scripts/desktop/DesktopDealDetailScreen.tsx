@@ -938,6 +938,8 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
         onClose={() => setDialog(null)}
         onProceed={() => startClaim('claimConfirm')}
         deal={selectedDeal}
+        detail={detail}
+        distance={distance}
       />
       <ClaimConfirmationModal
         open={dialog === 'claimConfirm'}

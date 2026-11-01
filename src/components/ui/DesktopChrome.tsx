@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
@@ -563,6 +564,7 @@ const FOOTER_COLUMNS: Array<{ title: string; links: Array<{ label: string; key: 
 ];
 
 export function DesktopFooter({ onNav }: DesktopFooterProps) {
+  const canSwitch = useCanSwitchToBusiness();
   return (
     <footer className="w-full bg-surface-subtle shadow-[0_1px_8px_rgba(0,0,0,0.04)] mt-auto">
       <div className="max-w-7xl mx-auto px-margin py-space-3xl">
@@ -585,7 +587,7 @@ export function DesktopFooter({ onNav }: DesktopFooterProps) {
                   onClick={() => onNav(link.key)}
                   className="font-caption text-caption text-on-surface-variant hover:text-on-surface transition-colors text-left"
                 >
-                  {link.label}
+                  {canSwitch && link.label === 'Set Up Business' ? 'Switch to Business' : link.label}
                 </button>
               ))}
             </div>

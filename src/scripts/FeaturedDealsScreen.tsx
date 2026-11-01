@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -162,6 +163,7 @@ function dealCardProps(
 }
 
 export function FeaturedDealsScreen({ onBack, onOpenFilters, onBoost, onOpenDeal }: FeaturedDealsScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const { city, district, radius, lat, lng, hasCoordinates, setLocation } = useLocation();
   const { setFilters, activeCount } = useDealFilters();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -492,13 +494,13 @@ export function FeaturedDealsScreen({ onBack, onOpenFilters, onBoost, onOpenDeal
               </button>
             </div>
             <div className="mt-space-lg flex items-center gap-1.5 text-center justify-center">
-              <span className="font-caption text-caption text-text-secondary">Own a business{city && city !== 'Your city' ? ` in ${city}` : ''}?</span>
+              <span className="font-caption text-caption text-text-secondary">{canSwitch ? 'Your business is on VEMTAP' : `Own a business${city && city !== 'Your city' ? ` in ${city}` : ''}?`}</span>
               <button
                 type="button"
                 onClick={onBoost}
                 className="font-caption text-caption font-semibold text-primary flex items-center gap-0.5 active:opacity-75"
               >
-                <span>Boost your deals on VEMTAP</span>
+                <span>{canSwitch ? 'Switch to Business' : 'Boost your deals on VEMTAP'}</span>
                 <Icon name="chevron_right" className="text-[14px]" />
               </button>
             </div>

@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { useLocation, formatDistanceKm } from '../../context/LocationContext';
+import { dealDistanceKm, type DealDetail } from '../../hooks/useDealDetail';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 
@@ -9,11 +11,13 @@ interface DesktopHowToClaimScreenProps {
   onClaim?: () => void;
   /** Absent without a specific deal — terms belong to a deal. */
   onTerms?: () => void;
+  /** The live deal; absent when opened without one. */
+  detail?: DealDetail | null;
   /** Where Back goes, for the breadcrumb label. */
   backLabel?: string;
 }
 
-const STEPS: { step: string; title: string; icon: string; body: string; extra: ReactNode }[] = [
+const buildSteps = (branch: string | null | undefined, distance: string | undefined): { step: string; title: string; icon: string; body: string; extra: ReactNode }[] => [
   {
     step: '1',
     title: 'Claim the Deal',
@@ -31,15 +35,15 @@ const STEPS: { step: string; title: string; icon: string; body: string; extra: R
     title: 'Visit the Business',
     icon: 'near_me',
     body: 'Head to the featured local business in your area anytime before the deal expires.',
-    extra: (
+    extra: branch ? (
       <div className="mt-space-xs flex items-center justify-between gap-2 p-space-xs rounded-lg bg-surface-container-low">
         <div className="flex items-center gap-space-2xs min-w-0">
           <Icon name="location_on" className="text-primary text-[18px] shrink-0" />
-          <span className="font-caption text-caption text-text-primary truncate">Your local branch</span>
+          <span className="font-caption text-caption text-text-primary truncate">{branch}</span>
         </div>
-        <span className="font-label-sm text-label-sm text-primary shrink-0 font-medium">Nearby</span>
+        {distance && <span className="font-label-sm text-label-sm text-primary shrink-0 font-medium">{distance}</span>}
       </div>
-    ),
+    ) : null,
   },
   {
     step: '3',
@@ -55,7 +59,9 @@ const STEPS: { step: string; title: string; icon: string; body: string; extra: R
   },
 ];
 
-export function DesktopHowToClaimScreen({ onNav, onBack, onClaim, onTerms, backLabel = 'Deal' }: DesktopHowToClaimScreenProps) {
+export function DesktopHowToClaimScreen({ onNav, onBack, onClaim, onTerms, detail, backLabel = 'Deal' }: DesktopHowToClaimScreenProps) {
+  const { lat, lng } = useLocation();
+  const steps = buildSteps(detail?.branchName ?? detail?.address, detail ? formatDistanceKm(dealDistanceKm(detail, lat, lng)) : undefined);
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav={onClaim ? 'my-deals' : 'deals'}>
       <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
@@ -87,9 +93,9 @@ export function DesktopHowToClaimScreen({ onNav, onBack, onClaim, onTerms, backL
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start mt-8">
             <div className="flex flex-col gap-4 min-w-0">
-              {STEPS.map((item, index) => (
+              {steps.map((item, index) => (
                 <div className="relative" key={item.step}>
-                  {index < STEPS.length - 1 && (
+                  {index < steps.length - 1 && (
                     <span
                       aria-hidden="true"
                       className="hidden sm:block absolute left-[26px] top-[72px] bottom-[-16px] w-px bg-border-subtle"

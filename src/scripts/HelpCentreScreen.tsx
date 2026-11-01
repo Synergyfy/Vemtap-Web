@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -138,6 +139,7 @@ const HERO_ALT =
   'A cheerful Nigerian customer in modern casual wear happily presenting a digital phone pass to a smiling local Abuja barista in a warmly lit boutique artisan cafe, soft natural morning sunlight, clean commercial aesthetic, warm vibrant tones.';
 
 export function HelpCentreScreen({ onBack, onStartChat, onOpenMerchant, onOpenTerms }: HelpCentreScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<string[]>([]);
 
@@ -425,13 +427,13 @@ export function HelpCentreScreen({ onBack, onStartChat, onOpenMerchant, onOpenTe
 
         <div className="flex flex-col items-center justify-center pt-space-xs pb-space-sm text-center">
           <p className="font-label-md text-label-md text-text-secondary">
-            Own a business?{' '}
+            {canSwitch ? 'Your business is on VEMTAP' : 'Own a business?'}{' '}
             <button
               type="button"
               onClick={onOpenMerchant}
               className="text-primary font-semibold hover:underline inline-flex items-center gap-0.5 ml-1 active:opacity-75 transition-opacity"
             >
-              Set up your business on VEMTAP
+              {canSwitch ? 'Switch to Business' : 'Set up your business on VEMTAP'}
               <Icon name="arrow_forward" className="text-[16px]" />
             </button>
           </p>

@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -20,6 +21,7 @@ interface DiscoverScreenProps {
 import { toDiscoverCard, type BusinessCard } from './discoverData';
 
 export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNotifications, onBusinessSetup, onOpenLocation }: DiscoverScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   // Live business categories (GET /categories); the chosen one filters the businesses.
   const { categories } = useHomeDealCategories();
   // Shared with the Filters screen, so the chips and filters always agree.
@@ -257,13 +259,13 @@ export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNot
             )}
 
             <div className="pt-space-md pb-space-lg flex flex-col items-center justify-center text-center">
-              <p className="font-caption text-caption text-text-secondary">Own a local store or clinic?</p>
+              <p className="font-caption text-caption text-text-secondary">{canSwitch ? 'Your business is on VEMTAP' : 'Own a local store or clinic?'}</p>
               <button
                 type="button"
                 onClick={onBusinessSetup}
                 className="font-label-md text-label-md font-semibold text-primary-container inline-flex items-center gap-1 mt-1 hover:underline"
               >
-                <span>Set up your business on VEMTAP</span>
+                <span>{canSwitch ? 'Switch to Business' : 'Set up your business on VEMTAP'}</span>
                 <Icon name="arrow_forward" className="text-[16px]" />
               </button>
             </div>

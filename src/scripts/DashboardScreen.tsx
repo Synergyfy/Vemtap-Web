@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { useEffect, useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -161,6 +162,7 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
 }
 
 export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSignup }: DashboardScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
   const [hero, setHero] = useState(0);
@@ -728,16 +730,16 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
             <div className="flex items-center gap-space-2xs text-text-secondary">
               <Icon name="storefront" className="text-[18px]" />
               <span className="font-label-md text-label-md">
-                Own a Business in {district}, {city}?
+                {canSwitch ? 'Your business is on VEMTAP' : `Own a Business in ${district}, ${city}?`}
               </span>
             </div>
-            <p className="mt-1 font-caption text-caption text-text-secondary">Switch to a business account.</p>
+            <p className="mt-1 font-caption text-caption text-text-secondary">{canSwitch ? 'Manage your deals and customers.' : 'Switch to a business account.'}</p>
             <button
               type="button"
               onClick={onStartBusinessSignup}
               className="mt-space-2xs text-primary-container font-label-md text-label-md font-semibold inline-flex items-center gap-1 hover:underline"
             >
-              <span>Get Started</span>
+              <span>{canSwitch ? 'Switch to Business' : 'Get Started'}</span>
               <Icon name="arrow_forward" className="text-[16px]" />
             </button>
           </div>

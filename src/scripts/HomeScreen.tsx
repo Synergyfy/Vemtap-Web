@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -582,15 +583,16 @@ function PopularSection({ items, onSeeAll, onOpenDeal, emptyText, loading }: { i
 }
 
 function EnrollmentPrompt({ onEnroll }: { onEnroll: () => void }) {
+  const canSwitch = useCanSwitchToBusiness();
   return (
     <div className="p-4 rounded-2xl bg-surface-tint-blue shadow-sm flex items-center justify-between gap-3">
       <div className="flex flex-col">
-        <span className="font-caption text-caption text-text-secondary">Own a local business in your area?</span>
+        <span className="font-caption text-caption text-text-secondary">{canSwitch ? 'Your business is on VEMTAP' : 'Own a local business in your area?'}</span>
         <button type="button" onClick={onEnroll} className="font-label-md text-label-md text-primary font-semibold flex items-center gap-1 group text-left">
-          <span>Put your deals on VEMTAP</span>
+          <span>{canSwitch ? 'Switch to Business' : 'Put your deals on VEMTAP'}</span>
           <Icon name="arrow_forward" className="text-[16px] group-hover:translate-x-0.5 transition-transform" />
         </button>
-        <span className="font-caption text-[11px] text-text-tertiary pt-0.5">Set up in 3 minutes • Instant discovery</span>
+        {canSwitch ? null : <span className="font-caption text-[11px] text-text-tertiary pt-0.5">Set up in 3 minutes • Instant discovery</span>}
       </div>
       <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary shrink-0">
         <Icon name="storefront" className="text-[22px]" />

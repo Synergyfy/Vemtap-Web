@@ -58,6 +58,8 @@ import { StartVemtapScreen } from './scripts/StartVemtapScreen';
 import { AccountScreen } from './scripts/AccountScreen';
 import { SettingsScreen } from './scripts/SettingsScreen';
 import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
+import { NotFoundScreen } from './scripts/NotFoundScreen';
+import { DesktopNotFoundScreen } from './scripts/desktop/DesktopNotFoundScreen';
 import { SupportLegalScreen } from './scripts/SupportLegalScreen';
 import { EditProfileScreen } from './scripts/EditProfileScreen';
 import { RewardsScreen } from './scripts/RewardsScreen';
@@ -562,7 +564,8 @@ type Route =
   | 'claim-gift-confirm'
   | 'claimed-contact'
   | 'claimed-terms'
-  | 'admin-referral';
+  | 'admin-referral'
+  | 'not-found';
 
 const ROUTE_PATH: Record<Route, string> = {
   welcome: '/onboarding',
@@ -747,6 +750,7 @@ const ROUTE_PATH: Record<Route, string> = {
   // Platform Admin — deliberately absent from every user nav; admins open it
   // directly. Gating is the backend's job once auth exists.
   'admin-referral': '/admin/referral',
+  'not-found': '/not-found',
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
@@ -912,6 +916,11 @@ const SIGNED_IN_ROUTES = new Set<Route>([
   'my-deals',
   'messages',
   'conversation',
+  // Post-sign-up steps: the account exists before these open.
+  'location-permission',
+  'manual-location',
+  'confirm-location',
+  'discovering',
 ]);
 
 /** Sign-up and sign-in pages: a signed-in visitor opening one returns to their shell. */
@@ -990,12 +999,17 @@ function dealDetailPath(deal?: ClaimDealSummary | null): string {
  * The route a URL opens. `resume` (the first page load only, never Back/Forward)
  * reopens an unfinished business sign-up or setup from the bare entry URL.
  */
-function entryRoute(path: string, authed: boolean, isDesktop: boolean, resume = false): Route {
+function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume = false): Route {
+  const path = rawPath.replace(/\/+$/, '') || '/';
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
   if (path.startsWith('/deals/')) return 'deal-detail';
   const direct = PATH_ROUTE.get(path);
   if (authed && hasApiConfig() && isSignedOutPath(path)) return 'home';
+  // A page load can't restore a sign-up in progress unless a business one was saved.
+  if (resume && !authed && hasApiConfig() && (direct === 'verify-email' || direct === 'profile-setup') && !getBusinessSignup()?.email) {
+    return 'start-vemtap';
+  }
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
   }
@@ -1007,6 +1021,7 @@ function entryRoute(path: string, authed: boolean, isDesktop: boolean, resume = 
       isDesktop,
     );
   }
+  if (direct === undefined && path !== '/') return 'not-found';
   // Live mode: the customer home is for signed-in users only — "onboarded on
   // this device before" survives sign-out and expired sessions. An unfinished
   // business sign-up reopens where it stopped. Signed-in accounts always land on
@@ -1055,6 +1070,9 @@ export default function App() {
 
 /** The result Google sent back to `/google-callback`, read once per page load. */
 const GOOGLE_REDIRECT = takeGoogleRedirectResult();
+/** The URL this tab opened; a protected one is returned to after signing in. */
+const ENTRY_PATH = window.location.pathname;
+const RETURN_PATH_KEY = 'vemtap_return_to';
 
 function AppInner() {
   const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession, switchShell } = useAuth();
@@ -1063,7 +1081,7 @@ function AppInner() {
   // A live owner already has their business identity: business entry points
   // should open their dashboard instead of starting sign-up again.
   // Includes an owner whose token is currently scoped to the customer shell.
-  const isBusinessSession = hasApiConfig() && !!sessionUser && (Boolean(sessionUser.isOwnerAccount) || isBusinessRole(sessionUser.role));
+  const isBusinessSession = hasApiConfig() && !!sessionUser && (Boolean(sessionUser.businessRole) || isBusinessRole(sessionUser.role));
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -1413,11 +1431,11 @@ function AppInner() {
   const [shellSwitchFailed, setShellSwitchFailed] = useState<Route | null>(null);
   const shellSwitchInFlight = useRef(false);
   const onBusinessPage = isPortalRoute(route) || route === 'business-onboarding' || route === 'business-verification';
-  const shellRoleNeeded: 'Owner' | 'Customer' | null = shellHold || returningToShell
+  const shellRoleNeeded: 'Owner' | 'Manager' | 'Staff' | 'Customer' | null = shellHold || returningToShell
     ? null
-    : onBusinessPage && sessionUser?.isOwnerAccount === true && sessionUser.role === 'Customer'
-      ? 'Owner'
-      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && sessionUser?.role === 'Owner'
+    : onBusinessPage && sessionUser?.businessRole && sessionUser.role === 'Customer'
+      ? sessionUser.businessRole
+      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && isBusinessRole(sessionUser?.role)
         ? 'Customer'
         : null;
   const shellSwitching = shellRoleNeeded !== null && shellSwitchFailed !== route;
@@ -1444,7 +1462,7 @@ function AppInner() {
     hasApiConfig() &&
     onBusinessPage &&
     !!sessionUser &&
-    !sessionUser.isOwnerAccount &&
+    !sessionUser.businessRole &&
     (sessionUser.role === 'Customer' || sessionUser.role === 'USER');
   const [accessChecked, setAccessChecked] = useState<Route | null>(null);
   const accessCheckPending =
@@ -1485,6 +1503,24 @@ function AppInner() {
     };
   }, [accessCheckPending, route]);
 
+  // Remember the protected page a signed-out visitor opened, for after sign-in.
+  useEffect(() => {
+    const opened = PATH_ROUTE.get(ENTRY_PATH);
+    if (!hasApiConfig() || authed || !opened || opened === 'home') return;
+    if (SIGNED_IN_ROUTES.has(opened) || isPortalRoute(opened)) window.sessionStorage.setItem(RETURN_PATH_KEY, ENTRY_PATH);
+    // Only the page this tab opened on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The referral admin page is for platform admins only.
+  const adminCheckPending =
+    hasApiConfig() && route === 'admin-referral' && (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin'));
+  useEffect(() => {
+    if (!hasApiConfig() || route !== 'admin-referral') return;
+    if (!authed) setRouteState('sign-in');
+    else if (sessionUser && sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin') setRouteState('home');
+  }, [authed, route, sessionUser]);
+
   // Opening a portal page signed out (with the API configured) goes to sign in;
   // customer pages without a session (signed out, expired) go to onboarding.
   useEffect(() => {
@@ -1495,8 +1531,8 @@ function AppInner() {
 
   useEffect(() => {
     const expected =
-      route === 'customer-invite-join'
-        ? null // dynamic /join/{slug}?invite=… path — never overwritten
+      route === 'customer-invite-join' || route === 'not-found'
+        ? null // dynamic /join/{slug}?invite=… and unknown paths — never overwritten
         : resolveRoutePath(route);
     if (expected && window.location.pathname !== expected) {
       window.history.replaceState(null, '', expected);
@@ -2628,10 +2664,21 @@ function AppInner() {
    * no business yet, is the customer shell; setup reopens from its button.
    * Staff and admins only have the business side.
    */
-  const routeSignedInOwner = async (user?: SessionUser | null, go: (target: Route) => void = setRoute) => {
+  const resumeReturnPath = () => {
+    const path = window.sessionStorage.getItem(RETURN_PATH_KEY);
+    window.sessionStorage.removeItem(RETURN_PATH_KEY);
+    if (!path) return false;
+    setRoute(entryRoute(path, true, isDesktop));
+    return true;
+  };
+
+  const routeSignedInOwner = async (user?: SessionUser | null, replaceTo?: (target: Route) => void) => {
+    if (!replaceTo && resumeReturnPath()) return;
+    const go = replaceTo ?? setRoute;
     const saved = await hydrateBusinessSetupFromServer();
     const customerShell =
-      user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId || user.lastActiveShell === 'customer');
+      user?.lastActiveShell === 'customer' ||
+      (user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId));
     if (!customerShell) {
       go('business-overview');
       return;
@@ -2664,7 +2711,7 @@ function AppInner() {
     }
     setShellHold(true);
     try {
-      const owner = sessionUser?.role === 'Customer' ? await switchShell('Owner') : sessionUser;
+      const owner = sessionUser?.role === 'Customer' ? await switchShell(sessionUser.businessRole ?? 'Owner') : sessionUser;
       const saved = await hydrateBusinessSetupFromServer();
       if (hasUnfinishedBusinessSetup(saved)) {
         setAuthIntent('customer');
@@ -2776,7 +2823,8 @@ function AppInner() {
         }
         setAuthIntent('customer');
         // New accounts confirm their phone; returning customers go straight home.
-        setRoute(isNew ? 'google-confirm' : 'home');
+        if (isNew) setRoute('google-confirm');
+        else if (!resumeReturnPath()) setRoute('home');
       } catch (error) {
         fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
       } finally {
@@ -3015,7 +3063,7 @@ function AppInner() {
                 return;
               }
               // A returning customer goes straight home; onboarding is for sign-up.
-              setRoute(hasApiConfig() ? 'home' : 'discovering');
+              if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
             }}
             onGoogleSignIn={async () => {
               if (hasApiConfig()) {
@@ -3059,7 +3107,7 @@ function AppInner() {
               return;
             }
             // A returning customer goes straight home; onboarding is for sign-up.
-            setRoute(hasApiConfig() ? 'home' : 'discovering');
+            if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
           }}
           onGoogleSignIn={async () => {
             if (hasApiConfig()) {
@@ -3802,6 +3850,7 @@ function AppInner() {
             onBack={() => setRoute(howToClaimFrom)}
             backLabel={howToClaimFrom === 'deals' ? 'Deals' : 'Deal'}
             onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+            detail={howToClaimFrom === 'deals' ? null : liveDeal.detail}
             onTerms={howToClaimFrom === 'deals' ? undefined : () => {
               setTermsFrom('how-to-claim');
               setRoute('deal-terms');
@@ -3812,6 +3861,7 @@ function AppInner() {
         <HowToClaimScreen
           onBack={() => setRoute(howToClaimFrom)}
           onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+          detail={howToClaimFrom === 'deals' ? null : liveDeal.detail}
           onTerms={howToClaimFrom === 'deals' ? undefined : () => {
             setTermsFrom('how-to-claim');
             setRoute('deal-terms');
@@ -4427,6 +4477,11 @@ function AppInner() {
      * Platform Admin → Referral programme. Not reachable from user navigation;
      * an admin opens `/admin/referral` directly to swap the explainer video.
      */
+    case 'not-found': {
+      const leave = () => setRoute(!authed ? 'welcome' : isBusinessRole(sessionUser?.role) ? 'business-overview' : 'home');
+      return isDesktop ? <DesktopNotFoundScreen onHome={leave} /> : <NotFoundScreen onHome={leave} />;
+    }
+
     case 'admin-referral':
       return <AdminReferralScreen onBack={() => setRoute('business-referrals')} />;
 
@@ -6534,7 +6589,7 @@ function AppInner() {
   return (
     <StoreOrderingProvider>
     <>
-      {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending ? (
+      {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending ? (
         <SkeletonGroup label="Loading" className="mx-auto w-full max-w-5xl space-y-4 p-6">
           <Skeleton className="h-10 w-1/2" />
           <Skeleton className="h-48 w-full" />

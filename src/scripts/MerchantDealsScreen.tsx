@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -109,6 +110,7 @@ export function MerchantDealsScreen({
   onShowGrid,
   onClaim,
 }: MerchantDealsScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const [claimed, setClaimed] = useState<Record<number, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
   const businessName = business?.name?.trim() || 'Business storefront';
@@ -335,13 +337,13 @@ export function MerchantDealsScreen({
             </div>
             <div className="mt-space-lg text-center">
               <p className="font-caption text-caption text-text-secondary">
-                Own a business in Apo?
+                {canSwitch ? 'Your business is on VEMTAP' : 'Own a business in Apo?'}
                 <button
                   type="button"
                   onClick={onBusinessSetup}
                   className="text-primary font-semibold inline-flex items-center gap-0.5 ml-1 hover:underline"
                 >
-                  <span>Set up your business on VEMTAP</span>
+                  <span>{canSwitch ? 'Switch to Business' : 'Set up your business on VEMTAP'}</span>
                   <Icon name="arrow_forward" className="text-[14px]" />
                 </button>
               </p>

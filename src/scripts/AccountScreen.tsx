@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
@@ -82,6 +83,7 @@ const UTILITY_ROWS: AccountRow[] = [
 ];
 
 export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const { fullName, email, initials, phone } = useProfile();
   // Live: no sample counts or totals until real figures are wired; demo keeps them.
   const live = hasApiConfig();
@@ -196,14 +198,14 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
             <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col items-center text-center">
               <div className="flex items-center gap-space-2xs text-text-secondary">
                 <Icon name="storefront" className="text-[18px]" />
-                <span className="font-label-md text-label-md">Own a business in Nigeria?</span>
+                <span className="font-label-md text-label-md">{canSwitch ? 'Your business is on VEMTAP' : 'Own a business in Nigeria?'}</span>
               </div>
               <button
                 type="button"
                 onClick={() => onNavigate('business-onboarding')}
                 className="mt-space-2xs text-primary-container font-label-md text-label-md font-semibold inline-flex items-center gap-1 hover:underline"
               >
-                Set up your business on VEMTAP
+                {canSwitch ? 'Switch to Business' : 'Set up your business on VEMTAP'}
                 <Icon name="arrow_forward" className="text-[16px]" />
               </button>
             </div>
