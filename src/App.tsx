@@ -5,7 +5,8 @@ import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { isBusinessRole } from './services/sessionService';
+import { isBusinessRole, type SessionUser } from './services/sessionService';
+import { Skeleton, SkeletonGroup } from './components/ui/Skeleton';
 import { useSessionUser } from './hooks/useSessionUser';
 import { SESSION_EXPIRED_EVENT } from './services/api/client';
 import { hasApiConfig } from './lib/api';
@@ -836,6 +837,43 @@ function isPortalRoute(route: Route) {
   return PORTAL_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
+/**
+ * Pages of the customer shell: an owner reaching one gets a customer token.
+ * Anything not here and not a portal page (public business pages, sign-in,
+ * help, legal) is neutral and keeps the current token.
+ */
+const CUSTOMER_SHELL_ROUTES = new Set<Route>([
+  ...CLAIM_STEP_ROUTES,
+  'home',
+  'deals',
+  'featured-deals',
+  'filters',
+  'discover',
+  'saved',
+  'referrals',
+  'account',
+  'account-settings',
+  'savings',
+  'notifications',
+  'addresses',
+  'preferences',
+  'settings',
+  'edit-profile',
+  'rewards',
+  'scan',
+  'activity',
+  'dashboard',
+  'orders',
+  'order-detail',
+  'booking-detail',
+  'my-deals',
+  'messages',
+  'conversation',
+  'cart',
+  'claim-success',
+  'claimed-deal',
+]);
+
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
 ]);
@@ -923,10 +961,11 @@ function entryRoute(path: string, authed: boolean, isDesktop: boolean, resume = 
   }
   // Live mode: the customer home is for signed-in users only — "onboarded on
   // this device before" survives sign-out and expired sessions. An unfinished
-  // business sign-up or setup reopens on the page after the last one completed.
+  // business sign-up reopens where it stopped. Signed-in accounts always land on
+  // home: unfinished setup resumes only from "Set up your business on VEMTAP".
   if (hasApiConfig()) {
     if (!authed) return (resume && getBusinessSignup()?.stage) || 'welcome';
-    return resume && hasUnfinishedBusinessSetup() ? 'business-onboarding' : 'home';
+    return 'home';
   }
   return (authed || hasOnboarded()) ? 'home' : 'welcome';
 }
@@ -970,11 +1009,12 @@ export default function App() {
 const GOOGLE_REDIRECT = takeGoogleRedirectResult();
 
 function AppInner() {
-  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession } = useAuth();
+  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession, switchShell } = useAuth();
   const sessionUser = useSessionUser().data;
   // A live owner already has their business identity: business entry points
   // should open their dashboard instead of starting sign-up again.
-  const isBusinessSession = hasApiConfig() && !!sessionUser && isBusinessRole(sessionUser.role);
+  // Includes an owner whose token is currently scoped to the customer shell.
+  const isBusinessSession = hasApiConfig() && !!sessionUser && (Boolean(sessionUser.isOwnerAccount) || isBusinessRole(sessionUser.role));
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -1292,19 +1332,37 @@ function AppInner() {
     if (authed) clearBusinessSignup();
   }, [authed]);
 
-  // Live: an owner opening the app with setup unfinished (saved on their
-  // account, e.g. on another device) goes back to it, once per page load.
-  const setupResumeChecked = useRef(false);
+  // The page decides the shell: an owner reaching a business page by any means
+  // (link, Back, reload) gets a business token, and a customer page a customer
+  // token. Neutral pages keep what they have. Held while a sign-in or "Set up
+  // your business" is choosing where to go.
+  const [shellHold, setShellHold] = useState(Boolean(GOOGLE_REDIRECT));
+  const [shellSwitchFailed, setShellSwitchFailed] = useState<Route | null>(null);
+  const shellSwitchInFlight = useRef(false);
+  const onBusinessPage = isPortalRoute(route) || route === 'business-onboarding' || route === 'business-verification';
+  const shellRoleNeeded: 'Owner' | 'Customer' | null = shellHold
+    ? null
+    : onBusinessPage && sessionUser?.isOwnerAccount === true && sessionUser.role === 'Customer'
+      ? 'Owner'
+      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && sessionUser?.role === 'Owner'
+        ? 'Customer'
+        : null;
+  const shellSwitching = shellRoleNeeded !== null && shellSwitchFailed !== route;
   useEffect(() => {
-    if (!isBusinessSession || setupResumeChecked.current) return;
-    setupResumeChecked.current = true;
-    void hydrateBusinessSetupFromServer().then((saved) => {
-      const current = routeRef.current;
-      if (!hasUnfinishedBusinessSetup(saved) || (current !== 'home' && current !== 'welcome')) return;
-      setBusinessSetupSkipIntro(true);
-      setRouteState('business-onboarding');
-    });
-  }, [isBusinessSession]);
+    if (!shellSwitching || !shellRoleNeeded || shellSwitchInFlight.current) return;
+    shellSwitchInFlight.current = true;
+    const failedOn = route;
+    void switchShell(shellRoleNeeded)
+      .then(() => setShellSwitchFailed(null))
+      .catch((error) => {
+        console.error('Could not switch shell:', error);
+        // Show the page anyway; it reports its own errors.
+        setShellSwitchFailed(failedOn);
+      })
+      .finally(() => {
+        shellSwitchInFlight.current = false;
+      });
+  }, [shellSwitching, shellRoleNeeded, route, switchShell]);
 
   // Opening a portal page signed out (with the API configured) goes to sign in;
   // the customer home without a session (signed out, expired) goes to onboarding.
@@ -1696,11 +1754,8 @@ function AppInner() {
   const accountNav = (target: AccountTarget) => {
     if (target === 'business-onboarding') {
       // An owner switching to the customer view still owns a business.
-      if (isBusinessSession) {
-        setRoute('business-overview');
-        return;
-      }
-      setBusinessOnboardingFrom('account');
+      void openBusinessSetup('account');
+      return;
     }
     setRoute(target);
   };
@@ -1723,8 +1778,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
       case 'sign-in':
         setSignInFrom('welcome');
@@ -1782,8 +1836,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
     }
   };
@@ -1806,8 +1859,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
       case 'sign-in':
         setSignInFrom('welcome');
@@ -1863,8 +1915,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
     }
   };
@@ -2464,16 +2515,53 @@ function AppInner() {
     else open();
   };
 
-  /** A signed-in owner with setup still to finish goes back to it; otherwise the dashboard. */
-  const routeSignedInOwner = async () => {
+  /**
+   * A signed-in owner returns to the shell they last used. Unfinished setup, or
+   * no business yet, is the customer shell; setup reopens from its button.
+   * Staff and admins only have the business side.
+   */
+  const routeSignedInOwner = async (user?: SessionUser | null) => {
     const saved = await hydrateBusinessSetupFromServer();
-    if (hasUnfinishedBusinessSetup(saved)) {
-      setAuthIntent('customer');
-      setBusinessSetupSkipIntro(true);
+    const customerShell =
+      user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId || user.lastActiveShell === 'customer');
+    if (!customerShell) {
+      setRoute('business-overview');
+      return;
+    }
+    setAuthIntent('customer');
+    setRoute('home');
+  };
+
+  /**
+   * "Set up your business on VEMTAP": the way back into unfinished setup, on the
+   * page after the last one completed. Finished owners get their dashboard.
+   */
+  const openBusinessSetup = async (from: Route = route) => {
+    setBusinessOnboardingFrom(from);
+    if (!isBusinessSession) {
       setRoute('business-onboarding');
       return;
     }
-    setRoute('business-overview');
+    setShellHold(true);
+    try {
+      const owner = sessionUser?.role === 'Customer' ? await switchShell('Owner') : sessionUser;
+      const saved = await hydrateBusinessSetupFromServer();
+      if (hasUnfinishedBusinessSetup(saved)) {
+        setAuthIntent('customer');
+        setBusinessSetupSkipIntro(true);
+        setRoute('business-onboarding');
+      } else if (owner?.role === 'Owner' && !owner.businessId) {
+        setAuthIntent('customer');
+        resumeAtBusinessProfile();
+        setRoute('business-onboarding');
+      } else {
+        setRoute('business-overview');
+      }
+    } catch (error) {
+      console.error('Could not open business setup:', error);
+    } finally {
+      setShellHold(false);
+    }
   };
 
   // Sign-up location (live): the browser's position or a typed area becomes
@@ -2516,6 +2604,7 @@ function AppInner() {
     if (result.error) {
       // Closing Google's page is a cancel, not an error.
       if (result.error !== 'access_denied') fail('Google sign-in didn’t complete. Please try again.');
+      setShellHold(false);
       return;
     }
     const { intent } = result.pending;
@@ -2545,7 +2634,7 @@ function AppInner() {
         }
         const business = isBusinessRole(user?.role);
         if (business && user?.businessId && !isNew) {
-          await routeSignedInOwner();
+          await routeSignedInOwner(user);
           return;
         }
         if (intent === 'business') {
@@ -2562,7 +2651,7 @@ function AppInner() {
           return;
         }
         if (business) {
-          enterBusinessProfile();
+          await routeSignedInOwner(user);
           return;
         }
         setAuthIntent('customer');
@@ -2570,6 +2659,8 @@ function AppInner() {
         setRoute(isNew ? 'google-confirm' : 'home');
       } catch (error) {
         fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
+      } finally {
+        setShellHold(false);
       }
     })();
     // Runs once for the page Google returned to.
@@ -2800,7 +2891,7 @@ function AppInner() {
                 return;
               }
               if (isBusinessRole(user?.role)) {
-                await routeSignedInOwner();
+                await routeSignedInOwner(user);
                 return;
               }
               // A returning customer goes straight home; onboarding is for sign-up.
@@ -2844,7 +2935,7 @@ function AppInner() {
               return;
             }
             if (isBusinessRole(user?.role)) {
-              await routeSignedInOwner();
+              await routeSignedInOwner(user);
               return;
             }
             // A returning customer goes straight home; onboarding is for sign-up.
@@ -2898,7 +2989,7 @@ function AppInner() {
               setRoute('profile-setup');
             }}
             onEditEmail={() => setRoute(authEntry)}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
             email={customerSignup.email}
             onResend={async () => {
               if (businessSignup) await requestOwnerSignupOtp(customerSignup.email);
@@ -2918,7 +3009,7 @@ function AppInner() {
             setRoute('profile-setup');
           }}
           onEditEmail={() => setRoute(authEntry)}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           email={businessSignup && !hasApiConfig() ? undefined : customerSignup.email}
           onResend={
             businessSignup
@@ -2959,7 +3050,7 @@ function AppInner() {
               await completeCustomerSignup(details);
               setRoute('location-permission');
             }}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
           />
         );
       return (
@@ -2977,7 +3068,7 @@ function AppInner() {
             await completeCustomerSignup(details);
             setRoute('location-permission');
           }}
-          onBusinessSetup={authIntent === 'business' ? undefined : () => setRoute('business-onboarding')}
+          onBusinessSetup={authIntent === 'business' ? undefined : () => void openBusinessSetup()}
         />
       );
     }
@@ -3038,7 +3129,7 @@ function AppInner() {
             setConfirmFrom('location-permission');
             setRoute('confirm-location');
           }}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
         />
       );
 
@@ -3056,7 +3147,7 @@ function AppInner() {
               }
               setRoute('discovering');
             }}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
             {...confirmPlace}
             initialRadius={savedLocation.radius}
           />
@@ -3066,7 +3157,7 @@ function AppInner() {
           onBack={() => setRoute(confirmFrom)}
           onChangeLocation={() => setRoute('manual-location')}
           onContinue={() => setRoute('discovering')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           {...confirmPlace}
           radius={savedLocation.radius}
         />
@@ -3151,7 +3242,7 @@ function AppInner() {
           onOpenDeal={(deal) => openDeal('home', deal ?? null)}
           onOpenBusiness={(business) => openBusiness(business, 'home')}
           onOpenNotifications={() => setRoute('notifications')}
-          onEnroll={() => setRoute('business-onboarding')}
+          onEnroll={() => void openBusinessSetup()}
           onAccount={() => setRoute('account')}
           onOpenComments={(deal) => openDealComments('home', deal)}
         />
@@ -3240,7 +3331,7 @@ function AppInner() {
         <FeaturedDealsScreen
           onBack={() => setRoute(feedFrom)}
           onOpenFilters={() => openFeedRoute('filters', 'featured-deals')}
-          onBoost={() => setRoute('business-onboarding')}
+          onBoost={() => void openBusinessSetup()}
           onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)}
         />
       );
@@ -3759,7 +3850,7 @@ function AppInner() {
           business={selectedBusiness}
           onBack={() => setRoute(bizFrom)}
           onOpenDeal={() => openDeal('storefront')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           onShowGrid={() => {
             setCatalogueFrom('storefront');
             setRoute('storefront-products');
@@ -4005,7 +4096,7 @@ function AppInner() {
         // A live owner taps this from their customer view: send them back to
         // the business dashboard rather than through setup again.
         if (isBusinessSession) {
-          setRoute('business-overview');
+          void openBusinessSetup('dashboard');
           return;
         }
         setBusinessOnboardingFrom('dashboard');
@@ -4022,7 +4113,8 @@ function AppInner() {
           onTab={(tab) => setRoute(tab)}
           onNavigate={(target) => {
             if (target === 'business-onboarding') {
-              setBusinessOnboardingFrom('dashboard');
+              void openBusinessSetup('dashboard');
+              return;
             }
             setRoute(target);
           }}
@@ -4164,7 +4256,7 @@ function AppInner() {
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'discover')}
             onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
           />
         );
       return (
@@ -4178,7 +4270,7 @@ function AppInner() {
           onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
           onOpenFilters={() => openFeedRoute('filters', 'discover')}
           onOpenNotifications={() => setRoute('notifications')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
         />
       );
 
@@ -4404,7 +4496,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('support-legal')}
             onStartChat={() => setRoute('support')}
-            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenMerchant={() => void openBusinessSetup()}
             onOpenTerms={() => setRoute('terms')}
           />
         );
@@ -4412,7 +4504,7 @@ function AppInner() {
         <HelpCentreScreen
           onBack={() => setRoute('support-legal')}
           onStartChat={() => setRoute('support')}
-          onOpenMerchant={() => setRoute('business-onboarding')}
+          onOpenMerchant={() => void openBusinessSetup()}
           onOpenTerms={() => setRoute('terms')}
         />
       );
@@ -4633,7 +4725,7 @@ function AppInner() {
           onActivate={() => setRoute('subscription')}
           onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
-          onCreateDeal={() => setRoute('deals')}
+          onCreateDeal={() => setRoute('hub-deals')}
           onQrStands={() => setRoute('business-overview')}
         />
       ) : (
@@ -4643,7 +4735,7 @@ function AppInner() {
           onActivate={() => setRoute('subscription')}
           onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
-          onCreateDeal={() => setRoute('deals')}
+          onCreateDeal={() => setRoute('hub-deals')}
           onQrStands={() => setRoute('business-overview')}
         />
       );
@@ -4864,7 +4956,7 @@ function AppInner() {
             segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onLaunchCampaign={() => openBoost()}
-            onOpenMessages={() => setRoute('messages')}
+            onOpenMessages={() => setRoute('business-messages')}
             onOpenDeals={() => setRoute('hub-deals')}
             onOpenCrm={() => setRoute('hub-customers')}
           />
@@ -4875,7 +4967,7 @@ function AppInner() {
             segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onLaunchCampaign={() => openBoost()}
-            onOpenMessages={() => setRoute('messages')}
+            onOpenMessages={() => setRoute('business-messages')}
             onOpenDeals={() => setRoute('hub-deals')}
             onOpenCrm={() => setRoute('hub-customers')}
           />
@@ -4972,7 +5064,7 @@ function AppInner() {
           <HelpCentreScreen
             onBack={() => setRoute('business-more')}
             onStartChat={() => setRoute('support')}
-            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenMerchant={() => void openBusinessSetup()}
             onOpenTerms={() => setRoute('terms')}
           />
         </div>
@@ -6330,7 +6422,15 @@ function AppInner() {
   return (
     <StoreOrderingProvider>
     <>
-      {renderRoute()}
+      {shellSwitching ? (
+        <SkeletonGroup label="Loading" className="mx-auto w-full max-w-5xl space-y-4 p-6">
+          <Skeleton className="h-10 w-1/2" />
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </SkeletonGroup>
+      ) : (
+        renderRoute()
+      )}
 
       {claimPopupOpen &&
         (isDesktop ? (
