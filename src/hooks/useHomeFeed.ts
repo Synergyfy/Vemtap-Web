@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { hasApiConfig } from '../services/api/client';
 import { catalogueService } from '../services/catalogueService';
 import { useLocationQuery } from '../context/LocationContext';
+import { filterApiParams, hasClientFilters, matchesClientFilters, useDealFilters } from '../context/DealFiltersContext';
 import { useDiscoverBusinesses } from './useDiscoverBusinesses';
 import { realOfferId } from '../utils/homeOffer';
 
@@ -23,7 +24,9 @@ const EMPTY: HomeOffers = { nearby: [], nearbyTotal: 0, featured: [], trending: 
  * `trending` and `popular`, the nearby feed, and live businesses. A section that
  * fails stays empty without taking the others down.
  */
-export function useHomeFeed(categoryId: string | null) {
+export function useHomeFeed() {
+  const { filters } = useDealFilters();
+  const categoryId = filters.categoryId;
   const locationQuery = useLocationQuery();
   const [offers, setOffers] = useState<HomeOffers>(EMPTY);
   const [offersLoading, setOffersLoading] = useState(() => hasApiConfig());
@@ -36,18 +39,24 @@ export function useHomeFeed(categoryId: string | null) {
       setOffersLoading(false);
       return;
     }
-    const base = { ...locationQuery, page: 1, categoryId: categoryId ?? undefined };
-    const load = (params: Record<string, string | number | undefined>) =>
-      catalogueService.getPublicOffers({ ...base, ...params }).catch(() => null);
-    const rows = (response: unknown): Offer[] => {
-      const data = (response as { data?: unknown } | null)?.data;
-      return Array.isArray(data) ? (data as Offer[]) : [];
+    const base = { ...locationQuery, ...filterApiParams(filters), page: 1 };
+    const clientSide = hasClientFilters(filters);
+    // Timing filters run here on the offers' dates, so read a wider page for them.
+    const load = (params: { limit: number; sortBy?: string }) =>
+      catalogueService
+        .getPublicOffers({ ...base, ...params, limit: clientSide ? 50 : params.limit })
+        .then((response) => ({ response, limit: params.limit }))
+        .catch(() => null);
+    const rows = (result: { response: unknown; limit: number } | null): Offer[] => {
+      const data = (result?.response as { data?: unknown } | undefined)?.data;
+      const list = Array.isArray(data) ? (data as Offer[]) : [];
+      return clientSide ? list.filter((offer) => matchesClientFilters(offer, filters)).slice(0, result?.limit) : list;
     };
     setOffersLoading(true);
     Promise.all([load({ limit: 8 }), load({ limit: 3, sortBy: 'featured' }), load({ limit: 3, sortBy: 'trending' }), load({ limit: 2, sortBy: 'popular' })])
       .then(([nearby, featured, trending, popular]) => {
         if (ignore) return;
-        const total = Number((nearby as { total?: unknown } | null)?.total);
+        const total = clientSide ? NaN : Number((nearby?.response as { total?: unknown } | undefined)?.total);
         setOffers({
           nearby: rows(nearby),
           nearbyTotal: Number.isFinite(total) ? total : rows(nearby).length,
@@ -62,7 +71,8 @@ export function useHomeFeed(categoryId: string | null) {
     return () => {
       ignore = true;
     };
-  }, [locationQuery, categoryId]);
+    // `filters` is a stable state object: it only changes when the customer applies filters.
+  }, [locationQuery, filters]);
 
   /** Every offer on the page, for loading like states once per deal. */
   const offerIds = useMemo(

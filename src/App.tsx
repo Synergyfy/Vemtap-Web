@@ -20,6 +20,7 @@ import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { LocationProvider, useLocation } from './context/LocationContext';
+import { DealFiltersProvider } from './context/DealFiltersContext';
 import { AREA_NOT_FOUND, findPlace, getCurrentPlace, type PickedPlace } from './services/currentLocation';
 import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
@@ -935,6 +936,7 @@ export default function App() {
     <AuthProvider>
       <ProfileProvider>
         <LocationProvider>
+          <DealFiltersProvider>
           <ClaimsProvider>
             <OrdersProvider>
               <ContactsProvider>
@@ -957,6 +959,7 @@ export default function App() {
               </ContactsProvider>
             </OrdersProvider>
           </ClaimsProvider>
+          </DealFiltersProvider>
         </LocationProvider>
       </ProfileProvider>
     </AuthProvider>
@@ -3233,7 +3236,14 @@ function AppInner() {
             onOpenDeal={(deal) => openDeal('featured-deals', deal)}
           />
         );
-      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)} />;
+      return (
+        <FeaturedDealsScreen
+          onBack={() => setRoute(feedFrom)}
+          onOpenFilters={() => openFeedRoute('filters', 'featured-deals')}
+          onBoost={() => setRoute('business-onboarding')}
+          onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)}
+        />
+      );
 
     case 'filters':
       if (isDesktop) return <DesktopFiltersScreen onNav={feedNav} onClose={() => setRoute(feedFrom)} />;

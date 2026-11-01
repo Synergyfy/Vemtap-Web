@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useLocation } from '../context/LocationContext';
 import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
+import { useDealFilters } from '../context/DealFiltersContext';
 import { useDiscoverBusinesses } from '../hooks/useDiscoverBusinesses';
 import { Skeleton } from '../components/ui/Skeleton';
 
@@ -21,7 +22,10 @@ import { toDiscoverCard, type BusinessCard } from './discoverData';
 export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNotifications, onBusinessSetup, onOpenLocation }: DiscoverScreenProps) {
   // Live business categories (GET /categories); the chosen one filters the businesses.
   const { categories } = useHomeDealCategories();
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Shared with the Filters screen, so the chips and filters always agree.
+  const { filters: dealFilters, setFilters, narrowed } = useDealFilters();
+  const categoryId = dealFilters.categoryId;
+  const setCategoryId = (id: string | null) => setFilters({ categoryId: id });
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   useEffect(() => {
@@ -32,7 +36,9 @@ export function DiscoverScreen({ onTab, onOpenBusiness, onOpenFilters, onOpenNot
   const discover = useDiscoverBusinesses({ categoryId, search });
   const businessCards: BusinessCard[] = discover.businesses.map(toDiscoverCard);
   const activeCategory = categories.find((item) => item.id === categoryId);
-  const emptyText = search
+  const emptyText = narrowed
+    ? 'No businesses have deals matching your filters.'
+    : search
     ? `No businesses match “${search}”${activeCategory?.id ? ` in ${activeCategory.label}` : ''}.`
     : activeCategory?.id
       ? `No businesses in ${activeCategory.label} near you yet.`

@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
-import { useLocation, useLocationQuery } from '../../context/LocationContext';
-import { hasApiConfig } from '../../services/api/client';
-import { catalogueService } from '../../services/catalogueService';
-import { dealPrimaryImage } from '../../utils/dealImages';
+import { useLocation } from '../../context/LocationContext';
+import { useDealFilters } from '../../context/DealFiltersContext';
+import { useFeaturedDeals, useSavedDeals, type FeaturedSort } from '../../hooks/useFeaturedDeals';
+import { sponsoredService } from '../../services/sponsoredService';
+import { isVerifiedOffer, offerDiscountLabel, offerEndsLabel, offerImage, offerLocationLabel, realOfferId } from '../../utils/homeOffer';
 
 interface DesktopFeaturedDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -16,6 +18,9 @@ interface DesktopFeaturedDealsScreenProps {
 
 interface FeaturedDeal {
   id: string;
+  offerId?: string;
+  campaignId?: string;
+  verified: boolean;
   priceValue: number;
   oldPriceValue: number;
   image: string;
@@ -25,8 +30,6 @@ interface FeaturedDeal {
   window: { icon: string; label: string };
   distance: string;
   store: string;
-  rating: string;
-  reviews: string;
   title: string;
   copy: string;
   price: string;
@@ -44,8 +47,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-/** Same rule as the home cards and the detail page: the deal's own photo first. */
-const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+/** Same rule as the home cards and the detail page: the deal's own photo first; never a stock photo. */
+const getOfferImage = (offer: Record<string, unknown>): string => offerImage(offer);
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
@@ -59,8 +62,8 @@ const getOfferTitle = (offer: Record<string, unknown>): string => {
 };
 
 const getOfferDescription = (offer: Record<string, unknown>): string => {
-  const value = offer.description ?? offer.summary ?? offer.copy ?? 'Fresh local offer from nearby vendors.';
-  return typeof value === 'string' && value.trim() ? value : 'Fresh local offer from nearby vendors.';
+  const value = offer.description ?? offer.summary ?? offer.copy;
+  return typeof value === 'string' && value.trim() ? value : '';
 };
 
 const getOfferPrice = (offer: Record<string, unknown>): number => {
@@ -93,7 +96,7 @@ const toDealSummary = (deal: FeaturedDeal) => ({
   business: deal.store,
   price: deal.priceValue,
   oldPrice: deal.oldPriceValue,
-  discountLabel: deal.save,
+  discountLabel: deal.discount,
   image: deal.image,
 });
 
@@ -104,71 +107,55 @@ const toFeaturedDeal = (offer: Record<string, unknown>): FeaturedDeal => {
   const business = getOfferBusinessName(offer);
   const discountValue = Math.max(comparePrice - price, 0);
 
+  const campaignId = typeof offer.campaignId === 'string' ? offer.campaignId : undefined;
+  const location = offerLocationLabel(offer);
+
   return {
     id: String(offer.id ?? `${business}-${title}`),
+    offerId: realOfferId(offer),
+    campaignId,
+    verified: isVerifiedOffer(offer),
     priceValue: price,
     oldPriceValue: comparePrice,
     image: getOfferImage(offer),
     imageAlt: `${title} by ${business}`,
-    discount: price > 0 ? 'Live Deal' : 'Offer',
+    discount: offerDiscountLabel(offer),
     extra: {
-      label: 'Live',
+      label: campaignId ? 'Promoted' : 'Featured',
       className: 'bg-error-container text-on-error-container font-semibold',
       icon: 'local_fire_department',
     },
-    window: { icon: 'schedule', label: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby' },
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    window: { icon: 'schedule', label: offerEndsLabel(offer) },
+    distance: location,
     store: business,
-    rating: '4.9',
-    reviews: '(live)',
     title,
     copy: getOfferDescription(offer),
     price: formatCurrency(price),
     oldPrice: comparePrice > price ? formatCurrency(comparePrice) : '',
-    save: price > 0 ? `Save ${formatCurrency(discountValue)}` : 'Limited-time',
+    save: discountValue > 0 ? `Save ${formatCurrency(discountValue)}` : '',
   };
 };
 
-const SORT_OPTIONS = [
+const SORT_OPTIONS: { key: FeaturedSort; label: string; icon: string }[] = [
   { key: 'closest', label: 'Closest to You', icon: 'near_me' },
   { key: 'discount', label: 'Highest Discount', icon: 'percent' },
   { key: 'ending', label: 'Ending Soonest', icon: 'timer' },
+  { key: 'popular', label: 'Popular', icon: 'local_fire_department' },
 ];
 
 export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }: DesktopFeaturedDealsScreenProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
-  const [sort, setSort] = useState('closest');
+  const [sort, setSort] = useState<FeaturedSort>('closest');
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
-  const [saved, setSaved] = useState<Record<string, boolean>>({});
-  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
-
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
-  useEffect(() => {
-    let ignore = false;
-    const loadOffers = async () => {
-      if (!hasApiConfig()) {
-        if (!ignore) setPublicOffers([]);
-        return;
-      }
-
-      try {
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 5 });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch {
-        if (!ignore) setPublicOffers([]);
-      }
-    };
-
-    loadOffers();
-    return () => {
-      ignore = true;
-    };
-  }, [locationQuery]);
-
-  const featuredDeals = useMemo(() => publicOffers.slice(0, 5).map(toFeaturedDeal), [publicOffers]);
+  const { activeCount } = useDealFilters();
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const feed = useFeaturedDeals(sort);
+  const { saved, toggleSaved } = useSavedDeals();
+  const featuredDeals = useMemo(() => feed.offers.map(toFeaturedDeal), [feed.offers]);
+  const moreDeals = Math.max(0, feed.total - featuredDeals.length);
+  const sortLabel = SORT_OPTIONS.find((option) => option.key === sort)?.label.toLowerCase() ?? '';
+  const areaLabel = [district, city].filter(Boolean).join(', ');
 
   // Category pills — live categories extracted from the current deals feed.
   const categories = useMemo(() => {
@@ -186,8 +173,17 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
     return featuredDeals.filter((deal) => deal.store === selectedCategory);
   }, [featuredDeals, selectedCategory]);
 
-  const toggleSave = (store: string) => {
-    setSaved((prev) => ({ ...prev, [store]: !prev[store] }));
+  const saveDeal = async (offerId: string | undefined) => {
+    if (!offerId) return;
+    const result = await toggleSaved(offerId);
+    setSaveNote('error' in result ? result.error : result.saved ? 'Saved to your deals' : 'Removed from saved deals');
+    window.setTimeout(() => setSaveNote(null), 2400);
+  };
+
+  /** A tap on a promoted deal is counted for its campaign. */
+  const openDeal = (deal: FeaturedDeal) => {
+    if (deal.campaignId && deal.offerId) sponsoredService.track(deal.campaignId, deal.offerId, 'tap');
+    onOpenDeal(toDealSummary(deal));
   };
 
   return (
@@ -198,12 +194,14 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-sm">
               <div className="flex items-center gap-space-sm flex-wrap">
                 <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Featured Deals</h1>
-                <span className="inline-flex items-center gap-1 px-space-xs py-space-2xs rounded-full bg-primary-fixed text-on-primary-fixed-variant font-caption text-caption font-semibold tracking-wider uppercase">
-                  <Icon name="auto_awesome" className="text-[14px]" />
-                  PROMOTED / SPONSORED
-                </span>
+                {feed.hasPromoted ? (
+                  <span className="inline-flex items-center gap-1 px-space-xs py-space-2xs rounded-full bg-primary-fixed text-on-primary-fixed-variant font-caption text-caption font-semibold tracking-wider uppercase">
+                    <Icon name="auto_awesome" className="text-[14px]" />
+                    PROMOTED / SPONSORED
+                  </span>
+                ) : null}
                 <span className="text-text-tertiary font-body-md text-body-md hidden sm:inline">•</span>
-                <span className="font-label-md text-label-md text-text-secondary">{filteredDeals.length} Curated Local Offer{filteredDeals.length === 1 ? '' : 's'}</span>
+                <span className="font-label-md text-label-md text-text-secondary">{feed.loading ? 'Loading deals…' : `${filteredDeals.length} Local Offer${filteredDeals.length === 1 ? '' : 's'}`}</span>
               </div>
 
               <div className="flex items-center gap-space-xs self-start md:self-auto">
@@ -213,8 +211,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                   onClick={onOpenFilters}
                 >
                   <Icon name="tune" className="text-[18px] text-primary" />
-                  <span>Filters</span>
-                  <span className="w-2 h-2 rounded-full bg-primary-container" />
+                  <span>Filters{activeCount ? ` (${activeCount})` : ''}</span>
                 </button>
                 <div className="hidden sm:flex items-center bg-surface-subtle p-1 rounded-xl shadow-sm">
                   <button
@@ -253,11 +250,16 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                     {district}, {city}
                   </span>
                   <span className="text-text-tertiary">•</span>
-                  <span>Within 10km</span>
+                  <span>Within {radius}km</span>
                 </button>
-                <span className="text-badge-discount-text font-label-sm text-label-sm bg-badge-discount-bg px-2.5 py-1 rounded-full font-medium">
-                  {filteredDeals.length} Live Deal{filteredDeals.length === 1 ? '' : 's'} Active Now
-                </span>
+                {!feed.loading ? (
+                  <span className="text-badge-discount-text font-label-sm text-label-sm bg-badge-discount-bg px-2.5 py-1 rounded-full font-medium">
+                    {filteredDeals.length} Live Deal{filteredDeals.length === 1 ? '' : 's'} Active Now
+                  </span>
+                ) : null}
+                {saveNote ? (
+                  <span role="status" className="font-label-sm text-label-sm bg-inverse-surface text-inverse-on-surface px-2.5 py-1 rounded-full">{saveNote}</span>
+                ) : null}
               </div>
 
               <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar pb-1 lg:pb-0">
@@ -266,6 +268,7 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                   return (
                     <button
                       key={option.key}
+                      aria-pressed={active}
                       className={`flex items-center gap-1.5 px-space-sm py-1.5 rounded-full font-label-sm text-label-sm whitespace-nowrap transition-colors ${
                         active
                           ? 'bg-surface-tint-blue text-primary shadow-sm'
@@ -309,16 +312,9 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
               <div className="flex items-center gap-space-xs">
                 <Icon name="qr_code_2" className="text-primary text-[20px] shrink-0" />
                 <span>
-                  Promoted and sponsored offers from verified local merchants near your GPS pinpoint. Ranked strictly
-                  by geographic distance.
+                  {feed.hasPromoted ? 'Promoted offers come first. ' : ''}Live deals{areaLabel ? ` near ${areaLabel}` : ''}, sorted by {sortLabel}.
                 </span>
               </div>
-              <button
-                className="text-primary hover:underline font-label-sm text-label-sm shrink-0 hidden md:block"
-                type="button"
-              >
-                Audit Criteria
-              </button>
             </div>
           </div>
         </section>
@@ -329,20 +325,36 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
               view === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'
             }`}
           >
-            {filteredDeals.length === 0 ? (
+            {feed.loading ? (
+              [0, 1, 2].map((key) => (
+                <div key={key} role="status" aria-busy="true" className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-[0_4px_20px_-4px_rgba(13,37,76,0.06)] overflow-hidden">
+                  <span className="sr-only">Loading featured deals</span>
+                  <Skeleton className="w-full h-56 rounded-none" />
+                  <div className="p-space-md space-y-2">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="h-3 w-full" />
+                    <div className="flex items-center justify-between pt-2">
+                      <Skeleton className="h-7 w-24" />
+                      <Skeleton className="h-11 w-32 rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : filteredDeals.length === 0 ? (
               <article className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                {selectedCategory !== '' ? `No live deals from ${selectedCategory} right now.` : 'Live featured deals will appear here once the public offers feed is available.'}
+                {selectedCategory !== '' ? `No live deals from ${selectedCategory} right now.` : activeCount ? 'No live deals match your filters.' : 'No featured deals near you yet.'}
               </article>
             ) : filteredDeals.map((deal) => (
               <article
                 key={deal.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => onOpenDeal(toDealSummary(deal))}
+                onClick={() => openDeal(deal)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    onOpenDeal(toDealSummary(deal));
+                    openDeal(deal);
                   }
                 }}
                 className="group flex flex-col rounded-2xl bg-surface-container-lowest shadow-[0_4px_20px_-4px_rgba(13,37,76,0.06)] hover:shadow-[0_12px_28px_-6px_rgba(6,108,244,0.12)] transition-all duration-300 overflow-hidden cursor-pointer"
@@ -367,20 +379,22 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                   </div>
                   <div className="absolute top-3 right-3">
                     <button
-                      aria-label="Save Deal"
+                      aria-label={deal.offerId && saved[deal.offerId] ? 'Remove from saved deals' : 'Save Deal'}
+                      aria-pressed={Boolean(deal.offerId && saved[deal.offerId])}
+                      disabled={!deal.offerId}
                       className={`w-9 h-9 rounded-full bg-surface-container-lowest/90 backdrop-blur-md flex items-center justify-center transition-colors shadow-sm ${
-                        saved[deal.store] ? 'text-primary' : 'text-text-secondary hover:text-error'
+                        deal.offerId && saved[deal.offerId] ? 'text-primary' : 'text-text-secondary hover:text-error'
                       }`}
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        toggleSave(deal.store);
+                        void saveDeal(deal.offerId);
                       }}
                     >
                       <Icon
-                        name={saved[deal.store] ? 'bookmark_added' : 'bookmark'}
+                        name={deal.offerId && saved[deal.offerId] ? 'bookmark_added' : 'bookmark'}
                         className="text-[18px]"
-                        filled={saved[deal.store]}
+                        filled={Boolean(deal.offerId && saved[deal.offerId])}
                       />
                     </button>
                   </div>
@@ -403,18 +417,13 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                         <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
                           {deal.store}
                         </span>
-                        <Icon name="verified" filled className="text-primary text-[16px] shrink-0" />
-                      </div>
-                      <div className="flex items-center gap-1 text-on-surface font-label-sm text-label-sm shrink-0 bg-surface-container-low px-1.5 py-0.5 rounded">
-                        <Icon name="star" filled className="text-[14px] text-amber-500" />
-                        <span className="font-semibold">{deal.rating}</span>
-                        <span className="text-text-tertiary">{deal.reviews}</span>
+                        {deal.verified ? <Icon name="verified" filled className="text-primary text-[16px] shrink-0" /> : null}
                       </div>
                     </div>
                     <h2 className="font-heading-sm text-heading-sm text-text-primary group-hover:text-primary transition-colors line-clamp-2">
                       {deal.title}
                     </h2>
-                    <p className="font-body-md text-body-md text-text-secondary line-clamp-2">{deal.copy}</p>
+                    {deal.copy ? <p className="font-body-md text-body-md text-text-secondary line-clamp-2">{deal.copy}</p> : null}
                   </div>
 
                   <div className="pt-space-xs flex items-center justify-between gap-space-sm bg-surface-subtle -mx-space-md -mb-space-md p-space-md mt-auto">
@@ -439,41 +448,25 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
 
             <article className="flex flex-col rounded-2xl bg-surface-container-lowest shadow-[0_4px_20px_-4px_rgba(13,37,76,0.06)] overflow-hidden p-space-md justify-between">
               <div className="space-y-space-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-caption text-caption font-semibold tracking-wider uppercase text-primary">
-                    Live Radar
-                  </span>
-                  <span className="flex items-center gap-1 text-badge-discount-text font-caption text-caption font-medium">
-                    <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                    GPS Sync Active
-                  </span>
-                </div>
+                <span className="font-caption text-caption font-semibold tracking-wider uppercase text-primary">
+                  More Near You
+                </span>
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">
-                  Explore 18+ Unlisted Neighborhood Perks
+                  {moreDeals > 0 ? `Explore ${moreDeals} more deal${moreDeals === 1 ? '' : 's'}` : 'Explore all deals'}
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Switch to the interactive neighborhood map to see unpromoted walk-in stamps, flash discounts, and
-                  instant tap vouchers in Apo District.
+                  See every live deal{areaLabel ? ` near ${areaLabel}` : ''}, with search, sorting and filters.
                 </p>
-
-                <div
-                  className="w-full h-36 rounded-xl bg-surface-container relative overflow-hidden flex items-end p-space-xs"
-                  data-location="Apo District, Abuja, Nigeria"
-                >
-                  <div className="relative z-10 bg-surface-canvas/90 backdrop-blur-sm px-space-xs py-1 rounded-lg text-caption font-caption text-text-primary flex items-center gap-1 shadow-sm">
-                    <Icon name="navigation" className="text-[16px] text-primary" />
-                    <span>Apo Bridge corridor • 0.4 - 3.2km</span>
-                  </div>
-                </div>
               </div>
 
               <div className="pt-space-md mt-auto">
                 <button
                   className="w-full h-11 bg-surface-tint-blue hover:bg-secondary-fixed text-primary font-button-secondary text-button-secondary rounded-xl flex items-center justify-center gap-1.5 transition-colors"
                   type="button"
+                  onClick={() => onNav('deals')}
                 >
-                  <Icon name="map" className="text-[18px]" />
-                  <span>Switch to Map Radar</span>
+                  <Icon name="local_offer" className="text-[18px]" />
+                  <span>See All Deals</span>
                 </button>
               </div>
             </article>
@@ -491,26 +484,11 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                   <h4 className="font-heading-sm text-heading-sm text-text-primary">
                     About Featured Listings on VEMTAP
                   </h4>
-                  <span className="px-2 py-0.5 rounded text-caption font-caption bg-surface-canvas text-text-secondary font-medium">
-                    NDPR Verified
-                  </span>
                 </div>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Promoted placements let verified merchants showcase time-sensitive perks to nearby consumers. While
-                  placement is sponsored, ranking priority is governed strictly by your real-time GPS distance and
-                  historical fulfillment score (min. 4.5★ rating). Merchants cannot buy placement outside their
-                  operational radius.
+                  Promoted deals are paid placements by local businesses, shown near your location and always labelled
+                  as Promoted. Every other deal is ranked by the sort you choose.
                 </p>
-                <div className="pt-space-2xs flex items-center gap-space-md text-caption font-caption text-text-tertiary flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <Icon name="security" className="text-[14px]" />
-                    Zero Location Tracking Storage
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Icon name="percent" className="text-[14px]" />
-                    Guaranteed Price Match
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -519,10 +497,9 @@ export function DesktopFeaturedDealsScreen({ onNav, onOpenFilters, onOpenDeal }:
                 <span className="text-caption font-caption font-semibold uppercase tracking-wider text-primary">
                   For Business Owners
                 </span>
-                <h4 className="font-heading-sm text-heading-sm text-text-primary">Own a business in Abuja?</h4>
+                <h4 className="font-heading-sm text-heading-sm text-text-primary">Own a business{city && city !== 'Your city' ? ` in ${city}` : ''}?</h4>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Drive high-intent local foot traffic right to your counter during quiet hours. Boost your verified
-                  deals across Apo, Garki, and Wuse.
+                  Drive local foot traffic right to your counter during quiet hours by promoting your deals on VEMTAP.
                 </p>
               </div>
               <button

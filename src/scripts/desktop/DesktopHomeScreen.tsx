@@ -4,6 +4,7 @@ import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChro
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
 import { useLocation } from '../../context/LocationContext';
 import { useHomeDealCategories } from '../../hooks/useHomeDealCategories';
+import { useDealFilters } from '../../context/DealFiltersContext';
 import { useDealLikes } from '../../hooks/useDealLikes';
 import { useHomeFeed } from '../../hooks/useHomeFeed';
 import type { DiscoverBusiness } from '../../hooks/useDiscoverBusinesses';
@@ -336,17 +337,20 @@ export function DesktopHomeScreen({
   const { district, city, radius, setLocation } = useLocation();
   // One live category selection drives every section, in both list and grid view.
   const { categories } = useHomeDealCategories();
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Shared with the Filters screen, so the chips and filters always agree.
+  const { filters: dealFilters, setFilters, narrowed, activeCount } = useDealFilters();
+  const categoryId = dealFilters.categoryId;
+  const setCategoryId = (id: string | null) => setFilters({ categoryId: id });
   const activeCategory = categories.find((category) => category.id === categoryId) ?? categories[0];
   const filterLabel = categoryId ? ` in ${activeCategory.label}` : '';
-  const noneInCategory = `No live deals${filterLabel} near you yet.`;
+  const noneInCategory = narrowed ? 'No live deals match your filters.' : `No live deals${filterLabel} near you yet.`;
   const [toast, setToast] = useState<string | null>(null);
   const trendingRef = useRef<HTMLDivElement | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const [spotlight, setSpotlight] = useState(0);
   const [spotlightPaused, setSpotlightPaused] = useState(false);
   // Each section has its own live source; sections show skeletons (never stand-in data) until the API answers.
-  const feed = useHomeFeed(categoryId);
+  const feed = useHomeFeed();
   const { offersLoading, businessesLoading } = feed;
   const publicOffers = feed.nearby;
 
@@ -452,7 +456,7 @@ export function DesktopHomeScreen({
                     onClick={onOpenFilters}
                   >
                     <Icon name="tune" className="text-[18px]" />
-                    <span className="hidden sm:inline">Filters</span>
+                    <span className="hidden sm:inline">Filters{activeCount ? ` (${activeCount})` : ''}</span>
                   </button>
                 </div>
               </div>
@@ -493,7 +497,7 @@ export function DesktopHomeScreen({
                 <div className="lg:col-span-7 relative min-h-[300px] lg:min-h-[420px] overflow-hidden">
                   {spotlightData.length === 0 ? (
                     <div className="w-full h-full bg-surface-subtle flex items-center justify-center text-text-secondary p-space-xl">
-                      {categoryId ? noneInCategory : 'No live offers are available right now.'}
+                      {categoryId || narrowed ? noneInCategory : 'No live offers are available right now.'}
                     </div>
                   ) : (
                     <div
@@ -713,7 +717,7 @@ export function DesktopHomeScreen({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
                 {listDeals.length === 0 ? (
                   <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                    {categoryId ? noneInCategory : 'No live deals are available right now.'}
+                    {categoryId || narrowed ? noneInCategory : 'No live deals are available right now.'}
                   </div>
                 ) : listDeals.map((deal, index) => (
                   <div
@@ -876,7 +880,7 @@ export function DesktopHomeScreen({
                   <TrendingSkeletons count={3} className="flex gap-space-md" />
                 ) : trendingDeals.length === 0 ? (
                   <div className="w-full rounded-xl border border-dashed border-primary/20 bg-surface-canvas p-space-lg text-text-secondary">
-                    {categoryId ? noneInCategory : 'Live trending deals will appear here soon.'}
+                    {categoryId || narrowed ? noneInCategory : 'Live trending deals will appear here soon.'}
                   </div>
                 ) : trendingDeals.map((deal, index) => (
                   <div
@@ -953,7 +957,7 @@ export function DesktopHomeScreen({
                     <RowSkeletons count={3} label="Loading businesses" className="flex flex-col gap-space-xs" />
                   ) : businesses.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
-                      {categoryId ? noneInCategory : 'Nearby businesses will appear here when live offers are available.'}
+                      {categoryId || narrowed ? noneInCategory : 'Nearby businesses will appear here when live offers are available.'}
                     </div>
                   ) : businesses.map((business, index) => (
                     <div
@@ -1028,7 +1032,7 @@ export function DesktopHomeScreen({
                     ))
                   ) : products.length === 0 ? (
                     <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
-                      {categoryId ? noneInCategory : 'Popular nearby products will load from the public catalogue feed.'}
+                      {categoryId || narrowed ? noneInCategory : 'Popular nearby products will load from the public catalogue feed.'}
                     </div>
                   ) : products.map((product, index) => (
                     <div
@@ -1163,7 +1167,7 @@ export function DesktopHomeScreen({
             <SpotlightSkeleton />
           ) : spotlightData.length === 0 ? (
             <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-xl text-text-secondary">
-              {categoryId ? noneInCategory : 'No live offers are available right now.'}
+              {categoryId || narrowed ? noneInCategory : 'No live offers are available right now.'}
             </div>
           ) : (
           <div
@@ -1292,7 +1296,7 @@ export function DesktopHomeScreen({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-space-md">
             {listDeals.length === 0 ? (
               <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                {categoryId ? noneInCategory : 'No live offers are available for this grid view yet.'}
+                {categoryId || narrowed ? noneInCategory : 'No live offers are available for this grid view yet.'}
               </div>
             ) : listDeals.map((deal, index) => (
               <div
@@ -1433,7 +1437,7 @@ export function DesktopHomeScreen({
                 <TrendingSkeletons count={2} className="col-span-full grid grid-cols-1 md:grid-cols-2 gap-space-md" />
               ) : trendingDeals.length === 0 ? (
                 <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                  {categoryId ? noneInCategory : 'Live trending deals will appear here when the catalog refreshes.'}
+                  {categoryId || narrowed ? noneInCategory : 'Live trending deals will appear here when the catalog refreshes.'}
                 </div>
               ) : trendingDeals.map((deal, index) => (
                 <div
@@ -1536,7 +1540,7 @@ export function DesktopHomeScreen({
                   <RowSkeletons count={3} label="Loading businesses" className="space-y-space-sm" />
                 ) : businesses.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
-                    {categoryId ? noneInCategory : 'Nearby business cards will load from the live catalogue feed.'}
+                    {categoryId || narrowed ? noneInCategory : 'Nearby business cards will load from the live catalogue feed.'}
                   </div>
                 ) : businesses.map((business, index) => (
                   <div
@@ -1606,7 +1610,7 @@ export function DesktopHomeScreen({
                   ))
                 ) : products.length === 0 ? (
                   <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
-                    {categoryId ? noneInCategory : 'Popular nearby products will load from the public catalogue feed.'}
+                    {categoryId || narrowed ? noneInCategory : 'Popular nearby products will load from the public catalogue feed.'}
                   </div>
                 ) : products.map((product, index) => (
                   <div

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { hasApiConfig } from '../services/api/client';
 import { catalogueService } from '../services/catalogueService';
 import { formatDistanceKm, useLocationQuery } from '../context/LocationContext';
+import { filterApiParams, matchesClientFilters, useDealFilters } from '../context/DealFiltersContext';
 import { offerImage, type OfferRecord } from '../utils/homeOffer';
 
 /** One Discover card — every field comes from the live API. */
@@ -39,6 +40,7 @@ const list = (payload: unknown, key: string): unknown[] => {
  */
 export function useDiscoverBusinesses({ categoryId, search }: { categoryId: string | null; search: string }) {
   const locationQuery = useLocationQuery();
+  const { filters: dealFilters, narrowed } = useDealFilters();
   const [businesses, setBusinesses] = useState<DiscoverBusiness[]>([]);
   const [loading, setLoading] = useState(() => hasApiConfig());
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +58,7 @@ export function useDiscoverBusinesses({ categoryId, search }: { categoryId: stri
     setError(null);
     Promise.all([
       catalogueService.getPublicBusinesses({ ...filters, lat, lng, radius, limit: 24 }).then((r) => list(r, 'businesses')),
-      catalogueService.getPublicOffers({ ...locationQuery, ...filters, page: 1, limit: 50 }).then((r) => list(r, 'data')).catch(() => []),
+      catalogueService.getPublicOffers({ ...locationQuery, ...filterApiParams(dealFilters), ...filters, page: 1, limit: 50 }).then((r) => list(r, 'data')).catch(() => []),
     ])
       .then(([businessRows, offerRows]) => {
         if (ignore) return;
@@ -81,6 +83,7 @@ export function useDiscoverBusinesses({ categoryId, search }: { categoryId: stri
           });
         }
         for (const offer of offerRows.map(rec) as OfferRecord[]) {
+          if (!matchesClientFilters(offer, dealFilters)) continue;
           const b = rec(offer.business);
           const key = str(b.id) ?? str(b.uniqueCode);
           const code = str(b.uniqueCode) ?? str(b.slug);
@@ -110,7 +113,8 @@ export function useDiscoverBusinesses({ categoryId, search }: { categoryId: stri
           }
           byKey.set(key, entry);
         }
-        setBusinesses([...byKey.values()]);
+        // Deal filters are on: only businesses with a matching deal.
+        setBusinesses([...byKey.values()].filter((business) => !narrowed || business.dealCount > 0));
       })
       .catch(() => {
         if (ignore) return;
@@ -123,7 +127,7 @@ export function useDiscoverBusinesses({ categoryId, search }: { categoryId: stri
     return () => {
       ignore = true;
     };
-  }, [locationQuery, categoryId, search]);
+  }, [locationQuery, categoryId, search, dealFilters, narrowed]);
 
   return { businesses, loading, error };
 }

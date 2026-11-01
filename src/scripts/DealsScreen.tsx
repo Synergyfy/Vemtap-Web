@@ -10,6 +10,7 @@ import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
 import { useDealLikes, type DealLikeState } from '../hooks/useDealLikes';
 import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
+import { matchesClientFilters, useDealFilters } from '../context/DealFiltersContext';
 import { useDealFeedControls, type DealSortBy } from '../hooks/useDealFeedControls';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
@@ -422,7 +423,10 @@ export function DealsScreen({
   const markClaimed = (dealId: string) => setClaimedIds((prev) => ({ ...prev, [dealId]: true }));
   // Live business categories; the chosen one filters the feed (`categoryId`).
   const { categories } = useHomeDealCategories();
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Shared with the Filters screen, so the chips and filters always agree.
+  const { filters: dealFilters, setFilters, narrowed } = useDealFilters();
+  const categoryId = dealFilters.categoryId;
+  const setCategoryId = (id: string | null) => setFilters({ categoryId: id });
   const activeCategory = categories.find((item) => item.id === categoryId) ?? categories[0];
   // Search, sort and "load more" — all real feed params (see useDealFeedControls).
   const feed = useDealFeedControls(categoryId, initialSearch);
@@ -432,7 +436,9 @@ export function DealsScreen({
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const chooseCategory = (id: string | null) => setCategoryId(id);
-  const emptyMessage = feed.search
+  const emptyMessage = narrowed
+    ? 'No live deals match your filters.'
+    : feed.search
     ? `No live deals match "${feed.search}"${categoryId ? ` in ${activeCategory.label}` : ''}.`
     : categoryId
       ? `No live deals in ${activeCategory.label} near you yet.`
@@ -482,7 +488,7 @@ export function DealsScreen({
     return () => { ignore = true; };
   }, [feedParams, isLoadingMorePage, limit]);
 
-  const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer), [publicOffers]);
+  const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer).filter((offer) => matchesClientFilters(offer, dealFilters)), [publicOffers, dealFilters]);
   const featuredDeal = displayDeals[0] ? toDealCardModel(displayDeals[0]) : null;
 
   // Live likes: GET /deals/:id/reaction-status to load, POST /deals/:id/reactions { type: 'like' } to toggle.
@@ -596,7 +602,7 @@ export function DealsScreen({
     </>
   );
 
-  if (!offersLoading && !categoryId && !feed.search && !displayDeals.length) {
+  if (!offersLoading && !categoryId && !narrowed && !feed.search && !displayDeals.length) {
     return (
       <AppScreen>
         <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">

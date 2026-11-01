@@ -7,6 +7,7 @@ import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useProfile } from '../context/ProfileContext';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
+import { useDealFilters } from '../context/DealFiltersContext';
 import { useDealLikes } from '../hooks/useDealLikes';
 import { useHomeFeed } from '../hooks/useHomeFeed';
 import type { DiscoverBusiness } from '../hooks/useDiscoverBusinesses';
@@ -349,7 +350,7 @@ function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation
 }
 
 /** Live search: deals + businesses from `GET /public/search`, shown under the bar; Enter opens all matching deals. */
-function SearchBar({ onOpenFilters }: { onOpenFilters: () => void }) {
+function SearchBar({ onOpenFilters, activeFilters }: { onOpenFilters: () => void; activeFilters: number }) {
   const [input, setInput] = useState('');
   const search = usePublicSearch(input);
   const clear = () => setInput('');
@@ -378,8 +379,9 @@ function SearchBar({ onOpenFilters }: { onOpenFilters: () => void }) {
             <Icon name="close" className="text-[20px]" />
           </button>
         ) : null}
-        <button aria-label="Filter options" type="button" onClick={onOpenFilters} className="p-1 text-text-secondary hover:text-text-primary active:scale-95 transition-transform">
+        <button aria-label={activeFilters ? `Filter options, ${activeFilters} active` : 'Filter options'} type="button" onClick={onOpenFilters} className="relative p-1 text-text-secondary hover:text-text-primary active:scale-95 transition-transform">
           <Icon name="tune" className="text-[20px]" />
+          {activeFilters > 0 ? <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center">{activeFilters}</span> : null}
         </button>
       </div>
       {search.active ? (
@@ -612,15 +614,18 @@ export function HomeScreen({
   const [view, setView] = useState<'list' | 'grid'>('list');
   // Live business categories; the selected one filters every section below.
   const { categories } = useHomeDealCategories();
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Shared with the Filters screen, so the chips and filters always agree.
+  const { filters: dealFilters, setFilters, narrowed, activeCount } = useDealFilters();
+  const categoryId = dealFilters.categoryId;
+  const setCategoryId = (id: string | null) => setFilters({ categoryId: id });
   const activeCategory = categories.find((item) => item.id === categoryId) ?? categories[0];
-  const noneInCategory = categoryId ? `No live deals in ${activeCategory.label} near you yet.` : undefined;
+  const noneInCategory = narrowed ? 'No live deals match your filters.' : categoryId ? `No live deals in ${activeCategory.label} near you yet.` : undefined;
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, radius, setLocation } = useLocation();
   const [featured, setFeatured] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   // Each section has its own live source; sections show skeletons (never stand-in data) until the API answers.
-  const feed = useHomeFeed(categoryId);
+  const feed = useHomeFeed();
   const offersLoading = feed.offersLoading;
   const toastTimers = useRef<number[]>([]);
   const featuredTouchX = useRef<number | null>(null);
@@ -687,7 +692,7 @@ export function HomeScreen({
 
       <div className="flex flex-col relative w-full px-margin pt-20 pb-24 bg-surface min-h-screen">
         <div className="flex flex-col w-full pb-6 space-y-6">
-          <SearchBar onOpenFilters={onOpenFilters} />
+          <SearchBar onOpenFilters={onOpenFilters} activeFilters={activeCount} />
 
           <div className="relative -mx-margin px-margin overflow-x-auto no-scrollbar flex items-center gap-2 py-1">
             {categories.map((item) => {

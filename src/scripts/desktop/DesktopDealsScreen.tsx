@@ -7,6 +7,7 @@ import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
 import { useDealLikes } from '../../hooks/useDealLikes';
 import { useHomeDealCategories } from '../../hooks/useHomeDealCategories';
+import { matchesClientFilters, useDealFilters } from '../../context/DealFiltersContext';
 import { useDealFeedControls, DEAL_PAGE_SIZE as PAGE_SIZE, type DealSortBy } from '../../hooks/useDealFeedControls';
 import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
 import {
@@ -284,7 +285,10 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   const { district, city, radius, setLocation } = useLocation();
   // Live business categories; the chosen one filters the feed (`categoryId`).
   const { categories } = useHomeDealCategories();
-  const [categoryId, setCategoryId] = useState<string | null>(null);
+  // Shared with the Filters screen, so the chips and filters always agree.
+  const { filters: dealFilters, setFilters, narrowed, activeCount } = useDealFilters();
+  const categoryId = dealFilters.categoryId;
+  const setCategoryId = (id: string | null) => setFilters({ categoryId: id });
   const activeCategory = categories.find((item) => item.id === categoryId) ?? categories[0];
   // Search, sort and "load more" — all real feed params (see useDealFeedControls).
   const feed = useDealFeedControls(categoryId, initialSearch);
@@ -345,11 +349,13 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     };
   }, [feedParams, isLoadingMorePage, limit]);
 
-  const usableOffers = useMemo(() => publicOffers.filter(isUsableOffer), [publicOffers]);
+  const usableOffers = useMemo(() => publicOffers.filter(isUsableOffer).filter((offer) => matchesClientFilters(offer, dealFilters)), [publicOffers, dealFilters]);
   const discoveryDeals = useMemo(() => usableOffers.map(toDiscoveryDeal), [usableOffers]);
   const catalogDeals = useMemo(() => usableOffers.map(toCatalogDeal), [usableOffers]);
   const featuredDeal = catalogDeals[0] ?? null;
-  const emptyMessage = feed.search
+  const emptyMessage = narrowed
+    ? 'No live deals match your filters.'
+    : feed.search
     ? `No live deals match "${feed.search}"${categoryId ? ` in ${activeCategory.label}` : ''}.`
     : categoryId
       ? `No live deals in ${activeCategory.label} near you yet.`
@@ -492,7 +498,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     );
   }
 
-  if (!offersLoading && !categoryId && !feed.search && !usableOffers.length) {
+  if (!offersLoading && !categoryId && !narrowed && !feed.search && !usableOffers.length) {
     return (
       <>
         <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
@@ -607,7 +613,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   onClick={onOpenFilters}
                 >
                   <Icon name="tune" className="text-primary text-[18px]" />
-                  <span>Filters</span>
+                  <span>Filters{activeCount ? ` (${activeCount})` : ''}</span>
                 </button>
               </div>
             </div>
@@ -846,7 +852,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
             onClick={onOpenFilters}
           >
             <Icon name="tune" className="text-[18px]" />
-            <span>Filters</span>
+            <span>Filters{activeCount ? ` (${activeCount})` : ''}</span>
           </button>
         </div>
 

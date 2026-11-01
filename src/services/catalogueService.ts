@@ -47,12 +47,14 @@ const feedRows = (response: unknown): unknown[] => {
  * nothing within the radius → the nearest rows anywhere (still nearest first,
  * with real distances); location params rejected (an older API) → the plain feed.
  */
-const nearestFeed = async <T>(params: FeedParams | undefined, load: (query?: FeedParams) => Promise<T>): Promise<T> => {
+const nearestFeed = async <T>(input: FeedParams | undefined, load: (query?: FeedParams) => Promise<T>): Promise<T> => {
+  // `strictRadius` is ours, not an API param: a distance the customer chose is never widened.
+  const { strictRadius, ...params } = input ?? {};
   const hasPoint = params?.lat !== undefined && params?.lng !== undefined;
   if (!hasPoint) return withDistanceLabels(await load(params));
   try {
     const nearby = await load(params);
-    if (params?.radius === undefined || feedRows(nearby).length > 0) return withDistanceLabels(nearby);
+    if (strictRadius || params?.radius === undefined || feedRows(nearby).length > 0) return withDistanceLabels(nearby);
     const { radius: _radius, ...anywhere } = params ?? {};
     return withDistanceLabels(await load(anywhere));
   } catch (error) {

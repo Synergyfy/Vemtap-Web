@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocationQuery } from '../context/LocationContext';
+import { filterApiParams, useDealFilters } from '../context/DealFiltersContext';
 
 export const DEAL_PAGE_SIZE = 6;
 
@@ -22,6 +23,7 @@ const SORT_LABELS: Record<DealSortBy, string> = {
  */
 export function useDealFeedControls(categoryId: string | null, initialSearch = '') {
   const locationQuery = useLocationQuery();
+  const { filters } = useDealFilters();
   const hasPoint = 'lat' in locationQuery && 'lng' in locationQuery;
 
   const [searchInput, setSearchInput] = useState(initialSearch);
@@ -38,7 +40,7 @@ export function useDealFeedControls(categoryId: string | null, initialSearch = '
     .map((value) => ({ value, label: SORT_LABELS[value] }));
 
   // "Load more" grows the limit; any change to what is being asked for starts again at one page.
-  const feedKey = `${categoryId ?? ''}|${search}|${sortBy}|${JSON.stringify(locationQuery)}`;
+  const feedKey = `${categoryId ?? ''}|${search}|${sortBy}|${JSON.stringify(locationQuery)}|${JSON.stringify(filters)}`;
   const [more, setMore] = useState({ key: feedKey, limit: DEAL_PAGE_SIZE });
   const limit = more.key === feedKey ? more.limit : DEAL_PAGE_SIZE;
   const loadMore = () => setMore({ key: feedKey, limit: limit + DEAL_PAGE_SIZE });
@@ -46,13 +48,14 @@ export function useDealFeedControls(categoryId: string | null, initialSearch = '
   const feedParams = useMemo(
     () => ({
       ...locationQuery,
+      ...filterApiParams(filters),
       page: 1,
       limit,
       sortBy,
       search: search || undefined,
       categoryId: categoryId ?? undefined,
     }),
-    [locationQuery, limit, sortBy, search, categoryId],
+    [locationQuery, filters, limit, sortBy, search, categoryId],
   );
 
   return {
