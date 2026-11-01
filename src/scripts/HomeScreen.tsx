@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
-import { useLocation, useLocationQuery } from '../context/LocationContext';
+import { useLocation } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
-import { catalogueService } from '../services/catalogueService';
 import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
 import { useDealLikes } from '../hooks/useDealLikes';
+import { useHomeFeed } from '../hooks/useHomeFeed';
+import type { DiscoverBusiness } from '../hooks/useDiscoverBusinesses';
 import { usePublicSearch } from '../hooks/usePublicSearch';
 import { SearchResults } from '../components/search/SearchResults';
 import { pickSearchResult } from '../utils/appEvents';
@@ -18,6 +18,7 @@ import {
   asRecord,
   firstString as firstImage,
   isVerifiedOffer as isVerified,
+  NO_IMAGE,
   offerDiscountLabel,
   offerEndsLabel as getEndsLabel,
   offerImage as getNestedImage,
@@ -210,22 +211,28 @@ const toDealSummary = (offer: Record<string, unknown>, index: number): DealSumma
   };
 };
 
-/** One row per business, labelled with how many live offers it has. */
-const toBusinessRows = (deals: DealSummary[]): DealSummary[] => {
-  const rows = new Map<string, { deal: DealSummary; count: number }>();
-  for (const deal of deals) {
-    const row = rows.get(deal.businessKey);
-    if (row) row.count += 1;
-    else rows.set(deal.businessKey, { deal, count: 1 });
-  }
-  return Array.from(rows.values()).map(({ deal, count }) => ({
-    ...deal,
-    id: deal.businessKey,
-    image: deal.businessLogo ?? deal.image,
-    imageAlt: deal.business,
-    deals: deal.deals ?? `${count} Live Offer${count === 1 ? '' : 's'}`,
-  }));
-};
+interface BusinessRow {
+  id: string;
+  code: string;
+  businessId: string;
+  image: string;
+  imageAlt: string;
+  business: string;
+  meta: string;
+  deals: string;
+}
+
+/** One "Businesses Around You" row from a live business. */
+const toBusinessRow = (business: DiscoverBusiness): BusinessRow => ({
+  id: business.code,
+  code: business.code,
+  businessId: business.id,
+  image: business.logo ?? business.image ?? NO_IMAGE,
+  imageAlt: business.name,
+  business: business.name,
+  meta: [business.category, business.location].filter(Boolean).join(' • '),
+  deals: business.dealCount > 0 ? `${business.dealCount} Live Offer${business.dealCount === 1 ? '' : 's'}` : 'No live offers',
+});
 
 export interface HomeScreenProps {
   onTab: (tab: MobileTabKey) => void;
@@ -233,7 +240,8 @@ export interface HomeScreenProps {
   onOpenFeatured: () => void;
   onOpenDeals: () => void;
   onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
-  onOpenBusiness: () => void;
+  /** Opens the live page of exactly this business. */
+  onOpenBusiness: (business: { code: string; id?: string; name?: string }) => void;
   onOpenNotifications: () => void;
   onEnroll: () => void;
   onAccount: () => void;
@@ -458,9 +466,9 @@ function BusinessesSection({
   emptyText,
   loading,
 }: {
-  items: DealSummary[];
+  items: BusinessRow[];
   onSeeAll: () => void;
-  onOpenBusiness?: () => void;
+  onOpenBusiness?: (business: { code: string; id?: string; name?: string }) => void;
   emptyText?: string;
   loading?: boolean;
 }) {
@@ -492,7 +500,7 @@ function BusinessesSection({
           </div>
         ) : (
           items.map((business) => {
-            const cardProps = onOpenBusiness ? dealCardProps(onOpenBusiness) : {};
+            const cardProps = onOpenBusiness ? dealCardProps(() => onOpenBusiness({ code: business.code, id: business.businessId, name: business.business })) : {};
             return (
               <div
                 key={business.id}
@@ -505,18 +513,11 @@ function BusinessesSection({
                   </div>
                   <div className="flex flex-col min-w-0">
                     <h3 className="font-label-md text-label-md text-text-primary font-semibold truncate">{business.business}</h3>
-                    <span className="font-caption text-caption text-text-secondary">{business.meta ?? business.distance}</span>
-                    {business.rating && (
-                      <div className="flex items-center gap-1 pt-0.5">
-                        <Icon name="star" className="text-amber-500 text-[14px]" filled />
-                        <span className="font-caption text-caption text-text-primary font-semibold">{business.rating}</span>
-                        {business.reviews && <span className="font-caption text-caption text-text-tertiary">{business.reviews}</span>}
-                      </div>
-                    )}
+                    <span className="font-caption text-caption text-text-secondary">{business.meta}</span>
                   </div>
                 </div>
                 <span className="shrink-0 px-2.5 py-1 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                  {business.deals ?? 'Live Offer'}
+                  {business.deals}
                 </span>
               </div>
             );
@@ -618,58 +619,24 @@ export function HomeScreen({
   const { district, radius, setLocation } = useLocation();
   const [featured, setFeatured] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
-  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
-  // Live mode starts loading, so sections show skeletons (never stand-in data) until the API answers.
-  const [offersLoading, setOffersLoading] = useState(() => hasApiConfig());
+  // Each section has its own live source; sections show skeletons (never stand-in data) until the API answers.
+  const feed = useHomeFeed(categoryId);
+  const offersLoading = feed.offersLoading;
   const toastTimers = useRef<number[]>([]);
   const featuredTouchX = useRef<number | null>(null);
 
-  const offerIds = useMemo(
-    () => publicOffers.map(realOfferId).filter((id): id is string => Boolean(id)),
-    [publicOffers],
-  );
-  const { likes, toggleLike: saveLike } = useDealLikes(offerIds);
+  const { likes, toggleLike: saveLike } = useDealLikes(feed.offerIds);
   const likeCount = (offerId: string | undefined, fallback: number) => (offerId ? likes[offerId]?.count ?? fallback : fallback);
-  const featuredSlides = useMemo(() => publicOffers.slice(0, 3).map(toFeaturedSlide), [publicOffers]);
-  const liveDeals = useMemo(
-    () => publicOffers.slice(0, 4).map(toDealSummary).map((deal) => ({ ...deal, likes: deal.offerId ? likes[deal.offerId]?.count ?? deal.likes : deal.likes })),
-    [publicOffers, likes],
+  const featuredSlides = useMemo(() => feed.featured.map(toFeaturedSlide), [feed.featured]);
+  const withLikes = useCallback(
+    (offers: Record<string, unknown>[]) =>
+      offers.map(toDealSummary).map((deal) => ({ ...deal, likes: deal.offerId ? likes[deal.offerId]?.count ?? deal.likes : deal.likes })),
+    [likes],
   );
-
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
-  useEffect(() => {
-    let ignore = false;
-
-    const loadOffers = async () => {
-      if (!hasApiConfig()) {
-        if (!ignore) {
-          setPublicOffers([]);
-          setOffersLoading(false);
-        }
-        return;
-      }
-
-      setOffersLoading(true);
-      try {
-        const response = await catalogueService.getPublicOffers({
-          ...locationQuery,
-          page: 1,
-          limit: 8,
-          categoryId: categoryId ?? undefined,
-        });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch {
-        if (!ignore) setPublicOffers([]);
-      } finally {
-        if (!ignore) setOffersLoading(false);
-      }
-    };
-
-    loadOffers();
-    return () => { ignore = true; };
-  }, [locationQuery, categoryId]);
+  const liveDeals = useMemo(() => withLikes(feed.nearby.slice(0, 4)), [feed.nearby, withLikes]);
+  const trendingDeals = useMemo(() => withLikes(feed.trending), [feed.trending, withLikes]);
+  const popularDeals = useMemo(() => withLikes(feed.popular), [feed.popular, withLikes]);
+  const businessRows = useMemo(() => feed.businesses.slice(0, 3).map(toBusinessRow), [feed.businesses]);
 
   useEffect(() => {
     if (featuredSlides.length < 2) return;
@@ -1037,9 +1004,9 @@ export function HomeScreen({
             )}
           </section>
 
-          <TrendingSection items={liveDeals.slice(0, 3)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} emptyText={noneInCategory} loading={offersLoading} />
-          <BusinessesSection items={toBusinessRows(liveDeals)} onSeeAll={onOpenDeals} onOpenBusiness={onOpenBusiness} emptyText={noneInCategory} loading={offersLoading} />
-          <PopularSection items={liveDeals.slice(0, 2)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} emptyText={noneInCategory} loading={offersLoading} />
+          <TrendingSection items={trendingDeals} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} emptyText={noneInCategory} loading={offersLoading} />
+          <BusinessesSection items={businessRows} onSeeAll={onOpenDeals} onOpenBusiness={onOpenBusiness} emptyText={noneInCategory} loading={feed.businessesLoading} />
+          <PopularSection items={popularDeals} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} emptyText={noneInCategory} loading={offersLoading} />
           <EnrollmentPrompt onEnroll={onEnroll} />
         </div>
       </div>

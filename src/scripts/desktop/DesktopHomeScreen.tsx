@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
-import { useLocation, useLocationQuery } from '../../context/LocationContext';
-import { hasApiConfig } from '../../services/api/client';
-import { catalogueService } from '../../services/catalogueService';
+import { useLocation } from '../../context/LocationContext';
 import { useHomeDealCategories } from '../../hooks/useHomeDealCategories';
 import { useDealLikes } from '../../hooks/useDealLikes';
+import { useHomeFeed } from '../../hooks/useHomeFeed';
+import type { DiscoverBusiness } from '../../hooks/useDiscoverBusinesses';
 import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
 import {
-  asRecord,
   firstString,
   isVerifiedOffer,
   offerCategoryLabel,
@@ -48,6 +47,8 @@ interface DesktopHomeScreenProps {
   } | null, onClaimed?: () => void) => void;
   /** Opens live comments & reviews for a deal (with an optional star rating). */
   onOpenComments?: (deal: { id?: string; title?: string; business?: string; location?: string; price?: number; image?: string }) => void;
+  /** Opens the live page of exactly this business. */
+  onOpenBusiness?: (business: { code: string; id?: string; name?: string }) => void;
 }
 
 const formatCurrency = (value: number | string | undefined): string => {
@@ -208,28 +209,17 @@ const toTrendingDeal = (offer: Record<string, unknown>, index: number) => {
   };
 };
 
-/** One row per business in the feed, with how many of its live offers are in it. */
-const toBusinessSummaries = (offers: OfferRecord[]) => {
-  const rows = new Map<string, { offer: OfferRecord; count: number }>();
-  for (const offer of offers) {
-    const key = String(asRecord(offer.business).id ?? offer.businessId ?? getApiBusinessName(offer));
-    const row = rows.get(key);
-    if (row) row.count += 1;
-    else rows.set(key, { offer, count: 1 });
-  }
-  return Array.from(rows.entries()).map(([key, { offer, count }]) => {
-    const businessName = getApiBusinessName(offer);
-    return {
-      id: key,
-      initials: (businessName.split(' ').slice(0, 2).map((part) => part[0] ?? '').join('') || 'B').slice(0, 2).toUpperCase(),
-      name: businessName,
-      verified: isVerifiedOffer(offer),
-      category: offerCategoryLabel(offer),
-      area: offerLocationLabel(offer),
-      deals: `${count} live offer${count === 1 ? '' : 's'}`,
-    };
-  });
-};
+/** One "Businesses Around You" row from a live business. */
+const toBusinessSummary = (business: DiscoverBusiness) => ({
+  id: business.code,
+  businessId: business.id,
+  initials: (business.name.split(' ').slice(0, 2).map((part) => part[0] ?? '').join('') || 'B').slice(0, 2).toUpperCase(),
+  name: business.name,
+  verified: business.verified,
+  category: business.category,
+  area: business.location ?? '',
+  deals: business.dealCount > 0 ? `${business.dealCount} live offer${business.dealCount === 1 ? '' : 's'}` : 'No live offers',
+});
 
 const toProductSummary = (offer: Record<string, unknown>, index: number) => {
   const title = getApiTitle(offer);
@@ -339,6 +329,7 @@ export function DesktopHomeScreen({
   onOpenDeal,
   onClaim,
   onOpenComments,
+  onOpenBusiness,
 }: DesktopHomeScreenProps) {
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [locationOpen, setLocationOpen] = useState(false);
@@ -354,9 +345,10 @@ export function DesktopHomeScreen({
   const toastTimer = useRef<number | undefined>(undefined);
   const [spotlight, setSpotlight] = useState(0);
   const [spotlightPaused, setSpotlightPaused] = useState(false);
-  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
-  // Live mode starts loading, so every section shows a skeleton (never stand-in data) until the API answers.
-  const [offersLoading, setOffersLoading] = useState(() => hasApiConfig());
+  // Each section has its own live source; sections show skeletons (never stand-in data) until the API answers.
+  const feed = useHomeFeed(categoryId);
+  const { offersLoading, businessesLoading } = feed;
+  const publicOffers = feed.nearby;
 
   const createDealPayload = (deal: {
     id?: string | number;
@@ -379,54 +371,14 @@ export function DesktopHomeScreen({
     image: deal.image,
   });
 
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
-  useEffect(() => {
-    let ignore = false;
-    const loadOffers = async () => {
-      if (!hasApiConfig()) {
-        if (!ignore) {
-          setPublicOffers([]);
-          setOffersLoading(false);
-        }
-        return;
-      }
-
-      setOffersLoading(true);
-      try {
-        const response = await catalogueService.getPublicOffers({
-          ...locationQuery,
-          page: 1,
-          limit: 8,
-          categoryId: categoryId ?? undefined,
-        });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch {
-        if (!ignore) setPublicOffers([]);
-      } finally {
-        if (!ignore) setOffersLoading(false);
-      }
-    };
-
-    loadOffers();
-    return () => {
-      ignore = true;
-    };
-  }, [locationQuery, categoryId]);
-
-  const spotlightDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toSpotlightSlide(offer, index)), [publicOffers]);
+  const spotlightDeals = useMemo(() => feed.featured.map((offer, index) => toSpotlightSlide(offer, index)), [feed.featured]);
   const listDeals = useMemo(() => publicOffers.slice(0, 4).map((offer, index) => toListDeal(offer, index)), [publicOffers]);
-  const trendingDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toTrendingDeal(offer, index)), [publicOffers]);
-  const businesses = useMemo(() => toBusinessSummaries(publicOffers).slice(0, 3), [publicOffers]);
-  const offerIds = useMemo(
-    () => publicOffers.map(realOfferId).filter((id): id is string => Boolean(id)),
-    [publicOffers],
-  );
-  const { likes, toggleLike: saveLike } = useDealLikes(offerIds);
+  const trendingDeals = useMemo(() => feed.trending.map((offer, index) => toTrendingDeal(offer, index)), [feed.trending]);
+  const businesses = useMemo(() => feed.businesses.slice(0, 3).map(toBusinessSummary), [feed.businesses]);
+  const { likes, toggleLike: saveLike } = useDealLikes(feed.offerIds);
   const isLiked = (offerId: string | undefined) => Boolean(offerId && likes[offerId]?.liked);
-  const products = useMemo(() => publicOffers.slice(0, 2).map((offer, index) => toProductSummary(offer, index)), [publicOffers]);
-  const liveOfferCount = publicOffers.length;
+  const products = useMemo(() => feed.popular.map((offer, index) => toProductSummary(offer, index)), [feed.popular]);
+  const liveOfferCount = feed.nearbyTotal;
   const liveOfferLabel = liveOfferCount === 0
     ? `No live offers${filterLabel} yet`
     : liveOfferCount === 1
@@ -689,6 +641,7 @@ export function DesktopHomeScreen({
                             event.stopPropagation();
                             const offer = spotlightData[spotlightIndex];
                             const selected = {
+                              id: offer?.id,
                               title: offer?.title ?? 'Featured deal',
                               business: offer?.merchant?.split('•')[0]?.trim() ?? 'Nearby business',
                               location: `${city}, ${district}`,
@@ -991,12 +944,12 @@ export function DesktopHomeScreen({
                       Businesses with live deals near you
                     </p>
                   </div>
-                  <button className="font-label-sm text-label-sm text-primary font-semibold hover:underline" type="button">
-                    Explore Map
+                  <button className="font-label-sm text-label-sm text-primary font-semibold hover:underline" type="button" onClick={() => onNav('discover')}>
+                    Explore All
                   </button>
                 </div>
                 <div className="flex flex-col gap-space-xs">
-                  {offersLoading ? (
+                  {businessesLoading ? (
                     <RowSkeletons count={3} label="Loading businesses" className="flex flex-col gap-space-xs" />
                   ) : businesses.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
@@ -1005,6 +958,15 @@ export function DesktopHomeScreen({
                   ) : businesses.map((business, index) => (
                     <div
                       key={business.id ?? `${business.name}-${index}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onOpenBusiness?.({ code: business.id, id: business.businessId, name: business.name })}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onOpenBusiness?.({ code: business.id, id: business.businessId, name: business.name });
+                        }
+                      }}
                       className="p-space-md bg-surface-canvas rounded-xl shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-space-md group cursor-pointer"
                     >
                       <div className="flex items-center gap-space-sm min-w-0">
@@ -1089,7 +1051,21 @@ export function DesktopHomeScreen({
                           <span className="font-label-md text-label-md font-bold text-text-primary">
                             {product.price}
                           </span>
-                          <button className="px-2.5 py-1 bg-primary text-on-primary rounded-lg font-caption text-caption font-semibold shadow-sm hover:bg-primary-container transition-all">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onClaim?.({
+                                id: product.id,
+                                title: product.title,
+                                business: product.store,
+                                location: `${city}, ${district}`,
+                                price: Number.parseFloat(String(product.price).replace(/[^\d.]/g, '')) || 0,
+                                discountLabel: product.badge,
+                                image: product.image,
+                              })
+                            }
+                            className="px-2.5 py-1 bg-primary text-on-primary rounded-lg font-caption text-caption font-semibold shadow-sm hover:bg-primary-container transition-all"
+                          >
                             Instant Voucher
                           </button>
                         </div>
@@ -1425,6 +1401,7 @@ export function DesktopHomeScreen({
                     onClick={(event) => {
                       event.stopPropagation();
                       const selected = {
+                        id: deal.id,
                         title: deal.title,
                         business: deal.store,
                         location: `${city}, ${district}`,
@@ -1550,12 +1527,12 @@ export function DesktopHomeScreen({
                     Businesses with live deals near you
                   </p>
                 </div>
-                <button className="font-label-sm text-label-sm font-semibold text-primary" type="button">
+                <button className="font-label-sm text-label-sm font-semibold text-primary" type="button" onClick={() => onNav('discover')}>
                   Explore All
                 </button>
               </div>
               <div className="space-y-space-sm">
-                {offersLoading ? (
+                {businessesLoading ? (
                   <RowSkeletons count={3} label="Loading businesses" className="space-y-space-sm" />
                 ) : businesses.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
@@ -1564,7 +1541,16 @@ export function DesktopHomeScreen({
                 ) : businesses.map((business, index) => (
                   <div
                     key={business.id ?? `${business.name}-${index}`}
-                    className="bg-surface-canvas rounded-2xl p-space-md flex items-center justify-between gap-space-md shadow-sm hover:shadow-md transition-all"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onOpenBusiness?.({ code: business.id, id: business.businessId, name: business.name })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onOpenBusiness?.({ code: business.id, id: business.businessId, name: business.name });
+                      }
+                    }}
+                    className="bg-surface-canvas rounded-2xl p-space-md flex items-center justify-between gap-space-md shadow-sm hover:shadow-md transition-all cursor-pointer"
                   >
                     <div className="flex items-center gap-space-md">
                       <div className="w-12 h-12 rounded-xl bg-surface-container-high flex items-center justify-center text-primary font-heading-sm font-bold">

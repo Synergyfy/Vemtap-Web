@@ -3119,6 +3119,7 @@ function AppInner() {
             onOpenDeal={(deal) => openDeal('home', deal ?? null)}
             onClaim={openClaimPopup}
             onOpenComments={(deal) => openDealComments('home', deal)}
+            onOpenBusiness={(business) => openBusiness(business, 'home')}
           />
           {commentsModalOnly ? (
             <CommentsDrawer
@@ -3145,10 +3146,7 @@ function AppInner() {
           onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
           onOpenDeals={() => setRoute('deals')}
           onOpenDeal={(deal) => openDeal('home', deal ?? null)}
-          onOpenBusiness={() => {
-            setProfileFrom('home');
-            setRoute('business-profile');
-          }}
+          onOpenBusiness={(business) => openBusiness(business, 'home')}
           onOpenNotifications={() => setRoute('notifications')}
           onEnroll={() => setRoute('business-onboarding')}
           onAccount={() => setRoute('account')}
