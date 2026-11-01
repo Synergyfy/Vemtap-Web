@@ -216,18 +216,22 @@ const resolveThreadRecord = (payload: unknown): Record<string, unknown> | null =
 
 const normalizeThread = (payload: unknown, fallbackIndex = 0): MessageThread => {
   const record = resolveThreadRecord(payload) ?? {};
+  // A customer's thread names its business through `branch.business`.
+  const branch = record.branch && typeof record.branch === 'object' ? (record.branch as Record<string, unknown>) : {};
+  const business = branch.business && typeof branch.business === 'object' ? (branch.business as Record<string, unknown>) : {};
   const participantName =
     pickString(record, ['participantName', 'merchantName', 'businessName', 'name', 'title']) ||
+    pickString(business, ['name']) ||
     pickString(record, ['customerName']) ||
     `Business ${fallbackIndex + 1}`;
 
   const previewSource =
-    pickString(record, ['lastMessage', 'preview', 'snippet', 'latestMessage', 'message', 'body', 'text']) ||
+    pickString(record, ['lastMessageContent', 'lastMessage', 'preview', 'snippet', 'latestMessage', 'message', 'body', 'text']) ||
     'No messages yet';
 
   const threadId = pickString(record, ['id', '_id', 'threadId']) || `thread-${fallbackIndex}`;
-  const updatedAt = pickString(record, ['updatedAt', 'updated_at', 'lastMessageAt', 'lastMessageAt', 'createdAt', 'created_at']);
-  const unread = pickBoolean(record, ['unread', 'hasUnread', 'isUnread']) || Number(pickString(record, ['unreadCount', 'unread_count'])) > 0;
+  const updatedAt = pickString(record, ['lastActivityAt', 'updatedAt', 'updated_at', 'lastMessageAt', 'lastMessageAt', 'createdAt', 'created_at']);
+  const unread = pickBoolean(record, ['unread', 'hasUnread', 'isUnread']) || Number(pickString(record, ['unreadCount', 'unread_count'])) > 0 || Number(record.customerUnreadCount) > 0;
 
   const dealValue = record.deal && typeof record.deal === 'object' ? (record.deal as Record<string, unknown>) : undefined;
   const deal = dealValue
@@ -257,13 +261,13 @@ const normalizeThread = (payload: unknown, fallbackIndex = 0): MessageThread => 
     tagClass: pickString(record, ['tagClass', 'statusClass']) || 'bg-surface-container-high text-text-secondary',
     tagIcon: pickString(record, ['tagIcon', 'icon']) || (deal ? 'local_offer' : 'chat_bubble_outline'),
     preview: previewSource,
-    avatar: pickString(record, ['avatar', 'avatarUrl', 'imageUrl', 'logo', 'photo']) || undefined,
+    avatar: pickString(record, ['avatar', 'avatarUrl', 'imageUrl', 'logo', 'photo']) || pickString(business, ['logoUrl']) || undefined,
     alt: pickString(record, ['alt', 'avatarAlt']) || undefined,
     unread,
     filters: normalizeFilters(tags.length > 0 ? tags : record.filter ?? record.category ?? record.type),
-    location: pickString(record, ['location', 'address']) || undefined,
+    location: pickString(record, ['location', 'address']) || pickString(branch, ['address']) || undefined,
     status: pickString(record, ['status', 'state']) || 'Active',
-    phone: pickString(record, ['phone', 'phoneNumber']) || undefined,
+    phone: pickString(record, ['phone', 'phoneNumber']) || pickString(branch, ['phone']) || undefined,
     deal,
     secondaryLabel: pickString(record, ['secondaryLabel', 'callToAction']) || (deal ? 'Deal Details' : 'Conversation'),
     secondaryRoute: (pickString(record, ['secondaryRoute', 'route']) as MessageSecondaryRoute) || (deal ? 'deal-detail' : 'dashboard'),
@@ -311,12 +315,31 @@ export const messageService = {
     }
   },
 
+  /**
+   * The customer's chat with a branch, created empty if they have none yet:
+   * `GET /customer/messaging/threads?branchId=` finds or creates it (CUSTOMER).
+   * Resolves to its id; errors are thrown so the caller can show them.
+   */
+  openBranchThread: async (branchId: string): Promise<string> => {
+    const response = await api.get<unknown>('/customer/messaging/threads', { params: { branchId } });
+    const record = response && typeof response === 'object' ? (response as Record<string, unknown>) : {};
+    const rows = Array.isArray(response) ? response : Array.isArray(record.data) ? record.data : [];
+    const thread = rows.find((row) => (row as Record<string, unknown> | null)?.branchId === branchId) as { id?: unknown } | undefined;
+    if (typeof thread?.id !== 'string') throw new Error('Chat is not available right now');
+    return thread.id;
+  },
+
   getThread: async (threadId: string): Promise<MessageThread | null> => {
     if (!threadId) return null;
 
     try {
-      const response = await api.get<unknown>(`/customer/messaging/threads/${encodeURIComponent(threadId)}`);
-      return normalizeThread(response);
+      const [response, threads] = await Promise.all([
+        api.get<unknown>(`/customer/messaging/threads/${encodeURIComponent(threadId)}`),
+        api.get<unknown>('/customer/messaging/threads').then(normalizeThreadList).catch(() => []),
+      ]);
+      // This endpoint returns only the messages (none yet in a new chat); who the chat is with comes from the thread list.
+      const summary = threads.find((thread) => thread.id === threadId) ?? normalizeThread({ id: threadId, name: 'Conversation' });
+      return { ...summary, messages: normalizeMessages(response) };
     } catch (error) {
       return handleApiFallback(null, error);
     }

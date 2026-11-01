@@ -24,6 +24,8 @@ export interface ClaimRecord {
   /** Human-shareable reference, e.g. `VT-48F261` or `VT-GIFT-83921`. */
   ref: string;
   kind: ClaimKind;
+  /** The deal this voucher belongs to. */
+  offerId?: string;
   dealTitle: string;
   dealBusiness: string;
   dealImage?: string;
@@ -193,6 +195,7 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
       id: claimId,
       ref: normalizedRef,
       kind: claimKind,
+      offerId: typeof item.offerId === 'string' ? item.offerId : typeof offer.id === 'string' ? offer.id : undefined,
       dealTitle,
       dealBusiness: businessName,
       dealImage: typeof item.dealImage === 'string' ? item.dealImage : typeof offer.image === 'string' ? offer.image : undefined,
@@ -284,6 +287,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         id: input.id,
         ref: newRef(input.kind, claims),
         kind: input.kind,
+        offerId: input.offerId,
         dealTitle: input.dealTitle ?? 'Live claim',
         dealBusiness: input.dealBusiness ?? 'Partner merchant',
         dealImage: input.dealImage,

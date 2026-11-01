@@ -106,7 +106,7 @@ const toHours = (value: unknown): OpeningDay[] => {
 
 const SOCIAL_LABELS: Record<string, string> = { instagram: 'Instagram', facebook: 'Facebook', x: 'X', twitter: 'X', tiktok: 'TikTok', linkedin: 'LinkedIn', youtube: 'YouTube' };
 
-const toBusiness = (payload: unknown, code: string): PublicBusiness => {
+export const toBusiness = (payload: unknown, code: string): PublicBusiness => {
   const b = rec(unwrap(payload));
   const socials = Object.entries(rec(b.socials))
     .map(([key, url]) => ({ label: SOCIAL_LABELS[key.toLowerCase()] ?? key, url: str(url) }))
@@ -256,6 +256,14 @@ export const mapsLink = (business: Pick<PublicBusiness, 'latitude' | 'longitude'
   }
   const text = [business.name, business.address, business.city].filter(Boolean).join(', ');
   return text ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}` : null;
+};
+
+/** A keyless OpenStreetMap embed centred on a real position, with a marker on it; null without coordinates. */
+export const mapEmbedUrl = (latitude: number | null, longitude: number | null): string | null => {
+  if (latitude == null || longitude == null) return null;
+  const span = 0.005;
+  const bbox = [longitude - span, latitude - span, longitude + span, latitude + span].map((value) => value.toFixed(6)).join(',');
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${latitude},${longitude}`)}`;
 };
 
 const minutes = (time: string) => {
