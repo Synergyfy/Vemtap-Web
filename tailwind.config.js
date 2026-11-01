@@ -11,6 +11,13 @@ export default {
         'badge-discount-bg': '#ECFDF5',
         'border-subtle': '#E5E7EB',
         'border-active': '#BFDBFE',
+        // Tokens that existing screens use but that were never defined (their classes rendered nothing):
+        'border': '#E5E7EB', // border-border / divide-border / bg-border
+        'scrim': '#000000', // modal backdrops (bg-scrim/60)
+        'primary-hover': '#00449d', // hover shade of 'primary'
+        'badge-warning': '#F59E0B',
+        'badge-warning-bg': '#FFFBEB',
+        'badge-warning-text': '#B45309',
         'badge-discount-text': '#059669',
         'tertiary-container': '#c94a03',
         'surface-container-highest': '#dce2f7',
@@ -93,6 +100,13 @@ export default {
         'button-secondary': ['Inter'],
         'label-md': ['Inter'],
         'heading-md': ['Inter'],
+        // Sizes screens already use but that were never defined:
+        'body-sm': ['Inter'],
+        'body-xs': ['Inter'],
+        'label-lg': ['Inter'],
+        'title-sm': ['Inter'],
+        'heading-xl': ['Inter'],
+        'display-sm': ['Inter'],
       },
       fontSize: {
         'heading-sm': ['18px', { lineHeight: '24px', fontWeight: '600' }],
@@ -107,6 +121,13 @@ export default {
         'button-secondary': ['15px', { lineHeight: '20px', fontWeight: '500' }],
         'label-md': ['14px', { lineHeight: '18px', fontWeight: '500' }],
         'heading-md': ['22px', { lineHeight: '28px', letterSpacing: '-0.01em', fontWeight: '600' }],
+        // Sizes screens already use but that were never defined (they fell back to the inherited size):
+        'body-sm': ['13px', { lineHeight: '18px', fontWeight: '400' }],
+        'body-xs': ['12px', { lineHeight: '16px', fontWeight: '400' }],
+        'label-lg': ['16px', { lineHeight: '20px', fontWeight: '500' }],
+        'title-sm': ['16px', { lineHeight: '22px', fontWeight: '600' }],
+        'heading-xl': ['30px', { lineHeight: '38px', letterSpacing: '-0.02em', fontWeight: '600' }],
+        'display-sm': ['28px', { lineHeight: '36px', letterSpacing: '-0.02em', fontWeight: '700' }],
       },
       boxShadow: {
         xs: '0 1px 2px 0 rgb(0 0 0 / 0.05)',

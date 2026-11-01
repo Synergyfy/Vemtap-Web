@@ -5,7 +5,21 @@ import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadi
 import { useLocation, useLocationQuery } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
-import { dealPrimaryImage } from '../../utils/dealImages';
+import { useHomeDealCategories } from '../../hooks/useHomeDealCategories';
+import { useDealLikes } from '../../hooks/useDealLikes';
+import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
+import {
+  asRecord,
+  firstString,
+  isVerifiedOffer,
+  offerCategoryLabel,
+  offerDiscountLabel,
+  offerEndsLabel,
+  offerImage,
+  offerLocationLabel,
+  realOfferId,
+  type OfferRecord,
+} from '../../utils/homeOffer';
 
 interface DesktopHomeScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -32,13 +46,9 @@ interface DesktopHomeScreenProps {
     discountLabel?: string;
     image?: string;
   } | null, onClaimed?: () => void) => void;
+  /** Opens live comments & reviews for a deal (with an optional star rating). */
+  onOpenComments?: (deal: { id?: string; title?: string; business?: string; location?: string; price?: number; image?: string }) => void;
 }
-
-const HERO_LIST_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCS157lqo7xVeIPrY-YwXz-qLPSxMYuZ6MVVZm7i6pXIYJp3jj2O6fz76xwBEEFEMPweLJRa8Tm49n6Rwul-eJYZWMBzYvy5DuYGwjSpFhemSRM2WvxQzm2fwvc8JZ6Mu-YfStqotM5Nsjvaun00tM1rZWIK52y9Mj0qAQjQ02_Odn3b5TSpdPYSmPjMOe0EK7rFyxDrAGSL0MFXKVXa7veRCdKVR52Oz-6BM8HD8W0';
-
-const HERO_GRID_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCkIxQKPJ2CK4jYecgDvXxVKgoXnaiLRhf9nh8zig7wgyoml_WMe7fsiYtmztk9rKiUHi55eLCiwNh04f_72TTRCZNBW0KOtMZNQdQohVyPqT-NoZZFRIbzHeYhmEcHwiIlbhsqW1ynppf7c48y6EQc2bEUGsH4sezPHA7V4Fc7u0vkaUE1Y96MvuETpz-Zm7o5Pgu-vZfjTxdtSThrDeODsHDgluf_1fDho6B-juDh';
 
 const formatCurrency = (value: number | string | undefined): string => {
   const parsed = Number(value ?? 0);
@@ -50,13 +60,25 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-const getApiImage = (value: unknown): string => {
-  if (typeof value === 'string' && value.trim()) return value;
-  return HERO_LIST_IMAGE;
+/** The deal's own photo first, then an item photo, then the business logo; a neutral block when it has none. */
+const getNestedImage = (offer: Record<string, unknown>): string => offerImage(offer);
+
+const greeting = () => {
+  const hour = new Date().getHours();
+  return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 };
 
-/** The deal's own photo first, then an item photo, then the business logo (shared with the detail page). */
-const getNestedImage = (offer: Record<string, unknown>): string => getApiImage(dealPrimaryImage(offer));
+const offerDescription = (offer: OfferRecord): string => firstString(offer.description) ?? '';
+
+const claimedLabel = (offer: OfferRecord): string | undefined => {
+  const claimed = Number(offer.claimedCount ?? 0);
+  return Number.isFinite(claimed) && claimed > 0 ? `${claimed} claimed` : undefined;
+};
+
+const remainingLabel = (offer: OfferRecord): string | undefined => {
+  const remaining = Number(offer.remainingLimit);
+  return offer.remainingLimit != null && Number.isFinite(remaining) && remaining >= 0 ? `${remaining} left` : undefined;
+};
 
 const getApiBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business;
@@ -106,23 +128,25 @@ const toSpotlightSlide = (offer: Record<string, unknown>, index: number) => {
 
   return {
     id: offerId,
+    offerId: realOfferId(offer),
     image: getNestedImage(offer),
-    discount: 'Live Deal',
-    merchant: `${merchant} • ${typeof offer.location === 'string' ? offer.location : 'Nearby'}`,
+    discount: offerDiscountLabel(offer),
+    merchant: `${merchant} • ${offerLocationLabel(offer)}`,
     title,
-    copy: typeof offer.description === 'string' && offer.description.trim() ? offer.description : 'Fresh local offer from nearby vendors.',
-    rating: '4.9',
-    reviews: '(live)',
+    copy: offerDescription(offer),
+    verified: isVerifiedOffer(offer),
     price: formatCurrency(price),
     oldPrice: original > price ? formatCurrency(original) : '',
-    save: price > 0 ? `Save ${formatCurrency(Math.max(original - price, 0))} instantly` : 'Limited-time offer',
-    ending: 'Ends soon',
+    save: original > price ? `Save ${formatCurrency(original - price)}` : '',
+    ending: offerEndsLabel(offer),
+    // Facts from the offer itself — nothing is shown that the API did not send.
     features: [
-      { icon: 'check_circle', text: 'Includes local perk' },
-      { icon: 'check_circle', text: 'Instant checkout' },
-      { icon: 'schedule', text: 'Limited time', error: true },
-      { icon: 'pin_drop', text: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby' },
-    ],
+      { icon: 'schedule', text: offerEndsLabel(offer) },
+      { icon: 'pin_drop', text: offerLocationLabel(offer) },
+      { icon: 'category', text: offerCategoryLabel(offer) },
+      { icon: 'confirmation_number', text: claimedLabel(offer) },
+      { icon: 'inventory_2', text: remainingLabel(offer) },
+    ].filter((feature): feature is { icon: string; text: string } => Boolean(feature.text)),
   };
 };
 
@@ -142,15 +166,15 @@ const toListDeal = (offer: Record<string, unknown>, index: number) => {
 
   return {
     id: offerId,
+    offerId: realOfferId(offer),
     image: getNestedImage(offer),
     imageAlt: `${title} by ${business}`,
-    discount: price > 0 ? 'Live Deal' : 'OFFER',
-    timer: 'Limited time',
-    meta: typeof offer.distance === 'string' && offer.distance.trim() ? `${offer.distance} • Nearby` : 'Nearby',
-    rating: '4.9',
+    discount: offerDiscountLabel(offer),
+    timer: offerEndsLabel(offer),
+    meta: offerLocationLabel(offer),
     title,
     store: business,
-    copy: typeof offer.description === 'string' && offer.description.trim() ? offer.description : 'Fresh local offer from nearby vendors.',
+    copy: offerDescription(offer),
     price: formatCurrency(price),
     oldPrice: original > price ? formatCurrency(original) : '',
   };
@@ -172,37 +196,39 @@ const toTrendingDeal = (offer: Record<string, unknown>, index: number) => {
 
   return {
     id: offerId,
+    offerId: realOfferId(offer),
     image: getNestedImage(offer),
     imageAlt: `${title} by ${business}`,
-    claimed: 'Live deal',
+    claimed: claimedLabel(offer) ?? offerEndsLabel(offer),
     title,
     store: business,
     price: formatCurrency(price),
     oldPrice: original > price ? formatCurrency(original) : '',
-    discount: 'Live Deal',
+    discount: offerDiscountLabel(offer),
   };
 };
 
-const toBusinessSummary = (offer: Record<string, unknown>, index: number) => {
-  const businessName = getApiBusinessName(offer);
-  const distance = typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby';
-  const idCandidate =
-    offer.id ??
-    offer.businessId ??
-    offer.branchId ??
-    offer.slug ??
-    offer._id ??
-    (offer.business && typeof offer.business === 'object' ? ((offer.business as Record<string, unknown>).id ?? (offer.business as Record<string, unknown>).businessId ?? (offer.business as Record<string, unknown>).branchId) : undefined) ??
-    `${businessName}-${distance}-${index}`;
-
-  return {
-    id: String(idCandidate),
-    initials: (businessName.split(' ').slice(0, 2).map((part) => part[0] ?? '').join('') || 'LB').slice(0, 2).toUpperCase(),
-    name: businessName,
-    rating: '4.9 (live)',
-    area: distance,
-    deals: 'Live Offer',
-  };
+/** One row per business in the feed, with how many of its live offers are in it. */
+const toBusinessSummaries = (offers: OfferRecord[]) => {
+  const rows = new Map<string, { offer: OfferRecord; count: number }>();
+  for (const offer of offers) {
+    const key = String(asRecord(offer.business).id ?? offer.businessId ?? getApiBusinessName(offer));
+    const row = rows.get(key);
+    if (row) row.count += 1;
+    else rows.set(key, { offer, count: 1 });
+  }
+  return Array.from(rows.entries()).map(([key, { offer, count }]) => {
+    const businessName = getApiBusinessName(offer);
+    return {
+      id: key,
+      initials: (businessName.split(' ').slice(0, 2).map((part) => part[0] ?? '').join('') || 'B').slice(0, 2).toUpperCase(),
+      name: businessName,
+      verified: isVerifiedOffer(offer),
+      category: offerCategoryLabel(offer),
+      area: offerLocationLabel(offer),
+      deals: `${count} live offer${count === 1 ? '' : 's'}`,
+    };
+  });
 };
 
 const toProductSummary = (offer: Record<string, unknown>, index: number) => {
@@ -219,28 +245,91 @@ const toProductSummary = (offer: Record<string, unknown>, index: number) => {
 
   return {
     id: offerId,
+    offerId: realOfferId(offer),
     image: getNestedImage(offer),
     imageAlt: `${title} by ${store}`,
-    badge: 'Live Offer',
+    badge: offerDiscountLabel(offer),
     title,
     store,
     price: formatCurrency(getApiPrice(offer)),
   };
 };
 
-const GRID_MAP_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDPi8Hp2LqrNbrRjrTe4iJGQ82H5nsV1-JvhlyPbRVhxONkWJt6Hc2S_lIZk9qo9btotKPC72KuIRzlcqxkOEekBorlzOmDPiLFdngxWpwgjtTT1izq8k3mCxSxrpZYEjh5MWVcQ3PbDF_AB-uT28yp-J3pqOSTDWKLCrFnYOfqHy1aTcjOivKcO-UI_9bCybcQXu2yrMzbnFa1OR2ZwxZ22PxWZOr0qA1L94Oic9em';
+function SpotlightSkeleton({ label = 'Loading featured deals' }: { label?: string }) {
+  return (
+    <SkeletonGroup label={label} className="rounded-2xl bg-surface-container-lowest shadow-md grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+      <Skeleton className="lg:col-span-7 min-h-[300px] lg:min-h-[420px] rounded-none" />
+      <div className="lg:col-span-5 p-space-lg lg:p-space-xl flex flex-col gap-space-sm">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+        <div className="grid grid-cols-2 gap-2 pt-2">
+          {[0, 1, 2, 3].map((key) => <Skeleton key={key} className="h-4 w-28" />)}
+        </div>
+        <div className="mt-auto pt-space-lg flex items-center justify-between">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-[52px] w-40 rounded-xl" />
+        </div>
+      </div>
+    </SkeletonGroup>
+  );
+}
 
-const LIST_CATEGORIES = [
-  { label: 'All' },
-  { label: 'Food & Dining', icon: 'restaurant' },
-  { label: 'Fashion', icon: 'checkroom' },
-  { label: 'Beauty & Spa', icon: 'spa' },
-  { label: 'Fitness', icon: 'fitness_center' },
-  { label: 'Tech & Gadgets', icon: 'devices' },
-];
+function DealCardSkeletons({ count, className, label = 'Loading deals' }: { count: number; className: string; label?: string }) {
+  return (
+    <SkeletonGroup label={label} className={className}>
+      {Array.from({ length: count }, (_, key) => (
+        <div key={key} className="bg-surface-canvas rounded-2xl overflow-hidden shadow-sm">
+          <Skeleton className="h-44 w-full rounded-none" />
+          <div className="p-space-md space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-3 w-full" />
+            <div className="flex items-center justify-between pt-2">
+              <Skeleton className="h-6 w-20" />
+              <Skeleton className="h-9 w-24 rounded-lg" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </SkeletonGroup>
+  );
+}
 
-const GRID_CATEGORIES = ['All Deals', 'Food & Dining', 'Fashion & Drops', 'Beauty & Wellness', 'Fitness'];
+function RowSkeletons({ count, className, label }: { count: number; className: string; label: string }) {
+  return (
+    <SkeletonGroup label={label} className={className}>
+      {Array.from({ length: count }, (_, key) => (
+        <div key={key} className="p-space-md bg-surface-canvas rounded-xl shadow-sm flex items-center gap-space-sm">
+          <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <Skeleton className="h-7 w-24 rounded-lg" />
+        </div>
+      ))}
+    </SkeletonGroup>
+  );
+}
+
+function TrendingSkeletons({ count, className }: { count: number; className: string }) {
+  return (
+    <SkeletonGroup label="Loading trending deals" className={className}>
+      {Array.from({ length: count }, (_, key) => (
+        <div key={key} className="min-w-[280px] sm:min-w-[340px] bg-surface-canvas rounded-xl p-space-md shadow-sm flex gap-3.5 items-center shrink-0">
+          <Skeleton className="w-20 h-20 rounded-xl shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+      ))}
+    </SkeletonGroup>
+  );
+}
 
 export function DesktopHomeScreen({
   onNav,
@@ -249,20 +338,25 @@ export function DesktopHomeScreen({
   onOpenDeals,
   onOpenDeal,
   onClaim,
+  onOpenComments,
 }: DesktopHomeScreenProps) {
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
-  const [listCategory, setListCategory] = useState('All');
-  const [gridCategory, setGridCategory] = useState('All Deals');
-  const [liked, setLiked] = useState<Record<number, boolean>>({});
+  // One live category selection drives every section, in both list and grid view.
+  const { categories } = useHomeDealCategories();
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const activeCategory = categories.find((category) => category.id === categoryId) ?? categories[0];
+  const filterLabel = categoryId ? ` in ${activeCategory.label}` : '';
+  const noneInCategory = `No live deals${filterLabel} near you yet.`;
   const [toast, setToast] = useState<string | null>(null);
   const trendingRef = useRef<HTMLDivElement | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const [spotlight, setSpotlight] = useState(0);
   const [spotlightPaused, setSpotlightPaused] = useState(false);
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
-  const [offersLoading, setOffersLoading] = useState(false);
+  // Live mode starts loading, so every section shows a skeleton (never stand-in data) until the API answers.
+  const [offersLoading, setOffersLoading] = useState(() => hasApiConfig());
 
   const createDealPayload = (deal: {
     id?: string | number;
@@ -300,7 +394,12 @@ export function DesktopHomeScreen({
 
       setOffersLoading(true);
       try {
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 8 });
+        const response = await catalogueService.getPublicOffers({
+          ...locationQuery,
+          page: 1,
+          limit: 8,
+          categoryId: categoryId ?? undefined,
+        });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -314,19 +413,25 @@ export function DesktopHomeScreen({
     return () => {
       ignore = true;
     };
-  }, [locationQuery]);
+  }, [locationQuery, categoryId]);
 
   const spotlightDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toSpotlightSlide(offer, index)), [publicOffers]);
   const listDeals = useMemo(() => publicOffers.slice(0, 4).map((offer, index) => toListDeal(offer, index)), [publicOffers]);
   const trendingDeals = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toTrendingDeal(offer, index)), [publicOffers]);
-  const businesses = useMemo(() => publicOffers.slice(0, 3).map((offer, index) => toBusinessSummary(offer, index)), [publicOffers]);
+  const businesses = useMemo(() => toBusinessSummaries(publicOffers).slice(0, 3), [publicOffers]);
+  const offerIds = useMemo(
+    () => publicOffers.map(realOfferId).filter((id): id is string => Boolean(id)),
+    [publicOffers],
+  );
+  const { likes, toggleLike: saveLike } = useDealLikes(offerIds);
+  const isLiked = (offerId: string | undefined) => Boolean(offerId && likes[offerId]?.liked);
   const products = useMemo(() => publicOffers.slice(0, 2).map((offer, index) => toProductSummary(offer, index)), [publicOffers]);
   const liveOfferCount = publicOffers.length;
   const liveOfferLabel = liveOfferCount === 0
-    ? 'No live offers yet'
+    ? `No live offers${filterLabel} yet`
     : liveOfferCount === 1
-      ? '1 live offer near you'
-      : `${liveOfferCount} live offers near you`;
+      ? `1 live offer${filterLabel} near you`
+      : `${liveOfferCount} live offers${filterLabel} near you`;
   const spotlightIndex = spotlightDeals.length ? spotlight % spotlightDeals.length : 0;
   const spotlightData = spotlightDeals.length ? spotlightDeals : [];
 
@@ -348,12 +453,12 @@ export function DesktopHomeScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2800);
   };
 
-  const toggleLike = (index: number) => {
-    setLiked((prev) => {
-      const nextValue = !prev[index];
-      showToast(nextValue ? 'Saved to your VEMTAP favorites' : 'Removed from saved deals');
-      return { ...prev, [index]: nextValue };
-    });
+  const toggleLike = (offerId: string | undefined) => {
+    if (!offerId) return;
+    saveLike(offerId).then(
+      (saved) => showToast(saved.liked ? 'You liked this deal' : 'Like removed'),
+      () => showToast('Could not save your like. Please try again.'),
+    );
   };
 
   const scrollTrending = (delta: number) => {
@@ -376,7 +481,7 @@ export function DesktopHomeScreen({
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-space-2xs text-text-secondary font-label-sm text-label-sm">
-                    <span>Good evening</span>
+                    <span>{greeting()}</span>
                     <span className="text-primary font-bold">•</span>
                     <span className="flex items-center gap-1 text-text-secondary">
                       <Icon name="location_on" className="text-primary text-[18px]" />
@@ -401,18 +506,19 @@ export function DesktopHomeScreen({
               </div>
 
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                {LIST_CATEGORIES.map((item) => {
-                  const active = item.label === listCategory;
+                {categories.map((item) => {
+                  const active = item.id === categoryId;
                   return (
                     <button
-                      key={item.label}
+                      key={item.id ?? 'all'}
                       className={`px-4 py-2 rounded-full font-label-sm text-label-sm shrink-0 transition-all flex items-center gap-1.5 ${
                         active
                           ? 'bg-surface-tint-blue text-primary font-semibold shadow-sm hover:scale-[1.02]'
                           : 'bg-surface-subtle text-text-secondary font-medium hover:bg-surface-container-low hover:text-text-primary shadow-sm'
                       }`}
                       type="button"
-                      onClick={() => setListCategory(item.label)}
+                      aria-pressed={active}
+                      onClick={() => setCategoryId(item.id)}
                     >
                       {item.icon ? <Icon name={item.icon} className="text-[16px]" /> : null}
                       {item.label}
@@ -425,6 +531,7 @@ export function DesktopHomeScreen({
 
           <div className="max-w-7xl mx-auto w-full px-margin py-space-xl flex flex-col gap-space-2xl">
             <section className="w-full">
+              {offersLoading ? <SpotlightSkeleton /> : (
               <div
                 className="relative overflow-hidden rounded-2xl bg-surface-container-lowest shadow-md grid grid-cols-1 lg:grid-cols-12 group transition-all duration-300 cursor-pointer"
                 onClick={onOpenFeatured}
@@ -434,7 +541,7 @@ export function DesktopHomeScreen({
                 <div className="lg:col-span-7 relative min-h-[300px] lg:min-h-[420px] overflow-hidden">
                   {spotlightData.length === 0 ? (
                     <div className="w-full h-full bg-surface-subtle flex items-center justify-center text-text-secondary p-space-xl">
-                      No live offers are available right now.
+                      {categoryId ? noneInCategory : 'No live offers are available right now.'}
                     </div>
                   ) : (
                     <div
@@ -451,7 +558,7 @@ export function DesktopHomeScreen({
                           {spotlightData[spotlightIndex].discount}
                         </span>
                         <span className="px-3 py-1 bg-surface-canvas/90 backdrop-blur text-primary font-caption text-caption font-semibold rounded-full shadow-sm">
-                          PROMOTED SPOTLIGHT
+                          FEATURED
                         </span>
                       </>
                     )}
@@ -521,17 +628,17 @@ export function DesktopHomeScreen({
                     <>
                       <div className="flex flex-col gap-space-sm">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-primary">
-                            <Icon name="verified" className="text-[18px]" />
-                            <span className="font-caption text-caption font-semibold uppercase tracking-wider">
-                              Partner Verified
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 text-tertiary-container font-label-sm text-label-sm font-bold">
-                            <Icon name="star" filled className="text-[16px] text-tertiary-container" />
-                            {spotlightData[spotlightIndex].rating}{' '}
-                            <span className="text-text-tertiary font-normal">{spotlightData[spotlightIndex].reviews}</span>
-                          </div>
+                          {spotlightData[spotlightIndex].verified ? (
+                            <div className="flex items-center gap-1.5 text-primary">
+                              <Icon name="verified" className="text-[18px]" />
+                              <span className="font-caption text-caption font-semibold uppercase tracking-wider">
+                                Partner Verified
+                              </span>
+                            </div>
+                          ) : <span />}
+                          <span className="px-2.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                            {spotlightData[spotlightIndex].discount}
+                          </span>
                         </div>
 
                         <div>
@@ -541,9 +648,11 @@ export function DesktopHomeScreen({
                           <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mt-1">
                             {spotlightData[spotlightIndex].title}
                           </h2>
-                          <p className="font-body-md text-body-md text-text-secondary mt-2">
-                            {spotlightData[spotlightIndex].copy}
-                          </p>
+                          {spotlightData[spotlightIndex].copy ? (
+                            <p className="font-body-md text-body-md text-text-secondary mt-2 line-clamp-3">
+                              {spotlightData[spotlightIndex].copy}
+                            </p>
+                          ) : null}
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 mt-2 pt-2">
@@ -553,7 +662,7 @@ export function DesktopHomeScreen({
                               key={feature.text}
                             >
                               <Icon name={feature.icon} className="text-primary text-[18px]" />
-                              <span className={feature.error ? 'text-error font-medium' : undefined}>{feature.text}</span>
+                              <span>{feature.text}</span>
                             </div>
                           ))}
                         </div>
@@ -599,6 +708,7 @@ export function DesktopHomeScreen({
                   )}
                 </div>
               </div>
+              )}
             </section>
 
             <section className="w-full">
@@ -607,11 +717,11 @@ export function DesktopHomeScreen({
                   <div className="flex items-center gap-2">
                     <h3 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Deals Near You</h3>
                     <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-secondary-container font-caption text-caption font-bold">
-                      4.2km Radius
+                      Within {radius}km
                     </span>
                   </div>
                   <p className="font-body-md text-body-md text-text-secondary mt-0.5">
-                    Top-rated neighborhood vouchers ready for instant pickup or table reservation
+                    Live vouchers from businesses near you
                   </p>
                 </div>
                 <div className="flex items-center gap-space-md shrink-0">
@@ -644,10 +754,13 @@ export function DesktopHomeScreen({
                 </div>
               </div>
 
+              {offersLoading ? (
+                <DealCardSkeletons count={4} label="Loading deals near you" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md" />
+              ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
                 {listDeals.length === 0 ? (
                   <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                    {offersLoading ? 'Loading live deals...' : 'No live deals are available right now.'}
+                    {categoryId ? noneInCategory : 'No live deals are available right now.'}
                   </div>
                 ) : listDeals.map((deal, index) => (
                   <div
@@ -703,10 +816,39 @@ export function DesktopHomeScreen({
                             <Icon name="pin_drop" className="text-[14px]" />
                             {deal.meta}
                           </span>
-                          <span className="flex items-center text-text-primary font-semibold">
-                            <Icon name="star" filled className="text-tertiary-container text-[14px]" />
-                            {deal.rating}
-                          </span>
+                          <button
+                            type="button"
+                            aria-pressed={isLiked(deal.offerId)}
+                            aria-label={isLiked(deal.offerId) ? `Unlike ${deal.title}` : `Like ${deal.title}`}
+                            disabled={!deal.offerId}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleLike(deal.offerId);
+                            }}
+                            className={`flex items-center gap-0.5 font-semibold transition-colors ${isLiked(deal.offerId) ? 'text-error' : 'text-text-secondary hover:text-error'}`}
+                          >
+                            <Icon name="favorite" filled={isLiked(deal.offerId)} className="text-[16px]" />
+                            {deal.offerId ? likes[deal.offerId]?.count ?? 0 : 0}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Comments and reviews for ${deal.title}`}
+                            disabled={!deal.offerId || !onOpenComments}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenComments?.({
+                                id: deal.offerId,
+                                title: deal.title,
+                                business: deal.store,
+                                location: `${city}, ${district}`,
+                                price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                                image: deal.image,
+                              });
+                            }}
+                            className="flex items-center gap-0.5 font-semibold text-text-secondary hover:text-primary transition-colors"
+                          >
+                            <Icon name="chat_bubble_outline" className="text-[16px]" />
+                          </button>
                         </div>
                         <h4 className="font-heading-sm text-heading-sm text-text-primary mt-1 line-clamp-1">
                           {deal.title}
@@ -736,6 +878,7 @@ export function DesktopHomeScreen({
                   </div>
                 ))}
               </div>
+              )}
             </section>
 
             <section className="w-full bg-surface-subtle p-space-lg lg:p-space-xl rounded-2xl">
@@ -749,7 +892,7 @@ export function DesktopHomeScreen({
                       Trending Deals Right Now
                     </h3>
                     <p className="font-caption text-caption text-text-secondary">
-                      Claimed by shoppers near you today
+                      Live deals from businesses near you
                     </p>
                   </div>
                 </div>
@@ -776,9 +919,11 @@ export function DesktopHomeScreen({
                 ref={trendingRef}
                 className="flex gap-space-md overflow-x-auto no-scrollbar scroll-smooth pb-2"
               >
-                {trendingDeals.length === 0 ? (
+                {offersLoading ? (
+                  <TrendingSkeletons count={3} className="flex gap-space-md" />
+                ) : trendingDeals.length === 0 ? (
                   <div className="w-full rounded-xl border border-dashed border-primary/20 bg-surface-canvas p-space-lg text-text-secondary">
-                    Live trending deals will appear here soon.
+                    {categoryId ? noneInCategory : 'Live trending deals will appear here soon.'}
                   </div>
                 ) : trendingDeals.map((deal, index) => (
                   <div
@@ -843,7 +988,7 @@ export function DesktopHomeScreen({
                       Businesses Around You
                     </h3>
                     <p className="font-caption text-caption text-text-secondary">
-                      Explore neighborhood spots with active member perks
+                      Businesses with live deals near you
                     </p>
                   </div>
                   <button className="font-label-sm text-label-sm text-primary font-semibold hover:underline" type="button">
@@ -851,9 +996,11 @@ export function DesktopHomeScreen({
                   </button>
                 </div>
                 <div className="flex flex-col gap-space-xs">
-                  {businesses.length === 0 ? (
+                  {offersLoading ? (
+                    <RowSkeletons count={3} label="Loading businesses" className="flex flex-col gap-space-xs" />
+                  ) : businesses.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
-                      Nearby businesses will appear here when live offers are available.
+                      {categoryId ? noneInCategory : 'Nearby businesses will appear here when live offers are available.'}
                     </div>
                   ) : businesses.map((business, index) => (
                     <div
@@ -869,14 +1016,15 @@ export function DesktopHomeScreen({
                             <h5 className="font-heading-sm text-heading-sm text-text-primary truncate">
                               {business.name}
                             </h5>
-                            <Icon name="verified" className="text-primary text-[16px]" />
+                            {business.verified && <Icon name="verified" className="text-primary text-[16px]" />}
                           </div>
                           <div className="flex items-center gap-2 text-text-tertiary font-caption text-caption mt-0.5">
-                            <span className="flex items-center text-text-primary font-medium">
-                              <Icon name="star" filled className="text-tertiary-container text-[14px]" />
-                              {business.rating}
-                            </span>
-                            <span>•</span>
+                            {business.category && (
+                              <>
+                                <span className="text-text-primary font-medium">{business.category}</span>
+                                <span>•</span>
+                              </>
+                            )}
                             <span>{business.area}</span>
                           </div>
                         </div>
@@ -899,18 +1047,26 @@ export function DesktopHomeScreen({
                       Popular Near You
                     </h3>
                     <p className="font-caption text-caption text-text-secondary">
-                      Curated single-item vouchers to claim immediately
+                      Single-item vouchers you can claim now
                     </p>
                   </div>
-                  <span className="font-caption text-caption text-badge-discount-text font-semibold flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    Updated hourly
-                  </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
-                  {products.length === 0 ? (
+                  {offersLoading ? (
+                    [0, 1].map((key) => (
+                      <div key={key} role="status" aria-busy="true" className="bg-surface-canvas rounded-xl p-space-sm shadow-sm">
+                        <span className="sr-only">Loading popular deals</span>
+                        <Skeleton className="h-36 w-full" />
+                        <div className="mt-2.5 space-y-2">
+                          <Skeleton className="h-5 w-3/4" />
+                          <Skeleton className="h-3 w-1/2" />
+                          <Skeleton className="h-6 w-24" />
+                        </div>
+                      </div>
+                    ))
+                  ) : products.length === 0 ? (
                     <div className="col-span-full rounded-xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
-                      Popular nearby products will load from the public catalogue feed.
+                      {categoryId ? noneInCategory : 'Popular nearby products will load from the public catalogue feed.'}
                     </div>
                   ) : products.map((product, index) => (
                     <div
@@ -995,7 +1151,7 @@ export function DesktopHomeScreen({
                 <span className="font-caption text-caption text-text-secondary">{liveOfferLabel}</span>
               </div>
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight flex items-center gap-space-xs">
-                Good evening
+                {greeting()}
                 <Icon name="waving_hand" className="text-[26px] text-tertiary-container" />
               </h1>
               <p className="font-body-md text-body-md text-text-secondary">
@@ -1006,29 +1162,34 @@ export function DesktopHomeScreen({
 
           <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-space-md bg-surface-canvas p-space-sm rounded-2xl shadow-sm">
             <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar pb-1 lg:pb-0">
-              {GRID_CATEGORIES.map((label) => {
-                const active = label === gridCategory;
+              {categories.map((item) => {
+                const active = item.id === categoryId;
                 return (
                   <button
-                    key={label}
+                    key={item.id ?? 'all'}
                     className={`px-space-md py-space-xs rounded-full font-label-md text-label-md whitespace-nowrap transition-all ${
                       active
                         ? 'bg-surface-tint-blue text-primary font-semibold shadow-sm'
                         : 'bg-surface-subtle text-text-secondary font-medium hover:text-text-primary'
                     }`}
                     type="button"
-                    onClick={() => {
-                      setGridCategory(label);
-                      showToast(`Filtered: ${label}`);
-                    }}
+                    aria-pressed={active}
+                    onClick={() => setCategoryId(item.id)}
                   >
-                    {label}
+                    {item.label}
                   </button>
                 );
               })}
             </div>
           </div>
 
+          {offersLoading ? (
+            <SpotlightSkeleton />
+          ) : spotlightData.length === 0 ? (
+            <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-xl text-text-secondary">
+              {categoryId ? noneInCategory : 'No live offers are available right now.'}
+            </div>
+          ) : (
           <div
             className="relative w-full rounded-2xl overflow-hidden shadow-md bg-inverse-surface text-on-primary cursor-pointer"
             onClick={onOpenFeatured}
@@ -1037,44 +1198,44 @@ export function DesktopHomeScreen({
               <div className="lg:col-span-7 relative min-h-[260px] lg:min-h-full overflow-hidden">
                 <div
                   className="w-full h-full bg-cover bg-center"
-                  style={{ backgroundImage: `url('${HERO_GRID_IMAGE}')` }}
+                  style={{ backgroundImage: `url('${spotlightData[spotlightIndex].image}')` }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-transparent via-inverse-surface/40 to-inverse-surface" />
                 <div className="absolute top-space-md left-space-md flex items-center gap-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-sm py-space-2xs rounded-full shadow-sm text-text-primary">
-                  <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-ping" />
+                  <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
                   <span className="font-caption text-caption font-semibold uppercase tracking-wider text-badge-discount-text">
-                    Editor&apos;s Spotlight
+                    Featured
                   </span>
                 </div>
               </div>
 
               <div className="lg:col-span-5 p-space-xl flex flex-col justify-between z-10">
                 <div className="space-y-space-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-label-sm text-label-sm font-semibold text-secondary-fixed uppercase tracking-wider">
-                      {city || 'Your area'} • {district || 'Local picks'}
+                  <div className="flex items-center justify-between gap-space-sm">
+                    <span className="font-label-sm text-label-sm font-semibold text-secondary-fixed uppercase tracking-wider truncate">
+                      {spotlightData[spotlightIndex].merchant}
                     </span>
-                    <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                      Live Deal
+                    <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shrink-0">
+                      {spotlightData[spotlightIndex].discount}
                     </span>
                   </div>
                   <h2 className="font-heading-lg text-heading-lg font-bold text-on-primary tracking-tight leading-snug">
-                    Featured local offer from nearby merchants
+                    {spotlightData[spotlightIndex].title}
                   </h2>
-                  <p className="font-body-md text-body-md text-text-tertiary">
-                    Fresh savings, quick redemption, and walk-in perks from the best-rated businesses around your current
-                    location.
-                  </p>
+                  {spotlightData[spotlightIndex].copy ? (
+                    <p className="font-body-md text-body-md text-text-tertiary line-clamp-3">
+                      {spotlightData[spotlightIndex].copy}
+                    </p>
+                  ) : null}
                   <div className="flex items-baseline gap-space-sm pt-space-xs">
                     <span className="font-heading-lg text-heading-lg font-bold text-on-primary">
-                      {publicOffers.length > 0 ? formatCurrency(publicOffers[0] ? getApiPrice(publicOffers[0] as Record<string, unknown>) : 0) : '₦0'}
+                      {spotlightData[spotlightIndex].price}
                     </span>
-                    <span className="font-body-md text-body-md text-text-tertiary line-through">
-                      {publicOffers.length > 0 ? formatCurrency(publicOffers[0] ? getApiComparePrice(publicOffers[0] as Record<string, unknown>) : 0) : ''}
-                    </span>
-                    <span className="font-caption text-caption text-secondary-fixed font-medium">
-                      {publicOffers.length > 0 ? 'Live now' : 'Loading live offers'}
-                    </span>
+                    {spotlightData[spotlightIndex].oldPrice ? (
+                      <span className="font-body-md text-body-md text-text-tertiary line-through">
+                        {spotlightData[spotlightIndex].oldPrice}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1084,16 +1245,17 @@ export function DesktopHomeScreen({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      const selected = {
-                        title: publicOffers[0] ? getApiTitle(publicOffers[0] as Record<string, unknown>) : 'Local featured offer',
-                        business: publicOffers[0] ? getApiBusinessName(publicOffers[0] as Record<string, unknown>) : 'Nearby merchant',
+                      const offer = spotlightData[spotlightIndex];
+                      onClaim?.({
+                        id: offer.id,
+                        title: offer.title,
+                        business: offer.merchant.split('•')[0]?.trim(),
                         location: `${city}, ${district}`,
-                        price: publicOffers[0] ? getApiPrice(publicOffers[0] as Record<string, unknown>) : 0,
-                        oldPrice: publicOffers[0] ? getApiComparePrice(publicOffers[0] as Record<string, unknown>) : 0,
-                        discountLabel: 'Live Deal',
-                        image: publicOffers[0] ? getNestedImage(publicOffers[0] as Record<string, unknown>) : HERO_GRID_IMAGE,
-                      };
-                      onClaim?.(selected, () => showToast('Featured voucher is ready to claim.'));
+                        price: Number.parseFloat(String(offer.price).replace(/[^\d.]/g, '')) || 0,
+                        oldPrice: Number.parseFloat(String(offer.oldPrice).replace(/[^\d.]/g, '')) || 0,
+                        discountLabel: offer.discount,
+                        image: offer.image,
+                      }, () => showToast('Featured voucher is ready to claim.'));
                     }}
                   >
                     <span>Claim Voucher</span>
@@ -1102,19 +1264,20 @@ export function DesktopHomeScreen({
                   <div className="flex items-center gap-space-2xs text-text-tertiary">
                     <Icon name="timer" className="text-tertiary-fixed text-[18px]" />
                     <span className="font-caption text-caption font-medium">
-                      {Math.max(1, publicOffers.length || 1)} live vouchers available
+                      {spotlightData[spotlightIndex].ending}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-space-sm">
               <h2 className="font-heading-md text-heading-md font-bold text-text-primary">Deals Near You</h2>
               <span className="hidden sm:inline-flex px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold">
-                1.2km avg
+                Within {radius}km
               </span>
             </div>
             <div className="flex items-center gap-space-md">
@@ -1147,14 +1310,17 @@ export function DesktopHomeScreen({
             </div>
           </div>
 
+          {offersLoading ? (
+            <DealCardSkeletons count={4} label="Loading deals near you" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-space-md" />
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-space-md">
             {listDeals.length === 0 ? (
               <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                {offersLoading ? 'Loading live deals...' : 'No live offers are available for this grid view yet.'}
+                {categoryId ? noneInCategory : 'No live offers are available for this grid view yet.'}
               </div>
             ) : listDeals.map((deal, index) => (
               <div
-                key={`${deal.title}-${index}`}
+                key={deal.id ?? `${deal.title}-${index}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => onOpenDeal({
@@ -1194,17 +1360,19 @@ export function DesktopHomeScreen({
                       {deal.discount}
                     </span>
                     <button
-                      aria-label="Save Deal"
+                      aria-label={isLiked(deal.offerId) ? `Unlike ${deal.title}` : `Like ${deal.title}`}
+                      aria-pressed={isLiked(deal.offerId)}
+                      disabled={!deal.offerId}
                       className={`absolute top-space-sm right-space-sm w-8 h-8 rounded-full bg-surface-canvas/90 backdrop-blur-sm flex items-center justify-center transition-colors shadow-sm ${
-                        liked[index] ? 'text-error' : 'text-text-secondary hover:text-error'
+                        isLiked(deal.offerId) ? 'text-error' : 'text-text-secondary hover:text-error'
                       }`}
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        toggleLike(index);
+                        toggleLike(deal.offerId);
                       }}
                     >
-                      <Icon name="favorite" filled={Boolean(liked[index])} className="text-[18px]" />
+                      <Icon name="favorite" filled={isLiked(deal.offerId)} className="text-[18px]" />
                     </button>
                     <div className="absolute bottom-space-2xs left-space-sm px-space-xs py-0.5 rounded-md bg-inverse-surface/80 backdrop-blur-sm text-on-primary font-caption text-caption flex items-center gap-1">
                       <Icon name="near_me" className="text-[14px]" />
@@ -1213,10 +1381,31 @@ export function DesktopHomeScreen({
                   </div>
                   <div className="p-space-md space-y-space-2xs">
                     <div className="flex items-center justify-between text-text-tertiary font-caption text-caption">
-                      <span>{deal.title}</span>
-                      <span className="flex items-center gap-0.5 text-text-primary font-medium">
-                        <Icon name="star" filled className="text-tertiary-container text-[14px]" />
-                        {deal.rating}
+                      <span className="truncate">{deal.store}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="flex items-center gap-0.5 text-text-secondary font-medium">
+                          <Icon name="favorite" className="text-[14px]" />
+                          {deal.offerId ? likes[deal.offerId]?.count ?? 0 : 0}
+                        </span>
+                          <button
+                            type="button"
+                            aria-label={`Comments and reviews for ${deal.title}`}
+                            disabled={!deal.offerId || !onOpenComments}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenComments?.({
+                                id: deal.offerId,
+                                title: deal.title,
+                                business: deal.store,
+                                location: `${city}, ${district}`,
+                                price: Number.parseFloat(String(deal.price).replace(/[^\d.]/g, '')) || 0,
+                                image: deal.image,
+                              });
+                            }}
+                            className="flex items-center gap-0.5 font-semibold text-text-secondary hover:text-primary transition-colors"
+                          >
+                            <Icon name="chat_bubble_outline" className="text-[16px]" />
+                          </button>
                       </span>
                     </div>
                     <h3 className="font-heading-sm text-heading-sm font-semibold text-text-primary truncate">
@@ -1253,32 +1442,32 @@ export function DesktopHomeScreen({
               </div>
             ))}
           </div>
+          )}
 
           <div className="space-y-space-md pt-space-lg">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-space-xs">
                 <Icon name="local_fire_department" className="text-tertiary-container text-[24px]" />
                 <h2 className="font-heading-md text-heading-md font-bold text-text-primary">Trending Deals</h2>
-                <span className="text-text-tertiary font-caption text-caption ml-2">High demand right now</span>
               </div>
-              <span className="font-label-sm text-label-sm text-text-secondary hidden sm:inline">
-                Updated 12 mins ago
-              </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-              {trendingDeals.length === 0 ? (
+              {offersLoading ? (
+                <TrendingSkeletons count={2} className="col-span-full grid grid-cols-1 md:grid-cols-2 gap-space-md" />
+              ) : trendingDeals.length === 0 ? (
                 <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                  Live trending deals will appear here when the catalog refreshes.
+                  {categoryId ? noneInCategory : 'Live trending deals will appear here when the catalog refreshes.'}
                 </div>
               ) : trendingDeals.map((deal, index) => (
                 <div
-                  key={`${deal.title}-${deal.store ?? 'store'}-${index}`}
+                  key={deal.id ?? `${deal.title}-${deal.store ?? 'store'}-${index}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => onOpenDeal(createDealPayload({
+                    id: deal.id,
                     title: deal.title,
                     price: deal.price,
-                    oldPrice: 0,
+                    oldPrice: deal.oldPrice,
                     discount: deal.discount,
                     image: deal.image,
                     business: deal.store,
@@ -1287,9 +1476,10 @@ export function DesktopHomeScreen({
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
                       onOpenDeal(createDealPayload({
+                        id: deal.id,
                         title: deal.title,
                         price: deal.price,
-                        oldPrice: 0,
+                        oldPrice: deal.oldPrice,
                         discount: deal.discount,
                         image: deal.image,
                         business: deal.store,
@@ -1313,13 +1503,14 @@ export function DesktopHomeScreen({
                       <span className="text-tertiary-container font-semibold">{deal.claimed}</span>
                     </div>
                     <h3 className="font-heading-sm text-heading-sm font-semibold text-text-primary">{deal.title}</h3>
-                    <p className="font-body-md text-body-md text-text-secondary line-clamp-1">{deal.store}</p>
                     <div className="flex items-center justify-between pt-space-xs">
                       <div className="flex items-baseline gap-space-xs">
                         <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{deal.price}</span>
-                        <span className="font-caption text-caption text-text-tertiary line-through">
-                          {deal.discount}
-                        </span>
+                        {deal.oldPrice ? (
+                          <span className="font-caption text-caption text-text-tertiary line-through">
+                            {deal.oldPrice}
+                          </span>
+                        ) : null}
                       </div>
                       <button
                         className="px-space-md py-space-xs rounded-xl bg-primary-container text-on-primary font-label-md text-label-md font-semibold hover:bg-primary transition-colors"
@@ -1327,6 +1518,7 @@ export function DesktopHomeScreen({
                         onClick={(event) => {
                           event.stopPropagation();
                           const selected = {
+                            id: deal.id,
                             title: deal.title,
                             business: deal.store,
                             location: `${city}, ${district}`,
@@ -1355,7 +1547,7 @@ export function DesktopHomeScreen({
                     Businesses Around You
                   </h2>
                   <p className="font-caption text-caption text-text-secondary">
-                    Directly verified neighborhood storefronts with tap redemption
+                    Businesses with live deals near you
                   </p>
                 </div>
                 <button className="font-label-sm text-label-sm font-semibold text-primary" type="button">
@@ -1363,9 +1555,11 @@ export function DesktopHomeScreen({
                 </button>
               </div>
               <div className="space-y-space-sm">
-                {businesses.length === 0 ? (
+                {offersLoading ? (
+                  <RowSkeletons count={3} label="Loading businesses" className="space-y-space-sm" />
+                ) : businesses.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
-                    Nearby business cards will load from the live catalogue feed.
+                    {categoryId ? noneInCategory : 'Nearby business cards will load from the live catalogue feed.'}
                   </div>
                 ) : businesses.map((business, index) => (
                   <div
@@ -1381,12 +1575,16 @@ export function DesktopHomeScreen({
                           <h4 className="font-label-md text-label-md font-semibold text-text-primary">
                             {business.name}
                           </h4>
-                          <Icon name="verified" filled className="text-[16px] text-primary" />
+                          {business.verified && <Icon name="verified" filled className="text-[16px] text-primary" />}
                         </div>
                         <p className="font-caption text-caption text-text-secondary">{business.area}</p>
                         <div className="flex items-center gap-space-xs font-caption text-caption text-text-tertiary mt-0.5">
-                          <span className="text-badge-discount-text font-medium">{business.rating}</span>
-                          <span>•</span>
+                          {business.category && (
+                            <>
+                              <span className="text-text-primary font-medium">{business.category}</span>
+                              <span>•</span>
+                            </>
+                          )}
                           <span>{business.deals}</span>
                         </div>
                       </div>
@@ -1403,46 +1601,52 @@ export function DesktopHomeScreen({
             </div>
 
             <div className="lg:col-span-5 space-y-space-md">
-              <div className="flex items-center justify-between">
-                <div className="space-y-space-2xs">
-                  <h2 className="font-heading-md text-heading-md font-bold text-text-primary">Popular Near You</h2>
-                  <p className="font-caption text-caption text-text-secondary">Neighborhood activity cluster map</p>
-                </div>
-                <span className="font-caption text-caption bg-surface-tint-blue text-primary px-space-xs py-0.5 rounded-full font-semibold">
-                  Live GPS
-                </span>
+              <div className="space-y-space-2xs">
+                <h2 className="font-heading-md text-heading-md font-bold text-text-primary">Popular Near You</h2>
+                <p className="font-caption text-caption text-text-secondary">Single-item vouchers you can claim now</p>
               </div>
-              <div className="bg-surface-canvas rounded-2xl overflow-hidden shadow-sm p-space-sm space-y-space-sm">
-                <div
-                  className="w-full h-56 rounded-xl bg-cover bg-center relative overflow-hidden"
-                  style={{ backgroundImage: `url('${GRID_MAP_IMAGE}')` }}
-                >
-                  <div className="absolute inset-0 bg-primary/10" />
-                  <div className="absolute top-1/3 left-1/4 bg-primary text-on-primary px-2 py-1 rounded-full text-caption font-semibold shadow-md flex items-center gap-1 scale-90">
-                    <Icon name="restaurant" className="text-[14px]" />
-                    <span>{publicOffers[0] ? getApiBusinessName(publicOffers[0] as Record<string, unknown>) : 'Nearby merchant'}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
+                {offersLoading ? (
+                  [0, 1].map((key) => (
+                    <div key={key} role="status" aria-busy="true" className="bg-surface-canvas rounded-2xl p-space-sm shadow-sm">
+                      <span className="sr-only">Loading popular deals</span>
+                      <Skeleton className="h-36 w-full" />
+                      <div className="mt-2.5 space-y-2">
+                        <Skeleton className="h-5 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                        <Skeleton className="h-6 w-24" />
+                      </div>
+                    </div>
+                  ))
+                ) : products.length === 0 ? (
+                  <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-md text-text-secondary">
+                    {categoryId ? noneInCategory : 'Popular nearby products will load from the public catalogue feed.'}
                   </div>
-                  <div className="absolute bottom-1/3 right-1/4 bg-tertiary-container text-on-tertiary px-2 py-1 rounded-full text-caption font-semibold shadow-md flex items-center gap-1 scale-90">
-                    <Icon name="shopping_bag" className="text-[14px]" />
-                    <span>{district || 'Local area'}</span>
-                  </div>
-                </div>
-                <div className="p-space-xs flex items-center justify-between">
-                  <div>
-                    <p className="font-label-md text-label-md font-semibold text-text-primary">
-                      {city || 'Your area'} • {district || 'Nearby'}
-                    </p>
-                    <p className="font-caption text-caption text-text-tertiary">
-                      {Math.max(1, publicOffers.length || 1)} partner merchants actively redeeming today
-                    </p>
-                  </div>
-                  <button
-                    className="h-9 px-space-sm bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold rounded-xl hover:bg-secondary-fixed transition-colors"
-                    type="button"
+                ) : products.map((product, index) => (
+                  <div
+                    key={product.id ?? `${product.title}-${index}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onOpenDeal({ id: product.id, title: product.title, business: product.store, image: product.image })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onOpenDeal({ id: product.id, title: product.title, business: product.store, image: product.image });
+                      }
+                    }}
+                    className="bg-surface-canvas rounded-2xl p-space-sm shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer"
                   >
-                    Expand Map
-                  </button>
-                </div>
+                    <div className="relative h-36 w-full rounded-xl overflow-hidden bg-surface-container-low">
+                      <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url('${product.image}')` }} />
+                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                        {product.badge}
+                      </span>
+                    </div>
+                    <h5 className="font-heading-sm text-heading-sm text-text-primary truncate mt-2.5">{product.title}</h5>
+                    <p className="font-caption text-caption text-text-secondary truncate">{product.store}</p>
+                    <span className="font-label-md text-label-md font-bold text-text-primary mt-2">{product.price}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

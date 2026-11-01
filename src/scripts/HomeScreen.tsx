@@ -8,23 +8,30 @@ import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
-import { dealPrimaryImage } from '../utils/dealImages';
+import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
+import { useDealLikes } from '../hooks/useDealLikes';
+import { usePublicSearch } from '../hooks/usePublicSearch';
+import { SearchResults } from '../components/search/SearchResults';
+import { pickSearchResult } from '../utils/appEvents';
+import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
+import {
+  asRecord,
+  firstString as firstImage,
+  isVerifiedOffer as isVerified,
+  offerDiscountLabel,
+  offerEndsLabel as getEndsLabel,
+  offerImage as getNestedImage,
+  offerLocationLabel as getLocationLabel,
+  realOfferId,
+} from '../utils/homeOffer';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCg_httfgNB7CfMJOzfjKekJGnxgvueamRqqNg-Qyw7QV2HTVvlh6rZ845BYSp5dsQClaPlSKNd4B0_3aYGUcjlu-OUBeq56PilIeD6B9e1a0GFgvTtnkB0d8i16nw-kagt5rZUqAHNUNQUsH0WcGsyf8zaqNe1yx2Go9tQcdI6QPEzXRp2aZLqYGswotDnV391PXTZI3oVx9jzWC_ZogeqCUxsw3wWsr-xRkh4q33Ljntdo0P9MsadSA';
 
-const CATEGORIES: { label: string; icon: string }[] = [
-  { label: 'All', icon: '' },
-  { label: 'Food', icon: 'restaurant' },
-  { label: 'Fashion', icon: 'checkroom' },
-  { label: 'Beauty', icon: 'spa' },
-  { label: 'Electronics', icon: 'bolt' },
-  { label: 'Groceries', icon: 'shopping_cart' },
-  { label: 'Services', icon: 'content_cut' },
-];
-
 interface FeaturedSlide {
   id: string;
+  /** Real backend offer id (likes/share only work with one). */
+  offerId?: string;
   image: string;
   imageAlt: string;
   badge: string;
@@ -41,6 +48,8 @@ interface FeaturedSlide {
 
 interface DealSummary {
   id: string;
+  /** Real backend offer id (likes/share only work with one). */
+  offerId?: string;
   image: string;
   imageAlt: string;
   title: string;
@@ -72,41 +81,6 @@ const formatCurrency = (value: number | string | undefined): string => {
   const numeric = Number(value ?? 0);
   if (!Number.isFinite(numeric) || numeric <= 0) return '₦0';
   return CURRENCY_FORMATTER.format(numeric);
-};
-
-/** Neutral stand-in when a live offer has no photo, instead of a stock image. */
-const NO_IMAGE =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'><rect width='16' height='9' fill='%23eef0f4'/></svg>";
-
-const firstImage = (...values: unknown[]): string | undefined =>
-  values.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
-
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-
-/** The deal's own photo first, then an item photo, then the business logo (shared with the detail page). */
-const getNestedImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? NO_IMAGE;
-
-/** "Ends 30 Oct" from the offer's end date; "Ongoing" when it has none. */
-const getEndsLabel = (offer: Record<string, unknown>): string => {
-  if (typeof offer.ends === 'string' && offer.ends.trim()) return offer.ends;
-  const end = offer.endDate ?? offer.expiresAt;
-  const date = typeof end === 'string' || typeof end === 'number' ? new Date(end) : null;
-  if (!date || Number.isNaN(date.getTime())) return 'Ongoing';
-  return `Ends ${date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}`;
-};
-
-/** Where the offer is: its distance when the API sends one, else the business's city. */
-const getLocationLabel = (offer: Record<string, unknown>): string => {
-  const business = asRecord(offer.business);
-  return (
-    firstImage(offer.distance, offer.location, business.city, offer.city) ?? 'Nearby'
-  );
-};
-
-const isVerified = (offer: Record<string, unknown>): boolean => {
-  const business = asRecord(offer.business);
-  return Boolean(business.isVerified ?? business.verified ?? offer.isVerified ?? offer.verified);
 };
 
 const getApiTitle = (offer: Record<string, unknown>): string => {
@@ -190,9 +164,10 @@ const toFeaturedSlide = (offer: Record<string, unknown>, index: number): Feature
 
   return {
     id: String(offer.id ?? offer.offerId ?? offer._id ?? offer.businessId ?? offer.branchId ?? `${business}-${title}-${index}`),
+    offerId: realOfferId(offer),
     image: getNestedImage(offer),
     imageAlt: `${title} by ${business}`,
-    badge: typeof offer.badge === 'string' && offer.badge.trim() ? offer.badge : 'Live Deal',
+    badge: typeof offer.badge === 'string' && offer.badge.trim() ? offer.badge : offerDiscountLabel(offer),
     ends: getEndsLabel(offer),
     merchant: `${business} • ${getLocationLabel(offer)}`,
     title,
@@ -213,6 +188,7 @@ const toDealSummary = (offer: Record<string, unknown>, index: number): DealSumma
 
   return {
     id: String(offer.id ?? offer.offerId ?? offer._id ?? offer.businessId ?? offer.branchId ?? `${business}-${title}-${index}`),
+    offerId: realOfferId(offer),
     image: getNestedImage(offer),
     imageAlt: `${title} by ${business}`,
     title,
@@ -222,7 +198,7 @@ const toDealSummary = (offer: Record<string, unknown>, index: number): DealSumma
     distance: getLocationLabel(offer),
     likes: Number(offer.likes ?? offer.favorites ?? 0),
     comments: Number(offer.comments ?? 0),
-    badge: typeof offer.badge === 'string' && offer.badge.trim() ? offer.badge : 'Live Deal',
+    badge: typeof offer.badge === 'string' && offer.badge.trim() ? offer.badge : offerDiscountLabel(offer),
     meta: typeof offer.meta === 'string' ? offer.meta : undefined,
     rating: typeof offer.rating === 'string' ? offer.rating : undefined,
     reviews: typeof offer.reviews === 'string' ? offer.reviews : undefined,
@@ -261,6 +237,8 @@ export interface HomeScreenProps {
   onOpenNotifications: () => void;
   onEnroll: () => void;
   onAccount: () => void;
+  /** Opens live comments & reviews for a deal (with an optional star rating). */
+  onOpenComments?: (deal: { id?: string; title?: string; business?: string; location?: string; price?: number; image?: string }) => void;
 }
 
 function dealCardProps(
@@ -280,10 +258,13 @@ function dealCardProps(
   };
 }
 
-function LikeButton({ count, liked, onToggle }: { count: number; liked: boolean; onToggle: () => void }) {
+function LikeButton({ count, liked, onToggle, disabled }: { count: number; liked: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
+      aria-pressed={liked}
+      aria-label={liked ? 'Unlike deal' : 'Like deal'}
+      disabled={disabled}
       onClick={onToggle}
       className={`flex items-center gap-1.5 transition-colors ${liked ? 'text-error' : 'text-text-secondary hover:text-error'}`}
     >
@@ -359,21 +340,57 @@ function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation
   );
 }
 
+/** Live search: deals + businesses from `GET /public/search`, shown under the bar; Enter opens all matching deals. */
 function SearchBar({ onOpenFilters }: { onOpenFilters: () => void }) {
+  const [input, setInput] = useState('');
+  const search = usePublicSearch(input);
+  const clear = () => setInput('');
   return (
     <div className="relative w-full">
       <div className="flex items-center h-[50px] px-4 rounded-2xl bg-surface-container-low shadow-sm transition-all focus-within:bg-surface-canvas focus-within:shadow-md">
         <Icon name="search" className="text-text-tertiary text-[22px] mr-3" />
-        <input className="w-full bg-transparent border-none outline-none font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none" placeholder="Search deals, businesses or products" type="text" />
+        <input
+          aria-label="Search deals and businesses"
+          className="w-full bg-transparent border-none outline-none font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none"
+          placeholder="Search deals and businesses"
+          type="search"
+          enterKeyHint="search"
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') clear();
+            if (event.key === 'Enter' && input.trim().length >= 2) {
+              pickSearchResult({ kind: 'all-deals', query: input.trim() });
+              clear();
+            }
+          }}
+        />
+        {input ? (
+          <button aria-label="Clear search" type="button" onClick={clear} className="p-1 mr-1 text-text-secondary active:scale-95">
+            <Icon name="close" className="text-[20px]" />
+          </button>
+        ) : null}
         <button aria-label="Filter options" type="button" onClick={onOpenFilters} className="p-1 text-text-secondary hover:text-text-primary active:scale-95 transition-transform">
           <Icon name="tune" className="text-[20px]" />
         </button>
       </div>
+      {search.active ? (
+        <div className="absolute top-full left-0 right-0 mt-2 z-30 bg-surface-canvas rounded-2xl shadow-xl border border-border-subtle max-h-[65vh] overflow-y-auto">
+          <SearchResults
+            query={input.trim()}
+            deals={search.deals}
+            businesses={search.businesses}
+            loading={search.loading}
+            error={search.error}
+            onPicked={clear}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function TrendingSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]; onSeeAll: () => void; onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void }) {
+function TrendingSection({ items, onSeeAll, onOpenDeal, emptyText, loading }: { items: DealSummary[]; onSeeAll: () => void; emptyText?: string; loading?: boolean; onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void }) {
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -386,9 +403,22 @@ function TrendingSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]
         </button>
       </div>
       <div className="relative -mx-margin px-margin overflow-x-auto no-scrollbar flex gap-3.5 pb-2">
-        {items.length === 0 ? (
+        {loading ? (
+          <SkeletonGroup label="Loading trending deals" className="flex gap-3.5">
+            {[0, 1].map((key) => (
+              <div key={key} className="w-[260px] shrink-0 rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden">
+                <Skeleton className="h-32 w-full rounded-none" />
+                <div className="p-3.5 space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-4 w-44" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+              </div>
+            ))}
+          </SkeletonGroup>
+        ) : items.length === 0 ? (
           <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-container-lowest p-5 text-sm text-text-secondary">
-            No trending deals right now.
+            {emptyText ?? 'No trending deals right now.'}
           </div>
         ) : (
           items.map((item) => (
@@ -410,7 +440,6 @@ function TrendingSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]
                   <span>{item.distance}</span>
                   <div className="flex items-center gap-2">
                     <span className="flex items-center gap-0.5"><Icon name="favorite" className="text-[14px]" /> {item.likes}</span>
-                    <span className="flex items-center gap-0.5"><Icon name="chat_bubble_outline" className="text-[14px]" /> {item.comments}</span>
                   </div>
                 </div>
               </div>
@@ -426,10 +455,14 @@ function BusinessesSection({
   items,
   onSeeAll,
   onOpenBusiness,
+  emptyText,
+  loading,
 }: {
   items: DealSummary[];
   onSeeAll: () => void;
   onOpenBusiness?: () => void;
+  emptyText?: string;
+  loading?: boolean;
 }) {
   return (
     <section className="flex flex-col space-y-3.5">
@@ -440,9 +473,22 @@ function BusinessesSection({
         </button>
       </div>
       <div className="flex flex-col space-y-3">
-        {items.length === 0 ? (
+        {loading ? (
+          <SkeletonGroup label="Loading businesses" className="flex flex-col space-y-3">
+            {[0, 1, 2].map((key) => (
+              <div key={key} className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-surface-container-lowest shadow-sm">
+                <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+                <Skeleton className="h-6 w-20 rounded-lg" />
+              </div>
+            ))}
+          </SkeletonGroup>
+        ) : items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-container-lowest p-5 text-sm text-text-secondary">
-            Businesses will appear here once they publish live offers.
+            {emptyText ?? 'Businesses will appear here once they publish live offers.'}
           </div>
         ) : (
           items.map((business) => {
@@ -481,7 +527,7 @@ function BusinessesSection({
   );
 }
 
-function PopularSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[]; onSeeAll: () => void; onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void }) {
+function PopularSection({ items, onSeeAll, onOpenDeal, emptyText, loading }: { items: DealSummary[]; onSeeAll: () => void; emptyText?: string; loading?: boolean; onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void }) {
   return (
     <section className="flex flex-col space-y-3.5">
       <div className="flex items-center justify-between">
@@ -491,9 +537,21 @@ function PopularSection({ items, onSeeAll, onOpenDeal }: { items: DealSummary[];
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3.5">
-        {items.length === 0 ? (
+        {loading ? (
+          [0, 1].map((key) => (
+            <div key={key} role="status" aria-busy="true" className="rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden">
+              <span className="sr-only">Loading popular deals</span>
+              <Skeleton className="w-full aspect-square rounded-none" />
+              <div className="p-3 space-y-1.5">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+            </div>
+          ))
+        ) : items.length === 0 ? (
           <div className="col-span-2 rounded-2xl border border-dashed border-primary/20 bg-surface-container-lowest p-5 text-sm text-text-secondary">
-            Popular offers will load here from the public catalogue feed.
+            {emptyText ?? 'Popular offers will load here from the public catalogue feed.'}
           </div>
         ) : (
           items.slice(0, 2).map((item) => (
@@ -548,21 +606,35 @@ export function HomeScreen({
   onOpenNotifications,
   onEnroll,
   onAccount,
+  onOpenComments,
 }: HomeScreenProps) {
   const [view, setView] = useState<'list' | 'grid'>('list');
-  const [category, setCategory] = useState('All');
+  // Live business categories; the selected one filters every section below.
+  const { categories } = useHomeDealCategories();
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const activeCategory = categories.find((item) => item.id === categoryId) ?? categories[0];
+  const noneInCategory = categoryId ? `No live deals in ${activeCategory.label} near you yet.` : undefined;
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, radius, setLocation } = useLocation();
-  const [likes, setLikes] = useState<Record<string, boolean>>({});
   const [featured, setFeatured] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
-  const [offersLoading, setOffersLoading] = useState(false);
+  // Live mode starts loading, so sections show skeletons (never stand-in data) until the API answers.
+  const [offersLoading, setOffersLoading] = useState(() => hasApiConfig());
   const toastTimers = useRef<number[]>([]);
   const featuredTouchX = useRef<number | null>(null);
 
+  const offerIds = useMemo(
+    () => publicOffers.map(realOfferId).filter((id): id is string => Boolean(id)),
+    [publicOffers],
+  );
+  const { likes, toggleLike: saveLike } = useDealLikes(offerIds);
+  const likeCount = (offerId: string | undefined, fallback: number) => (offerId ? likes[offerId]?.count ?? fallback : fallback);
   const featuredSlides = useMemo(() => publicOffers.slice(0, 3).map(toFeaturedSlide), [publicOffers]);
-  const liveDeals = useMemo(() => publicOffers.slice(0, 4).map(toDealSummary), [publicOffers]);
+  const liveDeals = useMemo(
+    () => publicOffers.slice(0, 4).map(toDealSummary).map((deal) => ({ ...deal, likes: deal.offerId ? likes[deal.offerId]?.count ?? deal.likes : deal.likes })),
+    [publicOffers, likes],
+  );
 
   // Nearest first within the radius once the customer has a location.
   const locationQuery = useLocationQuery();
@@ -580,7 +652,12 @@ export function HomeScreen({
 
       setOffersLoading(true);
       try {
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 8 });
+        const response = await catalogueService.getPublicOffers({
+          ...locationQuery,
+          page: 1,
+          limit: 8,
+          categoryId: categoryId ?? undefined,
+        });
         const rows = Array.isArray(response?.data) ? response.data : [];
         if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
       } catch {
@@ -592,7 +669,7 @@ export function HomeScreen({
 
     loadOffers();
     return () => { ignore = true; };
-  }, [locationQuery]);
+  }, [locationQuery, categoryId]);
 
   useEffect(() => {
     if (featuredSlides.length < 2) return;
@@ -611,7 +688,24 @@ export function HomeScreen({
     toastTimers.current.push(timer);
   };
 
-  const toggleLike = (key: string) => setLikes((prev) => ({ ...prev, [key]: !prev[key] }));
+  const isLiked = (offerId: string | undefined) => Boolean(offerId && likes[offerId]?.liked);
+  const toggleLike = (offerId: string | undefined) => {
+    if (!offerId) return;
+    saveLike(offerId).then(
+      (saved) => showToast(saved.liked ? 'You liked this deal' : 'Like removed'),
+      () => showToast('Could not save your like. Please try again.'),
+    );
+  };
+
+  /** Copies the deal's real link; says so only when the copy worked. */
+  const shareDeal = (offerId: string | undefined) => {
+    if (!offerId) return;
+    const url = `${window.location.origin}/deals/${offerId}`;
+    navigator.clipboard?.writeText(url).then(
+      () => showToast('Deal link copied to clipboard'),
+      () => showToast('Could not copy the deal link'),
+    );
+  };
 
   const switcherContainer = view === 'list'
     ? 'flex items-center bg-surface-container-low p-0.5 rounded-lg border-subtle'
@@ -629,13 +723,14 @@ export function HomeScreen({
           <SearchBar onOpenFilters={onOpenFilters} />
 
           <div className="relative -mx-margin px-margin overflow-x-auto no-scrollbar flex items-center gap-2 py-1">
-            {CATEGORIES.map((item) => {
-              const isActive = category === item.label;
+            {categories.map((item) => {
+              const isActive = categoryId === item.id;
               return (
                 <button
-                  key={item.label}
+                  key={item.id ?? 'all'}
                   type="button"
-                  onClick={() => setCategory(item.label)}
+                  aria-pressed={isActive}
+                  onClick={() => setCategoryId(item.id)}
                   className={`shrink-0 h-9 rounded-full font-label-md text-label-md shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 ${
                     isActive ? 'px-4 bg-primary-container text-on-primary' : 'px-3.5 bg-surface-container-lowest text-text-primary hover:bg-surface-container-low'
                   }`}
@@ -651,18 +746,28 @@ export function HomeScreen({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <h2 className="font-heading-sm text-heading-sm text-text-primary">Featured Deals</h2>
-                <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-caption text-[11px] font-semibold">{featuredSlides.length ? `${featuredSlides.length} live` : 'Promoted'}</span>
+                {featuredSlides.length > 0 && !offersLoading && <span className="px-2 py-0.5 rounded-full bg-primary-fixed text-primary font-caption text-[11px] font-semibold">{featuredSlides.length} live</span>}
               </div>
               <button type="button" onClick={onOpenFeatured} className="font-label-md text-label-md text-primary font-semibold hover:underline">See All</button>
             </div>
 
-            {featuredSlides.length === 0 && !offersLoading ? (
+            {offersLoading ? (
+              <SkeletonGroup label="Loading featured deals" className="rounded-2xl shadow-md overflow-hidden bg-surface-container-lowest">
+                <Skeleton className="w-full aspect-[16/9] rounded-none" />
+                <div className="p-4 space-y-2.5">
+                  <Skeleton className="h-3 w-32" />
+                  <Skeleton className="h-5 w-56" />
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </SkeletonGroup>
+            ) : featuredSlides.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-container-lowest p-5 text-sm text-text-secondary">
-                No live deals are available right now. Check back shortly for fresh offers.
+                {noneInCategory ?? 'No live deals are available right now. Check back shortly for fresh offers.'}
               </div>
             ) : (
               <div
-                className="overflow-hidden rounded-2xl shadow-md border-active ring-1 ring-primary/10 transition-transform active:scale-[0.99]"
+                className="overflow-hidden rounded-2xl shadow-md border-border-active ring-1 ring-primary/10 transition-transform active:scale-[0.99]"
                 onTouchStart={(event) => {
                   featuredTouchX.current = event.touches[0].clientX;
                 }}
@@ -718,13 +823,25 @@ export function HomeScreen({
                         </div>
                         <div className="flex items-center justify-between pt-3 text-text-secondary" onClick={(event) => event.stopPropagation()}>
                           <div className="flex items-center gap-4">
-                            <LikeButton count={slide.likes + (likes[`featured-${index}`] ? 1 : 0)} liked={Boolean(likes[`featured-${index}`])} onToggle={() => toggleLike(`featured-${index}`)} />
-                            <button type="button" onClick={() => showToast('Comments open on the deal page')} className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+                            <LikeButton count={likeCount(slide.offerId, slide.likes)} liked={isLiked(slide.offerId)} disabled={!slide.offerId} onToggle={() => toggleLike(slide.offerId)} />
+                            <button
+                              type="button"
+                              disabled={!slide.offerId || !onOpenComments}
+                              onClick={() => onOpenComments?.({
+                                id: slide.offerId,
+                                title: slide.title,
+                                business: slide.merchant.split(' • ')[0],
+                                location: slide.distance,
+                                price: Number(String(slide.price).replace(/[^\d.]/g, '')) || undefined,
+                                image: slide.image,
+                              })}
+                              className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                            >
                               <Icon name="chat_bubble_outline" className="text-[18px]" />
-                              <span className="font-label-sm text-label-sm">{slide.comments}</span>
+                              <span className="font-label-sm text-label-sm">Comment</span>
                             </button>
                           </div>
-                          <button type="button" onClick={() => showToast('Deal link copied to clipboard')} className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors">
+                          <button type="button" disabled={!slide.offerId} onClick={() => shareDeal(slide.offerId)} className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors">
                             <Icon name="ios_share" className="text-[18px]" />
                             <span className="font-label-sm text-label-sm">Share</span>
                           </button>
@@ -736,7 +853,7 @@ export function HomeScreen({
               </div>
             )}
 
-            {featuredSlides.length > 0 && (
+            {featuredSlides.length > 1 && !offersLoading && (
               <div className="flex items-center justify-center gap-1.5">
                 {featuredSlides.map((slide, index) => (
                   <button
@@ -753,7 +870,7 @@ export function HomeScreen({
 
           <section className="flex flex-col space-y-3.5">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading-sm text-heading-sm text-text-primary">Deals Near You{liveDeals.length ? ` (${liveDeals.length})` : ''}</h2>
+              <h2 className="font-heading-sm text-heading-sm text-text-primary">Deals Near You{liveDeals.length && !offersLoading ? ` (${liveDeals.length})` : ''}</h2>
               <div className="flex items-center gap-2.5">
                 <div className={switcherContainer} role="group" aria-label="View layout switcher">
                   <button type="button" aria-label="List view" title="List view" onClick={() => setView('list')} className={view === 'list' ? activeSwitcher : inactiveSwitcher}>
@@ -767,7 +884,35 @@ export function HomeScreen({
               </div>
             </div>
 
-            {view === 'list' ? (
+            {offersLoading ? (
+              view === 'list' ? (
+                <SkeletonGroup label="Loading deals near you" className="flex flex-col space-y-3.5">
+                  {[0, 1].map((key) => (
+                    <div key={key} className="rounded-2xl bg-surface-container-lowest shadow-md overflow-hidden">
+                      <Skeleton className="w-full aspect-[16/9] rounded-none" />
+                      <div className="p-4 space-y-2.5">
+                        <Skeleton className="h-3 w-28" />
+                        <Skeleton className="h-5 w-52" />
+                        <Skeleton className="h-5 w-24" />
+                      </div>
+                    </div>
+                  ))}
+                </SkeletonGroup>
+              ) : (
+                <SkeletonGroup label="Loading deals near you" className="grid grid-cols-2 gap-3">
+                  {[0, 1, 2, 3].map((key) => (
+                    <div key={key} className="rounded-2xl bg-surface-container-lowest shadow-sm overflow-hidden">
+                      <Skeleton className="w-full aspect-square rounded-none" />
+                      <div className="p-3 space-y-1.5">
+                        <Skeleton className="h-3 w-20" />
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-4 w-16" />
+                      </div>
+                    </div>
+                  ))}
+                </SkeletonGroup>
+              )
+            ) : view === 'list' ? (
               liveDeals.length > 0 ? (
                 <>
                   {liveDeals.map((deal) => (
@@ -807,13 +952,25 @@ export function HomeScreen({
                         </div>
                         <div className="flex items-center justify-between pt-3 text-text-secondary" onClick={(event) => event.stopPropagation()}>
                           <div className="flex items-center gap-4">
-                            <LikeButton count={deal.likes + (likes[deal.id] ? 1 : 0)} liked={Boolean(likes[deal.id])} onToggle={() => toggleLike(deal.id)} />
-                            <button type="button" onClick={() => showToast('Comments open on the deal page')} className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors">
+                            <LikeButton count={deal.likes} liked={isLiked(deal.offerId)} disabled={!deal.offerId} onToggle={() => toggleLike(deal.offerId)} />
+                            <button
+                              type="button"
+                              disabled={!deal.offerId || !onOpenComments}
+                              onClick={() => onOpenComments?.({
+                                id: deal.offerId,
+                                title: deal.title,
+                                business: deal.business,
+                                location: deal.distance,
+                                price: Number(String(deal.price).replace(/[^\d.]/g, '')) || undefined,
+                                image: deal.image,
+                              })}
+                              className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                            >
                               <Icon name="chat_bubble_outline" className="text-[18px]" />
-                              <span className="font-label-sm text-label-sm">{deal.comments}</span>
+                              <span className="font-label-sm text-label-sm">Comment</span>
                             </button>
                           </div>
-                          <button type="button" onClick={() => showToast('Deal link copied to clipboard')} className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors">
+                          <button type="button" disabled={!deal.offerId} onClick={() => shareDeal(deal.offerId)} className="flex items-center gap-1 text-text-secondary hover:text-primary transition-colors">
                             <Icon name="ios_share" className="text-[18px]" />
                             <span className="font-label-sm text-label-sm">Share</span>
                           </button>
@@ -824,7 +981,7 @@ export function HomeScreen({
                 </>
               ) : (
                 <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-container-lowest p-5 text-sm text-text-secondary">
-                  No deals available in your area yet.
+                  {noneInCategory ?? 'No deals available in your area yet.'}
                 </div>
               )
             ) : (
@@ -846,15 +1003,15 @@ export function HomeScreen({
                         <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-[11px] font-bold shadow-sm backdrop-blur-sm">
                           {deal.badge}
                         </span>
-                        <button aria-label={`Save ${deal.title}`} type="button" onClick={(event) => { event.stopPropagation(); toggleLike(`grid-${deal.id}`); }} className={`absolute top-2 right-2 w-7 h-7 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors shadow-sm ${likes[`grid-${deal.id}`] ? 'bg-error-container text-error' : 'bg-surface-canvas/90 text-text-secondary hover:text-error'}`}>
-                          <Icon name="favorite" className="text-[16px]" filled={Boolean(likes[`grid-${deal.id}`])} />
+                        <button aria-label={isLiked(deal.offerId) ? `Unlike ${deal.title}` : `Like ${deal.title}`} aria-pressed={isLiked(deal.offerId)} disabled={!deal.offerId} type="button" onClick={(event) => { event.stopPropagation(); toggleLike(deal.offerId); }} className={`absolute top-2 right-2 w-7 h-7 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors shadow-sm ${isLiked(deal.offerId) ? 'bg-error-container text-error' : 'bg-surface-canvas/90 text-text-secondary hover:text-error'}`}>
+                          <Icon name="favorite" className="text-[16px]" filled={isLiked(deal.offerId)} />
                         </button>
                       </div>
                       <div className="p-3 flex flex-col justify-between flex-1 space-y-1.5">
                         <div>
                           <div className="flex items-center gap-1 text-text-secondary text-[11px] font-caption">
                             <span className="truncate">{deal.business}</span>
-                            <Icon name="verified" className="text-[12px] text-primary shrink-0" />
+                            {deal.verified && <Icon name="verified" className="text-[12px] text-primary shrink-0" />}
                           </div>
                           <h3 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-1">{deal.title}</h3>
                         </div>
@@ -865,7 +1022,7 @@ export function HomeScreen({
                           </div>
                           <div className="flex items-center justify-between text-text-secondary font-caption text-[11px] pt-1">
                             <span className="flex items-center gap-0.5"><Icon name="near_me" className="text-[13px] text-text-tertiary" />{deal.distance}</span>
-                            <span className="flex items-center gap-0.5"><Icon name="thumb_up" className="text-[13px]" />{deal.likes + (likes[`grid-${deal.id}`] ? 1 : 0)}</span>
+                            <span className="flex items-center gap-0.5"><Icon name="favorite" className="text-[13px]" />{deal.likes}</span>
                           </div>
                         </div>
                       </div>
@@ -874,21 +1031,21 @@ export function HomeScreen({
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-container-lowest p-5 text-sm text-text-secondary">
-                  No deals available in your area yet.
+                  {noneInCategory ?? 'No deals available in your area yet.'}
                 </div>
               )
             )}
           </section>
 
-          <TrendingSection items={liveDeals.slice(0, 3)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
-          <BusinessesSection items={toBusinessRows(liveDeals)} onSeeAll={onOpenDeals} onOpenBusiness={onOpenBusiness} />
-          <PopularSection items={liveDeals.slice(0, 2)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} />
+          <TrendingSection items={liveDeals.slice(0, 3)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} emptyText={noneInCategory} loading={offersLoading} />
+          <BusinessesSection items={toBusinessRows(liveDeals)} onSeeAll={onOpenDeals} onOpenBusiness={onOpenBusiness} emptyText={noneInCategory} loading={offersLoading} />
+          <PopularSection items={liveDeals.slice(0, 2)} onSeeAll={onOpenDeals} onOpenDeal={onOpenDeal} emptyText={noneInCategory} loading={offersLoading} />
           <EnrollmentPrompt onEnroll={onEnroll} />
         </div>
       </div>
 
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

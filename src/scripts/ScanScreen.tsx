@@ -28,16 +28,16 @@ export function ScanScreen({ onBack, onOpenTableMenu }: ScanScreenProps) {
         <div className="h-16 px-margin flex items-center justify-between">
           <button
             aria-label="Go back"
-            className="w-11 h-11 -ml-space-xs flex items-center justify-center rounded-full text-on-inverse-surface hover:bg-white/10 transition-colors"
+            className="w-11 h-11 -ml-space-xs flex items-center justify-center rounded-full text-inverse-on-surface hover:bg-white/10 transition-colors"
             type="button"
             onClick={onBack}
           >
             <Icon name="arrow_back" className="text-[24px]" />
           </button>
-          <h1 className="text-heading-sm font-heading-sm text-on-inverse-surface tracking-tight">Scan QR</h1>
+          <h1 className="text-heading-sm font-heading-sm text-inverse-on-surface tracking-tight">Scan QR</h1>
           <button
             aria-label="Torch"
-            className="w-11 h-11 flex items-center justify-center rounded-full text-on-inverse-surface hover:bg-white/10 transition-colors"
+            className="w-11 h-11 flex items-center justify-center rounded-full text-inverse-on-surface hover:bg-white/10 transition-colors"
             type="button"
             onClick={() => showToast('Torch toggled')}
           >
@@ -60,7 +60,7 @@ export function ScanScreen({ onBack, onOpenTableMenu }: ScanScreenProps) {
         </div>
 
         <div className="flex flex-col items-center gap-space-2xs text-center max-w-[300px]">
-          <p className="text-heading-sm font-heading-sm text-on-inverse-surface font-semibold">
+          <p className="text-heading-sm font-heading-sm text-inverse-on-surface font-semibold">
             Point at a merchant QR
           </p>
           <p className="text-body-md font-body-md text-white/70 leading-relaxed">
@@ -80,7 +80,7 @@ export function ScanScreen({ onBack, onOpenTableMenu }: ScanScreenProps) {
           <button
             type="button"
             onClick={() => showToast('Pick a code from your gallery')}
-            className="w-full h-11 rounded-xl bg-white/10 text-on-inverse-surface font-semibold text-button-primary flex items-center justify-center gap-2 active:scale-[0.99] transition-transform"
+            className="w-full h-11 rounded-xl bg-white/10 text-inverse-on-surface font-semibold text-button-primary flex items-center justify-center gap-2 active:scale-[0.99] transition-transform"
           >
             <Icon name="photo_library" className="text-[18px]" />
             <span>Choose from gallery</span>

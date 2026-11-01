@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { reviewService } from '../../services';
 import { Icon } from '../ui/Icon';
+import { Skeleton } from '../ui/Skeleton';
 import { SheetShell } from './SheetShell';
+import { reviewTimeLabel, reviewerInitials, useDealReviews } from '../../hooks/useDealReviews';
 
 export interface CommentsSheetProps {
   open: boolean;
@@ -18,100 +19,46 @@ export interface CommentsSheetProps {
 
 const QUICK_EMOJIS = ['❤️', '🔥', '👏', '😍', '🤤'];
 
-interface PostedComment {
-  id: number;
-  text: string;
-}
-
-const toSheetComments = (payload: unknown): PostedComment[] => {
-  if (!Array.isArray(payload)) return [];
-
-  return payload.map((item, index) => {
-    if (!item || typeof item !== 'object') {
-      return { id: index + 1, text: 'Helpful review from a verified customer.' };
-    }
-
-    const entry = item as Record<string, unknown>;
-    const text = typeof entry.comment === 'string'
-      ? entry.comment
-      : typeof entry.message === 'string'
-        ? entry.message
-        : 'Helpful review from a verified customer.';
-
-    return {
-      id: Number(entry.id ?? index + 1),
-      text,
-    };
-  });
-};
-
-function LikeButton({ label, size }: { label: string; size: string }) {
-  const [liked, setLiked] = useState(false);
+/** Comment like — saved through `POST /deals/:id/reviews/:reviewId/like`. */
+function LikeButton({ label, size, liked, onToggle }: { label: string; size: string; liked: boolean; onToggle: () => void }) {
   return (
     <button
       aria-label={label}
+      aria-pressed={liked}
       type="button"
-      onClick={() => setLiked((value) => !value)}
+      onClick={onToggle}
       className="p-1.5 rounded-full text-text-tertiary hover:text-error active:scale-125 transition-transform flex flex-col items-center"
     >
-      <Icon
-        name="favorite"
-        filled={liked}
-        className={`${size} transition-colors ${liked ? 'text-error' : ''}`}
-      />
+      <Icon name="favorite" filled={liked} className={`${size} transition-colors ${liked ? 'text-error' : ''}`} />
     </button>
   );
 }
 
+/**
+ * Deal comments — live from `GET /deals/:id/reviews`, posted with `POST /deals/:id/reviews`
+ * (`comment`, plus `name` when signed out). Nothing here is stand-in data.
+ */
 export function CommentsSheet({ open, onClose, deal }: CommentsSheetProps) {
+  const feed = useDealReviews(deal?.id, open);
   const [draft, setDraft] = useState('');
-  const [posted, setPosted] = useState<PostedComment[]>([]);
-  const [loadedComments, setLoadedComments] = useState<PostedComment[]>([]);
-  const [loading, setLoading] = useState(false);
-  const offerId = deal?.id ? String(deal.id) : '';
-
-  useEffect(() => {
-    let ignore = false;
-
-    const load = async () => {
-      if (!open || !offerId) {
-        setLoadedComments([]);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const next = await reviewService.listByOffer(offerId);
-        if (!ignore) {
-          setLoadedComments(toSheetComments(next));
-        }
-      } catch {
-        if (!ignore) setLoadedComments([]);
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      ignore = true;
-    };
-  }, [open, offerId]);
+  const [name, setName] = useState('');
+  const [notice, setNotice] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
 
   const postComment = async (event: FormEvent) => {
     event.preventDefault();
-    const text = draft.trim();
-    if (!text || !offerId) return;
-
-    try {
-      await reviewService.create(offerId, { rating: 5, comment: text, tags: ['Community comment'] });
-      const refreshed = await reviewService.listByOffer(offerId);
-      setLoadedComments(toSheetComments(refreshed));
-      setDraft('');
-    } catch {
-      setPosted((prev) => [...prev, { id: Date.now(), text }]);
-      setDraft('');
+    if (!draft.trim() || feed.submitting) return;
+    const result = await feed.submit(draft, undefined, feed.signedIn ? undefined : name);
+    if (!result.ok) {
+      setNotice({ kind: 'error', text: result.message });
+      return;
     }
+    setDraft('');
+    setNotice(result.pending ? { kind: 'info', text: 'Thanks! Your comment will appear once the business approves it.' } : null);
+  };
+
+  const toggleLike = async (reviewId: string) => {
+    const message = await feed.toggleLike(reviewId);
+    if (message) setNotice({ kind: 'error', text: message });
   };
 
   return (
@@ -124,7 +71,7 @@ export function CommentsSheet({ open, onClose, deal }: CommentsSheetProps) {
         <div className="flex items-center gap-2">
           <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold tracking-tight">Comments</h2>
           <span className="bg-surface-container px-2.5 py-0.5 rounded-full font-label-sm text-label-sm text-primary font-bold">
-            {loadedComments.length}
+            {feed.loading ? '…' : feed.total}
           </span>
         </div>
         <button
@@ -137,198 +84,95 @@ export function CommentsSheet({ open, onClose, deal }: CommentsSheetProps) {
         </button>
       </div>
 
-      <div className="px-margin pb-3">
-        <div className="flex items-center justify-between bg-surface-tint-blue px-3.5 py-2.5 rounded-xl">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Icon name="lunch_dining" className="text-primary text-[20px] shrink-0" />
-            <div className="min-w-0">
-              <p className="font-label-sm text-label-sm text-primary font-semibold truncate">Lunch Combo — 20% Off</p>
-              <p className="font-caption text-caption text-secondary truncate">Urban Grill &amp; Bistro • Abuja, NG</p>
+      {deal?.title || deal?.business ? (
+        <div className="px-margin pb-3">
+          <div className="flex items-center justify-between bg-surface-tint-blue px-3.5 py-2.5 rounded-xl">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Icon name="local_offer" className="text-primary text-[20px] shrink-0" />
+              <div className="min-w-0">
+                {deal.title ? <p className="font-label-sm text-label-sm text-primary font-semibold truncate">{deal.title}</p> : null}
+                {deal.business || deal.location ? (
+                  <p className="font-caption text-caption text-secondary truncate">{[deal.business, deal.location].filter(Boolean).join(' • ')}</p>
+                ) : null}
+              </div>
             </div>
+            <span className="font-label-sm text-label-sm text-badge-discount-text font-bold bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
+              Active
+            </span>
           </div>
-          <span className="font-label-sm text-label-sm text-badge-discount-text font-bold bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-            Active
-          </span>
         </div>
-      </div>
+      ) : null}
 
       <div className="px-margin pt-2 pb-4 space-y-5">
-        {loading ? <p className="font-body-md text-body-md text-text-secondary">Loading discussion…</p> : null}
-        {loadedComments.length ? loadedComments.map((comment) => (
-          <article key={comment.id} className="flex items-start gap-3 group">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
-              <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm">
-                Y
+        {feed.loading && feed.reviews.length === 0 ? (
+          [0, 1, 2].map((key) => (
+            <div key={key} role="status" aria-busy="true" className="flex items-start gap-3">
+              <span className="sr-only">Loading comments</span>
+              <Skeleton className="w-10 h-10 rounded-full shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-24" />
               </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="font-label-md text-label-md font-bold text-on-surface">You</span>
-                <span className="font-caption text-caption text-text-tertiary">@you</span>
-              </div>
-              <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">{comment.text}</p>
-              <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
-                <span>Just now</span>
-                <span className="font-medium text-text-primary">0 likes</span>
-                <button type="button" className="font-semibold text-text-secondary">Reply</button>
-              </div>
-            </div>
-            <LikeButton label="Like comment" size="text-[20px]" />
-          </article>
-        )) : null}
-        <article className="flex items-start gap-3 group">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
-            <img
-              className="w-full h-full object-cover"
-              alt="Portrait photo of a stylish young Nigerian man smiling warmly with stylish eyeglasses, wearing a casual navy polo shirt against clean soft background"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBow__SLkkc3clmtWfb2JZ-jIHqV3oalIi5TDrnAznOBwkBrz_PRX3cILYiX1Hqg9C0MLcrFoJFhz5dRhi37Ol6UHaOPaBE0TaWdkdUUofuc88N-r-1BwEsW3Zx86VWgUxt18DQ35oIBNPezazp4SzXNCCAN2ZQxSl5gC8beF4ttl4DFljEGLycF8fLxwSQVaFbE9Ol6MFeIfozAZOdA9pWctmm349ZorFl-dZ7e7dwZE7dv2gsBnP5DQ"
-            />
+          ))
+        ) : feed.loadError ? (
+          <div className="flex items-center justify-between gap-3 font-body-md text-body-md text-error">
+            <span>Couldn’t load comments.</span>
+            <button type="button" onClick={() => void feed.reload()} className="font-semibold underline">Retry</button>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span className="font-label-md text-label-md font-bold text-on-surface">Samuel A.</span>
-              <span className="font-caption text-caption text-text-tertiary">@sam_adeleke</span>
-            </div>
-            <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">
-              Just claimed this yesterday! The burger is massive and the fries were super fresh. Definitely worth the
-              ₦9,600 🔥
-            </p>
-            <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
-              <span>2h ago</span>
-              <span className="font-medium text-text-primary">14 likes</span>
-              <button
-                type="button"
-                className="font-semibold text-text-secondary hover:text-primary active:scale-95 transition-all"
-              >
-                Reply
-              </button>
-            </div>
-          </div>
-          <LikeButton label="Like comment" size="text-[20px]" />
-        </article>
+        ) : feed.reviews.length === 0 ? (
+          <p className="font-body-md text-body-md text-text-secondary text-center py-4">No comments yet. Be the first to say something.</p>
+        ) : (
+          feed.reviews.map((comment) => (
+            <article key={comment.id} className="flex flex-col gap-3">
+              <div className="flex items-start gap-3 group">
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
+                  <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm">
+                    {reviewerInitials(comment.reviewerName)}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-label-md text-label-md font-bold text-on-surface">{comment.reviewerName}</span>
+                    {comment.rating != null ? (
+                      <span className="inline-flex items-center gap-0.5 font-caption text-caption text-tertiary-container" aria-label={`${comment.rating} out of 5 stars`}>
+                        <Icon name="star" filled className="text-[13px]" />
+                        {comment.rating}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">{comment.comment}</p>
+                  <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
+                    <span>{reviewTimeLabel(comment.createdAt)}</span>
+                    <span className="font-medium text-text-primary">
+                      {comment.likesCount} like{comment.likesCount === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                </div>
+                <LikeButton label={comment.isLiked ? 'Unlike comment' : 'Like comment'} size="text-[20px]" liked={comment.isLiked} onToggle={() => void toggleLike(comment.id)} />
+              </div>
 
-        <article className="flex flex-col gap-3">
-          <div className="flex items-start gap-3 group">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
-              <img
-                className="w-full h-full object-cover"
-                alt="Close up lifestyle portrait of a happy smiling woman in a yellow sundress sitting at a sunny cafe terrace with braided hairstyle"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaU82xbNW3ebz8VgpiaMvEgTjNLc5NFA3jjdtwiEgqmMTJzaXYOT5cAO0A0E8oO6oCZtNMO6gdelfoqZhYR8U9qv1uRnkC6AzzOSw2RQOfPCX_DV4Meyz6gDXcKQg1Fbm3sh1BTNro0QAtWKrvczfWtP1l6zswlyHMV_C7fVs_wuz-UdQXfgjp-3_G9A5fckdAeOtWkkGTUH4o_LiAEx9Nd4yZw2sDZYjSbAaBuGMTyF3U_PVffUFPPA"
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="font-label-md text-label-md font-bold text-on-surface">Chioma N.</span>
-                <span className="font-caption text-caption text-text-tertiary">@chioma_eats</span>
-              </div>
-              <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">
-                Can this voucher be used on Sunday afternoon or strictly weekdays?
-              </p>
-              <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
-                <span>5h ago</span>
-                <span className="font-medium text-text-primary">3 likes</span>
-                <button
-                  type="button"
-                  className="font-semibold text-text-secondary hover:text-primary active:scale-95 transition-all"
-                >
-                  Reply
-                </button>
-              </div>
-            </div>
-            <LikeButton label="Like comment" size="text-[20px]" />
-          </div>
-
-          <div className="ml-11 pl-3 bg-surface-subtle/80 rounded-2xl p-3 flex items-start gap-3">
-            <div className="relative w-8 h-8 rounded-full overflow-hidden bg-primary shrink-0 shadow-sm">
-              <img
-                className="w-full h-full object-cover"
-                alt="High contrast professional restaurant brand logo featuring a stylized flame and grill fork in crisp clean deep blue and white"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlDzMcKnfv-WwNWHN1AhQJo5KBJqfX1lCfcMQPg_3SJJRyfn6oPFBxFjX9okiA-UbWUyZGjeyBQG19tkD6nzz5k8n7A0Kcn_IyHh8A2rH74zudz48c_g8csrwsonKShoOTFjzphppN-myomrhBOoLP4iwnBPnwZkmniVNV4erUhjpY4E-TVMSYHcXXbxRfWJQmt-UxeQOQlMP0_yIACTolADnoAffoCrFtfp-ScuGf_Wzplc5uX9WC0Q"
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center flex-wrap gap-1.5">
-                <span className="font-label-sm text-label-sm font-bold text-on-surface">Urban Grill &amp; Bistro</span>
-                <span className="inline-flex items-center gap-0.5 bg-primary-fixed text-on-primary-fixed px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                  <Icon name="verified" className="text-[12px] text-primary" filled />
-                  Owner
-                </span>
-              </div>
-              <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">
-                <span className="text-primary font-semibold">@chioma_eats</span> Hi Chioma! This lunch deal is valid
-                Monday to Friday 12 PM - 4 PM. We hope to host you!
-              </p>
-              <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
-                <span>3h ago</span>
-                <span className="font-medium text-text-primary">6 likes</span>
-                <button
-                  type="button"
-                  className="font-semibold text-text-secondary hover:text-primary active:scale-95 transition-all"
-                >
-                  Reply
-                </button>
-              </div>
-            </div>
-            <LikeButton label="Like reply" size="text-[18px]" />
-          </div>
-        </article>
-
-        <article className="flex items-start gap-3 group">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
-            <img
-              className="w-full h-full object-cover"
-              alt="Outdoor profile photo of an African professional man wearing a smart collared shirt standing against a modern urban architectural facade"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCaaIV2M2OHI0ipauQo3aquKiOmVbxDYVH6C60uwSrzKUqmGwIIALOPrzIXDaC6LJOXuoR3t5vn-2NxkuU8KCUBe8aI9EETO7oxdW67o1RsvR5Kb3Ptc-PsjTI_QHuWFkcqopWdBW1t0iljm3kWL9yn25sU3cUyd89vinS-9RqRgPxXZS7zgsRhzM-VuNde-NUdBAfg0NrBhGBQfp6zPZ49emYuv77kDp2muvEbMY_R5549dbTVVX_13A"
-            />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span className="font-label-md text-label-md font-bold text-on-surface">Tunde Bakare</span>
-              <span className="font-caption text-caption text-text-tertiary">@tundeb</span>
-            </div>
-            <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">
-              Saved for tomorrow’s team lunch in Apo. Seamless reservation!
-            </p>
-            <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
-              <span>1d ago</span>
-              <span className="font-medium text-text-primary">5 likes</span>
-              <button
-                type="button"
-                className="font-semibold text-text-secondary hover:text-primary active:scale-95 transition-all"
-              >
-                Reply
-              </button>
-            </div>
-          </div>
-          <LikeButton label="Like comment" size="text-[20px]" />
-        </article>
-
-        {posted.map((comment) => (
-          <article key={comment.id} className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-primary-fixed shrink-0 shadow-sm">
-              <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm">
-                You
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="font-label-md text-label-md font-bold text-on-surface">You</span>
-                <span className="font-caption text-caption text-text-tertiary">@you</span>
-              </div>
-              <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">
-                {comment.text}
-              </p>
-              <div className="flex items-center gap-4 mt-2 font-caption text-caption text-text-secondary">
-                <span>Just now</span>
-                <span className="font-medium text-text-primary">0 likes</span>
-                <button type="button" className="font-semibold text-text-secondary">
-                  Reply
-                </button>
-              </div>
-            </div>
-            <LikeButton label="Like comment" size="text-[20px]" />
-          </article>
-        ))}
+              {comment.merchantReply ? (
+                <div className="ml-11 pl-3 bg-surface-subtle/80 rounded-2xl p-3 flex items-start gap-3">
+                  <div className="relative w-8 h-8 rounded-full overflow-hidden bg-primary shrink-0 shadow-sm flex items-center justify-center text-on-primary">
+                    <Icon name="storefront" className="text-[16px]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center flex-wrap gap-1.5">
+                      <span className="font-label-sm text-label-sm font-bold text-on-surface">{deal?.business ?? 'The business'}</span>
+                      <span className="inline-flex items-center gap-0.5 bg-primary-fixed text-on-primary-fixed px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                        <Icon name="verified" className="text-[12px] text-primary" filled />
+                        Owner
+                      </span>
+                    </div>
+                    <p className="font-body-md text-body-md text-text-primary mt-1 leading-snug break-words">{comment.merchantReply}</p>
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          ))
+        )}
       </div>
 
       <div className="sticky bottom-0 z-10 bg-surface-canvas">
@@ -347,32 +191,56 @@ export function CommentsSheet({ open, onClose, deal }: CommentsSheetProps) {
           </div>
         </div>
 
-        <div className="bg-surface-canvas px-margin pt-2 pb-5 shadow-[0_-8px_20px_rgba(0,0,0,0.03)]">
-          <form className="flex items-center gap-3" onSubmit={postComment}>
-            <div className="w-9 h-9 rounded-full overflow-hidden bg-primary-fixed shrink-0 ring-2 ring-primary/20">
-              <img
-                className="w-full h-full object-cover"
-                alt="Minimalist professional headshot photo of an upbeat creative user with gentle smile and casual urban style"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBYtQpXntbbiGSSJmVaSCtLokHkMKw2v4MlZflGPLts1oTXm-zh-fRxS15Iydb6iAw1GlauCybUuKGh6qdZYfv62MTnxB-oW3bUi3gnjsBqm88nLSL6LJPi99I2a6vcykOZH4T1MLVDprxI_Jr3UVmIhqCvP6xzaMEdtIe2MncM-GzCpKizdRJyfcb6j3zau8PWPooHnLyKi2m6Agan3u2qHrCSsS1cMdZX-NzFTEEsZcPfDTgNemJOIQ"
-              />
-            </div>
-            <div className="flex-1 flex items-center bg-surface-subtle rounded-full px-4 py-1.5 focus-within:bg-surface-tint-blue focus-within:shadow-[0_0_0_2px_rgba(6,108,244,0.3)] transition-all">
-              <input
-                autoComplete="off"
-                className="w-full bg-transparent font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none py-1"
-                placeholder="Add a comment for Urban Grill..."
-                type="text"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-              />
-            </div>
-            <button
-              className="h-10 px-4 rounded-full bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold active:scale-95 shadow-[0_4px_14px_rgba(6,108,244,0.35)] transition-all flex items-center justify-center shrink-0 cursor-pointer hover:bg-primary-container"
-              type="submit"
-            >
-              Post
-            </button>
-          </form>
+        <div className="bg-surface-canvas px-margin pt-2 pb-5 shadow-[0_-8px_20px_rgba(0,0,0,0.03)] space-y-2">
+          {feed.offerId ? (
+            <form className="flex flex-col gap-2" onSubmit={(event) => void postComment(event)}>
+              {!feed.signedIn ? (
+                <input
+                  aria-label="Your name"
+                  autoComplete="name"
+                  maxLength={60}
+                  className="w-full bg-surface-subtle rounded-full px-4 py-2 font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none"
+                  placeholder="Your name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              ) : null}
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full overflow-hidden bg-primary-fixed shrink-0 ring-2 ring-primary/20 flex items-center justify-center text-primary">
+                  <Icon name="person" className="text-[20px]" />
+                </div>
+                <div className="flex-1 flex items-center bg-surface-subtle rounded-full px-4 py-1.5 focus-within:bg-surface-tint-blue focus-within:shadow-[0_0_0_2px_rgba(6,108,244,0.3)] transition-all">
+                  <input
+                    autoComplete="off"
+                    aria-label="Your comment"
+                    maxLength={1000}
+                    className="w-full bg-transparent font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none py-1"
+                    placeholder={deal?.business ? `Add a comment for ${deal.business}...` : 'Add a comment...'}
+                    type="text"
+                    value={draft}
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                      setNotice(null);
+                    }}
+                  />
+                </div>
+                <button
+                  className="h-10 px-4 rounded-full bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold active:scale-95 shadow-[0_4px_14px_rgba(6,108,244,0.35)] transition-all flex items-center justify-center shrink-0 cursor-pointer hover:bg-primary-container disabled:opacity-50"
+                  type="submit"
+                  disabled={!draft.trim() || feed.submitting}
+                >
+                  {feed.submitting ? 'Posting…' : 'Post'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <p className="font-caption text-caption text-text-secondary text-center">Comments aren’t available for this deal.</p>
+          )}
+          {notice ? (
+            <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`font-caption text-caption ${notice.kind === 'error' ? 'text-error' : 'text-badge-discount-text'}`}>
+              {notice.text}
+            </p>
+          ) : null}
         </div>
       </div>
     </SheetShell>

@@ -189,7 +189,7 @@ export function DesktopServiceReviewScreen({
                       {draft.provider || businessName}
                     </span>
                   </div>
-                  <h2 className="font-heading-lg text-heading-lg font-bold text-on-primary text-shadow-sm leading-snug">
+                  <h2 className="font-heading-lg text-heading-lg font-bold text-on-primary [text-shadow:0_1px_3px_rgba(0,0,0,0.45)] leading-snug">
                     {draft.title}
                   </h2>
                   <p className="font-label-sm text-label-sm text-inverse-on-surface/80 flex items-center gap-1.5">

@@ -322,18 +322,13 @@ export const messageService = {
     }
   },
 
-  startConversation: async (payload: { businessName?: string; businessId?: string; message?: string; customerId?: string }) => {
-    try {
-      return await api.post<unknown>('/customer/messaging/threads/start', {
-        businessName: payload.businessName,
-        businessId: payload.businessId,
-        message: payload.message,
-        customerId: payload.customerId,
-      });
-    } catch (error) {
-      return handleApiFallback(null, error);
-    }
-  },
+  /**
+   * Starts a chat with a business branch and sends the first message —
+   * `POST /customer/messaging/threads/start` with `{ branchId, content }` (CUSTOMER).
+   * Errors are thrown so the caller can show them.
+   */
+  startConversation: async (payload: { branchId: string; content: string }) =>
+    api.post<unknown>('/customer/messaging/threads/start', { branchId: payload.branchId, content: payload.content }),
 
   sendReply: async (threadId: string, message: string) => {
     if (!threadId || !message.trim()) {

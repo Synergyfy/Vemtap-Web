@@ -308,7 +308,7 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
       </div>
 
       {toast && (
-        <div className="fixed bottom-36 left-1/2 -translate-x-1/2 max-w-[400px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2 text-label-md font-medium shadow-lg animate-fade-in">
+        <div className="fixed bottom-36 left-1/2 -translate-x-1/2 max-w-[400px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2 text-label-md font-medium shadow-lg animate-fade-in">
           {toast}
         </div>
       )}

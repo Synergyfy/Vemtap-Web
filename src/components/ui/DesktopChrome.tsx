@@ -7,6 +7,69 @@ import { PortalRail, RAIL_OFFSET, type RailGroup } from '../../scripts/desktop/P
 import { notificationService, type NotificationItem } from '../../services/notificationService';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
+import { usePublicSearch } from '../../hooks/usePublicSearch';
+import { SearchResults } from '../search/SearchResults';
+import { pickSearchResult } from '../../utils/appEvents';
+
+/** Navbar search: live deals + businesses from `GET /public/search`; Enter shows all matching deals. */
+function NavbarSearch() {
+  const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const search = usePublicSearch(input);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    return () => document.removeEventListener('mousedown', onPointer);
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    setInput('');
+  };
+
+  return (
+    <div ref={boxRef} className="relative flex items-center">
+      <Icon name="search" className="absolute left-space-md text-[20px] text-outline pointer-events-none" />
+      <input
+        aria-label="Search deals and businesses"
+        aria-expanded={open && search.active}
+        className="w-full h-11 pl-11 pr-space-md bg-surface-subtle border-0 rounded-full font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-container/20 transition-all"
+        placeholder="Search deals and businesses..."
+        type="search"
+        value={input}
+        onChange={(event) => {
+          setInput(event.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setOpen(false);
+          if (event.key === 'Enter' && input.trim().length >= 2) {
+            pickSearchResult({ kind: 'all-deals', query: input.trim() });
+            close();
+          }
+        }}
+      />
+      {open && search.active ? (
+        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-surface-canvas rounded-2xl shadow-xl border border-border-subtle max-h-[70vh] overflow-y-auto">
+          <SearchResults
+            query={input.trim()}
+            deals={search.deals}
+            businesses={search.businesses}
+            loading={search.loading}
+            error={search.error}
+            onPicked={close}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export type DesktopNavKey =
   | 'home'
@@ -256,17 +319,7 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
 
         {authed && (
           <div className="flex-1 max-w-md hidden lg:block">
-            <div className="relative flex items-center">
-              <Icon
-                name="search"
-                className="absolute left-space-md text-[20px] text-outline pointer-events-none"
-              />
-              <input
-                className="w-full h-11 pl-11 pr-space-md bg-surface-subtle border-0 rounded-full font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-container/20 transition-all"
-                placeholder="Search deals, restaurants, beauty, spas..."
-                type="search"
-              />
-            </div>
+            <NavbarSearch />
           </div>
         )}
 

@@ -1,28 +1,28 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
-import { useLocation, useLocationQuery } from '../context/LocationContext';
+import { useLocation } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { useAuth } from '../context/AuthContext';
 import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { catalogueService } from '../services/catalogueService';
-import { dealPrimaryImage } from '../utils/dealImages';
+import { useDealLikes, type DealLikeState } from '../hooks/useDealLikes';
+import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
+import { useDealFeedControls, type DealSortBy } from '../hooks/useDealFeedControls';
+import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
+import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
+import {
+  isVerifiedOffer,
+  offerEndsLabel,
+  offerImage,
+  offerLocationLabel,
+  realOfferId,
+} from '../utils/homeOffer';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCg_httfgNB7CfMJOzfjKekJGnxgvueamRqqNg-Qyw7QV2HTVvlh6rZ845BYSp5dsQClaPlSKNd4B0_3aYGUcjlu-OUBeq56PilIeD6B9e1a0GFgvTtnkB0d8i16nw-kagt5rZUqAHNUNQUsH0WcGsyf8zaqNe1yx2Go9tQcdI6QPEzXRp2aZLqYGswotDnV391PXTZI3oVx9jzWC_ZogeqCUxsw3wWsr-xRkh4q33Ljntdo0P9MsadSA';
-
-const IMAGES = {
-  tasting:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuDSilNVnoDb6EsvCA8tDf9s2JVAMcwijfDvwIOxGwZFEZNl621JtdrCLPlTxDeFkK-OKJdEJht7f8EgVROVov1Iw-a31YLKpyuYtTtP5cK21rnD3xPO4y27QL0ooRgJrKlAIur-ESX8ksRp66Bl841XwyKBOHb1_VoH-uvctf4YZcO59iO4cxCLK2a28AIVitYxub-nbIHNCu2TBV_s9rRPqbKIQLPz9DNZz_IocLCw-1wzbltbJfKPDA',
-  sneakers:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuAT5ZLc4NQJ-D07mpP7t9FMmq21vRbxTpCD4Di6UGFmFQaNz9tRu7oOh3TVcK7MAwjHWDOUavP6xW4e3sta-gWWW6UD1xmaXxZdjfTMavfQoruqrVBsuNwiP0axSzHF7z9GehUnlsVa-XBHkab2NwJKdpiTmbNr6V9yLoxioYF2teXDGTTIZ5Tit_nAL7XoYPSxVK389Fv0KpXKjWPElTwUUDUVWQ42i0YJHDwpj8ZXuasY0PUFxi2ABw',
-  spa: 'https://lh3.googleusercontent.com/aida-public/AB6AXuATUYmH0_JpeZ5WqU44O8loq1vbBmgeVE5fXPLQBlTocMAtnZiWyingiBCqwd4pB2HrFjilQz2Hn9D5qXoa6v09jGYJoW4Eq96c47wCpUV4bmHR16UhGP0gxmaU5bi2HO7v9_eecjqBfOdRwQW8CC3JCTu2qRyIC4T9OenOCS6bnJ-XcHWj5ok8s0MFN8YNtTQ5us4dRtpYiNDbIq2TFyP6FLzgolFEKJUiF6NwYNdCnppPKaZYg2Utdg',
-  coldBrew:
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuD5aT4hxBnu4KdypiAsxFiLD6LnzxeRBhcXL5_UMJ_zqs5sUBZSj26pQBvXBwDRRQtkFEBaBN3blfsWvkLFZD6GgYk8fCqG4QsBTviyYH4BpEK8q09MYZleAghjI-XeMlqsGu4thjW6tX5oi_wvW0v0yWc4V2yycme1CNV96kD1Q76xJyCvNsg9O4un70AjK_moWc0nNFoLKSty4WgfxCtW1nVmqjSU8TuaOmneSH6dTclvBP2DZuf8yA',
-};
 
 const formatCurrency = (value: number | string | undefined): string => {
   const parsed = Number(value ?? 0);
@@ -34,8 +34,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-/** Same rule as the home cards and the detail page: the deal's own photo first. */
-const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? IMAGES.tasting;
+/** Same rule as the home cards and the detail page: the deal's own photo first; a neutral block, never a stock photo. */
+const getOfferImage = (offer: Record<string, unknown>): string => offerImage(offer);
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
@@ -105,7 +105,11 @@ const toDealCardModel = (offer: Record<string, unknown>, index?: number) => {
   const price = getOfferPrice(offer);
   const compare = getOfferComparePrice(offer);
   const saveAmount = Math.max(compare - price, 0);
-  const percent = compare > 0 ? Math.max(Math.round((saveAmount / compare) * 100), 5) : 15;
+  // The offer's own percentage first, then one worked out from real prices; never an invented figure.
+  const apiPercent = Number(offer.percentageOff ?? offer.discountPercent ?? 0);
+  const percent = Number.isFinite(apiPercent) && apiPercent > 0
+    ? Math.round(apiPercent)
+    : compare > price && compare > 0 ? Math.round((saveAmount / compare) * 100) : 0;
   const offerId = String(
     offer.id ??
       offer.offerId ??
@@ -117,15 +121,18 @@ const toDealCardModel = (offer: Record<string, unknown>, index?: number) => {
 
   return {
     id: offerId,
+    offerId: realOfferId(offer),
+    verified: isVerifiedOffer(offer),
+    ends: offerEndsLabel(offer),
     image: getOfferImage(offer),
     business,
     title,
     description: getOfferDescription(offer),
     price,
     compare,
-    discount: `${percent}% OFF`,
-    save: `Save ${formatCurrency(saveAmount)}`,
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    discount: percent > 0 ? `${percent}% OFF` : 'Live Deal',
+    save: saveAmount > 0 ? `Save ${formatCurrency(saveAmount)}` : '',
+    distance: offerLocationLabel(offer),
   };
 };
 
@@ -134,8 +141,62 @@ export interface DealsScreenProps {
   onOpenFilters: () => void;
   onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
   onOpenNotifications: () => void;
-  onClaim?: (onClaimed?: () => void) => void;
+  onClaim?: (deal?: ClaimDealSummary | null, onClaimed?: () => void) => void;
   onAccount: () => void;
+  onHowToClaim?: () => void;
+  /** Opens comments & reviews for this deal (live, with an optional star rating). */
+  onOpenComments?: (deal: ClaimDealSummary) => void;
+  /** Pre-fills the search (e.g. "See all deals for …" from the home search). */
+  initialSearch?: string;
+}
+
+type DealCardModel = ReturnType<typeof toDealCardModel>;
+
+/** What the claim popup and deal page need about a card: always its real id. */
+const toClaimDeal = (deal: DealCardModel): ClaimDealSummary => ({
+  id: deal.id,
+  title: deal.title,
+  business: deal.business,
+  location: deal.distance,
+  price: deal.price,
+  oldPrice: deal.compare > deal.price ? deal.compare : undefined,
+  discountLabel: deal.discount,
+  image: deal.image,
+});
+
+function DealCardSkeletons() {
+  return (
+    <SkeletonGroup label="Loading deals" className="grid grid-cols-2 gap-3 px-margin pb-space-lg">
+      {Array.from({ length: 4 }, (_, key) => (
+        <div key={key} className="bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden">
+          <Skeleton className="w-full aspect-[4/3] rounded-none" />
+          <div className="p-2.5 space-y-1.5">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-7 w-full rounded-lg" />
+          </div>
+        </div>
+      ))}
+    </SkeletonGroup>
+  );
+}
+
+function FeaturedSkeleton() {
+  return (
+    <SkeletonGroup label="Loading featured deal" className="w-full bg-surface-canvas rounded-xl shadow-sm border border-border-subtle overflow-hidden">
+      <Skeleton className="w-full aspect-[16/9] rounded-none" />
+      <div className="p-space-md space-y-2">
+        <Skeleton className="h-3 w-28" />
+        <Skeleton className="h-5 w-3/4" />
+        <Skeleton className="h-6 w-32" />
+        <div className="flex items-center justify-between pt-2">
+          <Skeleton className="h-5 w-12" />
+          <Skeleton className="h-9 w-32 rounded-xl" />
+        </div>
+      </div>
+    </SkeletonGroup>
+  );
 }
 
 function dealCardProps(
@@ -228,16 +289,14 @@ function GreetingHeader({
   );
 }
 
-function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unknown>[]; onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void; onClaim?: (onClaimed?: () => void) => void }) {
-  const { claimed } = useAuth();
+function DealGridCards({ deals, onOpen, onClaim, likes, onToggleLike, claimedIds, onClaimed, emptyMessage, onOpenComments }: { deals: Record<string, unknown>[]; onOpenComments?: (deal: ClaimDealSummary) => void; likes: Record<string, DealLikeState>; onToggleLike: (offerId: string | undefined) => void; claimedIds: Record<string, boolean>; onClaimed: (dealId: string) => void; emptyMessage: string; onOpen: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void; onClaim?: (deal?: ClaimDealSummary | null, onClaimed?: () => void) => void }) {
   const cards = useMemo(() => deals.map((deal, index) => toDealCardModel(deal, index)), [deals]);
 
   if (!cards.length) {
     return (
       <div className="px-margin pb-space-lg">
         <div className="bg-surface-container-low rounded-xl border border-dashed border-outline-variant p-space-lg text-center">
-          <p className="font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
-          <p className="mt-1 font-body-md text-body-md text-text-secondary">Check back soon for nearby offers.</p>
+          <p className="font-label-md text-label-md text-text-primary font-semibold">{emptyMessage}</p>
         </div>
       </div>
     );
@@ -265,15 +324,31 @@ function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unkno
             <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-xs">
               {deal.discount}
             </div>
-            <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium flex items-center gap-0.5">
-              <Icon name="hourglass_top" className="text-[12px] text-tertiary-fixed" />Live
+            <button
+              type="button"
+              aria-pressed={Boolean(deal.offerId && likes[deal.offerId]?.liked)}
+              aria-label={deal.offerId && likes[deal.offerId]?.liked ? `Unlike ${deal.title}` : `Like ${deal.title}`}
+              disabled={!deal.offerId}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleLike(deal.offerId);
+              }}
+              className={`absolute top-2 right-2 h-7 px-2 rounded-full backdrop-blur-sm flex items-center gap-0.5 shadow-sm transition-colors font-caption text-[11px] font-semibold ${
+                deal.offerId && likes[deal.offerId]?.liked ? 'bg-error-container text-error' : 'bg-surface-canvas/90 text-text-secondary hover:text-error'
+              }`}
+            >
+              <Icon name="favorite" className="text-[14px]" filled={Boolean(deal.offerId && likes[deal.offerId]?.liked)} />
+              {deal.offerId ? likes[deal.offerId]?.count ?? 0 : 0}
+            </button>
+            <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium flex items-center gap-0.5">
+              <Icon name="hourglass_top" className="text-[12px] text-tertiary-fixed" />{deal.ends}
             </div>
           </div>
           <div className="p-2.5 flex flex-col flex-1 justify-between">
             <div className="flex flex-col">
               <div className="flex items-center gap-1 mb-1">
                 <span className="font-caption text-[12px] text-text-secondary truncate">{deal.business}</span>
-                <Icon name="verified" className="text-primary text-[14px] shrink-0" filled />
+                {deal.verified && <Icon name="verified" className="text-primary text-[14px] shrink-0" filled />}
               </div>
               <h2 className="font-label-md text-label-md text-text-primary font-semibold leading-snug line-clamp-2 mb-1.5">
                 {deal.title}
@@ -284,28 +359,43 @@ function DealGridCards({ deals, onOpen, onClaim }: { deals: Record<string, unkno
                   <span className="font-caption text-[12px] text-text-tertiary line-through">{formatCurrency(deal.compare)}</span>
                 )}
               </div>
-              <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold w-fit mb-2">
-                {deal.save}
-              </div>
+              {deal.save ? (
+                <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold w-fit mb-2">
+                  {deal.save}
+                </div>
+              ) : null}
             </div>
-            <div className="flex items-center justify-between pt-1 border-t border-border-subtle mt-1">
-              <div className="flex items-center gap-0.5 text-text-secondary font-caption text-[11px]">
-                <Icon name="location_on" className="text-[13px]" />
-                <span>{deal.distance}</span>
+            <div className="flex items-center justify-between pt-1 border-t border-border-subtle mt-1 gap-1">
+              <div className="flex items-center gap-0.5 text-text-secondary font-caption text-[11px] min-w-0">
+                <Icon name="location_on" className="text-[13px] shrink-0" />
+                <span className="truncate">{deal.distance}</span>
               </div>
+              {onOpenComments && deal.offerId ? (
+                <button
+                  type="button"
+                  aria-label={`Comments and reviews for ${deal.title}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenComments(toClaimDeal(deal));
+                  }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-text-secondary hover:text-primary hover:bg-surface-container transition-colors shrink-0"
+                >
+                  <Icon name="chat_bubble_outline" className="text-[16px]" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onClaim?.(() => {});
+                  onClaim?.(toClaimDeal(deal), () => onClaimed(deal.id));
                 }}
                 className={`h-7 px-2 rounded-lg font-caption text-caption font-semibold hover:scale-105 active:scale-95 transition-all shadow-xs ${
-                  claimed
+                  claimedIds[deal.id]
                     ? 'bg-badge-discount-bg text-badge-discount-text'
                     : 'bg-primary text-on-primary hover:bg-surface-tint'
                 }`}
               >
-                {claimed ? 'Claimed' : 'Claim'}
+                {claimedIds[deal.id] ? 'Claimed' : 'Claim'}
               </button>
             </div>
           </div>
@@ -322,43 +412,191 @@ export function DealsScreen({
   onOpenNotifications,
   onClaim,
   onAccount,
+  onHowToClaim,
+  onOpenComments,
+  initialSearch,
 }: DealsScreenProps) {
-  const { claimed } = useAuth();
   const { live, count: unreadCount } = useUnreadNotifications();
+  // Claimed only after the claim flow reports success for that deal.
+  const [claimedIds, setClaimedIds] = useState<Record<string, boolean>>({});
+  const markClaimed = (dealId: string) => setClaimedIds((prev) => ({ ...prev, [dealId]: true }));
+  // Live business categories; the chosen one filters the feed (`categoryId`).
+  const { categories } = useHomeDealCategories();
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const activeCategory = categories.find((item) => item.id === categoryId) ?? categories[0];
+  // Search, sort and "load more" — all real feed params (see useDealFeedControls).
+  const feed = useDealFeedControls(categoryId, initialSearch);
+  const { feedParams, isLoadingMorePage, limit } = feed;
+  // Live mode starts loading, so the page shows skeletons (never stand-in data) until the API answers.
+  const [offersLoading, setOffersLoading] = useState(() => hasApiConfig());
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const chooseCategory = (id: string | null) => setCategoryId(id);
+  const emptyMessage = feed.search
+    ? `No live deals match "${feed.search}"${categoryId ? ` in ${activeCategory.label}` : ''}.`
+    : categoryId
+      ? `No live deals in ${activeCategory.label} near you yet.`
+      : 'No live deals near you yet.';
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [locationOpen, setLocationOpen] = useState(false);
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const { district, city, radius, setLocation } = useLocation();
   const apiReady = hasApiConfig();
 
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
   useEffect(() => {
     let ignore = false;
 
     const loadOffers = async () => {
       if (!hasApiConfig()) {
-        if (!ignore) setPublicOffers([]);
+        if (!ignore) {
+          setPublicOffers([]);
+          setOffersLoading(false);
+        }
         return;
       }
 
+      if (isLoadingMorePage) setLoadingMore(true);
+      else setOffersLoading(true);
       try {
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 6 });
+        // Nearest first within the radius once the customer has a location (unless another sort is chosen).
+        const response = await catalogueService.getPublicOffers(feedParams);
         const rows = Array.isArray(response?.data) ? response.data : [];
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
+        if (!ignore) {
+          setPublicOffers(rows as Record<string, unknown>[]);
+          setHasMore(rows.length >= limit);
+        }
       } catch {
-        if (!ignore) setPublicOffers([]);
+        if (!ignore) {
+          setPublicOffers([]);
+          setHasMore(false);
+        }
+      } finally {
+        if (!ignore) {
+          setOffersLoading(false);
+          setLoadingMore(false);
+        }
       }
     };
 
     loadOffers();
     return () => { ignore = true; };
-  }, [locationQuery]);
+  }, [feedParams, isLoadingMorePage, limit]);
 
-  const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 6), [publicOffers]);
+  const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer), [publicOffers]);
   const featuredDeal = displayDeals[0] ? toDealCardModel(displayDeals[0]) : null;
 
-  if (!displayDeals.length) {
+  // Live likes: GET /deals/:id/reaction-status to load, POST /deals/:id/reactions { type: 'like' } to toggle.
+  const offerIds = useMemo(
+    () => displayDeals.map(realOfferId).filter((id): id is string => Boolean(id)),
+    [displayDeals],
+  );
+  const { likes, toggleLike: saveLike } = useDealLikes(offerIds);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  const showToast = (message: string) => {
+    setToast(message);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
+  const toggleLike = (offerId: string | undefined) => {
+    if (!offerId) return;
+    saveLike(offerId).then(
+      (saved) => showToast(saved.liked ? 'You liked this deal' : 'Like removed'),
+      () => showToast('Could not save your like. Please try again.'),
+    );
+  };
+  const featuredLiked = Boolean(featuredDeal?.offerId && likes[featuredDeal.offerId]?.liked);
+
+  const categoryChips = (
+    <div className="px-margin mb-space-md -mt-1 overflow-x-auto no-scrollbar flex items-center gap-2 py-1">
+      {categories.map((item) => {
+        const active = item.id === categoryId;
+        return (
+          <button
+            key={item.id ?? 'all'}
+            type="button"
+            aria-pressed={active}
+            onClick={() => chooseCategory(item.id)}
+            className={`shrink-0 h-9 rounded-full font-label-md text-label-md shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 ${
+              active ? 'px-4 bg-primary-container text-on-primary' : 'px-3.5 bg-surface-container-lowest text-text-primary hover:bg-surface-container-low'
+            }`}
+          >
+            {item.icon && <Icon name={item.icon} className="text-[17px]" />}
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const sortSelect = (
+    <label className="flex items-center gap-0.5 text-primary font-caption text-caption shrink-0">
+      <Icon name="sort" className="text-[16px]" />
+      <span className="sr-only">Sort deals</span>
+      <select
+        className="bg-transparent font-semibold text-primary outline-none max-w-[130px]"
+        value={feed.sortBy}
+        onChange={(event) => feed.setSortBy(event.target.value as DealSortBy)}
+      >
+        {feed.sortOptions.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const dealCards = offersLoading ? (
+    <DealCardSkeletons />
+  ) : (
+    <>
+      <DealGridCards
+        deals={displayDeals}
+        onOpen={onOpenDeal}
+        onClaim={onClaim}
+        likes={likes}
+        onToggleLike={toggleLike}
+        claimedIds={claimedIds}
+        onClaimed={markClaimed}
+        emptyMessage={emptyMessage}
+        onOpenComments={onOpenComments}
+      />
+      {hasMore ? (
+        <div className="px-margin pb-space-lg flex justify-center">
+          <button
+            type="button"
+            disabled={loadingMore}
+            onClick={feed.loadMore}
+            className="px-space-lg py-2.5 rounded-full bg-surface-container-low text-primary font-label-md text-label-md font-semibold shadow-sm active:scale-95 transition-all disabled:opacity-60"
+          >
+            {loadingMore ? 'Loading more deals…' : 'Load more deals'}
+          </button>
+        </div>
+      ) : null}
+      {onHowToClaim ? (
+        <div className="px-margin pb-space-lg">
+          <button
+            type="button"
+            onClick={onHowToClaim}
+            className="w-full flex items-center justify-between gap-3 p-space-md rounded-xl bg-surface-tint-blue text-left active:scale-[0.99] transition-transform"
+          >
+            <span className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-xl bg-primary-container text-on-primary flex items-center justify-center shrink-0">
+                <Icon name="verified" className="text-[20px]" />
+              </span>
+              <span className="flex flex-col">
+                <span className="font-label-md text-label-md text-text-primary font-semibold">How claiming works</span>
+                <span className="font-caption text-caption text-text-secondary">Claim free, show your code in store</span>
+              </span>
+            </span>
+            <Icon name="arrow_forward" className="text-primary text-[18px]" />
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+
+  if (!offersLoading && !categoryId && !feed.search && !displayDeals.length) {
     return (
       <AppScreen>
         <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">
@@ -399,9 +637,9 @@ export function DealsScreen({
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
               <Icon name="info" className="text-[22px]" />
             </div>
-            <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+            <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals near you yet</p>
             <p className="mt-1 font-body-md text-body-md text-text-secondary">
-              Publish live public offers to populate this feed.
+              New offers from businesses near you will show up here.
             </p>
           </div>
         </main>
@@ -533,9 +771,12 @@ export function DealsScreen({
               <div className="flex items-center h-12 px-space-md rounded-xl bg-surface-container-lowest border border-outline-variant/60 shadow-sm focus-within:bg-surface-canvas focus-within:shadow-[0_0_0_2px_#066cf4] transition-all">
                 <Icon name="search" className="text-text-secondary text-[22px] mr-space-xs shrink-0" />
                 <input
+                  aria-label="Search deals"
                   className="w-full bg-transparent font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none"
-                  placeholder="Search deals, businesses or products..."
-                  type="text"
+                  placeholder="Search deals or businesses..."
+                  type="search"
+                  value={feed.searchInput}
+                  onChange={(event) => feed.setSearchInput(event.target.value)}
                 />
                 <button
                   aria-label="Filters"
@@ -548,11 +789,15 @@ export function DealsScreen({
               </div>
             </div>
 
+            {categoryChips}
+
             <div className="px-margin mb-space-md">
-              {featuredDeal ? (
+              {offersLoading ? (
+                <FeaturedSkeleton />
+              ) : featuredDeal ? (
                 <div
                   {...dealCardProps(onOpenDeal, {
-                    id: String(featuredDeal.id ?? featuredDeal.title),
+                    id: featuredDeal.id,
                     title: featuredDeal.title,
                     business: featuredDeal.business,
                     location: featuredDeal.distance,
@@ -569,7 +814,7 @@ export function DealsScreen({
                     <div className="flex items-center gap-1.5">
                       <Icon name="local_fire_department" className="text-primary text-[18px]" filled />
                       <span className="font-label-sm text-[12px] font-bold uppercase tracking-wider text-text-secondary">
-                        DEAL OF THE DAY
+                        FEATURED
                       </span>
                     </div>
                     <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
@@ -585,7 +830,7 @@ export function DealsScreen({
                     </div>
                     <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full bg-inverse-surface/85 backdrop-blur-xs text-inverse-on-surface font-caption text-[11px] font-medium flex items-center gap-1">
                       <Icon name="hourglass_top" className="text-[13px] text-tertiary-fixed" />
-                      {featuredDeal.distance}
+                      {featuredDeal.ends}
                     </div>
                   </div>
                   <div className="p-space-md flex flex-col">
@@ -594,7 +839,7 @@ export function DealsScreen({
                         <span className="font-caption text-[12px] text-text-secondary font-medium truncate">
                           {featuredDeal.business}
                         </span>
-                        <Icon name="verified" className="text-primary text-[14px] shrink-0" filled />
+                        {featuredDeal.verified && <Icon name="verified" className="text-primary text-[14px] shrink-0" filled />}
                       </div>
                       <div className="flex items-center gap-0.5 text-text-secondary font-caption text-[11px] shrink-0">
                         <Icon name="location_on" className="text-[13px]" />
@@ -610,33 +855,56 @@ export function DealsScreen({
                         {featuredDeal.compare > featuredDeal.price && (
                           <span className="font-body-md text-body-md text-text-tertiary line-through">{formatCurrency(featuredDeal.compare)}</span>
                         )}
-                        <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
-                          {featuredDeal.save}
-                        </span>
+                        {featuredDeal.save ? (
+                          <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold">
+                            {featuredDeal.save}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex items-center justify-between pt-2.5 border-t border-border-subtle">
-                      <div className="flex items-center gap-3 text-text-secondary font-caption text-[12px]">
-                        <span className="flex items-center gap-1">
-                          <Icon name="favorite" className="text-[15px] text-error" filled />{featuredDeal.discount}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Icon name="chat_bubble" className="text-[15px]" />Live
-                        </span>
+                      <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        aria-pressed={featuredLiked}
+                        aria-label={featuredLiked ? 'Unlike deal' : 'Like deal'}
+                        disabled={!featuredDeal.offerId}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleLike(featuredDeal.offerId);
+                        }}
+                        className={`flex items-center gap-1 font-caption text-[12px] font-semibold transition-colors ${featuredLiked ? 'text-error' : 'text-text-secondary hover:text-error'}`}
+                      >
+                        <Icon name="favorite" className="text-[16px]" filled={featuredLiked} />
+                        {featuredDeal.offerId ? likes[featuredDeal.offerId]?.count ?? 0 : 0}
+                      </button>
+                      {onOpenComments && featuredDeal.offerId ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenComments(toClaimDeal(featuredDeal));
+                          }}
+                          className="flex items-center gap-1 font-caption text-[12px] font-semibold text-text-secondary hover:text-primary transition-colors"
+                        >
+                          <Icon name="chat_bubble_outline" className="text-[16px]" />
+                          Comments
+                        </button>
+                      ) : null}
                       </div>
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onClaim?.(() => {});
+                          onClaim?.(toClaimDeal(featuredDeal), () => markClaimed(featuredDeal.id));
                         }}
                         className={`h-9 px-4 rounded-xl font-label-md text-label-md font-semibold active:scale-95 transition-all shadow-xs flex items-center gap-1.5 ${
-                          claimed
+                          claimedIds[featuredDeal.id]
                             ? 'bg-badge-discount-bg text-badge-discount-text'
                             : 'bg-primary text-on-primary hover:bg-surface-tint'
                         }`}
                       >
-                        {claimed ? 'Claimed' : 'Claim Deal'}
+                        {claimedIds[featuredDeal.id] ? 'Claimed' : 'Claim Deal'}
                         <Icon name="arrow_forward" className="text-[16px]" />
                       </button>
                     </div>
@@ -644,8 +912,7 @@ export function DealsScreen({
                 </div>
               ) : (
                 <div className="w-full rounded-xl border border-dashed border-outline-variant bg-surface-container-low p-space-lg text-center">
-                  <p className="font-label-md text-label-md text-text-primary font-semibold">No live feature available</p>
-                  <p className="mt-1 font-body-md text-body-md text-text-secondary">Local offers will appear here once the catalogue is active.</p>
+                  <p className="font-label-md text-label-md text-text-primary font-semibold">{emptyMessage}</p>
                 </div>
               )}
             </div>
@@ -655,8 +922,10 @@ export function DealsScreen({
                 <span className="font-label-md text-label-md text-text-primary font-bold">
                   Deals in {district}, {city}
                 </span>
-                <span className="font-caption text-caption text-text-tertiary">({displayDeals.length})</span>
+                {!offersLoading ? <span className="font-caption text-caption text-text-tertiary">({displayDeals.length})</span> : null}
               </div>
+              <div className="flex items-center gap-2">
+              {sortSelect}
               <div className="flex items-center p-0.5 rounded-lg bg-surface-container border border-border-subtle">
                 <button
                   aria-label="List view"
@@ -674,9 +943,10 @@ export function DealsScreen({
                   <Icon name="grid_view" className="text-[18px]" />
                 </button>
               </div>
+              </div>
             </div>
 
-            <DealGridCards deals={displayDeals} onOpen={onOpenDeal} onClaim={onClaim} />
+            {dealCards}
           </div>
         </div>
       ) : (
@@ -686,9 +956,12 @@ export function DealsScreen({
               <div className="flex items-center h-[50px] px-4 rounded-2xl bg-surface-container-low shadow-sm transition-all focus-within:bg-surface-canvas focus-within:shadow-md">
                 <Icon name="search" className="text-text-tertiary text-[22px] mr-3" />
                 <input
+                  aria-label="Search deals"
                   className="w-full bg-transparent border-none outline-none font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none"
-                  placeholder="Search deals, businesses or products"
-                  type="text"
+                  placeholder="Search deals or businesses"
+                  type="search"
+                  value={feed.searchInput}
+                  onChange={(event) => feed.setSearchInput(event.target.value)}
                 />
                 <button
                   aria-label="Filter options"
@@ -701,8 +974,12 @@ export function DealsScreen({
               </div>
             </div>
 
+            {categoryChips}
+
             <div className="px-margin mb-space-sm flex items-center justify-between">
-              <span className="font-label-sm text-label-sm text-text-secondary font-medium">Showing {displayDeals.length} deal{displayDeals.length === 1 ? '' : 's'}</span>
+              <span className="font-label-sm text-label-sm text-text-secondary font-medium">{offersLoading ? 'Loading deals…' : `Showing ${displayDeals.length} deal${displayDeals.length === 1 ? '' : 's'}`}</span>
+              <div className="flex items-center gap-2">
+              {sortSelect}
               <div className="flex items-center p-0.5 rounded-lg bg-surface-container border border-border-subtle">
                 <button
                   aria-label="List view"
@@ -720,10 +997,17 @@ export function DealsScreen({
                   <Icon name="grid_view" className="text-[18px]" />
                 </button>
               </div>
+              </div>
             </div>
 
-            <DealGridCards deals={displayDeals} onOpen={onOpenDeal} onClaim={onClaim} />
+            {dealCards}
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div role="status" className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {toast}
         </div>
       )}
 

@@ -19,3 +19,17 @@ export const BUSINESS_NAV_EVENT = 'vemtap:business-nav';
 export const MOBILE_ACCOUNT_NAV_EVENT = 'vemtap:mobile-account-nav';
 
 export type MobileAccountNavKey = 'dashboard' | 'notifications' | 'settings';
+
+/**
+ * Fired by the global search (desktop navbar, mobile home) when a result is picked.
+ * The app router opens the deal, the business page, or the Deals page with the term.
+ */
+export const SEARCH_PICK_EVENT = 'vemtap:search-pick';
+
+export type SearchPick =
+  | { kind: 'deal'; deal: { id: string; title?: string; business?: string; location?: string; price?: number; oldPrice?: number; discountLabel?: string; image?: string } }
+  | { kind: 'business'; code: string; id?: string; name?: string }
+  | { kind: 'all-deals'; query: string };
+
+export const pickSearchResult = (pick: SearchPick) =>
+  window.dispatchEvent(new CustomEvent<SearchPick>(SEARCH_PICK_EVENT, { detail: pick }));

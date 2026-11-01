@@ -26,7 +26,6 @@ import { OrdersProvider } from './context/OrdersContext';
 import { parsePrice } from './utils/format';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
 import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
-import { ProductDetailScreen } from './scripts/ProductDetailScreen';
 import { CheckoutScreen } from './scripts/CheckoutScreen';
 import { OrderPlacedScreen } from './scripts/OrderPlacedScreen';
 import { ContactsProvider, useContacts } from './context/ContactsContext';
@@ -120,6 +119,9 @@ import { DesktopSegmentActionsScreen } from './scripts/desktop/DesktopSegmentAct
 import { DesktopSegmentCreateScreen } from './scripts/desktop/DesktopSegmentCreateScreen';
 import { DesktopSegmentDetailScreen } from './scripts/desktop/DesktopSegmentDetailScreen';
 import { DesktopHowToClaimScreen } from './scripts/desktop/DesktopHowToClaimScreen';
+import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
+import { ProductDetailScreen } from './scripts/ProductDetailScreen';
+import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDetailScreen';
 import { DesktopClaimSuccessScreen } from './scripts/desktop/DesktopClaimSuccessScreen';
 import { DesktopGiftSentScreen } from './scripts/desktop/DesktopGiftSentScreen';
 import { DesktopClaimedDealScreen } from './scripts/desktop/DesktopClaimedDealScreen';
@@ -166,7 +168,6 @@ import { DiscoverScreen } from './scripts/DiscoverScreen';
 import { MerchantDealsScreen } from './scripts/MerchantDealsScreen';
 import { ProductsCatalogueScreen } from './scripts/ProductsCatalogueScreen';
 import { MenuProductsScreen } from './scripts/MenuProductsScreen';
-import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
 import { BusinessAccountChoiceScreen } from './scripts/BusinessAccountChoiceScreen';
 import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
 import type { ProfileSetupDraft } from './scripts/ProfileSetupScreen';
@@ -282,7 +283,6 @@ import { DesktopFeaturedDealsScreen } from './scripts/desktop/DesktopFeaturedDea
 import { DesktopFiltersScreen } from './scripts/desktop/DesktopFiltersScreen';
 import { DesktopDealDetailScreen } from './scripts/desktop/DesktopDealDetailScreen';
 import { DesktopUrbanGrillStorefrontScreen } from './scripts/desktop/DesktopUrbanGrillStorefrontScreen';
-import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDetailScreen';
 import { DesktopSpaStorefrontScreen } from './scripts/desktop/DesktopSpaStorefrontScreen';
 import { DesktopAllProductsScreen } from './scripts/desktop/DesktopAllProductsScreen';
 import { DesktopAllServicesScreen } from './scripts/desktop/DesktopAllServicesScreen';
@@ -319,7 +319,7 @@ import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/Deskto
 import { BusinessStorefrontPreviewScreen } from './scripts/desktop/BusinessStorefrontPreviewScreen';
 import { dealImageList, dealPrimaryImage } from './utils/dealImages';
 import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
-import { MOBILE_ACCOUNT_NAV_EVENT } from './utils/appEvents';
+import { MOBILE_ACCOUNT_NAV_EVENT, SEARCH_PICK_EVENT, type SearchPick } from './utils/appEvents';
 import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
 import { DesktopBusinessBranchPricingScreen } from './scripts/desktop/DesktopBusinessBranchPricingScreen';
 import { DesktopBusinessCustomersScreen } from './scripts/desktop/DesktopBusinessCustomersScreen';
@@ -856,8 +856,9 @@ function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
 
 function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSlug?: string): Route {
   switch (section) {
+    // The bundled demo storefront sub-pages are retired: their links land on the live business page.
     case 'deals':
-      return 'storefront';
+      return 'business-profile';
     case 'products':
       return 'product-detail';
     case 'checkout':
@@ -865,11 +866,11 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
     case 'order-placed':
       return 'order-placed';
     case 'menu':
-      return 'storefront-menu';
+      return 'business-profile';
     case 'services':
-      return serviceSlug ? 'service-detail' : 'spa-services';
+      return serviceSlug ? 'service-detail' : 'business-profile';
     case 'shop':
-      return 'spa-storefront';
+      return 'business-profile';
     case 'booking':
       return 'spa-booking';
     case 'booking/checkout':
@@ -1050,6 +1051,11 @@ function AppInner() {
     const match = resolveBusinessPath(window.location.pathname);
     return (match?.productId ? findProduct(match.productId) : undefined) ?? null;
   });
+  /** The live product/service page: `/business/<code>/products/<itemId>`. */
+  const [liveItem, setLiveItem] = useState<{ code: string; id: string } | null>(() => {
+    const match = resolveBusinessPath(window.location.pathname);
+    return match?.productId ? { code: match.business.slug, id: match.productId } : null;
+  });
   const [detailService, setDetailService] = useState<SpaCatalogueService | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return (match?.serviceSlug ? findSpaService(match.serviceSlug) : undefined) ?? null;
@@ -1072,6 +1078,12 @@ function AppInner() {
   const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
   const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
+  /** Where "How to Claim" was opened: a deal page (claim that deal) or the Deals feed (no deal to claim). */
+  const [howToClaimFrom, setHowToClaimFrom] = useState<Route>('deal-detail');
+  const openHowToClaim = (from: Route) => {
+    setHowToClaimFrom(from);
+    setRoute('how-to-claim');
+  };
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
   const [activeConversation, setActiveConversation] = useState('urban');
   useCustomerMessagingRealtime(authed);
@@ -1172,7 +1184,6 @@ function AppInner() {
   };
 
   const resolveRoutePath = useCallback((target: Route, overrideDeal?: ClaimDealSummary | null) => {
-    const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : null;
     const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : null;
     const dealForRoute = overrideDeal ?? selectedDeal ?? null;
 
@@ -1198,13 +1209,13 @@ function AppInner() {
       case 'service-detail':
         return detailService && activeSpaBusiness ? servicePath(activeSpaBusiness.slug, detailService.slug) : '/discover';
       case 'product-detail':
-        return detailProduct && activeUrbanBusiness ? productPath(activeUrbanBusiness.slug, detailProduct.id) : '/discover';
+        return liveItem ? productPath(liveItem.code, liveItem.id) : '/discover';
       case 'deal-detail':
         return dealForRoute ? dealDetailPath(dealForRoute) : '/deals';
       default:
         return ROUTE_PATH[target];
     }
-  }, [detailProduct, detailService, selectedBusiness, selectedDeal]);
+  }, [liveItem, detailService, selectedBusiness, selectedDeal]);
 
   const setRoute = (target: Route, nextDeal?: ClaimDealSummary | null) => {
     if (target === route) return;
@@ -1323,9 +1334,9 @@ function AppInner() {
       if (match) {
         setSelectedBusiness((prev) => (prev && prev.slug === match.business.slug ? prev : match.business));
       }
-      if (match?.section === 'products') {
-        const base = findProduct(match.productId);
-        if (base) setDetailProduct((prev) => (prev && prev.id === base.id ? prev : base));
+      if (match?.section === 'products' && match.productId) {
+        const next = { code: match.business.slug, id: match.productId };
+        setLiveItem((prev) => (prev && prev.code === next.code && prev.id === next.id ? prev : next));
       }
       if (match?.section === 'services' && match.serviceSlug) {
         const base = findSpaService(match.serviceSlug);
@@ -1337,12 +1348,11 @@ function AppInner() {
   }, [authed, isDesktop, route, detailProduct, detailService, resolveRoutePath, selectedBusiness]);
 
   useEffect(() => {
-    if (route !== 'product-detail' || detailProduct) return;
+    if (route !== 'product-detail' || liveItem) return;
     const match = resolveBusinessPath(window.location.pathname);
-    const base = match?.productId ? findProduct(match.productId) : undefined;
-    if (base) setDetailProduct(base);
-    else setRouteState('storefront-products');
-  }, [route, detailProduct]);
+    if (match?.productId) setLiveItem({ code: match.business.slug, id: match.productId });
+    else setRouteState('discover');
+  }, [route, liveItem]);
 
   /**
    * Capture a referral code from the URL once, before the path-sync effect
@@ -1431,6 +1441,64 @@ function AppInner() {
     setSelectedDeal(nextDeal ?? null);
     setRoute('deal-detail', nextDeal ?? null);
   };
+
+  /** Opens a live business page by its public code (`uniqueCode`). */
+  const openBusiness = (ref: { code: string; id?: string; name?: string }, from: Route) => {
+    const next: BusinessProfileRef = { slug: ref.code, id: ref.id ?? '', name: ref.name ?? '', venue: 'urban' };
+    setSelectedBusiness(next);
+    setProfileFrom(from);
+    const target = businessPath(next);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('business-profile');
+  };
+
+  /** Opens a live product/service page for an item of the business with this code. */
+  const openItem = (code: string, itemId: string, from: Route) => {
+    setLiveItem({ code, id: itemId });
+    setDetailFrom(from);
+    const target = productPath(code, itemId);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('product-detail');
+  };
+
+  /** Opens the business behind a deal: its real code comes from the deal's public details. */
+  const openBusinessForDeal = async (deal: ClaimDealSummary | null | undefined, from: Route) => {
+    const offerId = deal?.id != null ? String(deal.id) : '';
+    if (!offerId) return;
+    try {
+      const response = await catalogueService.getPublicOfferDetails(offerId);
+      const record = response && typeof response === 'object' ? (response as Record<string, unknown>) : {};
+      const payload = (record.data && typeof record.data === 'object' ? record.data : record) as Record<string, unknown>;
+      const business = (payload.business && typeof payload.business === 'object' ? payload.business : {}) as Record<string, unknown>;
+      const code = typeof business.uniqueCode === 'string' && business.uniqueCode ? business.uniqueCode : typeof business.slug === 'string' ? business.slug : '';
+      if (code) openBusiness({ code, id: typeof business.id === 'string' ? business.id : undefined, name: typeof business.name === 'string' ? business.name : undefined }, from);
+    } catch {
+      // The deal page stays open; nothing to navigate to without the business's code.
+    }
+  };
+
+  // Global search (desktop navbar / mobile home) → open the picked deal or business, or the Deals page with the term.
+  const [dealsSearch, setDealsSearch] = useState({ query: '', key: 0 });
+  const searchPickRef = useRef<(pick: SearchPick) => void>(() => undefined);
+  searchPickRef.current = (pick: SearchPick) => {
+    if (pick.kind === 'deal') void openDeal(route, pick.deal);
+    else if (pick.kind === 'business') openBusiness({ code: pick.code, id: pick.id, name: pick.name }, route);
+    else {
+      setDealsSearch((prev) => ({ query: pick.query, key: prev.key + 1 }));
+      setRoute('deals');
+    }
+  };
+  useEffect(() => {
+    const onPick = (event: Event) => {
+      const pick = (event as CustomEvent<SearchPick>).detail;
+      if (pick) searchPickRef.current(pick);
+    };
+    window.addEventListener(SEARCH_PICK_EVENT, onPick);
+    return () => window.removeEventListener(SEARCH_PICK_EVENT, onPick);
+  }, []);
+  useEffect(() => {
+    if (route !== 'deals' && dealsSearch.query) setDealsSearch((prev) => ({ ...prev, query: '' }));
+  }, [route, dealsSearch.query]);
 
   const openDealComments = (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
@@ -2155,7 +2223,7 @@ function AppInner() {
     ) : (
       <DealDetailScreen
         onBack={() => setRoute(dealFrom)}
-        onHowToClaim={() => setRoute('how-to-claim')}
+        onHowToClaim={() => openHowToClaim('deal-detail')}
         onTerms={() => {
           setTermsFrom('deal-detail');
           setRoute('deal-terms');
@@ -2167,19 +2235,7 @@ function AppInner() {
         onReviews={() => setRoute('reviews')}
         onShare={() => setRoute('share')}
         onClaim={() => startClaim('deal-detail')}
-        onMerchant={() => {
-          const businessName = selectedDeal?.business?.trim() || 'Business storefront';
-          const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `business-${Date.now()}`;
-          const businessRef: BusinessProfileRef = {
-            slug,
-            id: slug,
-            name: businessName,
-            venue: 'urban',
-          };
-          setSelectedBusiness(businessRef);
-          setProfileFrom('deal-detail');
-          setRoute('business-profile');
-        }}
+        onMerchant={() => void openBusinessForDeal(selectedDeal, 'deal-detail')}
         claimed={claimed}
         onViewWallet={() => {
           setClaimedFrom('deal-detail');
@@ -3054,6 +3110,7 @@ function AppInner() {
     case 'home':
       if (isDesktop)
         return (
+          <>
           <DesktopHomeScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'home')}
@@ -3061,9 +3118,27 @@ function AppInner() {
             onOpenDeals={() => setRoute('deals')}
             onOpenDeal={(deal) => openDeal('home', deal ?? null)}
             onClaim={openClaimPopup}
+            onOpenComments={(deal) => openDealComments('home', deal)}
           />
+          {commentsModalOnly ? (
+            <CommentsDrawer
+              open
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('home');
+              }}
+              onClaim={() => {
+                setCommentsModalOnly(false);
+                setRoute('deal-detail');
+                openClaimPopup();
+              }}
+            />
+          ) : null}
+          </>
         );
       return (
+        <>
         <HomeScreen
           onTab={(tab) => setRoute(tab)}
           onOpenFilters={() => openFeedRoute('filters', 'home')}
@@ -3077,7 +3152,19 @@ function AppInner() {
           onOpenNotifications={() => setRoute('notifications')}
           onEnroll={() => setRoute('business-onboarding')}
           onAccount={() => setRoute('account')}
+          onOpenComments={(deal) => openDealComments('home', deal)}
         />
+        {commentsModalOnly ? (
+          <CommentsSheet
+            open
+            deal={selectedDeal}
+            onClose={() => {
+              setCommentsModalOnly(false);
+              setRoute('home');
+            }}
+          />
+        ) : null}
+        </>
       );
 
     case 'deals':
@@ -3085,12 +3172,15 @@ function AppInner() {
         return (
           <>
             <DesktopDealsScreen
+              key={`deals-${dealsSearch.key}`}
+              initialSearch={dealsSearch.query}
               onNav={feedNav}
               onOpenFilters={() => openFeedRoute('filters', 'deals')}
               onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
               onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
               onOpenComments={(deal) => openDealComments('deals', deal ?? null)}
               onClaim={openClaimPopup}
+              onHowToClaim={() => openHowToClaim('deals')}
             />
             {commentsModalOnly ? (
               <CommentsDrawer
@@ -3112,12 +3202,16 @@ function AppInner() {
       return (
         <>
           <DealsScreen
+            key={`deals-${dealsSearch.key}`}
+            initialSearch={dealsSearch.query}
             onTab={(tab) => setRoute(tab)}
             onOpenFilters={() => openFeedRoute('filters', 'deals')}
             onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
             onOpenNotifications={() => setRoute('notifications')}
             onClaim={openClaimPopup}
             onAccount={() => setRoute('account')}
+            onHowToClaim={() => openHowToClaim('deals')}
+            onOpenComments={(deal) => openDealComments('deals', deal)}
           />
           {commentsModalOnly ? (
             <CommentsSheet
@@ -3154,18 +3248,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute(dealFrom)}
             onClaimComplete={handleClaimComplete}
-            onOpenBusiness={() => {
-              const businessName = selectedDeal?.business?.trim() || 'Business storefront';
-              const slug = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `business-${Date.now()}`;
-              const businessRef: BusinessProfileRef = {
-                slug,
-                id: slug,
-                name: businessName,
-                venue: 'urban',
-              };
-              setSelectedBusiness(businessRef);
-              setRoute('storefront');
-            }}
+            onOpenBusiness={() => void openBusinessForDeal(selectedDeal, 'deal-detail')}
             deal={selectedDeal}
           />
         );
@@ -3505,9 +3588,10 @@ function AppInner() {
         return (
           <DesktopHowToClaimScreen
             onNav={feedNav}
-            onBack={() => setRoute('deal-detail')}
-            onClaim={() => startClaim('how-to-claim')}
-            onTerms={() => {
+            onBack={() => setRoute(howToClaimFrom)}
+            backLabel={howToClaimFrom === 'deals' ? 'Deals' : 'Deal'}
+            onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+            onTerms={howToClaimFrom === 'deals' ? undefined : () => {
               setTermsFrom('how-to-claim');
               setRoute('deal-terms');
             }}
@@ -3515,9 +3599,9 @@ function AppInner() {
         );
       return (
         <HowToClaimScreen
-          onBack={() => setRoute('deal-detail')}
-          onClaim={() => startClaim('how-to-claim')}
-          onTerms={() => {
+          onBack={() => setRoute(howToClaimFrom)}
+          onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+          onTerms={howToClaimFrom === 'deals' ? undefined : () => {
             setTermsFrom('how-to-claim');
             setRoute('deal-terms');
           }}
@@ -3651,7 +3735,17 @@ function AppInner() {
       );
 
     case 'storefront':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen business={selectedBusiness} onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
+      if (isDesktop)
+        return (
+          <DesktopUrbanGrillStorefrontScreen
+            business={selectedBusiness}
+            onNav={feedNav}
+            onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+            onOpenDeal={(deal) => openDeal('business-profile', deal)}
+            onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+            onCheckout={startCheckout}
+          />
+        );
       return (
         <MerchantDealsScreen
           business={selectedBusiness}
@@ -3713,47 +3807,26 @@ function AppInner() {
       );
 
     case 'business-profile':
+    case 'spa-profile':
       if (isDesktop)
         return (
           <DesktopUrbanGrillStorefrontScreen
             business={selectedBusiness}
             onNav={feedNav}
             activeNav="discover"
-            onClaim={openClaimPopup}
+            onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+            onOpenDeal={(deal) => openDeal('business-profile', deal)}
+            onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
             onCheckout={startCheckout}
           />
         );
       return (
         <BusinessProfileScreen
-          venue="urban"
           business={selectedBusiness}
           onBack={() => setRoute(profileFrom)}
-          onOpenDeals={() => {
-            setBizFrom('business-profile');
-            setRoute('storefront');
-          }}
-          onOpenProducts={() => {
-            setCatalogueFrom('business-profile');
-            setRoute('storefront-products');
-          }}
-          onClaim={openClaimPopup}
-        />
-      );
-
-    case 'spa-profile':
-      if (isDesktop) return <DesktopSpaStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
-      return (
-        <BusinessProfileScreen
-          venue="spa"
-          business={selectedBusiness}
-          onBack={() => setRoute(profileFrom)}
-          onOpenDeals={() => setRoute(profileFrom)}
-          onOpenServices={() => {
-            setBizFrom('spa-profile');
-            setRoute('spa-services');
-          }}
-          onOpenService={(name) => openService(name, 'spa-profile')}
-          onClaim={openClaimPopup}
+          onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+          onOpenDeal={(deal) => openDeal('business-profile', deal)}
+          onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
         />
       );
 
@@ -3786,20 +3859,31 @@ function AppInner() {
         />
       );
 
-    case 'product-detail':
-      if (isDesktop) return <DesktopProductDetailScreen onNav={feedNav} onBack={() => setRoute('storefront')} />;
-      if (!detailProduct) return null;
+    case 'product-detail': {
+      const backToBusiness = () => {
+        if (liveItem) openBusiness({ code: liveItem.code }, 'product-detail');
+      };
+      const goBack = () => (detailFrom === 'business-profile' ? backToBusiness() : setRoute(detailFrom));
+      if (isDesktop)
+        return (
+          <DesktopProductDetailScreen
+            itemId={liveItem?.id ?? null}
+            businessCode={liveItem?.code ?? null}
+            onNav={feedNav}
+            onBack={goBack}
+            onOpenBusiness={backToBusiness}
+            onOpenItem={(itemId) => liveItem && openItem(liveItem.code, itemId, 'product-detail')}
+          />
+        );
       return (
         <ProductDetailScreen
-          product={detailProduct}
-          onBack={() => setRoute(detailFrom)}
-          onCheckout={startCheckout}
-          onOpenBusiness={() => {
-            setProfileFrom('product-detail');
-            setRoute('business-profile');
-          }}
+          itemId={liveItem?.id ?? null}
+          businessCode={liveItem?.code ?? null}
+          onBack={goBack}
+          onOpenBusiness={backToBusiness}
         />
       );
+    }
 
     case 'checkout':
       if (isDesktop)
@@ -4071,33 +4155,7 @@ function AppInner() {
           <DesktopDiscoverScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'discover')}
-            onOpenBusiness={(business) => {
-              const normalized = (business.name ?? '').toLowerCase();
-              const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
-              const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
-
-              const businessName = business.name?.trim() || 'Business storefront';
-              const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
-              const businessRef: BusinessProfileRef = {
-                slug: slugBase,
-                id: business.id || slugBase,
-                name: businessName,
-                venue: isSpa ? 'spa' : 'urban',
-              };
-
-              setSelectedBusiness(businessRef);
-              setProfileFrom('discover');
-
-              if (isSpa) {
-                setRoute('spa-profile');
-                return;
-              }
-
-              if (isUrban || !isSpa) {
-                setRoute('business-profile');
-                return;
-              }
-            }}
+            onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
             onBusinessSetup={() => setRoute('business-onboarding')}
           />
         );
@@ -4109,32 +4167,7 @@ function AppInner() {
             else if (tab === 'saved') setRoute('saved');
             else if (tab === 'account') setRoute('account');
           }}
-          onOpenBusiness={(business) => {
-            const normalized = (business.name ?? '').toLowerCase();
-            const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
-            const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
-            const businessName = business.name?.trim() || 'Business storefront';
-            const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
-            const businessRef: BusinessProfileRef = {
-              slug: slugBase,
-              id: business.id || slugBase,
-              name: businessName,
-              venue: isSpa ? 'spa' : 'urban',
-            };
-
-            setSelectedBusiness(businessRef);
-            setProfileFrom('discover');
-
-            if (isSpa) {
-              setRoute('spa-profile');
-              return;
-            }
-
-            if (isUrban || !isSpa) {
-              setRoute('business-profile');
-              return;
-            }
-          }}
+          onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
           onOpenFilters={() => openFeedRoute('filters', 'discover')}
           onOpenNotifications={() => setRoute('notifications')}
           onBusinessSetup={() => setRoute('business-onboarding')}

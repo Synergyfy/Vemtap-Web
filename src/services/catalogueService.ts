@@ -24,7 +24,7 @@ const withDistanceLabels = <T>(response: T): T => {
   if (Array.isArray(response)) return response.map(label) as T;
   if (response && typeof response === 'object') {
     const record = response as Record<string, unknown>;
-    for (const key of ['data', 'items']) {
+    for (const key of ['data', 'items', 'businesses']) {
       if (Array.isArray(record[key])) return { ...record, [key]: (record[key] as unknown[]).map(label) } as T;
     }
   }
@@ -37,7 +37,7 @@ const feedRows = (response: unknown): unknown[] => {
   if (Array.isArray(response)) return response;
   if (response && typeof response === 'object') {
     const record = response as Record<string, unknown>;
-    for (const key of ['data', 'items']) if (Array.isArray(record[key])) return record[key] as unknown[];
+    for (const key of ['data', 'items', 'businesses']) if (Array.isArray(record[key])) return record[key] as unknown[];
   }
   return [];
 };

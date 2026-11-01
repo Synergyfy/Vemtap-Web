@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { reviewService } from '../../services';
 import { Icon } from '../ui/Icon';
+import { Skeleton } from '../ui/Skeleton';
+import { reviewTimeLabel, reviewerInitials, useDealReviews } from '../../hooks/useDealReviews';
 import { SheetShell } from './SheetShell';
 import type { ClaimDealSummary } from '../desktop/dialogs/ClaimIdentityModal';
 
@@ -18,144 +19,31 @@ const SCORE_LABELS: Record<number, string> = {
   5: '5.0 — Outstanding!',
 };
 
+// The API has no tag field: picked highlights are added to the review text. None are pre-selected.
 const FEEDBACK_PILLS: { label: string; emoji: string; initiallySelected: boolean }[] = [
-  { label: 'Great Portions', emoji: '👍', initiallySelected: true },
-  { label: 'Fast Service', emoji: '⚡', initiallySelected: true },
-  { label: 'Easy QR Redemption', emoji: '✨', initiallySelected: true },
+  { label: 'Great Portions', emoji: '👍', initiallySelected: false },
+  { label: 'Fast Service', emoji: '⚡', initiallySelected: false },
+  { label: 'Easy QR Redemption', emoji: '✨', initiallySelected: false },
   { label: 'Friendly Staff', emoji: '😊', initiallySelected: false },
   { label: 'Great Ambiance', emoji: '🌿', initiallySelected: false },
 ];
-
-const INITIAL_PHOTOS = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCIcp8g6m4P-jpz-POl_vIPvofIJ5zmrfVVqpTJwWoXYFQfD6_ugqaCe0eTwSYzec2EdPaj12Vo0DAEl4gX42JDDWhFHkTokDPlatIggmrHEbTp8l4jQE-t25Iu516mrZQSjRoZy5ZtvNYN0QN88zYnzNePTU-WXN-mVdGJPALx83XYYDNOzpy4T-zXpSH_kbfgGI6xr8NvY3TfP3z0evD1tf3MIzPCQNNXwZdWQVjMFbgQIs0VgWzkxg',
-    alt: 'Top down overhead food photography of a juicy grilled craft burger and golden shoestring fries inside modern minimalist setting',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAqjFW9d1vN3UrttqPqORh7WuVKcp03-f0Mhj7AtnYMuvWtUx9MiQxYaCfRKSkjmXhyuWi59RtQWheizn7WMmpXxPHyh1nAnrXSNW3or6Ro5kGIzmTmI5e52FO9ukXIRNq1TUSifXn3Tj-80OYNZRdYvou5-cv2NQ2Cpt40fKH-iT_52cPD-aBOvmpXZUPbioEtUuGZrwer5assrCQYZVQ_Tzr8Tus2zv6c0xA495cQ3XVmvKdW_lr_iw',
-    alt: 'Bright table setup showing artisan lemon iced beverage with paper straw alongside seasoned rustic potato wedges in restaurant setting',
-  },
-];
-
-interface ReviewCard {
-  id: string;
-  initials: string;
-  name: string;
-  meta: string;
-  rating: string;
-  badge: string;
-  date: string;
-  body: string;
-  helpful: number;
-}
-
-const pickString = (source: Record<string, unknown> | undefined, keys: string[]): string => {
-  if (!source) return '';
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return '';
-};
-
-const pickNumber = (source: Record<string, unknown> | undefined, keys: string[]): number => {
-  if (!source) return 0;
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string' && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return 0;
-};
-
-const buildInitials = (value: string): string => {
-  const words = value.split(/\s+/).filter(Boolean).slice(0, 2);
-  if (!words.length) return 'V';
-  return words.map((word) => word[0]?.toUpperCase() ?? '').join('').slice(0, 2);
-};
-
-const normalizeReview = (record: Record<string, unknown>, index: number): ReviewCard => {
-  const author = pickString(record, ['authorName', 'customerName', 'userName', 'name']) || `Verified customer ${index + 1}`;
-  const body = pickString(record, ['comment', 'message', 'content', 'review', 'text', 'body']) || 'Helpful review from a verified customer.';
-  const ratingValue = pickNumber(record, ['rating', 'score', 'stars']) || 5;
-  const createdAt = pickString(record, ['createdAt', 'created_at', 'updatedAt', 'reviewedAt', 'date']) || new Date().toISOString();
-
-  return {
-    id: String(pickString(record, ['id', '_id', 'reviewId']) || `review-${index}`),
-    initials: buildInitials(author),
-    name: author,
-    meta: pickString(record, ['customerMeta', 'location', 'verifiedLabel']) || 'Verified Patron',
-    rating: `${ratingValue.toFixed(1)}`,
-    badge: pickString(record, ['badge', 'status']) || 'Verified Purchase',
-    date: createdAt ? new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
-    body,
-    helpful: pickNumber(record, ['helpfulCount', 'likes', 'likeCount']) || 0,
-  };
-};
-
-const toReviewCards = (payload: unknown): ReviewCard[] => {
-  if (Array.isArray(payload)) {
-    return payload.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map((item, index) => normalizeReview(item, index));
-  }
-
-  if (payload && typeof payload === 'object') {
-    const record = payload as Record<string, unknown>;
-    for (const key of ['reviews', 'items', 'results', 'data', 'rows', 'list']) {
-      const value = record[key];
-      if (Array.isArray(value)) {
-        return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map((item, index) => normalizeReview(item, index));
-      }
-    }
-  }
-
-  return [];
-};
 
 export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
   const [rating, setRating] = useState(5);
   const [selectedPills, setSelectedPills] = useState<boolean[]>(FEEDBACK_PILLS.map((pill) => pill.initiallySelected));
   const [reviewText, setReviewText] = useState('');
-  const [photos, setPhotos] = useState(INITIAL_PHOTOS);
   const [status, setStatus] = useState<'idle' | 'publishing' | 'published'>('idle');
-  const [reviews, setReviews] = useState<ReviewCard[]>([]);
-  const offerId = deal?.id ? String(deal.id) : '';
-
-  useEffect(() => {
-    let active = true;
-
-    if (!open || !offerId) {
-      setReviews([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    const loadReviews = async () => {
-      try {
-        const next = await reviewService.listByOffer(offerId);
-        if (!active) return;
-        setReviews(toReviewCards(next));
-      } catch {
-        if (active) setReviews([]);
-      }
-    };
-
-    void loadReviews();
-
-    return () => {
-      active = false;
-    };
-  }, [open, offerId]);
+  const [name, setName] = useState('');
+  const [notice, setNotice] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
+  const feed = useDealReviews(deal?.id, open);
+  const offerId = feed.offerId;
 
   useEffect(() => {
     if (!open) {
       setStatus('idle');
       setRating(5);
       setReviewText('');
-      setPhotos(INITIAL_PHOTOS);
+      setNotice(null);
       setSelectedPills(FEEDBACK_PILLS.map((pill) => pill.initiallySelected));
     }
   }, [open]);
@@ -164,22 +52,29 @@ export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
     setSelectedPills((prev) => prev.map((value, i) => (i === index ? !value : value)));
   };
 
+  /** Saves the review — `POST /deals/:id/reviews` with the star rating and text. */
   const submitReview = async () => {
     if (status !== 'idle' || !offerId || !reviewText.trim()) return;
     setStatus('publishing');
-    try {
-      await reviewService.create(offerId, {
-        rating,
-        comment: reviewText.trim(),
-        tags: FEEDBACK_PILLS.filter((_, index) => selectedPills[index]).map((pill) => pill.label),
-      });
-      const refreshed = await reviewService.listByOffer(offerId);
-      setReviews(toReviewCards(refreshed));
-      setStatus('published');
-      window.setTimeout(() => setStatus('idle'), 1200);
-    } catch {
+    setNotice(null);
+    const highlights = FEEDBACK_PILLS.filter((_, index) => selectedPills[index]).map((pill) => pill.label);
+    const comment = highlights.length ? `${reviewText.trim()}\n\nHighlights: ${highlights.join(', ')}` : reviewText.trim();
+    const result = await feed.submit(comment, rating, feed.signedIn ? undefined : name);
+    if (!result.ok) {
       setStatus('idle');
+      setNotice({ kind: 'error', text: result.message });
+      return;
     }
+    setStatus('published');
+    setReviewText('');
+    setSelectedPills(FEEDBACK_PILLS.map((pill) => pill.initiallySelected));
+    if (result.pending) setNotice({ kind: 'info', text: 'Thanks! Your review will appear once the business approves it.' });
+    window.setTimeout(() => setStatus('idle'), 1200);
+  };
+
+  const toggleHelpful = async (reviewId: string) => {
+    const message = await feed.toggleLike(reviewId);
+    if (message) setNotice({ kind: 'error', text: message });
   };
 
   return (
@@ -192,7 +87,7 @@ export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
         <div className="flex items-center justify-between pb-space-sm">
           <div className="inline-flex items-center gap-1.5 bg-surface-tint-blue px-3 py-1 rounded-full">
             <Icon name="verified" className="text-primary text-[15px]" filled />
-            <span className="font-label-sm text-label-sm text-primary tracking-wide">VERIFIED REDEMPTION REVIEW</span>
+            <span className="font-label-sm text-label-sm text-primary tracking-wide">DEAL REVIEW</span>
           </div>
           <button
             aria-label="Close review dialog"
@@ -205,27 +100,29 @@ export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
         </div>
 
         <div className="flex items-center gap-space-sm bg-surface-container-low p-space-sm rounded-xl mb-space-md">
-          <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
-            <img
-              className="w-full h-full object-cover"
-              alt={deal?.title || 'Deal'}
-              src={deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCFqqLNHhuH9W4IdXGLvTW2t2YDrv9cGefs5r2XEK9XKSaeiyeyogGmSomgI0WgkZnhIPh88NCQm1KW8X_0qAkYf_D06yF-MZzuawfnUA21eQASoFq6TokITjG974O9jkTancNVbKCf0lb5FLwh5FeoTYhctib3ilk2a7ORd69-WnT7dQrPAmS_wkMjTbJNzYkaCZJ1M4FgMmziz_oSrRium3sj4BWwXp8p9IFfD0BtTXtOXdVJKbGQfQ'}
-            />
+          <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-surface-tint-blue flex items-center justify-center">
+            {deal?.image ? (
+              <img className="w-full h-full object-cover" alt={deal?.title || 'Deal'} src={deal.image} />
+            ) : (
+              <Icon name="local_offer" className="text-primary text-[24px]" />
+            )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-label-sm text-label-sm text-text-secondary truncate">{deal?.business || 'Local dining partner'}</p>
-            <h3 className="font-heading-sm text-heading-sm text-on-surface truncate">{deal?.title || 'Featured local deal'}</h3>
-            <div className="flex items-center gap-1 font-caption text-caption text-badge-discount-text mt-0.5">
-              <Icon name="check_circle" className="text-[13px]" filled />
-              <span>{deal?.location || 'Redeemed today'}</span>
-            </div>
+            {deal?.business ? <p className="font-label-sm text-label-sm text-text-secondary truncate">{deal.business}</p> : null}
+            <h3 className="font-heading-sm text-heading-sm text-on-surface truncate">{deal?.title || 'This deal'}</h3>
+            {deal?.location ? (
+              <div className="flex items-center gap-1 font-caption text-caption text-text-secondary mt-0.5">
+                <Icon name="location_on" className="text-[13px]" />
+                <span>{deal.location}</span>
+              </div>
+            ) : null}
           </div>
         </div>
 
         <div className="text-center pt-4 pb-2">
           <h2 className="font-heading-md text-heading-md text-on-surface">Rate your experience</h2>
           <p className="font-body-md text-body-md text-text-secondary mt-1 max-w-[280px] mx-auto">
-            How was your meal and redemption at this local merchant?
+            How was this deal{deal?.business ? ` at ${deal.business}` : ''}?
           </p>
           <div className="flex items-center justify-center gap-2 pt-2 mt-2 mb-2">
             {[1, 2, 3, 4, 5].map((value) => (
@@ -291,96 +188,120 @@ export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
           </div>
         </div>
 
-        <div className="mt-space-md">
-          <p className="font-label-sm text-label-sm text-text-secondary mb-2">Add photos of your meal (optional)</p>
-          <div className="flex items-center gap-space-xs overflow-x-auto pb-1 no-scrollbar">
-            <button
-              type="button"
-              className="flex flex-col items-center justify-center w-20 h-20 rounded-xl bg-surface-subtle text-primary-container hover:bg-surface-tint-blue transition-colors flex-shrink-0 group"
-            >
-              <Icon name="add_a_photo" className="text-[26px] group-active:scale-110 transition-transform" />
-              <span className="font-caption text-caption mt-1">Add Photo</span>
-            </button>
-            {photos.map((photo) => (
-              <div key={photo.src} className="relative w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 shadow-sm">
-                <img className="w-full h-full object-cover" alt={photo.alt} src={photo.src} />
-                <button
-                  aria-label="Remove photo"
-                  type="button"
-                  onClick={() => setPhotos((prev) => prev.filter((item) => item.src !== photo.src))}
-                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-inverse-surface/80 text-on-primary flex items-center justify-center"
-                >
-                  <Icon name="close" className="text-[13px]" />
-                </button>
-              </div>
-            ))}
+        {!feed.signedIn ? (
+          <div className="mt-space-md">
+            <label className="font-label-sm text-label-sm text-text-secondary mb-1.5 block" htmlFor="review-sheet-name">Your name</label>
+            <input
+              id="review-sheet-name"
+              autoComplete="name"
+              maxLength={60}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full bg-surface-subtle rounded-xl px-space-sm py-2.5 font-body-md text-body-md text-on-surface focus:outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_2px_#066cf4]"
+            />
           </div>
-        </div>
+        ) : null}
 
         <div className="pt-5 pb-8 space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-semibold">
-              Recent verified reviews
+              Recent reviews
             </span>
-            <span className="font-caption text-caption text-text-secondary">{reviews.length || 0} review{reviews.length === 1 ? '' : 's'}</span>
+            <span className="font-caption text-caption text-text-secondary">{feed.loading ? '…' : `${feed.total} review${feed.total === 1 ? '' : 's'}`}</span>
           </div>
 
-          {reviews.length === 0 ? (
+          {feed.loading && feed.reviews.length === 0 ? (
+            [0, 1].map((key) => (
+              <div key={key} role="status" aria-busy="true" className="bg-surface-subtle p-space-md rounded-xl space-y-2">
+                <span className="sr-only">Loading reviews</span>
+                <div className="flex items-center gap-space-sm">
+                  <Skeleton className="w-10 h-10 rounded-full" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+            ))
+          ) : feed.loadError ? (
+            <div className="bg-surface-subtle p-space-md rounded-xl text-error text-body-md flex items-center justify-between gap-2">
+              <span>Couldn’t load reviews.</span>
+              <button type="button" onClick={() => void feed.reload()} className="font-semibold underline">Retry</button>
+            </div>
+          ) : feed.reviews.length === 0 ? (
             <div className="bg-surface-subtle p-space-md rounded-xl text-text-secondary text-body-md">
-              There are no verified reviews for this deal yet. Be the first to rate it.
+              There are no reviews for this deal yet. Be the first to rate it.
             </div>
           ) : (
-            reviews.map((review) => (
+            feed.reviews.map((review) => (
               <article key={review.id} className="bg-surface-subtle p-space-md rounded-xl space-y-space-sm shadow-xs">
                 <div className="flex items-start justify-between gap-space-sm">
                   <div className="flex items-center gap-space-sm min-w-0">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center font-label-md text-label-md font-bold shrink-0 bg-surface-container-high text-primary">
-                      {review.initials}
+                      {reviewerInitials(review.reviewerName)}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-space-xs flex-wrap">
-                        <span className="font-label-md text-label-md font-semibold text-text-primary">{review.name}</span>
-                        <Icon name="verified" className="text-primary text-[16px]" filled />
-                        <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-1.5 py-0.5 rounded-full font-semibold">
-                          {review.badge}
-                        </span>
+                        <span className="font-label-md text-label-md font-semibold text-text-primary">{review.reviewerName}</span>
                       </div>
-                      <span className="font-caption text-caption text-text-tertiary">{review.meta}</span>
+                      <span className="font-caption text-caption text-text-tertiary">{reviewTimeLabel(review.createdAt)}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 text-tertiary shrink-0">
-                    <Icon name="star" className="text-[16px]" filled />
-                    <span className="font-label-md text-label-md font-bold text-text-primary">{review.rating}</span>
+                  {review.rating != null ? (
+                    <div className="flex items-center gap-1 text-tertiary shrink-0">
+                      <Icon name="star" className="text-[16px]" filled />
+                      <span className="font-label-md text-label-md font-bold text-text-primary">{review.rating.toFixed(1)}</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {review.createdAt ? (
+                  <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
+                    <Icon name="calendar_today" className="text-[14px]" />
+                    <span>{new Date(review.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                   </div>
-                </div>
+                ) : null}
 
-                <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                  <Icon name="calendar_today" className="text-[14px]" />
-                  <span>{review.date}</span>
-                </div>
+                <p className="font-body-md text-body-md text-text-secondary leading-relaxed whitespace-pre-line">{review.comment}</p>
 
-                <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{review.body}</p>
+                {review.merchantReply ? (
+                  <div className="bg-surface-canvas rounded-lg p-space-sm">
+                    <p className="font-caption text-caption text-primary font-semibold">Reply from {deal?.business ?? 'the business'}</p>
+                    <p className="font-body-md text-body-md text-text-secondary mt-0.5">{review.merchantReply}</p>
+                  </div>
+                ) : null}
 
                 <div className="flex items-center justify-between gap-space-sm pt-space-2xs">
                   <span className="font-caption text-caption text-text-tertiary">Was this review helpful?</span>
                   <div className="flex items-center gap-space-xs">
-                    <span className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-canvas text-text-primary font-label-sm text-label-sm font-medium">
-                      <Icon name="thumb_up" className="text-[16px] text-primary" />
-                      <span>{review.helpful}</span>
-                    </span>
+                    <button
+                      type="button"
+                      aria-pressed={review.isLiked}
+                      aria-label={review.isLiked ? 'Remove helpful vote' : 'Mark review as helpful'}
+                      onClick={() => void toggleHelpful(review.id)}
+                      className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-canvas text-text-primary font-label-sm text-label-sm font-medium active:scale-95 transition-transform"
+                    >
+                      <Icon name="thumb_up" className="text-[16px] text-primary" filled={review.isLiked} />
+                      <span>{review.likesCount}</span>
+                    </button>
                   </div>
                 </div>
               </article>
             ))
           )}
 
+          {notice ? (
+            <p role={notice.kind === 'error' ? 'alert' : 'status'} className={`font-caption text-caption text-center ${notice.kind === 'error' ? 'text-error' : 'text-badge-discount-text'}`}>
+              {notice.text}
+            </p>
+          ) : null}
           <button
             type="button"
-            onClick={submitReview}
+            disabled={!offerId || !reviewText.trim() || status !== 'idle'}
+            onClick={() => void submitReview()}
             className={
               status === 'published'
-                ? 'w-full h-[52px] bg-badge-discount-text text-on-primary rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.28)] active:scale-[0.98] transition-all'
-                : 'w-full h-[52px] bg-primary-container text-on-primary rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.28)] active:scale-[0.98] transition-all'
+                ? 'w-full h-[52px] bg-badge-discount-text text-on-primary rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.28)] active:scale-[0.98] transition-all disabled:opacity-50'
+                : 'w-full h-[52px] bg-primary-container text-on-primary rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.28)] active:scale-[0.98] transition-all disabled:opacity-50'
             }
           >
             {status === 'idle' ? (
@@ -403,8 +324,7 @@ export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
           <div className="flex items-start justify-center gap-1.5 px-2 text-center text-text-tertiary">
             <Icon name="shield" className="text-[15px] flex-shrink-0 mt-0.5 text-badge-discount-text" filled />
             <p className="font-caption text-caption">
-              Reviews are verified by VEMTAP digital receipts and displayed on the business profile to support your local
-              neighborhood.
+              Reviews are public and shown on this deal to help other VEMTAP shoppers.
             </p>
           </div>
         </div>

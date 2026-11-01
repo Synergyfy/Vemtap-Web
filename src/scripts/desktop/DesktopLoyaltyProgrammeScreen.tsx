@@ -821,7 +821,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
         </div>
       )}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
           {toast}
         </div>
       )}

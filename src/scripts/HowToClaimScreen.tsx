@@ -5,8 +5,10 @@ import { ScreenHeader } from '../components/ui/ScreenHeader';
 
 interface HowToClaimScreenProps {
   onBack: () => void;
-  onClaim: () => void;
-  onTerms: () => void;
+  /** Absent when opened without a specific deal (e.g. from the Deals page): the button then browses deals. */
+  onClaim?: () => void;
+  /** Absent without a specific deal — terms belong to a deal. */
+  onTerms?: () => void;
 }
 
 const STEPS: { step: string; title: string; icon: string; body: string; extra: ReactNode }[] = [
@@ -18,7 +20,7 @@ const STEPS: { step: string; title: string; icon: string; body: string; extra: R
     extra: (
       <div className="mt-space-xs inline-flex items-center gap-1.5 px-space-xs py-1 rounded-lg bg-surface-container-low text-text-secondary font-label-sm text-label-sm">
         <Icon name="verified_user" className="text-primary text-[15px]" />
-        <span>Reserved for 48 hours</span>
+        <span>Reserved for 7 days</span>
       </div>
     ),
   },
@@ -106,14 +108,16 @@ export function HowToClaimScreen({ onBack, onClaim, onTerms }: HowToClaimScreenP
                 <p className="font-body-md text-body-md text-text-secondary">
                   Need to cancel? You can release your claim anytime from your saved deals without penalty.
                 </p>
-                <button
-                  type="button"
-                  onClick={onTerms}
-                  className="mt-space-xs inline-flex items-center gap-1 font-label-md text-label-md text-primary active:opacity-75 transition-opacity"
-                >
-                  <span>View Terms &amp; Conditions</span>
-                  <Icon name="arrow_forward" className="text-[16px]" />
-                </button>
+                {onTerms ? (
+                  <button
+                    type="button"
+                    onClick={onTerms}
+                    className="mt-space-xs inline-flex items-center gap-1 font-label-md text-label-md text-primary active:opacity-75 transition-opacity"
+                  >
+                    <span>View Terms &amp; Conditions</span>
+                    <Icon name="arrow_forward" className="text-[16px]" />
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -124,11 +128,11 @@ export function HowToClaimScreen({ onBack, onClaim, onTerms }: HowToClaimScreenP
         <div className="p-margin">
           <button
             type="button"
-            onClick={onClaim}
+            onClick={onClaim ?? onBack}
             className="w-full h-[54px] bg-primary-container active:scale-[0.98] text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-lg shadow-primary-container/25 transition-all"
           >
-            <Icon name="local_activity" className="text-[20px]" />
-            <span>Claim Deal</span>
+            <Icon name={onClaim ? 'local_activity' : 'storefront'} className="text-[20px]" />
+            <span>{onClaim ? 'Claim Deal' : 'Browse deals'}</span>
           </button>
         </div>
       </div>
