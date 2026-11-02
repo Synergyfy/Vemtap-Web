@@ -764,6 +764,21 @@ PATH_ROUTE.set(ROUTE_PATH.discover, 'discover');
 PATH_ROUTE.set(ROUTE_PATH.messages, 'messages');
 PATH_ROUTE.set(ROUTE_PATH.orders, 'orders');
 
+/**
+ * The sample spa flow from the original design (storefront, service catalogue and
+ * detail, booking, checkout and confirmation). Every screen in it reads the sample
+ * "Glow & Serenity" business, so with an API configured it is never shown: live
+ * services are booked from the business's own service page.
+ */
+const SAMPLE_SPA_ROUTES = new Set<Route>([
+  'spa-storefront',
+  'spa-services',
+  'service-detail',
+  'spa-booking',
+  'spa-booking-checkout',
+  'spa-booking-confirmed',
+]);
+
 const OVERLAY_ROUTES = new Set<Route>([
   'comments',
   'reviews',
@@ -1678,6 +1693,12 @@ function AppInner() {
   useEffect(() => {
     if (route === 'spa-booking-confirmed' && !booking.confirmedRef) setRouteState('spa-booking');
   }, [route, booking.confirmedRef]);
+
+  // Live: a sample spa page goes to the real business being viewed, else to Discover.
+  useEffect(() => {
+    if (!hasApiConfig() || !SAMPLE_SPA_ROUTES.has(route)) return;
+    setRouteState(selectedBusiness ? 'business-profile' : 'discover');
+  }, [route, selectedBusiness]);
 
   useEffect(() => {
     if (route === 'order-placed' && !orderSummary) setRouteState('home');
@@ -3058,6 +3079,8 @@ function AppInner() {
     // Sign In opened from the business sign-up modal: authenticating resumes
     // business setup instead of dropping the merchant into the customer feed.
     const resumeBusinessSetup = signInFrom === 'business-auth';
+    // Never paint a sample spa page in live mode while the redirect above runs.
+    if (hasApiConfig() && SAMPLE_SPA_ROUTES.has(route)) return null;
     switch (route) {
     case 'welcome':
       if (isDesktop) return <DesktopWelcomeScreen onNav={nav('start-vemtap')} />;
