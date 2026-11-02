@@ -4,6 +4,10 @@ import { Icon } from '../components/ui/Icon';
 import { notificationService, type NotificationItem } from '../services/notificationService';
 import { hasApiConfig } from '../services/api/client';
 import { useBusinessNotificationFeed, type BusinessFeedCategory } from '../hooks/business/useHeaderNotifications';
+import {
+  resolveCustomerNotificationDestination,
+  type CustomerNotificationDestination,
+} from '../utils/customerNotificationDestination';
 
 interface NotificationsScreenProps {
   onBack: () => void;
@@ -13,6 +17,7 @@ interface NotificationsScreenProps {
   onOpenRewards: () => void;
   onBrowseDeals: () => void;
   onOpenPreferences: () => void;
+  onOpenDestination?: (destination: CustomerNotificationDestination) => void;
   /** Business portal: show the business's feed (`GET /notifications/business`), not the shopper inbox. */
   business?: boolean;
 }
@@ -42,6 +47,7 @@ interface FeedItem {
   note?: ReactNode;
   unread: boolean;
   action: ItemAction;
+  destination?: CustomerNotificationDestination;
 }
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
@@ -65,6 +71,7 @@ export function NotificationsScreen({
   onOpenRewards,
   onBrowseDeals,
   onOpenPreferences,
+  onOpenDestination,
   business = false,
 }: NotificationsScreenProps) {
   const [shopperItems, setItems] = useState<FeedItem[]>([]);
@@ -112,7 +119,8 @@ export function NotificationsScreen({
           time: item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Recently',
           body: item.message,
           unread: Boolean(item.unread),
-          action: item.type === 'reward' ? 'rewards' : item.type === 'booking' ? 'booking' : 'deals',
+          action: item.category === 'rewards' ? 'rewards' : item.category === 'bookings' ? 'booking' : 'deals',
+          destination: resolveCustomerNotificationDestination(item),
         }));
 
         setItems(nextItems);
@@ -149,7 +157,8 @@ export function NotificationsScreen({
     }
     setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, unread: false } : entry)));
     void notificationService.markAsRead(item.id).catch(() => undefined);
-    if (item.action === 'pass') onOpenPass();
+    if (onOpenDestination && item.destination) onOpenDestination(item.destination);
+    else if (item.action === 'pass') onOpenPass();
     else if (item.action === 'booking') onOpenBooking();
     else if (item.action === 'gift') onOpenGift();
     else if (item.action === 'rewards') onOpenRewards();

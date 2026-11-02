@@ -28,6 +28,7 @@ import { AREA_NOT_FOUND, findPlace, getCurrentPlace, type PickedPlace } from './
 import { ClaimsProvider, currentVoucher, rememberGiftLink, useClaims, type ClaimHolder, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
 import { parsePrice } from './utils/format';
+import type { CustomerNotificationDestination } from './utils/customerNotificationDestination';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
 import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
 import { CheckoutScreen } from './scripts/CheckoutScreen';
@@ -756,6 +757,12 @@ const ROUTE_PATH: Record<Route, string> = {
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
+// Several routes share a placeholder path (e.g. every business sub-page is `/discover` until a
+// business is chosen). Loading or going Back to that path must open the page it names, not
+// whichever route was listed last (`/discover` resolved to the sample booking confirmation).
+PATH_ROUTE.set(ROUTE_PATH.discover, 'discover');
+PATH_ROUTE.set(ROUTE_PATH.messages, 'messages');
+PATH_ROUTE.set(ROUTE_PATH.orders, 'orders');
 
 const OVERLAY_ROUTES = new Set<Route>([
   'comments',
@@ -886,6 +893,26 @@ const CUSTOMER_SHELL_ROUTES = new Set<Route>([
 /** A voucher's own pass page, the link in its QR. */
 const PASS_PATH = '/my/claimed-deal/';
 const passIdFromPath = (path: string) => (path.startsWith(PASS_PATH) ? decodeURIComponent(path.slice(PASS_PATH.length).replace(/\/+$/, '')) || null : null);
+const pathRef = (value: string): string | null => {
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded && !decoded.includes('/') ? decoded : null;
+  } catch {
+    return null;
+  }
+};
+const bookingRefFromPath = (path: string): string | null => {
+  const match = /^\/orders\/booking\/([^/]+)$/.exec(path);
+  return match ? pathRef(match[1]) : null;
+};
+const conversationRefFromPath = (path: string): string | null => {
+  const match = /^\/messages\/(?:conversation\/)?([^/]+)$/.exec(path);
+  return match && match[1] !== 'conversation' ? pathRef(match[1]) : null;
+};
+const orderRefFromPath = (path: string): string | null => {
+  const match = /^\/orders\/([^/]+)$/.exec(path);
+  return match && match[1] !== 'booking' && match[1] !== 'order' ? pathRef(match[1]) : null;
+};
 
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
@@ -1013,6 +1040,9 @@ function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume
   if (path === ROUTE_PATH['gift-reject']) return 'gift-reject';
   if (path.startsWith('/deals/')) return 'deal-detail';
   if (path.startsWith(PASS_PATH)) return guardRoute('claimed-deal', authed, isDesktop);
+  if (bookingRefFromPath(path)) return guardRoute('booking-detail', authed, isDesktop);
+  if (orderRefFromPath(path)) return guardRoute('order-detail', authed, isDesktop);
+  if (conversationRefFromPath(path)) return guardRoute('conversation', authed, isDesktop);
   const direct = PATH_ROUTE.get(path);
   if (authed && hasApiConfig() && isSignedOutPath(path)) return 'home';
   // A page load can't restore a sign-up in progress unless a business one was saved.
@@ -1218,8 +1248,8 @@ function AppInner() {
    */
   const [businessChoiceOpen, setBusinessChoiceOpen] = useState(false);
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
-  const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
-  const [activeBookingRef, setActiveBookingRef] = useState<string | undefined>(undefined);
+  const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(() => orderRefFromPath(window.location.pathname) ?? undefined);
+  const [activeBookingRef, setActiveBookingRef] = useState<string | undefined>(() => bookingRefFromPath(window.location.pathname) ?? undefined);
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   /** Where "How to Claim" was opened: a deal page (claim that deal) or the Deals feed (no deal to claim). */
   const [howToClaimFrom, setHowToClaimFrom] = useState<Route>('deal-detail');
@@ -1230,7 +1260,7 @@ function AppInner() {
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
   // The voucher picked on the dashboard, so its pass and contact sheet show that one.
   const [dashboardClaimRef, setDashboardClaimRef] = useState<string | null>(null);
-  const [activeConversation, setActiveConversation] = useState('');
+  const [activeConversation, setActiveConversation] = useState(() => conversationRefFromPath(window.location.pathname) ?? '');
   useCustomerMessagingRealtime(authed);
   useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
   const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
@@ -1594,6 +1624,12 @@ function AppInner() {
     const onPopState = () => {
       const path = window.location.pathname;
       setRouteState(entryRoute(path, authed, isDesktop));
+      const orderRef = orderRefFromPath(path);
+      if (orderRef) setActiveOrderRef(orderRef);
+      const bookingRef = bookingRefFromPath(path);
+      if (bookingRef) setActiveBookingRef(bookingRef);
+      const conversationRef = conversationRefFromPath(path);
+      if (conversationRef) setActiveConversation(conversationRef);
       if (authed && hasApiConfig() && isSignedOutPath(path)) setReturningToShell(true);
       const match = resolveBusinessPath(path);
       if (match) {
@@ -1660,6 +1696,23 @@ function AppInner() {
     setRoute('deal-detail', deal ?? null);
     // Reopening the same deal refreshes its counts in the background.
     liveDeal.reload();
+  };
+
+  const openCustomerNotificationDestination = (destination: CustomerNotificationDestination) => {
+    const target = entryRoute(destination.path, authed, isDesktop);
+    if (target === 'not-found') return;
+
+    if (destination.kind === 'order') setActiveOrderRef(destination.ref);
+    if (destination.kind === 'booking') setActiveBookingRef(destination.ref);
+    if (destination.kind === 'conversation') setActiveConversation(destination.ref);
+    if (destination.path.startsWith(PASS_PATH)) setClaimedFrom('notifications');
+    if (destination.kind === 'deal') setSelectedDeal(null);
+
+    if (window.location.pathname !== destination.path) {
+      window.history.pushState(null, '', destination.path);
+    }
+    setRouteState(target);
+    if (destination.kind === 'deal') liveDeal.reload();
   };
 
   /** Opens a live business page by its public code (`uniqueCode`). */
@@ -4816,6 +4869,7 @@ function AppInner() {
             onOpenRewards={() => setRoute('rewards')}
             onBrowseDeals={() => setRoute('discover')}
             onOpenPreferences={() => setRoute('preferences')}
+            onOpenDestination={openCustomerNotificationDestination}
           />
         );
       return (
@@ -4833,6 +4887,7 @@ function AppInner() {
           onOpenRewards={() => setRoute('rewards')}
           onBrowseDeals={() => setRoute('discover')}
           onOpenPreferences={() => setRoute('preferences')}
+          onOpenDestination={openCustomerNotificationDestination}
         />
       );
 
