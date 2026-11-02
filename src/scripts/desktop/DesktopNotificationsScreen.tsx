@@ -165,8 +165,7 @@ export function DesktopNotificationsScreen({
                 Notification Preferences
               </h1>
               <p className="font-body-lg text-body-lg text-text-secondary mt-2">
-                Your inbox for deal claims, bookings, gifts, and reward drops — tailored to the nearby saved areas and
-                claims on your Apo hyper-local grid.
+                Your inbox for deal claims, bookings, gifts, and reward drops from the businesses you use.
               </p>
             </div>
             <button

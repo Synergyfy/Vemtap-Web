@@ -61,8 +61,12 @@ export function ClaimConfirmSheet({ open, onClose, onConfirm, detail, email }: C
         <div className="flex flex-col w-full px-margin pb-safe">
           <div className="flex items-center justify-between w-full mb-space-sm">
             <div className="flex items-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-xs py-1 rounded-full font-label-sm text-label-sm">
-              <Icon name="timer" filled className="text-[16px]" />
-              <span>Reserved for 10:00 mins</span>
+              <Icon name={detail?.endDate ? 'timer' : 'redeem'} filled className="text-[16px]" />
+              <span>
+                {detail?.endDate
+                  ? `Deal ends ${detail.endDate.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}`
+                  : 'Free to claim'}
+              </span>
             </div>
             <button
               aria-label="Close dialog"

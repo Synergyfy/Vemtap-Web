@@ -1,4 +1,5 @@
 import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
+import { useSessionUser } from '../../hooks/useSessionUser';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../../components/AccountRows';
@@ -87,6 +88,9 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
   const { fullName, email, initials, phone } = useProfile();
   // Live: no sample counts or totals until real figures are wired; demo keeps them.
   const live = hasApiConfig();
+  const sessionUser = useSessionUser().data;
+  // Live: the tick shows only once the email is verified; the demo keeps it.
+  const verified = !live || sessionUser?.emailVerified === true;
   const totalSaved = useTotalSaved();
   const { claims, claimsLoading } = useClaims();
   const activeDeals = activeVouchers(claims).length;
@@ -115,8 +119,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                 Account Overview
               </h1>
               <p className="font-body-lg text-body-lg text-text-secondary mt-2">
-                Manage your profile, deals, messages, orders, savings, and support in one place across the Apo
-                hyper-local grid.
+                Manage your profile, deals, messages, orders, savings, and support in one place.
               </p>
             </div>
             <div className="flex items-center gap-space-xs self-start md:self-auto shrink-0">
@@ -152,17 +155,19 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                       <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner">
                         {initials || 'U'}
                       </div>
-                      <span
-                        className="absolute bottom-0 right-0 w-4 h-4 bg-badge-discount-text rounded-full flex items-center justify-center text-surface shadow"
-                        title="Verified Customer"
-                      >
-                        <Icon name="check" className="text-[11px]" filled />
-                      </span>
+                      {verified && (
+                        <span
+                          className="absolute bottom-0 right-0 w-4 h-4 bg-badge-discount-text rounded-full flex items-center justify-center text-surface shadow"
+                          title="Verified Customer"
+                        >
+                          <Icon name="check" className="text-[11px]" filled />
+                        </span>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-space-2xs">
                         <h2 className="font-heading-md text-heading-md text-text-primary truncate">{fullName || 'User'}</h2>
-                        <Icon name="verified" className="text-primary-container text-[18px]" filled />
+                        {verified && <Icon name="verified" className="text-primary-container text-[18px]" filled />}
                       </div>
                       <p className="font-body-md text-body-md text-text-secondary truncate">{phone || 'No phone number'}</p>
                       <p className="font-caption text-caption text-text-tertiary truncate">{email || 'No email'}</p>
@@ -243,7 +248,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                   Sign Out
                 </button>
                 <p className="font-caption text-caption text-text-tertiary text-center">
-                  VEMTAP Consumer v2.4.0 • Made with pride in Abuja
+                  VEMTAP Consumer • Made with pride in Abuja
                 </p>
               </section>
             </div>

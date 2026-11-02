@@ -8,6 +8,8 @@ import { messageService, type MessageThread, type MessageThreadFilter } from '..
 interface MessagesScreenProps {
   onTab: (tab: MobileTabKey) => void;
   onOpen: (threadId: string) => void;
+  /** Opens the screen where message notifications are switched on or off. */
+  onOpenSettings?: () => void;
 }
 
 type InboxChipKey = 'all' | 'unread' | 'deals' | 'bookings';
@@ -25,7 +27,7 @@ function matchesFilter(thread: MessageThread, filter: InboxChipKey): boolean {
   return thread.filters.includes(filter as MessageThreadFilter);
 }
 
-export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
+export function MessagesScreen({ onTab, onOpen, onOpenSettings }: MessagesScreenProps) {
   const [chip, setChip] = useState<InboxChipKey>('all');
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
@@ -109,10 +111,10 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
               <Icon name="search" className="text-[22px]" />
             </button>
             <button
-              aria-label="More options"
+              aria-label="Notification settings"
               className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
               type="button"
-              onClick={() => showToast('Messaging preferences and notifications are up to date.')}
+              onClick={onOpenSettings}
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
@@ -147,10 +149,13 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
               </button>
             ) : (
               <button
-                aria-label="Filters"
+                aria-label="Show all conversations"
                 className="w-7 h-7 flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-container-high transition-colors"
                 type="button"
-                onClick={() => showToast('Showing all active conversations.')}
+                onClick={() => {
+                  setChip('all');
+                  showToast('Showing all conversations');
+                }}
               >
                 <Icon name="tune" className="text-[18px]" />
               </button>

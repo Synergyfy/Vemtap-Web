@@ -133,7 +133,6 @@ import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDeta
 import { DesktopClaimSuccessScreen } from './scripts/desktop/DesktopClaimSuccessScreen';
 import { DesktopGiftSentScreen } from './scripts/desktop/DesktopGiftSentScreen';
 import { DesktopClaimedDealScreen } from './scripts/desktop/DesktopClaimedDealScreen';
-import { DesktopMerchantChatScreen } from './scripts/desktop/DesktopMerchantChatScreen';
 import { DesktopDealTermsScreen } from './scripts/desktop/DesktopDealTermsScreen';
 import { DesktopStorefrontMenuScreen } from './scripts/desktop/DesktopStorefrontMenuScreen';
 import { DesktopCheckoutScreen } from './scripts/desktop/DesktopCheckoutScreen';
@@ -170,7 +169,6 @@ import { HowToClaimScreen } from './scripts/HowToClaimScreen';
 import { ClaimSuccessScreen } from './scripts/ClaimSuccessScreen';
 import { GiftSentScreen, type GiftRecipientSummary } from './scripts/GiftSentScreen';
 import { ClaimedDealScreen } from './scripts/ClaimedDealScreen';
-import { MerchantChatScreen } from './scripts/MerchantChatScreen';
 import { DealTermsScreen } from './scripts/DealTermsScreen';
 import { DiscoverScreen } from './scripts/DiscoverScreen';
 import { MerchantDealsScreen } from './scripts/MerchantDealsScreen';
@@ -1222,7 +1220,6 @@ function AppInner() {
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
   const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
   const [activeBookingRef, setActiveBookingRef] = useState<string | undefined>(undefined);
-  const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   /** Where "How to Claim" was opened: a deal page (claim that deal) or the Deals feed (no deal to claim). */
   const [howToClaimFrom, setHowToClaimFrom] = useState<Route>('deal-detail');
@@ -1748,6 +1745,7 @@ function AppInner() {
     dealOldPrice: liveDeal.detail?.oldPrice ?? (parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price)),
     discountLabel: selectedDeal?.discountLabel,
     dealPhone: liveDeal.detail?.phone ?? undefined,
+    branchId: liveDeal.detail?.branchId ?? undefined,
     dealLatitude: liveDeal.detail?.latitude ?? undefined,
     dealLongitude: liveDeal.detail?.longitude ?? undefined,
     terms: liveDeal.detail?.terms,
@@ -4115,15 +4113,19 @@ function AppInner() {
       return <>{renderClaimed()}</>;
     }
 
-    case 'claimed-contact':
+    case 'claimed-contact': {
+      const contactClaim = walletClaim ?? currentVoucher(claims.claims);
       if (isDesktop)
         return (
           <>
             {renderClaimed()}
             <ContactBusinessModal
               open
-              code={(walletClaim ?? currentVoucher(claims.claims))?.code}
-              onChat={() => setRoute('merchant-chat')}
+              code={contactClaim?.code}
+              businessName={contactClaim?.dealBusiness}
+              phone={contactClaim?.dealPhone}
+              address={contactClaim?.dealLocation}
+              onChat={() => openBranchChat(contactClaim?.branchId)}
               onClose={() => setRoute('claimed-deal')}
             />
           </>
@@ -4131,9 +4133,18 @@ function AppInner() {
       return (
         <>
           {renderClaimed()}
-          <ContactBusinessSheet open code={(walletClaim ?? currentVoucher(claims.claims))?.code} onChat={() => setRoute('merchant-chat')} onClose={() => setRoute('claimed-deal')} />
+          <ContactBusinessSheet
+            open
+            code={contactClaim?.code}
+            businessName={contactClaim?.dealBusiness}
+            phone={contactClaim?.dealPhone}
+            address={contactClaim?.dealLocation}
+            onChat={() => openBranchChat(contactClaim?.branchId)}
+            onClose={() => setRoute('claimed-deal')}
+          />
         </>
       );
+    }
 
     case 'claimed-terms': {
       // Show the terms frozen onto the claim, not whatever the live offer has.
@@ -4152,28 +4163,6 @@ function AppInner() {
         </>
       );
     }
-
-    case 'merchant-chat':
-      if (isDesktop)
-        return (
-          <DesktopMerchantChatScreen
-            onNav={feedNav}
-            onBack={() => setRoute(chatFrom)}
-            onViewQr={() => {
-              setClaimedFrom('merchant-chat');
-              setRoute('claimed-deal');
-            }}
-          />
-        );
-      return (
-        <MerchantChatScreen
-          onBack={() => setRoute(chatFrom)}
-          onViewQr={() => {
-            setClaimedFrom('merchant-chat');
-            setRoute('claimed-deal');
-          }}
-        />
-      );
 
     case 'deal-terms':
       if (isDesktop)
@@ -4362,10 +4351,7 @@ function AppInner() {
             order={orderSummary}
             onClose={() => setRoute('home')}
             onHome={() => setRoute('discover')}
-            onTrack={() => {
-              setChatFrom('order-placed');
-              setRoute('merchant-chat');
-            }}
+            onTrack={() => openBranchChat(orderSummary?.merchantId)}
           />
         );
       return (
@@ -4373,10 +4359,7 @@ function AppInner() {
           order={orderSummary}
           onClose={() => setRoute('home')}
           onHome={() => setRoute('discover')}
-          onTrack={() => {
-            setChatFrom('order-placed');
-            setRoute('merchant-chat');
-          }}
+          onTrack={() => openBranchChat(orderSummary?.merchantId)}
         />
       );
 
@@ -4577,11 +4560,14 @@ function AppInner() {
         />
       );
 
+    // The old scripted merchant chat; a voucher's chat now opens the real branch thread.
+    case 'merchant-chat':
     case 'messages':
       if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} />;
       return (
         <MessagesScreen
           onTab={(tab) => setRoute(tab)}
+          onOpenSettings={() => setRoute('account-settings')}
           onOpen={(threadId) => {
             setActiveConversation(threadId);
             setRoute('conversation');
@@ -4919,13 +4905,11 @@ function AppInner() {
           <DesktopScanScreen
             onNav={feedNav}
             onBack={() => setRoute('dashboard')}
-            onOpenTableMenu={() => setRoute('public-pos-menu')}
           />
         );
       return (
         <ScanScreen
           onBack={() => setRoute('dashboard')}
-          onOpenTableMenu={() => setRoute('public-pos-menu')}
         />
       );
 

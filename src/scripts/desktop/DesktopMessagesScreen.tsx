@@ -73,7 +73,6 @@ interface Thread {
   dossier: MerchantDossierData;
 }
 
-const SMART_REPLIES = ['Yes, please!', 'On my way now', 'Can I change my time?', 'Table for 2 confirmed'];
 
 const emptyDossier = (): MerchantDossierData => ({
   category: 'Business messaging',
@@ -116,6 +115,9 @@ const mapThreadToDesktopThread = (thread: MessageThread): Thread => ({
       }
     : undefined,
 });
+
+/** A dossier value the API actually filled in. */
+const hasValue = (value: string | undefined | null) => Boolean(value && value !== '—');
 
 function threadInitials(name: string): string {
   const words = name.split(' ').filter((word) => word.length > 2 && word !== 'And');
@@ -211,6 +213,9 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
     : emptyDossier();
   const selected = selectedThread ? { ...selectedThread, dossier, phone: selectedThread.phone || business?.phone || '', location: selectedThread.location || business?.address || '' } : null;
 
+  const telemetryRows = selected
+    ? [selected.dossier.telemetry.avgReply, selected.dossier.telemetry.hours, selected.dossier.telemetry.dealRedemption, selected.dossier.telemetry.tier].filter(hasValue).length
+    : 0;
   const isUnread = (t: Thread) => t.unread && !readIds.includes(t.id);
   const unreadCount = threads.filter(isUnread).length;
 
@@ -584,12 +589,6 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
               {/* Message Stream */}
               <div ref={streamRef} className="flex-1 overflow-y-auto p-space-md space-y-space-sm bg-surface-subtle/30">
-                <div className="flex justify-center">
-                  <span className="px-space-xs py-space-2xs rounded-full bg-surface border border-border font-caption text-caption text-text-tertiary">
-                    Today · Oct 11, 2026
-                  </span>
-                </div>
-
                 {messages.map((m, index) => {
                   const isYou = m.sender === 'you';
                   const divider =
@@ -685,7 +684,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
               <div className="p-space-sm border-t border-border space-y-space-xs">
                 {/* Smart Replies */}
                 <div className="flex flex-wrap gap-space-2xs">
-                  {SMART_REPLIES.map((r) => (
+                  {(liveThread?.quickReplies ?? []).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -833,20 +832,26 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
                   {/* Contact items */}
                   <div className="mt-space-sm space-y-space-2xs font-body-sm text-body-sm text-on-surface-variant">
-                    <div className="flex items-center gap-space-xs truncate">
-                      <Icon name="call" className="text-[14px] text-primary shrink-0" />
-                      <a href={`tel:${selected.phone}`} className="hover:underline">
-                        {selected.phone}
-                      </a>
-                    </div>
-                    <div className="flex items-center gap-space-xs truncate">
-                      <Icon name="mail" className="text-[14px] text-primary shrink-0" />
-                      <span>{selected.dossier.email}</span>
-                    </div>
-                    <div className="flex items-center gap-space-xs truncate">
-                      <Icon name="location_on" className="text-[14px] text-primary shrink-0" />
-                      <span>{selected.location}</span>
-                    </div>
+                    {selected.phone && (
+                      <div className="flex items-center gap-space-xs truncate">
+                        <Icon name="call" className="text-[14px] text-primary shrink-0" />
+                        <a href={`tel:${selected.phone}`} className="hover:underline">
+                          {selected.phone}
+                        </a>
+                      </div>
+                    )}
+                    {hasValue(selected.dossier.email) && (
+                      <div className="flex items-center gap-space-xs truncate">
+                        <Icon name="mail" className="text-[14px] text-primary shrink-0" />
+                        <span>{selected.dossier.email}</span>
+                      </div>
+                    )}
+                    {selected.location && (
+                      <div className="flex items-center gap-space-xs truncate">
+                        <Icon name="location_on" className="text-[14px] text-primary shrink-0" />
+                        <span>{selected.location}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -861,7 +866,9 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       { label: 'Orders', value: selected.dossier.engagement.orders },
                       { label: 'Deals Used', value: selected.dossier.engagement.deals },
                       { label: 'Tap Points', value: selected.dossier.engagement.points },
-                    ].map((s) => (
+                    ]
+                      .filter((s) => hasValue(s.value))
+                      .map((s) => (
                       <div key={s.label} className="p-space-xs rounded-xl bg-surface-subtle border border-border">
                         <div className="font-caption text-caption text-on-surface-variant">{s.label}</div>
                         <div className="font-heading-sm text-heading-sm text-on-surface">{s.value}</div>
@@ -871,6 +878,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                 </div>
 
                 {/* Relationship Telemetry */}
+                {telemetryRows > 0 && (
                 <div className="p-space-sm">
                   <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">
                     Merchant Telemetry
@@ -881,13 +889,16 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       { label: 'Operating hours', value: selected.dossier.telemetry.hours },
                       { label: 'Deal redemption', value: selected.dossier.telemetry.dealRedemption },
                       { label: 'Patron tier', value: selected.dossier.telemetry.tier },
-                    ].map((r) => (
+                    ]
+                      .filter((r) => hasValue(r.value))
+                      .map((r) => (
                       <div key={r.label} className="flex items-center justify-between">
                         <span className="text-on-surface-variant">{r.label}</span>
                         <span className="text-on-surface font-medium">{r.value}</span>
                       </div>
                     ))}
                   </div>
+                  {hasValue(selected.dossier.telemetry.tier) && (
                   <div className="mt-space-sm">
                     <div className="flex items-center justify-between font-label-sm text-label-sm mb-space-2xs">
                       <span className="text-on-surface-variant">Tier Progress</span>
@@ -900,9 +911,13 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       />
                     </div>
                   </div>
+                  )}
                 </div>
 
+                )}
+
                 {/* Popular / Signature Items */}
+                {(selected.dossier.popularItems.length > 0 || selected.verified) && (
                 <div className="p-space-sm">
                   <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">
                     Popular Items
@@ -917,11 +932,14 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       </span>
                     ))}
                   </div>
-                  <div className="mt-space-sm flex items-center gap-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text w-fit">
-                    <Icon name="verified" className="text-[14px]" filled />
-                    <span className="font-caption text-caption font-semibold">VEMTAP Tap-Pass verified</span>
-                  </div>
+                  {selected.verified && (
+                    <div className="mt-space-sm flex items-center gap-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text w-fit">
+                      <Icon name="verified" className="text-[14px]" filled />
+                      <span className="font-caption text-caption font-semibold">VEMTAP verified business</span>
+                    </div>
+                  )}
                 </div>
+                )}
 
                 {/* Storefront button */}
                 <div className="p-space-sm">
@@ -936,6 +954,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                 </div>
 
                 {/* Notes and Policies */}
+                {selected.dossier.notes.length > 0 && (
                 <div className="p-space-sm">
                   <div className="flex items-center justify-between mb-space-xs">
                     <span className="font-label-sm text-label-sm text-on-surface-variant">Merchant Information</span>
@@ -952,6 +971,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                     ))}
                   </ul>
                 </div>
+                )}
               </div>
 
               {/* Bottom Quick Actions */}

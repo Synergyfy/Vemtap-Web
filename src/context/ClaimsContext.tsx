@@ -35,6 +35,8 @@ export interface ClaimRecord {
   /** The business's public code, for opening its page. */
   businessCode?: string;
   businessVerified?: boolean;
+  /** The branch that honours the voucher; opens the customer's chat with it. */
+  branchId?: string;
   dealLocation?: string;
   dealPrice?: number;
   dealOldPrice?: number;
@@ -77,6 +79,7 @@ export interface ClaimInput {
   dealOldPrice?: number;
   discountLabel?: string;
   dealPhone?: string;
+  branchId?: string;
   dealLatitude?: number;
   dealLongitude?: number;
   recipient?: ClaimParty;
@@ -283,6 +286,7 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
         : undefined,
       businessCode: typeof offer.businessCode === 'string' && offer.businessCode ? offer.businessCode : undefined,
       businessVerified: typeof offer.businessVerified === 'boolean' ? offer.businessVerified : undefined,
+      branchId: typeof offer.branchId === 'string' && offer.branchId ? offer.branchId : undefined,
       dealLocation: typeof offer.branchAddress === 'string' ? offer.branchAddress : typeof offer.branchName === 'string' && offer.branchName ? offer.branchName : undefined,
       dealPrice: toNumber(offer.calculatedPrice),
       dealOldPrice: toNumber(offer.originalPrice),
@@ -412,6 +416,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         dealOldPrice: input.dealOldPrice,
         discountLabel: input.discountLabel,
         dealPhone: input.dealPhone,
+        branchId: input.branchId,
         dealLatitude: input.dealLatitude,
         dealLongitude: input.dealLongitude,
         terms: input.terms,
