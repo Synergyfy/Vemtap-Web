@@ -29,6 +29,12 @@ export interface ClaimRecord {
   dealTitle: string;
   dealBusiness: string;
   dealImage?: string;
+  dealDescription?: string;
+  /** What the voucher covers, from the claim itself so it survives the deal ending. */
+  dealItems?: { id: string; name: string }[];
+  /** The business's public code, for opening its page. */
+  businessCode?: string;
+  businessVerified?: boolean;
   dealLocation?: string;
   dealPrice?: number;
   dealOldPrice?: number;
@@ -122,11 +128,18 @@ export const activeVouchers = (claims: ClaimRecord[], now = Date.now()): ClaimRe
   claims.filter(
     (entry) =>
       entry.kind !== 'gift' &&
+      !entry.sentForOther &&
       entry.status === 'claimed' &&
       entry.state !== 'REDEEMED' &&
       entry.state !== 'EXPIRED' &&
       (entry.expiresAt === undefined || entry.expiresAt > now),
   );
+
+/** The customer's own vouchers that were redeemed or ran out. */
+export const pastVouchers = (claims: ClaimRecord[], now = Date.now()): ClaimRecord[] => {
+  const active = new Set(activeVouchers(claims, now));
+  return claims.filter((entry) => entry.kind !== 'gift' && !entry.sentForOther && entry.status === 'claimed' && !active.has(entry));
+};
 
 /** "Expires 12 Nov", or a neutral label for a voucher with no end date. */
 export const voucherExpiryLabel = (claim: ClaimRecord): string =>
@@ -262,6 +275,14 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
       dealTitle,
       dealBusiness: businessName,
       dealImage: typeof item.dealImage === 'string' ? item.dealImage : typeof offer.mainImage === 'string' ? offer.mainImage : typeof offer.image === 'string' ? offer.image : undefined,
+      dealDescription: typeof offer.description === 'string' && offer.description.trim() ? offer.description.trim() : undefined,
+      dealItems: Array.isArray(offer.items)
+        ? (offer.items as { id?: unknown; name?: unknown }[]).flatMap((entry) =>
+            typeof entry?.id === 'string' && typeof entry.name === 'string' ? [{ id: entry.id, name: entry.name }] : [],
+          )
+        : undefined,
+      businessCode: typeof offer.businessCode === 'string' && offer.businessCode ? offer.businessCode : undefined,
+      businessVerified: typeof offer.businessVerified === 'boolean' ? offer.businessVerified : undefined,
       dealLocation: typeof offer.branchAddress === 'string' ? offer.branchAddress : typeof offer.branchName === 'string' && offer.branchName ? offer.branchName : undefined,
       dealPrice: toNumber(offer.calculatedPrice),
       dealOldPrice: toNumber(offer.originalPrice),

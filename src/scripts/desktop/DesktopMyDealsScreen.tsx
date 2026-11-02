@@ -1,12 +1,21 @@
 import { useState } from 'react';
+import { ClaimedTermsModal } from '../../components/desktop/dialogs/ClaimedTermsModal';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
-import { useClaims, type ClaimRecord } from '../../context/ClaimsContext';
+import { activeVouchers, pastVouchers, useClaims, voucherExpiryLabel, type ClaimRecord } from '../../context/ClaimsContext';
+import { useLocation } from '../../context/LocationContext';
+import { useTotalSaved } from '../../hooks/useCustomerDashboard';
+import { useDealDetail } from '../../hooks/useDealDetail';
+import { useVoucherQr } from '../../hooks/useVoucherQr';
+import { hasApiConfig } from '../../services/api/client';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { useProfile } from '../../context/ProfileContext';
 import { maskPhone } from '../../utils/format';
 
 interface DesktopMyDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
+  /** Opens the live page of the voucher's business. */
+  onOpenBusiness: (business: { code: string; id?: string; name?: string }) => void;
 }
 
 const FILTERS = [
@@ -34,47 +43,51 @@ const initialsOf = (name: string) =>
     .toUpperCase()
     .slice(0, 2) || 'VT';
 
-const INCLUDED = [
-  'Choice of Dry-aged Angus burger or marinated grilled chicken supreme',
-  'Truffle parmesan hand-cut fries or garden crisp salad',
-  'Cold-pressed peach cooler or signature hibiscus iced tea',
-];
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(value);
 
-export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
-  const { claims, removeClaim, getClaimQr, getGift, deleteClaim } = useClaims();
+export function DesktopMyDealsScreen({ onNav, onOpenBusiness }: DesktopMyDealsScreenProps) {
+  const { claims, claimsLoading, removeClaim, deleteClaim } = useClaims();
+  const { district } = useLocation();
+  const totalSaved = useTotalSaved();
+  const [query, setQuery] = useState('');
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [termsOpen, setTermsOpen] = useState(false);
   const profile = useProfile();
   const [activeFilter, setActiveFilter] = useState<FilterKey>('active');
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
 
-  const openLivePassPreview = async (claim: ClaimRecord | null) => {
-    if (!claim) return;
+  const needle = query.trim().toLowerCase();
+  const matchesSearch = (claim: ClaimRecord) =>
+    !needle ||
+    [claim.dealBusiness, claim.dealTitle, claim.ref, claim.recipient?.name ?? '', claim.recipient?.email ?? '']
+      .join(' ')
+      .toLowerCase()
+      .includes(needle);
 
-    if (claim.sentForOther) return;
-    const identifier = claim.id ?? claim.ref ?? claim.code;
-    try {
-      if (claim.kind === 'gift') {
-        await getGift(identifier);
-      } else {
-        await getClaimQr(identifier);
-      }
-    } catch {
-      // Keep the local pass preview visible if the backend endpoint is unavailable.
-    }
-  };
-
-  const activeClaims = claims.filter((claim) => claim.kind !== 'gift' && !claim.sentForOther);
-  const giftedClaims = claims.filter((claim) => claim.kind === 'gift' || claim.sentForOther);
+  const activeClaims = activeVouchers(claims).filter(matchesSearch);
+  const pastClaims = pastVouchers(claims).filter(matchesSearch);
+  const giftedClaims = claims.filter((claim) => (claim.kind === 'gift' || claim.sentForOther) && matchesSearch(claim));
   const counts: Record<FilterKey, number> = {
     active: activeClaims.length,
-    // Backend gap: redeemed/expired status is not tracked yet.
-    past: 0,
+    past: pastClaims.length,
     gifted: giftedClaims.length,
   };
   const list: ClaimRecord[] =
-    activeFilter === 'gifted' ? giftedClaims : activeFilter === 'active' ? activeClaims : [];
+    activeFilter === 'gifted' ? giftedClaims : activeFilter === 'active' ? activeClaims : pastClaims;
   const selected = list.find((claim) => claim.ref === selectedRef) ?? list[0] ?? null;
   const pass = selected;
   const isGiftPass = pass?.kind === 'gift' || Boolean(pass?.sentForOther);
+  const isPastPass = activeFilter === 'past' && Boolean(pass);
+  const pastStatus = (claim: ClaimRecord) => (claim.state === 'REDEEMED' ? 'Redeemed' : 'Expired');
+  // The QR is the holder's: never one for a gift or for a voucher that can't be used.
+  const qrImage = useVoucherQr(pass && !isGiftPass && !isPastPass ? pass.id : undefined);
+  const { detail: passDeal } = useDealDetail(pass?.offerId);
+  const dealDetail = passDeal && passDeal.id === pass?.offerId ? passDeal : null;
+  // The claim's own copy first: it stays after the deal ends. The live deal covers an older API.
+  const passItems = pass?.dealItems?.length ? pass.dealItems : dealDetail?.items ?? [];
+  const passVerified = pass?.businessVerified ?? dealDetail?.verified ?? false;
+  const passBusinessCode = pass?.businessCode ?? dealDetail?.businessCode ?? null;
   const passHolderName = pass?.recipient?.name || profile.fullName;
   const passHolderContact = pass?.recipient?.phone
     ? maskPhone(pass.recipient.phone)
@@ -102,7 +115,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                   My Deals &amp; Passes
                 </h1>
                 <p className="font-body-md text-body-md text-text-secondary mt-1 max-w-2xl">
-                  Manage your claimed vouchers, present offline QR passes at local Abuja merchants, and track live
+                  Manage your claimed vouchers, present QR passes at local merchants, and track live
                   redemption status.
                 </p>
               </div>
@@ -110,7 +123,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 <Icon name="verified" className="text-primary text-[18px]" />
                 <span className="font-label-sm text-label-sm text-text-secondary">
                   Claimed Wallet:{' '}
-                  <strong className="text-text-primary font-semibold">₦26,900 Total Savings</strong>
+                  <strong className="text-text-primary font-semibold">{formatCurrency(totalSaved)} Total Savings</strong>
                 </span>
               </div>
             </div>
@@ -155,12 +168,14 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-tertiary"
                 />
                 <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
                   className="w-full h-10 pl-9 pr-3 bg-surface-subtle rounded-lg font-body-md text-body-md placeholder:text-text-tertiary text-text-primary focus:outline-none focus:bg-surface-canvas shadow-inner"
                   placeholder="Search your claimed deals..."
                   type="text"
                 />
               </div>
-              <div className="relative shrink-0">
+              {!hasApiConfig() && <div className="relative shrink-0">
                 <button
                   className="h-10 px-3 bg-surface-subtle hover:bg-surface-container-high rounded-lg flex items-center gap-1.5 font-label-sm text-label-sm text-text-primary transition-colors"
                   type="button"
@@ -169,7 +184,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                   <span>All Abuja Hubs</span>
                   <Icon name="arrow_drop_down" className="text-[16px] text-text-tertiary" />
                 </button>
-              </div>
+              </div>}
             </div>
           </div>
 
@@ -185,7 +200,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 </span>
                 <span className="font-caption text-caption text-primary flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                  <span>Sync Updated Just Now</span>
+                  <span>{claimsLoading ? 'Syncing…' : 'Up to date'}</span>
                 </span>
               </div>
 
@@ -218,6 +233,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 list.map((claim) => {
                   const isSelected = selected?.ref === claim.ref;
                   const isGift = claim.kind === 'gift' || Boolean(claim.sentForOther);
+                  const isPast = activeFilter === 'past';
                   return (
                     <article
                       key={claim.ref}
@@ -232,7 +248,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                           <img
                             alt={claim.dealTitle}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            src={claim.dealImage}
+                            src={claim.dealImage || NO_IMAGE}
                           />
                           <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold tracking-tight">
                             {claim.code}
@@ -247,13 +263,13 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                               </span>
                               <span
                                 className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-caption ${
-                                  isGift
+                                  isGift || isPast
                                     ? 'bg-surface-subtle text-text-secondary font-medium'
                                     : 'bg-surface-tint-blue text-primary font-semibold'
                                 }`}
                               >
-                                {!isGift && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                                <span>{claim.sentForOther ? `For ${claim.recipient?.name || 'someone else'}` : isGift ? 'Gift Sent' : 'Ready'}</span>
+                                {!isGift && !isPast && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                                <span>{claim.sentForOther ? `For ${claim.recipient?.name || 'someone else'}` : isGift ? 'Gift Sent' : isPast ? pastStatus(claim) : 'Ready'}</span>
                               </span>
                             </div>
                             <h3 className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate mt-0.5">
@@ -307,7 +323,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 })
               )}
 
-              <div className="p-4 rounded-xl bg-surface-subtle flex items-start gap-3 shadow-xs">
+              {!hasApiConfig() && <div className="p-4 rounded-xl bg-surface-subtle flex items-start gap-3 shadow-xs">
                 <div className="w-9 h-9 rounded-lg bg-surface-tint-blue flex items-center justify-center shrink-0 text-primary">
                   <Icon name="cloud_off" className="text-[20px]" />
                 </div>
@@ -320,7 +336,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                     the merchant even without active MTN or Airtel data signal.
                   </p>
                 </div>
-              </div>
+              </div>}
 
               <div className="p-4 rounded-xl bg-surface-container-high/40 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -332,7 +348,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                       Looking for coffee or treats?
                     </p>
                     <p className="font-caption text-caption text-text-secondary">
-                      4 limited vouchers unlock in Apo District at noon.
+                      See the live deals in {district}.
                     </p>
                   </div>
                 </div>
@@ -359,28 +375,30 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                           <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-bold">
                             VEMTAP PASS ID {pass ? `• ${pass.ref}` : ''}
                           </span>
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                            <Icon name="verified" className="text-[12px]" />
-                            <span>Verified Partner</span>
-                          </span>
+                          {passVerified && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                              <Icon name="verified" className="text-[12px]" />
+                              <span>Verified Partner</span>
+                            </span>
+                          )}
                         </div>
                         <h2 className="font-heading-md text-heading-md text-text-primary font-bold tracking-tight">
                           {pass?.dealBusiness ?? 'No pass selected'}
                         </h2>
                         <p className="font-caption text-caption text-text-secondary flex items-center gap-1 mt-0.5">
                           <Icon name="location_on" className="text-[14px] text-primary" />
-                          <span>Abuja merchant network • offline POS verified</span>
+                          <span>{pass?.dealLocation ?? dealDetail?.address ?? dealDetail?.branchName ?? 'Location on the merchant page'}</span>
                         </p>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
                       <span
                         className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-label-sm text-label-sm font-semibold shadow-xs ${
-                          isGiftPass ? 'bg-surface-subtle text-text-secondary' : 'bg-badge-discount-bg text-badge-discount-text'
+                          isGiftPass || isPastPass ? 'bg-surface-subtle text-text-secondary' : 'bg-badge-discount-bg text-badge-discount-text'
                         }`}
                       >
-                        {!isGiftPass && <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />}
-                        <span>{pass ? (pass.sentForOther ? `Claimed for ${pass.recipient?.name || 'someone else'} • ${pass.state ?? 'ACTIVE'}` : isGiftPass ? 'Gift Sent' : 'Ready to Redeem') : 'Nothing selected'}</span>
+                        {!isGiftPass && !isPastPass && <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />}
+                        <span>{pass ? (pass.sentForOther ? `Claimed for ${pass.recipient?.name || 'someone else'} • ${pass.state ?? 'ACTIVE'}` : isGiftPass ? 'Gift Sent' : isPastPass ? pastStatus(pass) : 'Ready to Redeem') : 'Nothing selected'}</span>
                       </span>
                       <p className="font-caption text-caption text-text-tertiary mt-1">
                         {pass ? `${isGiftPass ? 'Sent' : 'Claimed'} ${formatDate(pass.createdAt)}` : 'Select a pass'}
@@ -412,37 +430,20 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
 
                 <div className="p-6 pt-3 bg-surface-container-lowest flex flex-col items-center">
                   <div className="w-full max-w-sm flex flex-col items-center p-4 rounded-2xl bg-surface-subtle shadow-sm relative group">
-                    <div className="absolute -top-3 px-3 py-0.5 rounded-full bg-text-primary text-on-primary font-caption text-caption font-semibold flex items-center gap-1.5 shadow-sm">
-                      <Icon name="wifi_off" className="text-[13px] text-badge-discount-text" />
-                      <span>Offline POS Authorized</span>
-                    </div>
+                    {!hasApiConfig() && (
+                      <div className="absolute -top-3 px-3 py-0.5 rounded-full bg-inverse-surface text-inverse-on-surface font-caption text-caption font-semibold flex items-center gap-1.5 shadow-sm">
+                        <Icon name="wifi_off" className="text-[13px]" />
+                        <span>Offline POS Authorized</span>
+                      </div>
+                    )}
                     <div className="p-3 bg-surface-container-lowest rounded-xl shadow-md my-2 relative">
-                      <svg className="w-48 h-48 text-text-primary" fill="currentColor" viewBox="0 0 160 160">
-                        <path d="M10,10 h45 v45 h-45 z M20,20 v25 h25 v-25 z M27,27 h11 v11 h-11 z" />
-                        <path d="M105,10 h45 v45 h-45 z M115,20 v25 h25 v-25 z M122,27 h11 v11 h-11 z" />
-                        <path d="M10,105 h45 v45 h-45 z M20,115 v25 h25 v-25 z M27,122 h11 v11 h-11 z" />
-                        <rect height="8" width="8" x="62" y="15" />
-                        <rect height="8" width="8" x="76" y="15" />
-                        <rect height="8" width="8" x="90" y="15" />
-                        <rect height="8" width="8" x="15" y="62" />
-                        <rect height="8" width="8" x="15" y="76" />
-                        <rect height="8" width="8" x="15" y="90" />
-                        <rect className="text-primary" height="30" width="30" x="65" y="65" />
-                        <rect fill="#ffffff" height="14" width="14" x="73" y="73" />
-                        <rect height="8" width="10" x="40" y="65" />
-                        <rect height="10" width="12" x="110" y="65" />
-                        <rect height="10" width="15" x="130" y="70" />
-                        <rect height="12" width="10" x="65" y="40" />
-                        <rect height="10" width="12" x="65" y="110" />
-                        <rect height="15" width="15" x="85" y="105" />
-                        <rect height="15" width="10" x="105" y="90" />
-                        <rect height="10" width="20" x="125" y="100" />
-                        <rect height="15" width="15" x="110" y="125" />
-                        <rect height="10" width="15" x="40" y="85" />
-                        <rect height="20" width="10" x="35" y="105" />
-                        <rect height="15" width="25" x="70" y="130" />
-                        <rect height="15" width="15" x="130" y="135" />
-                      </svg>
+                      {qrImage ? (
+                        <img alt={`QR code for ${pass?.code}`} className="w-48 h-48" src={qrImage} />
+                      ) : (
+                        <div className="w-48 h-48 flex items-center justify-center text-center font-caption text-caption text-text-secondary px-3">
+                          {!pass ? 'Select a pass' : isGiftPass ? 'The recipient holds this QR pass' : isPastPass ? `This pass is ${pastStatus(pass).toLowerCase()}` : `Show code ${pass.code} to the cashier`}
+                        </div>
+                      )}
                       <span className="absolute top-1 left-1 w-2.5 h-2.5 border-t-2 border-l-2 border-primary" />
                       <span className="absolute top-1 right-1 w-2.5 h-2.5 border-t-2 border-r-2 border-primary" />
                       <span className="absolute bottom-1 left-1 w-2.5 h-2.5 border-b-2 border-l-2 border-primary" />
@@ -492,29 +493,31 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                       <p className="font-caption text-caption text-text-secondary">
                         {isGiftPass
                           ? 'Recipient redeems the pass, not the sender.'
-                          : 'Valid at the merchant until redeemed.'}
+                          : pass ? voucherExpiryLabel(pass) : '—'}
                       </p>
                     </div>
                   </div>
 
-                  <div className="w-full mt-3 p-3 rounded-xl bg-surface-subtle">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                        Included Items in this Claim
-                      </span>
-                      <span className="font-caption text-caption text-primary font-medium">3 of 3 Included</span>
+                  {passItems.length > 0 && (
+                    <div className="w-full mt-3 p-3 rounded-xl bg-surface-subtle">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
+                          Included Items in this Claim
+                        </span>
+                        <span className="font-caption text-caption text-primary font-medium">
+                          {passItems.length} Included
+                        </span>
+                      </div>
+                      <ul className="flex flex-col gap-1.5 font-body-md text-body-md text-text-primary">
+                        {passItems.map((item) => (
+                          <li className="flex items-center gap-2" key={item.id}>
+                            <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
+                            <span>{item.name}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="flex flex-col gap-1.5 font-body-md text-body-md text-text-primary">
-                      {INCLUDED.map((item) => (
-                        <li className="flex items-center gap-2" key={item}>
-                          <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
-                          <span>
-                            <strong>1x</strong> {item}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  )}
 
                   <div className="w-full mt-3 p-3 rounded-xl bg-surface-tint-blue/80 flex items-start gap-2 text-text-primary">
                     <Icon name="info" className="text-primary text-[20px] shrink-0 mt-0.5" />
@@ -531,7 +534,6 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                     <button
                       onClick={async () => {
                         if (!pass) return;
-                        await openLivePassPreview(pass);
                         const body = [
                           'VEMTAP PASS',
                           `Reference: ${pass.ref}`,
@@ -578,30 +580,40 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                       <span>Copy Voucher</span>
                     </button>
                   </div>
+                  {cancelError && (
+                    <p className="pt-2 px-1 font-caption text-caption text-error" role="alert">
+                      {cancelError}
+                    </p>
+                  )}
                   <div className="flex items-center justify-between pt-2 px-1">
-                    <button
+                    {isGiftPass || isPastPass ? <span /> : <button
                       onClick={async () => {
                         if (!pass) return;
+                        setCancelError(null);
                         try {
                           if (pass.id) {
                             await deleteClaim(pass.id);
                           } else {
                             removeClaim(pass.ref);
                           }
+                          setSelectedRef(null);
                         } catch {
-                          removeClaim(pass.ref);
+                          // The voucher is still live on the server, so it stays on the page.
+                          setCancelError('This claim couldn’t be cancelled. Please try again.');
                         }
-                        setSelectedRef(null);
                       }}
                       className="font-label-sm text-label-sm text-text-tertiary hover:text-error transition-colors flex items-center gap-1"
                       type="button"
                     >
                       <Icon name="cancel" className="text-[16px]" />
                       <span>Cancel Claim &amp; Release Spot</span>
-                    </button>
+                    </button>}
                     <button
-                      onClick={() => onNav('storefront')}
-                      className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1"
+                      disabled={!passBusinessCode}
+                      onClick={() => {
+                        if (passBusinessCode) onOpenBusiness({ code: passBusinessCode, id: dealDetail?.businessId ?? undefined, name: pass?.dealBusiness });
+                      }}
+                      className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
                       type="button"
                     >
                       <span>View Merchant Menu &amp; Location Map</span>
@@ -615,10 +627,10 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                 <div className="flex items-center gap-2">
                   <Icon name="verified_user" className="text-badge-discount-text text-[18px]" />
                   <span className="font-caption text-caption">
-                    VEMTAP NDPR Protected • Encrypted Token: VT-SEC-84092-ABJ
+                    VEMTAP NDPR Protected
                   </span>
                 </div>
-                <button className="font-caption text-caption text-primary hover:underline" type="button">
+                <button onClick={() => setTermsOpen(true)} className="font-caption text-caption text-primary hover:underline" type="button">
                   Voucher Policy
                 </button>
               </div>
@@ -626,6 +638,11 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
           </div>
         </section>
       </div>
+      <ClaimedTermsModal
+        open={termsOpen}
+        onClose={() => setTermsOpen(false)}
+        terms={pass?.terms?.length ? pass.terms : dealDetail?.terms}
+      />
     </DesktopPage>
   );
 }

@@ -12,7 +12,7 @@ import { useCart } from '../context/CartContext';
 import { activeVouchers, useClaims, voucherExpiryLabel, type ClaimRecord } from '../context/ClaimsContext';
 import { hasApiConfig } from '../services/api/client';
 import { useAnnouncements } from '../hooks/useAnnouncements';
-import { useCustomerDashboard, type DashboardActivity } from '../hooks/useCustomerDashboard';
+import { useCustomerDashboard } from '../hooks/useCustomerDashboard';
 import { useDealLikes } from '../hooks/useDealLikes';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
@@ -145,29 +145,6 @@ const toDashboardRecommended = (offer: Record<string, unknown>): RecommendedDeal
   };
 };
 
-const ACTIVITY_LABEL: Record<string, { label: string; icon: string; tone: 'primary' | 'success' | 'neutral' }> = {
-  claim: { label: 'Deal claimed', icon: 'confirmation_number', tone: 'success' },
-  order: { label: 'Order placed', icon: 'receipt_long', tone: 'primary' },
-  booking: { label: 'Booking made', icon: 'calendar_today', tone: 'success' },
-  visit: { label: 'Business visit', icon: 'storefront', tone: 'neutral' },
-  review: { label: 'Review posted', icon: 'star', tone: 'neutral' },
-  comment: { label: 'Comment posted', icon: 'chat', tone: 'neutral' },
-};
-
-const toActivityEvent = (entry: DashboardActivity) => {
-  const known = ACTIVITY_LABEL[entry.kind] ?? { label: 'Activity', icon: 'history', tone: 'neutral' as const };
-  const date = new Date(entry.at);
-  const when = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString();
-  return {
-    id: entry.id,
-    label: entry.kind === 'claim' && entry.status === 'redeemed' ? 'Deal redeemed' : known.label,
-    subtitle: [entry.businessName || entry.title, when].filter(Boolean).join(' • '),
-    value: entry.amount > 0 ? formatCurrency(entry.amount) : '',
-    icon: known.icon,
-    tone: known.tone,
-  };
-};
-
 function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   return (
     <div className="flex items-center justify-between">
@@ -197,7 +174,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
 
   const { count: cartCount } = useCart();
   const { claims } = useClaims();
-  const { totalSaved, tier, activity, recommended } = useCustomerDashboard();
+  const { totalSaved, tier, recommended } = useCustomerDashboard();
   const announcements = useAnnouncements();
   const vouchers = useMemo(() => activeVouchers(claims), [claims]);
   const recommendedDeals = useMemo(() => recommended.slice(0, 2).map(toDashboardRecommended), [recommended]);
@@ -225,7 +202,6 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
   );
 
   const recentEvents = useMemo(() => {
-    if (activity.length > 0) return activity.map(toActivityEvent);
     const events: Array<{ id: string; label: string; subtitle: string; value: string; icon: string; tone: 'primary' | 'success' | 'neutral'; }> = [];
 
     orders.slice(0, 2).forEach((order) => {
@@ -251,7 +227,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
     });
 
     return events.slice(0, 3);
-  }, [activity, orders, appointments]);
+  }, [orders, appointments]);
 
   const goToDestination = (slide: HeroSlide) => {
     const { destination, announcement } = slide;
@@ -640,7 +616,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
             </div>
           ) : (
             <div className="rounded-xl bg-surface-canvas p-space-md text-text-secondary shadow-sm">
-              No recent activity yet. Your claims, orders and bookings will appear here.
+              No recent activity yet. Your orders and bookings will appear here.
             </div>
           )}
         </section>

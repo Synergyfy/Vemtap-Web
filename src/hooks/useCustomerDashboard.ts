@@ -15,16 +15,6 @@ const count = (value: unknown): number => {
 /** The most businesses `GET /public/businesses` returns in one read. */
 export const NEARBY_BUSINESS_LIMIT = 50;
 
-export interface DashboardActivity {
-  id: string;
-  kind: string;
-  at: string;
-  businessName: string;
-  title: string;
-  amount: number;
-  status: string;
-}
-
 export interface DashboardTier {
   tier: string;
   points: number;
@@ -33,18 +23,17 @@ export interface DashboardTier {
   progressPercent: number;
 }
 
-const toActivity = (row: unknown): DashboardActivity => {
-  const entry = rec(row);
-  return {
-    id: `${String(entry.kind)}-${String(entry.id)}`,
-    kind: String(entry.kind ?? ''),
-    at: String(entry.at ?? ''),
-    businessName: String(entry.businessName ?? ''),
-    title: String(entry.title ?? ''),
-    amount: count(entry.amount),
-    status: String(entry.status ?? ''),
-  };
-};
+/** What the customer has saved across every redemption (`GET /me/savings`). */
+export function useTotalSaved(): number {
+  const { authed } = useAuth();
+  const savings = useQuery({
+    queryKey: ['dashboard', 'savings'],
+    queryFn: () => api.get<unknown>('/me/savings', { params: { page: 1, limit: 1 } }),
+    enabled: hasApiConfig() && authed,
+    select: (payload) => count(rec(payload).totalSavedAmount),
+  });
+  return savings.data ?? 0;
+}
 
 /**
  * Everything the customer dashboard reads beyond the shared contexts, for the
@@ -57,12 +46,7 @@ export function useCustomerDashboard() {
   const { lat, lng, radius } = useLocationQuery() as { lat?: number; lng?: number; radius?: number };
   const point = { lat, lng, radius };
 
-  const savings = useQuery({
-    queryKey: ['dashboard', 'savings'],
-    queryFn: () => api.get<unknown>('/me/savings', { params: { page: 1, limit: 1 } }),
-    enabled,
-    select: (payload) => count(rec(payload).totalSavedAmount),
-  });
+  const totalSaved = useTotalSaved();
 
   const tier = useQuery({
     queryKey: ['dashboard', 'tier'],
@@ -77,16 +61,6 @@ export function useCustomerDashboard() {
         pointsToNext: count(row.pointsToNext),
         progressPercent: Math.min(100, Math.max(0, count(row.progressPercent))),
       };
-    },
-  });
-
-  const activity = useQuery({
-    queryKey: ['dashboard', 'activity'],
-    queryFn: () => accountService.getActivity({ page: 1, limit: 3 }),
-    enabled,
-    select: (payload) => {
-      const rows = Array.isArray(payload) ? payload : rec(payload).data;
-      return Array.isArray(rows) ? rows.map(toActivity) : [];
     },
   });
 
@@ -125,9 +99,8 @@ export function useCustomerDashboard() {
   });
 
   return {
-    totalSaved: savings.data ?? 0,
+    totalSaved,
     tier: tier.data ?? null,
-    activity: activity.data ?? [],
     savedCount: savedCount.data ?? 0,
     unreadMessages: unreadMessages.data ?? 0,
     recommended: recommended.data ?? [],

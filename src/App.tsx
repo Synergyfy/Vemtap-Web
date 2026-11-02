@@ -2453,7 +2453,7 @@ function AppInner() {
   // A scanned pass link opens that voucher, or nothing if it isn't this account's.
   const scannedPassId = route === 'claimed-deal' ? passIdFromPath(window.location.pathname) : null;
   const scannedClaim = scannedPassId ? claims.claims.find((claim) => claim.id === scannedPassId && !claim.sentForOther) ?? null : undefined;
-  const dashboardClaim = claimedFrom === 'dashboard' && dashboardClaimRef ? claims.claims.find((claim) => claim.ref === dashboardClaimRef) : undefined;
+  const dashboardClaim = (claimedFrom === 'dashboard' || claimedFrom === 'my-deals') && dashboardClaimRef ? claims.claims.find((claim) => claim.ref === dashboardClaimRef) : undefined;
   const walletClaim = scannedClaim !== undefined ? scannedClaim : claimedFrom === 'deal-detail' ? dealClaim : dashboardClaim;
   const openDashboardVoucher = (claim: ClaimRecord, target: 'claimed-deal' | 'claimed-contact') => {
     setDashboardClaimRef(claim.ref);
@@ -4527,13 +4527,19 @@ function AppInner() {
       );
 
     case 'my-deals':
-      if (isDesktop) return <DesktopMyDealsScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopMyDealsScreen onNav={feedNav} onOpenBusiness={(business) => openBusiness(business, 'my-deals')} />;
       return (
         <MyDealsScreen
           onTab={(tab) => setRoute(tab)}
-          onShowPass={() => {
+          onShowPass={(claim) => {
+            setDashboardClaimRef(claim.ref);
             setClaimedFrom('my-deals');
             setRoute('claimed-deal');
+          }}
+          onGiftReceipt={(claim) => {
+            setGiftRecipient(null); // The receipt reads this gift's own recipient, not the last one sent.
+            setActiveClaim(claim);
+            setRoute('gift-sent');
           }}
           onNavigate={(target) => setRoute(target)}
         />

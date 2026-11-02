@@ -89,6 +89,7 @@ const toActiveDeal = (claim: ClaimRecord) => {
     distance: claim.dealLocation ?? '',
     category: claim.dealBusiness,
     title: claim.dealTitle,
+    desc: claim.dealDescription ?? '',
     validity: voucherExpiryLabel(claim),
     validityClass: 'bg-surface-tint-blue text-primary',
     validityIcon: 'timer',
@@ -404,6 +405,7 @@ export function DesktopDashboardScreen({
                               <span>{deal.validity}</span>
                             </span>
                           </div>
+                          {deal.desc && <p className="font-body-md text-body-md text-text-secondary mb-3">{deal.desc}</p>}
                           <div className="flex items-center gap-4 font-label-md text-label-md mb-4">
                             <span className="text-text-primary font-bold text-heading-sm">{deal.price}</span>
                             <span className="text-text-tertiary line-through font-caption text-caption">
