@@ -1,3 +1,5 @@
+import { useSessionUser } from '../../hooks/useSessionUser';
+import { recordRecentDeal } from '../../utils/recentlyViewed';
 import { useEffect, useRef, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
@@ -155,6 +157,20 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
   const [selectedImage, setSelectedImage] = useState(0);
   const [tabsDealId, setTabsDealId] = useState(detail?.id);
   const { saved: bookmarked, toggle: toggleSaved } = useDealSaved(detail?.id);
+  // Remembers the deal for this account's "Recently Viewed" list.
+  const viewerId = useSessionUser().data?.id;
+  useEffect(() => {
+    if (!detail) return;
+    recordRecentDeal(viewerId, {
+      id: detail.id,
+      title: detail.title,
+      merchant: detail.businessName,
+      image: detail.image,
+      price: detail.price,
+      oldPrice: detail.oldPrice,
+      discountPercent: detail.discountPercent,
+    });
+  }, [detail, viewerId]);
   const { reviews, total, loading: reviewsLoading } = useDealReviews(detail?.id, tab === 'reviews' || tab === 'comments');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);

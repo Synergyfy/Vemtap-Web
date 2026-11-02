@@ -1,3 +1,5 @@
+import { useSessionUser } from '../hooks/useSessionUser';
+import { recordRecentDeal } from '../utils/recentlyViewed';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -119,6 +121,20 @@ export function DealDetailScreen({
   const dealId = detail?.id;
   const { likes, toggleLike } = useDealLikes(dealId ? [dealId] : []);
   const { saved, toggle: toggleSaved } = useDealSaved(dealId);
+  // Remembers the deal for this account's "Recently Viewed" list.
+  const viewerId = useSessionUser().data?.id;
+  useEffect(() => {
+    if (!detail) return;
+    recordRecentDeal(viewerId, {
+      id: detail.id,
+      title: detail.title,
+      merchant: detail.businessName,
+      image: detail.image,
+      price: detail.price,
+      oldPrice: detail.oldPrice,
+      discountPercent: detail.discountPercent,
+    });
+  }, [detail, viewerId]);
   const { lat, lng } = useLocation();
   const [photoIndex, setPhotoIndex] = useState(0);
   const [toast, setToast] = useState<string | null>(null);

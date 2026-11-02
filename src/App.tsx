@@ -4934,21 +4934,17 @@ function AppInner() {
           <DesktopActivityScreen
             onNav={feedNav}
             onBack={() => setRoute('dashboard')}
-            onOpenReceipt={() => setRoute('order-detail')}
-            onWriteReview={() => setRoute('reviews')}
             onOpenOrders={() => setRoute('orders')}
-            onOpenService={() => setRoute('service-detail')}
-            onBrowse={() => setRoute('discover')}
+            onOpenDeal={(deal) => void openDeal('activity', deal)}
+            onOpenBusiness={(business) => openBusiness(business, 'activity')}
           />
         );
       return (
         <ActivityScreen
           onBack={() => setRoute('dashboard')}
-          onOpenReceipt={() => setRoute('order-detail')}
-          onWriteReview={() => setRoute('reviews')}
           onOpenOrders={() => setRoute('orders')}
-          onOpenService={() => setRoute('service-detail')}
-          onBrowse={() => setRoute('discover')}
+          onOpenDeal={(deal) => void openDeal('activity', deal)}
+          onOpenBusiness={(business) => openBusiness(business, 'activity')}
         />
       );
 
