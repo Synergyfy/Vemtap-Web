@@ -12,6 +12,7 @@ import { useBranchMutations, useTeamMutations } from '../hooks/business/useBranc
 import { apiErrorMessage } from '../services/errorMessages';
 import { planErrorMessage } from '../services/planErrors';
 import type { Branch } from '../services/branchService';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessAddBranchScreenProps {
   onBack: () => void;
@@ -147,8 +148,8 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
             <h1 className="font-label-sm text-label-sm text-text-secondary line-clamp-1">Add Branch Location</h1>
           </div>
           <div className="w-11 h-11 flex items-center justify-end">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_6px_rgba(0,85,196,0.2)]">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_6px_rgba(0,85,196,0.2)] overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

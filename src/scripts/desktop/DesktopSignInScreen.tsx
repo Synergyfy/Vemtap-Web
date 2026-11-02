@@ -10,6 +10,10 @@ interface DesktopSignInScreenProps {
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
+  /** Prefills the email (e.g. business sign-up found an existing account). */
+  initialIdentifier?: string;
+  /** Why the visitor was sent here, shown above the form. */
+  notice?: string | null;
   /** Returns to wherever sign-in was opened from (mobile parity). */
   onBack?: () => void;
 }
@@ -73,6 +77,8 @@ export function DesktopSignInScreen({
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
+  initialIdentifier,
+  notice,
   onBack,
 }: DesktopSignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
@@ -239,6 +245,11 @@ export function DesktopSignInScreen({
               </div>
 
               <form className="flex flex-col gap-space-md" onSubmit={handleSubmit}>
+                {notice && !error ? (
+                  <div className="rounded-xl bg-surface-tint-blue px-space-sm py-space-xs text-text-primary font-body-md text-body-md">
+                    {notice}
+                  </div>
+                ) : null}
                 {error ? (
                   <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
                     {error}
@@ -259,6 +270,7 @@ export function DesktopSignInScreen({
                       autoComplete="username"
                       id="identifier"
                       name="identifier"
+                      defaultValue={initialIdentifier}
                       placeholder="name@example.com or +234..."
                       required
                       type="text"

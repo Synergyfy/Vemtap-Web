@@ -18,6 +18,7 @@ import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
 import type { Announcement, AnnouncementDestination, AnnouncementTone } from './announcementsData';
 import { NO_IMAGE, offerDiscountLabel, offerImage, offerLocationLabel, realOfferId } from '../utils/homeOffer';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 export type DashboardTarget =
   | 'my-deals'
@@ -184,7 +185,6 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
   // Live: the real unread count; demo keeps its sample "3".
   const { live: liveUnread, count: unreadCount } = useUnreadNotifications();
   const bellBadge = liveUnread ? (unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : null) : '3';
-  const profileInitials = fullName.trim() ? fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase().slice(0, 2) : 'U';
 
   const banners = useMemo<HeroSlide[]>(
     () =>
@@ -315,8 +315,8 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
               onClick={() => onTab('account')}
               className="relative w-10 h-10 rounded-full overflow-hidden shadow-sm bg-surface-container-highest active:scale-95 transition-transform"
             >
-              <div className="flex h-full w-full items-center justify-center bg-primary-container text-on-primary text-lg font-bold">
-                {profileInitials}
+              <div className="flex h-full w-full items-center justify-center bg-primary-container text-on-primary text-lg font-bold overflow-hidden">
+                <UserAvatar textClassName="" />
               </div>
               <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-badge-discount-text ring-2 ring-surface" />
             </button>

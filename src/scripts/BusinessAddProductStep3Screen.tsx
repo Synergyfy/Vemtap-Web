@@ -3,6 +3,7 @@ import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ProductDraft } from './productDraft';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessAddProductStep3ScreenProps {
   draft: ProductDraft;
@@ -109,8 +110,8 @@ export function BusinessAddProductStep3Screen({
             >
               Draft
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

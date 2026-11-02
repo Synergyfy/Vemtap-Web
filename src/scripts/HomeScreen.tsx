@@ -5,7 +5,6 @@ import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
 import { useLocation } from '../context/LocationContext';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { useProfile } from '../context/ProfileContext';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
 import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
 import { useDealFilters } from '../context/DealFiltersContext';
@@ -27,6 +26,7 @@ import {
   offerLocationLabel as getLocationLabel,
   realOfferId,
 } from '../utils/homeOffer';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 const AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCg_httfgNB7CfMJOzfjKekJGnxgvueamRqqNg-Qyw7QV2HTVvlh6rZ845BYSp5dsQClaPlSKNd4B0_3aYGUcjlu-OUBeq56PilIeD6B9e1a0GFgvTtnkB0d8i16nw-kagt5rZUqAHNUNQUsH0WcGsyf8zaqNe1yx2Go9tQcdI6QPEzXRp2aZLqYGswotDnV391PXTZI3oVx9jzWC_ZogeqCUxsw3wWsr-xRkh4q33Ljntdo0P9MsadSA';
@@ -291,7 +291,6 @@ const greeting = () => {
 
 function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation: () => void; onNotifications: () => void; onAccount: () => void }) {
   const { district, city, radius } = useLocation();
-  const { initials } = useProfile();
   // Live: the real unread count and the user's initials; demo keeps its sample dot and photo.
   const { live, count: unreadCount } = useUnreadNotifications();
 
@@ -336,8 +335,8 @@ function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation
           <button type="button" aria-label="Account" onClick={onAccount} className="relative w-10 h-10 rounded-full p-0.5 bg-primary-fixed flex items-center justify-center active:scale-95 transition-transform">
             <span className="w-full h-full rounded-full overflow-hidden bg-secondary-fixed block">
               {live ? (
-                <span className="w-full h-full flex items-center justify-center text-on-secondary-fixed text-[13px] font-bold">
-                  {initials || 'U'}
+                <span className="w-full h-full flex items-center justify-center text-on-secondary-fixed text-[13px] font-bold overflow-hidden">
+                  <UserAvatar textClassName="" />
                 </span>
               ) : (
                 <img className="w-full h-full object-cover" alt="" src={AVATAR} />

@@ -32,6 +32,17 @@ export const OTP_GATE_MESSAGE = 'OTP must be verified before completing registra
  * Owner sign-up: request a code by email, verify the 4-character code, then
  * register. A signed-in customer upgrades in place instead.
  */
+/**
+ * "Continue with this account" no longer upgrades the account on the spot: the
+ * customer stays a customer until the first setup save creates the business.
+ * A PIN account's PIN is held here, in memory only, for that one upgrade call.
+ */
+let pendingUpgradePin: string | null = null;
+export const rememberUpgradePin = (pin: string | null) => {
+  pendingUpgradePin = pin;
+};
+export const pendingPin = () => pendingUpgradePin;
+
 export const ownerAuthService = {
   requestOtp: (email: string, names: { firstName?: string; lastName?: string } = {}) =>
     api.post<{ message: string }>('/auth/register/owner/request-otp', { email, role: 'Owner', ...names }),

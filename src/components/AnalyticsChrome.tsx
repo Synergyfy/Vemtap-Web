@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Icon } from './ui/Icon';
+import { UserAvatar } from './ui/UserAvatar';
 
 export type AnalyticsTabKey = 'business' | 'customers' | 'deals' | 'locations' | 'pos';
 
@@ -67,8 +68,8 @@ export function AnalyticsHeader({ active, onTab, onOpenFilter, onOpenExport }: A
             >
               <Icon name="ios_share" className="text-[18px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[17px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

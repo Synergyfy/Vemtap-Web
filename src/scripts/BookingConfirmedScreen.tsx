@@ -9,6 +9,7 @@ import {
   SPA_VOUCHER_CODE,
   formatSpaDuration,
 } from './spaBookingData';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BookingConfirmedScreenProps {
   refCode: string;
@@ -54,8 +55,8 @@ export function BookingConfirmedScreen({ refCode, onBack, onHome, onChat }: Book
             >
               <Icon name="close" className="text-[24px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

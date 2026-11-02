@@ -6,6 +6,7 @@ import { activeVouchers, pastVouchers, useClaims, voucherExpiryLabel, type Claim
 import { useTotalSaved } from '../hooks/useCustomerDashboard';
 import { useVoucherQr } from '../hooks/useVoucherQr';
 import { NO_IMAGE } from '../utils/homeOffer';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 export type MyDealsTarget = 'orders' | 'help';
 
@@ -315,9 +316,9 @@ export function MyDealsScreen({ onTab, onShowPass, onGiftReceipt, onNavigate }: 
               aria-label="Account"
               type="button"
               onClick={() => onTab('account')}
-              className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs active:scale-95 transition-transform"
+              className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs active:scale-95 transition-transform overflow-hidden"
             >
-              <Icon name="person" className="text-on-primary text-[18px]" />
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </button>
           </div>
         </div>

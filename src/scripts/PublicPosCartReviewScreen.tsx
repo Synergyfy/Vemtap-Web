@@ -6,6 +6,7 @@ import { publicCartTotals, type PublicCartLine } from './publicPosData';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
 import { guestTotals, placeGuestOrder, useGuestMenu } from './publicPosLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface PublicPosCartReviewScreenProps {
   cart: PublicCartLine[];
@@ -121,8 +122,8 @@ export function PublicPosCartReviewScreen({
             </button>
             <h1 className="font-heading-sm text-heading-sm text-text-primary truncate">Cart Review</h1>
           </div>
-          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </span>
         </div>
       </header>

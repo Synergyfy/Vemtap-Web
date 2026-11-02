@@ -8,6 +8,7 @@ import { Icon } from '../components/ui/Icon';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProfileBrandingScreenProps {
   draft: BusinessProfileDraft;
@@ -159,8 +160,8 @@ export function BusinessProfileBrandingScreen({
             </h1>
           </div>
           <div className="flex items-center">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

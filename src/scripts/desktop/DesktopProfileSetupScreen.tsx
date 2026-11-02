@@ -9,7 +9,8 @@ import { useReferralStep } from '../../hooks/useReferralStep';
 interface DesktopProfileSetupScreenProps {
   onBack: () => void;
   onComplete: (details: { firstName: string; lastName: string; phone: string; pin: string }) => Promise<void> | void;
-  onBusinessSetup: () => void;
+  /** Hidden during business sign-up (mobile parity). */
+  onBusinessSetup?: () => void;
   email?: string;
   code?: string;
   /** Details typed on an earlier visit (business sign-up resumes with them filled in). */
@@ -489,6 +490,7 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup,
                     </button>
                   </div>
 
+                  {onBusinessSetup && (
                   <div className="pt-space-xs text-center">
                     <p className="font-caption text-caption text-text-secondary">
                       Own a business?{' '}
@@ -501,6 +503,7 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup,
                       </button>
                     </p>
                   </div>
+                  )}
                 </div>
               </form>
             </section>
