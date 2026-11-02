@@ -250,9 +250,39 @@ export function usePublicBusiness(code: string | null | undefined) {
 }
 
 /** A Google Maps link for the business (no map image is shown — only the real address/coordinates). */
-export const mapsLink = (business: Pick<PublicBusiness, 'latitude' | 'longitude' | 'name' | 'address' | 'city'>): string | null => {
-  if (business.latitude != null && business.longitude != null) {
-    return `https://www.google.com/maps/search/?api=1&query=${business.latitude},${business.longitude}`;
+type MapSource = Pick<PublicBusiness, 'latitude' | 'longitude' | 'name' | 'address' | 'city'> & {
+  state?: string | null;
+  branches?: { latitude: number | null; longitude: number | null }[];
+};
+
+/** Where to pin the business: its own position, else the first branch that has one. */
+export const businessMapPoint = (business: MapSource): { latitude: number; longitude: number } | null => {
+  if (business.latitude != null && business.longitude != null) return { latitude: business.latitude, longitude: business.longitude };
+  const branch = business.branches?.find((entry) => entry.latitude != null && entry.longitude != null);
+  return branch ? { latitude: branch.latitude as number, longitude: branch.longitude as number } : null;
+};
+
+/** The business's address as one search line, or null when it has none. */
+const addressQuery = (business: MapSource) => {
+  const text = [business.name, business.address, business.city, business.state].filter(Boolean).join(', ');
+  return business.address || business.city ? text : null;
+};
+
+/**
+ * A keyless map for the business page: a pinned OpenStreetMap view at its (or a
+ * branch's) position, else a map searched by its address; null with neither.
+ */
+export const businessMapEmbed = (business: MapSource): string | null => {
+  const point = businessMapPoint(business);
+  if (point) return mapEmbedUrl(point.latitude, point.longitude);
+  const query = addressQuery(business);
+  return query ? `https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=15&output=embed` : null;
+};
+
+export const mapsLink = (business: MapSource): string | null => {
+  const point = businessMapPoint(business);
+  if (point) {
+    return `https://www.google.com/maps/search/?api=1&query=${point.latitude},${point.longitude}`;
   }
   const text = [business.name, business.address, business.city].filter(Boolean).join(', ');
   return text ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}` : null;

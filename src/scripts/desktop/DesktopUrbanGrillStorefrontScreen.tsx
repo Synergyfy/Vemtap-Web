@@ -4,7 +4,7 @@ import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
 import { naira } from '../catalogueData';
-import { mapsLink, todayHours, usePublicBusiness, type PublicCatalogueItem } from '../../hooks/usePublicBusiness';
+import { businessMapEmbed, mapsLink, todayHours, usePublicBusiness, type PublicCatalogueItem } from '../../hooks/usePublicBusiness';
 import { offerDiscountLabel, offerEndsLabel, offerImage, realOfferId, type OfferRecord } from '../../utils/homeOffer';
 import { ordersService } from '../../services/ordersService';
 import { SaveToggle } from '../../components/SaveToggle';
@@ -295,6 +295,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
   const thumbnails = business.gallery.slice(0, 3);
   const morePhotos = Math.max(0, business.gallery.length - thumbnails.length);
   const map = mapsLink(business);
+  const mapEmbed = businessMapEmbed(business);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   const fullAddress = [business.address, business.city, business.state].filter(Boolean).join(', ');
 
@@ -822,8 +823,17 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
                   {business.city ? <span className="font-caption text-caption text-primary font-semibold">{business.city}</span> : null}
                 </div>
                 <div className="w-full h-44 rounded-xl bg-surface-tint-blue overflow-hidden shadow-inner relative flex items-end p-3">
-                  <Icon name="map" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[56px] text-primary/30" />
-                  <div className="relative z-10 w-full flex items-center justify-between gap-2">
+                  {mapEmbed ? (
+                    <iframe
+                      title={`Map showing ${business.name}`}
+                      className="absolute inset-0 w-full h-full border-0"
+                      src={mapEmbed}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <Icon name="map" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[56px] text-primary/30" />
+                  )}
+                  <div className={`relative z-10 w-full flex items-center justify-between gap-2 ${mapEmbed ? 'bg-surface-canvas/90 backdrop-blur-sm rounded-lg px-2.5 py-2 shadow-sm' : ''}`}>
                     <div className="text-on-surface min-w-0">
                       <p className="font-label-sm text-label-sm font-bold truncate">{business.address ?? business.name}</p>
                       {business.city || business.state ? (
