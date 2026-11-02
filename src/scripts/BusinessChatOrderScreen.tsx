@@ -16,6 +16,8 @@ interface BusinessChatOrderScreenProps {
   onBack: () => void;
   /** Customer or business the merchant is chatting with. */
   contact?: BusinessChatContact;
+  /** Opens the customer's CRM profile; live chats pass their user id. */
+  onViewProfile?: (name: string, customerId?: string | null) => void;
 }
 
 const MICHAEL_IMG =
@@ -88,7 +90,7 @@ const ORDER_HISTORY = [
   },
 ];
 
-export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderScreenProps) {
+export function BusinessChatOrderScreen({ onBack, contact, onViewProfile }: BusinessChatOrderScreenProps) {
   const activeContact = contact ?? DEFAULT_CHAT_CONTACTS.order;
   const firstName = contactFirstName(activeContact.name);
   const initials = contactInitials(activeContact.name);
@@ -450,6 +452,7 @@ export function BusinessChatOrderScreen({ onBack, contact }: BusinessChatOrderSc
               <button
                 className="w-full h-11 bg-surface-tint-blue text-primary rounded-xl font-label-md text-label-md flex items-center justify-center gap-1.5 font-semibold hover:bg-secondary-container transition-colors"
                 type="button"
+                onClick={() => onViewProfile?.(activeContact.name, activeContact.customerId ?? null)}
               >
                 <span>View Full Customer CRM Profile</span>
                 <Icon name="arrow_forward" className="text-[18px]" />

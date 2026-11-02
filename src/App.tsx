@@ -6779,9 +6779,10 @@ function AppInner() {
         return (
           <DesktopBusinessMessagesWorkspaceScreen
             onNav={businessPortalNav}
-            onViewCustomerProfile={(name) => {
+            onViewCustomerProfile={(name, customerId) => {
               setHubCustomerName(name);
-              setHubCustomerId(null);
+              // Without the id the live profile has nothing to load.
+              setHubCustomerId(customerId ?? null);
               setRoute('hub-customer-profile');
             }}
           />
@@ -6790,6 +6791,11 @@ function AppInner() {
         <BusinessMessagesScreen
           initialStep="home"
           onTab={businessTab}
+          onViewCustomerProfile={(name, customerId) => {
+            setHubCustomerName(name);
+            setHubCustomerId(customerId ?? null);
+            setRoute('hub-customer-profile');
+          }}
           onSelectChannel={(key) => {
             if (key === 'chat') setRoute('business-messages');
             else if (key === 'sms') setRoute('business-messages-sms');
