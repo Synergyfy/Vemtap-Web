@@ -3,7 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { naira } from './catalogueData';
-import { mapEmbedUrl, mapsLink, todayHours, usePublicBusiness, type PublicBusiness, type PublicCatalogueItem } from '../hooks/usePublicBusiness';
+import { businessMapEmbed, mapsLink, todayHours, usePublicBusiness, type PublicBusiness, type PublicCatalogueItem } from '../hooks/usePublicBusiness';
 import { offerDiscountLabel, offerEndsLabel, offerImage, realOfferId, type OfferRecord } from '../utils/homeOffer';
 import { SaveToggle } from '../components/SaveToggle';
 import { messageService } from '../services/messageService';
@@ -209,7 +209,7 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
   const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const bestDeal = [...deals].sort((a, b) => b.percent - a.percent)[0];
   const map = mapsLink(business);
-  const embed = mapEmbedUrl(business.latitude, business.longitude);
+  const embed = businessMapEmbed(business);
   const catalogue = [...products, ...services];
 
   return (
@@ -483,7 +483,7 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
   const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const bestDeal = [...deals].sort((a, b) => b.percent - a.percent)[0];
   const map = mapsLink(business);
-  const embed = mapEmbedUrl(business.latitude, business.longitude);
+  const embed = businessMapEmbed(business);
   const summary = business.description ?? '';
   const scrollToDeals = () => document.getElementById('spa-deals-section')?.scrollIntoView({ behavior: 'smooth' });
 
