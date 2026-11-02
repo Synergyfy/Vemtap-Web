@@ -7,6 +7,7 @@ import { naira } from '../catalogueData';
 import { mapsLink, todayHours, usePublicBusiness, type PublicCatalogueItem } from '../../hooks/usePublicBusiness';
 import { offerDiscountLabel, offerEndsLabel, offerImage, realOfferId, type OfferRecord } from '../../utils/homeOffer';
 import { ordersService } from '../../services/ordersService';
+import { SaveToggle } from '../../components/SaveToggle';
 import { messageService } from '../../services/messageService';
 import { ApiError, getAccessToken } from '../../services/api/client';
 import type { ClaimDealSummary } from '../../components/desktop/dialogs/ClaimIdentityModal';
@@ -130,7 +131,16 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
   });
 
   const addToTray = (item: PublicCatalogueItem) => {
-    cart.add({ id: item.id, productId: item.id, name: item.name, price: item.price, image: item.image ?? '' });
+    cart.add({
+      id: item.id,
+      productId: item.id,
+      name: item.name,
+      price: item.price,
+      image: item.image ?? '',
+      branchId: item.branchIds[0],
+      merchantName: business?.name,
+      merchantLogo: business?.logo ?? undefined,
+    });
   };
 
   const openCheckout = () => {
@@ -380,6 +390,12 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
                 </div>
                 <div className="flex items-center gap-3">
                   {business.logo ? <img alt={`${business.name} logo`} className="w-14 h-14 rounded-xl object-cover shadow-md bg-surface-canvas" src={business.logo} /> : null}
+                  <SaveToggle
+                    kind="businesses"
+                    id={business.id}
+                    name={business.name}
+                    className="w-10 h-10 shrink-0 rounded-full bg-surface-canvas text-primary flex items-center justify-center shadow-md disabled:opacity-60"
+                  />
                   <h1 className="font-display-hero text-display-hero text-on-primary drop-shadow-md">{business.name}</h1>
                 </div>
               </div>

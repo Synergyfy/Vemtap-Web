@@ -10,7 +10,6 @@ interface ConsumerCartScreenProps {
   onOpenStorefront: () => void;
 }
 
-const VAT_RATE = 0.075;
 
 const fmt = (value: number) => '₦' + Math.round(value).toLocaleString('en-US');
 
@@ -38,8 +37,7 @@ export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenSt
   };
 
   const subtotal = cart.total;
-  const vat = Math.round(subtotal * VAT_RATE);
-  const total = subtotal + vat;
+  const total = subtotal;
 
   return (
     <AppScreen surface="bg-surface">
@@ -197,10 +195,6 @@ export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenSt
                 <span className="text-text-secondary">Subtotal</span>
                 <span className="text-text-primary font-medium">{fmt(subtotal)}</span>
               </div>
-              <div className="flex items-center justify-between text-body-md font-body-md">
-                <span className="text-text-secondary">VAT (7.5%)</span>
-                <span className="text-text-primary font-medium">{fmt(vat)}</span>
-              </div>
               <div className="h-px bg-surface-container my-space-2xs" />
               <div className="flex items-center justify-between">
                 <span className="text-label-md font-label-md font-semibold text-text-primary">Total</span>
@@ -213,7 +207,7 @@ export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenSt
             <div className="rounded-xl bg-surface-tint-blue p-space-sm flex items-start gap-space-xs">
               <Icon name="verified_user" className="text-[18px] text-primary shrink-0 mt-0.5" />
               <span className="text-caption font-caption text-text-secondary leading-snug">
-                Secure checkout via VEMTAP Pay. Your card details are encrypted and never stored on merchant devices.
+                No payment is taken now. Pay at the counter when you collect your order.
               </span>
             </div>
           </div>

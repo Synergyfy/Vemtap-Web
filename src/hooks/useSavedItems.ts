@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { accountService } from '../services/accountService';
 import { api, getAccessToken, hasApiConfig } from '../services/api/client';
 import { NO_IMAGE } from '../utils/homeOffer';
 import { dealEndsLabel } from './useDealDetail';
@@ -103,7 +102,7 @@ const toSavedItem = (row: unknown): SavedItem | null => {
       discountPercent: 0,
       endsLabel: '',
       badge: item.duration != null && item.duration !== '' ? String(item.duration) : null,
-      code: null,
+      code: text(item.businessCode) || null,
     };
   }
   return null;
@@ -145,12 +144,8 @@ export function useSavedItems() {
 
   /** Saves or unsaves one item; resolves to whether it is saved now, rejects when it failed. */
   const toggleSaved = useCallback(async (item: SavedItem): Promise<boolean> => {
-    const result =
-      item.category === 'deals'
-        ? await api.post<unknown>(`/deals/${encodeURIComponent(item.id)}/save`)
-        : item.category === 'businesses'
-          ? await accountService.toggleBusinessSave(item.id)
-          : await accountService.toggleServiceSave(item.id);
+    const collection = item.category === 'deals' ? 'deals' : item.category === 'businesses' ? 'businesses' : 'services';
+    const result = await api.post<unknown>(`/${collection}/${encodeURIComponent(item.id)}/save`);
     const record = rec(result);
     const saved = ('saved' in record ? record : rec(record.data)).saved === true;
     setUnsaved((current) => (saved ? current.filter((id) => id !== item.id) : [...current, item.id]));

@@ -880,6 +880,7 @@ const CUSTOMER_SHELL_ROUTES = new Set<Route>([
   'messages',
   'conversation',
   'cart',
+  'checkout',
   'claim-success',
   'claimed-deal',
 ]);
@@ -1385,6 +1386,12 @@ function AppInner() {
 
   const startCheckout = () => {
     if (cart.count === 0) return;
+    if (hasApiConfig() && !authed) {
+      // Orders belong to an account; the cart waits through sign-in.
+      window.sessionStorage.setItem(RETURN_PATH_KEY, ROUTE_PATH.cart);
+      setRoute('sign-in');
+      return;
+    }
     setRoute('checkout');
   };
 
@@ -2010,6 +2017,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'saved':
+        setRoute('saved');
+        break;
       case 'notifications':
         setRoute('notifications');
         break;
@@ -2088,6 +2098,9 @@ function AppInner() {
         break;
       case 'cart':
         setRoute('cart');
+        break;
+      case 'saved':
+        setRoute('saved');
         break;
       case 'notifications':
         setRoute('notifications');
@@ -4597,7 +4610,7 @@ function AppInner() {
           onBack={() => setRoute('dashboard')}
           onCheckout={startCheckout}
           onBrowseDeals={() => setRoute('deals')}
-          onOpenStorefront={() => setRoute('storefront-menu')}
+          onOpenStorefront={() => setRoute('discover')}
         />
       );
 
@@ -4648,6 +4661,7 @@ function AppInner() {
             onBack={() => setRoute('account')}
             onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
             onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
+            onOpenService={(item) => openItem(item.code ?? '', item.id, 'saved')}
             onBrowse={() => setRoute('discover')}
           />
         );
@@ -4656,6 +4670,7 @@ function AppInner() {
           onBack={() => setRoute('home')}
           onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
           onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
+          onOpenService={(item) => openItem(item.code ?? '', item.id, 'saved')}
           onBrowse={() => setRoute('discover')}
         />
       );

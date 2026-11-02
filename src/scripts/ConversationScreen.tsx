@@ -404,14 +404,6 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                     if (e.target.value) notifyTyping();
                   }}
                 />
-                <button
-                  aria-label="Insert emoji"
-                  className="text-text-tertiary hover:text-on-surface flex items-center justify-center"
-                  type="button"
-                  onClick={() => showToast('Emoji keyboard')}
-                >
-                  <Icon name="sentiment_satisfied" className="text-[20px]" />
-                </button>
               </div>
               <button
                 aria-label="Send message"

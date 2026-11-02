@@ -219,6 +219,12 @@ const extractArray = (payload: unknown): OrderApiRecord[] => {
 };
 
 export const ordersService = {
+  /** `POST /catalogue/orders/bulk-checkout`: one order per branch. Errors are thrown. */
+  bulkCheckout: async (payload: Record<string, unknown>) => {
+    const response = await api.post<{ orders?: OrderApiRecord[] }>('/catalogue/orders/bulk-checkout', payload);
+    return extractArray(response?.orders ?? []).map((item) => normalizeOrderRecord(item)).filter(Boolean);
+  },
+
   getMyOrders: async (params?: Record<string, string | number | boolean | undefined>) => {
     const response = await api.get<unknown>('/catalogue/orders/my-orders', { params });
     return extractArray(response).map((item) => normalizeOrderRecord(item)).filter(Boolean);

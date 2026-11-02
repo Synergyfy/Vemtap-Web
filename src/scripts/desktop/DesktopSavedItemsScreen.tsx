@@ -9,6 +9,7 @@ interface DesktopSavedItemsScreenProps {
   onBack: () => void;
   onOpenDeal: (item: SavedItem) => void;
   onOpenBusiness: (item: SavedItem) => void;
+  onOpenService: (item: SavedItem) => void;
   onBrowse: () => void;
 }
 
@@ -185,8 +186,8 @@ function CompactCard({ item, saved, onToggleBookmark, onAction }: CompactCardPro
             onClick={onAction}
             className="h-8 px-3 rounded-md bg-surface-container text-primary font-label-sm text-label-sm font-semibold hover:bg-secondary-container transition-colors flex items-center gap-1 shrink-0"
           >
-            <span>Order</span>
-            <Icon name="shopping_bag" className="text-[14px]" />
+            <span>View</span>
+            <Icon name="arrow_forward" className="text-[14px]" />
           </button>
         </div>
       </div>
@@ -199,6 +200,7 @@ export function DesktopSavedItemsScreen({
   onBack,
   onOpenDeal,
   onOpenBusiness,
+  onOpenService,
   onBrowse,
 }: DesktopSavedItemsScreenProps) {
   const [filter, setFilter] = useState<SavedFilter>('all');
@@ -239,6 +241,7 @@ export function DesktopSavedItemsScreen({
   const runAction = (item: SavedItem) => {
     if (item.category === 'deals') onOpenDeal(item);
     else if (item.category === 'businesses' && item.code) onOpenBusiness(item);
+    else if (item.category === 'services' && item.code) onOpenService(item);
     else onBrowse();
   };
 
@@ -248,7 +251,7 @@ export function DesktopSavedItemsScreen({
       : 'shrink-0 h-9 px-space-md rounded-full bg-surface-container-lowest text-text-secondary font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5 hover:bg-surface-container-low hover:text-text-primary active:scale-95';
 
   return (
-    <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
+    <DesktopPage withHeader withFooter onNav={onNav} activeNav="saved" withCustomerRail>
       <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
         <div className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-8">
           <nav className="flex flex-wrap items-center gap-2 mb-6 font-label-sm text-label-sm text-text-tertiary">

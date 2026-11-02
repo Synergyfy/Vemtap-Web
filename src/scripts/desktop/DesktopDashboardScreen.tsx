@@ -235,7 +235,7 @@ export function DesktopDashboardScreen({
         onNav('orders');
         break;
       case 'saved':
-        onNav('cart');
+        onNav('saved');
         break;
       case 'subscription':
         onNav('for-business');

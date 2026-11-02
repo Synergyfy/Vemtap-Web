@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
+import { SaveToggle } from '../components/SaveToggle';
+import { useCart } from '../context/CartContext';
 import { Icon } from '../components/ui/Icon';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { SheetShell } from '../components/sheets/SheetShell';
@@ -24,6 +26,25 @@ export function ProductDetailScreen({ itemId, businessCode, onBack, onOpenBusine
   const [photo, setPhoto] = useState(0);
   // Order / booking sheet
   const [orderOpen, setOrderOpen] = useState(false);
+  const cart = useCart();
+  const [addedToCart, setAddedToCart] = useState(false);
+  const addToCart = () => {
+    if (!item) return;
+    cart.add(
+      {
+        id: item.id,
+        productId: item.id,
+        name: item.name,
+        price: item.unitPrice,
+        image: item.images[0] ?? '',
+        branchId: item.branches[0]?.id,
+        merchantName: business?.name,
+        merchantLogo: business?.logo ?? undefined,
+      },
+      qty,
+    );
+    setAddedToCart(true);
+  };
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [branchId, setBranchId] = useState('');
@@ -97,6 +118,15 @@ export function ProductDetailScreen({ itemId, businessCode, onBack, onOpenBusine
               {isService ? 'Service Details' : 'Product Details'}
             </h1>
           </div>
+          {isService ? (
+            <SaveToggle
+              kind="services"
+              id={item?.id}
+              name={item?.name ?? 'this service'}
+              className="w-11 h-11 flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors disabled:opacity-60"
+              iconClassName="text-[22px]"
+            />
+          ) : null}
           <button
             aria-label={copied ? 'Link copied' : 'Share'}
             type="button"
@@ -331,6 +361,16 @@ export function ProductDetailScreen({ itemId, businessCode, onBack, onOpenBusine
                     <span className="font-caption text-caption text-text-secondary">Total Price</span>
                     <span className="font-heading-md text-heading-md text-text-primary font-bold">{naira(total)}</span>
                   </div>
+                ) : null}
+                {!isService && item.inStock && item.branches.length > 0 ? (
+                  <button
+                    type="button"
+                    aria-label={addedToCart ? 'Added to cart' : 'Add to cart'}
+                    onClick={addToCart}
+                    className="w-14 h-14 shrink-0 rounded-2xl bg-surface-container-high text-primary flex items-center justify-center active:scale-[0.98] transition-all"
+                  >
+                    <Icon name={addedToCart ? 'check' : 'add_shopping_cart'} className="text-[22px]" />
+                  </button>
                 ) : null}
                 <button
                   type="button"

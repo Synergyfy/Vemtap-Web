@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { hasApiConfig } from '../lib/api';
 
 export interface CartItemInput {
   id: string;
@@ -8,6 +9,10 @@ export interface CartItemInput {
   productId?: string;
   options?: string;
   instructions?: string;
+  /** The branch the order goes to, and who it is. */
+  branchId?: string;
+  merchantName?: string;
+  merchantLogo?: string;
 }
 
 export interface CartLine extends CartItemInput {
@@ -28,8 +33,29 @@ interface CartContextValue {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
+const CART_KEY = 'vemtap_cart';
+
+/** The saved cart; a line without a branch can't be ordered, so it isn't kept. */
+const readCart = (): CartLine[] => {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(CART_KEY) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as CartLine[]).filter((line) => line?.id && line.qty > 0 && (!hasApiConfig() || line.branchId));
+  } catch {
+    return [];
+  }
+};
+
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [lines, setLines] = useState<CartLine[]>([]);
+  const [lines, setLines] = useState<CartLine[]>(readCart);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CART_KEY, JSON.stringify(lines));
+    } catch {
+      // storage unavailable; the cart lasts for this page only
+    }
+  }, [lines]);
 
   const add = useCallback((item: CartItemInput, qty = 1) => {
     setLines((prev) => {

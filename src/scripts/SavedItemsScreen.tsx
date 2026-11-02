@@ -8,6 +8,7 @@ interface SavedItemsScreenProps {
   onBack: () => void;
   onOpenDeal: (item: SavedItem) => void;
   onOpenBusiness: (item: SavedItem) => void;
+  onOpenService: (item: SavedItem) => void;
   onBrowse: () => void;
 }
 
@@ -23,7 +24,7 @@ const FILTERS: Array<{ key: SavedFilter; label: string }> = [
   { key: 'services', label: 'Services & Menu' },
 ];
 
-export function SavedItemsScreen({ onBack, onOpenDeal, onOpenBusiness, onBrowse }: SavedItemsScreenProps) {
+export function SavedItemsScreen({ onBack, onOpenDeal, onOpenBusiness, onOpenService, onBrowse }: SavedItemsScreenProps) {
   const [filter, setFilter] = useState<SavedFilter>('all');
   const [query, setQuery] = useState('');
   const { items, unsaved, loading, error, reload, toggleSaved } = useSavedItems();
@@ -62,6 +63,7 @@ export function SavedItemsScreen({ onBack, onOpenDeal, onOpenBusiness, onBrowse 
   const runAction = (item: SavedItem) => {
     if (item.category === 'deals') onOpenDeal(item);
     else if (item.category === 'businesses' && item.code) onOpenBusiness(item);
+    else if (item.category === 'services' && item.code) onOpenService(item);
     else onBrowse();
   };
 
@@ -366,8 +368,8 @@ function CompactCard({
             onClick={onAction}
             className="h-8 px-3 rounded-md bg-surface-container text-primary font-label-sm text-label-sm font-semibold hover:bg-secondary-container transition-colors flex items-center gap-1 shrink-0"
           >
-            <span>Order</span>
-            <Icon name="shopping_bag" className="text-[14px]" />
+            <span>View</span>
+            <Icon name="arrow_forward" className="text-[14px]" />
           </button>
         </div>
       </div>

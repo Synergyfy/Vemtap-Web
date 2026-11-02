@@ -4,13 +4,8 @@ import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChro
 import { OrderQrArt } from '../../components/ui/OrderQrArt';
 import { useOrders, type SubmittedOrder } from '../../context/OrdersContext';
 import {
-  MERCHANT_ADDRESS,
-  MERCHANT_NAME,
-  MERCHANT_PHONE_DISPLAY,
-  MERCHANT_PHONE_TEL,
   MAP_IMAGE,
   PAYMENT_STATUS_LABELS,
-  VOUCHER_CODE,
   orderStatusLabel,
   type FulfillmentMode,
 } from '../orderData';
@@ -34,6 +29,9 @@ export function DesktopOrderPlacedScreen({
 }: DesktopOrderPlacedScreenProps) {
   const orders = useOrders();
   const live = orders.byRef(order.ref) ?? order;
+  const merchantName = live.merchantName;
+  const merchantAddress = live.merchantAddress ?? '';
+  const merchantPhone = live.merchantPhone ?? '';
   const [mode, setMode] = useState<FulfillmentMode>(order.fulfillment);
   const [accordionOpen, setAccordionOpen] = useState(true);
 
@@ -43,8 +41,8 @@ export function DesktopOrderPlacedScreen({
   const pickupSteps = [
     {
       step: '1',
-      title: 'Arrive at the Bistro',
-      body: `Head to ${MERCHANT_NAME} at Plot 104 Apo Boulevard, Garki District.`,
+      title: 'Go to the Business',
+      body: `Head to ${merchantName}${merchantAddress ? ` at ${merchantAddress}` : ''}.`,
       accent: false,
     },
     {
@@ -110,7 +108,7 @@ export function DesktopOrderPlacedScreen({
             </div>
 
             <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
-              Order Received by {MERCHANT_NAME}!
+              Order Received by {merchantName}!
             </h1>
 
             <p className="font-body-lg text-body-lg text-text-secondary">
@@ -186,7 +184,7 @@ export function DesktopOrderPlacedScreen({
                         <Icon name="phone_in_talk" className="text-primary text-lg mt-0.5" />
                         <p className="font-body-md text-body-md text-text-secondary">
                           The restaurant dispatch rider will call your mobile line (
-                          <span className="font-medium text-text-primary">{MERCHANT_PHONE_DISPLAY}</span>) immediately
+                          <span className="font-medium text-text-primary">{merchantPhone}</span>) immediately
                           upon approaching your gate or security post.
                         </p>
                       </div>
@@ -217,7 +215,7 @@ export function DesktopOrderPlacedScreen({
               <section className="p-6 rounded-xl bg-surface-canvas border border-border-subtle shadow-sm space-y-space-md">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="font-heading-sm text-heading-sm text-text-primary">{MERCHANT_NAME}</h2>
+                    <h2 className="font-heading-sm text-heading-sm text-text-primary">{merchantName}</h2>
                     <p className="font-caption text-caption text-text-secondary">Kitchen Desk • Orders Helpdesk</p>
                   </div>
                   <span className="inline-flex items-center px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
@@ -228,7 +226,7 @@ export function DesktopOrderPlacedScreen({
                 <div className="grid grid-cols-3 gap-space-xs">
                   <a
                     className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-high active:scale-95 transition-all text-center"
-                    href={`tel:${MERCHANT_PHONE_TEL}`}
+                    href={`tel:${merchantPhone}`}
                   >
                     <Icon name="call" className="text-primary text-xl mb-1" />
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold">Direct Call</span>
@@ -243,7 +241,7 @@ export function DesktopOrderPlacedScreen({
                   </button>
                   <a
                     className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-high active:scale-95 transition-all text-center"
-                    href={`https://wa.me/${MERCHANT_PHONE_TEL}`}
+                    href={`https://wa.me/${merchantPhone}`}
                     rel="noopener noreferrer"
                     target="_blank"
                   >
@@ -255,11 +253,11 @@ export function DesktopOrderPlacedScreen({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-subtle p-space-sm rounded-lg">
                   <div className="flex items-start gap-space-xs min-w-0 pr-2">
                     <Icon name="location_on" className="text-primary text-lg mt-0.5 shrink-0" />
-                    <span className="font-caption text-caption text-text-secondary">{MERCHANT_ADDRESS}</span>
+                    <span className="font-caption text-caption text-text-secondary">{merchantAddress}</span>
                   </div>
                   <a
                     className="shrink-0 font-button-secondary text-button-secondary text-primary font-semibold hover:underline"
-                    href={`https://maps.google.com/?q=${encodeURIComponent(MERCHANT_ADDRESS)}`}
+                    href={`https://maps.google.com/?q=${encodeURIComponent(merchantAddress)}`}
                     rel="noopener noreferrer"
                     target="_blank"
                   >
@@ -271,7 +269,7 @@ export function DesktopOrderPlacedScreen({
               <section className="rounded-xl overflow-hidden shadow-sm">
                 <a
                   className="w-full h-36 bg-cover bg-center flex items-end p-4 relative"
-                  href={`https://maps.google.com/?q=${encodeURIComponent(MERCHANT_ADDRESS)}`}
+                  href={`https://maps.google.com/?q=${encodeURIComponent(merchantAddress)}`}
                   rel="noopener noreferrer"
                   target="_blank"
                   style={{ backgroundImage: `url('${MAP_IMAGE}')` }}
@@ -341,7 +339,7 @@ export function DesktopOrderPlacedScreen({
                   </div>
                   <div className="flex items-center gap-space-xs shrink-0">
                     <span className="font-caption text-caption px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-semibold">
-                      {VOUCHER_CODE} Applied
+                      Savings Applied
                     </span>
                     <Icon
                       name="expand_more"

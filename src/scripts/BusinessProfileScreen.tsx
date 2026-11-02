@@ -3,8 +3,9 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { naira } from './catalogueData';
-import { mapsLink, todayHours, usePublicBusiness, type PublicBusiness, type PublicCatalogueItem } from '../hooks/usePublicBusiness';
+import { mapEmbedUrl, mapsLink, todayHours, usePublicBusiness, type PublicBusiness, type PublicCatalogueItem } from '../hooks/usePublicBusiness';
 import { offerDiscountLabel, offerEndsLabel, offerImage, realOfferId, type OfferRecord } from '../utils/homeOffer';
+import { SaveToggle } from '../components/SaveToggle';
 import { messageService } from '../services/messageService';
 import { ApiError, getAccessToken } from '../services/api/client';
 import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
@@ -200,6 +201,7 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
   const [chatOpen, setChatOpen] = useState(false);
   const bestDeal = [...deals].sort((a, b) => b.percent - a.percent)[0];
   const map = mapsLink(business);
+  const embed = mapEmbedUrl(business.latitude, business.longitude);
   const catalogue = [...products, ...services];
 
   return (
@@ -233,9 +235,12 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
                 ) : null}
               </div>
             </div>
-            <div>
-              <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{business.name}</h2>
-              {kindLine(business) ? <p className="font-body-md text-body-md text-text-secondary mt-0.5">{kindLine(business)}</p> : null}
+            <div className="flex items-start justify-between gap-space-xs">
+              <div className="min-w-0">
+                <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{business.name}</h2>
+                {kindLine(business) ? <p className="font-body-md text-body-md text-text-secondary mt-0.5">{kindLine(business)}</p> : null}
+              </div>
+              <SaveToggle kind="businesses" id={business.id} name={business.name} className="w-10 h-10 shrink-0 rounded-full bg-surface-container-low text-primary flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60" />
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <OpenBadge business={business} className="flex items-center gap-1 px-2.5 py-1 rounded-lg font-label-sm text-label-sm" />
@@ -417,11 +422,11 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
                   <p className="font-body-md text-body-md text-text-secondary mt-0.5">{[business.address, business.city, business.state].filter(Boolean).join(', ')}</p>
                 </div>
               </div>
-              <div className="w-full h-36 rounded-xl bg-surface-tint-blue relative overflow-hidden flex items-center justify-center">
-                <div className="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg relative">
-                  <Icon name="pin_drop" className="text-[24px]" />
+              {embed ? (
+                <div className="w-full h-44 rounded-xl overflow-hidden shadow-sm bg-surface-tint-blue">
+                  <iframe title={`Map showing ${business.name}`} className="w-full h-full border-0" src={embed} loading="lazy" />
                 </div>
-              </div>
+              ) : null}
               {map ? (
                 <a className="w-full h-11 rounded-xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5" href={map} target="_blank" rel="noreferrer">
                   <Icon name="turn_right" className="text-[18px]" />
@@ -470,6 +475,7 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
   const [chatOpen, setChatOpen] = useState(false);
   const bestDeal = [...deals].sort((a, b) => b.percent - a.percent)[0];
   const map = mapsLink(business);
+  const embed = mapEmbedUrl(business.latitude, business.longitude);
   const summary = business.description ?? '';
   const scrollToDeals = () => document.getElementById('spa-deals-section')?.scrollIntoView({ behavior: 'smooth' });
 
@@ -503,9 +509,12 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
               ) : null}
             </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{business.name}</h2>
-            {kindLine(business) ? <p className="font-label-md text-label-md text-text-secondary">{kindLine(business)}</p> : null}
+          <div className="flex items-start justify-between gap-space-xs">
+            <div className="flex flex-col gap-1 min-w-0">
+              <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{business.name}</h2>
+              {kindLine(business) ? <p className="font-label-md text-label-md text-text-secondary">{kindLine(business)}</p> : null}
+            </div>
+            <SaveToggle kind="businesses" id={business.id} name={business.name} className="w-10 h-10 shrink-0 rounded-full bg-surface-container-low text-primary flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60" />
           </div>
           <div className="flex flex-wrap items-center gap-space-xs mt-space-xs">
             <OpenBadge business={business} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full font-label-sm text-label-sm font-medium" />
@@ -686,12 +695,11 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
             <div className="px-margin py-space-md">
               <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-xs">Location</h3>
               <p className="font-body-md text-body-md text-text-secondary mb-space-sm">{[business.address, business.city, business.state].filter(Boolean).join(', ')}</p>
-              <div className="relative w-full h-44 rounded-xl overflow-hidden shadow-sm bg-surface-tint-blue">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-                  <div className="px-2 py-1 rounded bg-surface-canvas shadow-lg text-[11px] font-bold text-text-primary mb-1 whitespace-nowrap">{business.name}</div>
-                  <Icon name="location_on" filled className="text-primary text-[32px] drop-shadow" />
+              {embed ? (
+                <div className="w-full h-44 rounded-xl overflow-hidden shadow-sm bg-surface-tint-blue">
+                  <iframe title={`Map showing ${business.name}`} className="w-full h-full border-0" src={embed} loading="lazy" />
                 </div>
-              </div>
+              ) : null}
               {map ? (
                 <a
                   className="w-full mt-space-sm h-12 rounded-xl bg-surface-container-low hover:bg-surface-container text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 active:scale-95 transition-all"

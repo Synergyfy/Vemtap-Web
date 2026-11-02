@@ -3,8 +3,6 @@ import { hasApiConfig } from '../lib/api';
 import { ordersService } from '../services/ordersService';
 import { useSessionUser } from '../hooks/useSessionUser';
 import {
-  estimateReadyBy,
-  newOrderRef,
   type FulfillmentMode,
   type OrderLine,
   type OrderStatus,
@@ -79,7 +77,7 @@ export interface SubmitOrderInput {
   marketingConsent?: boolean;
 }
 
-export type SubmitOrderResult = { ok: true; order: SubmittedOrder } | { ok: false; error: string };
+export type SubmitOrderResult = { ok: true; order: SubmittedOrder; placedCount: number } | { ok: false; error: string };
 
 export interface OrdersContextValue {
   /** Newest first. */
@@ -87,7 +85,7 @@ export interface OrdersContextValue {
   /** True until `GET /catalogue/orders/my-orders` has answered. */
   ordersLoading: boolean;
   latest: SubmittedOrder | null;
-  submit: (input: SubmitOrderInput) => SubmitOrderResult;
+  submit: (input: SubmitOrderInput) => Promise<SubmitOrderResult>;
   byRef: (ref: string) => SubmittedOrder | undefined;
   /** Tolerant cashier lookup: ignores case, leading `#`, spaces; allows a numeric-tail match. */
   findByRef: (query: string) => SubmittedOrder | undefined;
@@ -132,50 +130,6 @@ const lineSignature = (lines: OrderLine[]): string =>
     .map((line) => `${line.id}:${line.qty}`)
     .sort()
     .join('|');
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const isUuid = (value?: string) => typeof value === 'string' && UUID_RE.test(value.trim());
-
-const buildCatalogueOrderPayload = (
-  input: SubmitOrderInput,
-  customer: { firstName: string; lastName: string; email: string; phone: string },
-): Record<string, unknown> => {
-  const firstName = customer.firstName.trim() || 'Customer';
-  const lastName = customer.lastName.trim();
-  const phone = (input.customerPhone ?? customer.phone ?? '').trim();
-  const branchId = input.merchantId?.trim() && isUuid(input.merchantId) ? input.merchantId.trim() : null;
-
-  if (!branchId) {
-    throw new Error('This merchant is missing a valid branchId. Connect the live branch metadata before submitting checkout.');
-  }
-
-  const items = input.lines.map((line, index) => {
-    const itemId = (line.productId ?? line.id ?? '').trim();
-    if (!isUuid(itemId)) {
-      throw new Error(
-        `Cart item "${line.name || `#${index + 1}`}" has a non-UUID catalogue id (${itemId || 'missing'}). The backend rejects these slug-style ids.`,
-      );
-    }
-
-    return {
-      itemId,
-      quantity: Math.max(1, Number(line.qty) || 1),
-    };
-  });
-
-  return {
-    branchId,
-    items,
-    notes: input.note?.trim() || undefined,
-    customer: {
-      firstName,
-      lastName,
-      phone: phone || undefined,
-      email: customer.email?.trim() || undefined,
-    },
-  };
-};
 
 const OrdersContext = createContext<OrdersContextValue | null>(null);
 
@@ -225,11 +179,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   }, [orders]);
 
   const submit = useCallback(
-    (input: SubmitOrderInput): SubmitOrderResult => {
+    async (input: SubmitOrderInput): Promise<SubmitOrderResult> => {
       if (input.lines.length === 0) {
         return { ok: false, error: 'Your cart is empty. Add an item before submitting an order.' };
       }
-
       if (!hasApiConfig()) {
         return { ok: false, error: 'API is not configured. Set VITE_API_BASE_URL before submitting orders.' };
       }
@@ -239,83 +192,54 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       const signature = lineSignature(input.lines);
       const now = Date.now();
       const duplicate = orders.find(
-        (existing) =>
-          existing.merchantId === input.merchantId &&
-          existing.fulfillment === input.fulfillment &&
-          Math.abs(existing.total - input.total) < 0.5 &&
-          now - existing.submittedAt < DUPLICATE_WINDOW_MS &&
-          lineSignature(existing.lines) === signature,
+        (existing) => now - existing.submittedAt < DUPLICATE_WINDOW_MS && lineSignature(existing.lines) === signature,
       );
       if (duplicate) {
-        return {
-          ok: false,
-          error: `This order was already submitted as #${duplicate.ref}. Show that reference to the cashier.`,
-        };
+        return { ok: false, error: `This order was already submitted as #${duplicate.ref}. Show that reference at the counter.` };
       }
 
-      let payload: Record<string, unknown>;
+      if (input.lines.some((line) => !line.branchId)) {
+        return { ok: false, error: 'Remove items that aren’t from a business page, then try again.' };
+      }
+
+      // The cart can hold several businesses: each branch gets its own order.
+      const branches = [...new Set(input.lines.map((line) => line.branchId as string))];
       try {
-        const profile = {
-          firstName: input.customerName.split(' ')[0] ?? 'Customer',
-          lastName: input.customerName.split(' ').slice(1).join(' '),
-          email: '',
-          phone: input.customerPhone ?? '',
-        };
-        payload = buildCatalogueOrderPayload(input, profile);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'The live order API rejected this checkout payload.';
-        return { ok: false, error: message };
-      }
-
-      const ref = newOrderRef(orders.map((order) => order.ref));
-      const paymentMethod = input.paymentMethod ?? 'pay-at-counter';
-      // An order is never marked paid at submission. Pay-at-counter stays
-      // `submitted` until the cashier records the tender; online methods sit in
-      // `payment-pending` until a server-side verification confirms them.
-      const initialStatus: OrderStatus = paymentMethod === 'pay-at-counter' ? 'submitted' : 'payment-pending';
-      const order: SubmittedOrder = {
-        ref,
-        merchantId: input.merchantId,
-        merchantName: input.merchantName,
-        customerName: input.customerName,
-        customerPhone: input.customerPhone,
-        lines: input.lines,
-        subtotal: input.subtotal,
-        savings: input.savings,
-        deliveryFee: input.deliveryFee,
-        total: input.total,
-        fulfillment: input.fulfillment,
-        note: input.note?.trim() || undefined,
-        status: initialStatus,
-        submittedAt: now,
-        readyByLabel: estimateReadyBy(25),
-        source: input.source ?? 'customer-app',
-        paymentMethod,
-        paymentStatus: paymentMethod === 'pay-at-counter' ? 'not-required' : 'pending',
-        marketingConsent: input.marketingConsent === true,
-      };
-
-      const createdOrder = { ...order };
-      setOrders((current) => [createdOrder, ...current]);
-      writeOrders([createdOrder, ...orders]);
-
-      void ordersService.createOrder(payload)
-        .then((remoteOrder) => {
-          if (!remoteOrder) return;
-          setOrders((current) => {
-            const next = current.some((existing) => existing.ref === remoteOrder.ref)
-              ? current
-              : [remoteOrder, ...current];
-            writeOrders(next);
-            return next;
-          });
-        })
-        .catch(() => {
-          setOrders((current) => current.filter((existing) => existing.ref !== createdOrder.ref));
-          writeOrders(orders.filter((existing) => existing.ref !== createdOrder.ref));
+        const [firstName = 'Customer', ...rest] = input.customerName.trim().split(/\s+/);
+        const placed: SubmittedOrder[] = await ordersService.bulkCheckout({
+          firstName,
+          lastName: rest.join(' ') || undefined,
+          phone: input.customerPhone || undefined,
+          orders: branches.map((branchId) => ({
+            branchId,
+            notes: input.note?.trim() || undefined,
+            items: input.lines
+              .filter((line) => line.branchId === branchId)
+              .map((line) => ({ itemId: line.productId ?? line.id, quantity: Math.max(1, Number(line.qty) || 1) })),
+          })),
         });
+        if (placed.length === 0) return { ok: false, error: 'The order could not be confirmed. Please try again.' };
 
-      return { ok: true, order: createdOrder };
+        // The response carries the order, not the branch it was loaded with.
+        const named = placed.map((order, index) => {
+          const lines = input.lines.filter((line) => line.branchId === branches[index]);
+          return {
+            ...order,
+            merchantId: branches[index] ?? order.merchantId,
+            merchantName: lines[0]?.merchantName || order.merchantName,
+            merchantLogo: lines[0]?.merchantLogo || order.merchantLogo,
+            lines: order.lines.length ? order.lines.map((line, position) => ({ ...line, name: lines[position]?.name ?? line.name, image: line.image || lines[position]?.image || '' })) : lines,
+          };
+        });
+        setOrders((current) => {
+          const next = [...named, ...current];
+          writeOrders(next);
+          return next;
+        });
+        return { ok: true, order: named[0], placedCount: named.length };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : 'The order could not be placed. Please try again.' };
+      }
     },
     [orders],
   );

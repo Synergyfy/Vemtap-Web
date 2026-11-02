@@ -6,13 +6,8 @@ import { useOrders } from '../context/OrdersContext';
 import type { SubmittedOrder } from '../context/OrdersContext';
 import { naira } from './catalogueData';
 import {
-  MERCHANT_ADDRESS,
-  MERCHANT_NAME,
-  MERCHANT_PHONE_DISPLAY,
-  MERCHANT_PHONE_TEL,
   MAP_IMAGE,
   PAYMENT_STATUS_LABELS,
-  VOUCHER_CODE,
   orderStatusLabel,
   type FulfillmentMode,
 } from './orderData';
@@ -31,6 +26,9 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
 
   // Re-read from the store so payment/status updates from the cashier show here.
   const live = orders.byRef(order.ref) ?? order;
+  const merchantName = live.merchantName;
+  const merchantAddress = live.merchantAddress ?? '';
+  const merchantPhone = live.merchantPhone ?? '';
   const itemCount = live.lines.reduce((sum, line) => sum + line.qty, 0);
   const total = live.total;
 
@@ -66,7 +64,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
             </div>
             <div className="space-y-space-2xs">
               <h2 className="font-heading-md text-heading-md text-on-surface font-semibold">
-                Order Received by {MERCHANT_NAME}!
+                Order Received by {merchantName}!
               </h2>
               <p className="font-body-md text-body-md text-text-secondary">
                 Order <span className="font-semibold text-on-surface">#{live.ref}</span> • Placed just now
@@ -157,8 +155,8 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
                   {[
                     {
                       step: '1',
-                      title: 'Arrive at the Bistro',
-                      body: `Head to ${MERCHANT_NAME} at Plot 104 Apo Boulevard, Garki District.`,
+                      title: 'Go to the Business',
+                      body: `Head to ${merchantName}${merchantAddress ? ` at ${merchantAddress}` : ''}.`,
                       accent: false,
                     },
                     {
@@ -211,7 +209,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
                     <Icon name="phone_in_talk" className="text-primary text-lg mt-0.5" />
                     <p className="font-body-md text-body-md text-text-secondary">
                       The restaurant dispatch rider will call your mobile line (
-                      <span className="font-medium text-on-surface">{MERCHANT_PHONE_DISPLAY}</span>) immediately upon
+                      <span className="font-medium text-on-surface">{merchantPhone}</span>) immediately upon
                       approaching your gate or security post.
                     </p>
                   </div>
@@ -242,7 +240,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
           <section className="p-space-lg rounded-xl bg-surface-canvas shadow-sm space-y-space-md">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-heading-sm text-heading-sm text-on-surface">{MERCHANT_NAME}</h3>
+                <h3 className="font-heading-sm text-heading-sm text-on-surface">{merchantName}</h3>
                 <p className="font-caption text-caption text-text-secondary">Kitchen Desk • Orders Helpdesk</p>
               </div>
               <span className="inline-flex items-center px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
@@ -253,7 +251,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
             <div className="grid grid-cols-3 gap-space-xs">
               <a
                 className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container active:scale-95 transition-all text-center"
-                href={`tel:${MERCHANT_PHONE_TEL}`}
+                href={`tel:${merchantPhone}`}
               >
                 <Icon name="call" className="text-primary text-xl mb-1" />
                 <span className="font-label-sm text-label-sm text-on-surface font-semibold">Direct Call</span>
@@ -268,7 +266,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
               </button>
               <a
                 className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container active:scale-95 transition-all text-center"
-                href={`https://wa.me/${MERCHANT_PHONE_TEL}`}
+                href={`https://wa.me/${merchantPhone}`}
                 rel="noopener noreferrer"
                 target="_blank"
               >
@@ -280,11 +278,11 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
             <div className="flex items-center justify-between pt-space-xs bg-surface-subtle p-space-sm rounded-lg">
               <div className="flex items-start gap-space-xs min-w-0 pr-2">
                 <Icon name="location_on" className="text-primary text-lg mt-0.5 shrink-0" />
-                <span className="font-caption text-caption text-text-secondary truncate">{MERCHANT_ADDRESS}</span>
+                <span className="font-caption text-caption text-text-secondary truncate">{merchantAddress}</span>
               </div>
               <a
                 className="shrink-0 font-button-secondary text-button-secondary text-primary font-semibold hover:underline"
-                href={`https://maps.google.com/?q=${encodeURIComponent(MERCHANT_ADDRESS)}`}
+                href={`https://maps.google.com/?q=${encodeURIComponent(merchantAddress)}`}
                 rel="noopener noreferrer"
                 target="_blank"
               >
@@ -296,7 +294,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
           <section className="rounded-xl overflow-hidden shadow-sm">
             <a
               className="w-full h-28 bg-cover bg-center flex items-end p-space-sm relative"
-              href={`https://maps.google.com/?q=${encodeURIComponent(MERCHANT_ADDRESS)}`}
+              href={`https://maps.google.com/?q=${encodeURIComponent(merchantAddress)}`}
               rel="noopener noreferrer"
               target="_blank"
               style={{ backgroundImage: `url('${MAP_IMAGE}')` }}
@@ -323,7 +321,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
               </div>
               <div className="flex items-center gap-space-xs">
                 <span className="font-caption text-caption px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-semibold">
-                  {VOUCHER_CODE} Applied
+                  Savings Applied
                 </span>
                 <Icon
                   name="expand_more"

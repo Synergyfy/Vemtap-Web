@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SaveToggle } from '../../components/SaveToggle';
+import { useCart } from '../../context/CartContext';
 import { Icon } from '../../components/ui/Icon';
 import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
@@ -29,6 +31,25 @@ export function DesktopProductDetailScreen({ itemId, businessCode, onNav, onBack
   const { item, loading, error, reload } = usePublicCatalogueItem(itemId);
   const { business, products, services } = usePublicBusiness(businessCode);
   const [selectedImage, setSelectedImage] = useState(0);
+  const cart = useCart();
+  const [addedToCart, setAddedToCart] = useState(false);
+  const addToCart = () => {
+    if (!item) return;
+    cart.add(
+      {
+        id: item.id,
+        productId: item.id,
+        name: item.name,
+        price: item.unitPrice,
+        image: item.images[0] ?? '',
+        branchId: item.branches[0]?.id,
+        merchantName: business?.name,
+        merchantLogo: business?.logo ?? undefined,
+      },
+      qty,
+    );
+    setAddedToCart(true);
+  };
   const [qty, setQty] = useState(1);
   const [instructions, setInstructions] = useState('');
   const [fulfillment, setFulfillment] = useState<Fulfillment>('pickup');
@@ -261,6 +282,14 @@ export function DesktopProductDetailScreen({ itemId, businessCode, onNav, onBack
 
               <div className="p-6 sm:p-8 rounded-3xl bg-surface-canvas shadow-sm flex flex-col gap-6">
                 <div className="flex flex-col gap-2">
+                  {isService ? (
+                    <SaveToggle
+                      kind="services"
+                      id={item.id}
+                      name={item.name}
+                      className="float-right w-10 h-10 rounded-full bg-surface-container-low text-primary flex items-center justify-center disabled:opacity-60"
+                    />
+                  ) : null}
                   <h1 className="font-heading-lg text-heading-lg text-on-surface tracking-tight font-bold">{item.name}</h1>
                   <div className="flex flex-wrap items-baseline gap-3 mt-1">
                     <span className="font-display-hero text-display-hero text-primary font-bold tracking-tight">{item.priceLabel ?? 'Price on request'}</span>
@@ -514,6 +543,16 @@ export function DesktopProductDetailScreen({ itemId, businessCode, onNav, onBack
                         </span>
                         <Icon name="arrow_forward" className="text-[20px]" />
                       </button>
+                      {!isService && item.inStock ? (
+                        <button
+                          type="button"
+                          onClick={addToCart}
+                          className="w-full h-11 rounded-xl bg-surface-container-high text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 hover:bg-surface-container transition-colors"
+                        >
+                          <Icon name={addedToCart ? 'check' : 'add_shopping_cart'} className="text-[18px]" />
+                          <span>{addedToCart ? 'Added to Cart' : 'Add to Cart'}</span>
+                        </button>
+                      ) : null}
                       <div className="grid grid-cols-2 gap-2.5">
                         <button
                           type="button"
