@@ -13,6 +13,10 @@ export interface OrderLine {
   branchId?: string;
   merchantName?: string;
   merchantLogo?: string;
+  merchantPhone?: string;
+  merchantAddress?: string;
+  merchantLatitude?: number;
+  merchantLongitude?: number;
 }
 
 export interface OrderSummary {

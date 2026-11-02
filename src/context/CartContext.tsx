@@ -13,6 +13,10 @@ export interface CartItemInput {
   branchId?: string;
   merchantName?: string;
   merchantLogo?: string;
+  merchantPhone?: string;
+  merchantAddress?: string;
+  merchantLatitude?: number;
+  merchantLongitude?: number;
 }
 
 export interface CartLine extends CartItemInput {
@@ -21,6 +25,9 @@ export interface CartLine extends CartItemInput {
 
 interface CartContextValue {
   lines: CartLine[];
+  /** The customer's note, kept from the cart through checkout. */
+  note: string;
+  setNote: (note: string) => void;
   count: number;
   total: number;
   qtyOf: (id: string) => number;
@@ -48,6 +55,7 @@ const readCart = (): CartLine[] => {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>(readCart);
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     try {
@@ -83,13 +91,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setLines((prev) => prev.filter((line) => line.id !== id));
   }, []);
 
-  const clear = useCallback(() => setLines([]), []);
+  const clear = useCallback(() => {
+    setLines([]);
+    setNote('');
+  }, []);
 
   const value = useMemo<CartContextValue>(() => {
     const count = lines.reduce((sum, line) => sum + line.qty, 0);
     const total = lines.reduce((sum, line) => sum + line.qty * line.price, 0);
     return {
       lines,
+      note,
+      setNote,
       count,
       total,
       qtyOf: (id: string) => lines.find((line) => line.id === id)?.qty ?? 0,
@@ -99,7 +112,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       remove,
       clear,
     };
-  }, [lines, add, increment, decrement, remove, clear]);
+  }, [lines, note, add, increment, decrement, remove, clear]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

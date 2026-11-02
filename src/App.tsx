@@ -2542,6 +2542,17 @@ function AppInner() {
     }
   }, [route, liveDeal.reload]);
 
+  // "New chat" from Messages: the next business opened shows its message box ready,
+  // and the first message sent there opens that conversation.
+  const [chatIntent, setChatIntent] = useState(false);
+  useEffect(() => {
+    if (chatIntent && !['discover', 'business-profile', 'spa-profile', 'storefront'].includes(route)) setChatIntent(false);
+  }, [route, chatIntent]);
+  const startNewChat = () => {
+    setChatIntent(true);
+    setRoute('discover');
+  };
+
   /** Opens the customer's chat with a branch, or the inbox if it can't be opened. */
   const openBranchChat = (branchId?: string) => {
     if (!branchId) {
@@ -4248,6 +4259,11 @@ function AppInner() {
             onOpenDeal={(deal) => openDeal('business-profile', deal)}
             onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
             onCheckout={startCheckout}
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
           />
         );
       return (
@@ -4322,6 +4338,11 @@ function AppInner() {
             onOpenDeal={(deal) => openDeal('business-profile', deal)}
             onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
             onCheckout={startCheckout}
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
           />
         );
       return (
@@ -4331,6 +4352,11 @@ function AppInner() {
           onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
           onOpenDeal={(deal) => openDeal('business-profile', deal)}
           onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+          startChat={chatIntent}
+          onChatStarted={(branchId) => {
+            setChatIntent(false);
+            openBranchChat(branchId);
+          }}
         />
       );
 
@@ -4617,10 +4643,11 @@ function AppInner() {
     // The old scripted merchant chat; a voucher's chat now opens the real branch thread.
     case 'merchant-chat':
     case 'messages':
-      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} onNewChat={startNewChat} />;
       return (
         <MessagesScreen
           onTab={(tab) => setRoute(tab)}
+          onNewChat={startNewChat}
           onOpenSettings={() => setRoute('account-settings')}
           onOpen={(threadId) => {
             setActiveConversation(threadId);
@@ -4630,7 +4657,7 @@ function AppInner() {
       );
 
     case 'conversation':
-      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} initialThread={activeConversation} />;
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} initialThread={activeConversation} onNewChat={startNewChat} />;
       return (
         <ConversationScreen
           threadId={activeConversation}

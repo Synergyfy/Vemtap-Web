@@ -10,6 +10,8 @@ interface MessagesScreenProps {
   onOpen: (threadId: string) => void;
   /** Opens the screen where message notifications are switched on or off. */
   onOpenSettings?: () => void;
+  /** Starts a new chat: pick a business, then its message box opens ready to send. */
+  onNewChat?: () => void;
 }
 
 type InboxChipKey = 'all' | 'unread' | 'deals' | 'bookings';
@@ -27,7 +29,7 @@ function matchesFilter(thread: MessageThread, filter: InboxChipKey): boolean {
   return thread.filters.includes(filter as MessageThreadFilter);
 }
 
-export function MessagesScreen({ onTab, onOpen, onOpenSettings }: MessagesScreenProps) {
+export function MessagesScreen({ onTab, onOpen, onOpenSettings, onNewChat }: MessagesScreenProps) {
   const [chip, setChip] = useState<InboxChipKey>('all');
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
@@ -312,7 +314,7 @@ export function MessagesScreen({ onTab, onOpen, onOpenSettings }: MessagesScreen
           aria-label="Start a new message"
           className="flex items-center gap-2 px-space-md py-3 rounded-full bg-primary text-on-primary shadow-lg shadow-primary/30 active:scale-95 transition-transform pointer-events-auto"
           type="button"
-          onClick={() => onTab('discover')}
+          onClick={() => (onNewChat ? onNewChat() : onTab('discover'))}
         >
           <Icon name="add_comment" className="text-[20px]" />
           <span className="font-button-primary text-button-primary">Start a chat</span>

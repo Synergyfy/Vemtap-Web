@@ -14,6 +14,8 @@ import { messageService, type MessageThread } from '../../services/messageServic
 interface DesktopMessagesScreenProps {
   onNav: (key: DesktopNavKey) => void;
   initialThread?: string;
+  /** Starts a new chat: pick a business, then its message box opens ready to send. */
+  onNewChat?: () => void;
 }
 
 interface ThreadStrip {
@@ -128,7 +130,7 @@ function threadInitials(name: string): string {
     .toUpperCase();
 }
 
-export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesScreenProps) {
+export function DesktopMessagesScreen({ onNav, initialThread, onNewChat }: DesktopMessagesScreenProps) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedId, setSelectedId] = useState(initialThread ?? '');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
@@ -339,7 +341,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
             />
             <button
               type="button"
-              onClick={() => onNav('discover')}
+              onClick={() => (onNewChat ? onNewChat() : onNav('discover'))}
               className="h-9 px-space-sm rounded-xl bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 flex items-center gap-space-2xs shadow-sm transition-colors"
             >
               <Icon name="edit" className="text-[16px]" />

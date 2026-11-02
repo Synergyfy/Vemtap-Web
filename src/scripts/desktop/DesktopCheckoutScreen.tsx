@@ -29,7 +29,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
   const orders = useOrders();
   const profile = useProfile();
   const [mode, setMode] = useState<FulfillmentMode>('pickup');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(cart.note);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pay-at-counter');
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);

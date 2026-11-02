@@ -45,6 +45,10 @@ export function DesktopProductDetailScreen({ itemId, businessCode, onNav, onBack
         branchId: item.branches[0]?.id,
         merchantName: business?.name,
         merchantLogo: business?.logo ?? undefined,
+        merchantPhone: business?.phone ?? undefined,
+        merchantAddress: [business?.address, business?.city].filter(Boolean).join(', ') || undefined,
+        merchantLatitude: business?.latitude ?? undefined,
+        merchantLongitude: business?.longitude ?? undefined,
       },
       qty,
     );

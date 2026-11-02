@@ -22,6 +22,10 @@ export interface BusinessProfileScreenProps {
   onOpenDeal?: (deal: ClaimDealSummary) => void;
   /** Opens the product/service page. */
   onOpenItem?: (itemId: string) => void;
+  /** Opens with the message box ready, for a chat started from Messages. */
+  startChat?: boolean;
+  /** A first message was sent from that box. */
+  onChatStarted?: (branchId: string) => void;
 }
 
 interface LiveDeal {
@@ -64,6 +68,9 @@ interface ProfileProps {
   onClaim: BusinessProfileScreenProps['onClaim'];
   onOpenDeal?: BusinessProfileScreenProps['onOpenDeal'];
   onOpenItem?: BusinessProfileScreenProps['onOpenItem'];
+  /** Opens with the message box ready, for a chat started from Messages. */
+  startChat?: boolean;
+  onChatStarted?: (branchId: string) => void;
 }
 
 const toClaim = (deal: LiveDeal, business: PublicBusiness): ClaimDealSummary => ({
@@ -84,7 +91,7 @@ const waHref = (phone: string) => `https://wa.me/${phone.replace(/[^\d]/g, '')}`
 const webHref = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
 
 /** Starts a real chat with the business's main branch (`POST /customer/messaging/threads/start`). */
-function InAppChat({ business, onClose }: { business: PublicBusiness; onClose: () => void }) {
+function InAppChat({ business, onClose, onStarted }: { business: PublicBusiness; onClose: () => void; onStarted?: (branchId: string) => void }) {
   const [text, setText] = useState('');
   const [state, setState] = useState<{ kind: 'idle' | 'sending' | 'sent' | 'error'; message?: string }>({ kind: 'idle' });
   const send = async () => {
@@ -99,6 +106,7 @@ function InAppChat({ business, onClose }: { business: PublicBusiness; onClose: (
       await messageService.startConversation({ branchId, content: text.trim() });
       setText('');
       setState({ kind: 'sent' });
+      onStarted?.(branchId);
     } catch (err) {
       setState({ kind: 'error', message: err instanceof ApiError && err.message && !/^Request failed/.test(err.message) ? err.message : 'Your message couldn’t be sent. Please try again.' });
     }
@@ -195,10 +203,10 @@ function HoursList({ business, rowClass }: { business: PublicBusiness; rowClass:
   );
 }
 
-function UrbanProfile({ business, deals, products, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem }: ProfileProps) {
+function UrbanProfile({ business, deals, products, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: ProfileProps) {
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const bestDeal = [...deals].sort((a, b) => b.percent - a.percent)[0];
   const map = mapsLink(business);
   const embed = mapEmbedUrl(business.latitude, business.longitude);
@@ -394,7 +402,7 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
         ) : null}
         <div className="px-margin mt-7">
           <ContactGrid business={business} chatOpen={chatOpen} onToggleChat={() => setChatOpen((open) => !open)} tone="urban" />
-          {chatOpen ? <InAppChat business={business} onClose={() => setChatOpen(false)} /> : null}
+          {chatOpen ? <InAppChat business={business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} /> : null}
         </div>
         {business.hours.length > 0 ? (
           <div className="px-margin mt-6">
@@ -469,10 +477,10 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
   );
 }
 
-function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem }: ProfileProps) {
+function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: ProfileProps) {
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const bestDeal = [...deals].sort((a, b) => b.percent - a.percent)[0];
   const map = mapsLink(business);
   const embed = mapEmbedUrl(business.latitude, business.longitude);
@@ -673,7 +681,7 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
         <div className="px-margin py-space-md">
           <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">Connect with {business.name}</h3>
           <ContactGrid business={business} chatOpen={chatOpen} onToggleChat={() => setChatOpen((open) => !open)} tone="spa" />
-          {chatOpen ? <InAppChat business={business} onClose={() => setChatOpen(false)} /> : null}
+          {chatOpen ? <InAppChat business={business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} /> : null}
         </div>
         {business.hours.length > 0 ? (
           <>
@@ -739,7 +747,7 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
   );
 }
 
-export function BusinessProfileScreen({ business: selected, onBack, onClaim, onOpenDeal, onOpenItem }: BusinessProfileScreenProps) {
+export function BusinessProfileScreen({ business: selected, onBack, onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: BusinessProfileScreenProps) {
   const [linkCopied, setLinkCopied] = useState(false);
   const { business, deals, products, services, loading, catalogueLoading, error, reload } = usePublicBusiness(selected?.slug ?? null);
   const liveDeals = useMemo(() => deals.map(toLiveDeal).filter((deal): deal is LiveDeal => Boolean(deal)), [deals]);
@@ -837,9 +845,9 @@ export function BusinessProfileScreen({ business: selected, onBack, onClaim, onO
           </SkeletonGroup>
         </main>
       ) : servicesOnly ? (
-        <SpaProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} />
+        <SpaProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} startChat={startChat} onChatStarted={onChatStarted} />
       ) : (
-        <UrbanProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} />
+        <UrbanProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} startChat={startChat} onChatStarted={onChatStarted} />
       )}
     </AppScreen>
   );

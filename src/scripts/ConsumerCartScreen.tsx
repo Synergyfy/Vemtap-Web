@@ -15,7 +15,6 @@ const fmt = (value: number) => '₦' + Math.round(value).toLocaleString('en-US')
 
 export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenStorefront }: ConsumerCartScreenProps) {
   const cart = useCart();
-  const [note, setNote] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
 
@@ -65,7 +64,6 @@ export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenSt
               type="button"
               onClick={() => {
                 cart.clear();
-                setNote('');
                 showToast('Cart cleared');
               }}
             >
@@ -183,8 +181,8 @@ export function ConsumerCartScreen({ onBack, onCheckout, onBrowseDeals, onOpenSt
                 className="w-full p-space-sm bg-surface-subtle text-text-primary font-body-md text-body-md rounded-lg outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_2px_#066cf4] transition-all resize-none"
                 placeholder="Any allergies or special requests?"
                 rows={2}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
+                value={cart.note}
+                onChange={(event) => cart.setNote(event.target.value)}
               />
             </div>
           </div>

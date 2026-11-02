@@ -228,6 +228,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
             merchantId: branches[index] ?? order.merchantId,
             merchantName: lines[0]?.merchantName || order.merchantName,
             merchantLogo: lines[0]?.merchantLogo || order.merchantLogo,
+            merchantPhone: lines[0]?.merchantPhone || order.merchantPhone,
+            merchantAddress: lines[0]?.merchantAddress || order.merchantAddress,
+            merchantLatitude: lines[0]?.merchantLatitude ?? order.merchantLatitude,
+            merchantLongitude: lines[0]?.merchantLongitude ?? order.merchantLongitude,
             lines: order.lines.length ? order.lines.map((line, position) => ({ ...line, name: lines[position]?.name ?? line.name, image: line.image || lines[position]?.image || '' })) : lines,
           };
         });

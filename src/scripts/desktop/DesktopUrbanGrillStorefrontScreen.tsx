@@ -25,6 +25,10 @@ interface DesktopUrbanGrillStorefrontScreenProps {
   onOpenItem?: (itemId: string) => void;
   /** Review the tray and submit the order (goes to checkout). */
   onCheckout: () => void;
+  /** Opens with the chat box ready, for a chat started from Messages. */
+  startChat?: boolean;
+  /** A first message was sent from that box. */
+  onChatStarted?: (branchId: string) => void;
 }
 
 interface StorefrontDeal {
@@ -78,7 +82,7 @@ const amenityIcon = (label: string) => {
 
 const ALL = 'all';
 
-export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, activeNav = 'businesses', onClaim, onOpenDeal, onOpenItem }: DesktopUrbanGrillStorefrontScreenProps) {
+export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, activeNav = 'businesses', onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: DesktopUrbanGrillStorefrontScreenProps) {
   const { business, deals, products, services, loading, catalogueLoading, error, reload } = usePublicBusiness(selected?.slug ?? null);
   const [category, setCategory] = useState<string>(ALL);
   const [query, setQuery] = useState('');
@@ -97,7 +101,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Direct chat (live customer messaging)
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const [chatText, setChatText] = useState('');
   const [chatState, setChatState] = useState<{ kind: 'idle' | 'sending' | 'sent' | 'error'; message?: string }>({ kind: 'idle' });
 
@@ -140,6 +144,10 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
       branchId: item.branchIds[0],
       merchantName: business?.name,
       merchantLogo: business?.logo ?? undefined,
+      merchantPhone: business?.phone ?? undefined,
+      merchantAddress: [business?.address, business?.city].filter(Boolean).join(', ') || undefined,
+      merchantLatitude: business?.latitude ?? undefined,
+      merchantLongitude: business?.longitude ?? undefined,
     });
   };
 
@@ -202,6 +210,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
       await messageService.startConversation({ branchId, content: chatText.trim() });
       setChatText('');
       setChatState({ kind: 'sent' });
+      onChatStarted?.(branchId);
     } catch (err) {
       setChatState({ kind: 'error', message: err instanceof ApiError && err.message && !/^Request failed/.test(err.message) ? err.message : 'Your message couldn’t be sent. Please try again.' });
     }
