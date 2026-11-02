@@ -15,6 +15,7 @@ import {
   redemptionModesLabel,
   resolveDealPricing,
 } from './deals/dealStudioShared';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessDealStudioStep2ScreenProps {
   draft: ProductDraft;
@@ -109,8 +110,8 @@ export function BusinessDealStudioStep2Screen({
             >
               Save
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)]">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)] overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

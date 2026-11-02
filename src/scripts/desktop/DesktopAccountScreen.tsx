@@ -7,6 +7,7 @@ import { useProfile } from '../../context/ProfileContext';
 import { activeVouchers, useClaims } from '../../context/ClaimsContext';
 import { useTotalSaved } from '../../hooks/useCustomerDashboard';
 import { hasApiConfig } from '../../services/api/client';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 
 interface DesktopAccountScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -85,7 +86,7 @@ const UTILITY_ROWS: AccountRow[] = [
 
 export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: DesktopAccountScreenProps) {
   const canSwitch = useCanSwitchToBusiness();
-  const { fullName, email, initials, phone } = useProfile();
+  const { fullName, email, phone } = useProfile();
   // Live: no sample counts or totals until real figures are wired; demo keeps them.
   const live = hasApiConfig();
   const sessionUser = useSessionUser().data;
@@ -152,8 +153,8 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                 <div className="flex items-start justify-between gap-2 relative">
                   <div className="flex items-center gap-space-sm min-w-0">
                     <div className="relative shrink-0">
-                      <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner">
-                        {initials || 'U'}
+                      <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner overflow-hidden">
+                        <UserAvatar textClassName="" />
                       </div>
                       {verified && (
                         <span

@@ -105,13 +105,15 @@ export function useBusinessSetupNav(): BusinessSetupNavValue | null {
  * alive across that round trip so returning resumes at the right step instead
  * of restarting setup.
  *
- * It is additionally mirrored into `localStorage` (and, live, the owner's
- * account), so a reload, a later visit or another device resumes the run on
- * the page after the last one completed, with the same drafts.
+ * Live, it is saved on the signed-in account (never the browser), so a reload,
+ * a later visit or another device resumes the run on the page after the last
+ * one completed, with the same drafts. Demo mode keeps it in `localStorage`.
  * ------------------------------------------------------------------ */
 
 export interface BusinessSetupSnapshot {
   step: string;
+  /** The account this run belongs to (its user id), so another account on this browser never resumes it. */
+  ownerId?: string;
   /** The page after the last completed one — where a return visit lands. */
   resumeStep?: string;
   /** Pages the merchant has moved forward from. */
@@ -124,8 +126,8 @@ export interface BusinessSetupSnapshot {
   screensDone?: boolean;
 }
 
-// Mirrored to localStorage so a reload, or coming back later, resumes setup
-// at the same step with the same drafts (cleared once setup is finished).
+// Setup progress belongs to the account (`/users/me/business-setup`), not the
+// browser: this key only held an older browser copy and is now cleared.
 const STORAGE_KEY = 'vemtap_business_setup';
 
 const isSnapshot = (value: unknown): value is BusinessSetupSnapshot => {
@@ -133,8 +135,13 @@ const isSnapshot = (value: unknown): value is BusinessSetupSnapshot => {
   return !!parsed && typeof parsed.step === 'string' && typeof parsed.data === 'object' && !!parsed.data;
 };
 
+/** Live: never restored from the browser (and any old browser copy is removed). Demo mode still keeps one. */
 const readStored = (): BusinessSetupSnapshot | null => {
   try {
+    if (hasApiConfig()) {
+      window.localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
@@ -147,7 +154,39 @@ const readStored = (): BusinessSetupSnapshot | null => {
 
 let snapshot: BusinessSetupSnapshot | null = typeof window === 'undefined' ? null : readStored();
 
+/** The signed-in user's id from the access token (`sub`), the same in the customer and business shells. */
+const currentUserId = (): string | null => {
+  const token = getAccessToken();
+  if (!token) return null;
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const sub = (JSON.parse(window.atob(payload)) as { sub?: unknown }).sub;
+    return typeof sub === 'string' && sub ? sub : null;
+  } catch {
+    return null;
+  }
+};
+
+/** A run some other account left on this browser: never resumed by the account signed in now. */
+const belongsToSomeoneElse = (saved: BusinessSetupSnapshot | null) => {
+  const userId = currentUserId();
+  return Boolean(saved?.ownerId && userId && saved.ownerId !== userId);
+};
+
+/**
+ * This browser's run, if it is the signed-in account's (or was started before
+ * signing in). Live, a signed-out visitor never resumes one: every setup page
+ * after the intro saves to an account, so they start at the onboarding intro
+ * (sign-in / sign-up "Merchant Portal", "Own a Business?").
+ */
+const ownSnapshot = () => {
+  if (hasApiConfig() && !getAccessToken()) return null;
+  return belongsToSomeoneElse(snapshot) ? null : snapshot;
+};
+
 const writeLocal = () => {
+  // Live progress is saved on the account only.
+  if (hasApiConfig()) return;
   try {
     if (snapshot) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     else window.localStorage.removeItem(STORAGE_KEY);
@@ -192,18 +231,19 @@ const scheduleServerSave = () => {
 };
 
 const persist = () => {
-  if (snapshot) snapshot = { ...snapshot, updatedAt: Date.now() };
+  // A run started signed out (business sign-up) becomes the account's once it signs in.
+  if (snapshot) snapshot = { ...snapshot, ownerId: snapshot.ownerId ?? currentUserId() ?? undefined, updatedAt: Date.now() };
   writeLocal();
   if (snapshot) scheduleServerSave();
 };
 
 export function getBusinessSetupSnapshot(): BusinessSetupSnapshot | null {
-  return snapshot;
+  return ownSnapshot();
 }
 
 export function saveBusinessSetupSnapshot(step: string, data: Record<string, unknown>): void {
   snapshot = {
-    ...snapshot,
+    ...ownSnapshot(),
     step,
     verificationState: snapshot?.verificationState ?? 'not-started',
     data,
@@ -216,6 +256,7 @@ export function saveBusinessSetupSnapshot(step: string, data: Record<string, unk
  * moved to becomes where a return visit resumes. Going back changes neither.
  */
 export function recordBusinessSetupAdvance(from: string, to: string): void {
+  if (belongsToSomeoneElse(snapshot)) snapshot = null;
   const completed = snapshot?.completedSteps ?? [];
   snapshot = {
     step: snapshot?.step ?? from,
@@ -229,7 +270,7 @@ export function recordBusinessSetupAdvance(from: string, to: string): void {
 }
 
 /** The page a saved run reopens on: after the last completed page, else where it was left. */
-export function getBusinessSetupResumeStep(saved: BusinessSetupSnapshot | null = snapshot): string | null {
+export function getBusinessSetupResumeStep(saved: BusinessSetupSnapshot | null = ownSnapshot()): string | null {
   return saved ? saved.resumeStep ?? saved.step : null;
 }
 
@@ -237,28 +278,35 @@ export function getBusinessSetupResumeStep(saved: BusinessSetupSnapshot | null =
  * Whether a signed-in owner has setup to come back to: a run that got past the
  * marketing intro and whose setup pages are not all done yet.
  */
-export function hasUnfinishedBusinessSetup(saved: BusinessSetupSnapshot | null = snapshot): boolean {
+export function hasUnfinishedBusinessSetup(saved: BusinessSetupSnapshot | null = ownSnapshot()): boolean {
   if (!saved || saved.screensDone || saved.verificationState === 'complete') return false;
   return getBusinessSetupResumeStep(saved) !== 'intro' || (saved.completedSteps?.length ?? 0) > 0;
 }
 
 /**
- * Live: adopt the account's copy of the run when it is newer than this
- * device's (or this device has none), so setup resumes after sign-out or on
- * another device. Resolves with the run to resume (or null).
+ * Live: the account's saved run is where setup resumes, on any device. This
+ * page's in-memory copy is kept only when it is the same account's and newer
+ * (a save still on its way). Resolves with the run to resume (or null).
  */
 export async function hydrateBusinessSetupFromServer(): Promise<BusinessSetupSnapshot | null> {
-  if (!canSyncToServer()) return snapshot;
+  if (!canSyncToServer()) return ownSnapshot();
+  // Another account's run on this browser is dropped: only the account's own copy counts.
+  if (belongsToSomeoneElse(snapshot)) {
+    snapshot = null;
+    writeLocal();
+  }
   try {
     const remote = await businessSetupService.get();
-    if (isSnapshot(remote) && (!snapshot || (remote.updatedAt ?? 0) > (snapshot.updatedAt ?? 0))) {
-      snapshot = remote;
-      writeLocal();
+    if (isSnapshot(remote)) {
+      if (!snapshot || (remote.updatedAt ?? 0) >= (snapshot.updatedAt ?? 0)) snapshot = remote;
+    } else if (snapshot && !snapshot.ownerId) {
+      // Nothing on the account and no owner on this copy: it isn't this account's run.
+      snapshot = null;
     }
   } catch {
     // Offline or not available: keep this device's copy.
   }
-  return snapshot;
+  return ownSnapshot();
 }
 
 /** The last setup page is done: return visits stop reopening setup. */

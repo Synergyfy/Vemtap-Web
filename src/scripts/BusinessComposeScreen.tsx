@@ -6,6 +6,7 @@ import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
 import { useStartChat } from './messagesLive';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessComposeScreenProps {
   onBack: () => void;
@@ -145,8 +146,8 @@ export function BusinessComposeScreen({ onBack, onSent, recipientName = 'Dr. Chi
             </button>
             <h1 className="font-heading-sm text-heading-sm text-on-surface">New Message</h1>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[18px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </header>

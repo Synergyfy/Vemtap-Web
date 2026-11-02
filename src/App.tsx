@@ -13,7 +13,7 @@ import { businessService } from './services/businessService';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
 import type { CatalogueItem } from './services/catalogueItemsService';
-import { ownerAuthService, OTP_GATE_MESSAGE } from './services/ownerAuthService';
+import { ownerAuthService, OTP_GATE_MESSAGE, rememberUpgradePin } from './services/ownerAuthService';
 import { apiErrorMessage } from './services/errorMessages';
 import { startGoogleSignIn, takeGoogleRedirectResult, type GoogleIntent } from './services/googleAuth';
 import { catalogueService } from './services/catalogueService';
@@ -1198,6 +1198,8 @@ function AppInner() {
   };
   /** Sign In is reachable from several sign-ups — remember where it was opened from. */
   const [signInFrom, setSignInFrom] = useState<Route>('welcome');
+  // Business sign-up found an existing account for this email: sign-in opens prefilled.
+  const [businessSignInEmail, setBusinessSignInEmail] = useState<string | null>(null);
   const [feedFrom, setFeedFrom] = useState<Route>('home');
   /**
    * Referral code captured from a referral URL (e.g. `?ref=CODE`) at mount,
@@ -1546,9 +1548,12 @@ function AppInner() {
   // Business pages need a business: plain customers never see them, and an owner
   // without one goes home. Finished owners have no setup to open. Only a saved
   // run keeps /business-onboarding, including Back from its verification step.
+  // Setup itself is where a customer becomes an owner (on its first save), so
+  // they keep /business-onboarding: its intro, account choice and saved run.
   const plainCustomerOnBusinessPage =
     hasApiConfig() &&
     onBusinessPage &&
+    route !== 'business-onboarding' &&
     !!sessionUser &&
     !sessionUser.businessRole &&
     (sessionUser.role === 'Customer' || sessionUser.role === 'USER');
@@ -1561,7 +1566,8 @@ function AppInner() {
     !shellSwitching &&
     accessChecked !== route &&
     ((isPortalRoute(route) && sessionUser.role === 'Owner' && !sessionUser.businessId) ||
-      (route === 'business-onboarding' && isBusinessRole(sessionUser.role) && Boolean(sessionUser.businessId)));
+      (route === 'business-onboarding' && isBusinessRole(sessionUser.role) && Boolean(sessionUser.businessId)) ||
+      (route === 'business-onboarding' && !isBusinessRole(sessionUser.role) && !sessionUser.hasBusiness));
   useEffect(() => {
     if (plainCustomerOnBusinessPage) setRouteState('home');
   }, [plainCustomerOnBusinessPage]);
@@ -1574,7 +1580,15 @@ function AppInner() {
       setAccessChecked(checkedRoute);
       if (next) setRouteState(next);
     };
-    if (checkedRoute === 'business-onboarding') {
+    if (checkedRoute === 'business-onboarding' && !isBusinessRole(sessionUser?.role)) {
+      // A customer's run saved on the account (before the first save made it an
+      // owner) reopens through the account choice: the PIN is never stored, so
+      // "Continue with this account" asks for it again, then resumes the run.
+      void hydrateBusinessSetupFromServer().then((saved) => {
+        if (!ignore && hasUnfinishedBusinessSetup(saved)) setBusinessChoiceOpen(true);
+        settle(null);
+      });
+    } else if (checkedRoute === 'business-onboarding') {
       void hydrateBusinessSetupFromServer().then((saved) => {
         const runOpen = hasUnfinishedBusinessSetup(saved) || (saved?.screensDone && saved.verificationState !== 'complete');
         settle(runOpen ? null : 'business-overview');
@@ -2542,6 +2556,8 @@ function AppInner() {
       if (key === 'dashboard') setRoute('business-hub');
       else if (key === 'notifications') setRoute('business-notifications');
       else if (key === 'settings') setRoute('business-settings');
+      // "Switch to Customer Dashboard": the route change switches the session to the customer shell.
+      else if (key === 'customer') setRoute('dashboard');
     };
     window.addEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
     return () => window.removeEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
@@ -2701,6 +2717,27 @@ function AppInner() {
     if (hasApiConfig()) await ownerAuthService.requestOtp(nextEmail);
     // Email screen done: a return visit opens the code screen for this email.
     saveBusinessSignup({ stage: 'verify-email', email: nextEmail });
+  };
+
+  /**
+   * Business sign-up's email step. An email that already has a Vemtap account
+   * signs in instead (prefilled); signing in from here continues to business setup.
+   */
+  const submitBusinessSignupEmail = async (email: string) => {
+    try {
+      await requestOwnerSignupOtp(email);
+    } catch (error) {
+      const exists =
+        (error instanceof ApiError && error.status === 409) ||
+        (error instanceof Error && /already exists/i.test(error.message) && !/phone/i.test(error.message));
+      if (!hasApiConfig() || !exists) throw error;
+      setBusinessSignInEmail(email.trim().toLowerCase());
+      setSignInFrom('business-auth');
+      setRoute('sign-in');
+      return;
+    }
+    setAuthIntent('business');
+    setRoute('verify-email');
   };
 
   /**
@@ -2908,6 +2945,53 @@ function AppInner() {
     go('home');
   };
 
+  /**
+   * Signed in from a business entry (business sign-up's "Sign in", or its
+   * existing-account redirect): continue to business, not the customer feed.
+   * A customer gets the account choice (resuming any run saved on the account);
+   * an owner resumes setup, or opens the dashboard once it is finished.
+   */
+  const continueBusinessAfterSignIn = async (user?: SessionUser | null) => {
+    setBusinessSignInEmail(null);
+    setSignInFrom('welcome');
+    if (!hasApiConfig()) {
+      enterBusinessProfile();
+      return;
+    }
+    setBusinessOnboardingFrom('home');
+    const openChoice = (resumeIntro: boolean) => {
+      setAuthIntent('customer');
+      setBusinessSetupSkipIntro(resumeIntro);
+      setBusinessChoiceOpen(true);
+      setRoute('business-onboarding');
+    };
+    const businessRole = user?.businessRole ?? (isBusinessRole(user?.role) ? (user?.role as 'Owner' | 'Manager' | 'Staff') : null);
+    setShellHold(true);
+    try {
+      if (!businessRole) {
+        await hydrateBusinessSetupFromServer();
+        openChoice(false);
+        return;
+      }
+      const owner = isBusinessRole(user?.role) ? user : await switchShell(businessRole);
+      const saved = await hydrateBusinessSetupFromServer();
+      if (hasUnfinishedBusinessSetup(saved)) {
+        setAuthIntent('customer');
+        setBusinessSetupSkipIntro(true);
+        setRoute('business-onboarding');
+      } else if (owner?.role === 'Owner' && !owner.businessId) {
+        openChoice(false);
+      } else {
+        setRoute('business-overview');
+      }
+    } catch (error) {
+      console.error('Could not continue to business setup:', error);
+      setRoute('home');
+    } finally {
+      setShellHold(false);
+    }
+  };
+
   // The session has loaded: a customer (or an owner on a customer token) stays on
   // home; a business token goes back through the same choice as signing in.
   useEffect(() => {
@@ -2927,6 +3011,13 @@ function AppInner() {
   const openBusinessSetup = async (from: Route = route) => {
     setBusinessOnboardingFrom(from);
     if (!isBusinessSession) {
+      // A signed-in customer with no business first chooses whose identity the
+      // business uses ("Continue with this account" / "Use a new account").
+      // Signed-out visitors and demo mode still start at the business intro.
+      if (hasApiConfig() && authed && sessionUser && !sessionUser.hasBusiness) {
+        await hydrateBusinessSetupFromServer();
+        setBusinessChoiceOpen(true);
+      }
       setRoute('business-onboarding');
       return;
     }
@@ -2939,8 +3030,12 @@ function AppInner() {
         setBusinessSetupSkipIntro(true);
         setRoute('business-onboarding');
       } else if (owner?.role === 'Owner' && !owner.businessId) {
+        // An owner account left with no business (an older setup that upgraded
+        // the account early) and nothing saved is treated like a customer:
+        // the account choice comes first, then setup from the beginning.
         setAuthIntent('customer');
-        resumeAtBusinessProfile();
+        setBusinessSetupSkipIntro(false);
+        setBusinessChoiceOpen(true);
         setRoute('business-onboarding');
       } else {
         setRoute('business-overview');
@@ -3021,21 +3116,19 @@ function AppInner() {
             });
         }
         const business = isBusinessRole(user?.role);
-        if (business && user?.businessId && !isNew) {
-          await routeSignedInOwner(user);
+        if (intent === 'business') {
+          if (isNew) {
+            setAuthIntent('business');
+            setRoute('google-confirm');
+            return;
+          }
+          // A returning account continues to business: customers get the account
+          // choice, owners resume setup or open their dashboard.
+          await continueBusinessAfterSignIn(user);
           return;
         }
-        if (intent === 'business') {
-          setAuthIntent('business');
-          if (isNew) setRoute('google-confirm');
-          else if (business) enterBusinessProfile();
-          else {
-            // An existing customer account: the usual "use this account or a
-            // new business identity" question decides.
-            setBusinessOnboardingFrom(from);
-            setRoute('business-onboarding');
-            setBusinessChoiceOpen(true);
-          }
+        if (business && user?.businessId && !isNew) {
+          await routeSignedInOwner(user);
           return;
         }
         if (business) {
@@ -3220,11 +3313,7 @@ function AppInner() {
               setAuthIntent('business');
               setRoute('verify-email');
             }}
-            onSubmitEmail={async (email) => {
-              await requestOwnerSignupOtp(email);
-              setAuthIntent('business');
-              setRoute('verify-email');
-            }}
+            onSubmitEmail={submitBusinessSignupEmail}
             onGoogle={() => {
               if (hasApiConfig()) {
                 continueWithGoogle('business', 'business-auth');
@@ -3253,11 +3342,7 @@ function AppInner() {
             setAuthIntent('business');
             setRoute('verify-email');
           }}
-          onSubmitEmail={async (email) => {
-            await requestOwnerSignupOtp(email);
-            setAuthIntent('business');
-            setRoute('verify-email');
-          }}
+          onSubmitEmail={submitBusinessSignupEmail}
           onGoogle={() => {
             if (hasApiConfig()) {
             continueWithGoogle('business', 'business-auth');
@@ -3291,7 +3376,7 @@ function AppInner() {
             onSignIn={async ({ identifier, password }) => {
               const user = await signIn({ identifier, password });
               if (resumeBusinessSetup) {
-                enterBusinessProfile();
+                await continueBusinessAfterSignIn(user);
                 return;
               }
               if (isBusinessRole(user?.role)) {
@@ -3325,6 +3410,12 @@ function AppInner() {
               setBusinessOnboardingFrom('sign-in');
               setRoute('business-onboarding');
             }}
+            initialIdentifier={resumeBusinessSetup ? (businessSignInEmail ?? undefined) : undefined}
+            notice={
+              resumeBusinessSetup && businessSignInEmail
+                ? 'You already have a Vemtap account. Sign in to continue setting up your business.'
+                : null
+            }
             onForgotPin={() => setRoute('forgot-pin')}
             googleError={googleError?.route === 'sign-in' ? googleError : null}
           />
@@ -3335,7 +3426,7 @@ function AppInner() {
           onSignIn={async ({ identifier, password }) => {
             const user = await signIn({ identifier, password });
             if (resumeBusinessSetup) {
-              enterBusinessProfile();
+              await continueBusinessAfterSignIn(user);
               return;
             }
             if (isBusinessRole(user?.role)) {
@@ -3369,7 +3460,13 @@ function AppInner() {
             setBusinessOnboardingFrom('sign-in');
             setRoute('business-onboarding');
           }}
-          onForgotPin={() => setRoute('forgot-pin')}
+          initialIdentifier={resumeBusinessSetup ? (businessSignInEmail ?? undefined) : undefined}
+            notice={
+              resumeBusinessSetup && businessSignInEmail
+                ? 'You already have a Vemtap account. Sign in to continue setting up your business.'
+                : null
+            }
+            onForgotPin={() => setRoute('forgot-pin')}
             googleError={googleError?.route === 'sign-in' ? googleError : null}
         />
       );
@@ -3454,7 +3551,7 @@ function AppInner() {
               await completeCustomerSignup(details);
               setRoute('location-permission');
             }}
-            onBusinessSetup={() => void openBusinessSetup()}
+            onBusinessSetup={authIntent === 'business' ? undefined : () => void openBusinessSetup()}
           />
         );
       return (
@@ -5082,29 +5179,18 @@ function AppInner() {
         // That fresh identity is a *business*, so it signs up through the
         // business modal (which then lands on Business Profile).
         setBusinessChoiceOpen(false);
+        rememberUpgradePin(null);
         setBusinessSetupSkipIntro(false);
         setRoute('business-auth');
       };
       const continueWithAccount = async (pin?: string) => {
-        // Live: the customer account becomes an owner account first (a PIN
-        // account confirms its PIN); the business is created by setup's saves.
-        if (hasApiConfig() && sessionUser && !isBusinessRole(sessionUser.role)) {
-          try {
-            adoptSession(
-              await ownerAuthService.upgrade({
-                ...(pin ? { password: pin } : {}),
-                referralCode: getProvisionalReferralCode() || undefined,
-              }),
-            );
-          } catch (error) {
-            if (error instanceof Error && /incorrect password/i.test(error.message)) {
-              throw new Error('That PIN is incorrect. Try again.');
-            }
-            throw error;
-          }
-        }
-        // Reusing the consumer account skips straight to profile details — the
-        // intro has already been shown, so re-aim the saved run at `basic`.
+        // The account stays a customer for now: it becomes an owner, and the
+        // business is created, on the first Business Profile save. A PIN
+        // account's PIN is kept in memory for that one call.
+        rememberUpgradePin(pin ?? null);
+        // The account's saved run (if any) resumes at its step; otherwise the
+        // intro has already been shown, so the run starts on `basic`.
+        if (hasApiConfig()) await hydrateBusinessSetupFromServer();
         setBusinessChoiceOpen(false);
         resumeAtBusinessProfile();
       };

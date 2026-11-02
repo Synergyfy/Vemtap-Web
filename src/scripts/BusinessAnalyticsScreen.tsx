@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../services/errorMessages';
 import { useBusinessAnalytics } from '../hooks/business/useBusinessAnalytics';
 import { CUSTOMER_AVATAR } from './customersLive';
 import { DAY_LONG, change, changeLabel, hourLabel, isUp, share, useAnalyticsFilter } from './analyticsLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 export type AnalyticsTab = 'overview' | 'audience';
 
@@ -519,8 +520,8 @@ ${printKvTable('Revenue Trend', trendBuckets.map((bucket) => [bucket.label, nair
             >
               <Icon name="ios_share" className="text-[18px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[17px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

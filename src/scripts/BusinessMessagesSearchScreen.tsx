@@ -5,6 +5,7 @@ import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBa
 import type { BusinessChatContact } from './messagesContact';
 import { hasApiConfig } from '../services/api/client';
 import { useInboxRows, type InboxKind } from './messagesLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessMessagesSearchScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -196,8 +197,8 @@ export function BusinessMessagesSearchScreen({
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

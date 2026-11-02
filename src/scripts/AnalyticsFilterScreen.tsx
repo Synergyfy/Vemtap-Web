@@ -15,6 +15,7 @@ import {
 } from './analyticsLive';
 import { useLivePos } from './posLive';
 import { useBusinessAnalytics } from '../hooks/business/useBusinessAnalytics';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface AnalyticsFilterScreenProps {
   onBack: () => void;
@@ -218,8 +219,8 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
             <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight">Filters</span>
             <span className="font-caption text-caption text-text-secondary">Analytics scope</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </header>

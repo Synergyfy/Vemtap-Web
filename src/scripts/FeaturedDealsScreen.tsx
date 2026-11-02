@@ -8,6 +8,7 @@ import { useDealFilters } from '../context/DealFiltersContext';
 import { useFeaturedDeals, useSavedDeals, type FeaturedSort } from '../hooks/useFeaturedDeals';
 import { sponsoredService } from '../services/sponsoredService';
 import { isVerifiedOffer, offerDiscountLabel, offerEndsLabel, offerImage, offerLocationLabel, realOfferId } from '../utils/homeOffer';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface FeaturedDeal {
   id: string;
@@ -258,8 +259,8 @@ export function FeaturedDealsScreen({ onBack, onOpenFilters, onBoost, onOpenDeal
               <Icon name="tune" className="text-[22px]" />
               {activeCount > 0 ? <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center">{activeCount}</span> : null}
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

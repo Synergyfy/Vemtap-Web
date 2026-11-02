@@ -8,6 +8,10 @@ import {
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from '../scripts/desktop/businessSidebarConfig';
+import { UserAvatar } from './ui/UserAvatar';
+import { useProfile } from '../context/ProfileContext';
+import { useSessionUser } from '../hooks/useSessionUser';
+import { hasApiConfig } from '../services/api/client';
 
 interface BusinessMobileDrawerProps {
   isOpen: boolean;
@@ -24,6 +28,10 @@ export function BusinessMobileDrawer({
   onSelect,
   onSignOut,
 }: BusinessMobileDrawerProps) {
+  // Live: the signed-in person and their business role; demo keeps the sample manager.
+  const liveAccount = hasApiConfig();
+  const profile = useProfile();
+  const session = useSessionUser().data;
   const { branch, isLive } = useBusinessBranch();
   const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
 
@@ -221,12 +229,12 @@ export function BusinessMobileDrawer({
         {/* Drawer Footer with Sign Out */}
         <div className="p-4 border-t border-border-subtle bg-surface-subtle flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
-              MD
+            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs overflow-hidden">
+              {liveAccount ? <UserAvatar textClassName="" /> : 'MD'}
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="font-label-sm text-label-sm font-semibold text-on-surface">Musa Danladi</span>
-              <span className="font-caption text-[11px] text-text-tertiary">Store Manager</span>
+              <span className="font-label-sm text-label-sm font-semibold text-on-surface">{liveAccount ? profile.fullName || 'Your account' : 'Musa Danladi'}</span>
+              <span className="font-caption text-[11px] text-text-tertiary">{liveAccount ? session?.businessRole || session?.role || 'Business account' : 'Store Manager'}</span>
             </div>
           </div>
           {onSignOut && (

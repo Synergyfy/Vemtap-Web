@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { useBusinessQr } from '../hooks/business/useBusinessQr';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 const QR_IMAGE = {
   src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB9LSZ0igpV-CzTdKx1j3WTuqqk8z-z4zHbkTwlWq_Us36LF0sXWxrMC9drNESSSdhIOk60Y_blTQOZWSN-Qe-ptseWhVCz3tdDvzmd5QVtkBrWoLKHqpU-r_KceD4kqRqrtoPKE8EIO97exb7M41GPwNBM8JW7ClSzY6-bOtBv0awBILMrgU2-sudicSDAZN7lyGO8LRmo8iLeqeqVPxjp3ZFG9_PZbP53VjS8hQcBMiawormtvD1OMA',
@@ -73,8 +74,8 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
             >
               <Icon name="help_outline" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { isVariantProduct, getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProductReviewScreenProps {
   draft: ProductDraft;
@@ -161,8 +162,8 @@ export function BusinessProductReviewScreen({
             <div className="inline-flex items-center px-space-sm py-1 rounded-full bg-surface-tint-blue">
               <span className="font-label-sm text-label-sm text-primary font-semibold">Step 5 of 5</span>
             </div>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

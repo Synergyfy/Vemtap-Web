@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { useActivityFeed, type ActivityRow } from '../hooks/useActivityFeed';
 import { useDealLikes } from '../hooks/useDealLikes';
 import { NO_IMAGE } from '../utils/homeOffer';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface ActivityScreenProps {
   onBack: () => void;
@@ -83,8 +84,8 @@ export function ActivityScreen({
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate pr-space-xs">User Activity</h1>
           </div>
           <div className="flex items-center gap-space-xs pr-space-xs shrink-0">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

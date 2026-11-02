@@ -1,4 +1,5 @@
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessCfdHeaderProps {
   title: string;
@@ -34,8 +35,8 @@ export function BusinessCfdHeader({ title, onBack, trailing = 'point_of_sale' }:
             <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
             <span className="font-caption text-caption text-primary font-medium">Online</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </div>

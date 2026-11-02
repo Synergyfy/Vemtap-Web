@@ -18,7 +18,7 @@ export const BUSINESS_NAV_EVENT = 'vemtap:business-nav';
  */
 export const MOBILE_ACCOUNT_NAV_EVENT = 'vemtap:mobile-account-nav';
 
-export type MobileAccountNavKey = 'dashboard' | 'notifications' | 'settings';
+export type MobileAccountNavKey = 'dashboard' | 'notifications' | 'settings' | 'customer';
 
 /**
  * Fired by the global search (desktop navbar, mobile home) when a result is picked.

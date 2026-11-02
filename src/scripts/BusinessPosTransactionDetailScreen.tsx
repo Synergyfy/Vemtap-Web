@@ -6,6 +6,7 @@ import { apiErrorMessage } from '../services/errorMessages';
 import { money } from '../services/posService';
 import { usePosSale } from '../hooks/business/usePos';
 import { methodLabel, naira, saleCustomer, saleStatusLabel, useLivePos, usePosRefund, useSelectedSaleId, whenLabel } from './posLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessPosTransactionDetailScreenProps {
   onBack: () => void;
@@ -135,8 +136,8 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
             </button>
             <h1 className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate">Transaction Details</h1>
           </div>
-          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </span>
         </div>
       </header>

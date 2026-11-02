@@ -8,6 +8,7 @@ import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { Icon } from '../components/ui/Icon';
 import { currentVoucher, useClaims, type ClaimRecord } from '../context/ClaimsContext';
 import { useProfile } from '../context/ProfileContext';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface ClaimedDealScreenProps {
   onBack: () => void;
@@ -194,8 +195,8 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim, 
             >
               <Icon name="more_vert" className="text-[24px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

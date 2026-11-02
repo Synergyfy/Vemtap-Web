@@ -24,6 +24,8 @@ export interface ProfileData {
 export interface ProfileContextValue extends ProfileData {
   fullName: string;
   initials: string;
+  /** The signed-in user's profile photo, or null to show their initials. */
+  avatarUrl: string | null;
   /** First name, last name and a syntactically valid email are all present. */
   isComplete: boolean;
   hasPhone: boolean;
@@ -184,6 +186,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       ...profile,
       fullName,
       initials,
+      avatarUrl: (authed && hasApiConfig() && sessionUser?.avatar?.trim()) || null,
       isComplete: Boolean(
         profile.firstName.trim() && profile.lastName.trim() && isValidEmail(profile.email),
       ),
@@ -191,7 +194,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       maskedPhone: masked,
       update,
     };
-  }, [profile, update]);
+  }, [profile, update, authed, sessionUser]);
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
 }

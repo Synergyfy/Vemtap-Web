@@ -1,6 +1,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface VerificationUnregisteredScreenProps {
   onBack: () => void;
@@ -40,8 +41,8 @@ export function VerificationUnregisteredScreen({
             >
               <Icon name="help_outline" className="text-[20px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm shadow-primary/20">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm shadow-primary/20 overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         }

@@ -9,6 +9,7 @@ import { businessAnalyticsService, type ExportModule } from '../services/busines
 import { analyticsRange } from '../hooks/business/useBusinessAnalytics';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { periodLabel, useAnalyticsFilter } from './analyticsLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface AnalyticsExportScreenProps {
   onBack: () => void;
@@ -185,8 +186,8 @@ export function AnalyticsExportScreen({ onBack }: AnalyticsExportScreenProps) {
             <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight">Export Report</span>
             <span className="font-caption text-caption text-text-secondary">VEMTAP Intelligence</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </header>
