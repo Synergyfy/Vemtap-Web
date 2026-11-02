@@ -37,6 +37,8 @@ export interface ClaimRecord {
   code: string;
   /** `gift-sent` for gifts (not yet redeemed); `claimed` for redeemable passes. */
   status: 'claimed' | 'gift-sent';
+  /** Made for someone else: they hold the voucher, this account only follows it. */
+  sentForOther?: boolean;
   /** What the API says about the voucher now. */
   state?: 'ACTIVE' | 'REDEEMED' | 'EXPIRED';
   /** When the voucher stops being redeemable. */
@@ -111,9 +113,26 @@ interface ClaimsContextValue {
 
 /** The voucher to open when none is named: the newest usable one, else the newest of any state. */
 export const currentVoucher = (claims: ClaimRecord[]): ClaimRecord | undefined => {
-  const vouchers = claims.filter((entry) => entry.kind !== 'gift');
+  const vouchers = claims.filter((entry) => entry.kind !== 'gift' && !entry.sentForOther);
   return vouchers.find((entry) => entry.state !== 'REDEEMED' && entry.state !== 'EXPIRED') ?? vouchers[0];
 };
+
+/** The customer's own vouchers they can still redeem, newest first as listed. */
+export const activeVouchers = (claims: ClaimRecord[], now = Date.now()): ClaimRecord[] =>
+  claims.filter(
+    (entry) =>
+      entry.kind !== 'gift' &&
+      entry.status === 'claimed' &&
+      entry.state !== 'REDEEMED' &&
+      entry.state !== 'EXPIRED' &&
+      (entry.expiresAt === undefined || entry.expiresAt > now),
+  );
+
+/** "Expires 12 Nov", or a neutral label for a voucher with no end date. */
+export const voucherExpiryLabel = (claim: ClaimRecord): string =>
+  claim.expiresAt === undefined
+    ? 'No expiry date'
+    : `Expires ${new Date(claim.expiresAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}`;
 
 const CLAIMS_KEY = 'vemtap_claims';
 const LEGACY_CLAIMED_KEY = 'vemtap_claimed';
@@ -219,8 +238,9 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
               : 'Live claim';
 
     // `/me/gifts` rows name who they went to; they are never the sender's voucher.
-    const giftTo = typeof item.recipientEmail === 'string' ? item.recipientEmail : undefined;
-    const claimKind: ClaimKind = giftTo ? 'gift' : item.kind === 'gift' || item.kind === 'someone-else' ? item.kind : 'self';
+    const sentForOther = item.claimedForOther === true;
+    const giftTo = !sentForOther && typeof item.recipientEmail === 'string' ? item.recipientEmail : undefined;
+    const claimKind: ClaimKind = sentForOther ? 'someone-else' : giftTo ? 'gift' : item.kind === 'gift' || item.kind === 'someone-else' ? item.kind : 'self';
     const claimId =
       typeof item.id === 'string' && item.id.trim()
         ? item.id.trim()
@@ -250,12 +270,15 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
       dealLatitude: toNumber(offer.branchLatitude),
       dealLongitude: toNumber(offer.branchLongitude),
       code: typeof item.code === 'string' && item.code.trim() ? item.code.trim() : typeof item.claimCode === 'string' ? item.claimCode.trim() : normalizedRef,
+      sentForOther: sentForOther || undefined,
       status: giftTo || item.status === 'gift-sent' || item.status === 'gift' ? 'gift-sent' : 'claimed',
       state: item.status === 'ACTIVE' || item.status === 'REDEEMED' || item.status === 'EXPIRED' ? item.status : undefined,
       expiresAt: toTime(item.expiresAt),
       terms: Array.isArray(item.terms) ? item.terms.filter((value): value is string => typeof value === 'string') : undefined,
       createdAt: typeof item.createdAt === 'number' ? item.createdAt : toTime(item.claimedAt) ?? toTime(item.createdAt) ?? Date.now(),
-      recipient: giftTo
+      recipient: sentForOther
+        ? { name: typeof item.recipientName === 'string' ? item.recipientName : '', email: typeof item.recipientEmail === 'string' ? item.recipientEmail : '' }
+        : giftTo
         ? { name: '', email: giftTo }
         : item.recipient && typeof item.recipient === 'object'
           ? {
@@ -313,7 +336,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
     const hydrate = async () => {
       try {
         const [claimsResult, giftsResult] = await Promise.allSettled([
-          apiGet<unknown>('/me/claims'),
+          apiGet<unknown>('/me/claims?includeClaimedForOthers=true'),
           apiGet<unknown>('/me/gifts'),
         ]);
 
@@ -420,6 +443,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
           ref: claimCode ?? (typeof body.giftToken === 'string' ? body.giftToken : record.ref),
           code: claimCode ?? '',
           state: input.kind === 'gift' ? undefined : 'ACTIVE',
+          sentForOther: input.kind === 'someone-else' || undefined,
           expiresAt: toTime(server.expiresAt),
         };
 

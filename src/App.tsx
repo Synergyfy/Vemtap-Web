@@ -60,6 +60,7 @@ import { SettingsScreen } from './scripts/SettingsScreen';
 import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
 import { NotFoundScreen } from './scripts/NotFoundScreen';
 import { GiftRejectScreen } from './scripts/GiftRejectScreen';
+import { VoucherRedeemScreen } from './scripts/VoucherRedeemScreen';
 import { DesktopNotFoundScreen } from './scripts/desktop/DesktopNotFoundScreen';
 import { SupportLegalScreen } from './scripts/SupportLegalScreen';
 import { EditProfileScreen } from './scripts/EditProfileScreen';
@@ -1228,6 +1229,8 @@ function AppInner() {
     setRoute('how-to-claim');
   };
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
+  // The voucher picked on the dashboard, so its pass and contact sheet show that one.
+  const [dashboardClaimRef, setDashboardClaimRef] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState('urban');
   useCustomerMessagingRealtime(authed);
   useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
@@ -1446,8 +1449,16 @@ function AppInner() {
   const [shellSwitchFailed, setShellSwitchFailed] = useState<Route | null>(null);
   const shellSwitchInFlight = useRef(false);
   const onBusinessPage = isPortalRoute(route) || route === 'business-onboarding' || route === 'business-verification';
+  // A scanned voucher that isn't this customer's: a business account scans it for redeeming.
+  const scanNeedsBusiness =
+    route === 'claimed-deal' &&
+    !claims.claimsLoading &&
+    Boolean(passIdFromPath(window.location.pathname)) &&
+    !claims.claims.some((claim) => claim.id === passIdFromPath(window.location.pathname) && !claim.sentForOther);
   const shellRoleNeeded: 'Owner' | 'Manager' | 'Staff' | 'Customer' | null = shellHold || returningToShell
     ? null
+    : scanNeedsBusiness && sessionUser?.businessRole && sessionUser.role === 'Customer'
+      ? sessionUser.businessRole
     : onBusinessPage && sessionUser?.businessRole && sessionUser.role === 'Customer'
       ? sessionUser.businessRole
       : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && !passIdFromPath(window.location.pathname) && isBusinessRole(sessionUser?.role)
@@ -2436,13 +2447,19 @@ function AppInner() {
     setRoute(`analytics-${tab}` as Route);
   };
 
-  const dealClaim = claims.claims.find((claim) => claim.status === 'claimed' && claim.offerId === liveDeal.detail?.id);
+  const dealClaim = claims.claims.find((claim) => claim.status === 'claimed' && !claim.sentForOther && claim.offerId === liveDeal.detail?.id);
   const dealClaimed = Boolean(dealClaim);
   // Opened from the deal page, the voucher screen shows that deal's voucher, not the latest one.
   // A scanned pass link opens that voucher, or nothing if it isn't this account's.
   const scannedPassId = route === 'claimed-deal' ? passIdFromPath(window.location.pathname) : null;
-  const scannedClaim = scannedPassId ? claims.claims.find((claim) => claim.id === scannedPassId) ?? null : undefined;
-  const walletClaim = scannedClaim !== undefined ? scannedClaim : claimedFrom === 'deal-detail' ? dealClaim : undefined;
+  const scannedClaim = scannedPassId ? claims.claims.find((claim) => claim.id === scannedPassId && !claim.sentForOther) ?? null : undefined;
+  const dashboardClaim = claimedFrom === 'dashboard' && dashboardClaimRef ? claims.claims.find((claim) => claim.ref === dashboardClaimRef) : undefined;
+  const walletClaim = scannedClaim !== undefined ? scannedClaim : claimedFrom === 'deal-detail' ? dealClaim : dashboardClaim;
+  const openDashboardVoucher = (claim: ClaimRecord, target: 'claimed-deal' | 'claimed-contact') => {
+    setDashboardClaimRef(claim.ref);
+    setClaimedFrom('dashboard');
+    setRoute(target);
+  };
 
   /** Opens the customer's chat with the deal's branch; rejects when it can't be opened. */
   // Closing the comments or reviews sheet refreshes the page's counts, so a new post shows.
@@ -4055,8 +4072,14 @@ function AppInner() {
         />
       );
 
-    case 'claimed-deal':
+    case 'claimed-deal': {
+      // A merchant scanning a voucher QR gets the redeem step, not the customer's pass.
+      const scannedId = passIdFromPath(window.location.pathname);
+      if (scannedId && isBusinessRole(sessionUser?.role)) {
+        return <VoucherRedeemScreen claimId={scannedId} onDone={() => setRoute('business-overview')} />;
+      }
       return <>{renderClaimed()}</>;
+    }
 
     case 'claimed-contact':
       if (isDesktop)
@@ -4412,7 +4435,22 @@ function AppInner() {
           setRoute('business-auth');
         }
       };
-      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} onStartBusinessSignup={startBusinessSignup} />;
+      if (isDesktop)
+        return (
+          <DesktopDashboardScreen
+            onNav={feedNav}
+            onStartBusinessSignup={startBusinessSignup}
+            onOpenDeal={(deal) => void openDeal('dashboard', deal)}
+            onShowPass={(claim) => openDashboardVoucher(claim, 'claimed-deal')}
+            onContact={(claim) => openDashboardVoucher(claim, 'claimed-contact')}
+            onOpenOrder={(ref) => {
+              setActiveOrderRef(ref);
+              setRoute('order-detail');
+            }}
+            onOpenBooking={() => setRoute('booking-detail')}
+            onScan={() => setRoute('scan')}
+          />
+        );
       return (
         <DashboardScreen
           onTab={(tab) => setRoute(tab)}
@@ -4424,10 +4462,8 @@ function AppInner() {
             setRoute(target);
           }}
           onStartBusinessSignup={startBusinessSignup}
-          onShowQR={() => {
-            setClaimedFrom('dashboard');
-            setRoute('claimed-deal');
-          }}
+          onOpenDeal={(deal) => void openDeal('dashboard', deal)}
+          onShowQR={(claim) => openDashboardVoucher(claim, 'claimed-deal')}
         />
       );
     }

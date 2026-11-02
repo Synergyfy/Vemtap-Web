@@ -49,6 +49,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
   const openLivePassPreview = async (claim: ClaimRecord | null) => {
     if (!claim) return;
 
+    if (claim.sentForOther) return;
     const identifier = claim.id ?? claim.ref ?? claim.code;
     try {
       if (claim.kind === 'gift') {
@@ -61,8 +62,8 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
     }
   };
 
-  const activeClaims = claims.filter((claim) => claim.kind !== 'gift');
-  const giftedClaims = claims.filter((claim) => claim.kind === 'gift');
+  const activeClaims = claims.filter((claim) => claim.kind !== 'gift' && !claim.sentForOther);
+  const giftedClaims = claims.filter((claim) => claim.kind === 'gift' || claim.sentForOther);
   const counts: Record<FilterKey, number> = {
     active: activeClaims.length,
     // Backend gap: redeemed/expired status is not tracked yet.
@@ -73,7 +74,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
     activeFilter === 'gifted' ? giftedClaims : activeFilter === 'active' ? activeClaims : [];
   const selected = list.find((claim) => claim.ref === selectedRef) ?? list[0] ?? null;
   const pass = selected;
-  const isGiftPass = pass?.kind === 'gift';
+  const isGiftPass = pass?.kind === 'gift' || Boolean(pass?.sentForOther);
   const passHolderName = pass?.recipient?.name || profile.fullName;
   const passHolderContact = pass?.recipient?.phone
     ? maskPhone(pass.recipient.phone)
@@ -216,7 +217,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
               ) : (
                 list.map((claim) => {
                   const isSelected = selected?.ref === claim.ref;
-                  const isGift = claim.kind === 'gift';
+                  const isGift = claim.kind === 'gift' || Boolean(claim.sentForOther);
                   return (
                     <article
                       key={claim.ref}
@@ -242,7 +243,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                             <div className="flex items-center justify-between gap-1">
                               <span className="font-caption text-caption text-text-tertiary flex items-center gap-1.5">
                                 <Icon name="confirmation_number" className="text-[14px] text-primary" />
-                                <span>{claim.ref}</span>
+                                <span>{claim.sentForOther ? claim.dealBusiness : claim.ref}</span>
                               </span>
                               <span
                                 className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-caption ${
@@ -252,7 +253,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                                 }`}
                               >
                                 {!isGift && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                                <span>{isGift ? 'Gift Sent' : 'Ready'}</span>
+                                <span>{claim.sentForOther ? `For ${claim.recipient?.name || 'someone else'}` : isGift ? 'Gift Sent' : 'Ready'}</span>
                               </span>
                             </div>
                             <h3 className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate mt-0.5">
@@ -379,7 +380,7 @@ export function DesktopMyDealsScreen({ onNav }: DesktopMyDealsScreenProps) {
                         }`}
                       >
                         {!isGiftPass && <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />}
-                        <span>{pass ? (isGiftPass ? 'Gift Sent' : 'Ready to Redeem') : 'Nothing selected'}</span>
+                        <span>{pass ? (pass.sentForOther ? `Claimed for ${pass.recipient?.name || 'someone else'} • ${pass.state ?? 'ACTIVE'}` : isGiftPass ? 'Gift Sent' : 'Ready to Redeem') : 'Nothing selected'}</span>
                       </span>
                       <p className="font-caption text-caption text-text-tertiary mt-1">
                         {pass ? `${isGiftPass ? 'Sent' : 'Claimed'} ${formatDate(pass.createdAt)}` : 'Select a pass'}

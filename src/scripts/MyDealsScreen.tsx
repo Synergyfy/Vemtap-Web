@@ -69,6 +69,7 @@ function ClaimCard({
   onReceipt: () => void;
 }) {
   const isGift = claim.kind === 'gift';
+  const forOther = Boolean(claim.sentForOther);
   const recipientName = claim.recipient?.name;
   return (
     <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden transition-all hover:shadow-md">
@@ -97,7 +98,7 @@ function ClaimCard({
                   isGift ? 'bg-primary' : 'bg-badge-discount-text animate-pulse'
                 }`}
               />
-              {isGift ? 'GIFT SENT' : 'READY TO REDEEM'}
+              {forOther ? `CLAIMED FOR ${(claim.recipient?.name || 'SOMEONE ELSE').toUpperCase()}` : isGift ? 'GIFT SENT' : 'READY TO REDEEM'}
             </span>
             <span className="font-caption text-caption text-text-tertiary shrink-0">{formatDate(claim.createdAt)}</span>
           </div>
@@ -114,18 +115,20 @@ function ClaimCard({
         </div>
       </div>
 
-      <VoucherStrip code={claim.ref} onCopy={onCopy} copied={copied === claim.ref} />
+      {forOther ? null : <VoucherStrip code={claim.ref} onCopy={onCopy} copied={copied === claim.ref} />}
 
       <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption px-1">
         <Icon name="info" className="text-[15px] text-primary" />
         <span>
-          {isGift
+          {forOther
+            ? `${claim.recipient?.name || 'The recipient'} holds this voucher and redeems it. Status: ${claim.state ?? 'ACTIVE'}.`
+            : isGift
             ? 'The recipient redeems this pass — your account is the sender of record.'
             : 'Show QR code to your server prior to ordering.'}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-space-xs pt-1">
+      {forOther ? null : <div className="grid grid-cols-2 gap-space-xs pt-1">
         {isGift ? (
           <>
             <button
@@ -165,7 +168,7 @@ function ClaimCard({
             </button>
           </>
         )}
-      </div>
+      </div>}
     </article>
   );
 }
@@ -178,6 +181,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
   const searchRef = useRef<HTMLInputElement>(null);
 
   const openQrForClaim = async (claim: ClaimRecord) => {
+    if (claim.sentForOther) return;
     const identifier = claim.id ?? claim.ref ?? claim.code;
     try {
       if (claim.kind === 'gift') {
@@ -211,8 +215,8 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
       .join(' ')
       .toLowerCase()
       .includes(needle);
-  const activeClaims = claims.filter((claim) => claim.kind !== 'gift' && matchesSearch(claim));
-  const giftedClaims = claims.filter((claim) => claim.kind === 'gift' && matchesSearch(claim));
+  const activeClaims = claims.filter((claim) => claim.kind !== 'gift' && !claim.sentForOther && matchesSearch(claim));
+  const giftedClaims = claims.filter((claim) => (claim.kind === 'gift' || claim.sentForOther) && matchesSearch(claim));
   const counts: Record<FilterKey, number> = {
     active: activeClaims.length,
     gifted: giftedClaims.length,

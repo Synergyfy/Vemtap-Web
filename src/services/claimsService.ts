@@ -11,7 +11,25 @@ export interface ClaimQrResponse {
   token?: string;
 }
 
+export interface ScannedVoucher {
+  id: string;
+  claimCode: string;
+  status: 'ACTIVE' | 'REDEEMED' | 'EXPIRED';
+  expiresAt: string;
+  customerName: string;
+  offerName: string;
+  offerImage: string | null;
+  calculatedPrice: number;
+}
+
 export const claimsService = {
+  /** Business side: the voucher a merchant just scanned. */
+  lookupVoucher: async (id: string) =>
+    apiGet<ScannedVoucher>(`/catalogue/offers/claim/lookup/${encodeURIComponent(id)}`),
+
+  redeemVoucher: async (code: string) =>
+    apiPost<unknown>(`/catalogue/offers/claim/redeem/${encodeURIComponent(code)}`),
+
   getGift: async (token: string) =>
     apiGet<unknown>(`/catalogue/offers/gift/${encodeURIComponent(token)}`),
 

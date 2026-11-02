@@ -91,6 +91,12 @@ export const catalogueService = {
   getPublicOffersByBranch: async (branchId: string, params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffersByBranch(branchId), { params }),
 
+  /** `GET /recommendations` — ranked deals for the signed-in customer, in the public feed's shape. */
+  getRecommendations: async (params?: FeedParams) =>
+    nearestFeed(params, (query) =>
+      api.get<ApiListResponse<Record<string, unknown>>>('/recommendations', { params: query }),
+    ),
+
   getPublicOfferDetails: async (id: string) =>
     api.get<Record<string, unknown>>(API_ENDPOINTS.catalogue.publicOfferDetails(id)),
 

@@ -4,19 +4,20 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { LocationRadiusModal } from '../components/LocationRadiusModal';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { useLocation, useLocationQuery } from '../context/LocationContext';
+import { useLocation } from '../context/LocationContext';
 import { useOrders } from '../context/OrdersContext';
 import { useProfile } from '../context/ProfileContext';
 import { useBooking } from '../context/BookingContext';
+import { useCart } from '../context/CartContext';
+import { activeVouchers, useClaims, voucherExpiryLabel, type ClaimRecord } from '../context/ClaimsContext';
 import { hasApiConfig } from '../services/api/client';
+import { useAnnouncements } from '../hooks/useAnnouncements';
+import { useCustomerDashboard, type DashboardActivity } from '../hooks/useCustomerDashboard';
+import { useDealLikes } from '../hooks/useDealLikes';
 import { useUnreadNotifications } from '../hooks/useUnreadNotifications';
-import { catalogueService } from '../services/catalogueService';
-import {
-  activeAnnouncements,
-  type AnnouncementDestination,
-  type AnnouncementTone,
-} from './announcementsData';
-import { dealPrimaryImage } from '../utils/dealImages';
+import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
+import type { Announcement, AnnouncementDestination, AnnouncementTone } from './announcementsData';
+import { NO_IMAGE, offerDiscountLabel, offerImage, offerLocationLabel, realOfferId } from '../utils/homeOffer';
 
 export type DashboardTarget =
   | 'my-deals'
@@ -35,7 +36,10 @@ export type DashboardTarget =
 interface DashboardScreenProps {
   onTab: (tab: MobileTabKey) => void;
   onNavigate: (target: DashboardTarget) => void;
-  onShowQR: () => void;
+  /** Opens this voucher's QR pass. */
+  onShowQR: (claim: ClaimRecord) => void;
+  /** Opens a live deal's page. */
+  onOpenDeal: (deal: ClaimDealSummary) => void;
   /** Opens the business account-choice flow ("Continue with this account" / "Use a new account"). */
   onStartBusinessSignup: () => void;
 }
@@ -43,6 +47,7 @@ interface DashboardScreenProps {
 
 interface HeroSlide {
   image: string;
+  announcement: Announcement;
   pill: string;
   title: string;
   subtitle: string;
@@ -60,10 +65,9 @@ const TONE_LABEL: Record<AnnouncementTone, string> = {
 const CAFE_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCgCwLd5w58QXLgV11MHD52EEti1eL21CVWe5XjaydFi7gB0n_HlN0ZRXV3yob4ZVn5VXviRWWZGYsv1AaFBYmLz5MGyZoBIQR2PaZJDI_Hy-6Q8Q2qX_UNm3TBcOS5Clrs17aHV0AbIlu45JooU-HWsPtb3bHzQbC2hp0eLB-F0K_mX7KOrm8At7tLg-OaWWH65X7PtLDGbNibqkIdLveIrO70jZrzaDghvLUUoFza5ZW1bMN8Ce0DQw';
 
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
-
 interface RecommendedDeal {
   id: string;
+  offerId?: string;
   image: string;
   imageAlt: string;
   badge: string;
@@ -85,9 +89,6 @@ const formatCurrency = (value: number | string | undefined): string => {
     maximumFractionDigits: 0,
   }).format(parsed);
 };
-
-/** Same rule as the home cards and the detail page: the deal's own photo first. */
-const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? FALLBACK_IMAGE;
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
@@ -131,15 +132,39 @@ const toDashboardRecommended = (offer: Record<string, unknown>): RecommendedDeal
   const comparePrice = getOfferComparePrice(offer);
   return {
     id: String(offer.id ?? title),
-    image: getOfferImage(offer),
+    offerId: realOfferId(offer),
+    image: offerImage(offer),
     imageAlt: `${title} by ${business}`,
-    badge: price > 0 ? 'Live Deal' : 'Offer',
+    badge: offerDiscountLabel(offer),
     badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    distance: offerLocationLabel(offer),
     business,
     item: title,
     price: formatCurrency(price),
     was: comparePrice > price ? formatCurrency(comparePrice) : '',
+  };
+};
+
+const ACTIVITY_LABEL: Record<string, { label: string; icon: string; tone: 'primary' | 'success' | 'neutral' }> = {
+  claim: { label: 'Deal claimed', icon: 'confirmation_number', tone: 'success' },
+  order: { label: 'Order placed', icon: 'receipt_long', tone: 'primary' },
+  booking: { label: 'Booking made', icon: 'calendar_today', tone: 'success' },
+  visit: { label: 'Business visit', icon: 'storefront', tone: 'neutral' },
+  review: { label: 'Review posted', icon: 'star', tone: 'neutral' },
+  comment: { label: 'Comment posted', icon: 'chat', tone: 'neutral' },
+};
+
+const toActivityEvent = (entry: DashboardActivity) => {
+  const known = ACTIVITY_LABEL[entry.kind] ?? { label: 'Activity', icon: 'history', tone: 'neutral' as const };
+  const date = new Date(entry.at);
+  const when = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString();
+  return {
+    id: entry.id,
+    label: entry.kind === 'claim' && entry.status === 'redeemed' ? 'Deal redeemed' : known.label,
+    subtitle: [entry.businessName || entry.title, when].filter(Boolean).join(' • '),
+    value: entry.amount > 0 ? formatCurrency(entry.amount) : '',
+    icon: known.icon,
+    tone: known.tone,
   };
 };
 
@@ -161,65 +186,46 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
   );
 }
 
-export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSignup }: DashboardScreenProps) {
+export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onStartBusinessSignup }: DashboardScreenProps) {
   const canSwitch = useCanSwitchToBusiness();
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
   const [hero, setHero] = useState(0);
-  const [favs, setFavs] = useState<Record<string, boolean>>({});
-  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const { fullName } = useProfile();
   const { orders } = useOrders();
   const { appointments } = useBooking();
 
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
-  useEffect(() => {
-    let ignore = false;
-    const loadOffers = async () => {
-      if (!hasApiConfig()) {
-        if (!ignore) setPublicOffers([]);
-        return;
-      }
-
-      try {
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 4 });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch {
-        if (!ignore) setPublicOffers([]);
-      }
-    };
-
-    loadOffers();
-    return () => { ignore = true; };
-  }, [locationQuery]);
+  const { count: cartCount } = useCart();
+  const { claims } = useClaims();
+  const { totalSaved, tier, activity, recommended } = useCustomerDashboard();
+  const announcements = useAnnouncements();
+  const vouchers = useMemo(() => activeVouchers(claims), [claims]);
+  const recommendedDeals = useMemo(() => recommended.slice(0, 2).map(toDashboardRecommended), [recommended]);
+  const { likes, toggleLike } = useDealLikes(useMemo(() => recommendedDeals.flatMap((deal) => (deal.offerId ? [deal.offerId] : [])), [recommendedDeals]));
 
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
   // Live: the real unread count; demo keeps its sample "3".
   const { live: liveUnread, count: unreadCount } = useUnreadNotifications();
   const bellBadge = liveUnread ? (unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : null) : '3';
   const profileInitials = fullName.trim() ? fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase().slice(0, 2) : 'U';
-  const recommendedDeals = useMemo(() => publicOffers.slice(0, 2).map(toDashboardRecommended), [publicOffers]);
 
-  const banners = useMemo<HeroSlide[]>(() => {
-    const active = activeAnnouncements();
-    return active.map((item) => ({
-      image: item.image || CAFE_IMG,
-      pill: TONE_LABEL[item.tone],
-      title: item.title,
-      subtitle: item.message,
-      cta: item.cta,
-      destination: item.destination,
-    }));
-  }, []);
+  const banners = useMemo<HeroSlide[]>(
+    () =>
+      announcements.map((item) => ({
+        announcement: item,
+        // Live banners carry no photo; the sample one only shows without an API.
+        image: item.image || (hasApiConfig() ? '' : CAFE_IMG),
+        pill: TONE_LABEL[item.tone],
+        title: item.title,
+        subtitle: item.message,
+        cta: item.cta,
+        destination: item.destination,
+      })),
+    [announcements],
+  );
 
-  const savedPotential = publicOffers.reduce((sum, offer) => {
-    const price = getOfferPrice(offer);
-    const compare = getOfferComparePrice(offer);
-    return sum + Math.max(compare - price, 0);
-  }, 0);
   const recentEvents = useMemo(() => {
+    if (activity.length > 0) return activity.map(toActivityEvent);
     const events: Array<{ id: string; label: string; subtitle: string; value: string; icon: string; tone: 'primary' | 'success' | 'neutral'; }> = [];
 
     orders.slice(0, 2).forEach((order) => {
@@ -244,24 +250,19 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
       });
     });
 
-    publicOffers.slice(0, 2).forEach((offer) => {
-      const title = getOfferTitle(offer);
-      const business = getOfferBusinessName(offer);
-      const price = getOfferPrice(offer);
-      events.push({
-        id: `offer-${String(offer.id ?? title)}`,
-        label: 'Local deal live',
-        subtitle: `${business} • ${title}`,
-        value: formatCurrency(price),
-        icon: 'local_offer',
-        tone: 'neutral',
-      });
-    });
-
     return events.slice(0, 3);
-  }, [publicOffers, orders, appointments]);
+  }, [activity, orders, appointments]);
 
-  const goToDestination = (destination?: AnnouncementDestination) => {
+  const goToDestination = (slide: HeroSlide) => {
+    const { destination, announcement } = slide;
+    if (announcement.dealId) {
+      onOpenDeal({ id: announcement.dealId, title: announcement.title });
+      return;
+    }
+    if (announcement.href) {
+      window.location.assign(announcement.href);
+      return;
+    }
     if (!destination) {
       onTab('deals');
       return;
@@ -276,9 +277,13 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
     return () => window.clearInterval(id);
   }, [banners.length]);
 
-  const slide = banners[hero % banners.length] ?? banners[0];
+  const slide: HeroSlide | undefined = banners[hero % banners.length];
+  const redeemed = claims.filter((claim) => claim.state === 'REDEEMED').length;
 
-  const toggleFav = (id: string) => setFavs((current) => ({ ...current, [id]: !current[id] }));
+  const openRecommended = (deal: RecommendedDeal) => {
+    if (deal.offerId) onOpenDeal({ id: deal.offerId, title: deal.item, business: deal.business, image: deal.image, discountLabel: deal.badge });
+    else onTab('deals');
+  };
 
   return (
     <AppScreen>
@@ -309,9 +314,11 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
               className="relative w-10 h-10 rounded-full bg-surface-subtle flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors shadow-sm active:scale-95"
             >
               <Icon name="shopping_bag" className="text-[20px]" />
-              <span className="absolute top-0.5 right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-primary-container text-on-primary-container font-caption text-[10px] font-bold flex items-center justify-center leading-none">
-                2
-              </span>
+              {cartCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-primary-container text-on-primary-container font-caption text-[10px] font-bold flex items-center justify-center leading-none">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
             </button>
             <button
               aria-label="Notifications"
@@ -340,11 +347,11 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
           </div>
         </section>
 
-        <section className="px-margin">
-          <div className="relative overflow-hidden rounded-xl bg-surface-canvas shadow-sm">
+        {slide && <section className="px-margin">
+          <div className="relative overflow-hidden rounded-xl bg-inverse-surface shadow-sm">
             <div
               className="relative h-48 w-full overflow-hidden bg-cover bg-center flex flex-col justify-between p-space-md"
-              style={{ backgroundImage: `url('${slide.image}')` }}
+              style={slide.image ? { backgroundImage: `url('${slide.image}')` } : undefined}
             >
               <div className="absolute inset-0 bg-gradient-to-t from-on-background via-on-background/70 to-transparent" />
               <div className="relative z-10 flex items-center justify-between">
@@ -363,7 +370,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
                 <div className="flex items-center justify-between mt-space-2xs">
                   <button
                     type="button"
-                    onClick={() => goToDestination(slide.destination)}
+                    onClick={() => goToDestination(slide)}
                     className="h-9 px-space-md rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center gap-1 shadow-md hover:bg-primary transition-colors active:scale-95"
                   >
                     <span>{slide.cta ?? 'Explore Deals'}</span>
@@ -386,7 +393,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
               </div>
             </div>
           </div>
-        </section>
+        </section>}
 
         <section className="px-margin flex flex-col gap-space-xs">
           <div className="flex items-center justify-between">
@@ -398,8 +405,8 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
               <div className="w-8 h-8 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary-container mb-space-2xs">
                 <Icon name="confirmation_number" className="text-[18px]" />
               </div>
-              <span className="font-heading-md text-heading-md text-text-primary font-bold">{publicOffers.length}</span>
-              <span className="font-caption text-caption text-text-secondary truncate">Live Deals</span>
+              <span className="font-heading-md text-heading-md text-text-primary font-bold">{vouchers.length}</span>
+              <span className="font-caption text-caption text-text-secondary truncate">Active Deals</span>
             </div>
             <div className="flex flex-col p-space-sm rounded-xl bg-surface-canvas shadow-sm">
               <div className="w-8 h-8 rounded-lg bg-tertiary-fixed flex items-center justify-center text-tertiary mb-space-2xs">
@@ -471,7 +478,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
             <div className="flex items-center gap-space-2xs">
               <h2 className="font-heading-sm text-heading-sm text-on-surface">Your Active Deals</h2>
               <span className="w-5 h-5 rounded-full bg-primary-container text-on-primary-container font-caption text-[11px] font-bold flex items-center justify-center">
-                {publicOffers.length > 0 ? Math.min(publicOffers.length, 2) : 0}
+                {vouchers.length}
               </span>
             </div>
             <button
@@ -484,15 +491,13 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
             </button>
           </div>
 
-          {publicOffers.length > 0 ? publicOffers.slice(0, 2).map((offer) => {
-            const title = getOfferTitle(offer);
-            const business = getOfferBusinessName(offer);
-            const image = getOfferImage(offer);
-            const price = getOfferPrice(offer);
-            const original = getOfferComparePrice(offer);
-            const discount = original > price ? `${Math.round(((original - price) / original) * 100)}% OFF` : 'Live Deal';
+          {vouchers.length > 0 ? vouchers.slice(0, 2).map((claim) => {
+            const title = claim.dealTitle;
+            const business = claim.dealBusiness;
+            const image = claim.dealImage || NO_IMAGE;
+            const price = claim.dealPrice ?? 0;
             return (
-              <div key={String(offer.id ?? title)} className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
+              <div key={claim.ref} className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
                 <div className="flex items-start justify-between gap-space-xs">
                   <div className="flex gap-space-sm min-w-0">
                     <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-surface-container">
@@ -508,12 +513,12 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
                       </h3>
                       <span className="font-caption text-caption text-tertiary flex items-center gap-1 mt-0.5 font-medium">
                         <Icon name="timer" className="text-[14px]" />
-                        {original > price ? `Save ${formatCurrency(original - price)}` : 'Limited-time offer'}
+                        {voucherExpiryLabel(claim)}
                       </span>
                     </div>
                   </div>
                   <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-semibold shrink-0">
-                    {discount}
+                    {claim.discountLabel ?? 'Active'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between p-space-xs rounded-lg bg-surface-subtle">
@@ -525,7 +530,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
                   </div>
                   <button
                     type="button"
-                    onClick={onShowQR}
+                    onClick={() => onShowQR(claim)}
                     className="h-9 px-space-md rounded-xl bg-primary-container text-on-primary-container font-button-secondary text-button-secondary flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
                   >
                     <Icon name="qr_code_2" className="text-[18px]" />
@@ -536,7 +541,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
             );
           }) : (
             <div className="rounded-xl bg-surface-canvas p-space-md text-text-secondary shadow-sm">
-              Live deals from your area will appear here once the catalogue is available.
+              You have no active deals yet. Claim a deal and its QR pass will appear here.
             </div>
           )}
         </section>
@@ -562,26 +567,26 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-tertiary">Member Status</span>
                 <span className="font-button-primary text-button-primary text-text-primary">
-                  {publicOffers.length > 0 ? 'Live local member' : 'Member profile ready'}
+                  {tier ? `${tier.tier} member` : 'Member'}
                 </span>
               </div>
               <div className="flex flex-col items-end">
-                <span className="font-caption text-caption text-text-tertiary">Potential Savings</span>
+                <span className="font-caption text-caption text-text-tertiary">Total Saved</span>
                 <span className="font-heading-sm text-heading-sm text-tertiary-container font-bold">
-                  {formatCurrency(savedPotential)}
+                  {formatCurrency(totalSaved)}
                 </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between font-caption text-caption text-text-secondary">
-                <span>Live catalogue coverage</span>
-                <span className="font-semibold text-text-primary">{publicOffers.length} nearby offers</span>
+                <span>{tier?.nextTier ? `${tier.pointsToNext.toLocaleString()} points to ${tier.nextTier}` : 'Loyalty points'}</span>
+                <span className="font-semibold text-text-primary">{(tier?.points ?? 0).toLocaleString()} points</span>
               </div>
               <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden">
                 <div
                   className="h-full bg-primary-container rounded-full"
-                  style={{ width: `${Math.min(100, publicOffers.length * 25)}%` }}
+                  style={{ width: `${tier?.progressPercent ?? 0}%` }}
                 />
               </div>
             </div>
@@ -589,7 +594,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
             <div className="flex items-center justify-between pt-space-2xs text-text-secondary">
               <span className="font-caption text-caption flex items-center gap-1">
                 <Icon name="redeem" className="text-badge-discount-text text-[16px]" />
-                <strong>{Math.max(publicOffers.length, 0)}</strong> live offers in your area
+                <strong>{redeemed}</strong> {redeemed === 1 ? 'deal' : 'deals'} redeemed
               </span>
               <button
                 type="button"
@@ -635,7 +640,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
             </div>
           ) : (
             <div className="rounded-xl bg-surface-canvas p-space-md text-text-secondary shadow-sm">
-              No recent orders or bookings yet. Your live activity will appear here once the backend syncs.
+              No recent activity yet. Your claims, orders and bookings will appear here.
             </div>
           )}
         </section>
@@ -647,7 +652,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
               <Icon name="auto_awesome" className="text-primary-container text-[20px]" />
             </div>
             <p className="font-caption text-caption text-text-secondary">
-              Based on your visits and dining taste in Apo
+              Picked for you around {district}
             </p>
           </div>
 
@@ -657,7 +662,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
                 <div className="relative h-28 w-full bg-surface-container overflow-hidden">
                   <button
                     type="button"
-                    onClick={() => onTab('deals')}
+                    onClick={() => openRecommended(deal)}
                     className="block w-full h-full"
                     aria-label={`Open ${deal.business}`}
                   >
@@ -673,12 +678,14 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
                     {deal.badge}
                   </span>
                   <button
-                    aria-label="Favorite"
+                    aria-label={deal.offerId && likes[deal.offerId]?.liked ? `Unlike ${deal.item}` : `Like ${deal.item}`}
+                    aria-pressed={Boolean(deal.offerId && likes[deal.offerId]?.liked)}
+                    disabled={!deal.offerId}
                     type="button"
-                    onClick={() => toggleFav(deal.id)}
+                    onClick={() => { if (deal.offerId) void toggleLike(deal.offerId).catch(() => undefined); }}
                     className="absolute top-2 right-2 w-7 h-7 rounded-full bg-surface-canvas/90 backdrop-blur-sm flex items-center justify-center text-on-surface shadow-sm"
                   >
-                    <Icon name={favs[deal.id] ? 'favorite' : 'favorite_border'} className="text-[16px]" filled />
+                    <Icon name={deal.offerId && likes[deal.offerId]?.liked ? 'favorite' : 'favorite_border'} className="text-[16px]" filled />
                   </button>
                 </div>
                 <div className="p-space-xs flex flex-col flex-grow justify-between gap-space-2xs">
@@ -699,8 +706,8 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
                     </div>
                     <button
                       type="button"
-                      onClick={() => onTab('deals')}
-                      aria-label={`Add ${deal.business} deal`}
+                      onClick={() => openRecommended(deal)}
+                      aria-label={`Open ${deal.business} deal`}
                       className="w-8 h-8 rounded-lg bg-surface-tint-blue text-primary-container flex items-center justify-center active:scale-95 transition-transform"
                     >
                       <Icon name="add" className="text-[18px]" />
@@ -710,7 +717,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
               </div>
             )) : (
               <div className="col-span-2 rounded-xl bg-surface-canvas p-space-md text-center text-text-secondary shadow-sm">
-                Live deals will appear here once the catalogue is available.
+                New deals picked for you will appear here.
               </div>
             )}
           </div>
@@ -720,7 +727,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onStartBusinessSi
             onClick={() => onTab('deals')}
             className="w-full h-12 rounded-xl bg-surface-canvas text-primary-container font-button-primary text-button-primary flex items-center justify-center gap-1.5 shadow-sm hover:bg-surface-container-low transition-colors mt-space-xs active:scale-[0.99]"
           >
-            <span>Explore More Deals in Apo</span>
+            <span>Explore More Deals in {district}</span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
         </section>
