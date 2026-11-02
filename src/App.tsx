@@ -924,6 +924,12 @@ const conversationRefFromPath = (path: string): string | null => {
   const match = /^\/messages\/(?:conversation\/)?([^/]+)$/.exec(path);
   return match && match[1] !== 'conversation' ? pathRef(match[1]) : null;
 };
+/** `/business/hub/customers/profile/{customerId}` → the customer's user id. */
+const CUSTOMER_PROFILE_PATH = '/business/hub/customers/profile';
+const customerIdFromPath = (path: string): string | null => {
+  const match = /^\/business\/hub\/customers\/profile\/([^/]+)\/?$/.exec(path);
+  return match ? pathRef(match[1]) : null;
+};
 const orderRefFromPath = (path: string): string | null => {
   const match = /^\/orders\/([^/]+)$/.exec(path);
   return match && match[1] !== 'booking' && match[1] !== 'order' ? pathRef(match[1]) : null;
@@ -1058,6 +1064,7 @@ function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume
   if (bookingRefFromPath(path)) return guardRoute('booking-detail', authed, isDesktop);
   if (orderRefFromPath(path)) return guardRoute('order-detail', authed, isDesktop);
   if (conversationRefFromPath(path)) return guardRoute('conversation', authed, isDesktop);
+  if (customerIdFromPath(path)) return guardRoute('hub-customer-profile', authed, isDesktop);
   const direct = PATH_ROUTE.get(path);
   if (authed && hasApiConfig() && isSignedOutPath(path)) return 'home';
   // A page load can't restore a sign-up in progress unless a business one was saved.
@@ -1265,6 +1272,8 @@ function AppInner() {
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
   const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(() => orderRefFromPath(window.location.pathname) ?? undefined);
   const [activeBookingRef, setActiveBookingRef] = useState<string | undefined>(() => bookingRefFromPath(window.location.pathname) ?? undefined);
+  // The CRM customer being viewed; carried in the profile URL so a reload or shared link reopens them.
+  const [hubCustomerId, setHubCustomerId] = useState<string | null>(() => customerIdFromPath(window.location.pathname));
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   /** Where "How to Claim" was opened: a deal page (claim that deal) or the Deals feed (no deal to claim). */
   const [howToClaimFrom, setHowToClaimFrom] = useState<Route>('deal-detail');
@@ -1404,10 +1413,12 @@ function AppInner() {
         return liveItem ? productPath(liveItem.code, liveItem.id) : '/discover';
       case 'deal-detail':
         return dealForRoute ? dealDetailPath(dealForRoute) : '/deals';
+      case 'hub-customer-profile':
+        return hubCustomerId ? `${CUSTOMER_PROFILE_PATH}/${encodeURIComponent(hubCustomerId)}` : ROUTE_PATH[target];
       default:
         return ROUTE_PATH[target];
     }
-  }, [liveItem, detailService, selectedBusiness, selectedDeal]);
+  }, [liveItem, detailService, selectedBusiness, selectedDeal, hubCustomerId]);
 
   const setRoute = (target: Route, nextDeal?: ClaimDealSummary | null) => {
     if (target === route) return;
@@ -1643,6 +1654,8 @@ function AppInner() {
       if (orderRef) setActiveOrderRef(orderRef);
       const bookingRef = bookingRefFromPath(path);
       if (bookingRef) setActiveBookingRef(bookingRef);
+      const customerId = customerIdFromPath(path);
+      if (customerId) setHubCustomerId(customerId);
       const conversationRef = conversationRefFromPath(path);
       if (conversationRef) setActiveConversation(conversationRef);
       if (authed && hasApiConfig() && isSignedOutPath(path)) setReturningToShell(true);
@@ -2198,7 +2211,6 @@ function AppInner() {
   // Live: the boost or promotion the metrics screen shows (null = latest active).
   const [boostMetricsTarget, setBoostMetricsTarget] = useState<{ kind: 'boost' | 'promotion'; id: string } | null>(null);
   const [hubCustomerName, setHubCustomerName] = useState(() => (hasApiConfig() ? '' : 'Michael James'));
-  const [hubCustomerId, setHubCustomerId] = useState<string | null>(null);
   // Live deals: the catalogue item a new deal is built on, the deal being
   // viewed or priced, and a one-off catalogue message ("pick an item").
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
@@ -6779,9 +6791,10 @@ function AppInner() {
         return (
           <DesktopBusinessMessagesWorkspaceScreen
             onNav={businessPortalNav}
-            onViewCustomerProfile={(name) => {
+            onViewCustomerProfile={(name, customerId) => {
               setHubCustomerName(name);
-              setHubCustomerId(null);
+              // Without the id the live profile has nothing to load.
+              setHubCustomerId(customerId ?? null);
               setRoute('hub-customer-profile');
             }}
           />
@@ -6790,6 +6803,11 @@ function AppInner() {
         <BusinessMessagesScreen
           initialStep="home"
           onTab={businessTab}
+          onViewCustomerProfile={(name, customerId) => {
+            setHubCustomerName(name);
+            setHubCustomerId(customerId ?? null);
+            setRoute('hub-customer-profile');
+          }}
           onSelectChannel={(key) => {
             if (key === 'chat') setRoute('business-messages');
             else if (key === 'sms') setRoute('business-messages-sms');
