@@ -14,6 +14,10 @@ export interface OrderApiItem {
   image?: string;
   options?: string;
   instructions?: string;
+  priceAtOrder?: number;
+  removed?: boolean;
+  item?: { name?: string; mainImage?: string | null } | null;
+  offer?: { name?: string; mainImage?: string | null } | null;
 }
 
 export interface OrderApiRecord {
@@ -45,6 +49,18 @@ export interface OrderApiRecord {
   paymentRef?: string;
   note?: string;
   marketingConsent?: boolean;
+  totalAmount?: number;
+  notes?: string;
+  branchId?: string;
+  branch?: {
+    id?: string;
+    name?: string;
+    address?: string | null;
+    phone?: string | null;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+    business?: { name?: string; logoUrl?: string | null; address?: string | null; phone?: string | null; uniqueCode?: string | null } | null;
+  } | null;
   merchant?: { id?: string; name?: string };
   customer?: { firstName?: string; lastName?: string; phone?: string; name?: string };
   payment?: { method?: string; status?: string; ref?: string };
@@ -76,9 +92,12 @@ const normalizeStatus = (value?: string): OrderStatus => {
       return 'completed';
     case 'cancelled':
     case 'canceled':
+    case 'rejected':
       return 'cancelled';
     case 'refunded':
+    case 'partial_refund':
       return 'refunded';
+    case 'new':
     case 'submitted':
     default:
       return 'submitted';
@@ -131,13 +150,13 @@ const normalizeFulfillment = (value?: string): 'pickup' | 'delivery' => {
 
 const normalizeLines = (source?: OrderApiItem[]): OrderLine[] => {
   const items = Array.isArray(source) ? source : [];
-  return items.map((item, index) => ({
+  return items.filter((item) => !item.removed).map((item, index) => ({
     id: item.id ?? item.itemId ?? item.productId ?? `line-${index}`,
     productId: item.productId ?? item.itemId,
-    name: item.name ?? item.title ?? 'Order item',
-    price: asNumber(item.price ?? item.unitPrice ?? 0),
+    name: item.name ?? item.title ?? item.item?.name ?? item.offer?.name ?? 'Order item',
+    price: asNumber(item.price ?? item.unitPrice ?? item.priceAtOrder ?? 0),
     qty: Math.max(1, Number(item.quantity ?? item.qty ?? 1)),
-    image: item.image ?? '',
+    image: item.image ?? item.item?.mainImage ?? item.offer?.mainImage ?? '',
     options: item.options,
     instructions: item.instructions,
   }));
@@ -151,8 +170,10 @@ export const normalizeOrderRecord = (record: OrderApiRecord | undefined | null):
     record.customerName ??
     (inferredCustomerName || [record.firstName, record.lastName].filter(Boolean).join(' ') || 'Customer');
   const customerPhone = record.customerPhone ?? record.phone ?? record.customer?.phone ?? '';
-  const merchantName = record.merchantName ?? record.merchant?.name ?? 'Merchant';
-  const merchantId = record.merchantId ?? record.merchant?.id ?? 'merchant';
+  const merchantName = record.merchantName ?? record.merchant?.name ?? record.branch?.business?.name ?? record.branch?.name ?? 'Merchant';
+  const merchantId = record.merchantId ?? record.merchant?.id ?? record.branchId ?? record.branch?.id ?? 'merchant';
+  const coordinate = (value: unknown) => (value === null || value === undefined || value === '' ? undefined : asNumber(value));
+  const hasPaymentInfo = Boolean(record.paymentStatus ?? record.payment?.status);
   const lines = normalizeLines(record.items ?? record.lines);
   const subtotal = asNumber(record.subtotal ?? lines.reduce((sum, line) => sum + line.price * line.qty, 0));
 
@@ -166,15 +187,21 @@ export const normalizeOrderRecord = (record: OrderApiRecord | undefined | null):
     subtotal,
     savings: asNumber(record.savings ?? 0),
     deliveryFee: asNumber(record.deliveryFee ?? 0),
-    total: asNumber(record.total ?? record.amount ?? subtotal),
+    total: asNumber(record.total ?? record.amount ?? record.totalAmount ?? subtotal),
     fulfillment: normalizeFulfillment(record.fulfillment),
-    note: record.note ?? undefined,
+    note: record.note ?? record.notes ?? undefined,
     status: normalizeStatus(record.status),
-    submittedAt: record.submittedAt ? new Date(record.submittedAt).getTime() : Date.now(),
+    submittedAt: new Date(record.submittedAt ?? record.createdAt ?? Date.now()).getTime(),
     readyByLabel: undefined,
     source: 'customer-app',
     paymentMethod: normalizePaymentMethod(record.paymentMethod ?? record.payment?.method),
-    paymentStatus: normalizePaymentStatus(record.paymentStatus ?? record.payment?.status),
+    // Orders are settled at the business, so no payment record is not "unpaid".
+    paymentStatus: hasPaymentInfo ? normalizePaymentStatus(record.paymentStatus ?? record.payment?.status) : 'not-required',
+    merchantPhone: record.branch?.phone ?? record.branch?.business?.phone ?? undefined,
+    merchantAddress: record.branch?.address ?? record.branch?.business?.address ?? undefined,
+    merchantLogo: record.branch?.business?.logoUrl ?? undefined,
+    merchantLatitude: coordinate(record.branch?.latitude),
+    merchantLongitude: coordinate(record.branch?.longitude),
     paymentRef: record.paymentRef ?? record.payment?.ref,
     marketingConsent: Boolean(record.marketingConsent),
   };
@@ -192,6 +219,12 @@ const extractArray = (payload: unknown): OrderApiRecord[] => {
 };
 
 export const ordersService = {
+  /** `POST /catalogue/orders/bulk-checkout`: one order per branch. Errors are thrown. */
+  bulkCheckout: async (payload: Record<string, unknown>) => {
+    const response = await api.post<{ orders?: OrderApiRecord[] }>('/catalogue/orders/bulk-checkout', payload);
+    return extractArray(response?.orders ?? []).map((item) => normalizeOrderRecord(item)).filter(Boolean);
+  },
+
   getMyOrders: async (params?: Record<string, string | number | boolean | undefined>) => {
     const response = await api.get<unknown>('/catalogue/orders/my-orders', { params });
     return extractArray(response).map((item) => normalizeOrderRecord(item)).filter(Boolean);

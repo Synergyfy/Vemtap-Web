@@ -1,27 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
-import { useClaims, type ClaimRecord } from '../context/ClaimsContext';
+import { activeVouchers, pastVouchers, useClaims, voucherExpiryLabel, type ClaimRecord } from '../context/ClaimsContext';
+import { useTotalSaved } from '../hooks/useCustomerDashboard';
+import { useVoucherQr } from '../hooks/useVoucherQr';
+import { NO_IMAGE } from '../utils/homeOffer';
 
-export type MyDealsTarget = 'orders' | 'gift-sent' | 'help';
+export type MyDealsTarget = 'orders' | 'help';
 
 interface MyDealsScreenProps {
   onTab: (tab: MobileTabKey) => void;
-  onShowPass: () => void;
+  /** Opens this voucher's pass. */
+  onShowPass: (claim: ClaimRecord) => void;
+  /** Opens this gift's dispatch receipt. */
+  onGiftReceipt: (claim: ClaimRecord) => void;
   onNavigate: (target: MyDealsTarget) => void;
 }
 
-const URBAN_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBtUv6B8-bTHQgNJ5PXGNef2gEEXADX5DcmFBbYUJ-93hUriTuC5gdhgOpWuXr8-DhBStRXQunlJY5F9SdbkcdBi8xvdvz-GntvTSaV6q5gL_NewJ4iBPOb1hcQhqeF_PpIhen2N-Ge140mAfbDyY6ul2n97u9nvM3MeYDbipHkt775pu0Me4sJkMWmMlYa29eu16r-L8ZOymw6wi-sxBPMQhh0dCKUVc4qc6ZPE6yNd5QRd57GJbL29w';
-
-
 const FILTERS = [
   { key: 'active', label: 'Active' },
+  { key: 'past', label: 'Past' },
   { key: 'gifted', label: 'Gifted' },
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number]['key'];
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(value);
 
 const formatDate = (timestamp: number) =>
   new Date(timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -69,7 +75,11 @@ function ClaimCard({
   onReceipt: () => void;
 }) {
   const isGift = claim.kind === 'gift';
+  const forOther = Boolean(claim.sentForOther);
   const recipientName = claim.recipient?.name;
+  const pastLabel = !isGift && !forOther && (claim.state === 'REDEEMED' || claim.state === 'EXPIRED' || (claim.expiresAt ?? Infinity) <= Date.now())
+    ? claim.state === 'REDEEMED' ? 'REDEEMED' : 'EXPIRED'
+    : null;
   return (
     <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden transition-all hover:shadow-md">
       <div className="flex gap-space-sm items-start">
@@ -77,27 +87,29 @@ function ClaimCard({
           <img
             className="w-full h-full object-cover"
             alt={claim.dealTitle}
-            src={claim.dealImage ?? URBAN_IMG}
+            src={claim.dealImage || NO_IMAGE}
           />
-          <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold tracking-tight">
-            {claim.code}
-          </div>
+          {isGift || forOther ? null : (
+            <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold tracking-tight">
+              {claim.code}
+            </div>
+          )}
         </div>
         <div className="flex flex-col flex-1 min-w-0">
           <div className="flex items-center justify-between gap-1 mb-1">
             <span
               className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-[11px] font-semibold ${
-                isGift
+                isGift || pastLabel
                   ? 'bg-surface-tint-blue text-primary'
                   : 'bg-badge-discount-bg text-badge-discount-text'
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  isGift ? 'bg-primary' : 'bg-badge-discount-text animate-pulse'
+                  isGift || pastLabel ? 'bg-primary' : 'bg-badge-discount-text animate-pulse'
                 }`}
               />
-              {isGift ? 'GIFT SENT' : 'READY TO REDEEM'}
+              {forOther ? `CLAIMED FOR ${(claim.recipient?.name || 'SOMEONE ELSE').toUpperCase()}` : isGift ? 'GIFT SENT' : pastLabel ?? 'READY TO REDEEM'}
             </span>
             <span className="font-caption text-caption text-text-tertiary shrink-0">{formatDate(claim.createdAt)}</span>
           </div>
@@ -114,18 +126,24 @@ function ClaimCard({
         </div>
       </div>
 
-      <VoucherStrip code={claim.ref} onCopy={onCopy} copied={copied === claim.ref} />
+      {forOther || isGift || pastLabel ? null : <VoucherStrip code={claim.ref} onCopy={onCopy} copied={copied === claim.ref} />}
 
       <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption px-1">
         <Icon name="info" className="text-[15px] text-primary" />
         <span>
-          {isGift
+          {forOther
+            ? `${claim.recipient?.name || 'The recipient'} holds this voucher and redeems it. Status: ${claim.state ?? 'ACTIVE'}.`
+            : isGift
             ? 'The recipient redeems this pass — your account is the sender of record.'
-            : 'Show QR code to your server prior to ordering.'}
+            : pastLabel === 'REDEEMED'
+            ? 'This voucher has been redeemed.'
+            : pastLabel
+            ? 'This voucher has expired.'
+            : `Show QR code to your server prior to ordering. ${voucherExpiryLabel(claim)}.`}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-space-xs pt-1">
+      {forOther || pastLabel ? null : <div className="grid grid-cols-2 gap-space-xs pt-1">
         {isGift ? (
           <>
             <button
@@ -165,36 +183,24 @@ function ClaimCard({
             </button>
           </>
         )}
-      </div>
+      </div>}
     </article>
   );
 }
 
-export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenProps) {
+export function MyDealsScreen({ onTab, onShowPass, onGiftReceipt, onNavigate }: MyDealsScreenProps) {
   const [filter, setFilter] = useState<FilterKey>('active');
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
-  const [qr, setQr] = useState<{ business: string; code: string; source?: 'claim' | 'gift' } | null>(null);
+  const [qr, setQr] = useState<ClaimRecord | null>(null);
+  // A gift belongs to its recipient, so the sender only sees its code.
+  const qrImage = useVoucherQr(qr && qr.kind !== 'gift' ? qr.id : undefined);
+  const totalSaved = useTotalSaved();
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const openQrForClaim = async (claim: ClaimRecord) => {
-    const identifier = claim.id ?? claim.ref ?? claim.code;
-    try {
-      if (claim.kind === 'gift') {
-        await getGift(identifier);
-      } else {
-        await getClaimQr(identifier);
-      }
-    } catch {
-      // The UI keeps the local voucher fallback if the live endpoint is unavailable.
-    }
-
-    setQr({ business: claim.dealBusiness, code: claim.ref, source: claim.kind === 'gift' ? 'gift' : 'claim' });
+  const openQrForClaim = (claim: ClaimRecord) => {
+    if (!claim.sentForOther) setQr(claim);
   };
-
-  useEffect(() => {
-    return () => undefined;
-  }, []);
 
   const copyCode = (code: string) => {
     navigator.clipboard?.writeText(code).catch(() => undefined);
@@ -203,7 +209,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
   };
 
   // Source of truth: the customer claim list from `/me/claims`, hydrated into the UI.
-  const { claims, getClaimQr, getGift } = useClaims();
+  const { claims } = useClaims();
   const needle = query.trim().toLowerCase();
   const matchesSearch = (claim: ClaimRecord) =>
     !needle ||
@@ -211,10 +217,12 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
       .join(' ')
       .toLowerCase()
       .includes(needle);
-  const activeClaims = claims.filter((claim) => claim.kind !== 'gift' && matchesSearch(claim));
-  const giftedClaims = claims.filter((claim) => claim.kind === 'gift' && matchesSearch(claim));
+  const activeClaims = activeVouchers(claims).filter(matchesSearch);
+  const pastClaims = pastVouchers(claims).filter(matchesSearch);
+  const giftedClaims = claims.filter((claim) => (claim.kind === 'gift' || claim.sentForOther) && matchesSearch(claim));
   const counts: Record<FilterKey, number> = {
     active: activeClaims.length,
+    past: pastClaims.length,
     gifted: giftedClaims.length,
   };
   const latestGift = giftedClaims[0];
@@ -263,12 +271,12 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
               {latestGift.dealTitle}
             </span>
             <span className="font-caption text-caption text-text-tertiary">
-              Sent on {formatDate(latestGift.createdAt)} • {latestGift.ref}
+              Sent on {formatDate(latestGift.createdAt)}
             </span>
           </div>
           <button
             type="button"
-            onClick={() => onNavigate('gift-sent')}
+            onClick={() => onGiftReceipt(latestGift)}
             className="font-label-sm text-label-sm text-primary font-semibold flex items-center gap-0.5 hover:underline"
           >
             <span>Receipt</span>
@@ -325,7 +333,7 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
               <div className="flex flex-col">
                 <span className="font-caption text-caption text-text-secondary">Total Savings to Date</span>
                 <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight">
-                  {activeClaims.length > 0 ? 'Live' : '—'}
+                  {formatCurrency(totalSaved)}
                 </span>
               </div>
             </div>
@@ -402,13 +410,38 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
                   claim={claim}
                   copied={copied}
                   onCopy={copyCode}
-                  onShowPass={onShowPass}
-                  onShowQr={() => void openQrForClaim(claim)}
+                  onShowPass={() => onShowPass(claim)}
+                  onShowQr={() => openQrForClaim(claim)}
                   onReceipt={() => onNavigate('orders')}
                 />
               ))
             )}
 
+          </div>
+        )}
+
+        {filter === 'past' && (
+          <div className="px-margin flex flex-col gap-space-md">
+            {pastClaims.length === 0 ? (
+              <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col items-center gap-space-xs text-center">
+                <Icon name="history" className="text-[28px] text-primary" />
+                <h2 className="font-heading-sm text-heading-sm text-text-primary">No redeemed or expired deals yet</h2>
+                <p className="font-caption text-caption text-text-secondary leading-relaxed">
+                  Once a merchant scans your pass it moves here.
+                </p>
+              </div>
+            ) : (
+              pastClaims.map((claim) => (
+                <ClaimCard
+                  key={claim.ref}
+                  claim={claim}
+                  copied={copied}
+                  onCopy={copyCode}
+                  onShowQr={() => undefined}
+                  onReceipt={() => undefined}
+                />
+              ))
+            )}
           </div>
         )}
 
@@ -429,8 +462,8 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
                   claim={claim}
                   copied={copied}
                   onCopy={copyCode}
-                  onShowQr={() => void openQrForClaim(claim)}
-                  onReceipt={() => onNavigate('gift-sent')}
+                  onShowQr={() => openQrForClaim(claim)}
+                  onReceipt={() => onGiftReceipt(claim)}
                 />
               ))
             )}
@@ -473,44 +506,19 @@ export function MyDealsScreen({ onTab, onShowPass, onNavigate }: MyDealsScreenPr
             <div className="w-12 h-12 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary mb-space-xs">
               <Icon name="storefront" className="text-[26px]" />
             </div>
-            <h3 className="font-heading-md text-heading-md text-text-primary text-center mb-0.5">{qr.business}</h3>
+            <h3 className="font-heading-md text-heading-md text-text-primary text-center mb-0.5">{qr.dealBusiness}</h3>
             <p className="font-caption text-caption text-text-secondary text-center mb-space-md">
               Present this voucher code to your cashier or attendant.
             </p>
             <div className="p-space-md bg-surface-container-lowest rounded-2xl shadow-sm mb-space-md flex flex-col items-center">
-              <svg className="w-48 h-48 text-text-primary" fill="currentColor" viewBox="0 0 100 100">
-                <rect fill="none" height="26" rx="2" stroke="currentColor" strokeWidth="4" width="26" x="10" y="10" />
-                <rect height="12" rx="1" width="12" x="17" y="17" />
-                <rect fill="none" height="26" rx="2" stroke="currentColor" strokeWidth="4" width="26" x="64" y="10" />
-                <rect height="12" rx="1" width="12" x="71" y="17" />
-                <rect fill="none" height="26" rx="2" stroke="currentColor" strokeWidth="4" width="26" x="10" y="64" />
-                <rect height="12" rx="1" width="12" x="17" y="71" />
-                <rect height="5" width="5" x="42" y="14" />
-                <rect height="6" width="6" x="50" y="22" />
-                <rect height="4" width="6" x="42" y="32" />
-                <rect height="6" width="6" x="12" y="44" />
-                <rect height="4" width="8" x="24" y="48" />
-                <rect height="6" width="6" x="38" y="44" />
-                <rect height="8" width="8" x="48" y="46" />
-                <rect height="6" width="5" x="62" y="42" />
-                <rect height="6" width="6" x="74" y="44" />
-                <rect height="8" width="6" x="84" y="42" />
-                <rect height="6" width="8" x="42" y="62" />
-                <rect height="8" width="6" x="56" y="60" />
-                <rect height="5" width="8" x="68" y="64" />
-                <rect height="6" width="6" x="82" y="68" />
-                <rect height="8" width="6" x="44" y="76" />
-                <rect height="6" width="10" x="56" y="80" />
-                <rect height="8" width="8" x="72" y="78" />
-                <rect height="6" width="6" x="84" y="82" />
-              </svg>
+              {qrImage ? <img alt={`QR code for ${qr.code}`} className="w-48 h-48" src={qrImage} /> : null}
               <span className="font-mono text-heading-sm font-bold tracking-widest text-text-primary mt-2">
                 {qr.code}
               </span>
             </div>
             <div className="flex items-center gap-2 text-badge-discount-text font-label-sm text-label-sm mb-space-lg">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-ping" />
-              <span>Valid for in-store checkout right now</span>
+              <span>{qr.kind === 'gift' ? 'The recipient redeems this gift' : voucherExpiryLabel(qr)}</span>
             </div>
             <button
               type="button"

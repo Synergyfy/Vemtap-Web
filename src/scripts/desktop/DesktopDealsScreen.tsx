@@ -2,11 +2,24 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DesktopLocationRadiusModal } from '../../components/DesktopLocationRadiusModal';
-import { useLocation, useLocationQuery } from '../../context/LocationContext';
+import { useLocation } from '../../context/LocationContext';
 import { hasApiConfig } from '../../services/api/client';
 import { catalogueService } from '../../services/catalogueService';
-import { dealEngagementService } from '../../services/dealEngagementService';
-import { dealPrimaryImage } from '../../utils/dealImages';
+import { useDealLikes } from '../../hooks/useDealLikes';
+import { useHomeDealCategories } from '../../hooks/useHomeDealCategories';
+import { matchesClientFilters, useDealFilters } from '../../context/DealFiltersContext';
+import { useDealFeedControls, DEAL_PAGE_SIZE as PAGE_SIZE, type DealSortBy } from '../../hooks/useDealFeedControls';
+import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
+import {
+  firstString,
+  isVerifiedOffer,
+  offerCategoryLabel,
+  offerDiscountLabel,
+  offerEndsLabel,
+  offerImage,
+  offerLocationLabel,
+  realOfferId,
+} from '../../utils/homeOffer';
 
 interface DesktopDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -42,6 +55,9 @@ interface DesktopDealsScreenProps {
     discountLabel?: string;
     image?: string;
   } | null, onClaimed?: () => void) => void;
+  onHowToClaim?: () => void;
+  /** Pre-fills the search (e.g. "See all deals for …" from the navbar search). */
+  initialSearch?: string;
 }
 
 interface DiscoveryDeal {
@@ -70,7 +86,8 @@ interface CatalogDeal {
   store: string;
   verified: boolean;
   badge?: { label: string; className: string };
-  rating: string;
+  /** Real claim progress, only when the offer has a claim limit. */
+  progress?: { claimed: number; total: number };
   title: string;
   copy: string;
   price: string;
@@ -88,8 +105,13 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-/** Same rule as the home cards and the detail page: the deal's own photo first. */
-const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+/** Same rule as the home cards and the detail page: the deal's own photo first; a neutral block, never a stock photo. */
+const getOfferImage = (offer: Record<string, unknown>): string => offerImage(offer);
+
+const greeting = () => {
+  const hour = new Date().getHours();
+  return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+};
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? offer.business as Record<string, unknown> : {};
@@ -112,10 +134,8 @@ const getOfferTitle = (offer: Record<string, unknown>): string => {
   return typeof title === 'string' && title.trim() ? title : 'Local offer';
 };
 
-const getOfferDescription = (offer: Record<string, unknown>): string => {
-  const description = offer.description ?? offer.summary ?? offer.copy ?? 'Special local promotion available now.';
-  return typeof description === 'string' && description.trim() ? description : 'Special local promotion available now.';
-};
+const getOfferDescription = (offer: Record<string, unknown>): string =>
+  firstString(offer.description, offer.summary, offer.copy) ?? '';
 
 const getOfferPrice = (offer: Record<string, unknown>): number => {
   const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
@@ -169,16 +189,18 @@ const toDiscoveryDeal = (offer: Record<string, unknown>): DiscoveryDeal => {
     ),
     image: getOfferImage(offer),
     imageAlt: `${title} by ${getOfferBusinessName(offer)}`,
-    discount: price > 0 ? 'Live Deal' : 'Offer',
-    extra: { label: 'Local', className: 'bg-tertiary-fixed text-on-tertiary-fixed font-bold' },
-    timer: 'Now live',
+    discount: offerDiscountLabel(offer),
+    extra: offerCategoryLabel(offer)
+      ? { label: offerCategoryLabel(offer) as string, className: 'bg-tertiary-fixed text-on-tertiary-fixed font-bold' }
+      : undefined,
+    timer: offerEndsLabel(offer),
     store: getOfferBusinessName(offer),
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    distance: offerLocationLabel(offer),
     title,
     copy: getOfferDescription(offer),
     price: formatCurrency(price),
     oldPrice: compare > price ? formatCurrency(compare) : '',
-    save: price > 0 ? `-${formatCurrency(difference)}` : 'Limited-time',
+    save: difference > 0 ? `-${formatCurrency(difference)}` : '',
   };
 };
 
@@ -198,33 +220,87 @@ const toCatalogDeal = (offer: Record<string, unknown>): CatalogDeal => {
     ),
     image: getOfferImage(offer),
     imageAlt: `${title} by ${business}`,
-    discount: price > 0 ? 'Live Offer' : 'Offer',
-    extra: { label: 'Live', className: 'bg-error-container text-on-error-container', icon: 'local_fire_department', iconFilled: true },
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    discount: offerDiscountLabel(offer),
+    extra: { label: offerEndsLabel(offer), className: 'bg-surface-canvas/90 text-text-primary', icon: 'schedule' },
+    distance: offerLocationLabel(offer),
     store: business,
-    verified: true,
-    badge: { label: 'LIVE', className: 'bg-surface-tint-blue text-primary' },
-    rating: '4.9',
+    verified: isVerifiedOffer(offer),
+    badge: offerCategoryLabel(offer)
+      ? { label: offerCategoryLabel(offer) as string, className: 'bg-surface-tint-blue text-primary' }
+      : undefined,
+    progress: Number(offer.totalLimit) > 0
+      ? { claimed: Math.max(0, Number(offer.claimedCount) || 0), total: Number(offer.totalLimit) }
+      : undefined,
     title,
     copy: getOfferDescription(offer),
     price: formatCurrency(price),
     oldPrice: compare > price ? formatCurrency(compare) : '',
-    save: price > 0 ? `Save ${formatCurrency(Math.max(compare - price, 0))}` : 'Limited-time',
+    save: compare > price ? `Save ${formatCurrency(compare - price)}` : '',
   };
 };
 
-const CONTEXT_CATEGORIES = ['All Deals', 'Food & Dining', 'Fashion & Wear', 'Wellness & Spa', 'Fitness'];
 
-export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onOpenComments, onClaim }: DesktopDealsScreenProps) {
+function DealCardSkeletons({ count, className }: { count: number; className: string }) {
+  return (
+    <SkeletonGroup label="Loading deals" className={className}>
+      {Array.from({ length: count }, (_, key) => (
+        <div key={key} className="bg-surface-canvas rounded-2xl shadow-sm overflow-hidden">
+          <Skeleton className="h-48 w-full rounded-none" />
+          <div className="p-space-md space-y-2">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-3 w-full" />
+            <div className="flex items-center justify-between pt-2">
+              <Skeleton className="h-7 w-24" />
+              <Skeleton className="h-10 w-24 rounded-xl" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </SkeletonGroup>
+  );
+}
+
+function FeaturedDealSkeleton() {
+  return (
+    <SkeletonGroup label="Loading featured deal" className="grid grid-cols-1 lg:grid-cols-12 min-h-[380px]">
+      <Skeleton className="lg:col-span-7 min-h-[280px] rounded-none" />
+      <div className="lg:col-span-5 p-space-xl space-y-space-md">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <div className="flex items-center justify-between pt-space-md">
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-12 w-40 rounded-xl" />
+        </div>
+      </div>
+    </SkeletonGroup>
+  );
+}
+
+export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onOpenComments, onClaim, onHowToClaim, initialSearch }: DesktopDealsScreenProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
-  const [category, setCategory] = useState(CONTEXT_CATEGORIES[0]);
-  const [heroLiked, setHeroLiked] = useState(false);
+  // Live business categories; the chosen one filters the feed (`categoryId`).
+  const { categories } = useHomeDealCategories();
+  // Shared with the Filters screen, so the chips and filters always agree.
+  const { filters: dealFilters, setFilters, narrowed, activeCount } = useDealFilters();
+  const categoryId = dealFilters.categoryId;
+  const setCategoryId = (id: string | null) => setFilters({ categoryId: id });
+  const activeCategory = categories.find((item) => item.id === categoryId) ?? categories[0];
+  // Search, sort and "load more" — all real feed params (see useDealFeedControls).
+  const feed = useDealFeedControls(categoryId, initialSearch);
+  // Live mode starts loading, so the page shows skeletons (never stand-in data) until the API answers.
+  const [offersLoading, setOffersLoading] = useState(() => hasApiConfig());
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  // The full-page skeleton is only for the very first load; later loads keep the layout (and the search box).
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const chooseCategory = (id: string | null) => setCategoryId(id);
   const [heroClaimed, setHeroClaimed] = useState(false);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
-  const [likedDeals, setLikedDeals] = useState<Record<string, boolean>>({});
-  const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [toast, setToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('Deal Claimed Successfully!');
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
@@ -232,25 +308,38 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   const claimTimers = useRef<Record<string, number>>({});
   const apiReady = hasApiConfig();
 
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
+  // Nearest first within the radius once the customer has a location (unless another sort is chosen).
+  const { feedParams, isLoadingMorePage, limit } = feed;
   useEffect(() => {
     let ignore = false;
     const loadOffers = async () => {
       if (!hasApiConfig()) {
-        console.log('[DesktopDealsScreen] No API config detected; skipping public offers request.');
-        if (!ignore) setPublicOffers([]);
+        if (!ignore) {
+          setPublicOffers([]);
+          setOffersLoading(false);
+        }
         return;
       }
+      if (isLoadingMorePage) setLoadingMore(true);
+      else setOffersLoading(true);
       try {
-        console.log('[DesktopDealsScreen] Requesting public offers...');
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 6 });
+        const response = await catalogueService.getPublicOffers(feedParams);
         const rows = Array.isArray(response?.data) ? response.data : [];
-        console.log('[DesktopDealsScreen] Raw public offers payload:', rows);
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch (error) {
-        console.error('[DesktopDealsScreen] Public offers request failed:', error);
-        if (!ignore) setPublicOffers([]);
+        if (!ignore) {
+          setPublicOffers(rows as Record<string, unknown>[]);
+          setHasMore(rows.length >= limit);
+        }
+      } catch {
+        if (!ignore) {
+          setPublicOffers([]);
+          setHasMore(false);
+        }
+      } finally {
+        if (!ignore) {
+          setOffersLoading(false);
+          setLoadingMore(false);
+          setLoadedOnce(true);
+        }
       }
     };
 
@@ -258,19 +347,49 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     return () => {
       ignore = true;
     };
-  }, [locationQuery]);
+  }, [feedParams, isLoadingMorePage, limit]);
 
-  const discoveryDeals = useMemo(() => {
-    const filtered = publicOffers.filter(isUsableOffer);
-    console.log('[DesktopDealsScreen] Filtered discovery deals:', filtered);
-    return filtered.slice(0, 6).map(toDiscoveryDeal);
-  }, [publicOffers]);
-  const catalogDeals = useMemo(() => {
-    const filtered = publicOffers.filter(isUsableOffer);
-    console.log('[DesktopDealsScreen] Filtered catalog deals:', filtered);
-    return filtered.slice(0, 6).map(toCatalogDeal);
-  }, [publicOffers]);
+  const usableOffers = useMemo(() => publicOffers.filter(isUsableOffer).filter((offer) => matchesClientFilters(offer, dealFilters)), [publicOffers, dealFilters]);
+  const discoveryDeals = useMemo(() => usableOffers.map(toDiscoveryDeal), [usableOffers]);
+  const catalogDeals = useMemo(() => usableOffers.map(toCatalogDeal), [usableOffers]);
   const featuredDeal = catalogDeals[0] ?? null;
+  const emptyMessage = narrowed
+    ? 'No live deals match your filters.'
+    : feed.search
+    ? `No live deals match "${feed.search}"${categoryId ? ` in ${activeCategory.label}` : ''}.`
+    : categoryId
+      ? `No live deals in ${activeCategory.label} near you yet.`
+      : 'No live deals near you yet.';
+
+  const searchBox = (className: string) => (
+    <label className={`relative block ${className}`}>
+      <span className="sr-only">Search deals</span>
+      <Icon name="search" className="absolute left-space-sm top-1/2 -translate-y-1/2 text-outline text-[18px] pointer-events-none" />
+      <input
+        className="w-full h-11 pl-10 pr-space-md bg-surface-subtle rounded-xl text-on-surface placeholder:text-text-tertiary font-body-md text-body-md outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_2px_#066cf4] shadow-sm transition-all"
+        placeholder="Search deals or businesses..."
+        type="search"
+        value={feed.searchInput}
+        onChange={(event) => feed.setSearchInput(event.target.value)}
+      />
+    </label>
+  );
+
+  const sortSelect = (
+    <label className="flex items-center gap-1 text-primary font-label-md text-label-md shrink-0">
+      <Icon name="sort" className="text-[18px]" />
+      <span className="sr-only">Sort deals</span>
+      <select
+        className="bg-transparent font-semibold text-primary outline-none cursor-pointer hover:underline"
+        value={feed.sortBy}
+        onChange={(event) => feed.setSortBy(event.target.value as DealSortBy)}
+      >
+        {feed.sortOptions.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
 
   useEffect(() => {
     const timers = claimTimers.current;
@@ -280,41 +399,21 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     };
   }, []);
 
-  useEffect(() => {
-    let ignore = false;
-
-    const syncDealReactions = async () => {
-      if (!publicOffers.length) return;
-
-      const offers = publicOffers.filter(isUsableOffer).slice(0, 6);
-
-      for (const offer of offers) {
-        const dealId = String(
-          offer.id ?? offer.offerId ?? offer._id ?? offer.businessId ?? offer.branchId ?? `${getOfferBusinessName(offer)}-${getOfferTitle(offer)}`,
-        );
-
-        try {
-          const status = await dealEngagementService.getReactionStatus(dealId);
-          const payload = status as Record<string, unknown> | null;
-          const nextCount = getReactionCount(payload, 0);
-          const nextLiked = Boolean(payload?.liked ?? payload?.isLiked ?? false);
-
-          if (!ignore) {
-            setReactionCounts((prev) => ({ ...prev, [dealId]: nextCount }));
-            setLikedDeals((prev) => ({ ...prev, [dealId]: nextLiked }));
-          }
-        } catch (error) {
-          console.warn('[DesktopDealsScreen] Reaction status request failed for deal:', dealId, error);
-        }
-      }
-    };
-
-    syncDealReactions();
-
-    return () => {
-      ignore = true;
-    };
-  }, [publicOffers]);
+  // Live likes: GET /deals/:id/reaction-status to load, POST /deals/:id/reactions { type: 'like' } to toggle.
+  const offerIds = useMemo(
+    () => usableOffers.map(realOfferId).filter((id): id is string => Boolean(id)),
+    [usableOffers],
+  );
+  const { likes, toggleLike: saveLike } = useDealLikes(offerIds);
+  const likeIdOf = (id: unknown) => realOfferId({ id });
+  const isLiked = (id: unknown) => {
+    const offerId = likeIdOf(id);
+    return Boolean(offerId && likes[offerId]?.liked);
+  };
+  const likeCountOf = (id: unknown) => {
+    const offerId = likeIdOf(id);
+    return offerId ? likes[offerId]?.count ?? 0 : 0;
+  };
 
   const claimDeal = (key: string) => {
     if (claimed[key]) {
@@ -332,78 +431,14 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     }, 3500);
   };
 
-  const getReactionKey = (deal: { id?: string | number; store?: string; title?: string }) => String(
-    deal.id ?? `${deal.store ?? 'deal'}-${deal.title ?? 'offer'}`,
-  );
-
-  const toggleDealLike = async (key: string, offerId?: string, shouldLike?: boolean) => {
-    const previousLiked = Boolean(likedDeals[key]);
-    const previousCount = Number(reactionCounts[key] ?? 0);
-    const desiredLiked = typeof shouldLike === 'boolean' ? shouldLike : !previousLiked;
-    const reactionType = desiredLiked ? 'like' : 'dislike';
-    const targetOfferId = String(offerId ?? key);
-
-    try {
-      const { status } = await dealEngagementService.reactAndRefresh(targetOfferId, reactionType);
-      const payload = status as Record<string, unknown> | null;
-      const nextLiked = Boolean(payload?.liked ?? payload?.isLiked ?? desiredLiked);
-      const nextCount = getReactionCount(payload, previousCount);
-
-      setLikedDeals((prev) => ({ ...prev, [key]: nextLiked }));
-      setReactionCounts((prev) => ({ ...prev, [key]: nextCount }));
-    } catch (error) {
-      console.warn('[DesktopDealsScreen] Deal reaction update failed; keeping prior server state:', error);
-    }
+  const toggleDealLike = (id: unknown) => {
+    const offerId = likeIdOf(id);
+    if (!offerId) return;
+    saveLike(offerId).then(
+      (saved) => showToastMessage(saved.liked ? 'You liked this deal' : 'Like removed'),
+      () => showToastMessage('Could not save your like. Please try again.'),
+    );
   };
-
-  const toggleHeroLike = async (shouldLike?: boolean) => {
-    const offerId = featuredDeal?.id ? String(featuredDeal.id) : null;
-    const previousLiked = heroLiked;
-    const previousCount = Number(reactionCounts[String(featuredDeal?.id ?? 'featured')] ?? 0);
-    const desiredLiked = typeof shouldLike === 'boolean' ? shouldLike : !previousLiked;
-    const reactionType = desiredLiked ? 'like' : 'dislike';
-
-    if (!offerId) {
-      return;
-    }
-
-    try {
-      const { status } = await dealEngagementService.reactAndRefresh(offerId, reactionType);
-      const payload = status as Record<string, unknown> | null;
-      const nextLiked = Boolean(payload?.liked ?? payload?.isLiked ?? desiredLiked);
-      const nextCount = getReactionCount(payload, previousCount);
-
-      setHeroLiked(nextLiked);
-      setReactionCounts((prev) => ({ ...prev, [offerId]: nextCount }));
-    } catch (error) {
-      console.warn('[DesktopDealsScreen] Featured deal reaction update failed; keeping prior server state:', error);
-    }
-  };
-
-  const getReactionCount = (payload: Record<string, unknown> | null | undefined, fallback = 0) => {
-    const record = (payload ?? {}) as Record<string, unknown>;
-    const counts = (record.counts ?? {}) as Record<string, unknown>;
-    const metrics = (record.metrics ?? {}) as Record<string, unknown>;
-
-    const candidate =
-      record.likes ??
-      record.count ??
-      record.totalLikes ??
-      record.reactionCount ??
-      record.likesCount ??
-      record.likeCount ??
-      record.likes_count ??
-      record.total_likes ??
-      record.reaction_count ??
-      counts.likes ??
-      metrics.likes ??
-      fallback;
-
-    const numeric = Number(candidate);
-    return Number.isFinite(numeric) ? Math.max(0, numeric) : fallback;
-  };
-
-  const getLikedCount = (baseCount: number) => Math.max(0, baseCount);
 
   const showToastMessage = (message: string) => {
     setToastMessage(message);
@@ -426,27 +461,6 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     </div>
   ) : null;
 
-  if (!publicOffers.length) {
-    return (
-      <>
-        <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
-          <section className="w-full max-w-7xl mx-auto px-margin py-space-3xl">
-            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
-                <Icon name="info" className="text-[22px]" />
-              </div>
-              <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
-              <p className="mt-1 font-body-md text-body-md text-text-secondary">
-                Publish live public offers to populate this feed.
-              </p>
-            </div>
-          </section>
-        </DesktopPage>
-        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
-      </>
-    );
-  }
-
   if (!apiReady) {
     return (
       <>
@@ -468,6 +482,43 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     );
   }
 
+  if (!loadedOnce && hasApiConfig()) {
+    return (
+      <>
+        <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
+          <div className="max-w-7xl mx-auto px-margin py-space-xl w-full flex flex-col gap-space-2xl">
+            <section className="w-full rounded-2xl bg-surface-canvas shadow-md overflow-hidden">
+              <FeaturedDealSkeleton />
+            </section>
+            <DealCardSkeletons count={PAGE_SIZE} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg" />
+          </div>
+        </DesktopPage>
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
+      </>
+    );
+  }
+
+  if (!offersLoading && !categoryId && !narrowed && !feed.search && !usableOffers.length) {
+    return (
+      <>
+        <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
+          <section className="w-full max-w-7xl mx-auto px-margin py-space-3xl">
+            <div className="rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
+                <Icon name="info" className="text-[22px]" />
+              </div>
+              <p className="mt-space-md font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
+              <p className="mt-1 font-body-md text-body-md text-text-secondary">
+                New offers from businesses near you will show up here.
+              </p>
+            </div>
+          </section>
+        </DesktopPage>
+        <DesktopLocationRadiusModal open={locationOpen} onClose={() => setLocationOpen(false)} onApply={setLocation} district={district} radius={radius} />
+      </>
+    );
+  }
+
   if (view === 'list') {
     return (
       <>
@@ -480,12 +531,12 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   <span>•</span>
                   <span className="flex items-center text-primary font-medium">
                     <span className="w-2 h-2 rounded-full bg-primary-container inline-block animate-pulse mr-1.5" />
-                    Real-time neighborhood inventory
+                    Live offers near you
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-space-sm pt-space-2xs">
                   <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
-                    Good evening
+                    {greeting()}
                   </h1>
                   <button
                     className="flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-container-high text-on-surface text-label-md font-label-md shadow-sm"
@@ -503,20 +554,21 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
               </div>
 
               <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar pb-1 max-w-full">
-                {CONTEXT_CATEGORIES.map((item) => {
-                  const active = item === category;
+                {categories.map((item) => {
+                  const active = item.id === categoryId;
                   return (
                     <button
-                      key={item}
+                      key={item.id ?? 'all'}
+                      aria-pressed={active}
                       className={`px-4 py-2 rounded-full font-label-md text-label-md whitespace-nowrap shadow-sm transition-colors ${
                         active
                           ? 'bg-surface-tint-blue text-primary font-medium'
                           : 'bg-surface-container-lowest text-text-secondary hover:text-text-primary hover:bg-surface-container'
                       }`}
                       type="button"
-                      onClick={() => setCategory(item)}
+                      onClick={() => chooseCategory(item.id)}
                     >
-                      {item}
+                      {item.label}
                     </button>
                   );
                 })}
@@ -526,18 +578,17 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
             <div className="w-full bg-surface-container-lowest rounded-2xl p-space-md mb-space-xl flex flex-col sm:flex-row items-center justify-between gap-space-md shadow-[0_4px_20px_-4px_rgba(13,37,76,0.03)]">
               <div className="flex items-center gap-space-md w-full sm:w-auto">
                 <div className="flex items-center gap-space-xs">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">Showing {catalogDeals.length} deal{catalogDeals.length === 1 ? '' : 's'}</span>
-                  <span className="px-2 py-0.5 rounded-md bg-secondary-fixed text-on-secondary-fixed text-caption font-caption font-bold">
-                    VERIFIED LOCAL
-                  </span>
+                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold">{offersLoading ? 'Loading deals…' : `Showing ${catalogDeals.length} deal${catalogDeals.length === 1 ? '' : 's'}`}</span>
                 </div>
                 <div className="h-4 w-px bg-surface-container-highest hidden sm:block" />
-                <p className="hidden sm:inline font-caption text-caption text-text-tertiary">
+                <p className="hidden lg:inline font-caption text-caption text-text-tertiary">
                   Tap &apos;Claim&apos; to lock in redeemable vouchers
                 </p>
               </div>
 
               <div className="flex items-center justify-between w-full sm:w-auto gap-space-sm">
+                {searchBox('w-full sm:w-64')}
+                {sortSelect}
                 <div className="flex items-center bg-surface-container-low p-1 rounded-xl">
                   <button
                     aria-label="Grid View"
@@ -562,18 +613,18 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   onClick={onOpenFilters}
                 >
                   <Icon name="tune" className="text-primary text-[18px]" />
-                  <span>Filters</span>
-                  <span className="w-5 h-5 rounded-full bg-primary-container text-on-primary text-caption font-bold flex items-center justify-center">
-                    2
-                  </span>
+                  <span>Filters{activeCount ? ` (${activeCount})` : ''}</span>
                 </button>
               </div>
             </div>
 
+            {offersLoading ? (
+              <DealCardSkeletons count={PAGE_SIZE} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg" />
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg">
               {catalogDeals.length === 0 ? (
                 <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                  Live catalog deals will appear here as soon as the public offers feed is available.
+                  {emptyMessage}
                 </div>
               ) : catalogDeals.map((deal, index) => (
                 <article
@@ -581,6 +632,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   role="button"
                   tabIndex={0}
                   onClick={() => onOpenDeal({
+                    id: deal.id,
                     title: deal.title,
                     business: deal.store,
                     location: `${city}, ${district}`,
@@ -593,6 +645,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
                       onOpenDeal({
+                        id: deal.id,
                         title: deal.title,
                         business: deal.store,
                         location: `${city}, ${district}`,
@@ -655,15 +708,25 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                             </span>
                           ) : null}
                         </div>
-                        <span className="flex items-center text-amber-500 text-caption font-caption font-semibold gap-0.5">
-                          <Icon name="star" filled className="text-[14px]" />
-                          {deal.rating}
-                        </span>
+                        <button
+                          type="button"
+                          aria-pressed={isLiked(deal.id)}
+                          aria-label={isLiked(deal.id) ? `Unlike ${deal.title}` : `Like ${deal.title}`}
+                          disabled={!likeIdOf(deal.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleDealLike(deal.id);
+                          }}
+                          className={`flex items-center gap-0.5 text-caption font-caption font-semibold transition-colors ${isLiked(deal.id) ? 'text-error' : 'text-text-secondary hover:text-error'}`}
+                        >
+                          <Icon name="favorite" filled={isLiked(deal.id)} className="text-[16px]" />
+                          {likeCountOf(deal.id)}
+                        </button>
                       </div>
                       <h3 className="font-heading-sm text-heading-sm text-text-primary line-clamp-1 group-hover:text-primary transition-colors">
                         {deal.title}
                       </h3>
-                      <p className="font-caption text-caption text-text-tertiary line-clamp-1">{deal.copy}</p>
+                      {deal.copy ? <p className="font-caption text-caption text-text-tertiary line-clamp-1">{deal.copy}</p> : null}
                     </div>
 
                     <div className="pt-space-md mt-space-md flex items-center justify-between">
@@ -672,13 +735,17 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                           <span className="font-heading-md text-heading-md text-text-primary font-bold">
                             {deal.price}
                           </span>
-                          <span className="font-caption text-caption text-text-tertiary line-through">
-                            {deal.oldPrice}
-                          </span>
+                          {deal.oldPrice ? (
+                            <span className="font-caption text-caption text-text-tertiary line-through">
+                              {deal.oldPrice}
+                            </span>
+                          ) : null}
                         </div>
-                        <span className="inline-flex px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-medium">
-                          {deal.save}
-                        </span>
+                        {deal.save ? (
+                          <span className="inline-flex px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-medium">
+                            {deal.save}
+                          </span>
+                        ) : null}
                       </div>
                       <button
                         className={`h-11 px-6 rounded-xl font-button-primary text-button-primary font-semibold transition-all active:scale-95 ${
@@ -690,6 +757,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         onClick={(event) => {
                           event.stopPropagation();
                           const selected = {
+                            id: deal.id,
                             title: deal.title,
                             business: deal.store,
                             location: `${city}, ${district}`,
@@ -708,6 +776,21 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                 </article>
               ))}
             </div>
+            )}
+
+            {!offersLoading && hasMore ? (
+              <div className="mt-space-lg flex justify-center">
+                <button
+                  className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all disabled:opacity-60"
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={feed.loadMore}
+                >
+                  <span>{loadingMore ? 'Loading more deals…' : 'Load more deals'}</span>
+                  <Icon name="keyboard_arrow_down" className="text-[18px]" />
+                </button>
+              </div>
+            ) : null}
 
             <div className="mt-space-2xl bg-surface-tint-blue rounded-2xl p-space-xl flex flex-col md:flex-row items-center justify-between gap-space-lg">
               <div className="flex items-center gap-space-md">
@@ -726,6 +809,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
               <button
                 className="inline-flex items-center gap-space-2xs text-primary font-label-md text-label-md font-semibold hover:underline shrink-0"
                 type="button"
+                onClick={onHowToClaim}
               >
                 <span>How claiming works</span>
                 <Icon name="arrow_forward" className="text-[16px]" />
@@ -743,64 +827,40 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   return (
     <>
       <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
-        <section className="w-full bg-surface-canvas shadow-sm">
-          <div className="max-w-7xl mx-auto px-margin py-space-md flex flex-col md:flex-row items-center justify-between gap-space-md">
-            <div className="flex items-center gap-space-md w-full md:w-auto">
-              <div className="flex items-center gap-space-2xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary-container animate-pulse" />
-                <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Deals &amp; Offers</h1>
-              </div>
-              <button
-                className="group/location relative bg-surface-tint-blue px-space-sm py-1.5 rounded-full flex items-center gap-space-xs shadow-sm hover:bg-secondary-fixed transition-colors"
-                type="button"
-                onClick={() => setLocationOpen(true)}
-              >
-                <Icon name="location_on" className="text-primary text-[18px]" />
-                <span className="font-label-md text-label-md text-primary font-semibold">
-                  {district}, {city} • Within {radius}km
-                </span>
-                <Icon name="keyboard_arrow_down" className="text-primary text-[16px]" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-space-sm w-full md:w-auto flex-1 max-w-xl justify-end">
-              <div className="relative flex-1">
-                <Icon
-                  name="search"
-                  className="absolute left-space-sm top-1/2 -translate-y-1/2 text-outline text-[18px] pointer-events-none"
-                />
-                <input
-                  className="w-full h-11 pl-10 pr-space-md bg-surface-subtle rounded-xl text-on-surface placeholder:text-text-tertiary font-body-md text-body-md outline-none focus:bg-surface-canvas shadow-sm transition-all"
-                  placeholder="Search deals, businesses or products..."
-                  type="search"
-                />
-              </div>
-              <button
-                className="h-11 px-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-xl flex items-center gap-space-2xs text-text-primary font-label-md text-label-md shadow-sm transition-colors"
-                type="button"
-                onClick={onOpenFilters}
-              >
-                <Icon name="tune" className="text-[18px]" />
-                <span className="hidden sm:inline">Filters</span>
-              </button>
-              <button
-                aria-label="Notifications"
-                className="relative w-11 h-11 bg-surface-subtle hover:bg-surface-container-high rounded-xl flex items-center justify-center text-text-primary shadow-sm transition-colors"
-                type="button"
-              >
-                <Icon name="notifications" className="text-[20px]" />
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-primary-container" />
-              </button>
-              <div className="w-11 h-11 rounded-xl bg-primary flex items-center justify-center text-on-primary font-heading-sm text-heading-sm shadow-sm">
-                JD
-              </div>
-            </div>
+        {/* Page heading (not a second navbar): the navbar above already has search and location. */}
+        <div className="max-w-7xl mx-auto px-margin pt-space-xl w-full flex flex-col sm:flex-row sm:items-end justify-between gap-space-sm">
+          <div className="space-y-space-2xs min-w-0">
+            <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
+              {feed.search ? <>Results for “{feed.search}”</> : 'Deals & Offers'}
+            </h1>
+            <p className="font-body-md text-body-md text-text-secondary flex flex-wrap items-center gap-x-space-xs">
+              <span>
+                {offersLoading
+                  ? 'Finding deals…'
+                  : `${usableOffers.length} deal${usableOffers.length === 1 ? '' : 's'} near ${district || city || 'you'}`}
+              </span>
+              {feed.search ? (
+                <button type="button" onClick={() => feed.setSearchInput('')} className="text-primary font-semibold hover:underline">
+                  Clear search
+                </button>
+              ) : null}
+            </p>
           </div>
-        </section>
+          <button
+            className="h-10 px-space-sm self-start sm:self-auto bg-surface-subtle hover:bg-surface-container-high rounded-xl flex items-center gap-space-2xs text-text-primary font-label-md text-label-md transition-colors shrink-0"
+            type="button"
+            onClick={onOpenFilters}
+          >
+            <Icon name="tune" className="text-[18px]" />
+            <span>Filters{activeCount ? ` (${activeCount})` : ''}</span>
+          </button>
+        </div>
 
         <div className="max-w-7xl mx-auto px-margin py-space-xl w-full flex flex-col gap-space-2xl">
           <section className="w-full relative rounded-2xl bg-surface-canvas shadow-md overflow-hidden group">
-            {featuredDeal ? (
+            {offersLoading ? (
+              <FeaturedDealSkeleton />
+            ) : featuredDeal ? (
               <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[380px]">
                 <div className="lg:col-span-7 relative min-h-[280px] lg:min-h-full overflow-hidden">
                   <img
@@ -813,15 +873,16 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                     <span className="px-space-sm py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-bold rounded-full shadow-sm">
                       {featuredDeal.discount}
                     </span>
-                    <span className="px-space-sm py-1 bg-surface-canvas/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm flex items-center gap-1">
-                      <Icon name="star" className="text-[14px]" />
-                      {featuredDeal.badge?.label ?? 'Live'}
-                    </span>
+                    {featuredDeal.badge ? (
+                      <span className="px-space-sm py-1 bg-surface-canvas/90 backdrop-blur-md text-primary font-label-sm text-label-sm font-semibold rounded-full shadow-sm">
+                        {featuredDeal.badge.label}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="absolute bottom-4 left-4 z-10 flex items-center gap-space-xs bg-surface-canvas/90 backdrop-blur-md px-space-sm py-1.5 rounded-full shadow-sm text-on-surface">
                     <Icon name="timer" className="text-tertiary-container text-[18px]" />
                     <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                      {featuredDeal.extra?.label ?? 'Active now'}
+                      {featuredDeal.extra?.label}
                     </span>
                   </div>
                 </div>
@@ -835,7 +896,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                       <div className="flex items-center gap-space-xs">
                         <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
                         <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-secondary">
-                          {featuredDeal.badge?.label ?? 'Deal of the Day'}
+                          Featured
                         </span>
                       </div>
                       <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption">
@@ -851,9 +912,11 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                       <h2 className="font-heading-lg text-heading-lg font-bold text-text-primary leading-tight">
                         {featuredDeal.title}
                       </h2>
-                      <p className="font-body-md text-body-md text-text-secondary">
-                        {featuredDeal.copy}
-                      </p>
+                      {featuredDeal.copy ? (
+                        <p className="font-body-md text-body-md text-text-secondary line-clamp-3">
+                          {featuredDeal.copy}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="p-space-sm bg-surface-subtle rounded-xl space-y-space-2xs">
@@ -861,43 +924,57 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         <span className="font-display-hero text-display-hero text-primary font-bold">
                           {featuredDeal.price}
                         </span>
-                        <span className="font-body-lg text-body-lg text-text-tertiary line-through">
-                          {featuredDeal.oldPrice}
-                        </span>
-                        <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
-                          {featuredDeal.save}
-                        </span>
+                        {featuredDeal.oldPrice ? (
+                          <span className="font-body-lg text-body-lg text-text-tertiary line-through">
+                            {featuredDeal.oldPrice}
+                          </span>
+                        ) : null}
+                        {featuredDeal.save ? (
+                          <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
+                            {featuredDeal.save}
+                          </span>
+                        ) : null}
                       </div>
-                      <div className="flex items-center justify-between text-text-secondary font-caption text-caption pt-1">
-                        <span>
-                          {featuredDeal.extra?.label ?? 'Live offer'}
-                        </span>
-                        <span className="text-tertiary font-semibold">{featuredDeal.save}</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-                        <div className="h-full bg-primary-container rounded-full" style={{ width: '60%' }} />
-                      </div>
+                      {featuredDeal.progress ? (
+                        <>
+                          <div className="flex items-center justify-between text-text-secondary font-caption text-caption pt-1">
+                            <span>{featuredDeal.progress.claimed} of {featuredDeal.progress.total} claimed</span>
+                            <span className="text-tertiary font-semibold">
+                              {Math.max(featuredDeal.progress.total - featuredDeal.progress.claimed, 0)} left
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary-container rounded-full"
+                              style={{ width: `${Math.min(100, Math.round((featuredDeal.progress.claimed / featuredDeal.progress.total) * 100))}%` }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-text-secondary font-caption text-caption pt-1">{featuredDeal.extra?.label}</div>
+                      )}
                     </div>
                   </div>
 
                   <div className="pt-space-md flex items-center justify-between gap-space-md border-t border-transparent">
                     <div className="flex items-center gap-space-md text-text-secondary">
                       <button
-                        className={`flex items-center gap-1 transition-colors ${heroLiked ? 'text-error' : 'text-text-secondary hover:text-error'} cursor-pointer`}
+                        className={`flex items-center gap-1 transition-colors ${isLiked(featuredDeal?.id) ? 'text-error' : 'text-text-secondary hover:text-error'} cursor-pointer`}
                         type="button"
+                        aria-pressed={isLiked(featuredDeal?.id)}
+                        aria-label={isLiked(featuredDeal?.id) ? 'Unlike deal' : 'Like deal'}
+                        disabled={!likeIdOf(featuredDeal?.id)}
                         onClick={(event) => {
                           event.stopPropagation();
-                          const nextValue = !heroLiked;
-                          void toggleHeroLike(nextValue);
-                          showToastMessage(nextValue ? 'Saved to liked deals' : 'Removed from liked deals');
+                          toggleDealLike(featuredDeal?.id);
                         }}
                       >
                         <Icon
                           name="favorite"
                           className="text-[20px]"
-                          filled={heroLiked}
+                          filled={isLiked(featuredDeal?.id)}
                         />
-                        <span className="font-label-sm text-label-sm">{getLikedCount(reactionCounts[String(featuredDeal?.id ?? 'featured')] ?? 0)}</span>
+                        <span className="font-label-sm text-label-sm">{likeCountOf(featuredDeal?.id)}</span>
                       </button>
                       <button
                         className="flex items-center gap-1 hover:text-primary transition-colors text-text-secondary cursor-pointer"
@@ -905,6 +982,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         onClick={(event) => {
                           event.stopPropagation();
                           const selected = {
+                            id: featuredDeal?.id,
                             title: featuredDeal?.title ?? 'Featured deal',
                             business: featuredDeal?.store ?? 'Nearby business',
                             location: `${city}, ${district}`,
@@ -912,13 +990,12 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                             oldPrice: Number.parseFloat(String(featuredDeal?.oldPrice ?? '0').replace(/[^\d.]/g, '')) || 0,
                             discountLabel: featuredDeal?.save ?? 'Live Deal',
                             image: featuredDeal?.image ?? '',
-                            commentCount: (featuredDeal as unknown as Record<string, unknown> | undefined)?.commentCount ?? (featuredDeal as unknown as Record<string, unknown> | undefined)?.commentsCount ?? 0,
                           };
                           onOpenComments?.(selected);
                         }}
                       >
                         <Icon name="chat_bubble_outline" className="text-[20px]" />
-                        <span className="font-label-sm text-label-sm">{Number((featuredDeal as unknown as Record<string, unknown> | undefined)?.commentCount ?? (featuredDeal as unknown as Record<string, unknown> | undefined)?.commentsCount ?? 0)}</span>
+                        <span className="font-label-sm text-label-sm">Comment</span>
                       </button>
                     </div>
                     <button
@@ -931,6 +1008,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                       onClick={(event) => {
                         event.stopPropagation();
                         const selected = {
+                          id: featuredDeal?.id,
                           title: featuredDeal?.title ?? 'Featured deal',
                           business: featuredDeal?.store ?? 'Nearby business',
                           location: `${city}, ${district}`,
@@ -950,10 +1028,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
               </div>
             ) : (
               <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-xl text-center">
-                <p className="font-label-md text-label-md text-text-primary font-semibold">No live deals available</p>
-                <p className="mt-1 font-body-md text-body-md text-text-secondary">
-                  Nearby local offers will appear here when the public catalogue is active.
-                </p>
+                <p className="font-label-md text-label-md text-text-primary font-semibold">{emptyMessage}</p>
               </div>
             )}
           </section>
@@ -963,10 +1038,10 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
               <div>
                 <h3 className="font-heading-md text-heading-md text-text-primary font-bold">
                   Deals in {district}, {city}{' '}
-                  <span className="text-text-tertiary font-normal text-heading-sm">(6)</span>
+                  {!offersLoading ? <span className="text-text-tertiary font-normal text-heading-sm">({discoveryDeals.length})</span> : null}
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Hand-picked exclusive vouchers from verified neighborhood spots.
+                  Live vouchers from businesses near you.
                 </p>
               </div>
 
@@ -989,20 +1064,17 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   </button>
                 </div>
                 <div className="h-6 w-px bg-surface-container-high" />
-                <button
-                  className="flex items-center gap-1 text-primary font-label-md text-label-md hover:underline"
-                  type="button"
-                >
-                  <span>Nearest first</span>
-                  <Icon name="sort" className="text-[16px]" />
-                </button>
+                {sortSelect}
               </div>
             </div>
 
+            {offersLoading ? (
+              <DealCardSkeletons count={PAGE_SIZE} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg" />
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg">
               {discoveryDeals.length === 0 ? (
                 <div className="col-span-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                  Nearby discovery deals will appear here when live offers are returned.
+                  {emptyMessage}
                 </div>
               ) : discoveryDeals.map((deal, index) => (
                 <article
@@ -1010,6 +1082,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                   role="button"
                   tabIndex={0}
                   onClick={() => onOpenDeal({
+                    id: deal.id,
                     title: deal.title,
                     business: deal.store,
                     location: `${city}, ${district}`,
@@ -1022,6 +1095,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
                       onOpenDeal({
+                        id: deal.id,
                         title: deal.title,
                         business: deal.store,
                         location: `${city}, ${district}`,
@@ -1070,24 +1144,24 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                       <h4 className="font-heading-sm text-heading-sm text-text-primary font-semibold line-clamp-1 group-hover:text-primary transition-colors">
                         {deal.title}
                       </h4>
-                      <p className="font-body-md text-body-md text-text-secondary line-clamp-2">{deal.copy}</p>
+                      {deal.copy ? <p className="font-body-md text-body-md text-text-secondary line-clamp-2">{deal.copy}</p> : null}
                     </div>
 
                     <div className="pt-space-xs flex items-center justify-between gap-space-sm border-t border-surface-subtle">
                       <div className="flex items-center gap-2 text-text-secondary">
                         <button
                           type="button"
-                          className={`flex items-center gap-1 rounded-full px-2 py-1 transition-colors ${likedDeals[`${deal.store}-${deal.title}`] ? 'text-error bg-error/10' : 'text-text-secondary hover:text-error hover:bg-error/5'}`}
+                          className={`flex items-center gap-1 rounded-full px-2 py-1 transition-colors ${isLiked(deal.id) ? 'text-error bg-error/10' : 'text-text-secondary hover:text-error hover:bg-error/5'}`}
+                          aria-pressed={isLiked(deal.id)}
+                          aria-label={isLiked(deal.id) ? `Unlike ${deal.title}` : `Like ${deal.title}`}
+                          disabled={!likeIdOf(deal.id)}
                           onClick={(event) => {
                             event.stopPropagation();
-                            const key = getReactionKey({ id: deal.id, store: deal.store, title: deal.title });
-                            const nextValue = !Boolean(likedDeals[key]);
-                            void toggleDealLike(key, String(deal.id ?? key), nextValue);
-                            showToastMessage(nextValue ? 'Saved to liked deals' : 'Removed from liked deals');
+                            toggleDealLike(deal.id);
                           }}
                         >
-                          <Icon name="favorite" className="text-[16px]" filled={Boolean(likedDeals[getReactionKey({ id: deal.id, store: deal.store, title: deal.title })])} />
-                          <span className="font-label-sm text-label-sm">{getLikedCount(reactionCounts[getReactionKey({ id: deal.id, store: deal.store, title: deal.title })] ?? 0)}</span>
+                          <Icon name="favorite" className="text-[16px]" filled={isLiked(deal.id)} />
+                          <span className="font-label-sm text-label-sm">{likeCountOf(deal.id)}</span>
                         </button>
                         <button
                           type="button"
@@ -1095,6 +1169,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                           onClick={(event) => {
                             event.stopPropagation();
                             onOpenComments?.({
+                              id: deal.id,
                               title: deal.title,
                               business: deal.store,
                               location: `${city}, ${district}`,
@@ -1120,6 +1195,7 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
                         onClick={(event) => {
                           event.stopPropagation();
                           const selected = {
+                            id: deal.id,
                             title: deal.title,
                             business: deal.store,
                             location: `${city}, ${district}`,
@@ -1139,17 +1215,21 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
               ))}
             </div>
 
-            {discoveryDeals.length > 0 && (
+            )}
+
+            {!offersLoading && hasMore ? (
               <div className="mt-space-lg flex justify-center">
                 <button
-                  className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all hover:gap-space-xs"
+                  className="px-space-xl py-space-sm bg-surface-subtle hover:bg-surface-container-high rounded-full font-label-md text-label-md text-primary font-semibold flex items-center gap-space-2xs shadow-sm transition-all disabled:opacity-60"
                   type="button"
+                  disabled={loadingMore}
+                  onClick={feed.loadMore}
                 >
-                  <span>Load More {district || city || 'Local'} Neighborhood Offers</span>
+                  <span>{loadingMore ? 'Loading more deals…' : `Load more ${district || city || 'local'} deals`}</span>
                   <Icon name="keyboard_arrow_down" className="text-[18px]" />
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </DesktopPage>

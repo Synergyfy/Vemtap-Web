@@ -14,7 +14,8 @@ export interface NotificationItem {
   category?: NotificationCategory | string;
   type?: string;
   kind?: string;
-  actionUrl?: string;
+  eventType?: string | null;
+  actionUrl?: string | null;
 }
 
 export interface NotificationPreferencePayload {
@@ -63,9 +64,9 @@ const pickBoolean = (source: unknown, keys: string[]): boolean => {
 
 const normalizeCategory = (value?: string): NotificationCategory => {
   const normalized = (value ?? '').trim().toLowerCase();
-  if (['deal', 'claims', 'claim', 'promotion', 'offer'].includes(normalized)) return 'deals';
-  if (['booking', 'order', 'orders', 'reservation', 'pickup'].includes(normalized)) return 'bookings';
-  if (['reward', 'rewards', 'loyalty', 'points'].includes(normalized)) return 'rewards';
+  if (/deal|claim|promotion|offer|campaign/.test(normalized)) return 'deals';
+  if (/booking|order|reservation|pickup/.test(normalized)) return 'bookings';
+  if (/reward|loyalty|point/.test(normalized)) return 'rewards';
   return 'system';
 };
 
@@ -96,7 +97,9 @@ export const normalizeNotificationList = (payload: unknown): NotificationItem[] 
     const unread = pickBoolean(item, ['unread', 'isUnread', 'read'])
       ? !pickBoolean(item, ['read', 'isRead'])
       : !pickBoolean(item, ['isRead', 'read']);
-    const categoryValue = pickString(item, ['category', 'type', 'kind', 'group']);
+    const categoryValue = pickString(item, ['eventType', 'category', 'kind', 'group', 'type']);
+    const actionUrl = pickString(item, ['actionUrl', 'action_url']);
+    const eventType = pickString(item, ['eventType', 'event_type']);
 
     return {
       id,
@@ -107,9 +110,11 @@ export const normalizeNotificationList = (payload: unknown): NotificationItem[] 
       unread,
       isRead: !unread,
       read: !unread,
-      category: normalizeCategory(categoryValue || item.type ? String(item.type ?? item.kind ?? categoryValue) : undefined),
+      category: normalizeCategory(categoryValue),
       type: String(item.type ?? item.kind ?? categoryValue ?? 'system'),
       kind: String(item.kind ?? item.type ?? categoryValue ?? 'system'),
+      eventType: eventType || null,
+      actionUrl: actionUrl || null,
     };
   });
 };

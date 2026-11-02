@@ -1,8 +1,13 @@
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
-import { CLAIM_CODE } from '../../scripts/ClaimedDealScreen';
 
 interface ContactBusinessSheetProps {
+  /** The voucher's code, when there is one. */
+  code?: string;
+  /** The voucher's business name, phone and branch address, from the claim. */
+  businessName?: string;
+  phone?: string;
+  address?: string;
   open: boolean;
   onChat: () => void;
   onClose: () => void;
@@ -67,7 +72,13 @@ function ContactRow({
   );
 }
 
-export function ContactBusinessSheet({ open, onChat, onClose }: ContactBusinessSheetProps) {
+/** `wa.me` wants the number in international form without `+`; local `0…` numbers are Nigerian. */
+export const whatsappLink = (phone: string) => {
+  const digits = phone.replace(/\D/g, '');
+  return `https://wa.me/${digits.startsWith('0') ? `234${digits.slice(1)}` : digits}`;
+};
+
+export function ContactBusinessSheet({ open, onChat, onClose, code, businessName, phone, address }: ContactBusinessSheetProps) {
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="w-full flex justify-center pt-3 pb-1">
@@ -83,7 +94,7 @@ export function ContactBusinessSheet({ open, onChat, onClose }: ContactBusinessS
               </span>
             </div>
             <h3 className="font-heading-sm text-heading-sm text-text-primary mt-1">
-              Contact Urban Grill &amp; Bistro
+              Contact {businessName || 'the business'}
             </h3>
             <p className="font-caption text-caption text-text-secondary leading-snug">
               Choose how you'd like to reach out to inquire, make reservations, or coordinate redemption.
@@ -106,30 +117,27 @@ export function ContactBusinessSheet({ open, onChat, onClose }: ContactBusinessS
           iconClass="bg-primary/10 text-primary"
           title="In-App Chat"
           badge="Recommended"
-          subtitle="Typical reply in under 5 mins"
+          subtitle="Message the business inside VEMTAP"
           onClick={onChat}
         />
-        <ContactRow
-          icon="forum"
-          iconClass="bg-badge-discount-bg text-badge-discount-text"
-          title="Chat on WhatsApp"
-          subtitle={'Quick order & table queries'}
-          onClick={() => window.open('https://wa.me/2348000000000')}
-        />
-        <ContactRow
-          icon="call"
-          iconClass="bg-surface-container-high text-primary"
-          title="Call Business"
-          subtitle="Speak with front desk / host"
-          href="tel:+2348000000000"
-        />
-        <ContactRow
-          icon="mail"
-          iconClass="bg-secondary-fixed text-secondary"
-          title="Send Email"
-          subtitle="For bulk inquiries"
-          href="mailto:reservations@urbangrill.ng"
-        />
+        {phone && (
+          <>
+            <ContactRow
+              icon="forum"
+              iconClass="bg-badge-discount-bg text-badge-discount-text"
+              title="Chat on WhatsApp"
+              subtitle={phone}
+              onClick={() => window.open(whatsappLink(phone), '_blank', 'noopener')}
+            />
+            <ContactRow
+              icon="call"
+              iconClass="bg-surface-container-high text-primary"
+              title="Call Business"
+              subtitle={phone}
+              href={`tel:${phone.replace(/\s/g, '')}`}
+            />
+          </>
+        )}
 
         <div className="w-full bg-surface-subtle border border-border-subtle rounded-xl p-space-sm flex items-start gap-2 text-left">
           <Icon name="shield" className="text-[18px] text-secondary flex-shrink-0 mt-0.5" />
@@ -140,14 +148,17 @@ export function ContactBusinessSheet({ open, onChat, onClose }: ContactBusinessS
         </div>
 
         <div className="w-full bg-surface-container-low rounded-xl p-space-sm flex items-start gap-2 text-left">
-          <Icon name="schedule" className="text-[18px] text-badge-discount-text flex-shrink-0 mt-0.5" />
+          <Icon name={address ? 'location_on' : 'confirmation_number'} className="text-[18px] text-badge-discount-text flex-shrink-0 mt-0.5" />
           <div className="text-left">
-            <p className="font-caption text-caption font-semibold text-text-primary">
-              <span className="text-badge-discount-text">Open Now</span> • Closes at 10:00 PM
-            </p>
+            {address && <p className="font-caption text-caption font-semibold text-text-primary">{address}</p>}
             <p className="font-caption text-caption text-text-secondary mt-0.5">
-              Mention voucher code <strong className="font-mono text-text-primary font-semibold">{CLAIM_CODE}</strong>{' '}
-              when connecting with the merchant.
+              {code ? (
+                <>
+                  Mention voucher code <strong className="font-mono text-text-primary font-semibold">{code}</strong> when connecting with the merchant.
+                </>
+              ) : (
+                'Mention your voucher when connecting with the merchant.'
+              )}
             </p>
           </div>
         </div>

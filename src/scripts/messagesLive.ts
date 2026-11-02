@@ -13,6 +13,7 @@ import {
   useInboxThreads,
   useThreadContext,
   useThreadMessages,
+  useThreadRealtime,
 } from '../hooks/business/useInbox';
 import { useBusinessCustomers, useCustomerDossier } from '../hooks/business/useBusinessCustomers';
 import { CUSTOMER_AVATAR } from './customersLive';
@@ -161,7 +162,8 @@ export function toChatMessages(rows: InboxMessage[]): LiveChatMessage[] {
   return rows.map((message) => ({
     id: message.id,
     direction: message.direction === 'OUTBOUND' ? 'out' : 'in',
-    text: message.content,
+    // A customer's photo or PDF has no text, so its link stands in.
+    text: message.content || (message as { mediaUrl?: string | null }).mediaUrl || '',
     time: chatClock(message.createdAt),
     read: message.status === 'READ',
   }));
@@ -182,6 +184,8 @@ export function useLiveChat(threadId?: string | null): {
   const queryClient = useQueryClient();
   const query = useThreadMessages(live && threadId ? threadId : null);
   const { reply } = useInboxMutations();
+  // Every chat screen: joins the thread room and sends the read receipts.
+  useThreadRealtime(live && threadId ? threadId : null);
 
   // Viewing a thread marks it read server-side; refresh the list badges once
   // the messages (and the mark-read) have landed.

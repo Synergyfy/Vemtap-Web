@@ -1,3 +1,6 @@
+import { useBusinessCard } from '../subscriptionLive';
+import { NO_IMAGE } from '../../utils/homeOffer';
+import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { hasApiConfig } from '../../services/api/client';
@@ -14,7 +17,7 @@ interface DesktopSubscriptionEndingScreenProps {
 const KEEP_BENEFITS = [
   'Keep your business profile & storefront active',
   'Keep your deals visible to local shoppers',
-  'Keep managing your branch locations (Apo & Wuse II)',
+  'Keep managing your branch locations',
   'Continue engaging customers via direct in-app chat',
   'Continue using analytics, QR tap codes & loyalty tools',
 ];
@@ -57,6 +60,7 @@ export function DesktopSubscriptionEndingScreen({
   const [paying, setPaying] = useState(false);
   const timer = useRef<number | null>(null);
   const live = hasApiConfig();
+  const card = useBusinessCard();
   const subscription = useActiveSubscription();
   const plans = useSubscriptionPlans();
 
@@ -68,6 +72,15 @@ export function DesktopSubscriptionEndingScreen({
   const priceLine = featured ? planPriceLine(featured, 'monthly') : null;
   const totalDays = featured?.trialDurationDays ?? 30;
   const daysLeft = live ? (trialDaysLeft(sub) ?? 0) : 3;
+  // Live: what the trial actually delivered over the trial window.
+  const trialStats = useBusinessAnalytics('overview', totalDays).data;
+  const metricCards = live
+    ? [
+        { ...METRIC_CARDS[0], label: 'Deal views (trial)', value: trialStats ? trialStats.activity.dealViews.toLocaleString('en-NG') : '—' },
+        { ...METRIC_CARDS[1], value: trialStats ? trialStats.activity.claims.toLocaleString('en-NG') : '—' },
+        { ...METRIC_CARDS[2], value: trialStats ? `${Math.round(trialStats.customers.repeatRate * 100)}%` : '—' },
+      ]
+    : METRIC_CARDS;
   const completed = Math.max(0, totalDays - daysLeft);
   const elapsedPct = totalDays ? Math.round((completed / totalDays) * 100) : 0;
   const endText = renewalDate(sub?.trialEndsAt ?? sub?.endDate);
@@ -143,7 +156,7 @@ export function DesktopSubscriptionEndingScreen({
 
         <section className="rounded-xl bg-surface-subtle p-space-md shadow-sm border border-border-subtle/50 flex items-center gap-space-md">
           <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-container-high">
-            <img alt={STORE_ALT} className="w-full h-full object-cover" src={STORE_IMG} />
+            <img alt={card.live ? `${card.name} logo` : STORE_ALT} className="w-full h-full object-cover" src={card.live ? card.logo || NO_IMAGE : STORE_IMG} />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-space-xs">
@@ -153,13 +166,13 @@ export function DesktopSubscriptionEndingScreen({
               </span>
             </div>
             <p className="font-heading-sm text-heading-sm font-semibold text-text-primary truncate">
-              Koffee &amp; Co. Roasters
+              {card.live ? card.name : 'Koffee & Co. Roasters'}
             </p>
             <p className="font-label-sm text-label-sm text-text-secondary truncate mt-space-2xs">
-              Apo Resettlement • Wuse II Branch
+              {card.live ? card.branchLine : 'Apo Resettlement • Wuse II Branch'}
             </p>
           </div>
-          <span className="font-caption text-caption text-text-secondary shrink-0">2 active branches</span>
+          <span className="font-caption text-caption text-text-secondary shrink-0">{card.live ? `${card.branchCount} active ${card.branchCount === 1 ? 'branch' : 'branches'}` : '2 active branches'}</span>
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
@@ -191,7 +204,7 @@ export function DesktopSubscriptionEndingScreen({
             </section>
 
             <section className="grid grid-cols-1 sm:grid-cols-3 gap-space-sm">
-              {METRIC_CARDS.map((card) => (
+              {metricCards.map((card) => (
                 <div
                   key={card.label}
                   className="rounded-xl bg-surface-subtle p-space-md shadow-sm flex flex-col gap-space-2xs"

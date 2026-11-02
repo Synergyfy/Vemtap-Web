@@ -1,3 +1,5 @@
+import { useAuth } from './AuthContext';
+import { useSessionUser } from '../hooks/useSessionUser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { hasApiConfig } from '../lib/api';
 import { accountService } from '../services';
@@ -138,6 +140,30 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  // The signed-in user is the source of truth: follow every sign-in, sign-out
+  // and shell switch without needing a page reload.
+  const { authed } = useAuth();
+  const sessionUser = useSessionUser().data;
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+    if (!authed) {
+      setProfile(DEFAULT_PROFILE);
+      return;
+    }
+    if (!sessionUser) return;
+    setProfile((current) => {
+      const next = {
+        firstName: sessionUser.firstName?.trim() || 'User',
+        lastName: sessionUser.lastName?.trim() || '',
+        email: sessionUser.email?.trim() || '',
+        phone: sessionUser.phone?.trim() || '',
+        createdAt: current.createdAt,
+      };
+      writeProfile(next);
+      return next;
+    });
+  }, [authed, sessionUser]);
 
   const update = useCallback((patch: Partial<ProfileData>) => {
     setProfile((current) => {

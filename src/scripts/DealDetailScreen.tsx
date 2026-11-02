@@ -1,8 +1,16 @@
-import { useState, type ReactNode } from 'react';
+import { useSessionUser } from '../hooks/useSessionUser';
+import { recordRecentDeal } from '../utils/recentlyViewed';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
-import { parsePrice } from '../utils/format';
+import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
+import { useLocation, formatDistanceKm } from '../context/LocationContext';
+import { useDealLikes } from '../hooks/useDealLikes';
+import { dealDistanceKm, dealEndsLabel, dealUnavailableLabel, dealWhatsappLink, useDealSaved, type DealDetail } from '../hooks/useDealDetail';
+import { mapEmbedUrl, todayHours } from '../hooks/usePublicBusiness';
+import { getAccessToken } from '../services/api/client';
+import { NO_IMAGE } from '../utils/homeOffer';
 
 interface DealDetailScreenProps {
   onBack: () => void;
@@ -15,20 +23,49 @@ interface DealDetailScreenProps {
   onMerchant: () => void;
   claimed: boolean;
   onViewWallet: () => void;
-  deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string; images?: string[]; commentCount?: number | string; commentsCount?: number | string } | null;
+  /** Live deal; null while loading or when it could not be loaded. */
+  detail: DealDetail | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  /** Opens the chat with the deal's business; rejects when it can't be opened. */
+  onChat: () => Promise<void>;
 }
 
-const HERO_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuA7vaKNnnxi-MbHNZ8Mp1h0Sc1q-74l--t9MDQZkzjo4mPIyzD-E9JZzmzCMnqYXn-8WbTSwFW9LNjanBnDklEy8mvac235L8tAHJ9o7ungwtnlos5o108__YRKbUH-lCT7FK_Vv2DcybKtJaYpuRfirwqhGBghpb07x5Uztz8jrLUicVwLc1WxC-1zLcx7Xl0afCFf_nXId3r-QjnQTdmVGeKf859sB6kVFFyEp6T8_9bo9r5jm4fsYg';
+const naira = (value: number) =>
+  new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(value);
 
-const HERO_ALT =
-  'Appetizing close-up of an artisanal double gourmet smash burger with melted cheddar cheese, caramelized onions, crisp lettuce on a brioche bun, accompanied by golden seasoned potato wedges and a cold artisanal beverage on a rustic slate table, professional warm restaurant lighting, rich natural color grading, high key depth of field';
-
-const PILLS: { icon: string; label: string }[] = [
-  { icon: 'schedule', label: 'Ends in 3 days' },
-  { icon: 'storefront', label: 'Dine-in & Takeout' },
-  { icon: 'person', label: '1 Claim / Person' },
-];
+/** Loading state in the shape of the page, so no stand-in data shows first. */
+function DealDetailSkeleton() {
+  return (
+    <SkeletonGroup label="Loading deal">
+      <Skeleton className="w-full h-80 rounded-none" />
+      <div className="flex flex-col px-margin pt-space-lg pb-32">
+        <div className="flex items-center gap-space-sm">
+          <Skeleton className="w-11 h-11 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        </div>
+        <Skeleton className="mt-space-md h-7 w-3/4" />
+        <Skeleton className="mt-space-xs h-9 w-1/2" />
+        <div className="flex gap-space-xs mt-space-md">
+          <Skeleton className="h-9 w-28 rounded-xl" />
+          <Skeleton className="h-9 w-28 rounded-xl" />
+          <Skeleton className="h-9 w-24 rounded-xl" />
+        </div>
+        <Skeleton className="mt-space-lg h-28 w-full rounded-xl" />
+        <Skeleton className="mt-space-md h-40 w-full rounded-xl" />
+        <div className="mt-space-md flex flex-col gap-space-xs">
+          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+        </div>
+      </div>
+    </SkeletonGroup>
+  );
+}
 
 function NavRow({
   icon,
@@ -74,19 +111,108 @@ export function DealDetailScreen({
   onMerchant,
   claimed,
   onViewWallet,
-  deal,
+  detail,
+  loading,
+  error,
+  onRetry,
+  onChat,
 }: DealDetailScreenProps) {
   const [expanded, setExpanded] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const dealTitle = deal?.title?.trim() || 'Featured local deal';
-  const dealBusiness = deal?.business?.trim() || 'Local dining partner';
-  const dealLocation = deal?.location?.trim() || 'Your area';
-  // The deal's own photos (same main photo as its card); the sample hero only when it has none.
-  const photos = deal?.images?.length ? deal.images : [deal?.image || HERO_IMAGE];
+  const dealId = detail?.id;
+  const { likes, toggleLike } = useDealLikes(dealId ? [dealId] : []);
+  const { saved, toggle: toggleSaved } = useDealSaved(dealId);
+  // Remembers the deal for this account's "Recently Viewed" list.
+  const viewerId = useSessionUser().data?.id;
+  useEffect(() => {
+    if (!detail) return;
+    recordRecentDeal(viewerId, {
+      id: detail.id,
+      title: detail.title,
+      merchant: detail.businessName,
+      image: detail.image,
+      price: detail.price,
+      oldPrice: detail.oldPrice,
+      discountPercent: detail.discountPercent,
+    });
+  }, [detail, viewerId]);
+  const { lat, lng } = useLocation();
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  const showToast = (message: string) => {
+    window.clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
+
+  useEffect(() => {
+    setPhotoIndex(0);
+    setExpanded(false);
+  }, [dealId]);
+
+  if (!detail) {
+    return (
+      <AppScreen>
+        <ScreenHeader title="Deal Detail" onBack={onBack} />
+        {loading ? (
+          <DealDetailSkeleton />
+        ) : (
+          <div className="px-margin pt-10">
+            <div className="rounded-3xl bg-surface-canvas p-6 text-center shadow-sm space-y-3">
+              <Icon name="local_activity" className="text-[32px] text-primary" />
+              <p className="font-label-md text-label-md text-text-primary font-semibold">{error ?? 'This deal couldn’t be loaded.'}</p>
+              <button type="button" onClick={onRetry} className="h-11 w-full rounded-xl bg-primary text-on-primary font-button-primary text-button-primary">Try again</button>
+            </div>
+          </div>
+        )}
+      </AppScreen>
+    );
+  }
+
+  const photos = detail.images.length ? detail.images : [detail.image ?? NO_IMAGE];
   const dealImage = photos[Math.min(photoIndex, photos.length - 1)];
-  const commentsCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
+  const discountPercent = detail.discountPercent;
+  const saving = detail.oldPrice - detail.price;
+  const liked = likes[detail.id]?.liked ?? false;
+  const likesCount = likes[detail.id]?.count ?? detail.likesCount;
+  const hours = detail.profile ? todayHours(detail.profile.hours) : null;
+  const distance = formatDistanceKm(dealDistanceKm(detail, lat, lng));
+  const mapEmbed = mapEmbedUrl(detail.latitude, detail.longitude);
+  const whatsapp = dealWhatsappLink(detail);
+  const unavailable = dealUnavailableLabel(detail);
+  const subtitleParts = [detail.category, distance, detail.branchName].filter(Boolean);
+  const pills = [
+    { icon: 'schedule', label: dealEndsLabel(detail.endDate) ?? (detail.isExpired ? 'Deal ended' : null) },
+    { icon: 'storefront', label: detail.channelsLabel },
+    { icon: 'person', label: detail.claimLimitLabel },
+  ].filter((pill): pill is { icon: string; label: string } => Boolean(pill.label));
+
+  const requireSignIn = (action: string) => {
+    if (getAccessToken()) return false;
+    showToast(`Please sign in to ${action}.`);
+    return true;
+  };
+  const onLike = () => {
+    if (requireSignIn('like deals')) return;
+    toggleLike(detail.id, likesCount).then(
+      (result) => showToast(result.liked ? 'You liked this deal' : 'Like removed'),
+      () => showToast('Could not save your like. Please try again.'),
+    );
+  };
+  const openChat = () => {
+    if (requireSignIn('message this business')) return;
+    onChat().catch(() => showToast('Chat couldn’t be opened. Please try again.'));
+  };
+  const onSave = () => {
+    if (requireSignIn('save deals')) return;
+    toggleSaved().then(
+      (isSaved) => showToast(isSaved ? 'Saved to your deals' : 'Removed from saved deals'),
+      () => showToast('Could not save this deal. Please try again.'),
+    );
+  };
 
   return (
     <AppScreen>
@@ -104,15 +230,16 @@ export function DealDetailScreen({
               <Icon name="share" className="text-[22px]" />
             </button>
             <button
-              aria-label="Save to favorites"
+              aria-label={saved ? 'Remove from saved deals' : 'Save deal'}
+              aria-pressed={saved}
               type="button"
-              onClick={() => setSaved((value) => !value)}
+              onClick={onSave}
               className="w-11 h-11 flex items-center justify-center rounded-full active:scale-95 transition-transform"
             >
               <Icon
-                name={saved ? 'favorite' : 'favorite_border'}
+                name={saved ? 'bookmark' : 'bookmark_border'}
                 filled={saved}
-                className={`text-[22px] ${saved ? 'text-error' : 'text-text-secondary hover:text-text-primary'}`}
+                className={`text-[22px] ${saved ? 'text-primary' : 'text-text-secondary hover:text-text-primary'}`}
               />
             </button>
           </div>
@@ -120,22 +247,22 @@ export function DealDetailScreen({
       />
 
       <div className="relative w-full h-80 bg-surface-container-low overflow-hidden shrink-0">
-        <img className="w-full h-full object-cover" alt={deal?.image ? dealTitle : HERO_ALT} src={dealImage} />
+        <img className="w-full h-full object-cover" alt={detail.title} src={dealImage} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
         <div className="absolute bottom-4 left-margin right-margin flex items-center justify-between">
           <div className="flex items-center gap-space-xs">
-            <span className="inline-flex items-center px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-md text-label-md font-bold shadow-sm">
-              20% OFF
-            </span>
-            <span className="inline-flex items-center gap-1 px-space-sm py-1 rounded-full bg-inverse-surface/80 backdrop-blur-md text-inverse-on-surface font-caption text-caption shadow-sm">
-              <Icon name="schedule" className="text-[14px]" />
-              Ends in 3 days
-            </span>
+            {discountPercent > 0 && (
+              <span className="inline-flex items-center px-space-sm py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-md text-label-md font-bold shadow-sm">
+                {discountPercent}% OFF
+              </span>
+            )}
           </div>
-          <div className="bg-surface-canvas/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-            <Icon name="local_fire_department" className="text-[16px] text-tertiary-container" filled />
-            <span className="font-caption text-caption text-text-primary font-semibold">Hot Deal</span>
-          </div>
+          {detail.isTrending && (
+            <div className="bg-surface-canvas/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+              <Icon name="local_fire_department" className="text-[16px] text-tertiary-container" filled />
+              <span className="font-caption text-caption text-text-primary font-semibold">Hot Deal</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -163,22 +290,25 @@ export function DealDetailScreen({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-space-sm">
             <div className="w-11 h-11 rounded-full bg-surface-container-high flex items-center justify-center text-primary font-heading-sm font-bold shadow-sm overflow-hidden">
-              <Icon name="restaurant" className="text-[24px]" />
+              {detail.businessLogo ? (
+                <img alt="" className="w-full h-full object-cover" src={detail.businessLogo} />
+              ) : (
+                <Icon name="storefront" className="text-[24px]" />
+              )}
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-1">
-                <span className="font-label-md text-label-md font-bold text-text-primary">{dealBusiness}</span>
-                <Icon name="verified" className="text-primary-container text-[18px]" filled />
+                <span className="font-label-md text-label-md font-bold text-text-primary">{detail.businessName}</span>
+                {detail.verified && <Icon name="verified" className="text-primary-container text-[18px]" filled />}
               </div>
               <p className="font-caption text-caption text-text-secondary flex items-center gap-1">
-                <span>Restaurant</span>
-                <span>•</span>
-                <span className="flex items-center">
-                  <Icon name="near_me" className="text-[12px] text-primary" />
-                  Nearby
-                </span>
-                <span>•</span>
-                <span>{dealLocation}</span>
+                {subtitleParts.map((part, index) => (
+                  <span key={part} className="flex items-center gap-1">
+                    {index > 0 && <span>•</span>}
+                    {part === distance && <Icon name="near_me" className="text-[12px] text-primary" />}
+                    <span>{part}</span>
+                  </span>
+                ))}
               </p>
             </div>
           </div>
@@ -212,89 +342,118 @@ export function DealDetailScreen({
         )}
 
         <div className="mt-space-md">
-          <h2 className="font-heading-lg text-heading-lg text-text-primary">{dealTitle}</h2>
+          <h2 className="font-heading-lg text-heading-lg text-text-primary">{detail.title}</h2>
           <div className="flex items-baseline gap-space-sm mt-space-xs">
             <span className="font-display-hero-mobile text-display-hero-mobile text-text-primary font-bold">
-              {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
-                parsePrice(deal?.price),
-              )}
+              {naira(detail.price)}
             </span>
-            <span className="font-body-md text-body-md text-text-tertiary line-through">
-              {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(
-                parsePrice(deal?.oldPrice) || parsePrice(deal?.price),
-              )}
-            </span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
-              {deal?.discountLabel || (parsePrice(deal?.oldPrice) > parsePrice(deal?.price) ? `Save ${new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(Math.max(parsePrice(deal?.oldPrice) - parsePrice(deal?.price), 0))}` : 'Save on this deal')}
-            </span>
+            {saving > 0 && (
+              <>
+                <span className="font-body-md text-body-md text-text-tertiary line-through">{naira(detail.oldPrice)}</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
+                  Save {naira(saving)}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-space-xs mt-space-md overflow-x-auto pb-1">
-          {PILLS.map((pill) => (
-            <div
-              key={pill.label}
-              className="flex items-center gap-1 px-space-sm py-2 rounded-xl bg-surface-subtle shadow-sm flex-shrink-0"
+        {pills.length > 0 && (
+          <div className="flex items-center gap-space-xs mt-space-md overflow-x-auto pb-1">
+            {pills.map((pill) => (
+              <div
+                key={pill.label}
+                className="flex items-center gap-1 px-space-sm py-2 rounded-xl bg-surface-subtle shadow-sm flex-shrink-0"
+              >
+                <Icon name={pill.icon} className="text-[16px] text-primary" />
+                <span className="font-label-sm text-label-sm text-text-secondary">{pill.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {detail.description && (
+          <div className="mt-space-lg bg-surface-canvas rounded-xl p-space-md shadow-sm">
+            <h3 className="font-heading-sm text-heading-sm text-text-primary">About this deal</h3>
+            <p
+              className={`font-body-md text-body-md text-text-secondary mt-space-xs ${
+                expanded ? '' : 'line-clamp-2'
+              }`}
             >
-              <Icon name={pill.icon} className="text-[16px] text-primary" />
-              <span className="font-label-sm text-label-sm text-text-secondary">{pill.label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-space-lg bg-surface-canvas rounded-xl p-space-md shadow-sm">
-          <h3 className="font-heading-sm text-heading-sm text-text-primary">About this deal</h3>
-          <p
-            className={`font-body-md text-body-md text-text-secondary mt-space-xs ${
-              expanded ? '' : 'line-clamp-2'
-            }`}
-          >
-            Enjoy our signature lunch combo at a special price. Includes a double gourmet smash burger, seasoned potato
-            wedges, and your choice of chilled beverage. Prepared fresh daily at our Apo branch with top quality local
-            ingredients.
-          </p>
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="mt-space-2xs font-label-sm text-label-sm font-semibold text-primary inline-flex items-center gap-0.5 active:opacity-75"
-          >
-            <span>{expanded ? 'Show less' : 'Read more'}</span>
-            <Icon name={expanded ? 'expand_less' : 'expand_more'} className="text-[14px]" />
-          </button>
-        </div>
-
-        <div className="mt-space-md bg-surface-canvas rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
-          <div className="flex items-center justify-between">
-            <span className="font-label-md text-label-md font-semibold text-text-primary">Location &amp; Hours</span>
-            <span className="font-caption text-caption font-medium text-badge-discount-text bg-badge-discount-bg px-2 py-0.5 rounded-full">
-              Open Now
-            </span>
+              {detail.description}
+            </p>
+            {detail.description.length > 90 && (
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="mt-space-2xs font-label-sm text-label-sm font-semibold text-primary inline-flex items-center gap-0.5 active:opacity-75"
+              >
+                <span>{expanded ? 'Show less' : 'Read more'}</span>
+                <Icon name={expanded ? 'expand_less' : 'expand_more'} className="text-[14px]" />
+              </button>
+            )}
           </div>
-          <div className="w-full h-28 rounded-lg bg-surface-container-high flex items-end p-2 relative overflow-hidden">
-            <div className="bg-surface-canvas/90 backdrop-blur-sm rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 shadow-sm">
-              <Icon name="location_on" className="text-primary text-[16px]" />
-              <span className="font-caption text-caption text-text-primary font-medium">
-                Plot 422, Cadastral Zone, Apo
-              </span>
+        )}
+
+        {detail.address && (
+          <div className="mt-space-md bg-surface-canvas rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-label-md text-label-md font-semibold text-text-primary">Location &amp; Hours</span>
+              {hours && (
+                <span className="font-caption text-caption font-medium text-badge-discount-text bg-badge-discount-bg px-2 py-0.5 rounded-full">
+                  {hours.openNow ? 'Open Now' : 'Closed'}
+                </span>
+              )}
+            </div>
+            <div className="w-full h-28 rounded-lg bg-surface-container-high flex items-end p-2 relative overflow-hidden">
+              {mapEmbed && (
+                <iframe
+                  title={`Map of ${detail.businessName}`}
+                  src={mapEmbed}
+                  loading="lazy"
+                  tabIndex={-1}
+                  className="absolute inset-0 w-full h-full border-0 pointer-events-none"
+                />
+              )}
+              <div className="relative bg-surface-canvas/90 backdrop-blur-sm rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 shadow-sm">
+                <Icon name="location_on" className="text-primary text-[16px]" />
+                <span className="font-caption text-caption text-text-primary font-medium">{detail.address}</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-space-md flex flex-col gap-space-xs">
           <NavRow
             icon="verified_user"
             iconClass="bg-surface-tint-blue text-primary"
             title="How to Claim"
-            subtitle="Show dynamic QR code at billing counter"
+            subtitle={detail.claimSteps[0] ?? 'Show dynamic QR code at billing counter'}
             onClick={onHowToClaim}
           />
           <NavRow
             icon="gavel"
             iconClass="bg-surface-container text-secondary"
             title="Terms & Conditions"
-            subtitle="Valid 12 PM - 4 PM weekdays only"
+            subtitle={detail.windowLabel ? `Valid ${detail.windowLabel}` : detail.terms[0] ?? 'View the deal terms'}
             onClick={onTerms}
           />
+          <NavRow
+            icon="forum"
+            iconClass="bg-surface-tint-blue text-primary"
+            title="In-App Chat"
+            subtitle={`Message ${detail.businessName}`}
+            onClick={openChat}
+          />
+          {whatsapp && (
+            <NavRow
+              icon="chat"
+              iconClass="bg-surface-tint-blue text-[#128C7E]"
+              title="WhatsApp"
+              subtitle={`Message ${detail.businessName}`}
+              onClick={() => window.open(whatsapp, '_blank', 'noreferrer')}
+            />
+          )}
           <NavRow
             icon="star"
             iconClass="bg-surface-container text-tertiary-container"
@@ -302,7 +461,11 @@ export function DealDetailScreen({
             subtitle={
               <span className="flex items-center gap-1">
                 <Icon name="star" filled className="text-[13px] text-tertiary-container" />
-                <span>4.8 • 120 reviews</span>
+                <span>
+                  {detail.reviewsCount > 0
+                    ? `${detail.averageRating != null ? `${detail.averageRating.toFixed(1)} • ` : ''}${detail.reviewsCount} review${detail.reviewsCount === 1 ? '' : 's'}`
+                    : 'No reviews yet'}
+                </span>
               </span>
             }
             onClick={onReviews}
@@ -312,7 +475,7 @@ export function DealDetailScreen({
         <div className="mt-space-md bg-surface-canvas rounded-xl p-space-sm flex items-center justify-around shadow-sm">
           <button
             type="button"
-            onClick={() => setLiked((value) => !value)}
+            onClick={onLike}
             className="flex items-center gap-1.5 py-1.5 px-3 rounded-full hover:bg-surface-subtle active:scale-95 transition-all"
           >
             <Icon
@@ -323,7 +486,7 @@ export function DealDetailScreen({
             <span
               className={`font-label-md text-label-md font-semibold ${liked ? 'text-error' : 'text-text-secondary'}`}
             >
-              {liked ? 249 : 248}
+              {likesCount}
             </span>
           </button>
           <div className="w-px h-5 bg-surface-container" />
@@ -333,7 +496,7 @@ export function DealDetailScreen({
             className="flex items-center gap-1.5 py-1.5 px-3 rounded-full hover:bg-surface-subtle active:scale-95 transition-all"
           >
             <Icon name="chat_bubble" className="text-[18px] text-text-secondary" />
-            <span className="font-label-md text-label-md font-semibold text-text-secondary">{commentsCount}</span>
+            <span className="font-label-md text-label-md font-semibold text-text-secondary">{detail.reviewsCount}</span>
           </button>
           <div className="w-px h-5 bg-surface-container" />
           <button
@@ -352,6 +515,12 @@ export function DealDetailScreen({
         </div>
       </div>
 
+      {toast && (
+        <div role="status" className="fixed bottom-36 left-1/2 -translate-x-1/2 z-50 w-max max-w-[calc(100%-32px)] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-lg font-label-md text-label-md">
+          {toast}
+        </div>
+      )}
+
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_-8px_24px_-4px_rgba(17,24,39,0.08)] pb-safe">
         <div className="px-margin pt-3 pb-4 flex flex-col items-center">
           {claimed ? (
@@ -367,10 +536,11 @@ export function DealDetailScreen({
             <button
               type="button"
               onClick={onClaim}
-              className="w-full h-[54px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:scale-[0.98] transition-transform"
+              disabled={Boolean(unavailable)}
+              className="w-full h-[54px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100"
             >
               <Icon name="local_activity" className="text-[20px]" />
-              <span>Claim Deal</span>
+              <span>{unavailable ?? 'Claim Deal'}</span>
             </button>
           )}
           <div className="flex items-center gap-1 mt-2 text-text-secondary">

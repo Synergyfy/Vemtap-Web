@@ -7,10 +7,8 @@ import { MERCHANT_IMAGE } from './orderData';
  * the way an admin console would configure it (audience, window, publication
  * status, CTA + destination) rather than being hardcoded inside a screen.
  *
- * BACKEND GAP: this is a local module standing in for what would be
- * `GET /announcements?audience=customer&now=ISO`, including the admin CRUD
- * surface that writes it. `activeAnnouncements()` applies the same windowing
- * rules the server would.
+ * Sample content for running without an API. With one, `useAnnouncements` reads
+ * the published banners from `GET /banners?placement=customer` instead.
  */
 
 export type AnnouncementAudience = 'all' | 'new-customers' | 'returning' | 'businesses';
@@ -35,6 +33,10 @@ export interface Announcement {
   tone: AnnouncementTone;
   cta: string;
   destination: AnnouncementDestination;
+  /** The deal the slide opens, when the admin linked one. */
+  dealId?: string;
+  /** The custom link the slide opens, when the admin set one. */
+  href?: string;
   /** ISO date, inclusive. */
   start: string;
   /** ISO date, exclusive. */

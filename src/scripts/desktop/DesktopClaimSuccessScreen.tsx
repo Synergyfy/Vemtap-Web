@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import type { ClaimRecord } from '../../context/ClaimsContext';
@@ -12,9 +13,6 @@ interface DesktopClaimSuccessScreenProps {
   claim?: ClaimRecord | null;
 }
 
-const STOREFRONT_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDQ42MXT84QJaLlfP9_IaLBtFvS_KxFLadi_pt_Kn7tawuErwsolNnrbdFRbee-S47CYzKYI-okvg53pKGQAl7Y3ndalFK_DOmS5STdMFh8yQhSP4dM6jg2UiZvn_qu3FkF3laEXkyrj9ncW-xBSTqLg_xtDqBoNEOxATQgrc5DXVM7TqBv2zrlI2Ky4OFfpyZcrN4JoPlmrqvdtOoUaBPIMAdT43_oFjVtgAg9DvKcBYVlykA1iWVGEg';
-
 export function DesktopClaimSuccessScreen({
   onNav,
   onBack,
@@ -27,14 +25,14 @@ export function DesktopClaimSuccessScreen({
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
-  const claimRef = claim?.ref ?? 'VT-48291';
+  const claimRef = claim?.code ?? claim?.ref ?? '';
   const isSomeoneElseClaim = claim?.kind === 'someone-else' && Boolean(claim.recipient);
-  const dealTitle = claim?.dealTitle ?? 'Featured Local Deal';
-  const dealBusiness = claim?.dealBusiness ?? 'Local dining partner';
-  const dealLocation = claim?.dealLocation ?? 'Your area';
-  const dealImage = claim?.dealImage ?? STOREFRONT_IMAGE;
-  const dealPrice = claim?.dealPrice ?? 9600;
-  const dealOldPrice = claim?.dealOldPrice ?? 12000;
+  const dealTitle = claim?.dealTitle ?? '';
+  const dealBusiness = claim?.dealBusiness ?? '';
+  const dealLocation = claim?.dealLocation ?? '';
+  const dealImage = claim?.dealImage ?? NO_IMAGE;
+  const dealPrice = claim?.dealPrice ?? 0;
+  const dealOldPrice = claim?.dealOldPrice ?? 0;
   const dealSavings = dealOldPrice > dealPrice ? dealOldPrice - dealPrice : 0;
   const dealSavingsLabel = claim?.discountLabel ?? (dealSavings > 0 ? `Save ₦${dealSavings.toLocaleString('en-NG')}` : 'Special offer');
 
@@ -208,14 +206,14 @@ export function DesktopClaimSuccessScreen({
                     <div className="flex flex-col text-right">
                       <span className="font-caption text-caption text-text-tertiary">Validity</span>
                       <span className="font-label-md text-label-md font-semibold text-text-primary mt-0.5">
-                        20 Sep 2025
+                        {claim?.expiresAt ? new Date(claim.expiresAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                       </span>
                       <span className="font-caption text-caption text-text-secondary">One-time redemption</span>
                     </div>
                   </div>
 
                   <div className="relative w-full h-32 rounded-xl overflow-hidden mt-space-2xs">
-                    <img className="w-full h-full object-cover" alt={dealTitle} src={dealImage || STOREFRONT_IMAGE} />
+                    <img className="w-full h-full object-cover" alt={dealTitle} src={dealImage} />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-space-xs">
                       <div className="flex items-center gap-1.5 text-on-primary">
                         <Icon name="storefront" className="text-xs" />

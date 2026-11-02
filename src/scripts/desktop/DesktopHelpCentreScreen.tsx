@@ -1,3 +1,4 @@
+import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
 import { useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
@@ -145,6 +146,7 @@ export function DesktopHelpCentreScreen({
   onOpenMerchant,
   onOpenTerms,
 }: DesktopHelpCentreScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<string[]>([]);
 
@@ -435,13 +437,13 @@ export function DesktopHelpCentreScreen({
 
           <div className="mt-8 pt-space-sm pb-space-md flex flex-col items-center justify-center text-center">
             <p className="font-label-md text-label-md text-text-secondary">
-              Own a business?{' '}
+              {canSwitch ? 'Your business is on VEMTAP' : 'Own a business?'}{' '}
               <button
                 type="button"
                 onClick={onOpenMerchant}
                 className="text-primary font-semibold hover:underline inline-flex items-center gap-0.5 ml-1 transition-opacity"
               >
-                <span>Set up your business on VEMTAP</span>
+                <span>{canSwitch ? 'Switch to Business' : 'Set up your business on VEMTAP'}</span>
                 <Icon name="arrow_forward" className="text-[16px]" />
               </button>
             </p>

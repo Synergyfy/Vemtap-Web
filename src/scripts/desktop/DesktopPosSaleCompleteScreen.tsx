@@ -307,7 +307,7 @@ export function DesktopPosSaleCompleteScreen({
                     <span className="font-heading-sm text-heading-sm font-bold tracking-widest">{businessName}</span>
                     <span className="text-[11px] text-text-secondary">{branch.name}</span>
                     <span className="text-[11px] text-text-secondary">{businessAddress}</span>
-                    <span className="text-[11px] text-text-secondary">TIN 09876512-0001 • POS-NG-ABJ-004</span>
+                    <span className="text-[11px] text-text-secondary">{live ? pos.tillName : 'TIN 09876512-0001 • POS-NG-ABJ-004'}</span>
                   </div>
 
                   <div className="my-3 border-t border-dashed border-outline-variant" />

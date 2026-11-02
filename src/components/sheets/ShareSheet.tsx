@@ -1,30 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { parsePrice } from '../../utils/format';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { Icon } from '../ui/Icon';
 import type { ClaimDealSummary } from '../desktop/dialogs/ClaimIdentityModal';
 import { SheetShell } from './SheetShell';
-
-const DEAL_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBx2ioreKlV7zBNVSegnNOiYXQY3w8d0P1LIq3rfibQ2HWCyoP4shk_TyzWt6p376lQqtfvgXCZa_EAp1NKgCrrnhj2HdRvkzk4vx1GdBvmLu2ftuCJacDWRzENx37lBGQpSpegQV7m7xVuJ3cS4ct8s7MAiCvrVoTVv058xTw4ssMzgFAM5vF2fQhdP6hfuVL0YWWzz7ysnxf-64FBzE657_CIc-6_mGh_h5ml0UMaG9ngDBAE3CBRuw';
-
-const DEAL_ALT =
-  'Close-up of a stacked artisan bistro lunch burger and golden crispy fries beside a sparkling drink, studio warm lighting.';
-
-const toSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'deal';
-
-interface Friend {
-  name: string;
-  first: string;
-  initial: string;
-  avatarClass: string;
-  online: boolean;
-}
-
-const FRIENDS: Friend[] = [
-  { name: 'Amara O.', first: 'Amara', initial: 'A', avatarClass: 'bg-primary-fixed text-primary', online: true },
-  { name: 'Samuel A.', first: 'Samuel', initial: 'S', avatarClass: 'bg-secondary-fixed text-secondary', online: true },
-  { name: 'Tunde B.', first: 'Tunde', initial: 'T', avatarClass: 'bg-surface-container text-on-surface-variant', online: false },
-  { name: 'Kemi D.', first: 'Kemi', initial: 'K', avatarClass: 'bg-tertiary-fixed text-tertiary', online: true },
-];
 
 const CHANNEL_CLASS: Record<string, string> = {
   whatsapp:
@@ -45,34 +24,38 @@ export interface ShareSheetProps {
 
 export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
   const [copied, setCopied] = useState(false);
-  const [sentTo, setSentTo] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; icon: string } | null>(null);
 
-  const dealTitle = deal?.title?.trim() || 'Local deal';
-  const businessName = deal?.business?.trim() || 'This business';
-  const dealLocation = deal?.location?.trim() || 'Nearby';
-  const dealImage = deal?.image || DEAL_IMAGE;
+  const dealTitle = deal?.title?.trim() ?? '';
+  const businessName = deal?.business?.trim() ?? '';
+  const dealPlace = [businessName, deal?.location?.trim()].filter(Boolean).join(' • ');
+  const dealImage = deal?.image || NO_IMAGE;
   const dealImageAlt = `${dealTitle} at ${businessName}`;
-  const dealPrice = typeof deal?.price === 'number' ? deal.price : 0;
-  const dealOldPrice = typeof deal?.oldPrice === 'number' ? deal.oldPrice : dealPrice;
+  const dealPrice = parsePrice(deal?.price);
+  const dealOldPrice = parsePrice(deal?.oldPrice) || dealPrice;
   const savings = Math.max(dealOldPrice - dealPrice, 0);
-  const shareUrl = useMemo(
-    () => `https://vemtap.com/d/${toSlug(businessName)}-${toSlug(dealTitle)}`,
-    [businessName, dealTitle],
-  );
+  const shareUrl = `${window.location.origin}/deals/${deal?.id ?? ''}`;
   const shareDisplay = shareUrl.replace(/^https?:\/\//, '');
-  const shareText = `${dealTitle}${deal?.discountLabel ? ` — ${deal.discountLabel}` : ''} at ${businessName}`;
+  const shareText = `${dealTitle}${deal?.discountLabel ? ` — ${deal.discountLabel}` : ''}${businessName ? ` at ${businessName}` : ''}`;
 
   const showToast = (message: string, icon = 'check_circle') => {
     setToast({ message, icon });
     window.setTimeout(() => setToast(null), 2200);
   };
 
-  const copyLink = () => {
-    navigator.clipboard?.writeText(shareUrl).catch(() => undefined);
-    setCopied(true);
-    showToast('Offer link copied to clipboard!');
-    window.setTimeout(() => setCopied(false), 2000);
+  const copyLink = (message = 'Offer link copied to clipboard!') => {
+    if (!navigator.clipboard) {
+      showToast('Could not copy the link', 'error');
+      return;
+    }
+    navigator.clipboard.writeText(shareUrl).then(
+      () => {
+        setCopied(true);
+        showToast(message);
+        window.setTimeout(() => setCopied(false), 2000);
+      },
+      () => showToast('Could not copy the link', 'error'),
+    );
   };
 
   const openExternal = (url: string) => {
@@ -87,12 +70,14 @@ export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
     copyLink();
   };
 
-  const sendTo = (friend: Friend) => {
-    if (sentTo) return;
-    setSentTo(friend.first);
-    showToast(`Shared with ${friend.first}!`, 'send');
-    window.setTimeout(() => setSentTo(null), 2500);
+  /** Instagram has no web share link, so the link is copied for the customer to paste. */
+  const shareToInstagram = () => copyLink('Link copied. Paste it into Instagram.');
+  const shareBySms = () => {
+    window.location.href = `sms:?&body=${encodeURIComponent(`${shareText} — ${shareUrl}`)}`;
   };
+
+  // A share needs a real deal: without one there is no link to give.
+  if (!deal?.id) return null;
 
   return (
     <>
@@ -116,14 +101,14 @@ export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
         <div className="px-margin overflow-y-auto space-y-space-md pb-4">
           <div className="bg-surface-container-low p-space-sm rounded-xl flex items-center gap-space-sm shadow-sm">
             <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-container relative">
-              <img className="w-full h-full object-cover" alt={dealImageAlt || DEAL_ALT} src={dealImage} />
+              <img className="w-full h-full object-cover" alt={dealImageAlt} src={dealImage} />
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <span className="font-label-md text-label-md text-on-surface font-semibold truncate">
                 {dealTitle}
               </span>
               <span className="font-caption text-caption text-text-secondary truncate mt-0.5">
-                {businessName} • {dealLocation}
+                {dealPlace}
               </span>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold px-2 py-0.5 rounded-full inline-flex items-center">
@@ -135,10 +120,12 @@ export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
                     {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealOldPrice)}
                   </span>
                 ) : null}
-                <span className="font-caption text-caption text-primary bg-surface-tint-blue px-2 py-0.5 rounded-full inline-flex items-center gap-0.5">
-                  <Icon name="verified" className="text-[12px]" />
-                  {deal?.discountLabel || 'Vetted Deal'}
-                </span>
+                {deal?.discountLabel ? (
+                  <span className="font-caption text-caption text-primary bg-surface-tint-blue px-2 py-0.5 rounded-full inline-flex items-center gap-0.5">
+                    <Icon name="sell" className="text-[12px]" />
+                    {deal.discountLabel}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -150,7 +137,7 @@ export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
             </div>
             <button
               type="button"
-              onClick={copyLink}
+              onClick={() => copyLink()}
               className={`shrink-0 active:scale-95 font-label-sm text-label-sm font-semibold px-space-sm py-2.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-all ${
                 copied
                   ? 'bg-badge-discount-bg text-badge-discount-text'
@@ -184,6 +171,7 @@ export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
               <button
                 aria-label="Share via Messages"
                 type="button"
+                onClick={shareBySms}
                 className="flex flex-col items-center gap-1.5 group active:scale-95 transition-transform"
               >
                 <div className={CHANNEL_CLASS.messages}>
@@ -195,6 +183,7 @@ export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
               <button
                 aria-label="Share to Instagram"
                 type="button"
+                onClick={shareToInstagram}
                 className="flex flex-col items-center gap-1.5 group active:scale-95 transition-transform"
               >
                 <div className={CHANNEL_CLASS.instagram}>
@@ -234,47 +223,6 @@ export function ShareSheet({ open, onClose, deal }: ShareSheetProps) {
                 </div>
                 <span className="font-caption text-caption text-on-surface font-medium text-center">More</span>
               </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-space-xs pt-1">
-            <div className="flex items-center justify-between">
-              <span className="font-label-sm text-label-sm text-text-tertiary font-medium">
-                Send directly to friends on VEMTAP
-              </span>
-              <span className="font-caption text-caption text-primary font-medium">Hyperlocal</span>
-            </div>
-            <div className="flex items-center gap-space-sm overflow-x-auto pb-1 pt-0.5 -mx-margin px-margin no-scrollbar">
-              {FRIENDS.map((friend) => (
-                <div key={friend.name} className="flex flex-col items-center gap-1.5 w-[72px] shrink-0">
-                  <div className="relative">
-                    <div
-                      className={`w-[52px] h-[52px] rounded-full overflow-hidden flex items-center justify-center font-semibold shadow-sm ${friend.avatarClass}`}
-                    >
-                      <span>{friend.initial}</span>
-                    </div>
-                    {friend.online && (
-                      <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-surface-canvas flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 rounded-full bg-badge-discount-text" />
-                      </div>
-                    )}
-                  </div>
-                  <span className="font-caption text-caption text-on-surface font-medium truncate w-full text-center">
-                    {friend.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => sendTo(friend)}
-                    className={`w-full py-1 rounded-full font-caption text-caption font-semibold active:scale-90 transition-all ${
-                      sentTo === friend.first
-                        ? 'bg-badge-discount-bg text-badge-discount-text'
-                        : 'bg-surface-tint-blue text-primary hover:bg-primary hover:text-on-primary'
-                    }`}
-                  >
-                    {sentTo === friend.first ? 'Sent ✓' : 'Send'}
-                  </button>
-                </div>
-              ))}
             </div>
           </div>
 

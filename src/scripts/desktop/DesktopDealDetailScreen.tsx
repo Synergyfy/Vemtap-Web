@@ -1,11 +1,20 @@
+import { useSessionUser } from '../../hooks/useSessionUser';
+import { recordRecentDeal } from '../../utils/recentlyViewed';
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
-import { parsePrice } from '../../utils/format';
-import { hasApiConfig } from '../../services/api/client';
+import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
+import { getAccessToken } from '../../services/api/client';
+import { NO_IMAGE } from '../../utils/homeOffer';
+import { useLocation, formatDistanceKm } from '../../context/LocationContext';
+import { useDealReviews, reviewTimeLabel } from '../../hooks/useDealReviews';
+import { dealDistanceKm, dealTimeLeft, dealUnavailableLabel, dealWhatsappLink, useDealSaved, type DealDetail } from '../../hooks/useDealDetail';
+import { mapEmbedUrl, mapsLink, todayHours } from '../../hooks/usePublicBusiness';
 import { useAuth } from '../../context/AuthContext';
-import { useClaims, type ClaimKind, type ClaimRecord } from '../../context/ClaimsContext';
+import { useClaims, type ClaimHolder, type ClaimKind, type ClaimRecord } from '../../context/ClaimsContext';
 import { useProfile } from '../../context/ProfileContext';
+import { ShareModal } from '../../components/desktop/dialogs/ShareModal';
 import { CommentsDrawer } from '../../components/desktop/dialogs/CommentsDrawer';
 import { HowToClaimModal } from '../../components/desktop/dialogs/HowToClaimModal';
 import { ClaimConfirmationModal } from '../../components/desktop/dialogs/ClaimConfirmationModal';
@@ -21,18 +30,30 @@ import type { GiftRecipientSummary } from '../GiftSentScreen';
 interface DesktopDealDetailScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
-  deal?: ClaimDealSummary | null;
+  /** Live deal; null while loading or when it could not be loaded. */
+  detail: DealDetail | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  /** Opens the chat with the deal's business; rejects when it can't be opened. */
+  onChat: () => Promise<void>;
+  /** Whether the customer already holds a voucher for this deal. */
+  claimed: boolean;
+  onViewWallet?: () => void;
   /**
    * BUG-006/008/009 — when provided, a finished claim/gift hands the record to
    * the app shell so it can open the real outcome screen (claim success /
    * gift sent) instead of a transient toast.
    */
   onClaimComplete?: (claim: ClaimRecord) => void;
+  /** Opens the business storefront for the deal's merchant. */
+  onOpenBusiness?: () => void;
 }
 
 type Dialog =
   | null
   | 'comments'
+  | 'share'
   | 'howTo'
   | 'claimConfirm'
   | 'auth'
@@ -46,12 +67,6 @@ type Dialog =
 type PendingStep = 'claimConfirm' | 'identity' | 'someoneElse' | 'gift';
 
 type Tab = 'overview' | 'rules' | 'reviews' | 'comments';
-
-const MAIN_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDyaz2pz1hC_CjN2ru3oKAacqciO9qmRsnoHdidaET4hHDwZ47yFyvR9W9Us9i8Fzv2ygFWPDTOZCEKCy8ahr6jixkJNWK3yhSXDw8Vb68C0cNL1RH83FoD1KNS-0ukmg3wO_W3Z9rCSVOd8o5pI8VUOB-tHlPxQVC2xZL0joHQJWBb-whC6Eiv-dz4m6-OeZpTFhqttXQ_IJCOIss8NyiQ2zB8UARieO2L63C_PmF4';
-
-const MAIN_ALT =
-  'Gourmet artisan prime dry-aged beef burger with melted cheddar, served beside crispy golden hand-cut parmesan truffle fries in a steel basket and a chilled condensation-beaded iced peach craft beverage on a black slate platter inside an upscale modern warm bistro with ambient lighting in Abuja Nigeria.';
 
 const formatCurrency = (value: number | undefined): string => {
   const parsed = Number(value ?? 0);
@@ -68,138 +83,104 @@ interface GalleryImage {
   alt: string;
 }
 
-const GALLERY: GalleryImage[] = [
-  {
-    thumb: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAfblMb256EfnM3v1cLx_E8B82srt_QvTy9-sOJKLWsGsf-deEwd5VheIJvymvVDSZLly2o9fzZdBi72Vy8KW-Caorv7mqc7lCeWowUfqmGdp3kt71eYonperFwLwQfaDZ13goA0JSJFvBxcb-umnkkaA44IPhEKY0FGMGGXkh8NoABXyNM4Qn2Nc6SSDw-Wae7_u5ZhAN12ZAwZyAGhqbLaINWUQcu4cs3qaLq_tkq',
-    alt: 'Close up shot of prime dry aged beef burger with melted cheese and fresh brioche bun plated on slate.',
-  },
-  {
-    thumb: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB7c0UEcITW1i4OO6oVRJ94h0z3lIgj3xQDhhip_efwCUeHKi9VaaydQcEe2QRrFIbpkXVFCbhWZGhHGaGrcUxLA7jiDBo7aIQdDK5aGNANDnXTL8MgHuTU6RL7-UqUF69HRhJvhgdyOEfg5SSR66dlvfC6NrgpsPRVk1SaKtyYFMy2F3wPNQuD4OeAywc2MVquLM6dhIMGjB6wd7HI5T4S7Jey1wzH2jIX75K831px',
-    alt: 'Side angle showing crispy golden parmesan truffle fries sprinkled with freshly chopped parsley and garlic aioli dip in a ceramic dipping bowl.',
-  },
-  {
-    thumb: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB12Z5xc6cbWYjY6SgCCzCv6bOAEE6aGfRWdBJ_zd0sldtnVPhFLBdqpg5ejUP3TRIj13PaVCTpMwA6_ldEy274wvPuGf-gmsDchjJr0GnZqRcrgrHHVE6wcPtLd11TqKozy4ul0mZ-p3_dqKypGrkMy3ZZR4VHVDB8Rp_5YZGHiu4nb8dtNju_56GXalncsi7WYILlhGU4SjoGiTUCekl1-vXp-u-0zmYXKz_r11lj',
-    alt: 'Tall refreshing craft peach iced tea beverage served in a crystal ribbed glass with mint garnish and sliced fresh peach wedges, back-lit with golden hour light.',
-  },
-  {
-    thumb: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC-rncQl6y2hfaKtCXR596-xAmeFVy_uuI0WfRx1ADgcY_bwEo39KtXgJdy_y91YE3ox0ExdFX7Hj60Xv_Z1LhaTPWEYr9w_UMpKYksD34cnv_XH9Lt_7VkQK3Ydkj37TJF0eLwRTpiDFv39jjEdx68J-QqM_KW-I6h__ZVuwLd6TK5Ny5jATNV4cq5n2S0uv4Fw25I3c6NLcbo2weZjazxAPDIzXEpymViwTfb7i90',
-    alt: 'Modern urban bistro interior in Apo Abuja with Scandinavian wood seating, hanging pendant warm filament lights, potted tropical monsteras, and happy patrons dining in soft focus.',
-  },
-];
+/** Icons for the amenities merchants pick; anything else gets the plain tick. */
+const AMENITY_ICONS: Record<string, string> = {
+  'dine-in': 'restaurant',
+  takeaway: 'takeout_dining',
+  'free wi-fi': 'wifi',
+  'pos card payment': 'credit_card',
+  'cash accepted': 'payments',
+  parking: 'local_parking',
+  'outdoor seating': 'deck',
+  'air conditioning': 'ac_unit',
+};
 
-const MAP_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDI46mVJiKfpgFocmv68dGbJO_h6OhffdItR88embNKbKILeYQAKH6D9X_5mKRTvCKlt6wbgSuYg2a_ZqlN2DfM_SfxQ8khywoAgCx1krGbp4f7Qj8eWlTO_kP4rXCIUwCwnz0_LTErIhzA9OvWvxtzZQDi4HBpq--VgFTg0cOyuB5evCb13UZ2X6JWEyw_mwT8F-SSmKrflgYT12MnbYE9k0K43wL27S-Lwv_-wbHx';
+const initials = (name: string) =>
+  name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('');
 
-const INCLUDED: Array<{ strong: string; rest: string; primary?: boolean }> = [
-  { strong: '1x Dry-aged Angus burger', rest: ' or char-grilled herb chicken plate' },
-  { strong: '1x Truffle parmesan', rest: ' fresh hand-cut artisan fries' },
-  { strong: '1x Cold-pressed', rest: ' house iced craft peach cooler' },
-  { strong: 'Zero reservation fee', rest: ' • Pay ₦9,600 directly at venue', primary: true },
-];
+/** Loading state in the shape of the page, so no stand-in data shows first. */
+function DealDetailSkeleton() {
+  return (
+    <SkeletonGroup label="Loading deal" className="w-full bg-surface-subtle pb-space-3xl">
+      <div className="max-w-7xl mx-auto px-margin pt-space-lg">
+        <Skeleton className="h-4 w-72 mb-space-lg" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
+          <div className="lg:col-span-8 flex flex-col gap-space-xl min-w-0">
+            <div className="bg-surface-canvas rounded-2xl p-space-md">
+              <Skeleton className="w-full h-[400px] md:h-[480px] rounded-xl" />
+            </div>
+            <div className="bg-surface-canvas rounded-2xl p-space-xl flex flex-col gap-space-md">
+              <div className="flex items-center gap-space-sm">
+                <Skeleton className="w-12 h-12 rounded-xl" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-5 w-1/3" />
+                  <Skeleton className="h-4 w-1/4" />
+                </div>
+              </div>
+              <Skeleton className="h-8 w-2/3" />
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-32 w-full rounded-xl" />
+            </div>
+            <div className="bg-surface-canvas rounded-2xl p-space-xl">
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          </div>
+          <div className="lg:col-span-4 flex flex-col gap-space-md">
+            <div className="bg-surface-canvas rounded-2xl p-space-xl flex flex-col gap-space-lg">
+              <Skeleton className="h-10 w-2/3" />
+              <Skeleton className="h-20 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-14 w-full rounded-xl" />
+            </div>
+            <Skeleton className="h-16 w-full rounded-2xl" />
+          </div>
+        </div>
+      </div>
+    </SkeletonGroup>
+  );
+}
 
-const PRACTICAL_BADGES: Array<{ icon: string; label: string }> = [
-  { icon: 'schedule', label: 'Mon – Fri • 12:00 PM – 4:00 PM' },
-  { icon: 'storefront', label: 'Dine-in Only' },
-  { icon: 'local_activity', label: '1 Voucher per person per visit' },
-  { icon: 'flash_on', label: 'Instant Voucher in VEMTAP App' },
-];
-
-const RULES: Array<{ lead: string; rest: string }> = [
-  {
-    lead: 'No Prepayment Required:',
-    rest: ' Claim this pass for free on VEMTAP. Settle the discounted total of ₦9,600 on arrival at the restaurant.',
-  },
-  {
-    lead: 'Validation Window:',
-    rest: ' Applicable Monday through Friday between 12:00 PM and 4:00 PM.',
-  },
-  {
-    lead: 'Redemption Method:',
-    rest: ' Show the digital 6-digit PIN or QR code in your VEMTAP account directly to your server before placing orders.',
-  },
-  {
-    lead: 'Substitutions:',
-    rest: ' Grilled lemon chicken may be selected as an alternative to the Angus beef burger at no supplemental charge.',
-  },
-  {
-    lead: 'Cancellation Policy:',
-    rest: ' Unused voucher claims auto-release back into the community pool without any financial penalty or credit card debit.',
-  },
-];
-
-const AMENITIES: Array<{ icon: string; label: string }> = [
-  { icon: 'ac_unit', label: 'Full Climate A/C' },
-  { icon: 'wifi', label: 'High-speed Wi-Fi' },
-  { icon: 'local_parking', label: 'Guarded Valet' },
-  { icon: 'deck', label: 'Outdoor Terrace' },
-];
-
-const RATING_BARS: Array<{ label: string; width: string; value: string; muted?: boolean }> = [
-  { label: '5 Stars', width: '88%', value: '88%' },
-  { label: '4 Stars', width: '10%', value: '10%' },
-  { label: '3 Stars', width: '2%', value: '2%' },
-  { label: '2 Stars', width: '0%', value: '0%', muted: true },
-  { label: '1 Star', width: '0%', value: '0%', muted: true },
-];
-
-const FILTER_CHIPS: Array<{ label: string; count: string; icon?: string }> = [
-  { label: 'All', count: '(184)' },
-  { label: 'With Photos', count: '(42)', icon: 'photo_camera' },
-  { label: 'Food Quality', count: '(112)' },
-  { label: 'Portion Size', count: '(64)' },
-  { label: 'Fast Service', count: '(58)' },
-];
-
-export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }: DesktopDealDetailScreenProps) {
-  const commentCount = Number(deal?.commentCount ?? deal?.commentsCount ?? 0);
-  const TABS: Array<{ key: Tab; icon: string; label: string }> = [
-    { key: 'overview', icon: 'info', label: 'Deal Overview' },
-    { key: 'rules', icon: 'rule', label: 'How It Works & Rules' },
-    { key: 'reviews', icon: 'reviews', label: 'Reviews (4.9 ★ • 184)' },
-    { key: 'comments', icon: 'chat_bubble_outline', label: `Community Q&A (${commentCount})` },
-  ];
-  const { authed, claimed, signIn, markClaimed } = useAuth();
+export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error, onRetry, onChat, claimed, onViewWallet, onClaimComplete, onOpenBusiness }: DesktopDealDetailScreenProps) {
+  const { authed, signIn, markClaimed } = useAuth();
   const claims = useClaims();
   const profile = useProfile();
-  const selectedDeal: ClaimDealSummary = {
-    title: deal?.title?.trim() || 'Featured local deal',
-    business: deal?.business?.trim() || 'Local dining partner',
-    location: deal?.location?.trim() || 'Your area',
-    price: parsePrice(deal?.price),
-    oldPrice: parsePrice(deal?.oldPrice) || parsePrice(deal?.price),
-    discountLabel: deal?.discountLabel?.trim() || (parsePrice(deal?.oldPrice) > parsePrice(deal?.price) ? `Save ${formatCurrency(Math.max(parsePrice(deal?.oldPrice) - parsePrice(deal?.price), 0))}` : 'Save on this deal'),
-    image: deal?.image || MAIN_IMAGE,
-  };
-  // Live: the deal's own photos (main first, so it matches the card); demo keeps the sample gallery.
-  const gallery: GalleryImage[] = deal?.images?.length
-    ? deal.images.map((thumb, index) => ({ thumb, alt: `${deal?.title || 'Deal'} photo ${index + 1}` }))
-    : deal?.image && hasApiConfig()
-      ? [{ thumb: deal.image, alt: deal.title || 'Deal photo' }]
-      : GALLERY;
-  const dealTitle = selectedDeal.title || 'Featured local deal';
-  const dealBusiness = selectedDeal.business || 'Local dining partner';
-  const dealLocation = selectedDeal.location || 'Your selected area';
-  const dealPrice = parsePrice(selectedDeal.price);
-  const dealOldPrice = parsePrice(selectedDeal.oldPrice) || dealPrice;
-  const dealSavings = dealOldPrice > dealPrice ? Math.max(dealOldPrice - dealPrice, 0) : 0;
-  const businessOverview = `${dealBusiness} is a local dining partner serving freshly prepared favourites for nearby customers in ${dealLocation}. This offer brings together a limited-time value opportunity designed for a quick in-person redemption through the VEMTAP app.`;
+  const { lat, lng } = useLocation();
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [claimHolder, setClaimHolder] = useState<ClaimHolder | null>(null);
+  const [claimCode, setClaimCode] = useState('');
+  const [giftNote, setGiftNote] = useState('');
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
   const [pendingStep, setPendingStep] = useState<PendingStep>('identity');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
-  const [chip, setChip] = useState('All');
   const [selectedImage, setSelectedImage] = useState(0);
-  const [mainImage, setMainImage] = useState(selectedDeal.image || MAIN_IMAGE);
-  const [mainAlt, setMainAlt] = useState(MAIN_ALT);
-  const [bookmarked, setBookmarked] = useState(false);
+  const [tabsDealId, setTabsDealId] = useState(detail?.id);
+  const { saved: bookmarked, toggle: toggleSaved } = useDealSaved(detail?.id);
+  // Remembers the deal for this account's "Recently Viewed" list.
+  const viewerId = useSessionUser().data?.id;
+  useEffect(() => {
+    if (!detail) return;
+    recordRecentDeal(viewerId, {
+      id: detail.id,
+      title: detail.title,
+      merchant: detail.businessName,
+      image: detail.image,
+      price: detail.price,
+      oldPrice: detail.oldPrice,
+      discountPercent: detail.discountPercent,
+    });
+  }, [detail, viewerId]);
+  const { reviews, total, loading: reviewsLoading } = useDealReviews(detail?.id, tab === 'reviews' || tab === 'comments');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    setMainImage(selectedDeal.image || MAIN_IMAGE);
-    setMainAlt(`${dealTitle} at ${dealBusiness}`);
+    if (detail?.id === tabsDealId) return;
+    setTabsDealId(detail?.id);
     setSelectedImage(0);
-  }, [selectedDeal.image, dealTitle, dealBusiness]);
+    setTab('overview');
+  }, [detail?.id, tabsDealId]);
 
   useEffect(() => {
     return () => {
@@ -213,6 +194,74 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     toastTimer.current = window.setTimeout(() => setToast(null), 3500);
   };
 
+  if (!detail) {
+    return (
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="deals">
+        {loading ? (
+          <DealDetailSkeleton />
+        ) : (
+          <div className="w-full bg-surface-subtle pb-space-3xl">
+            <div className="max-w-md mx-auto px-margin pt-space-3xl">
+              <div className="rounded-3xl bg-surface-canvas p-6 text-center shadow-sm space-y-3">
+                <Icon name="local_activity" className="text-[32px] text-primary" />
+                <p className="font-label-md text-label-md text-text-primary font-semibold">{error ?? 'This deal couldn’t be loaded.'}</p>
+                <button type="button" onClick={onRetry} className="h-11 w-full rounded-xl bg-primary text-on-primary font-button-primary text-button-primary">Try again</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </DesktopPage>
+    );
+  }
+
+  const dealTitle = detail.title;
+  const dealBusiness = detail.businessName;
+  const dealLocation = detail.address ?? detail.branchName ?? '';
+  const dealPrice = detail.price;
+  const dealOldPrice = detail.oldPrice;
+  const dealSavings = Math.max(dealOldPrice - dealPrice, 0);
+  const selectedDeal: ClaimDealSummary = {
+    id: detail.id,
+    title: dealTitle,
+    business: dealBusiness,
+    location: dealLocation,
+    price: dealPrice,
+    oldPrice: dealOldPrice,
+    discountLabel: dealSavings > 0 ? `Save ${formatCurrency(dealSavings)}` : undefined,
+    image: detail.image,
+    images: detail.images,
+    commentCount: detail.reviewsCount,
+  };
+  const gallery: GalleryImage[] = detail.images.length
+    ? detail.images.map((thumb, index) => ({ thumb, alt: `${dealTitle} photo ${index + 1}` }))
+    : [{ thumb: detail.image ?? NO_IMAGE, alt: dealTitle }];
+  const mainPhoto = gallery[Math.min(selectedImage, gallery.length - 1)];
+  const TABS: Array<{ key: Tab; icon: string; label: string }> = [
+    { key: 'overview', icon: 'info', label: 'Deal Overview' },
+    { key: 'rules', icon: 'rule', label: 'How It Works & Rules' },
+    { key: 'reviews', icon: 'reviews', label: 'Reviews' },
+    { key: 'comments', icon: 'chat_bubble_outline', label: `Community Q&A (${detail.reviewsCount})` },
+  ];
+  const timeLeft = dealTimeLeft(detail.endDate);
+  const included = detail.items.map((item) => ({ strong: `1x ${item.name}`, rest: item.price > 0 ? ` • ${formatCurrency(item.price)}` : '' }));
+  const practicalBadges = [
+    { icon: 'schedule', label: detail.windowLabel },
+    { icon: 'storefront', label: detail.channelsLabel },
+    { icon: 'local_activity', label: detail.claimLimitLabel },
+    { icon: 'flash_on', label: 'Instant Voucher in VEMTAP App' },
+  ].filter((badge): badge is { icon: string; label: string } => Boolean(badge.label));
+  const rules = [...detail.claimSteps, ...detail.terms];
+  const merchant = detail.profile;
+  const hoursToday = merchant ? todayHours(merchant.hours) : null;
+  const distance = formatDistanceKm(dealDistanceKm(detail, lat, lng));
+  const mapUrl = mapsLink({ latitude: detail.latitude, longitude: detail.longitude, name: dealBusiness, address: detail.address, city: null });
+  const mapEmbed = mapEmbedUrl(detail.latitude, detail.longitude);
+  const whatsapp = dealWhatsappLink(detail);
+  const unavailable = dealUnavailableLabel(detail);
+  const vouchersLeft = detail.quantity != null ? Math.max(detail.quantity - detail.claimedCount, 0) : null;
+  const claimedPercent = detail.quantity ? Math.min(100, Math.round((detail.claimedCount / detail.quantity) * 100)) : 0;
+  const ratedReviews = reviews.filter((review) => review.rating != null);
+
   const startClaim = (step: PendingStep) => {
     if (!authed) {
       setPendingStep(step);
@@ -222,27 +271,62 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
     setDialog(step);
   };
 
-  const completeClaim = async () => {
-    const kind: ClaimKind =
-      dialog === 'giftConfirm' ? 'gift' : dialog === 'summary' ? 'someone-else' : 'self';
+  // A claim is two API steps: a code is emailed to the holder, then traded for
+  // the voucher. Only gifts go straight through.
+  const sendClaimCode = async (holder: ClaimHolder) => {
+    setClaimHolder(holder);
+    setClaimError(null);
+    setClaimBusy(true);
+    try {
+      await claims.requestClaimCode(detail.id, holder);
+    } catch (error) {
+      setClaimError(error instanceof Error ? error.message : 'We couldn’t send the code. Please try again.');
+    } finally {
+      setClaimBusy(false);
+    }
+  };
 
+  const claimForSelf = () => {
+    if (!profile.phone.trim()) {
+      setDialog(null);
+      showToast('Add a phone number to your profile to claim this deal.');
+      return;
+    }
+    setClaimRecipient(null);
+    setDialog('verify');
+    void sendClaimCode({ firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone });
+  };
+
+  const completeClaim = async (kind: ClaimKind, code?: string) => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        offerId: detail.id,
         kind,
-        dealTitle: selectedDeal?.title ?? dealTitle,
-        dealBusiness: selectedDeal?.business ?? dealBusiness,
-        dealImage: selectedDeal?.image ?? MAIN_IMAGE,
-        dealLocation: selectedDeal?.location ?? dealLocation,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel ?? 'Save on this deal',
+        dealTitle: detail.title,
+        dealBusiness: detail.businessName,
+        dealImage: detail.image,
+        dealLocation: detail.address ?? dealLocation,
+        dealPrice: detail.price,
+        dealOldPrice: detail.oldPrice,
+        discountLabel: selectedDeal?.discountLabel,
+        dealPhone: detail.phone ?? undefined,
+        branchId: detail.branchId ?? undefined,
+        dealLatitude: detail.latitude ?? undefined,
+        dealLongitude: detail.longitude ?? undefined,
+        terms: detail.terms,
+        code,
+        email: claimHolder?.email,
+        note: kind === 'gift' ? giftNote : undefined,
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
         recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
       });
       markClaimed();
       setDialog(null);
       setClaimRecipient(null);
+      setClaimHolder(null);
+      setClaimCode('');
       if (onClaimComplete) {
         onClaimComplete(record);
         return;
@@ -252,16 +336,25 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
           ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
           : `Deal claimed! Present ${record.ref} at the local merchant.`,
       );
-    } catch {
-      // Do not show a success state until the backend confirms the claim.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'We couldn’t confirm this claim. Please try again.';
+      if (kind === 'gift') {
+        setClaimError(message);
+        return;
+      }
+      setClaimError(message);
+      setDialog('verify');
+    } finally {
+      setClaimBusy(false);
     }
   };
 
-  const copyDealLink = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+  const openChat = () => {
+    if (!getAccessToken()) {
+      showToast('Please sign in to message this business.');
+      return;
     }
-    showToast('Deal link copied to clipboard!');
+    onChat().catch(() => showToast('Chat couldn’t be opened. Please try again.'));
   };
 
   const shareWhatsApp = () => {
@@ -272,17 +365,13 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
   };
 
   const toggleBookmark = () => {
-    setBookmarked((value) => {
-      showToast(value ? 'Removed from Saved Deals.' : 'Saved to your VEMTAP Wishlist!');
-      return !value;
-    });
-  };
-
-  const selectImage = (index: number) => {
-    setSelectedImage(index);
-    const live = gallery !== GALLERY;
-    setMainImage(index === 0 && !live ? selectedDeal.image || MAIN_IMAGE : gallery[index].thumb);
-    setMainAlt(index === 0 ? `${dealTitle} at ${dealBusiness}` : gallery[index].alt);
+    if (!getAccessToken()) {
+      showToast('Please sign in to save deals.');
+      return;
+    }
+    toggleSaved()
+      .then((saved) => showToast(saved ? 'Saved to your VEMTAP Wishlist!' : 'Removed from Saved Deals.'))
+      .catch(() => showToast('That didn’t save. Please try again.'));
   };
 
   const tabButtonClass = (key: Tab) =>
@@ -306,10 +395,12 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
               <span>Deals</span>
             </button>
             <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
-            <button type="button" className="hover:text-primary transition-colors">
-              Food &amp; Dining
-            </button>
-            <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
+            {detail.category && (
+              <>
+                <span>{detail.category}</span>
+                <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
+              </>
+            )}
             <button type="button" className="hover:text-primary transition-colors">
               {dealBusiness}
             </button>
@@ -324,28 +415,34 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
               <div className="bg-surface-canvas rounded-2xl p-space-md shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)]">
                 <div className="relative w-full h-[400px] md:h-[480px] rounded-xl overflow-hidden bg-surface-container-low group">
                   <img
-                    alt={mainAlt}
+                    alt={mainPhoto.alt}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    src={mainImage}
+                    src={mainPhoto.thumb}
                   />
 
                   <div className="absolute top-space-md left-space-md flex flex-wrap items-center gap-space-xs z-10">
-                    <span className="inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm font-semibold tracking-wide">
-                      <Icon name="percent" className="text-[16px]" />
-                      <span>20% OFF DEAL</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1 bg-primary text-on-primary font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm font-semibold">
-                      <Icon name="verified" filled className="text-[15px]" />
-                      <span>VERIFIED MERCHANT</span>
-                    </span>
+                    {dealSavings > 0 && (
+                      <span className="inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm font-semibold tracking-wide">
+                        <Icon name="percent" className="text-[16px]" />
+                        <span>{Math.round((dealSavings / dealOldPrice) * 100)}% OFF DEAL</span>
+                      </span>
+                    )}
+                    {detail.verified && (
+                      <span className="inline-flex items-center gap-1 bg-primary text-on-primary font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm font-semibold">
+                        <Icon name="verified" filled className="text-[15px]" />
+                        <span>VERIFIED MERCHANT</span>
+                      </span>
+                    )}
                   </div>
 
-                  <div className="absolute top-space-md right-space-md bg-inverse-surface/90 backdrop-blur-md text-inverse-on-surface font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm flex items-center gap-1.5">
-                    <Icon name="timer" className="text-[16px] text-tertiary-fixed-dim animate-pulse" />
-                    <span>
-                      Expires in <strong className="text-tertiary-fixed">4h 12m</strong>
-                    </span>
-                  </div>
+                  {timeLeft && (
+                    <div className="absolute top-space-md right-space-md bg-inverse-surface/90 backdrop-blur-md text-inverse-on-surface font-label-sm text-label-sm px-space-sm py-1 rounded-full shadow-sm flex items-center gap-1.5">
+                      <Icon name="timer" className="text-[16px] text-tertiary-fixed-dim animate-pulse" />
+                      <span>
+                        Expires in <strong className="text-tertiary-fixed">{timeLeft}</strong>
+                      </span>
+                    </div>
+                  )}
 
                   <div className="absolute bottom-space-md right-space-md bg-surface-canvas/90 backdrop-blur-md text-text-primary px-space-sm py-1 rounded-lg text-caption font-caption font-semibold shadow-sm flex items-center gap-1">
                     <Icon name="photo_camera" className="text-[16px]" />
@@ -362,7 +459,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                       key={`${index}-${image.thumb}`}
                       type="button"
                       aria-label={image.alt}
-                      onClick={() => selectImage(index)}
+                      onClick={() => setSelectedImage(index)}
                       className={`h-20 md:h-24 rounded-lg overflow-hidden bg-surface-container transition-all cursor-pointer ${
                         selectedImage === index
                           ? 'ring-2 ring-primary opacity-100'
@@ -382,30 +479,28 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                     className="flex items-center gap-space-sm cursor-pointer"
                     role="button"
                     tabIndex={0}
-                    onClick={() => onNav('storefront')}
+                    onClick={() => onOpenBusiness ? onOpenBusiness() : onNav('storefront')}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        onNav('storefront');
+                        if (onOpenBusiness) onOpenBusiness();
+                        else onNav('storefront');
                       }
                     }}
                   >
-                    <div className="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center text-primary font-bold text-heading-sm">
-                      UG
+                    <div className="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center text-primary font-bold text-heading-sm overflow-hidden">
+                      {detail.businessLogo ? (
+                        <img alt="" className="w-full h-full object-cover" src={detail.businessLogo} />
+                      ) : (
+                        initials(dealBusiness)
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-heading-sm text-heading-sm text-text-primary">{dealBusiness}</span>
-                        <Icon name="verified" filled className="text-[18px] text-primary" />
+                        {detail.verified && <Icon name="verified" filled className="text-[18px] text-primary" />}
                       </div>
                       <div className="flex items-center gap-space-xs text-text-secondary font-label-sm text-label-sm">
-                        <span className="flex items-center text-tertiary font-semibold">
-                          <Icon name="star" filled className="text-[16px] text-tertiary-container" />
-                          <span>4.9</span>
-                        </span>
-                        <span className="text-text-tertiary">•</span>
-                        <span className="hover:underline cursor-pointer">184 Verified Reviews</span>
-                        <span className="text-text-tertiary">•</span>
                         <span className="flex items-center gap-0.5 text-text-secondary">
                           <Icon name="near_me" className="text-[15px] text-primary" />
                           <span>{dealLocation}</span>
@@ -425,7 +520,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                     </button>
                     <button
                       type="button"
-                      onClick={copyDealLink}
+                      onClick={() => setDialog('share')}
                       className="h-10 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 transition-colors"
                     >
                       <Icon name="share" className="text-[18px]" />
@@ -467,35 +562,33 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                   <h1 className="font-heading-lg text-heading-lg md:text-[28px] md:leading-[36px] font-bold text-text-primary mb-space-xs tracking-tight">
                     {dealTitle}
                   </h1>
-                  <p className="font-body-lg text-body-lg text-text-secondary leading-relaxed">
-                    Signature dry-aged prime beef burger or grilled chicken plate, accompanied by loaded parmesan truffle
-                    fries and fresh house-pressed iced peach craft cooler. Valid weekdays 12pm–4pm.
-                  </p>
+                  {detail.description && (
+                    <p className="font-body-lg text-body-lg text-text-secondary leading-relaxed">{detail.description}</p>
+                  )}
                 </div>
 
-                <div className="bg-surface-tint-blue rounded-xl p-space-lg">
-                  <h2 className="font-heading-sm text-heading-sm text-primary mb-space-sm flex items-center gap-1.5">
-                    <Icon name="restaurant_menu" className="text-[22px]" />
-                    <span>What’s Included In This Deal</span>
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-y-space-sm gap-x-space-md font-body-md text-body-md text-text-primary">
-                    {INCLUDED.map((item) => (
-                      <div key={item.strong} className="flex items-start gap-space-xs">
-                        <Icon
-                          name={item.primary ? 'lock_open' : 'check_circle'}
-                          className={`text-[18px] mt-0.5 ${item.primary ? 'text-primary' : 'text-badge-discount-text'}`}
-                        />
-                        <span className={item.primary ? 'text-primary font-medium' : ''}>
-                          <strong>{item.strong}</strong>
-                          {item.rest}
-                        </span>
-                      </div>
-                    ))}
+                {included.length > 0 && (
+                  <div className="bg-surface-tint-blue rounded-xl p-space-lg">
+                    <h2 className="font-heading-sm text-heading-sm text-primary mb-space-sm flex items-center gap-1.5">
+                      <Icon name="restaurant_menu" className="text-[22px]" />
+                      <span>What’s Included In This Deal</span>
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-y-space-sm gap-x-space-md font-body-md text-body-md text-text-primary">
+                      {included.map((item) => (
+                        <div key={item.strong} className="flex items-start gap-space-xs">
+                          <Icon name="check_circle" className="text-[18px] mt-0.5 text-badge-discount-text" />
+                          <span>
+                            <strong>{item.strong}</strong>
+                            {item.rest}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex flex-wrap items-center gap-space-sm pt-space-xs">
-                  {PRACTICAL_BADGES.map((badge) => (
+                  {practicalBadges.map((badge) => (
                     <span
                       key={badge.label}
                       className="inline-flex items-center gap-1 bg-surface-container-low px-space-sm py-1.5 rounded-full text-caption font-caption text-text-secondary"
@@ -528,81 +621,101 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
 
                 {tab === 'overview' && (
                   <div className="p-space-xl flex flex-col gap-space-xl">
-                    <div className="space-y-space-sm">
-                      <h3 className="font-heading-sm text-heading-sm text-text-primary">About {dealBusiness}</h3>
-                      <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{businessOverview}</p>
-                    </div>
+                    {merchant?.description && (
+                      <div className="space-y-space-sm">
+                        <h3 className="font-heading-sm text-heading-sm text-text-primary">About {dealBusiness}</h3>
+                        <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{merchant.description}</p>
+                      </div>
+                    )}
 
                     <div className="space-y-space-md">
                       <div className="flex items-center justify-between">
                         <h3 className="font-heading-sm text-heading-sm text-text-primary">
                           Location &amp; Operating Hours
                         </h3>
-                        <button
-                          type="button"
-                          className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1"
-                        >
-                          <span>Open in Google Maps</span>
-                          <Icon name="open_in_new" className="text-[16px]" />
-                        </button>
+                        {mapUrl && (
+                          <a
+                            href={mapUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-label-sm text-label-sm text-primary hover:underline flex items-center gap-1"
+                          >
+                            <span>Open in Google Maps</span>
+                            <Icon name="open_in_new" className="text-[16px]" />
+                          </a>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-space-lg">
                         <div className="rounded-xl overflow-hidden relative shadow-inner bg-surface-container-high h-60">
-                          <div
-                            className="w-full h-full bg-cover bg-center"
-                            data-location="Plot 14 Apo Boulevard, Apo District, Abuja, Nigeria"
-                            style={{ backgroundImage: `url('${MAP_IMAGE}')` }}
-                          />
+                          {mapEmbed && (
+                            <iframe
+                              title={`Map of ${dealBusiness}`}
+                              src={mapEmbed}
+                              loading="lazy"
+                              className="absolute inset-0 w-full h-full border-0"
+                            />
+                          )}
                           <div className="absolute bottom-3 left-3 right-3 bg-surface-canvas/95 backdrop-blur-md p-space-sm rounded-lg shadow-sm flex items-center justify-between">
                             <div className="truncate mr-2">
                               <p className="font-label-sm text-label-sm font-semibold text-text-primary truncate">
-                                Nearby local branch
+                                {detail.branchName ?? dealBusiness}
                               </p>
                               <p className="font-caption text-caption text-text-secondary truncate">
                                 {dealLocation}
                               </p>
                             </div>
-                            <span className="bg-primary text-on-primary font-caption text-caption px-2 py-1 rounded font-semibold whitespace-nowrap">
-                              0.8 km
-                            </span>
+                            {distance && (
+                              <span className="bg-primary text-on-primary font-caption text-caption px-2 py-1 rounded font-semibold whitespace-nowrap">
+                                {distance}
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         <div className="flex flex-col justify-between space-y-space-md bg-surface-subtle p-space-lg rounded-xl">
                           <div className="space-y-space-xs font-body-md text-body-md text-text-secondary">
-                            <div className="flex items-start gap-space-xs">
-                              <Icon name="schedule" className="text-[18px] text-text-primary mt-0.5" />
-                              <div>
-                                <strong className="text-text-primary block font-medium">Daily Hours:</strong>
-                                <span>11:00 AM – 10:30 PM (Deal valid 12pm–4pm)</span>
+                            {(hoursToday || detail.windowLabel) && (
+                              <div className="flex items-start gap-space-xs">
+                                <Icon name="schedule" className="text-[18px] text-text-primary mt-0.5" />
+                                <div>
+                                  <strong className="text-text-primary block font-medium">{hoursToday ? 'Today’s Hours:' : 'Deal Hours:'}</strong>
+                                  <span>
+                                    {hoursToday?.today.label}
+                                    {hoursToday && detail.windowLabel ? ` (Deal valid ${detail.windowLabel})` : detail.windowLabel}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-start gap-space-xs pt-space-xs">
-                              <Icon name="call" className="text-[18px] text-text-primary mt-0.5" />
-                              <div>
-                                <strong className="text-text-primary block font-medium">Telephone &amp; Desk:</strong>
-                                <span>+234 (0) 803 920 4491</span>
+                            )}
+                            {detail.phone && (
+                              <div className="flex items-start gap-space-xs pt-space-xs">
+                                <Icon name="call" className="text-[18px] text-text-primary mt-0.5" />
+                                <div>
+                                  <strong className="text-text-primary block font-medium">Telephone &amp; Desk:</strong>
+                                  <span>{detail.phone}</span>
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </div>
 
-                          <div>
-                            <span className="font-label-sm text-label-sm font-semibold text-text-primary block mb-space-xs uppercase tracking-wider">
-                              Venue Amenities
-                            </span>
-                            <div className="grid grid-cols-2 gap-space-xs">
-                              {AMENITIES.map((amenity) => (
-                                <span
-                                  key={amenity.label}
-                                  className="flex items-center gap-1 font-caption text-caption text-text-secondary bg-surface-canvas p-1.5 rounded-lg shadow-sm"
-                                >
-                                  <Icon name={amenity.icon} className="text-[16px] text-primary" />
-                                  <span>{amenity.label}</span>
-                                </span>
-                              ))}
+                          {merchant && merchant.amenities.length > 0 && (
+                            <div>
+                              <span className="font-label-sm text-label-sm font-semibold text-text-primary block mb-space-xs uppercase tracking-wider">
+                                Venue Amenities
+                              </span>
+                              <div className="grid grid-cols-2 gap-space-xs">
+                                {merchant.amenities.map((amenity) => (
+                                  <span
+                                    key={amenity}
+                                    className="flex items-center gap-1 font-caption text-caption text-text-secondary bg-surface-canvas p-1.5 rounded-lg shadow-sm"
+                                  >
+                                    <Icon name={AMENITY_ICONS[amenity.toLowerCase()] ?? 'check_circle'} className="text-[16px] text-primary" />
+                                    <span>{amenity}</span>
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -615,11 +728,8 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                       Deal Rules &amp; Redemption Guidelines
                     </h3>
                     <ul className="space-y-space-sm font-body-md text-body-md text-text-secondary list-disc pl-space-lg">
-                      {RULES.map((rule) => (
-                        <li key={rule.lead}>
-                          <strong>{rule.lead}</strong>
-                          {rule.rest}
-                        </li>
+                      {rules.map((rule) => (
+                        <li key={rule}>{rule}</li>
                       ))}
                     </ul>
                   </div>
@@ -639,271 +749,48 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                           Real dining reviews exclusively from confirmed VEMTAP in-store redemptions.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        className="self-start md:self-auto px-space-md py-space-xs bg-surface-container text-primary font-label-md text-label-md rounded-xl hover:bg-surface-container-high transition-colors flex items-center gap-space-xs"
-                      >
-                        <Icon name="verified_user" className="text-[18px]" />
-                        <span>How Redemptions Are Verified</span>
-                      </button>
                     </div>
 
-                    <div className="bg-surface-subtle rounded-2xl p-space-lg shadow-sm">
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-space-lg items-center">
-                        <div className="md:col-span-4 flex flex-col items-center md:items-start text-center md:text-left bg-surface-canvas rounded-xl p-space-md shadow-sm">
-                          <div className="flex items-baseline gap-space-xs">
-                            <span className="font-display-hero text-display-hero font-extrabold text-text-primary leading-none">
-                              4.9
-                            </span>
-                            <span className="font-heading-sm text-heading-sm text-text-tertiary">/ 5.0</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-tertiary my-space-xs">
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                            <Icon name="star" filled className="text-[24px]" />
-                          </div>
-                          <p className="font-caption text-caption text-text-secondary leading-snug">
-                            Based on{' '}
-                            <strong className="text-text-primary font-semibold">
-                              184 verified customer redemptions
-                            </strong>{' '}
-                            in Apo, Abuja
-                          </p>
-                          <div className="mt-space-sm w-full pt-space-xs flex items-center gap-space-xs bg-badge-discount-bg text-badge-discount-text px-space-sm py-space-2xs rounded-lg">
-                            <Icon name="thumb_up" className="text-[18px]" />
-                            <span className="font-label-sm text-label-sm font-semibold">
-                              98% diners recommend this
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="md:col-span-8 flex flex-col gap-space-xs">
-                          {RATING_BARS.map((bar) => (
-                            <div key={bar.label} className="flex items-center gap-space-sm">
-                              <span className="font-label-sm text-label-sm text-text-secondary w-14">{bar.label}</span>
-                              <div className="flex-1 h-3 rounded-full bg-surface-container overflow-hidden">
-                                <div
-                                  className="h-full bg-primary-container rounded-full"
-                                  style={{ width: bar.width }}
-                                />
-                              </div>
-                              <span
-                                className={`font-label-sm text-label-sm font-medium w-10 text-right ${
-                                  bar.muted ? 'text-text-secondary' : 'text-text-primary'
-                                }`}
-                              >
-                                {bar.value}
-                              </span>
+                    {reviewsLoading ? (
+                      <SkeletonGroup label="Loading reviews" className="space-y-space-sm">
+                        <Skeleton className="h-20 w-full rounded-xl" />
+                        <Skeleton className="h-20 w-full rounded-xl" />
+                      </SkeletonGroup>
+                    ) : ratedReviews.length > 0 ? (
+                      <div className="space-y-space-sm">
+                        {ratedReviews.map((review) => (
+                          <div key={review.id} className="p-space-md bg-surface-subtle rounded-xl">
+                            <div className="flex items-center justify-between gap-space-sm">
+                              <span className="font-label-md text-label-md font-semibold text-text-primary">{review.reviewerName}</span>
+                              <span className="font-caption text-caption text-text-tertiary">{reviewTimeLabel(review.createdAt)}</span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-space-sm">
-                      <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-semibold">
-                        Filter Verified Customer Reviews
-                      </span>
-                      <div className="flex flex-wrap items-center gap-space-xs">
-                        {FILTER_CHIPS.map((item) => (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => setChip(item.label)}
-                            className={`h-9 px-space-md rounded-full font-label-md text-label-md transition-all flex items-center gap-1 ${
-                              chip === item.label
-                                ? 'bg-surface-tint-blue text-primary font-semibold shadow-sm'
-                                : 'bg-surface-subtle text-text-secondary hover:bg-surface-container-low'
-                            }`}
-                          >
-                            {item.icon ? <Icon name={item.icon} className="text-[16px]" /> : null}
-                            <span>{item.label}</span>
-                            <span
-                              className={`font-normal ${
-                                chip === item.label ? 'text-secondary' : 'text-text-tertiary'
-                              }`}
-                            >
-                              {item.count}
+                            <span className="flex items-center gap-0.5 mt-1" aria-label={`${review.rating} out of 5`}>
+                              {Array.from({ length: review.rating ?? 0 }, (_, index) => (
+                                <Icon key={index} name="star" filled className="text-[14px] text-tertiary-container" />
+                              ))}
                             </span>
-                          </button>
+                            <p className="font-body-md text-body-md text-text-secondary mt-1">{review.comment}</p>
+                            {review.merchantReply && (
+                              <span className="font-caption text-caption text-primary font-medium mt-2 block">
+                                — {dealBusiness}: {review.merchantReply}
+                              </span>
+                            )}
+                          </div>
                         ))}
                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-                      <article className="bg-surface-canvas rounded-2xl p-space-lg shadow-sm flex flex-col justify-between gap-space-md">
-                        <div className="flex flex-col gap-space-sm">
-                          <div className="flex items-start justify-between gap-space-xs">
-                            <div className="flex items-center gap-space-sm">
-                              <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center text-primary font-bold font-heading-sm text-heading-sm">
-                                VE
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-space-2xs">
-                                  <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Verified guest
-                                  </h3>
-                                  <Icon name="verified" className="text-primary text-[18px]" />
-                                </div>
-                                <p className="font-caption text-caption text-text-secondary">
-                                  Local diner • Nearby area
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 text-tertiary">
-                              <Icon name="star" filled className="text-[18px]" />
-                              <span className="font-label-md text-label-md font-bold text-text-primary">5.0</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                            <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed recently</span>
-                            <span>•</span>
-                            <span className="text-badge-discount-text font-medium">On-site redemption</span>
-                          </div>
-                          <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                            The value was strong and the experience at {dealBusiness} felt easy from claim to checkout. The
-                            offer was clearly explained and the redemption was quick and stress-free.
-                          </p>
+                    ) : (
+                      <div className="bg-surface-subtle rounded-2xl p-space-xl shadow-sm flex flex-col items-center text-center">
+                        <div className="w-16 h-16 rounded-full bg-surface-canvas flex items-center justify-center text-primary mb-4">
+                          <Icon name="reviews" className="text-[32px]" />
                         </div>
-                        <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
-                          <span className="text-text-tertiary">Was this review helpful?</span>
-                          <div className="flex items-center gap-space-sm">
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                            >
-                              <Icon name="thumb_up" className="text-[16px] text-primary" />
-                              <span>24</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                            >
-                              <Icon name="chat_bubble_outline" className="text-[16px]" />
-                              <span>2</span>
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-
-                      <article className="bg-surface-canvas rounded-2xl p-space-lg shadow-sm flex flex-col justify-between gap-space-md">
-                        <div className="flex flex-col gap-space-sm">
-                          <div className="flex items-start justify-between gap-space-xs">
-                            <div className="flex items-center gap-space-sm">
-                              <div className="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-bold font-heading-sm text-heading-sm">
-                                LS
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-space-2xs">
-                                  <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Local saver
-                                  </h3>
-                                  <Icon name="verified" className="text-primary text-[18px]" />
-                                </div>
-                                <p className="font-caption text-caption text-text-secondary">
-                                  Verified customer • {dealLocation}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 text-tertiary">
-                              <Icon name="star" filled className="text-[18px]" />
-                              <span className="font-label-md text-label-md font-bold text-text-primary">5.0</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                            <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed this week</span>
-                            <span>•</span>
-                            <span className="text-badge-discount-text font-medium">Fast QR check-in</span>
-                          </div>
-                          <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
-                            Claiming {dealTitle.toLowerCase()} was quick and clear. The discount was easy to redeem at {dealBusiness},
-                            and the staff explained the offer without any confusion.
-                          </p>
-                          <div className="p-space-md rounded-xl bg-surface-subtle flex items-center gap-space-md mt-space-2xs">
-                            <div className="w-10 h-10 rounded-lg bg-surface-canvas flex items-center justify-center text-primary shadow-sm flex-shrink-0">
-                              <Icon name="point_of_sale" className="text-[20px]" />
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                                Smooth redemption
-                              </span>
-                              <span className="font-caption text-caption text-text-secondary">
-                                Fast queue, clear discount, easy follow-through.
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
-                          <span className="text-text-tertiary">Was this review helpful?</span>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                          >
-                            <Icon name="thumb_up" className="text-[16px] text-primary" />
-                            <span>18</span>
-                          </button>
-                        </div>
-                      </article>
-
-                      <article className="bg-surface-canvas rounded-2xl p-space-lg shadow-sm flex flex-col justify-between gap-space-md md:col-span-2">
-                        <div className="flex flex-col gap-space-sm">
-                          <div className="flex items-start justify-between gap-space-xs">
-                            <div className="flex items-center gap-space-sm">
-                              <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center text-secondary font-bold font-heading-sm text-heading-sm">
-                                RD
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-space-2xs">
-                                  <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                                    Repeat diner
-                                  </h3>
-                                  <Icon name="verified" className="text-primary text-[18px]" />
-                                </div>
-                                <p className="font-caption text-caption text-text-secondary">Verified local customer</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 text-tertiary">
-                              <Icon name="star" filled className="text-[18px]" />
-                              <span className="font-label-md text-label-md font-bold text-text-primary">4.8</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-space-xs text-text-tertiary font-caption text-caption">
-                            <Icon name="calendar_today" className="text-[14px]" />
-                            <span>Redeemed recently</span>
-                            <span>•</span>
-                            <span className="text-badge-discount-text font-medium">Good value offer</span>
-                          </div>
-                          <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed max-w-3xl">
-                            The offer at {dealBusiness} felt worthwhile and well explained. The discount felt easy to redeem,
-                            and the overall experience matched what was promised in the app.
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between pt-space-xs border-0 text-text-secondary font-label-sm text-label-sm">
-                          <span className="text-text-tertiary">Was this review helpful?</span>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1 px-space-sm py-1 rounded-lg bg-surface-subtle hover:bg-surface-container-low text-text-primary font-medium transition-colors"
-                          >
-                            <Icon name="thumb_up" className="text-[16px] text-primary" />
-                            <span>11</span>
-                          </button>
-                        </div>
-                      </article>
-                    </div>
-
-                    <div className="flex items-center justify-center pt-space-md">
-                      <button
-                        type="button"
-                        className="px-space-xl py-space-sm rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-low transition-colors shadow-sm flex items-center gap-space-xs"
-                      >
-                        <span>Load 10 More Verified Reviews</span>
-                        <Icon name="expand_more" className="text-[18px]" />
-                      </button>
-                    </div>
+                        <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold mb-2">
+                          No Reviews Yet
+                        </h3>
+                        <p className="font-body-md text-body-md text-text-secondary max-w-md leading-relaxed">
+                          Reviews will appear here as customers redeem this deal and share their experience at {dealBusiness}.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -912,21 +799,30 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                     <h3 className="font-heading-sm text-heading-sm text-text-primary">
                       Community Questions &amp; Answers
                     </h3>
-                    <div className="p-space-md bg-surface-subtle rounded-xl flex items-start gap-space-sm">
-                      <Icon name="help" className="text-primary text-[20px]" />
-                      <div>
-                        <p className="font-label-md text-label-md font-semibold text-text-primary">
-                          Can I use this offer if I visit with a friend?
-                        </p>
-                        <p className="font-body-md text-body-md text-text-secondary mt-1">
-                          Each guest can claim their own voucher, or a single claim can be gifted to a friend through the
-                          VEMTAP flow. Check the active redemption window and venue terms before finalising your visit.
-                        </p>
-                        <span className="font-caption text-caption text-primary font-medium mt-2 block">
-                          — Answered by {dealBusiness} support
-                        </span>
-                      </div>
-                    </div>
+                    {reviewsLoading ? (
+                      <SkeletonGroup label="Loading comments" className="space-y-space-sm">
+                        <Skeleton className="h-20 w-full rounded-xl" />
+                      </SkeletonGroup>
+                    ) : reviews.length > 0 ? (
+                      reviews.map((review) => (
+                        <div key={review.id} className="p-space-md bg-surface-subtle rounded-xl flex items-start gap-space-sm">
+                          <Icon name="help" className="text-primary text-[20px]" />
+                          <div>
+                            <p className="font-label-md text-label-md font-semibold text-text-primary">{review.comment}</p>
+                            <p className="font-body-md text-body-md text-text-secondary mt-1">{review.reviewerName}</p>
+                            {review.merchantReply && (
+                              <span className="font-caption text-caption text-primary font-medium mt-2 block">
+                                — Answered by {dealBusiness}: {review.merchantReply}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="font-body-md text-body-md text-text-secondary">
+                        {total > 0 ? 'Comments couldn’t be loaded.' : 'No questions yet.'}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -948,27 +844,30 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                   <div className="flex items-center gap-space-xs">
                     <span className="inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold px-space-sm py-1 rounded-full">
                       <Icon name="trending_down" className="text-[15px]" />
-                      <span>{selectedDeal.discountLabel || `Save ${formatCurrency(dealSavings)} today`}</span>
+                      <span>{dealSavings > 0 ? `Save ${formatCurrency(dealSavings)} today` : 'Free to claim'}</span>
                     </span>
                   </div>
                 </div>
 
                 <div className="space-y-space-2xs p-space-md bg-surface-subtle rounded-xl">
-                  <div className="flex items-center justify-between font-label-sm text-label-sm">
-                    <span className="flex items-center gap-1 font-semibold text-tertiary">
-                      <Icon name="local_fire_department" className="text-[16px] text-tertiary animate-pulse" />
-                      <span>Only 7 vouchers left</span>
-                    </span>
-                    <span className="text-text-secondary font-medium">Lunch session</span>
-                  </div>
-                  <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-tertiary-container h-full rounded-full transition-all duration-1000 ease-out"
-                      style={{ width: '75%' }}
-                    />
-                  </div>
+                  {vouchersLeft != null && (
+                    <>
+                      <div className="flex items-center justify-between font-label-sm text-label-sm">
+                        <span className="flex items-center gap-1 font-semibold text-tertiary">
+                          <Icon name="local_fire_department" className="text-[16px] text-tertiary animate-pulse" />
+                          <span>{vouchersLeft > 0 ? `Only ${vouchersLeft} voucher${vouchersLeft === 1 ? '' : 's'} left` : 'Sold out'}</span>
+                        </span>
+                      </div>
+                      <div className="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-tertiary-container h-full rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${claimedPercent}%` }}
+                        />
+                      </div>
+                    </>
+                  )}
                   <p className="font-caption text-caption text-text-tertiary text-right">
-                    21 claimed in last 3 hours
+                    {detail.claimedCount} claimed
                   </p>
                 </div>
 
@@ -987,6 +886,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                   {claimed ? (
                     <button
                       type="button"
+                      onClick={onViewWallet}
                       className="w-full h-14 bg-badge-discount-text text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-lg transition-all active:scale-[0.98] cursor-pointer"
                     >
                       <Icon name="check_circle" filled className="text-[20px]" />
@@ -997,9 +897,10 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                       <button
                         type="button"
                         onClick={() => startClaim('identity')}
-                        className="w-full h-14 bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] transition-all transform active:scale-[0.98] cursor-pointer"
+                        disabled={Boolean(unavailable)}
+                        className="w-full h-14 bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] transition-all transform active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <span>Claim Deal Now ({formatCurrency(dealPrice)})</span>
+                        <span>{unavailable ?? `Claim Deal Now (${formatCurrency(dealPrice)})`}</span>
                         <Icon name="arrow_forward" className="text-[20px]" />
                       </button>
 
@@ -1025,29 +926,34 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                   )}
                 </div>
 
-                <div className="pt-space-sm border-t border-surface-container-low space-y-space-xs">
-                  <span className="font-caption text-caption text-text-tertiary uppercase font-medium tracking-wider block text-center">
-                    Questions for the kitchen?
-                  </span>
-                  <div className="flex items-center gap-space-xs">
-                    <a
-                      className="flex-1 h-10 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-text-primary font-label-sm text-label-sm flex items-center justify-center gap-1.5 transition-colors"
-                      href="tel:+2348039204491"
-                    >
-                      <Icon name="forum" className="text-[16px] text-primary" />
-                      <span>In-App Chat</span>
-                    </a>
-                    <a
-                      className="flex-1 h-10 rounded-lg bg-surface-subtle hover:bg-surface-container text-[#128C7E] font-label-sm text-label-sm font-medium flex items-center justify-center gap-1.5 transition-colors"
-                      href="https://wa.me/2348039204491"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Icon name="chat" className="text-[16px]" />
-                      <span>WhatsApp {dealBusiness}</span>
-                    </a>
+                {detail.branchId && (
+                  <div className="pt-space-sm border-t border-surface-container-low space-y-space-xs">
+                    <span className="font-caption text-caption text-text-tertiary uppercase font-medium tracking-wider block text-center">
+                      Questions for the business?
+                    </span>
+                    <div className="flex items-center gap-space-xs">
+                      <button
+                        type="button"
+                        onClick={openChat}
+                        className="flex-1 h-10 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-text-primary font-label-sm text-label-sm flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <Icon name="forum" className="text-[16px] text-primary" />
+                        <span>In-App Chat</span>
+                      </button>
+                      {whatsapp && (
+                        <a
+                          className="flex-1 min-w-0 px-space-xs h-10 rounded-lg bg-surface-subtle hover:bg-surface-container text-[#128C7E] font-label-sm text-label-sm font-medium flex items-center justify-center gap-1.5 transition-colors"
+                          href={whatsapp}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Icon name="chat" className="text-[16px] shrink-0" />
+                          <span className="truncate">WhatsApp {dealBusiness}</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex items-center justify-center gap-1.5 text-text-tertiary font-caption text-caption pt-space-2xs">
                   <Icon name="shield" className="text-[15px] text-badge-discount-text" />
@@ -1064,7 +970,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
                     {dealBusiness}
                   </p>
                   <p className="font-caption text-caption text-text-secondary">
-                    Local partner • {dealLocation}
+                    {[detail.category, dealLocation].filter(Boolean).join(' • ')}
                   </p>
                 </div>
                 <Icon name="chevron_right" className="text-[18px] text-text-tertiary" />
@@ -1081,6 +987,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
         </div>
       )}
 
+      <ShareModal open={dialog === 'share'} onClose={() => setDialog(null)} deal={selectedDeal} />
       <CommentsDrawer
         open={dialog === 'comments'}
         onClose={() => setDialog(null)}
@@ -1092,11 +999,14 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
         onClose={() => setDialog(null)}
         onProceed={() => startClaim('claimConfirm')}
         deal={selectedDeal}
+        detail={detail}
+        distance={distance}
       />
       <ClaimConfirmationModal
+        detail={detail}
         open={dialog === 'claimConfirm'}
         onClose={() => setDialog(null)}
-        onConfirm={completeClaim}
+        onConfirm={claimForSelf}
         deal={selectedDeal}
       />
       <ClaimAuthModal
@@ -1104,6 +1014,12 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
         deal={selectedDeal}
         onClose={() => setDialog(null)}
         onAuthenticated={() => {
+          if (hasApiConfig()) {
+            // A real sign-in, then back to this deal to claim it.
+            window.sessionStorage.setItem('vemtap_return_to', window.location.pathname);
+            onNav('sign-in');
+            return;
+          }
           signIn();
           setDialog(pendingStep);
         }}
@@ -1113,7 +1029,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
         identity={{ name: profile.fullName }}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
-        onClaimSelf={completeClaim}
+        onClaimSelf={claimForSelf}
         onGift={() => setDialog('gift')}
         onSomeoneElse={() => {
           setClaimRecipient(null);
@@ -1127,25 +1043,44 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
           setClaimRecipient({
             name: `${values.firstName} ${values.lastName}`.trim(),
             email: values.email,
-            phone: values.phone || undefined,
+            phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
           });
           setDialog('verify');
+          void sendClaimCode({
+            firstName: values.firstName,
+            lastName: values.lastName,
+            email: values.email,
+            phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : '',
+          });
         }}
       />
       <RecipientVerificationModal
         open={dialog === 'verify'}
         recipient={claimRecipient}
+        target={claimHolder?.email}
+        error={claimError}
+        busy={claimBusy}
+        onResend={() => claimHolder && void sendClaimCode(claimHolder)}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
-        onVerify={() => setDialog('summary')}
-        onBack={() => setDialog('someoneElse')}
+        onVerify={(code) => {
+          if (claimRecipient) {
+            setClaimCode(code);
+            setClaimError(null);
+            setDialog('summary');
+            return;
+          }
+          void completeClaim('self', code);
+        }}
+        onBack={() => (claimRecipient ? setDialog('someoneElse') : setDialog(null))}
       />
       <RecipientSummaryModal
+        detail={detail}
         open={dialog === 'summary'}
         recipient={claimRecipient}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
-        onConfirm={completeClaim}
+        onConfirm={() => void completeClaim('someone-else', claimCode)}
         onEdit={() => setDialog('someoneElse')}
       />
       <GiftRecipientDetailsModal
@@ -1158,16 +1093,21 @@ export function DesktopDealDetailScreen({ onNav, onBack, deal, onClaimComplete }
             email: values.email,
             phone: values.phone || undefined,
           });
+          setGiftNote(values.note);
           setDialog('giftConfirm');
         }}
       />
       <ConfirmGiftSendModal
+        detail={detail}
         open={dialog === 'giftConfirm'}
         recipient={claimRecipient}
+        note={giftNote}
+        error={claimError}
+        busy={claimBusy}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
         onEdit={() => setDialog('gift')}
-        onSend={completeClaim}
+        onSend={() => void completeClaim('gift')}
       />
     </DesktopPage>
   );

@@ -1,19 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
+import { NO_IMAGE } from '../utils/homeOffer';
 import { Icon } from '../components/ui/Icon';
 import { useCart } from '../context/CartContext';
 import { useOrders, type SubmittedOrder } from '../context/OrdersContext';
 import { useProfile } from '../context/ProfileContext';
 import { naira } from './catalogueData';
 import {
-  DELIVERY_FEE,
-  MERCHANT_IMAGE,
-  MERCHANT_NAME,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
-  VOUCHER_CODE,
-  VOUCHER_RATE,
-  estimateReadyBy,
   type FulfillmentMode,
   type PaymentMethod,
 } from './orderData';
@@ -26,9 +21,6 @@ interface CheckoutScreenProps {
 /** How the customer will settle. Online methods stay unverified until the merchant confirms. */
 const PAYMENT_CHOICES: { method: PaymentMethod; blurb: string; icon: string }[] = [
   { method: 'pay-at-counter', blurb: 'Cash or POS when you collect', icon: 'point_of_sale' },
-  { method: 'card', blurb: 'Debit / credit card (verified before pickup)', icon: 'credit_card' },
-  { method: 'transfer', blurb: 'Bank transfer (verified before pickup)', icon: 'account_balance' },
-  { method: 'wallet', blurb: 'VEMTAP wallet (verified before pickup)', icon: 'account_balance_wallet' },
 ];
 
 export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
@@ -36,12 +28,13 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
   const orders = useOrders();
   const profile = useProfile();
   const [mode, setMode] = useState<FulfillmentMode>('pickup');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(cart.note);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pay-at-counter');
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<SubmittedOrder | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [placing, setPlacing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimers = useRef<number[]>([]);
 
@@ -57,19 +50,23 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
   };
 
   const subtotal = cart.total;
-  const savings = Math.round(subtotal * VOUCHER_RATE);
-  const deliveryFee = mode === 'delivery' ? DELIVERY_FEE : 0;
-  const total = Math.max(0, subtotal - savings) + deliveryFee;
-  const readyBy = estimateReadyBy();
+  // Prices come from the business; orders are collected and paid at the counter.
+  const savings = 0;
+  const deliveryFee = 0;
+  const total = subtotal;
+  const businesses = [...new Set(cart.lines.map((line) => line.merchantName).filter(Boolean))];
+  const merchantLabel = businesses.length > 1 ? `${businesses.length} businesses` : businesses[0] ?? 'This business';
+  const merchantLogo = cart.lines.find((line) => line.merchantLogo)?.merchantLogo ?? NO_IMAGE;
 
   const placeOrder = () => {
     setSubmitError(null);
     // BUG-015 Step 3: submit through the shared order store. The order is
     // never marked paid here — pay-at-counter stays `submitted`, online
     // methods stay `payment-pending` until the merchant verifies payment.
-    const result = orders.submit({
-      merchantId: 'urban',
-      merchantName: MERCHANT_NAME,
+    setPlacing(true);
+    void orders.submit({
+      merchantId: cart.lines[0]?.branchId ?? '',
+      merchantName: merchantLabel,
       customerName: profile.fullName,
       customerPhone: profile.phone || undefined,
       lines: cart.lines.map((line) => ({
@@ -79,8 +76,11 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
         price: line.price,
         qty: line.qty,
         image: line.image,
-        options: line.options,
-        instructions: line.instructions || note.trim() || undefined,
+          options: line.options,
+          instructions: line.instructions || note.trim() || undefined,
+          branchId: line.branchId,
+          merchantName: line.merchantName,
+          merchantLogo: line.merchantLogo,
       })),
       subtotal,
       savings,
@@ -90,14 +90,16 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
       note: note.trim() || undefined,
       paymentMethod,
       marketingConsent,
+    }).then((result) => {
+      setPlacing(false);
+      if (!result.ok) {
+        setSubmitError(result.error);
+        showToast(result.error);
+        return;
+      }
+      setDialogOpen(true);
+      setPendingOrder(result.order);
     });
-    if (!result.ok) {
-      setSubmitError(result.error);
-      showToast(result.error);
-      return;
-    }
-    setDialogOpen(true);
-    setPendingOrder(result.order);
   };
 
   const confirmOrder = () => {
@@ -154,16 +156,15 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
             <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
               <div className="flex items-center gap-space-sm">
                 <div className="w-12 h-12 rounded-lg bg-surface-container overflow-hidden shrink-0">
-                  <img className="w-full h-full object-cover" alt={MERCHANT_NAME} src={MERCHANT_IMAGE} />
+                  <img className="w-full h-full object-cover" alt={merchantLabel} src={merchantLogo} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
-                    <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{MERCHANT_NAME}</h2>
-                    <Icon name="verified" filled className="text-primary text-[18px]" />
+                    <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{merchantLabel}</h2>
                   </div>
                   <p className="font-caption text-caption text-text-secondary flex items-center gap-1 truncate">
                     <Icon name="location_on" className="text-[15px] text-text-tertiary" />
-                    Nearby local branch • Your selected area
+                    {businesses.length > 1 ? 'One order per business' : 'Collect at the business'}
                   </p>
                 </div>
               </div>
@@ -197,48 +198,21 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   Pay at cashier
                 </span>
               </button>
-              <button
-                type="button"
-                onClick={() => setFulfillment('delivery')}
-                className={`flex-1 py-2.5 px-space-xs rounded-lg transition-all duration-200 flex flex-col items-center text-center ${
-                  mode === 'delivery'
-                    ? 'bg-surface-container-lowest text-primary shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                <span
-                  className={`font-button-secondary text-button-secondary flex items-center gap-1 ${
-                    mode === 'delivery' ? 'font-semibold' : 'font-medium'
-                  }`}
-                >
-                  <Icon name="moped" className="text-[18px]" />
-                  Business Delivery
-                </span>
-                <span
-                  className={`font-caption text-caption mt-0.5 ${
-                    mode === 'delivery' ? 'text-text-secondary' : 'text-text-tertiary'
-                  }`}
-                >
-                  Pay to dispatch
-                </span>
-              </button>
-            </div>
+                          </div>
           </section>
 
           <section className="px-margin mb-space-md">
             <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm space-y-space-md">
               <div className="flex items-start gap-space-sm bg-surface-tint-blue/60 p-space-sm rounded-lg">
                 <div className="w-8 h-8 rounded-full bg-primary-fixed flex items-center justify-center text-primary shrink-0">
-                  <Icon name={mode === 'pickup' ? 'storefront' : 'two_wheeler'} className="text-[20px]" />
+                  <Icon name="storefront" className="text-[20px]" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-label-md text-label-md font-semibold text-text-primary">
-                    {mode === 'pickup' ? `Ready in ~25 mins (Est. ${readyBy})` : 'Direct Dispatch by Urban Grill Staff'}
+                    Collect at the business
                   </p>
                   <p className="font-caption text-caption text-text-secondary">
-                    {mode === 'pickup'
-                      ? 'Your selected local pickup point'
-                      : 'Delivering to your selected area'}
+                    The business confirms when it’s ready
                   </p>
                 </div>
               </div>
@@ -268,13 +242,13 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   </button>
                 </div>
                 <p className="font-caption text-caption text-text-tertiary">
-                  Used by {MERCHANT_NAME} to identify your order at collection.
+                  Used by {merchantLabel} to identify your order at collection.
                 </p>
               </div>
 
               <div className="space-y-1.5">
                 <label className="font-label-sm text-label-sm text-text-secondary" htmlFor="order-notes">
-                  Kitchen &amp; Seating Note
+                  Order Note
                 </label>
                 <div className="flex items-start gap-space-xs bg-surface-subtle px-space-md py-2.5 rounded-lg">
                   <Icon name="edit_note" className="text-text-tertiary text-[20px] mt-0.5" />
@@ -297,7 +271,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">
                   Ordered Items ({cart.count})
                 </h3>
-                <span className="font-label-sm text-label-sm text-text-secondary">Direct from Menu</span>
+                <span className="font-label-sm text-label-sm text-text-secondary">Live prices</span>
               </div>
               {cart.lines.length === 0 ? (
                 <div className="py-space-md text-center flex flex-col items-center gap-2">
@@ -323,7 +297,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                             </span>
                           </div>
                           <p className="font-caption text-caption text-text-secondary mt-0.5 truncate">
-                            {line.options ?? 'Standard preparation'}
+                            {line.options ?? line.merchantName ?? ''}
                           </p>
                           {line.instructions && (
                             <p className="font-caption text-caption text-text-tertiary truncate">
@@ -332,10 +306,6 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                           )}
                           <div className="flex items-center gap-2 mt-1.5">
                             <span className="font-label-sm text-label-sm text-text-tertiary">Qty: {line.qty}</span>
-                            <span className="w-1 h-1 rounded-full bg-outline-variant" />
-                            <span className="font-caption text-caption text-badge-discount-text font-medium">
-                              Eligible for 20% Voucher
-                            </span>
                           </div>
                         </div>
                       </article>
@@ -343,30 +313,6 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   ))}
                 </div>
               )}
-            </div>
-          </section>
-
-          <section className="px-margin mb-space-md">
-            <div className="bg-badge-discount-bg rounded-xl p-space-md shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs">
-                  <span className="w-7 h-7 rounded-full bg-badge-discount-text/10 flex items-center justify-center text-badge-discount-text">
-                    <Icon name="confirmation_number" className="text-[18px]" />
-                  </span>
-                  <div>
-                    <p className="font-label-md text-label-md font-semibold text-badge-discount-text tracking-tight">
-                      20% OFF Deal Voucher APPLIED
-                    </p>
-                    <p className="font-caption text-caption text-text-secondary">
-                      Code: <span className="font-mono font-semibold text-text-primary">{VOUCHER_CODE}</span> • Lifetime
-                      VEMTAP Tap
-                    </p>
-                  </div>
-                </div>
-                <span className="bg-surface-canvas text-badge-discount-text font-label-sm text-label-sm font-semibold px-2 py-1 rounded-full shadow-sm">
-                  -{naira(savings)}
-                </span>
-              </div>
             </div>
           </section>
 
@@ -379,32 +325,12 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                 <span>Items Subtotal ({cart.count} items)</span>
                 <span className="text-text-primary font-medium">{naira(subtotal)}</span>
               </div>
-              <div className="flex justify-between font-body-md text-body-md text-badge-discount-text font-medium">
-                <span className="flex items-center gap-1">
-                  <span>VEMTAP Deal Savings (20%)</span>
-                  <Icon name="check_circle" className="text-[16px]" />
-                </span>
-                <span>-{naira(savings)}</span>
-              </div>
-              <div className="flex justify-between font-body-md text-body-md text-text-secondary">
-                <span className="flex items-center gap-1" title="Zero platform markups on VEMTAP">
-                  Restaurant Service Fee
-                  <Icon name="info" className="text-text-tertiary text-[15px]" />
-                </span>
-                <span className="text-badge-discount-text font-medium">₦0 (No Markup)</span>
-              </div>
-              {mode === 'delivery' && (
-                <div className="flex justify-between font-body-md text-body-md text-text-secondary">
-                  <span>Direct Dispatch Logistics</span>
-                  <span className="text-text-primary font-medium">{naira(deliveryFee)}</span>
-                </div>
-              )}
               <div className="h-px bg-surface-container my-space-xs" />
               <div className="flex justify-between items-baseline pt-1">
                 <div>
                   <p className="font-heading-sm text-heading-sm text-text-primary">Total Payable to Merchant</p>
                   <p className="font-caption text-caption text-text-secondary">
-                    Direct settlement at cashier / upon drop-off
+                    Pay at the cashier when you collect
                   </p>
                 </div>
                 <span className="font-heading-sm text-heading-sm text-primary font-bold tracking-tight">
@@ -418,7 +344,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
             <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm space-y-space-sm">
               <h3 className="font-label-md text-label-md font-semibold text-text-primary">Payment Method</h3>
               <p className="font-caption text-caption text-text-secondary">
-                Choose how you&apos;ll settle {MERCHANT_NAME}. Your order is never marked paid until payment is
+                Choose how you&apos;ll settle {merchantLabel}. Your order is never marked paid until payment is
                 verified.
               </p>
               <div className="space-y-space-xs">
@@ -473,7 +399,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   className="mt-0.5 accent-primary w-4 h-4 rounded"
                 />
                 <span className="font-caption text-caption text-text-secondary">
-                  Also send me occasional offers from {MERCHANT_NAME} (optional). Your order works either way —
+                  Also send me occasional offers from {merchantLabel} (optional). Your order works either way —
                   transactional messages about this order are always allowed.
                 </span>
               </label>
@@ -506,11 +432,11 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
             </div>
             <button
               type="button"
-              disabled={cart.lines.length === 0}
+              disabled={cart.lines.length === 0 || placing}
               onClick={placeOrder}
               className="w-full h-11 bg-primary-container hover:bg-primary active:scale-[0.99] transition-all rounded-xl text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <span>Place Order with Urban Grill</span>
+              <span>{placing ? 'Placing Order…' : 'Place Order'}</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
             <p className="font-caption text-caption text-center text-text-tertiary mt-2">
@@ -525,9 +451,9 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
               <div className="w-16 h-16 rounded-full bg-badge-discount-bg text-badge-discount-text mx-auto flex items-center justify-center">
                 <Icon name="check_circle" filled className="text-[36px]" />
               </div>
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Submitted to Kitchen!</h3>
+              <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Sent!</h3>
               <p className="font-body-md text-body-md text-text-secondary">
-                {MERCHANT_NAME} has received your ticket. Present order reference{' '}
+                {merchantLabel} has received your ticket. Present order reference{' '}
                 <span className="font-mono font-semibold text-text-primary">
                   #{pendingOrder?.ref ?? '—'}
                 </span>{' '}
@@ -548,11 +474,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
                   <span>Settlement:</span>
                   <span className="font-medium text-primary">{naira(total)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Expected by:</span>
-                  <span className="font-medium text-text-primary">{readyBy}</span>
-                </div>
-              </div>
+                              </div>
               <button
                 type="button"
                 onClick={confirmOrder}
@@ -566,7 +488,7 @@ export function CheckoutScreen({ onBack, onPlaced }: CheckoutScreenProps) {
       </main>
 
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

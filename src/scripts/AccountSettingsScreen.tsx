@@ -3,8 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { useProfile } from '../context/ProfileContext';
-import { hasApiConfig } from '../lib/api';
-import { accountService, authService } from '../services';
+import { deviceIcon, deviceLabel, relativeTime, useAccountSecurity, type NotificationPrefKey } from '../hooks/useAccountSecurity';
+import { authService } from '../services';
 import { apiErrorMessage } from '../services/errorMessages';
 
 function PasswordChangeModal({
@@ -152,20 +152,23 @@ interface AccountSettingsScreenProps {
   onSignOut: () => void;
 }
 
-interface ToggleState {
-  biometrics: boolean;
-  sms: boolean;
-  email: boolean;
-  personalized: boolean;
-}
-
 interface ToggleProps {
   checked: boolean;
   onChange: () => void;
   label: string;
+  disabled?: boolean;
 }
 
-function Toggle({ checked, onChange, label }: ToggleProps) {
+type LocationPermission = 'granted' | 'prompt' | 'denied' | 'unknown';
+
+const LOCATION_LABEL: Record<LocationPermission, string> = {
+  granted: 'Allowed',
+  prompt: 'Ask Each Time',
+  denied: 'Blocked',
+  unknown: 'Not Set',
+};
+
+function Toggle({ checked, onChange, label, disabled }: ToggleProps) {
   return (
     <button
       role="switch"
@@ -173,7 +176,8 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
       aria-label={label}
       type="button"
       onClick={onChange}
-      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+      disabled={disabled}
+      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed ${
         checked ? 'bg-primary' : 'bg-outline-variant'
       }`}
     >
@@ -188,42 +192,28 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
 
 export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSignOut }: AccountSettingsScreenProps) {
   const profile = useProfile();
-  const [toggles, setToggles] = useState<ToggleState>({
-    biometrics: true,
-    sms: true,
-    email: true,
-    personalized: true,
-  });
+  const security = useAccountSecurity();
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [signingOutOthers, setSigningOutOthers] = useState(false);
+  const [showAllDevices, setShowAllDevices] = useState(false);
+  const [showAuditLog, setShowAuditLog] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
+  const [locationPermission, setLocationPermission] = useState<LocationPermission>('unknown');
 
   useEffect(() => {
-    if (!hasApiConfig()) return;
-
-    let cancelled = false;
-    const fetchSecurity = async () => {
-      try {
-        const response = await accountService.getSecurity();
-        if (!cancelled) {
-          const nextSecurityState =
-            response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object'
-              ? (response.data as Record<string, unknown>)
-              : (response && typeof response === 'object' ? (response as Record<string, unknown>) : {});
-
-          setSecurityState(nextSecurityState);
-        }
-      } catch (error) {
-        console.warn('Unable to load account security settings:', error);
-      }
-    };
-
-    fetchSecurity();
-    return () => {
-      cancelled = true;
-    };
+    let status: PermissionStatus | null = null;
+    const sync = () => status && setLocationPermission(status.state as LocationPermission);
+    navigator.permissions
+      ?.query({ name: 'geolocation' as PermissionName })
+      .then((result) => {
+        status = result;
+        sync();
+        result.addEventListener('change', sync);
+      })
+      .catch(() => setLocationPermission('unknown'));
+    return () => status?.removeEventListener('change', sync);
   }, []);
 
   const showToast = (message: string) => {
@@ -231,16 +221,47 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
     window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2400);
   };
 
-  const flip = (key: keyof ToggleState, label: string) => {
-    setToggles((current) => {
-      const next = !current[key];
-      showToast(`${label} turned ${next ? 'on' : 'off'}`);
-      return { ...current, [key]: next };
-    });
+  const flip = (key: NotificationPrefKey, label: string) => {
+    const next = !security.prefs[key];
+    security.updatePref.mutate(
+      { key, value: next },
+      {
+        onSuccess: () => showToast(`${label} turned ${next ? 'on' : 'off'}`),
+        onError: (error) => showToast(apiErrorMessage(error, `Couldn't update ${label.toLowerCase()}`)),
+      },
+    );
   };
 
   const handlePasswordReset = () => {
+    if (!security.hasPin) {
+      showToast('You sign in with Google, so there is no PIN to change');
+      return;
+    }
     setShowPasswordChangeModal(true);
+  };
+
+  const signOutOthers = async () => {
+    setConfirmSignOut(false);
+    if (!security.otherDevices.length) {
+      showToast('No other devices are signed in');
+      return;
+    }
+    setSigningOutOthers(true);
+    try {
+      const count = await security.revokeOthers();
+      showToast(`Signed out of ${count} other device${count === 1 ? '' : 's'}`);
+    } catch (error) {
+      showToast(apiErrorMessage(error, "Couldn't sign out every device. Please try again."));
+    } finally {
+      setSigningOutOthers(false);
+    }
+  };
+
+  const revokeOne = (id: string, name: string) => {
+    security.revokeDevice.mutate(id, {
+      onSuccess: () => showToast(`${name} signed out`),
+      onError: (error) => showToast(apiErrorMessage(error, `Couldn't sign out ${name}`)),
+    });
   };
 
   const sectionTitle =
@@ -254,10 +275,14 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   const displayName = profile.fullName || 'User';
   const emailAddress = profile.email || 'No email';
   const phoneNumber = profile.phone || 'No phone number';
-  const securityLabel =
-    typeof securityState?.status === 'string' && securityState.status.trim()
-      ? securityState.status
-      : 'Protected';
+  const securityLabel = security.twoFactorEnabled ? 'Strong' : security.emailVerified ? 'Protected' : 'Verify Email';
+  const activeCount = security.activeDevices.length;
+  const signInMethod = security.hasPin ? '6-digit PIN sign-in' : 'Google sign-in';
+  const securitySummary = `${signInMethod}${security.twoFactorEnabled ? ' with two-step verification' : ''} active${
+    activeCount ? ` on ${activeCount} device${activeCount === 1 ? '' : 's'}` : ''
+  }. Your VEMTAP wallet credentials and deals ledger are secured.`;
+  const visibleDevices = showAllDevices ? security.activeDevices : security.activeDevices.slice(0, 2);
+  const auditSessions = security.allDevices.slice(0, 10);
 
   return (
     <AppScreen>
@@ -300,14 +325,16 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
             </div>
             <Icon name="check_circle" className="text-badge-discount-text text-[18px]" />
           </div>
-          <p className="font-body-md text-body-md text-text-secondary leading-snug">
-            Two-step PIN &amp; Biometric login active. Your VEMTAP wallet credentials and deals ledger are secured.
-          </p>
+          <p className="font-body-md text-body-md text-text-secondary leading-snug">{securitySummary}</p>
           <div className="pt-space-2xs flex items-center gap-space-xs text-text-tertiary">
             <Icon name="account_circle" className="text-[16px] text-primary" />
             <span className="font-caption text-caption text-text-secondary truncate">
-              {displayName} • {phoneNumber} •{' '}
-              <span className="text-badge-discount-text font-medium">Verified</span>
+              {displayName} • {phoneNumber}
+              {security.emailVerified && (
+                <>
+                  {' '}• <span className="text-badge-discount-text font-medium">Verified</span>
+                </>
+              )}
             </span>
           </div>
         </section>
@@ -317,7 +344,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
             <button
               type="button"
-              onClick={() => showToast('Opening PIN manager…')}
+              onClick={handlePasswordReset}
               className={`${rowButton} hover:bg-surface-subtle`}
             >
               <div className="flex items-center gap-space-sm min-w-0">
@@ -327,97 +354,121 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 <div className="min-w-0">
                   <div className="flex items-center gap-space-xs">
                     <span className={rowTitle}>Security PIN</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
+                    {security.hasPin && <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />}
                   </div>
-                  <p className={rowHint}>4-digit PIN used for redemption &amp; access</p>
+                  <p className={rowHint}>
+                    {security.hasPin ? '6-digit PIN used for sign-in & redemption' : 'You sign in with Google — no PIN needed'}
+                  </p>
                   <p className="font-caption text-caption text-primary font-medium mt-0.5">
-                    Active • Changed 2 mo ago
+                    {security.hasPin ? 'Active' : 'Not used'}
+                    {security.twoFactorEnabled ? ' • Two-step verification on' : ''}
                   </p>
                 </div>
               </div>
               {chevron}
             </button>
 
-            <div className="p-space-md flex items-center justify-between gap-space-sm bg-surface-subtle min-h-[64px]">
-              <div className="flex items-center gap-space-sm min-w-0">
-                <div className={iconTile}>
-                  <Icon name="fingerprint" className="text-primary text-[22px]" />
+            {security.hasPin && (
+              <button
+                type="button"
+                onClick={handlePasswordReset}
+                className={`${rowButton} hover:bg-surface-subtle bg-surface-subtle`}
+              >
+                <div className="flex items-center gap-space-sm min-w-0">
+                  <div className={iconTile}>
+                    <Icon name="password" className="text-primary text-[22px]" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className={`${rowTitle} block`}>Change PIN</span>
+                    <p className={rowHint}>Confirm your current PIN, then choose a new one</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <span className={`${rowTitle} block`}>Biometric Login</span>
-                  <p className="font-caption text-caption text-text-secondary line-clamp-1">
-                    Face ID / Touch ID voucher redemption
-                  </p>
-                </div>
-              </div>
-              <Toggle
-                checked={toggles.biometrics}
-                label="Biometric login"
-                onChange={() => flip('biometrics', 'Biometric login')}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handlePasswordReset()}
-              className={`${rowButton} hover:bg-surface-subtle`}
-            >
-              <div className="flex items-center gap-space-sm min-w-0">
-                <div className={iconTile}>
-                  <Icon name="password" className="text-primary text-[22px]" />
-                </div>
-                <div className="min-w-0">
-                  <span className={`${rowTitle} block`}>Change PIN</span>
-                  <p className={rowHint}>Last updated on Oct 4, 2024</p>
-                </div>
-              </div>
-              {chevron}
-            </button>
+                {chevron}
+              </button>
+            )}
           </div>
         </section>
 
-        <section className="space-y-space-xs">
+        <section className="space-y-space-xs" id="account-devices">
           <h2 className={sectionTitle}>Devices &amp; Sessions</h2>
           <div className="bg-surface-container-lowest rounded-xl shadow-sm p-space-md space-y-space-md">
-            <div className="flex items-start justify-between gap-space-xs">
-              <div className="flex items-start gap-space-sm min-w-0">
-                <div className={`${iconTile} mt-0.5`}>
-                  <Icon name="smartphone" className="text-primary text-[22px]" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-space-2xs flex-wrap">
-                    <span className={rowTitle}>iPhone 15 Pro</span>
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-badge-discount-bg font-caption text-[11px] text-badge-discount-text font-semibold">
-                      Active Now
-                    </span>
+            {security.devicesLoading && (
+              <p className="font-caption text-caption text-text-secondary">Loading signed-in devices…</p>
+            )}
+            {!security.devicesLoading && security.devicesError != null && (
+              <p className="font-caption text-caption text-error">Couldn&apos;t load your signed-in devices.</p>
+            )}
+            {!security.devicesLoading && security.devicesError == null && activeCount === 0 && (
+              <p className="font-caption text-caption text-text-secondary">No signed-in devices to show.</p>
+            )}
+
+            {visibleDevices.map((device, index) => {
+              const name = deviceLabel(device);
+              return (
+                <div key={device.id} className="space-y-space-md">
+                  {index > 0 && <div className="h-[1px] bg-surface-container w-full" />}
+                  <div className="flex items-start justify-between gap-space-xs">
+                    <div className="flex items-start gap-space-sm min-w-0">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                          device.isCurrent ? 'bg-surface-tint-blue' : 'bg-surface-subtle'
+                        }`}
+                      >
+                        <Icon
+                          name={deviceIcon(device)}
+                          className={`${device.isCurrent ? 'text-primary' : 'text-secondary'} text-[22px]`}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-space-2xs flex-wrap">
+                          <span className={rowTitle}>{name}</span>
+                          {device.isCurrent && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-badge-discount-bg font-caption text-[11px] text-badge-discount-text font-semibold">
+                              This Device
+                            </span>
+                          )}
+                        </div>
+                        <p className={rowHint}>
+                          {device.ipAddress ? `${device.ipAddress} • ` : ''}
+                          {device.isCurrent ? 'Active now' : `Last active ${relativeTime(device.lastActiveAt)}`}
+                        </p>
+                      </div>
+                    </div>
+                    {!device.isCurrent && (
+                      <button
+                        type="button"
+                        onClick={() => revokeOne(device.id, name)}
+                        disabled={security.revokeDevice.isPending}
+                        className="shrink-0 font-label-sm text-label-sm text-error font-semibold px-space-2xs py-1 rounded-lg active:bg-error-container transition-colors disabled:opacity-60"
+                      >
+                        Sign out
+                      </button>
+                    )}
                   </div>
-                  <p className={rowHint}>Abuja, Nigeria • VEMTAP v2.14.0</p>
                 </div>
-              </div>
-            </div>
+              );
+            })}
 
-            <div className="h-[1px] bg-surface-container w-full" />
-
-            <div className="flex items-start justify-between gap-space-xs">
-              <div className="flex items-start gap-space-sm min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-surface-subtle flex items-center justify-center shrink-0 mt-0.5">
-                  <Icon name="tablet_mac" className="text-secondary text-[22px]" />
-                </div>
-                <div className="min-w-0">
-                  <span className={`${rowTitle} block`}>iPad Air</span>
-                  <p className={rowHint}>Maitama, Nigeria • Last active 3 days ago</p>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => showToast('2 devices signed in to this account')}
-              className="w-full text-left pt-space-2xs flex items-center justify-between text-primary font-label-md text-label-md font-semibold active:opacity-75 transition-opacity"
-            >
-              <span>Manage All Devices (2) &amp; Log Out Others</span>
-              <Icon name="arrow_forward" className="text-[18px]" />
-            </button>
+            {activeCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeCount > 2 && !showAllDevices) setShowAllDevices(true);
+                  else setConfirmSignOut(true);
+                }}
+                disabled={signingOutOthers}
+                className="w-full text-left pt-space-2xs flex items-center justify-between text-primary font-label-md text-label-md font-semibold active:opacity-75 transition-opacity disabled:opacity-60"
+              >
+                <span>
+                  {signingOutOthers
+                    ? 'Signing out other devices…'
+                    : activeCount > 2 && !showAllDevices
+                      ? `Manage All Devices (${activeCount})`
+                      : `Manage All Devices (${activeCount}) & Log Out Others`}
+                </span>
+                <Icon name="arrow_forward" className="text-[18px]" />
+              </button>
+            )}
           </div>
         </section>
 
@@ -432,11 +483,16 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>SMS Alerts</span>
                   <p className="font-caption text-caption text-text-secondary line-clamp-1">
-                    Codes for sign-ins to +234 803 555 0192
+                    {profile.phone ? `Security alerts sent to ${profile.phone}` : 'Add a phone number to receive SMS alerts'}
                   </p>
                 </div>
               </div>
-              <Toggle checked={toggles.sms} label="SMS alerts" onChange={() => flip('sms', 'SMS alerts')} />
+              <Toggle
+                checked={security.prefs.smsSecurity}
+                label="SMS alerts"
+                disabled={!security.prefsLoaded || security.updatePref.isPending}
+                onChange={() => flip('smsSecurity', 'SMS alerts')}
+              />
             </div>
 
             <div className="p-space-md flex items-center justify-between gap-space-sm bg-surface-subtle">
@@ -451,12 +507,18 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                   </p>
                 </div>
               </div>
-              <Toggle checked={toggles.email} label="Email notices" onChange={() => flip('email', 'Email notices')} />
+              <Toggle
+                checked={security.prefs.email}
+                label="Email notices"
+                disabled={!security.prefsLoaded || security.updatePref.isPending}
+                onChange={() => flip('email', 'Email notices')}
+              />
             </div>
 
             <button
               type="button"
-              onClick={() => showToast('Showing recent sign-ins, IPs & tokens')}
+              onClick={() => setShowAuditLog((open) => !open)}
+              aria-expanded={showAuditLog}
               className={`${rowButton} hover:bg-surface-subtle`}
             >
               <div className="flex items-center gap-space-sm min-w-0">
@@ -465,11 +527,40 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Security Audit Log</span>
-                  <p className={rowHint}>Review recent sign-ins, IP addresses &amp; tokens</p>
+                  <p className={rowHint}>Review recent sign-ins, IP addresses &amp; sessions</p>
                 </div>
               </div>
-              {chevron}
+              <Icon
+                name={showAuditLog ? 'expand_less' : 'chevron_right'}
+                className="text-outline-variant text-[20px] shrink-0"
+              />
             </button>
+
+            {showAuditLog && (
+              <ul className="px-space-md pb-space-md space-y-space-xs">
+                {auditSessions.length === 0 && (
+                  <li className="font-caption text-caption text-text-secondary">No sign-in history yet.</li>
+                )}
+                {auditSessions.map((session) => (
+                  <li key={session.id} className="flex items-start justify-between gap-space-xs rounded-lg bg-surface-subtle px-space-sm py-space-xs">
+                    <div className="min-w-0">
+                      <p className="font-label-sm text-label-sm text-on-surface font-semibold truncate">{deviceLabel(session)}</p>
+                      <p className="font-caption text-caption text-text-secondary truncate">
+                        Signed in {relativeTime(session.createdAt)}
+                        {session.ipAddress ? ` • ${session.ipAddress}` : ''}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 font-caption text-caption font-semibold ${
+                        session.revokedAt ? 'text-text-tertiary' : 'text-badge-discount-text'
+                      }`}
+                    >
+                      {session.revokedAt ? 'Signed out' : session.isCurrent ? 'This device' : 'Active'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
 
@@ -483,11 +574,17 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Location Precision</span>
-                  <p className={rowHint}>Deals within 5km in Apo &amp; Maitama</p>
+                  <p className={rowHint}>
+                    {locationPermission === 'granted'
+                      ? 'Used to show deals near you'
+                      : locationPermission === 'denied'
+                        ? 'Allow location in your browser to see nearby deals'
+                        : 'Share your location to see nearby deals'}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-space-2xs shrink-0">
-                <span className="font-caption text-caption text-primary font-medium">While Using</span>
+                <span className="font-caption text-caption text-primary font-medium">{LOCATION_LABEL[locationPermission]}</span>
                 {chevron}
               </div>
             </button>
@@ -500,14 +597,15 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Personalized Deals</span>
                   <p className="font-caption text-caption text-text-secondary line-clamp-1">
-                    Tailor claims to your frequent categories
+                    Deal &amp; promotion alerts from VEMTAP
                   </p>
                 </div>
               </div>
               <Toggle
-                checked={toggles.personalized}
+                checked={security.prefs.marketing}
                 label="Personalized deals"
-                onChange={() => flip('personalized', 'Personalized deals')}
+                disabled={!security.prefsLoaded || security.updatePref.isPending}
+                onChange={() => flip('marketing', 'Personalized deals')}
               />
             </div>
 
@@ -551,10 +649,11 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
             <button
               type="button"
               onClick={() => setConfirmSignOut(true)}
-              className="w-full h-[52px] rounded-xl bg-surface-container-high text-on-surface flex items-center justify-center gap-space-xs font-button-secondary text-button-secondary active:scale-[0.98] transition-transform"
+              disabled={signingOutOthers}
+              className="w-full h-[52px] rounded-xl bg-surface-container-high text-on-surface flex items-center justify-center gap-space-xs font-button-secondary text-button-secondary active:scale-[0.98] transition-transform disabled:opacity-60"
             >
               <Icon name="logout" className="text-[20px] text-error" />
-              <span className="font-semibold">Sign Out of All Devices</span>
+              <span className="font-semibold">{signingOutOthers ? 'Signing out…' : 'Sign Out of All Devices'}</span>
             </button>
             <p className="font-caption text-caption text-text-tertiary text-center">
               You can sign back in anytime with your PIN.
@@ -588,7 +687,9 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               </button>
             </div>
             <p className="font-body-md text-body-md text-text-secondary">
-              You&apos;ll be signed out of all devices except this one. You can sign back in anytime with your PIN.
+              {security.otherDevices.length
+                ? `You'll be signed out of ${security.otherDevices.length} other device${security.otherDevices.length === 1 ? '' : 's'}. This device stays signed in.`
+                : 'No other devices are signed in to your account right now.'}
             </p>
             <div className="flex gap-space-xs">
               <button
@@ -600,10 +701,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setConfirmSignOut(false);
-                  showToast('Signed out of 1 other device');
-                }}
+                onClick={() => void signOutOthers()}
                 className="flex-1 h-11 rounded-xl bg-error text-on-error font-button-secondary text-button-secondary font-semibold active:scale-[0.98] transition-transform"
               >
                 Sign out

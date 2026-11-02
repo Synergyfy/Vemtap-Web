@@ -1,42 +1,91 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useEditProfile } from '../hooks/useEditProfile';
+import { apiErrorMessage } from '../services/errorMessages';
 
 interface EditProfileScreenProps {
   onBack: () => void;
 }
 
-const AVATAR_URL =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAWtbunYzQIPzZu8IFliEeDjcfIlsT2lnGlhG4NgJvukajbLSvMfRPjRw5e8KNQaWWwogqIKcyb-L5lfxrP5bgB3HcsiOj4RlXpers0FRYqQeMG4gzeeHAQ03OrO0FtEqceG2y7OISa1P6m0lTVodgzascGABQMJyz8jnw-KChw93sJS93sG4r3Zb9bTmgu8IaggCsl4dk-Wx0-w8_vxmB2o1fgfaS2s6uu7jhL5VZ_ZZeKJDTr-bZ1yA';
-const AVATAR_ALT =
-  'Editorial warm studio portrait of Zainab Ahmed, a radiant 28-year-old Nigerian woman with stylish braided hair, luminous skin, and an authentic gentle smile, wearing a modern cobalt blue collar shirt, soft warm ambient lighting, natural depth of field, high-fidelity lifestyle photo';
-
 const GENDERS = ['Female', 'Male', 'Prefer not to say'] as const;
-type Gender = (typeof GENDERS)[number];
 
 export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
-  const [firstName, setFirstName] = useState('Zainab');
-  const [lastName, setLastName] = useState('Ahmed');
-  const [email, setEmail] = useState('zainab.ahmed@example.com');
-  const [phone, setPhone] = useState('803 555 0192');
-  const [birthday, setBirthday] = useState('14 October');
-  const [gender, setGender] = useState<Gender>('Female');
-  const [saving, setSaving] = useState(false);
+  const account = useEditProfile();
+  const [firstName, setFirstName] = useState(account.firstName);
+  const [lastName, setLastName] = useState(account.lastName);
+  const [phone, setPhone] = useState(account.phone);
+  const [gender, setGender] = useState(account.gender);
+  const [districtId, setDistrictId] = useState(account.homeDistrictId ?? '');
+  const [touched, setTouched] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [avatar, setAvatar] = useState(account.avatar);
   const [toast, setToast] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const saving = account.save.isPending;
+
+  // Follow the live profile until the customer edits a field.
+  useEffect(() => {
+    if (touched) return;
+    setFirstName(account.firstName);
+    setLastName(account.lastName);
+    setPhone(account.phone);
+    setGender(account.gender);
+    setDistrictId(account.homeDistrictId ?? '');
+  }, [touched, account.firstName, account.lastName, account.phone, account.gender, account.homeDistrictId]);
+  useEffect(() => setAvatar(account.avatar), [account.avatar]);
+
+  const edit = <T,>(setter: (value: T) => void) => (value: T) => {
+    setTouched(true);
+    setter(value);
+  };
 
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast((current) => (current === message ? null : current)), 2400);
   };
 
+  const pickPhoto = () => fileInput.current?.click();
+
+  const onPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      setAvatar(await account.uploadAvatar(file));
+      showToast('Profile photo updated');
+    } catch (error) {
+      showToast(apiErrorMessage(error, "Couldn't upload your photo"));
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+
   const saveProfile = () => {
     if (saving) return;
-    setSaving(true);
-    window.setTimeout(() => {
-      setSaving(false);
-      showToast('Profile updated successfully!');
-    }, 700);
+    if (!firstName.trim()) {
+      showToast('Enter your first name');
+      return;
+    }
+    account.save.mutate(
+      {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(gender ? { gender } : {}),
+        homeDistrictId: districtId || null,
+      },
+      {
+        onSuccess: () => {
+          setTouched(false);
+          showToast('Profile updated successfully!');
+        },
+        onError: (error) => showToast(apiErrorMessage(error, "Couldn't save your profile. Please try again.")),
+      },
+    );
   };
+
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || 'U';
 
   return (
     <AppScreen>
@@ -74,13 +123,31 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
         <div className="px-margin pt-space-md pb-space-3xl flex flex-col gap-space-lg">
           <div className="flex flex-col items-center justify-center text-center">
             <div className="relative">
-              <div className="w-28 h-28 rounded-full overflow-hidden shadow-md bg-surface-container-high">
-                <img className="w-full h-full object-cover" src={AVATAR_URL} data-alt={AVATAR_ALT} alt={AVATAR_ALT} />
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(event) => void onPhoto(event.target.files?.[0])}
+              />
+              <div className="relative w-28 h-28 rounded-full overflow-hidden shadow-md bg-surface-container-high">
+                {avatar ? (
+                  <img className="w-full h-full object-cover" src={avatar} alt={`${firstName} ${lastName}`.trim() || 'Profile photo'} />
+                ) : (
+                  <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-heading-md text-heading-md">
+                    {initials}
+                  </div>
+                )}
+                {uploading && (
+                  <div className="absolute inset-0 rounded-full bg-inverse-surface/50 flex items-center justify-center">
+                    <Icon name="progress_activity" className="text-[24px] text-inverse-on-surface animate-spin" />
+                  </div>
+                )}
               </div>
               <button
                 aria-label="Upload new profile picture"
                 type="button"
-                onClick={() => showToast('Photo selector opened')}
+                onClick={pickPhoto}
                 className="absolute bottom-0 right-0 w-9 h-9 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-lg active:scale-90 transition-transform"
               >
                 <Icon name="photo_camera" className="text-[18px]" filled />
@@ -88,13 +155,13 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
             </div>
             <button
               type="button"
-              onClick={() => showToast('Photo selector opened')}
+              onClick={pickPhoto}
               className="mt-space-sm text-primary font-button-secondary text-button-secondary active:opacity-75 transition-opacity"
             >
               Change Photo
             </button>
             <span className="text-text-tertiary font-caption text-caption mt-space-2xs">
-              JPG, PNG or WEBP under 5MB
+              JPG, PNG or WEBP under 4MB
             </span>
           </div>
 
@@ -105,14 +172,24 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
               </div>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-space-2xs truncate">
-                  <span className="font-heading-sm text-label-md text-text-primary truncate">Verified Consumer</span>
-                  <Icon name="check_circle" className="text-[16px] text-badge-discount-text shrink-0" filled />
+                  <span className="font-heading-sm text-label-md text-text-primary truncate">
+                    {account.emailVerified ? 'Verified Consumer' : 'Consumer'}
+                  </span>
+                  {account.emailVerified && (
+                    <Icon name="check_circle" className="text-[16px] text-badge-discount-text shrink-0" filled />
+                  )}
                 </div>
-                <span className="text-text-secondary font-caption text-caption">Active member since Sept 2024</span>
+                <span className="text-text-secondary font-caption text-caption">
+                  {account.memberSince ? `Member since ${account.memberSince}` : 'VEMTAP member'}
+                </span>
               </div>
             </div>
-            <span className="bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-space-xs py-space-2xs rounded-full shrink-0">
-              Level 2
+            <span
+              className={`font-label-sm text-label-sm px-space-xs py-space-2xs rounded-full shrink-0 ${
+                account.emailVerified ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'
+              }`}
+            >
+              {account.emailVerified ? 'Email verified' : 'Email unverified'}
             </span>
           </div>
 
@@ -128,7 +205,7 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
                     id="firstName"
                     type="text"
                     value={firstName}
-                    onChange={(event) => setFirstName(event.target.value)}
+                    onChange={(event) => edit(setFirstName)(event.target.value)}
                   />
                 </div>
               </div>
@@ -142,7 +219,7 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
                     id="lastName"
                     type="text"
                     value={lastName}
-                    onChange={(event) => setLastName(event.target.value)}
+                    onChange={(event) => edit(setLastName)(event.target.value)}
                   />
                 </div>
               </div>
@@ -159,14 +236,18 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
                     className="w-full bg-transparent border-0 outline-none text-text-primary font-body-md text-body-md truncate"
                     id="emailInput"
                     type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    value={account.email}
+                    readOnly
+                    placeholder="No email on file"
+                    title="Your sign-in email can't be changed here"
                   />
                 </div>
-                <div className="flex items-center gap-1 bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-                  <Icon name="check" className="text-[13px] text-badge-discount-text" filled />
-                  <span className="text-badge-discount-text font-label-sm text-caption">Verified</span>
-                </div>
+                {account.email && account.emailVerified && (
+                  <div className="flex items-center gap-1 bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
+                    <Icon name="check" className="text-[13px] text-badge-discount-text" filled />
+                    <span className="text-badge-discount-text font-label-sm text-caption">Verified</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -187,52 +268,33 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
                     id="phoneInput"
                     type="tel"
                     value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
+                    placeholder="Phone number"
+                    onChange={(event) => edit(setPhone)(event.target.value)}
                   />
-                </div>
-                <div className="flex items-center gap-1 bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-                  <Icon name="check" className="text-[13px] text-badge-discount-text" filled />
-                  <span className="text-badge-discount-text font-label-sm text-caption">Verified</span>
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-space-2xs">
               <label className="text-text-secondary font-label-sm text-label-sm">Default Shopping District</label>
-              <button
-                type="button"
-                onClick={() => showToast('Opening Abuja neighborhood selector')}
-                className="h-[52px] w-full bg-surface-container-low rounded-lg px-space-md flex items-center justify-between text-left active:bg-surface-container-high transition-colors"
-              >
-                <div className="flex items-center gap-space-xs min-w-0">
+              <div className="relative h-[52px] w-full bg-surface-container-low rounded-lg px-space-md flex items-center justify-between text-left focus-within:bg-surface-tint-blue transition-colors">
+                <div className="flex items-center gap-space-xs min-w-0 flex-1">
                   <Icon name="location_on" className="text-[20px] text-primary shrink-0" filled />
-                  <span className="text-text-primary font-body-md text-body-md truncate">Apo District, Abuja, NG</span>
+                  <select
+                    aria-label="Default shopping district"
+                    value={districtId}
+                    onChange={(event) => edit(setDistrictId)(event.target.value)}
+                    className="w-full appearance-none bg-transparent border-0 outline-none text-text-primary font-body-md text-body-md truncate"
+                  >
+                    <option value="">{account.districts.length ? 'Choose your district' : 'No districts available'}</option>
+                    {account.districts.map((district) => (
+                      <option key={district.id} value={district.id}>
+                        {district.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <Icon name="chevron_right" className="text-[20px] text-text-tertiary shrink-0" />
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-space-2xs">
-              <div className="flex items-center justify-between">
-                <label className="text-text-secondary font-label-sm text-label-sm" htmlFor="birthdayInput">
-                  Birthday (For merchant perks)
-                </label>
-                <span className="text-text-tertiary font-caption text-caption">Optional</span>
-              </div>
-              <div className="h-[52px] bg-surface-container-low rounded-lg px-space-md flex items-center justify-between gap-space-xs focus-within:bg-surface-tint-blue transition-colors">
-                <div className="flex items-center gap-space-xs flex-1 min-w-0">
-                  <Icon name="featured_seasonal_and_gifts" className="text-[20px] text-tertiary shrink-0" filled />
-                  <input
-                    className="w-full bg-transparent border-0 outline-none text-text-primary font-body-md text-body-md"
-                    id="birthdayInput"
-                    type="text"
-                    value={birthday}
-                    onChange={(event) => setBirthday(event.target.value)}
-                  />
-                </div>
-                <span className="text-badge-discount-text text-label-sm font-label-sm bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-                  Treats active
-                </span>
+                <Icon name="expand_more" className="text-[20px] text-text-tertiary shrink-0 pointer-events-none" />
               </div>
             </div>
 
@@ -244,7 +306,7 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
                     <button
                       key={option}
                       type="button"
-                      onClick={() => setGender(option)}
+                      onClick={() => edit(setGender)(option)}
                       className="h-9 px-space-md rounded-full bg-surface-tint-blue text-primary font-label-md text-label-md flex items-center gap-1 shadow-sm active:scale-95 transition-transform"
                     >
                       <Icon name="check" className="text-[16px]" filled />
@@ -254,7 +316,7 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
                     <button
                       key={option}
                       type="button"
-                      onClick={() => setGender(option)}
+                      onClick={() => edit(setGender)(option)}
                       className="h-9 px-space-md rounded-full bg-surface-container-low text-text-secondary font-label-md text-label-md active:bg-surface-container transition-colors"
                     >
                       {option}
@@ -272,8 +334,8 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
             <div className="flex flex-col">
               <span className="text-text-primary font-heading-sm text-label-md">Instant Tap &amp; Checkout Ready</span>
               <p className="text-text-secondary font-caption text-caption mt-0.5 leading-relaxed">
-                Your profile metadata ensures contactless NFC redemption and customized dining discounts in Abuja
-                venues without manual verification.
+                Your name and phone number are shown to businesses when you redeem a deal, so checkout is quick
+                and needs no manual verification.
               </p>
             </div>
           </div>

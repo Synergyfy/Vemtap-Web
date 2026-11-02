@@ -92,7 +92,7 @@ export function RecipientDetailsSheet({ open, onClose, onContinue, onBack }: Rec
                   autoComplete="given-name"
                   className="w-full h-[52px] px-space-md rounded-[14px] bg-surface-container-lowest font-body-md text-body-md text-text-primary placeholder:text-text-tertiary outline-none shadow-sm focus:bg-surface-tint-blue transition-colors"
                   id="recipient-first-name"
-                  placeholder="e.g. Samuel"
+                  placeholder="First name"
                   required
                   type="text"
                   value={firstName}

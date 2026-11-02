@@ -7,30 +7,31 @@ interface PreferencesScreenProps {
 }
 
 const LANGUAGES = [
-  { id: 'en', label: 'English', native: 'English' },
-  { id: 'ha', label: 'Hausa', native: 'Hausa' },
-  { id: 'yo', label: 'Yoruba', native: 'Yoruba' },
-  { id: 'ig', label: 'Igbo', native: 'Igbo' },
+  { id: 'en', label: 'English', native: 'English', available: true },
+  { id: 'ha', label: 'Hausa', native: 'Hausa', available: false },
+  { id: 'yo', label: 'Yoruba', native: 'Yoruba', available: false },
+  { id: 'ig', label: 'Igbo', native: 'Igbo', available: false },
 ];
 
 const APPEARANCE = [
-  { id: 'system', label: 'System default', icon: 'settings_suggest' },
-  { id: 'light', label: 'Light', icon: 'light_mode' },
-  { id: 'dark', label: 'Dark', icon: 'dark_mode' },
+  { id: 'system', label: 'System default', icon: 'settings_suggest', available: false },
+  { id: 'light', label: 'Light', icon: 'light_mode', available: true },
+  { id: 'dark', label: 'Dark', icon: 'dark_mode', available: false },
 ];
 
 const CURRENCY = [
-  { id: 'ngn', label: 'Nigerian Naira (₦)', code: 'NGN' },
-  { id: 'usd', label: 'US Dollar ($)', code: 'USD' },
-  { id: 'gbp', label: 'British Pound (£)', code: 'GBP' },
+  { id: 'ngn', label: 'Nigerian Naira (₦)', code: 'NGN', available: true },
+  { id: 'usd', label: 'US Dollar ($)', code: 'USD', available: false },
+  { id: 'gbp', label: 'British Pound (£)', code: 'GBP', available: false },
 ];
 
 export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
   const [language, setLanguage] = useState('en');
-  const [appearance, setAppearance] = useState('system');
+  const [appearance, setAppearance] = useState('light');
   const [currency, setCurrency] = useState('ngn');
-  const [haptics, setHaptics] = useState(true);
-  const [compact, setCompact] = useState(false);
+  // Neither behaviour exists in the app yet, so both stay off and locked.
+  const haptics = false;
+  const compact = false;
   const [toast, setToast] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
 
@@ -75,17 +76,18 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
               <button
                 key={item.id}
                 type="button"
+                disabled={!item.available}
                 onClick={() => {
                   setLanguage(item.id);
                   showToast('Language set to ' + item.label);
                 }}
-                className={`w-full flex items-center justify-between p-space-md text-left ${
+                className={`disabled:opacity-50 disabled:cursor-not-allowed w-full flex items-center justify-between p-space-md text-left ${
                   index > 0 ? 'border-t border-border-subtle' : ''
                 }`}
               >
                 <div className="flex flex-col min-w-0">
                   <span className="text-label-md font-label-md text-text-primary font-semibold">{item.native}</span>
-                  <span className="text-caption font-caption text-text-secondary mt-0.5">{item.label}</span>
+                  <span className="text-caption font-caption text-text-secondary mt-0.5">{item.available ? item.label : `${item.label} · Coming soon`}</span>
                 </div>
                 {language === item.id ? (
                   <Icon name="check_circle" className="text-[20px] text-primary" filled />
@@ -106,11 +108,12 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
               <button
                 key={item.id}
                 type="button"
+                disabled={!item.available}
                 onClick={() => {
                   setAppearance(item.id);
                   showToast('Appearance: ' + item.label);
                 }}
-                className={`flex flex-col items-center gap-space-2xs p-space-sm rounded-xl border transition-colors ${
+                className={`disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center gap-space-2xs p-space-sm rounded-xl border transition-colors ${
                   appearance === item.id
                     ? 'border-primary bg-surface-tint-blue'
                     : 'border-border-subtle bg-surface-container-lowest hover:border-outline-variant'
@@ -121,7 +124,7 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
                   className={'text-[22px] ' + (appearance === item.id ? 'text-primary' : 'text-text-secondary')}
                   filled={appearance === item.id}
                 />
-                <span className="text-caption font-caption text-text-primary font-medium">{item.label}</span>
+                <span className="text-caption font-caption text-text-primary font-medium">{item.available ? item.label : `${item.label} · Coming soon`}</span>
               </button>
             ))}
           </div>
@@ -136,15 +139,16 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
               <button
                 key={item.id}
                 type="button"
+                disabled={!item.available}
                 onClick={() => {
                   setCurrency(item.id);
                   showToast('Currency set to ' + item.code);
                 }}
-                className={`w-full flex items-center justify-between p-space-md text-left ${
+                className={`disabled:opacity-50 disabled:cursor-not-allowed w-full flex items-center justify-between p-space-md text-left ${
                   index > 0 ? 'border-t border-border-subtle' : ''
                 }`}
               >
-                <span className="text-label-md font-label-md text-text-primary font-semibold">{item.label}</span>
+                <span className="text-label-md font-label-md text-text-primary font-semibold">{item.available ? item.label : `${item.label} · Coming soon`}</span>
                 {currency === item.id ? (
                   <Icon name="check_circle" className="text-[20px] text-primary" filled />
                 ) : (
@@ -154,7 +158,7 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
             ))}
           </div>
           <p className="text-caption font-caption text-text-secondary px-space-2xs">
-            Merchant prices remain in Naira; other currencies are display-only estimates.
+            Prices are shown in Naira, the currency businesses charge in.
           </p>
         </section>
 
@@ -167,18 +171,15 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
               <div className="flex flex-col min-w-0">
                 <span className="text-label-md font-label-md text-text-primary font-semibold">Haptic feedback</span>
                 <span className="text-caption font-caption text-text-secondary mt-0.5">
-                  Light taps on claims and checkouts.
+                  Light taps on claims and checkouts. Coming soon.
                 </span>
               </div>
               <button
                 aria-label="Toggle haptic feedback"
                 aria-pressed={haptics}
                 type="button"
-                onClick={() => {
-                  setHaptics((prev) => !prev);
-                  showToast(haptics ? 'Haptics disabled' : 'Haptics enabled');
-                }}
-                className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center ${
+                disabled
+                className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center disabled:opacity-50 disabled:cursor-not-allowed ${
                   haptics ? 'bg-primary justify-end' : 'bg-surface-container justify-start'
                 }`}
               >
@@ -189,18 +190,15 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
               <div className="flex flex-col min-w-0">
                 <span className="text-label-md font-label-md text-text-primary font-semibold">Compact deal cards</span>
                 <span className="text-caption font-caption text-text-secondary mt-0.5">
-                  Fit more offers on screen at once.
+                  Fit more offers on screen at once. Coming soon.
                 </span>
               </div>
               <button
                 aria-label="Toggle compact deal cards"
                 aria-pressed={compact}
                 type="button"
-                onClick={() => {
-                  setCompact((prev) => !prev);
-                  showToast(compact ? 'Compact mode off' : 'Compact mode on');
-                }}
-                className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center ${
+                disabled
+                className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center disabled:opacity-50 disabled:cursor-not-allowed ${
                   compact ? 'bg-primary justify-end' : 'bg-surface-container justify-start'
                 }`}
               >
@@ -212,7 +210,7 @@ export function PreferencesScreen({ onBack }: PreferencesScreenProps) {
       </main>
 
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

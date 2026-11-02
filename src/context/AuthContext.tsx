@@ -3,6 +3,7 @@ import { clearAuthTokens, getAccessToken, hasApiConfig } from '../lib/api';
 import { authService } from '../services';
 import { storeAuthResponse } from '../services/authService';
 import { SESSION_EXPIRED_EVENT } from '../services/api/client';
+import { ownerAuthService } from '../services/ownerAuthService';
 import { queryClient } from '../services/queryClient';
 import type { SessionUser } from '../services/sessionService';
 import { socketService } from '../services/socketService';
@@ -23,6 +24,8 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   /** Signs in with a session issued by registration or a role upgrade (`{ access_token, user }`). */
   adoptSession: (response: { access_token?: string; user?: SessionUser }) => SessionUser | undefined;
+  /** Swaps to a token for one shell of a dual-role account and drops the other shell's cached data. */
+  switchShell: (role: 'Owner' | 'Manager' | 'Staff' | 'Customer') => Promise<SessionUser | undefined>;
   markAuthenticated: (next?: boolean) => void;
   markClaimed: () => void;
   resetClaim: () => void;
@@ -34,6 +37,7 @@ const DEFAULT_VALUE: AuthContextValue = {
   signIn: async () => undefined,
   signOut: async () => undefined,
   adoptSession: () => undefined,
+  switchShell: async () => undefined,
   markAuthenticated: () => undefined,
   markClaimed: () => undefined,
   resetClaim: () => undefined,
@@ -159,8 +163,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       writeFlag(AUTHED_KEY, false);
       setAuthed(false);
     };
+    // Another tab signed in or out: follow it straight away.
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== AUTHED_KEY && event.key !== null) return;
+      const next = readFlag(AUTHED_KEY);
+      if (!next) queryClient.clear();
+      setAuthed(next);
+    };
     window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
-    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
   useEffect(() => {
     if (authed) {
@@ -252,6 +267,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (response.user) queryClient.setQueryData(['session', 'profile'], response.user);
         writeFlag(AUTHED_KEY, true);
         setAuthed(true);
+        return response.user;
+      },
+      switchShell: async (role) => {
+        const response = (await ownerAuthService.switchRole(role)) as { access_token?: string; user?: SessionUser };
+        storeAuthResponse(response);
+        persistProfileFromUser(response);
+        if (response.user) queryClient.setQueryData(['session', 'profile'], response.user);
+        await queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== 'session' });
         return response.user;
       },
       markAuthenticated: (next = true) => {

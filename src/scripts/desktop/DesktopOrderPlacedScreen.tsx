@@ -1,18 +1,12 @@
 import { useState } from 'react';
+import { mapEmbedUrl } from '../../hooks/usePublicBusiness';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { OrderQrArt } from '../../components/ui/OrderQrArt';
 import { useOrders, type SubmittedOrder } from '../../context/OrdersContext';
 import {
-  MERCHANT_ADDRESS,
-  MERCHANT_NAME,
-  MERCHANT_PHONE_DISPLAY,
-  MERCHANT_PHONE_TEL,
-  MAP_IMAGE,
   PAYMENT_STATUS_LABELS,
-  VOUCHER_CODE,
   orderStatusLabel,
-  type FulfillmentMode,
 } from '../orderData';
 
 const naira = (value: number) => `₦${value.toLocaleString('en-US')}`;
@@ -34,7 +28,17 @@ export function DesktopOrderPlacedScreen({
 }: DesktopOrderPlacedScreenProps) {
   const orders = useOrders();
   const live = orders.byRef(order.ref) ?? order;
-  const [mode, setMode] = useState<FulfillmentMode>(order.fulfillment);
+  const merchantName = live.merchantName;
+  const merchantAddress = live.merchantAddress ?? '';
+  const merchantPhone = live.merchantPhone ?? '';
+  const hasPoint = live.merchantLatitude != null && live.merchantLongitude != null;
+  const directionsUrl = hasPoint
+    ? `https://www.google.com/maps/search/?api=1&query=${live.merchantLatitude},${live.merchantLongitude}`
+    : merchantAddress
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(merchantAddress)}`
+      : null;
+  const mapUrl = mapEmbedUrl(live.merchantLatitude ?? null, live.merchantLongitude ?? null);
+  const shortRef = live.ref.length > 12 ? live.ref.slice(0, 8).toUpperCase() : live.ref;
   const [accordionOpen, setAccordionOpen] = useState(true);
 
   const itemCount = order.lines.reduce((sum, line) => sum + line.qty, 0);
@@ -43,34 +47,29 @@ export function DesktopOrderPlacedScreen({
   const pickupSteps = [
     {
       step: '1',
-      title: 'Arrive at the Bistro',
-      body: `Head to ${MERCHANT_NAME} at Plot 104 Apo Boulevard, Garki District.`,
+      title: 'Go to the Business',
+      body: `Head to ${merchantName}${merchantAddress ? ` at ${merchantAddress}` : ''}.`,
       accent: false,
     },
     {
       step: '2',
       title: 'Identify Your Order',
-      body: `Show this digital confirmation screen or mention Order #${order.ref} to the hostess or front cashier.`,
+      body: `Show this digital confirmation screen or mention Order #${shortRef} to the cashier.`,
       accent: false,
     },
     {
       step: '3',
       title: `Pay at the Counter: ${naira(total)}`,
-      body: 'Present payment directly to the cashier. Accepted: Physical Card (POS), Cash, or Instant Merchant Bank Transfer.',
+      body: 'Pay the business directly when you collect.',
       accent: true,
     },
     {
       step: '4',
-      title: 'Collect & Relish',
-      body: 'Pick up your heat-sealed package or take a seat at your reserved table.',
+      title: 'Collect Your Order',
+      body: 'The business will have your order ready for you.',
       accent: false,
     },
   ];
-
-  const tabClass = (active: boolean) =>
-    `flex-1 py-2 px-space-sm rounded-lg font-button-secondary text-button-secondary text-center transition-all ${
-      active ? 'bg-surface-canvas text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'
-    }`;
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="deals">
@@ -110,11 +109,11 @@ export function DesktopOrderPlacedScreen({
             </div>
 
             <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
-              Order Received by {MERCHANT_NAME}!
+              Order Received by {merchantName}!
             </h1>
 
             <p className="font-body-lg text-body-lg text-text-secondary">
-              Order <span className="font-semibold text-text-primary">#{order.ref}</span> • Placed just now
+              Order <span className="font-semibold text-text-primary">#{shortRef}</span> • Placed just now
             </p>
 
             <div className="inline-flex items-center gap-space-xs px-space-md py-1 rounded-full bg-surface-tint-blue shadow-sm">
@@ -122,33 +121,21 @@ export function DesktopOrderPlacedScreen({
               <span className="font-label-md text-label-md text-primary font-semibold">
                 {orderStatusLabel(live.status)}
               </span>
-              <span className="font-caption text-caption text-text-secondary">(~20–25 mins)</span>
             </div>
           </section>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start mt-8">
             <div className="flex flex-col gap-6 min-w-0">
               <section className="space-y-space-sm">
-                <div className="flex p-space-2xs rounded-xl bg-surface-container-high">
-                  <button type="button" onClick={() => setMode('pickup')} className={tabClass(mode === 'pickup')}>
-                    Pickup / Dine-in{' '}
-                    {mode === 'pickup' && (
-                      <span className="font-caption text-caption text-badge-discount-text ml-1">(Active)</span>
-                    )}
-                  </button>
-                  <button type="button" onClick={() => setMode('delivery')} className={tabClass(mode === 'delivery')}>
-                    If Delivery
-                  </button>
-                </div>
 
-                {mode === 'pickup' ? (
+                <>
                   <div className="p-6 rounded-xl bg-surface-canvas border border-border-subtle shadow-sm space-y-space-md">
                     <div className="flex items-center gap-space-xs">
                       <div className="w-8 h-8 rounded-full bg-surface-tint-blue flex items-center justify-center">
-                        <Icon name="restaurant" filled className="text-primary text-sm" />
+                        <Icon name="storefront" filled className="text-primary text-sm" />
                       </div>
                       <h2 className="font-heading-sm text-heading-sm text-text-primary">
-                        Dine-in or Counter Pickup Guide
+                        Pickup Guide
                       </h2>
                     </div>
                     <ol className="space-y-space-md">
@@ -171,68 +158,26 @@ export function DesktopOrderPlacedScreen({
                       ))}
                     </ol>
                   </div>
-                ) : (
-                  <div className="p-6 rounded-xl bg-surface-canvas border border-border-subtle shadow-sm space-y-space-md">
-                    <div className="flex items-center gap-space-xs">
-                      <div className="w-8 h-8 rounded-full bg-surface-tint-blue flex items-center justify-center">
-                        <Icon name="two_wheeler" className="text-primary text-sm" />
-                      </div>
-                      <h2 className="font-heading-sm text-heading-sm text-text-primary">
-                        Doorstep Delivery Instructions
-                      </h2>
-                    </div>
-                    <div className="space-y-space-sm">
-                      <div className="flex items-start gap-space-sm p-space-sm rounded-lg bg-surface-subtle">
-                        <Icon name="phone_in_talk" className="text-primary text-lg mt-0.5" />
-                        <p className="font-body-md text-body-md text-text-secondary">
-                          The restaurant dispatch rider will call your mobile line (
-                          <span className="font-medium text-text-primary">{MERCHANT_PHONE_DISPLAY}</span>) immediately
-                          upon approaching your gate or security post.
-                        </p>
-                      </div>
-                      <div className="flex items-start gap-space-sm p-space-sm rounded-lg bg-badge-discount-bg">
-                        <Icon name="payments" className="text-badge-discount-text text-lg mt-0.5" />
-                        <div>
-                          <p className="font-label-md text-label-md text-badge-discount-text font-semibold">
-                            Payment Upon Delivery
-                          </p>
-                          <p className="font-caption text-caption text-text-secondary">
-                            Hand {naira(total)} to the courier via Cash or tap using their handheld wireless POS
-                            terminal before order handover.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-space-sm p-space-sm rounded-lg bg-surface-subtle">
-                        <Icon name="security" className="text-text-secondary text-lg mt-0.5" />
-                        <p className="font-body-md text-body-md text-text-secondary">
-                          Need to provide compound gate passes or specific drop-off notes? Dial the kitchen team
-                          directly below.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+</>
               </section>
 
               <section className="p-6 rounded-xl bg-surface-canvas border border-border-subtle shadow-sm space-y-space-md">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="font-heading-sm text-heading-sm text-text-primary">{MERCHANT_NAME}</h2>
-                    <p className="font-caption text-caption text-text-secondary">Kitchen Desk • Orders Helpdesk</p>
+                    <h2 className="font-heading-sm text-heading-sm text-text-primary">{merchantName}</h2>
                   </div>
-                  <span className="inline-flex items-center px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    Available Now
-                  </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-space-xs">
-                  <a
-                    className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-high active:scale-95 transition-all text-center"
-                    href={`tel:${MERCHANT_PHONE_TEL}`}
+                <div className={`grid ${merchantPhone ? 'grid-cols-3' : 'grid-cols-1'} gap-space-xs`}>
+                  {merchantPhone ? (
+<a
+ className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-high active:scale-95 transition-all text-center"
+ href={`tel:${merchantPhone}`}
                   >
                     <Icon name="call" className="text-primary text-xl mb-1" />
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold">Direct Call</span>
                   </a>
+) : null}
                   <button
                     type="button"
                     onClick={onTrack}
@@ -241,48 +186,44 @@ export function DesktopOrderPlacedScreen({
                     <Icon name="chat" className="text-primary text-xl mb-1" />
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold">In-App Chat</span>
                   </button>
-                  <a
-                    className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-high active:scale-95 transition-all text-center"
-                    href={`https://wa.me/${MERCHANT_PHONE_TEL}`}
+                  {merchantPhone ? (
+<a
+ className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-high active:scale-95 transition-all text-center"
+ href={`https://wa.me/${merchantPhone.replace(/\D/g, '')}`}
                     rel="noopener noreferrer"
                     target="_blank"
                   >
                     <Icon name="forum" filled className="text-badge-discount-text text-xl mb-1" />
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold">WhatsApp</span>
                   </a>
+) : null}
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-subtle p-space-sm rounded-lg">
-                  <div className="flex items-start gap-space-xs min-w-0 pr-2">
+                {merchantAddress ? (
+<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-subtle p-space-sm rounded-lg">
+<div className="flex items-start gap-space-xs min-w-0 pr-2">
                     <Icon name="location_on" className="text-primary text-lg mt-0.5 shrink-0" />
-                    <span className="font-caption text-caption text-text-secondary">{MERCHANT_ADDRESS}</span>
+                    <span className="font-caption text-caption text-text-secondary">{merchantAddress}</span>
                   </div>
-                  <a
-                    className="shrink-0 font-button-secondary text-button-secondary text-primary font-semibold hover:underline"
-                    href={`https://maps.google.com/?q=${encodeURIComponent(MERCHANT_ADDRESS)}`}
+                  {directionsUrl ? (
+<a
+ className="shrink-0 font-button-secondary text-button-secondary text-primary font-semibold hover:underline"
+ href={directionsUrl}
                     rel="noopener noreferrer"
                     target="_blank"
                   >
                     Directions
                   </a>
-                </div>
+) : null}
+</div>
+) : null}
               </section>
 
-              <section className="rounded-xl overflow-hidden shadow-sm">
-                <a
-                  className="w-full h-36 bg-cover bg-center flex items-end p-4 relative"
-                  href={`https://maps.google.com/?q=${encodeURIComponent(MERCHANT_ADDRESS)}`}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                  style={{ backgroundImage: `url('${MAP_IMAGE}')` }}
-                >
-                  <span className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <span className="relative flex items-center gap-space-xs text-on-primary">
-                    <Icon name="navigation" className="text-sm" />
-                    <span className="font-caption text-caption font-semibold">0.4 km away • 4 min drive</span>
-                  </span>
-                </a>
-              </section>
+              {mapUrl ? (
+<section className="rounded-xl overflow-hidden shadow-sm">
+<iframe title={`Map showing ${merchantName}`} className="w-full h-44 border-0" src={mapUrl} loading="lazy" />
+</section>
+) : null}
             </div>
 
             <aside className="lg:sticky lg:top-24 flex flex-col gap-6 min-w-0">
@@ -294,7 +235,7 @@ export function DesktopOrderPlacedScreen({
                 </div>
                 <OrderQrArt value={live.ref} size={180} className="rounded-lg border border-subtle" />
                 <span className="font-mono text-heading-sm text-heading-sm font-bold text-text-primary tracking-widest">
-                  {live.ref}
+                  {shortRef}
                 </span>
                 <span className="font-caption text-caption text-text-secondary text-center">
                   Show this pass or quote the order number to the cashier.
@@ -340,9 +281,6 @@ export function DesktopOrderPlacedScreen({
                     </p>
                   </div>
                   <div className="flex items-center gap-space-xs shrink-0">
-                    <span className="font-caption text-caption px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-semibold">
-                      {VOUCHER_CODE} Applied
-                    </span>
                     <Icon
                       name="expand_more"
                       className={`text-text-tertiary transition-transform duration-200 ${
@@ -368,16 +306,6 @@ export function DesktopOrderPlacedScreen({
                         <span>Subtotal</span>
                         <span>{naira(order.subtotal)}</span>
                       </div>
-                      <div className="flex justify-between font-caption text-caption text-badge-discount-text font-semibold">
-                        <span>Loyalty Voucher Discount</span>
-                        <span>-{naira(order.savings)}</span>
-                      </div>
-                      {order.deliveryFee > 0 && (
-                        <div className="flex justify-between font-caption text-caption text-text-secondary">
-                          <span>Direct Dispatch Logistics</span>
-                          <span>{naira(order.deliveryFee)}</span>
-                        </div>
-                      )}
                       <div className="flex justify-between font-label-md text-label-md text-text-primary font-bold pt-1">
                         <span>Total Payable to Cashier</span>
                         <span className="text-primary">{naira(total)}</span>

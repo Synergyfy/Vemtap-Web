@@ -24,7 +24,7 @@ const withDistanceLabels = <T>(response: T): T => {
   if (Array.isArray(response)) return response.map(label) as T;
   if (response && typeof response === 'object') {
     const record = response as Record<string, unknown>;
-    for (const key of ['data', 'items']) {
+    for (const key of ['data', 'items', 'businesses']) {
       if (Array.isArray(record[key])) return { ...record, [key]: (record[key] as unknown[]).map(label) } as T;
     }
   }
@@ -37,7 +37,7 @@ const feedRows = (response: unknown): unknown[] => {
   if (Array.isArray(response)) return response;
   if (response && typeof response === 'object') {
     const record = response as Record<string, unknown>;
-    for (const key of ['data', 'items']) if (Array.isArray(record[key])) return record[key] as unknown[];
+    for (const key of ['data', 'items', 'businesses']) if (Array.isArray(record[key])) return record[key] as unknown[];
   }
   return [];
 };
@@ -47,12 +47,14 @@ const feedRows = (response: unknown): unknown[] => {
  * nothing within the radius → the nearest rows anywhere (still nearest first,
  * with real distances); location params rejected (an older API) → the plain feed.
  */
-const nearestFeed = async <T>(params: FeedParams | undefined, load: (query?: FeedParams) => Promise<T>): Promise<T> => {
+const nearestFeed = async <T>(input: FeedParams | undefined, load: (query?: FeedParams) => Promise<T>): Promise<T> => {
+  // `strictRadius` is ours, not an API param: a distance the customer chose is never widened.
+  const { strictRadius, ...params } = input ?? {};
   const hasPoint = params?.lat !== undefined && params?.lng !== undefined;
   if (!hasPoint) return withDistanceLabels(await load(params));
   try {
     const nearby = await load(params);
-    if (params?.radius === undefined || feedRows(nearby).length > 0) return withDistanceLabels(nearby);
+    if (strictRadius || params?.radius === undefined || feedRows(nearby).length > 0) return withDistanceLabels(nearby);
     const { radius: _radius, ...anywhere } = params ?? {};
     return withDistanceLabels(await load(anywhere));
   } catch (error) {
@@ -88,6 +90,12 @@ export const catalogueService = {
 
   getPublicOffersByBranch: async (branchId: string, params?: Record<string, string | number | boolean | undefined>) =>
     api.get<ApiListResponse<Record<string, unknown>>>(API_ENDPOINTS.catalogue.publicOffersByBranch(branchId), { params }),
+
+  /** `GET /recommendations` — ranked deals for the signed-in customer, in the public feed's shape. */
+  getRecommendations: async (params?: FeedParams) =>
+    nearestFeed(params, (query) =>
+      api.get<ApiListResponse<Record<string, unknown>>>('/recommendations', { params: query }),
+    ),
 
   getPublicOfferDetails: async (id: string) =>
     api.get<Record<string, unknown>>(API_ENDPOINTS.catalogue.publicOfferDetails(id)),

@@ -4,9 +4,9 @@ import { ReferralRecordsPanel } from './ReferralRecordsPanel';
 import { ReferralShareRow } from './ReferralShareRow';
 import { ReferralStatGrid } from './ReferralStatGrid';
 import { useReferralIdentity } from '../../hooks/useReferralIdentity';
-import { useMyReferrals } from '../../hooks/useMyReferrals';
+import { useMyReferrals, useReferralPoints } from '../../hooks/useMyReferrals';
 import { hasApiConfig } from '../../services/api/client';
-import { CUSTOMER_HOW_IT_WORKS, REFERRAL_REWARDS_DISCLAIMER } from '../../scripts/referralData';
+import { CUSTOMER_HOW_IT_WORKS, REFERRAL_REWARDS_DISCLAIMER, buildReferralLink } from '../../scripts/referralData';
 import { Icon } from '../ui/Icon';
 
 const POINT_STATS = [
@@ -46,23 +46,25 @@ const shortDate = (iso?: string) =>
  * desktop shells.
  *
  * Live: the account's stored referral code, its link and the people who
- * signed up with it (`GET /referrals/me`). Points, rewards and challenges
- * stay as empty states — the programme has no rewards backend yet, so no
- * balance, business or offer is invented.
+ * signed up with it (`GET /referrals/me`), plus the customer's loyalty points
+ * and redeemed rewards. Referral rewards and challenges stay as empty states:
+ * the programme has no backend yet, so no reward or offer is invented.
  */
 export function CustomerReferralsContent() {
   const identity = useReferralIdentity();
   const myReferrals = useMyReferrals();
   const live = hasApiConfig();
   const me = myReferrals.data ?? null;
+  const points = useReferralPoints();
+  const figure = (value: number | null) => (value === null ? '—' : value.toLocaleString());
   const stats = live
     ? [
-        POINT_STATS[0],
+        { ...POINT_STATS[0], value: figure(points.available) },
         { ...POINT_STATS[1], value: me ? String(me.totalReferrals) : '—' },
         { ...POINT_STATS[2], value: me ? String(me.referrals.filter((r) => r.type === 'business').length) : '—' },
         { ...POINT_STATS[3], value: me ? String(me.referrals.filter((r) => r.type === 'customer').length) : '—' },
-        POINT_STATS[4],
-        POINT_STATS[5],
+        { ...POINT_STATS[4], value: figure(points.earned) },
+        { ...POINT_STATS[5], value: figure(points.redeemedRewards) },
       ]
     : POINT_STATS;
   const recordsStatus = live ? (myReferrals.isLoading ? 'loading' : myReferrals.error ? 'error' : 'ready') : 'empty';
@@ -97,7 +99,7 @@ export function CustomerReferralsContent() {
         stats={stats}
         note={
           live
-            ? 'People and businesses who sign up with your code are counted here.'
+            ? 'People and businesses who sign up with your code are counted here. Points are your VEMTAP loyalty points; referrals don’t earn points yet.'
             : 'Points aren’t live yet, so every tile starts at zero. Your balance and referral history appear here once the programme launches.'
         }
       />
@@ -109,7 +111,8 @@ export function CustomerReferralsContent() {
            customer — they must see customer benefits, not business ones. */
         accountType="customer"
         code={identity.code}
-        link={identity.link}
+        /* Opens business sign-up, not customer sign-up; the code is the same. */
+        link={buildReferralLink(identity.code, 'business')}
         isPreview={identity.isPreview}
         title="Invite a business"
         description="Know a business that should be on VEMTAP? Send them your link — it helps local customers find them through deals, menus and offers."

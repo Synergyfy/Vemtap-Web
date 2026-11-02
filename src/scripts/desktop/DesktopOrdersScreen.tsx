@@ -1,5 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
+import { useBooking, type SpaAppointment } from '../../context/BookingContext';
+import { useOrders, type SubmittedOrder } from '../../context/OrdersContext';
+import { useTotalSaved } from '../../hooks/useCustomerDashboard';
+import { NO_IMAGE } from '../../utils/homeOffer';
+import { isActiveOrderStatus, orderStatusLabel, PAYMENT_STATUS_LABELS } from '../orderData';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { downloadCsv } from '../../utils/exportCsv';
 import { printKvTable, printReport } from '../../utils/printReport';
@@ -7,17 +13,30 @@ import { printKvTable, printReport } from '../../utils/printReport';
 interface DesktopOrdersScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenOrder?: (ref: string) => void;
-  onOpenBooking?: () => void;
+  onOpenBooking?: (ref: string) => void;
 }
 
 const TABS = [
-  { label: 'All Activity', count: '0', badge: '', type: 'active' },
-  { label: 'Upcoming Appointments', count: '', badge: '', type: 'upcoming' },
-  { label: 'Past Orders & Dine-in', count: '', badge: '', type: 'past' },
-  { label: 'Cancelled', count: '', badge: '', type: 'cancelled' },
+  { label: 'All Activity', type: 'active' },
+  { label: 'Upcoming Appointments', type: 'upcoming' },
+  { label: 'Past Orders & Dine-in', type: 'past' },
+  { label: 'Cancelled', type: 'cancelled' },
+] as const;
+
+type TabType = (typeof TABS)[number]['type'];
+
+const RANGES = [
+  { value: 30, label: 'Last 30 Days' },
+  { value: 7, label: 'Last 7 Days' },
+  { value: 90, label: 'Last 90 Days' },
+  { value: 0, label: 'All Time' },
 ];
 
+const PAGE_SIZE = 10;
+
 type OrderRow = {
+  kind: 'order' | 'booking';
+  ref: string;
   merchant: string;
   orderId: string;
   type: string;
@@ -31,16 +50,72 @@ type OrderRow = {
   methodIcon: string;
   methodIconClass: string;
   status: string;
-  actions: 'reorder' | 'receipt' | 'details';
   image: string;
-  alt: string;
-  merchantTarget: DesktopNavKey;
+  group: 'upcoming' | 'past' | 'cancelled' | 'open';
+  timestamp: number;
 };
 
-const ROWS: OrderRow[] = [];
+const money = (value: number) => `₦${value.toLocaleString('en-US')}`;
+const shortRef = (ref: string) => (ref.length > 12 ? ref.slice(0, 8).toUpperCase() : ref);
 
-export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpenBooking }: DesktopOrdersScreenProps) {
-  const [activeTab, setActiveTab] = useState('active');
+const orderRow = (order: SubmittedOrder): OrderRow => {
+  const when = new Date(order.submittedAt);
+  const cancelled = order.status === 'cancelled' || order.status === 'refunded';
+  return {
+    kind: 'order',
+    ref: order.ref,
+    merchant: order.merchantName,
+    orderId: `#${shortRef(order.ref)}`,
+    type: order.fulfillment === 'delivery' ? 'Delivery' : 'Pickup',
+    typeIcon: 'shopping_bag',
+    typeClass: 'bg-surface-tint-blue text-primary',
+    specifics: order.lines.map((line) => `${line.qty}x ${line.name}`).join(', '),
+    date: when.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }),
+    time: when.toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' }),
+    amount: money(order.total),
+    method: PAYMENT_STATUS_LABELS[order.paymentStatus],
+    methodIcon: 'payments',
+    methodIconClass: 'text-text-tertiary',
+    status: orderStatusLabel(order.status),
+    image: order.lines[0]?.image || order.merchantLogo || NO_IMAGE,
+    group: cancelled ? 'cancelled' : isActiveOrderStatus(order.status) ? 'open' : 'past',
+    timestamp: order.submittedAt,
+  };
+};
+
+const bookingRow = (booking: SpaAppointment): OrderRow => ({
+  kind: 'booking',
+  ref: booking.ref,
+  merchant: booking.merchantName,
+  orderId: `#${booking.ref}`,
+  type: 'Appointment',
+  typeIcon: 'calendar_today',
+  typeClass: 'bg-badge-discount-bg text-badge-discount-text',
+  specifics: booking.serviceNames.join(' & '),
+  date: booking.dateShort,
+  time: booking.time,
+  amount: booking.payable > 0 ? money(booking.payable) : '—',
+  method: 'Pay at the business',
+  methodIcon: 'storefront',
+  methodIconClass: 'text-text-tertiary',
+  status: booking.status === 'confirmed' ? 'Upcoming' : booking.status === 'completed' ? 'Completed' : 'Cancelled',
+  image: booking.merchantImage || NO_IMAGE,
+  group: booking.status === 'confirmed' ? 'upcoming' : booking.status === 'completed' ? 'past' : 'cancelled',
+  timestamp: new Date(`${booking.dateISO.slice(0, 10)}T00:00:00`).getTime() || booking.createdAt,
+});
+
+export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: DesktopOrdersScreenProps) {
+  const [activeTab, setActiveTab] = useState<TabType>('active');
+  const [range, setRange] = useState(0);
+  const [page, setPage] = useState(1);
+  const { orders, ordersLoading } = useOrders();
+  const { appointments, appointmentsLoading } = useBooking();
+  const totalSaved = useTotalSaved();
+  const loading = ordersLoading || appointmentsLoading;
+  const ROWS = useMemo(
+    () => [...orders.map(orderRow), ...appointments.map(bookingRow)].sort((a, b) => b.timestamp - a.timestamp),
+    [orders, appointments],
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [merchant, setMerchant] = useState('all');
 
@@ -57,14 +132,26 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
   const query = searchQuery.trim().toLowerCase();
 
   /** Merchant select and search both have to agree before a row shows. */
-  const visibleRows = ROWS.filter(
+  const inTab = (row: OrderRow, tab: TabType) =>
+    tab === 'active' ||
+    (tab === 'upcoming' && row.group === 'upcoming') ||
+    (tab === 'past' && (row.group === 'past' || row.group === 'open')) ||
+    (tab === 'cancelled' && row.group === 'cancelled');
+  const rangeStart = range ? Date.now() - range * 24 * 60 * 60 * 1000 : 0;
+  const matchingRows = ROWS.filter(
     (row) =>
+      inTab(row, activeTab) &&
+      row.timestamp >= rangeStart &&
       (merchant === 'all' || row.merchant === merchant) &&
       (query === '' ||
         row.merchant.toLowerCase().includes(query) ||
         row.orderId.toLowerCase().includes(query) ||
         row.specifics.toLowerCase().includes(query)),
   );
+  const pageCount = Math.max(1, Math.ceil(matchingRows.length / PAGE_SIZE));
+  useEffect(() => setPage(1), [activeTab, range, merchant, query]);
+  const visibleRows = matchingRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const openRow = (row: OrderRow) => (row.kind === 'order' ? onOpenOrder?.(row.ref) : onOpenBooking?.(row.ref));
 
   const downloadStatement = () => {
     downloadCsv(
@@ -75,7 +162,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
     printReport(
       'VEMTAP Orders Statement',
       `${printKvTable('Statement scope', [
-        ['Period', 'Sep 1 – Oct 15, 2024'],
+        ['Period', ROWS.length ? `${ROWS[ROWS.length - 1].date} – ${ROWS[0].date}` : 'No activity yet'],
         ['Account', 'Customer activity ledger'],
         ['Entries', `${ROWS.length}`],
       ])}
@@ -126,8 +213,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                   Orders &amp; Bookings
                 </h1>
                 <p className="font-body-md text-body-md text-text-secondary max-w-2xl">
-                  Review your direct merchant purchases, upcoming service appointments, and instant digital receipts
-                  across Abuja.
+                  Review your direct merchant purchases, upcoming service appointments, and receipts.
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -150,6 +236,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
               </div>
             </div>
 
+            {!loading && ROWS.length === 0 ? (
             <div className="relative w-full rounded-2xl bg-surface-canvas shadow-xl p-6 mb-10 overflow-hidden">
               <div className="absolute -right-16 -top-16 w-80 h-80 rounded-full bg-primary/5 blur-3xl pointer-events-none" />
               <div className="flex items-center justify-center min-h-[220px] text-center relative">
@@ -166,6 +253,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                 </div>
               </div>
             </div>
+            ) : null}
 
             <div className="bg-surface-canvas rounded-2xl shadow-md p-6 mb-10">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-border-subtle">
@@ -182,28 +270,17 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                       type="button"
                     >
                       <span>{tab.label}</span>
-                      {tab.badge && (
-                        <span className="inline-flex items-center px-1 py-[2px] rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold text-[11px]">
-                          {tab.badge}
-                        </span>
-                      )}
-                      {tab.count && (
-                        <span
-                          className={
-                            activeTab === tab.type
-                              ? 'w-5 h-5 rounded-full bg-primary text-on-primary text-caption font-bold flex items-center justify-center text-[11px]'
-                              : 'text-text-tertiary font-caption text-caption'
-                          }
-                        >
-                          {tab.count}
-                        </span>
-                      )}
+                      <span
+                        className={
+                          activeTab === tab.type
+                            ? 'min-w-5 h-5 px-1 rounded-full bg-primary text-on-primary text-caption font-bold flex items-center justify-center text-[11px]'
+                            : 'text-text-tertiary font-caption text-caption'
+                        }
+                      >
+                        {ROWS.filter((row) => inTab(row, tab.type)).length}
+                      </span>
                     </button>
                   ))}
-                </div>
-                <div className="flex items-center gap-2 text-text-tertiary font-caption text-caption">
-                  <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
-                  <span>Real-time synchronization active</span>
                 </div>
               </div>
 
@@ -217,7 +294,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                     className="w-full h-11 pl-11 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas shadow-inner"
                     id="orderSearchInput"
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search by Order ID (#UG-9021), store name, or item..."
+                    placeholder="Search by order ID, store name, or item..."
                     type="text"
                     value={searchQuery}
                   />
@@ -228,11 +305,17 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                       name="calendar_today"
                       className="absolute left-3 text-[20px] text-text-tertiary pointer-events-none"
                     />
-                    <select className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer">
-                      <option>Date Range: Last 30 Days</option>
-                      <option>Last 7 Days</option>
-                      <option>Last 90 Days</option>
-                      <option>Custom Period (2024)</option>
+                    <select
+                      aria-label="Filter by date range"
+                      className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md appearance-none focus:outline-none cursor-pointer"
+                      onChange={(event) => setRange(Number(event.target.value))}
+                      value={range}
+                    >
+                      {RANGES.map((choice) => (
+                        <option key={choice.value} value={choice.value}>
+                          {choice.label}
+                        </option>
+                      ))}
                     </select>
                     <Icon
                       name="expand_more"
@@ -268,10 +351,11 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                   <button
                     aria-label="Reset filters"
                     className="w-11 h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={merchant === 'all' && query === ''}
+                    disabled={merchant === 'all' && query === '' && range === 0}
                     onClick={() => {
                       setMerchant('all');
                       setSearchQuery('');
+                      setRange(0);
                     }}
                     title="Reset search and merchant filter"
                     type="button"
@@ -281,16 +365,14 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-subtle/50 px-6 py-12 mt-4 text-center">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-canvas shadow-sm text-text-tertiary">
-                  <Icon name="inventory_2" className="text-[28px]" />
-                </div>
-                <h3 className="font-heading-sm text-heading-sm text-text-primary mb-1">No activity to show</h3>
-                <p className="font-body-md text-body-md text-text-secondary max-w-md mx-auto leading-relaxed">
-                  Your real order history and appointments will appear here once the backend starts returning records.
-                </p>
-              </div>
-              <div className="overflow-x-auto mt-2">
+              {loading ? (
+                <SkeletonGroup label="Loading your orders and bookings" className="space-y-3 mt-4">
+                  {[0, 1, 2, 3].map((key) => (
+                    <Skeleton key={key} className="h-16 w-full rounded-xl" />
+                  ))}
+                </SkeletonGroup>
+              ) : null}
+              <div className={loading ? 'hidden' : 'overflow-x-auto mt-2'}>
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="text-text-tertiary font-label-sm text-label-sm uppercase tracking-wider bg-surface-subtle/60 rounded-xl">
@@ -316,21 +398,15 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                   </thead>
                   <tbody className="divide-y divide-border-subtle font-body-md text-body-md">
                     {visibleRows.map((row) => (
-                      <tr className="hover:bg-surface-subtle/50 transition-colors group" key={row.orderId}>
+                      <tr className="hover:bg-surface-subtle/50 transition-colors group" key={`${row.kind}-${row.ref}`}>
                         <td className="py-4 px-4">
                           <div className="flex items-center gap-3">
                             <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-surface-subtle">
-                              {row.image ? (
-                                <img alt={row.alt} className="w-full h-full object-cover" src={row.image} />
-                              ) : (
-                                <div className="w-full h-full bg-secondary/10 flex items-center justify-center text-secondary">
-                                  <Icon name="dry_cleaning" className="text-[26px]" />
-                                </div>
-                              )}
+                              <img alt={row.merchant} className="w-full h-full object-cover" src={row.image} />
                             </div>
                             <div>
                               <button
-                                onClick={() => onNav(row.merchantTarget)}
+                                onClick={() => openRow(row)}
                                 className="font-heading-sm text-heading-sm text-text-primary group-hover:text-primary transition-colors font-semibold text-left"
                                 type="button"
                               >
@@ -367,44 +443,34 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                           </span>
                         </td>
                         <td className="py-4 px-4 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
-                            <Icon name="check_circle" className="text-[14px]" />
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-label-sm text-label-sm font-semibold ${
+                              row.group === 'cancelled'
+                                ? 'bg-surface-container-high text-text-secondary'
+                                : 'bg-badge-discount-bg text-badge-discount-text'
+                            }`}
+                          >
+                            <Icon name={row.group === 'cancelled' ? 'cancel' : 'check_circle'} className="text-[14px]" />
                             <span>{row.status}</span>
                           </span>
                         </td>
                           <td className="py-4 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={() => onOpenOrder?.(row.orderId.split(' ')[0].replace(/^#/, '').trim())}
+                                onClick={() => openRow(row)}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold transition-colors"
                                 type="button"
                               >
-                                <Icon name={row.actions === 'details' ? 'visibility' : 'receipt'} className="text-[16px]" />
-                                <span>
-                                  {row.actions === 'reorder'
-                                    ? 'E-Receipt'
-                                    : row.actions === 'receipt'
-                                      ? 'View Receipt'
-                                      : 'View Details'}
-                                </span>
+                                <Icon name="visibility" className="text-[16px]" />
+                                <span>View Details</span>
                               </button>
-                              {row.actions === 'reorder' && (
-                                <button
-                                  onClick={() => onNav('storefront')}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold hover:opacity-90 transition-opacity"
-                                  type="button"
-                                >
-                                  <Icon name="refresh" className="text-[16px]" />
-                                  <span>Reorder</span>
-                                </button>
-                              )}
                             </div>
                           </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {visibleRows.length === 0 && (
+                {!loading && ROWS.length > 0 && visibleRows.length === 0 && (
                   <div className="flex flex-col items-center text-center py-space-lg px-space-md">
                     <span className="w-14 h-14 rounded-full bg-surface-container-high text-text-tertiary flex items-center justify-center mb-space-sm">
                       <Icon name="search_off" className="text-[26px]" />
@@ -414,13 +480,14 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                     </span>
                     <span className="font-caption text-caption text-text-secondary mt-1 max-w-xs leading-relaxed">
                       {merchant !== 'all' ? `Nothing from ${merchant}` : 'Nothing matches your search'}
-                      {query !== '' ? ` for “${searchQuery.trim()}”` : ''}. Reset the filters to see every order.
+                      {query !== '' ? ` for “${searchQuery.trim()}”` : ''}. Reset the filters to see everything.
                     </span>
                     <button
                       className="mt-space-sm h-10 px-space-md rounded-xl bg-surface-container text-text-primary font-button-secondary text-button-secondary font-medium active:scale-95 transition-transform"
                       onClick={() => {
                         setMerchant('all');
                         setSearchQuery('');
+                        setRange(0);
                       }}
                       type="button"
                     >
@@ -432,24 +499,27 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 mt-4 border-t border-border-subtle">
                 <p className="font-caption text-caption text-text-secondary">
-                  Showing <span className="font-semibold text-text-primary">0</span> of{' '}
-                  <span className="font-semibold text-text-primary">0</span> total transactions across Abuja
+                  Showing <span className="font-semibold text-text-primary">{visibleRows.length}</span> of{' '}
+                  <span className="font-semibold text-text-primary">{matchingRows.length}</span> transactions
                 </p>
                 <div className="flex items-center gap-1">
-                  <button className="p-2 rounded-lg text-text-tertiary cursor-not-allowed" disabled type="button">
-                    <Icon name="chevron_left" className="text-[20px]" />
-                  </button>
-                  <span className="w-8 h-8 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm flex items-center justify-center font-semibold">
-                    1
-                  </span>
                   <button
-                    className="w-8 h-8 rounded-lg hover:bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center justify-center font-medium transition-colors"
+                    aria-label="Previous page"
+                    className="p-2 rounded-lg text-text-primary hover:bg-surface-subtle transition-colors disabled:text-text-tertiary disabled:cursor-not-allowed"
+                    disabled={page === 1}
+                    onClick={() => setPage(page - 1)}
                     type="button"
                   >
-                    2
+                    <Icon name="chevron_left" className="text-[20px]" />
                   </button>
+                  <span className="min-w-8 h-8 px-2 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm flex items-center justify-center font-semibold">
+                    {page} / {pageCount}
+                  </span>
                   <button
-                    className="p-2 rounded-lg text-text-primary hover:bg-surface-subtle transition-colors"
+                    aria-label="Next page"
+                    className="p-2 rounded-lg text-text-primary hover:bg-surface-subtle transition-colors disabled:text-text-tertiary disabled:cursor-not-allowed"
+                    disabled={page >= pageCount}
+                    onClick={() => setPage(page + 1)}
                     type="button"
                   >
                     <Icon name="chevron_right" className="text-[20px]" />
@@ -467,7 +537,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
                   Need help with an order or booking?
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                  Our Abuja support team can chase receipts, reschedule visits, or resolve disputes.
+                  Our support team can chase receipts, reschedule visits, or resolve disputes.
                 </p>
                 <a
                   className="inline-flex items-center gap-1.5 pt-1 font-label-sm text-label-sm text-primary font-semibold hover:underline"
@@ -479,56 +549,15 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking: _onOpen
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch pb-6">
-              <div className="lg:col-span-8 rounded-2xl bg-surface-canvas p-6 shadow-sm flex flex-col sm:flex-row items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0">
-                  <Icon name="shield" className="text-[26px]" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                      VEMTAP Direct Payment Assurance
-                    </h3>
-                    <span className="px-2 py-0.5 rounded bg-surface-subtle font-caption text-caption text-text-tertiary">
-                      NDPR Protected
-                    </span>
-                  </div>
-                  <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                    Payments are settled directly with merchants via POS terminal, direct bank transfer, or cash
-                    without platform middleman fees. VEMTAP provides verified discount attribution, encrypted
-                    appointment scheduling, and permanent digital receipt vaulting.
-                  </p>
-                  <div className="pt-2 flex items-center gap-4">
-                    <button className="font-label-sm text-label-sm text-primary font-semibold inline-flex items-center gap-1.5 hover:underline" type="button">
-                      <span>Read our direct consumer protection pledge</span>
-                      <Icon name="arrow_forward" className="text-[14px]" />
-                    </button>
-                  </div>
-                </div>
+            <div className="rounded-2xl bg-surface-tint-blue p-6 shadow-sm mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-label-sm text-label-sm font-semibold text-primary uppercase tracking-wider">
+                  Lifetime Savings
+                </span>
+                <Icon name="savings" className="text-primary text-[20px]" />
               </div>
-              <div className="lg:col-span-4 rounded-2xl bg-surface-tint-blue p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-label-sm text-label-sm font-semibold text-primary uppercase tracking-wider">
-                      Lifetime Savings
-                    </span>
-                    <Icon name="savings" className="text-primary text-[20px]" />
-                  </div>
-                  <div className="font-display-hero text-display-hero text-text-primary font-bold mb-1">₦42,850</div>
-                  <p className="font-caption text-caption text-text-secondary">
-                    Saved via VEMTAP Tap Deals &amp; Merchant promotions across 12 completed visits.
-                  </p>
-                </div>
-                <div className="pt-4">
-                  <div className="w-full bg-surface-canvas rounded-full h-2 mb-1 overflow-hidden">
-                    <div className="bg-primary h-full rounded-full" style={{ width: '74%' }} />
-                  </div>
-                  <div className="flex items-center justify-between font-caption text-caption text-text-tertiary">
-                    <span>Tier 2 Abuja Explorer</span>
-                    <span className="font-semibold text-primary">74% to Tier 3 Gold</span>
-                  </div>
-                </div>
-              </div>
+              <div className="font-display-hero text-display-hero text-text-primary font-bold mb-1">{money(totalSaved)}</div>
+              <p className="font-caption text-caption text-text-secondary">Saved on the deals you have redeemed with VEMTAP.</p>
             </div>
           </div>
         </div>

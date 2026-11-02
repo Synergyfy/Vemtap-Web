@@ -1,35 +1,43 @@
 import { useRef, useState } from 'react';
+import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
+import { useBooking } from '../../context/BookingContext';
+import { mapEmbedUrl } from '../../hooks/usePublicBusiness';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 
 interface DesktopBookingDetailScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
+  /** Opens the chat with this branch. */
+  onChat?: (branchId: string) => void;
+  /** The booking to open; otherwise the next upcoming one. */
+  bookingRef?: string;
 }
 
-const SPA_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBO8mzoeLehe5p8uSLXesvatMxVjYR42ABeOPmuFYI827KTEwRO_SPbscYV7f85BXGejWcdoe2uaUHATPe7YX9Rznp1ckMjgg-u7m-vBxw0Z67DFpm0ufm4rg1v1fGgqvCCskKZshUlIKCtKB50TjOwwucnjYkGAVmSwO0YgV_OxiLRsYEJ5-ds90djDhdE4ldxF1jZdkv2QhqFByRPUAEcfTeF26LVqRB4KKWSUseg';
-const SPA_ALT = 'Serene luxury day spa treatment room with botanical accents and soft diffuse daylight in Abuja';
-
-const MAP_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBRzuuVi9eFa4IfiKY-0CLXnUqZT2sbZNosW0fYczr-35iaT8YS48jMPhxX5FhnlpIT0M6U61-52cj6dPjBQzinsAIKVmlZpDUKfvnY7-G3LByd50m-xoQvFZg9A_dkudzO9jz0LRWmtKBN1qsOyrPwhv2R0EFtDw9bUTJM-yJ2xFm00pWt8sgDfxXVcbelWtpObOkpjajIiqRQK8pSgKgT2aPd465gP81ZRfUsDx5-0GtlsxHiafGQhg';
-const MAP_ALT = 'Map showing Maitama Heights location in Abuja';
-
-const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Maitama%20Heights%2C%20Abuja';
-const BOOKING_REF = 'VT-BK-44218';
-const BOOKING_CODE = 'VT-SPA8821';
-
-const SERVICES = [
-  { name: 'Deep Hydration Radiance Facial', meta: '60 mins • Amara K. (Lead Aesthetician)', price: '₦17,000' },
-  { name: 'Gel Manicure', meta: '45 mins • Studio 3', price: '₦12,000' },
-];
-
-export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDetailScreenProps) {
+export function DesktopBookingDetailScreen({ onNav, onBack, bookingRef, onChat }: DesktopBookingDetailScreenProps) {
+  const booking = useBooking();
+  const appointment = (bookingRef ? booking.appointmentByRef(bookingRef) : undefined) ?? booking.appointments.find((item) => item.status === 'confirmed') ?? booking.appointments[0];
+  const bookingId = appointment?.ref ?? '';
+  const slotLabel = appointment ? [appointment.dateShort, appointment.time].filter(Boolean).join(' • ') : '';
+  const durationLabel = appointment?.durationLabel ?? '';
+  const merchantName = appointment?.merchantName ?? '';
+  const payable = appointment?.payable ?? 0;
+  const hasPoint = appointment?.merchantLatitude != null && appointment.merchantLongitude != null;
+  const directionsUrl = hasPoint
+    ? `https://www.google.com/maps/search/?api=1&query=${appointment.merchantLatitude},${appointment.merchantLongitude}`
+    : appointment?.merchantAddress
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(appointment.merchantAddress)}`
+      : null;
+  const mapUrl = mapEmbedUrl(appointment?.merchantLatitude ?? null, appointment?.merchantLongitude ?? null);
+  const day = appointment?.dateISO.slice(0, 10).replace(/-/g, '') ?? '';
+  const calendarUrl = appointment
+    ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${appointment.serviceNames.join(' & ')} at ${merchantName}`)}&dates=${day}/${day}&details=${encodeURIComponent(`Booking ${bookingId} at ${appointment.time}`)}`
+    : '';
+  const cancelled = appointment?.status === 'cancelled';
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [inCalendar, setInCalendar] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
   const toastTimer = useRef<number | undefined>(undefined);
 
   const showToast = (message: string) => {
@@ -45,18 +53,38 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
     window.setTimeout(() => setCopied((current) => (current === value ? null : current)), 2000);
   };
 
-  const toggleCalendar = () => {
-    setInCalendar((current) => {
-      showToast(current ? 'Removed from your calendar' : 'Added to your calendar');
-      return !current;
-    });
+  const confirmCancel = async () => {
+    setConfirmOpen(false);
+    if (!appointment) return;
+    try {
+      await booking.cancelAppointment(appointment.ref);
+      showToast('Booking cancelled — your slot was released');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'This booking couldn’t be cancelled. Please try again.');
+    }
   };
 
-  const confirmCancel = () => {
-    setConfirmOpen(false);
-    setCancelled(true);
-    showToast('Booking cancelled — your slot was released');
-  };
+  if (!appointment) {
+    return (
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders">
+        <div className="w-full bg-surface-canvas min-h-[calc(100vh-80px)] flex flex-col items-center justify-center gap-space-sm px-6">
+          {booking.appointmentsLoading ? (
+            <SkeletonGroup label="Loading your booking" className="w-full max-w-2xl space-y-3">
+              <Skeleton className="h-40 w-full rounded-2xl" />
+              <Skeleton className="h-64 w-full rounded-2xl" />
+            </SkeletonGroup>
+          ) : (
+            <>
+              <p className="font-label-md text-label-md text-text-primary font-semibold">We couldn’t find this booking.</p>
+              <button className="h-11 px-6 rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary" onClick={onBack} type="button">
+                Back to Activity
+              </button>
+            </>
+          )}
+        </div>
+      </DesktopPage>
+    );
+  }
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="orders">
@@ -77,7 +105,7 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
                 <Icon name="chevron_right" className="text-[14px]" />
               </li>
               <li aria-current="page" className="font-label-sm text-label-sm text-text-primary">
-                Booking #{BOOKING_REF}
+                Booking #{bookingId}
               </li>
             </ol>
           </nav>
@@ -90,13 +118,13 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
                 }`}
               >
                 <Icon name={cancelled ? 'event_busy' : 'verified'} className="text-[15px]" filled />
-                <span>{cancelled ? 'Booking Cancelled' : 'Confirmed & Slot Reserved • Happening Tomorrow'}</span>
+                <span>{cancelled ? 'Booking Cancelled' : appointment?.status === 'completed' ? 'Completed' : 'Confirmed & Slot Reserved'}</span>
               </div>
               <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
                 Booking Details
               </h1>
               <p className="font-body-md text-body-md text-text-secondary">
-                Glow &amp; Serenity Spa &amp; Salon • Thu, Oct 17 • 1:15 PM WAT
+                {[merchantName, slotLabel].filter(Boolean).join(' • ')}
               </p>
             </div>
             <button
@@ -123,45 +151,34 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
                     </div>
                     <div>
                       <span className="font-heading-sm text-heading-sm text-text-primary font-bold block">
-                        Thu, Oct 17 • 1:15 PM
+                        {slotLabel}
                       </span>
                       <span className="font-caption text-caption text-text-secondary">
-                        Duration ~1h 45m • Arrive by 1:00 PM for consultation
+                        {durationLabel}
                       </span>
                     </div>
                   </div>
-                  <button
-                    aria-pressed={inCalendar}
-                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-label-sm text-label-sm font-semibold transition-colors ${
-                      inCalendar
-                        ? 'bg-badge-discount-bg text-badge-discount-text'
-                        : 'bg-surface-subtle text-primary hover:bg-surface-tint-blue'
-                    }`}
-                    onClick={toggleCalendar}
-                    type="button"
+                  {calendarUrl ? (
+                  <a
+                    href={calendarUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-label-sm text-label-sm font-semibold bg-surface-subtle text-primary hover:bg-surface-tint-blue transition-colors"
                   >
-                    <Icon name={inCalendar ? 'check' : 'event'} className="text-[17px]" />
-                    <span>{inCalendar ? 'Added to Calendar' : 'Add to Calendar'}</span>
-                  </button>
+                    <Icon name="event" className="text-[17px]" />
+                    <span>Add to Calendar</span>
+                  </a>
+                ) : null}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-surface-subtle">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-surface-canvas shadow-sm flex items-center justify-center text-primary">
-                      <Icon name="badge" className="text-[20px]" />
-                    </div>
-                    <div>
-                      <span className="font-caption text-caption text-text-tertiary block">Assigned Specialist</span>
-                      <span className="font-label-md text-label-md text-text-primary font-semibold">Amara K.</span>
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-surface-subtle">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-surface-canvas shadow-sm flex items-center justify-center text-primary">
                       <Icon name="hourglass_top" className="text-[20px]" />
                     </div>
                     <div>
                       <span className="font-caption text-caption text-text-tertiary block">Duration</span>
-                      <span className="font-label-md text-label-md text-text-primary font-semibold">~1h 45m</span>
+                      <span className="font-label-md text-label-md text-text-primary font-semibold">{durationLabel || '—'}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -171,7 +188,7 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
                     <div>
                       <span className="font-caption text-caption text-text-tertiary block">Location</span>
                       <span className="font-label-md text-label-md text-text-primary font-semibold">
-                        Maitama Heights, 3rd Floor
+                        {appointment?.merchantAddress ?? ''}
                       </span>
                     </div>
                   </div>
@@ -180,19 +197,15 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
 
               <section className="bg-surface-canvas rounded-2xl shadow-md p-6">
                 <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border-subtle">
-                  <img alt={SPA_ALT} className="w-14 h-14 rounded-xl object-cover shadow-sm" src={SPA_IMG} />
+                  <img alt={merchantName} className="w-14 h-14 rounded-xl object-cover shadow-sm" src={appointment?.merchantImage || NO_IMAGE} />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">
-                        Glow &amp; Serenity Spa &amp; Salon
+                        {merchantName}
                       </h2>
-                      <Icon name="verified" filled className="text-primary text-[16px]" />
                     </div>
                     <span className="font-caption text-caption text-text-secondary block">
-                      12 Aminu Kano Crescent, Maitama • 1.4 km
-                    </span>
-                    <span className="font-caption text-caption text-badge-discount-text font-semibold">
-                      Spa desk open until 8:00 PM
+                      {appointment?.merchantAddress}
                     </span>
                   </div>
                 </div>
@@ -201,40 +214,25 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
                   Reserved Services
                 </h3>
                 <ul className="divide-y divide-border-subtle">
-                  {SERVICES.map((service) => (
-                    <li key={service.name} className="flex items-start justify-between gap-4 py-3">
+                  {(appointment?.serviceNames ?? []).map((name) => (
+                    <li key={name} className="flex items-start justify-between gap-4 py-3">
                       <div className="min-w-0">
-                        <span className="font-body-lg text-body-lg text-text-primary block">{service.name}</span>
-                        <span className="font-caption text-caption text-text-tertiary">{service.meta}</span>
+                        <span className="font-body-lg text-body-lg text-text-primary block">{name}</span>
+                        <span className="font-caption text-caption text-text-tertiary">{durationLabel}</span>
                       </div>
-                      <span className="font-label-md text-label-md font-semibold text-text-primary shrink-0">
-                        {service.price}
-                      </span>
                     </li>
                   ))}
                 </ul>
-                <div className="mt-4 pt-4 border-t border-border-subtle flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-body-md text-body-md text-text-secondary">Subtotal</span>
-                    <span className="font-body-md text-body-md text-text-primary">₦29,000</span>
+                {payable > 0 ? (
+                  <div className="mt-4 pt-4 border-t border-border-subtle flex items-center justify-between">
+                    <span className="font-label-md text-label-md font-bold text-text-primary">Pay at the business</span>
+                    <span className="font-heading-lg text-heading-lg font-bold text-text-primary">₦{payable.toLocaleString('en-US')}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-body-md text-body-md text-text-secondary flex items-center gap-1.5">
-                      <Icon name="confirmation_number" className="text-[16px] text-badge-discount-text" />
-                      VEMTAP Deal Applied
-                    </span>
-                    <span className="font-body-md text-body-md text-badge-discount-text font-semibold">−₦5,000</span>
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
-                    <span className="font-label-md text-label-md font-bold text-text-primary">Pay at the spa</span>
-                    <span className="font-heading-lg text-heading-lg font-bold text-text-primary">₦24,000</span>
-                  </div>
-                </div>
+                ) : null}
                 <div className="mt-4 flex items-start gap-2 p-3 rounded-xl bg-surface-tint-blue">
                   <Icon name="info" className="text-[17px] text-primary shrink-0 mt-0.5" />
                   <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                    Settled directly with the spa on arrival — no platform middleman fees. VEMTAP protects the
-                    discounted rate and encrypts this appointment under NDPR standards.
+                    Settled directly with the business on arrival.
                   </p>
                 </div>
               </section>
@@ -244,155 +242,99 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
                   <h2 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight">
                     Verification Pass
                   </h2>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    <Icon name="shield" className="text-[15px]" filled />
-                    <span>NDPR Protected</span>
-                  </span>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <button
                     className="flex items-center justify-between gap-3 p-4 rounded-xl bg-surface-subtle hover:bg-surface-tint-blue transition-colors text-left"
-                    onClick={() => copyValue(BOOKING_REF, 'Booking reference')}
+                    onClick={() => copyValue(bookingId, 'Booking reference')}
                     type="button"
                   >
                     <div>
                       <span className="font-caption text-caption text-text-tertiary block">Booking Reference</span>
                       <span className="font-mono text-heading-sm text-heading-sm font-bold text-text-primary">
-                        #{BOOKING_REF}
+                        #{bookingId}
                       </span>
                     </div>
                     <Icon
-                      name={copied === BOOKING_REF ? 'check' : 'content_copy'}
-                      className="text-[20px] text-primary"
-                    />
-                  </button>
-                  <button
-                    className="flex items-center justify-between gap-3 p-4 rounded-xl bg-surface-subtle hover:bg-surface-tint-blue transition-colors text-left"
-                    onClick={() => copyValue(BOOKING_CODE, 'Check-in code')}
-                    type="button"
-                  >
-                    <div>
-                      <span className="font-caption text-caption text-text-tertiary block">Check-in Code</span>
-                      <span className="font-mono text-heading-sm text-heading-sm font-bold text-text-primary">
-                        {BOOKING_CODE}
-                      </span>
-                    </div>
-                    <Icon
-                      name={copied === BOOKING_CODE ? 'check' : 'content_copy'}
+                      name={copied === bookingId ? 'check' : 'content_copy'}
                       className="text-[20px] text-primary"
                     />
                   </button>
                 </div>
                 <p className="font-caption text-caption text-text-secondary mt-3 leading-relaxed">
-                  Present either code at the spa reception to confirm your slot and locked-in deal price.
+                  Show this reference at the business to confirm your slot.
                 </p>
               </section>
 
               <section className="bg-surface-canvas rounded-2xl shadow-md p-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Icon name="policy" className="text-[20px] text-text-secondary" />
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold">Cancellation Policy</h2>
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold">Change of Plans</h2>
                 </div>
                 <p className="font-body-md text-body-md text-text-secondary leading-relaxed mb-4">
-                  Free cancellation or reschedule up to <span className="font-semibold text-text-primary">6 hours</span>{' '}
-                  before your appointment. Later changes may incur a 20% booking fee charged by the spa.
+                  Cancel here if you can’t make it. The business’s own terms apply to late changes.
                 </p>
                 {cancelled ? (
                   <button
                     className="px-5 h-11 rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary shadow-md hover:opacity-95 transition-all inline-flex items-center gap-2"
-                    onClick={() => onNav('spa-booking')}
+                    onClick={() => onNav('discover')}
                     type="button"
                   >
                     <Icon name="event" className="text-[18px]" />
                     <span>Book a New Slot</span>
                   </button>
-                ) : (
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      className="px-5 h-11 rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary shadow-md hover:opacity-95 transition-all inline-flex items-center gap-2"
-                      onClick={() => onNav('spa-booking')}
-                      type="button"
-                    >
-                      <Icon name="event" className="text-[18px]" />
-                      <span>Reschedule</span>
-                    </button>
-                    <button
-                      className="px-5 h-11 rounded-xl bg-error-container text-error font-button-secondary text-button-secondary hover:opacity-90 transition-opacity inline-flex items-center gap-2"
-                      onClick={() => setConfirmOpen(true)}
-                      type="button"
-                    >
-                      <Icon name="event_busy" className="text-[18px]" />
-                      <span>Cancel Booking</span>
-                    </button>
-                  </div>
-                )}
+                ) : appointment?.status === 'confirmed' ? (
+                  <button
+                    className="px-5 h-11 rounded-xl bg-error-container text-error font-button-secondary text-button-secondary hover:opacity-90 transition-opacity inline-flex items-center gap-2"
+                    onClick={() => setConfirmOpen(true)}
+                    type="button"
+                  >
+                    <Icon name="event_busy" className="text-[18px]" />
+                    <span>Cancel Booking</span>
+                  </button>
+                ) : null}
               </section>
             </div>
 
             <div className="lg:col-span-4 flex flex-col gap-6">
               <section className="bg-surface-canvas rounded-2xl shadow-md overflow-hidden">
-                <div className="relative h-48">
-                  <img alt={MAP_ALT} className="w-full h-full object-cover" src={MAP_IMG} />
-                  <a
-                    href={DIRECTIONS_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="absolute top-3 right-3 inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-surface-canvas/95 text-primary font-label-sm text-label-sm font-bold shadow-sm hover:bg-surface-canvas"
-                  >
-                    <Icon name="near_me" className="text-[15px]" />
-                    <span>Open in Maps</span>
-                  </a>
+                <div className="relative h-48 bg-surface-container">
+                  {mapUrl ? <iframe title={`Map of ${merchantName}`} className="w-full h-full" src={mapUrl} loading="lazy" /> : null}
+                  {directionsUrl ? (
+                    <a
+                      href={directionsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="absolute top-3 right-3 inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-surface-canvas text-primary font-label-sm text-label-sm font-bold shadow-sm"
+                    >
+                      <Icon name="near_me" className="text-[15px]" />
+                      <span>Open in Maps</span>
+                    </a>
+                  ) : null}
                 </div>
                 <div className="p-5 flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <Icon name="location_on" className="text-[18px] text-primary" />
                     <span className="font-label-sm text-label-sm text-text-primary">
-                      Maitama Heights, 3rd Floor, Abuja
+                      {appointment?.merchantAddress}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       className="h-11 rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-1.5"
-                      onClick={() => onNav('messages')}
+                      onClick={() => (onChat && appointment.branchId ? onChat(appointment.branchId) : onNav('messages'))}
                       type="button"
                     >
                       <Icon name="chat" className="text-[18px]" />
-                      <span>Concierge Chat</span>
+                      <span>Message Business</span>
                     </button>
                     <a
-                      href="tel:+2348035550192"
+                      href={`tel:${appointment?.merchantPhone ?? ''}`}
                       className="h-11 rounded-xl bg-surface-subtle text-primary font-button-secondary text-button-secondary shadow-sm hover:bg-surface-tint-blue transition-colors flex items-center justify-center gap-1.5"
                     >
                       <Icon name="call" className="text-[18px]" />
-                      <span>Call Spa</span>
+                      <span>Call Business</span>
                     </a>
-                  </div>
-                </div>
-              </section>
-
-              <section className="bg-surface-tint-blue rounded-2xl shadow-md p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-label-sm text-label-sm font-semibold text-primary uppercase tracking-wider">
-                    Booking at a Glance
-                  </span>
-                  <Icon name="event_available" className="text-primary text-[20px]" />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-caption text-caption text-text-secondary">Confirmation</span>
-                    <span className="font-label-sm text-label-sm text-text-primary font-semibold">GS-4829</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-caption text-caption text-text-secondary">Specialist</span>
-                    <span className="font-label-sm text-label-sm text-text-primary font-semibold">Amara K.</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-caption text-caption text-text-secondary">Arrival window</span>
-                    <span className="font-label-sm text-label-sm text-text-primary font-semibold">12:45 – 1:00 PM</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-caption text-caption text-text-secondary">Deal saving</span>
-                    <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">−₦5,000</span>
                   </div>
                 </div>
               </section>
@@ -414,13 +356,12 @@ export function DesktopBookingDetailScreen({ onNav, onBack }: DesktopBookingDeta
             </div>
             <h3 className="font-heading-md text-heading-md text-text-primary text-center">Cancel this booking?</h3>
             <p className="font-body-md text-body-md text-text-secondary text-center mt-2 leading-relaxed">
-              Your slot with Amara K. on Thu, Oct 17 at 1:15 PM will be released. You can rebook anytime, subject to
-              availability.
+              Your slot on {slotLabel} will be released. You can rebook anytime, subject to availability.
             </p>
             <div className="flex flex-col gap-2 mt-5">
               <button
                 className="h-12 rounded-xl bg-error text-on-error font-button-primary text-button-primary flex items-center justify-center gap-2"
-                onClick={confirmCancel}
+                onClick={() => void confirmCancel()}
                 type="button"
               >
                 <Icon name="event_busy" className="text-[19px]" />

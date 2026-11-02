@@ -2,11 +2,16 @@ import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
+import { getMessagingSocket } from '../services/messagingSocket';
 import { messageService, type MessageThread, type MessageThreadFilter } from '../services/messageService';
 
 interface MessagesScreenProps {
   onTab: (tab: MobileTabKey) => void;
   onOpen: (threadId: string) => void;
+  /** Opens the screen where message notifications are switched on or off. */
+  onOpenSettings?: () => void;
+  /** Starts a new chat: pick a business, then its message box opens ready to send. */
+  onNewChat?: () => void;
 }
 
 type InboxChipKey = 'all' | 'unread' | 'deals' | 'bookings';
@@ -24,12 +29,13 @@ function matchesFilter(thread: MessageThread, filter: InboxChipKey): boolean {
   return thread.filters.includes(filter as MessageThreadFilter);
 }
 
-export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
+export function MessagesScreen({ onTab, onOpen, onOpenSettings, onNewChat }: MessagesScreenProps) {
   const [chip, setChip] = useState<InboxChipKey>('all');
   const [query, setQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(() => Boolean(getMessagingSocket()?.connected));
 
   useEffect(() => {
     let isMounted = true;
@@ -48,8 +54,17 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
     };
 
     loadThreads();
+    // New messages and deleted chats reorder the list and its unread badges.
+    const onRealtime = (event: Event) => {
+      const { type } = (event as CustomEvent<{ type: string }>).detail;
+      if (type === 'connect') setConnected(true);
+      if (type === 'disconnect') setConnected(false);
+      if (type === 'newMessage' || type === 'threadDeleted') void loadThreads();
+    };
+    window.addEventListener('vemtap:messaging', onRealtime);
     return () => {
       isMounted = false;
+      window.removeEventListener('vemtap:messaging', onRealtime);
     };
   }, []);
 
@@ -98,10 +113,10 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
               <Icon name="search" className="text-[22px]" />
             </button>
             <button
-              aria-label="More options"
+              aria-label="Notification settings"
               className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
               type="button"
-              onClick={() => showToast('Messaging preferences and notifications are up to date.')}
+              onClick={onOpenSettings}
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
@@ -136,10 +151,13 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
               </button>
             ) : (
               <button
-                aria-label="Filters"
+                aria-label="Show all conversations"
                 className="w-7 h-7 flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-container-high transition-colors"
                 type="button"
-                onClick={() => showToast('Showing all active conversations.')}
+                onClick={() => {
+                  setChip('all');
+                  showToast('Showing all conversations');
+                }}
               >
                 <Icon name="tune" className="text-[18px]" />
               </button>
@@ -175,13 +193,9 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
         <div className="px-space-md py-space-xs">
           <div className="flex items-center justify-between px-space-md py-2 bg-badge-discount-bg text-badge-discount-text rounded-lg shadow-sm">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-              <span className="font-caption text-caption font-semibold">Connected</span>
-              <span className="font-caption text-caption opacity-75">• Instant merchant sync active</span>
-            </div>
-            <div className="flex items-center gap-1 font-caption text-caption font-semibold">
-              <span>Apo Hub</span>
-              <Icon name="expand_more" className="text-[14px]" />
+              <span className={`w-2 h-2 rounded-full ${connected ? 'bg-badge-discount-text' : 'bg-outline'}`} />
+              <span className="font-caption text-caption font-semibold">{connected ? 'Connected' : 'Reconnecting…'}</span>
+              {connected ? <span className="font-caption text-caption opacity-75">• Live updates on</span> : null}
             </div>
           </div>
         </div>
@@ -300,7 +314,7 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
           aria-label="Start a new message"
           className="flex items-center gap-2 px-space-md py-3 rounded-full bg-primary text-on-primary shadow-lg shadow-primary/30 active:scale-95 transition-transform pointer-events-auto"
           type="button"
-          onClick={() => onTab('discover')}
+          onClick={() => (onNewChat ? onNewChat() : onTab('discover'))}
         >
           <Icon name="add_comment" className="text-[20px]" />
           <span className="font-button-primary text-button-primary">Start a chat</span>
@@ -308,7 +322,7 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
       </div>
 
       {toast && (
-        <div className="fixed bottom-36 left-1/2 -translate-x-1/2 max-w-[400px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2 text-label-md font-medium shadow-lg animate-fade-in">
+        <div className="fixed bottom-36 left-1/2 -translate-x-1/2 max-w-[400px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2 text-label-md font-medium shadow-lg animate-fade-in">
           {toast}
         </div>
       )}

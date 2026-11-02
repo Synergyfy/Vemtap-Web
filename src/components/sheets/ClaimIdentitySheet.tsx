@@ -1,7 +1,10 @@
 import { Icon } from '../ui/Icon';
+import { formatNaira, type DealDetail } from '../../hooks/useDealDetail';
 import { SheetShell } from './SheetShell';
 
 export interface ClaimIdentitySheetProps {
+  /** The live deal this sheet is for. */
+  detail?: DealDetail | null;
   open: boolean;
   onClose: () => void;
   onClaimSelf: () => void;
@@ -18,9 +21,10 @@ export function ClaimIdentitySheet({
   onGift,
   onSomeoneElse,
   identity,
+  detail,
 }: ClaimIdentitySheetProps) {
-  const customerName = identity?.name?.trim() || 'John Doe';
-  const customerEmail = identity?.email?.trim() || 'john@email.com';
+  const customerName = identity?.name?.trim() ?? '';
+  const customerEmail = identity?.email?.trim() ?? '';
   const customerInitials =
     identity?.initials?.trim() ||
     customerName
@@ -28,8 +32,7 @@ export function ClaimIdentitySheet({
       .map((part) => part.charAt(0))
       .join('')
       .toUpperCase()
-      .slice(0, 2) ||
-    'JD';
+      .slice(0, 2);
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="w-full flex justify-center pt-3 pb-space-xs">
@@ -39,10 +42,10 @@ export function ClaimIdentitySheet({
       <div className="flex flex-col w-full px-margin pb-space-lg">
         <div className="flex items-center justify-between pt-space-xs pb-space-sm">
           <div className="inline-flex items-center gap-space-2xs bg-surface-container-high text-on-secondary-container px-space-sm py-1 rounded-full shadow-sm">
-            <Icon name="restaurant" className="text-[16px] text-primary" filled />
-            <span className="font-label-sm text-label-sm font-semibold truncate max-w-[200px]">Urban Grill &amp; Bistro</span>
+            <Icon name="storefront" className="text-[16px] text-primary" filled />
+            <span className="font-label-sm text-label-sm font-semibold truncate max-w-[200px]">{detail?.businessName}</span>
             <span className="w-1 h-1 rounded-full bg-outline-variant" />
-            <span className="font-label-sm text-label-sm font-bold text-primary">₦9,600</span>
+            <span className="font-label-sm text-label-sm font-bold text-primary">{formatNaira(detail?.price ?? 0)}</span>
           </div>
           <button
             aria-label="Close modal"
@@ -59,7 +62,7 @@ export function ClaimIdentitySheet({
             How would you like to claim this deal?
           </h1>
           <p className="font-body-md text-body-md text-text-secondary">
-            Choose who will redeem this voucher pass at Urban Grill &amp; Bistro.
+            Choose who will redeem this voucher pass at {detail?.businessName}.
           </p>
         </div>
 
