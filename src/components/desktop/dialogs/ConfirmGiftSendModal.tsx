@@ -1,15 +1,25 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { NO_IMAGE } from '../../../utils/homeOffer';
+import type { DealDetail } from '../../../hooks/useDealDetail';
+import { useProfile } from '../../../context/ProfileContext';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
-import { maskPhone, parsePrice } from '../../../utils/format';
+import { parsePrice } from '../../../utils/format';
 
 export interface ConfirmGiftSendModalProps {
+  /** The live deal, for what it includes and its terms. */
+  detail?: DealDetail | null;
   open: boolean;
   onClose: () => void;
   onEdit: () => void;
   onSend: () => void;
   /** Gift recipient collected in the previous step. */
   recipient?: { name: string; email: string; phone?: string } | null;
+  /** The sender's message. */
+  note?: string;
+  /** Why sending failed. */
+  error?: string | null;
+  busy?: boolean;
   deal?: {
     title?: string;
     business?: string;
@@ -21,50 +31,21 @@ export interface ConfirmGiftSendModalProps {
   } | null;
 }
 
-type DispatchState = 'idle' | 'sending' | 'sent';
-
-export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient, deal }: ConfirmGiftSendModalProps) {
-  const recipientName = recipient?.name ?? 'Gift Recipient';
-  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : 'Phone not provided';
-  const firstName = recipientName.split(/\s+/)[0] || recipientName || 'recipient';
+export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient, deal, detail, note, error, busy }: ConfirmGiftSendModalProps) {
+  const sender = useProfile();
+  const recipientName = recipient?.name ?? '';
   const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This local partner';
-  const dealLocation = deal?.location?.trim() || 'Your selected area';
-  const dealImage =
-    deal?.image ||
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuBXC0UICumcOqUgWRJhksyfo1WV4W_z_Jah24z17LixUVf_ZwyTV7cOsMK8mUbjlRW0wDeE9yhj2K30sqtivL48v2w685VmwyLNsVx4AdCwwcUurgusf3wMMjPCx6qbHD6POoacLsb0JgzozuqmuUWFLDymyq-Ow0tH8GDpH3UrTbdesSIX-AjcYMeqgChtR-jGUGCmDLtSQ8k-42V8pISEEi-4ILLBVobVDoxD3Wyq';
+  const dealLocation = deal?.location?.trim() || '';
+  const dealImage = deal?.image || NO_IMAGE;
   const price = parsePrice(deal?.price);
   const oldPrice = parsePrice(deal?.oldPrice) || price;
-  const discountLabel = deal?.discountLabel || (oldPrice > price ? '20% OFF' : 'Special rate');
+  const discountLabel = deal?.discountLabel || (oldPrice > price ? `${Math.round(((oldPrice - price) / oldPrice) * 100)}% OFF` : 'Special rate');
+  const includes = detail?.items.map((item) => `1x ${item.name}`).join(', ');
+  const giftTerms = [detail?.windowLabel ? `Redeemable ${detail.windowLabel}` : null, ...(detail?.terms ?? [])].filter(Boolean).join(' • ');
   const [agreed, setAgreed] = useState(true);
-  const [state, setState] = useState<DispatchState>('idle');
-  const timers = useRef<Array<number>>([]);
-
-  useEffect(() => {
-    return () => {
-      timers.current.forEach((timer) => window.clearTimeout(timer));
-      timers.current = [];
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      setState('idle');
-      setAgreed(true);
-      timers.current.forEach((timer) => window.clearTimeout(timer));
-      timers.current = [];
-    }
-  }, [open]);
-
   const handleSend = () => {
-    if (state !== 'idle') return;
-    setState('sending');
-    timers.current.push(
-      window.setTimeout(() => {
-        setState('sent');
-        timers.current.push(window.setTimeout(() => onSend(), 1000));
-      }, 1200),
-    );
+    if (!busy) onSend();
   };
 
   return (
@@ -137,40 +118,46 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient,
                 <div className="flex items-center gap-1 text-text-secondary mt-1">
                   <Icon name="storefront" className="text-[16px] text-primary" />
                   <span className="font-body-md text-body-md truncate">
-                    {businessName} • {dealLocation}
+                    {[businessName, dealLocation].filter(Boolean).join(' • ')}
                   </span>
                 </div>
               </div>
             </div>
 
+            {note ? (
             <div className="mt-3 p-2 rounded-xl bg-surface-canvas shadow-sm relative">
               <div className="flex items-start gap-2">
                 <Icon name="format_quote" className="text-[20px] text-primary mt-0.5 shrink-0" />
                 <p className="font-body-md text-body-md text-on-surface italic">
-                  "Enjoy this {dealTitle.toLowerCase()} on me! Hope you love it at {businessName}."
+                  "{note}"
                   <span className="block text-right font-label-sm text-label-sm not-italic font-bold text-text-primary mt-1">
-                    - {firstName}
+                    - {sender.fullName}
                   </span>
                 </p>
               </div>
             </div>
+            ) : null}
 
             <div className="mt-3 pt-2 flex flex-col gap-2">
-              <div className="flex items-start gap-2 text-text-secondary">
+              {includes && (
+                <div className="flex items-start gap-2 text-text-secondary">
                 <Icon
                   name="check_circle"
                   className="text-[18px] text-badge-discount-text shrink-0 mt-0.5"
                 />
                 <span className="font-label-sm text-label-sm text-on-surface">
-                  Includes: 1x Angus burger or chicken plate, truffle parmesan fries, house iced peach cooler
+                  Includes: {includes}
                 </span>
               </div>
-              <div className="flex items-start gap-2 text-text-secondary">
+              )}
+              {giftTerms && (
+                <div className="flex items-start gap-2 text-text-secondary">
                 <Icon name="schedule" className="text-[18px] text-primary shrink-0 mt-0.5" />
                 <span className="font-caption text-caption text-text-secondary">
-                  Terms: Valid for 48 hours from claim • Redeemable Mon-Fri 12:00 PM - 4:00 PM
+                  Terms: {giftTerms}
                 </span>
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -182,7 +169,7 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient,
             </span>
             <span className="inline-flex items-center gap-1 font-caption text-caption text-badge-discount-text font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-              WhatsApp Gateway Ready
+              Email Delivery
             </span>
           </div>
 
@@ -193,24 +180,24 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient,
                 <Icon name="person" className="text-[16px] text-text-secondary" />
                 {recipientName}
               </span>
-              <span className="font-caption text-caption text-text-secondary">{recipientPhoneDisplay}</span>
+              <span className="font-caption text-caption text-text-secondary truncate">{recipient?.email}</span>
             </div>
             <div className="flex flex-col">
               <span className="font-caption text-caption text-text-tertiary">Delivery Channel</span>
               <span className="font-label-md text-label-md text-badge-discount-text font-medium flex items-center gap-1">
-                <Icon name="chat" className="text-[16px]" />
-                WhatsApp Instant Delivery
+                <Icon name="mail" className="text-[16px]" />
+                Email
               </span>
-              <span className="font-caption text-caption text-text-secondary">Interactive link + Offline QR</span>
+              <span className="font-caption text-caption text-text-secondary">Link to accept the gift</span>
             </div>
             <div className="flex flex-col">
               <span className="font-caption text-caption text-text-tertiary">Sender Profile</span>
               <span className="font-label-md text-label-md text-text-primary font-medium flex items-center gap-1">
                 <Icon name="badge" className="text-[16px] text-text-secondary" />
-                Zainab Ahmed
+                {sender.fullName}
               </span>
               <span className="font-caption text-caption text-text-secondary truncate">
-                zainab.ahmed@example.com
+                {sender.email}
               </span>
             </div>
             <div className="flex flex-col">
@@ -253,30 +240,26 @@ export function ConfirmGiftSendModal({ open, onClose, onEdit, onSend, recipient,
             <strong className="text-primary font-semibold">VEMTAP</strong> to generate a personalized gift pass.
           </span>
         </label>
+        {error ? (
+          <p role="alert" className="font-label-sm text-label-sm text-error">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       <div className="px-6 py-5 bg-surface-container-lowest flex flex-col gap-2 shadow-[0_-4px_16px_rgba(0,0,0,0.03)]">
         <button
           type="button"
-          disabled={!agreed || state !== 'idle'}
+          disabled={!agreed || busy}
           onClick={handleSend}
           className={`w-full h-[52px] rounded-xl font-button-primary text-button-primary flex items-center justify-center gap-2 transition-all active:scale-[0.99] shadow-lg shadow-primary-container/25 ${
-            !agreed ? 'bg-primary-container text-on-primary opacity-50 pointer-events-none' : ''
-          } ${
-            state === 'sent'
-              ? 'bg-badge-discount-text text-on-primary shadow-none'
-              : 'bg-primary-container text-on-primary hover:bg-primary'
+            !agreed ? 'bg-primary-container text-on-primary opacity-50 pointer-events-none' : 'bg-primary-container text-on-primary hover:bg-primary'
           }`}
         >
-          {state === 'sending' ? (
+          {busy ? (
             <>
               <Icon name="progress_activity" className="text-[20px] animate-spin" />
-              <span>Dispatching WhatsApp Pass...</span>
-            </>
-          ) : state === 'sent' ? (
-            <>
-              <Icon name="check_circle" filled className="text-[20px] text-on-primary" />
-              <span>Pass Dispatched to {firstName}!</span>
+              <span>Sending Gift…</span>
             </>
           ) : (
             <>

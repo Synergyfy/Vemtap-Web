@@ -25,7 +25,7 @@ import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { LocationProvider, useLocation } from './context/LocationContext';
 import { DealFiltersProvider } from './context/DealFiltersContext';
 import { AREA_NOT_FOUND, findPlace, getCurrentPlace, type PickedPlace } from './services/currentLocation';
-import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
+import { ClaimsProvider, currentVoucher, rememberGiftLink, useClaims, type ClaimHolder, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
 import { parsePrice } from './utils/format';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
@@ -59,6 +59,7 @@ import { AccountScreen } from './scripts/AccountScreen';
 import { SettingsScreen } from './scripts/SettingsScreen';
 import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
 import { NotFoundScreen } from './scripts/NotFoundScreen';
+import { GiftRejectScreen } from './scripts/GiftRejectScreen';
 import { DesktopNotFoundScreen } from './scripts/desktop/DesktopNotFoundScreen';
 import { SupportLegalScreen } from './scripts/SupportLegalScreen';
 import { EditProfileScreen } from './scripts/EditProfileScreen';
@@ -565,7 +566,8 @@ type Route =
   | 'claimed-contact'
   | 'claimed-terms'
   | 'admin-referral'
-  | 'not-found';
+  | 'not-found'
+  | 'gift-reject';
 
 const ROUTE_PATH: Record<Route, string> = {
   welcome: '/onboarding',
@@ -751,6 +753,7 @@ const ROUTE_PATH: Record<Route, string> = {
   // directly. Gating is the backend's job once auth exists.
   'admin-referral': '/admin/referral',
   'not-found': '/not-found',
+  'gift-reject': '/deals/gift-reject',
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
@@ -880,6 +883,10 @@ const CUSTOMER_SHELL_ROUTES = new Set<Route>([
   'claimed-deal',
 ]);
 
+/** A voucher's own pass page, the link in its QR. */
+const PASS_PATH = '/my/claimed-deal/';
+const passIdFromPath = (path: string) => (path.startsWith(PASS_PATH) ? decodeURIComponent(path.slice(PASS_PATH.length).replace(/\/+$/, '')) || null : null);
+
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
 ]);
@@ -1003,7 +1010,9 @@ function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume
   const path = rawPath.replace(/\/+$/, '') || '/';
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
+  if (path === ROUTE_PATH['gift-reject']) return 'gift-reject';
   if (path.startsWith('/deals/')) return 'deal-detail';
+  if (path.startsWith(PASS_PATH)) return guardRoute('claimed-deal', authed, isDesktop);
   const direct = PATH_ROUTE.get(path);
   if (authed && hasApiConfig() && isSignedOutPath(path)) return 'home';
   // A page load can't restore a sign-up in progress unless a business one was saved.
@@ -1072,10 +1081,12 @@ export default function App() {
 const GOOGLE_REDIRECT = takeGoogleRedirectResult();
 /** The URL this tab opened; a protected one is returned to after signing in. */
 const ENTRY_PATH = window.location.pathname;
+rememberGiftLink(window.location.search);
+const GIFT_REJECT_TOKEN = new URLSearchParams(window.location.search).get('token') ?? '';
 const RETURN_PATH_KEY = 'vemtap_return_to';
 
 function AppInner() {
-  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession, switchShell } = useAuth();
+  const { authed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession, switchShell } = useAuth();
   const sessionQuery = useSessionUser();
   const sessionUser = sessionQuery.data;
   // A live owner already has their business identity: business entry points
@@ -1154,8 +1165,10 @@ function AppInner() {
   const [selectedDeal, setSelectedDeal] = useState<ClaimDealSummary | null>(null);
   const [commentsModalOnly, setCommentsModalOnly] = useState(false);
   const dealChatOpening = useRef(false);
+  const dealSheetOpen = useRef(false);
   // A reloaded or shared /deals/<title>-<id> link has no selected deal yet, so its id comes from the URL.
-  const liveDeal = useDealDetail(selectedDeal?.id ?? dealIdFromPath(window.location.pathname));
+  // On a deal's own page its link decides the deal, so refresh, Back and shared links open the right one.
+  const liveDeal = useDealDetail((route === 'deal-detail' ? dealIdFromPath(window.location.pathname) : undefined) ?? selectedDeal?.id ?? dealIdFromPath(window.location.pathname));
   const liveDealDetail = liveDeal.detail;
   useEffect(() => {
     if (!liveDealDetail) return;
@@ -1169,6 +1182,7 @@ function AppInner() {
       oldPrice: liveDealDetail.oldPrice,
       image: liveDealDetail.image,
       images: liveDealDetail.images,
+      discountLabel: liveDealDetail.discountPercent > 0 ? `${liveDealDetail.discountPercent}% OFF` : undefined,
       commentCount: liveDealDetail.reviewsCount,
     });
   }, [liveDealDetail]);
@@ -1218,6 +1232,7 @@ function AppInner() {
   useCustomerMessagingRealtime(authed);
   useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
   const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
+  const [giftNote, setGiftNote] = useState('');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
   const [claimSelfConfirmOpen, setClaimSelfConfirmOpen] = useState(false);
@@ -1435,7 +1450,7 @@ function AppInner() {
     ? null
     : onBusinessPage && sessionUser?.businessRole && sessionUser.role === 'Customer'
       ? sessionUser.businessRole
-      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && isBusinessRole(sessionUser?.role)
+      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && !passIdFromPath(window.location.pathname) && isBusinessRole(sessionUser?.role)
         ? 'Customer'
         : null;
   const shellSwitching = shellRoleNeeded !== null && shellSwitchFailed !== route;
@@ -1506,11 +1521,17 @@ function AppInner() {
   // Remember the protected page a signed-out visitor opened, for after sign-in.
   useEffect(() => {
     const opened = PATH_ROUTE.get(ENTRY_PATH);
+    if (hasApiConfig() && !authed && passIdFromPath(ENTRY_PATH)) window.sessionStorage.setItem(RETURN_PATH_KEY, ENTRY_PATH);
     if (!hasApiConfig() || authed || !opened || opened === 'home') return;
     if (SIGNED_IN_ROUTES.has(opened) || isPortalRoute(opened)) window.sessionStorage.setItem(RETURN_PATH_KEY, ENTRY_PATH);
     // Only the page this tab opened on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A reload loses the just-claimed voucher; its wallet still has it.
+  useEffect(() => {
+    if (route === 'claim-success' && !activeClaim) setRouteState('my-deals');
+  }, [route, activeClaim]);
 
   // The referral admin page is for platform admins only.
   const adminCheckPending =
@@ -1531,8 +1552,11 @@ function AppInner() {
 
   useEffect(() => {
     const expected =
-      route === 'customer-invite-join' || route === 'not-found'
-        ? null // dynamic /join/{slug}?invite=… and unknown paths — never overwritten
+      route === 'customer-invite-join' ||
+      route === 'not-found' ||
+      (route === 'claimed-deal' && passIdFromPath(window.location.pathname)) ||
+      (route === 'deal-detail' && window.location.pathname.startsWith('/deals/'))
+        ? null // dynamic /join/{slug}?invite=…, a deal's own link and unknown paths — never overwritten
         : resolveRoutePath(route);
     if (expected && window.location.pathname !== expected) {
       window.history.replaceState(null, '', expected);
@@ -1682,7 +1706,7 @@ function AppInner() {
   };
 
   const startClaim = (from: Route) => {
-    if (claimed) {
+    if (dealClaimed) {
       setClaimedFrom(from);
       setRoute('claimed-deal');
       return;
@@ -1690,52 +1714,104 @@ function AppInner() {
     setRoute(authed ? 'claim-confirm' : 'claim-auth');
   };
 
-  const completeClaim = async () => {
+  /** The deal as the page shows it, frozen onto the voucher. */
+  const claimDealFields = () => ({
+    dealTitle: liveDeal.detail?.title ?? selectedDeal?.title,
+    dealBusiness: liveDeal.detail?.businessName ?? selectedDeal?.business,
+    dealImage: liveDeal.detail?.image ?? selectedDeal?.image,
+    dealLocation: liveDeal.detail?.address ?? selectedDeal?.location,
+    dealPrice: liveDeal.detail?.price ?? parsePrice(selectedDeal?.price),
+    dealOldPrice: liveDeal.detail?.oldPrice ?? (parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price)),
+    discountLabel: selectedDeal?.discountLabel,
+    dealPhone: liveDeal.detail?.phone ?? undefined,
+    dealLatitude: liveDeal.detail?.latitude ?? undefined,
+    dealLongitude: liveDeal.detail?.longitude ?? undefined,
+    terms: liveDeal.detail?.terms,
+  });
+
+  // A claim is two API steps: a code is emailed to the holder, then the code is
+  // traded for the voucher. Self claims trade it on the code step; claims for
+  // someone else trade it after their summary.
+  const [claimHolder, setClaimHolder] = useState<ClaimHolder | null>(null);
+  const [claimCode, setClaimCode] = useState('');
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
+
+  const sendClaimCode = async (holder: ClaimHolder) => {
+    const offerId = selectedDeal?.id ? String(selectedDeal.id) : liveDeal.detail?.id;
+    setClaimHolder(holder);
+    setClaimError(null);
+    setClaimBusy(true);
+    try {
+      if (!offerId) throw new Error('This deal can’t be claimed right now.');
+      await claims.requestClaimCode(offerId, holder);
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t send the code. Please try again.'));
+    } finally {
+      setClaimBusy(false);
+    }
+  };
+
+  const holderFromRecipient = (recipient: { name: string; email: string; phone?: string }): ClaimHolder => {
+    const [firstName = '', ...rest] = recipient.name.trim().split(/\s+/);
+    return { firstName, lastName: rest.join(' '), email: recipient.email, phone: recipient.phone ?? '' };
+  };
+
+  const completeClaim = async (code = claimCode): Promise<boolean> => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : liveDeal.detail?.id,
         kind: claimRecipient ? 'someone-else' : 'self',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
+        ...claimDealFields(),
+        code: hasApiConfig() ? code : undefined,
+        email: claimHolder?.email,
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
         recipient: claimRecipient ?? undefined,
       });
       setActiveClaim(record);
       setClaimRecipient(null);
+      setClaimHolder(null);
+      setClaimCode('');
       markClaimed();
+      claimSuccessRef.current?.();
+      claimSuccessRef.current = null;
       setRoute('claim-success');
-    } catch {
-      // Do not continue to the success screen unless the backend confirms the claim.
+      return true;
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t confirm this claim. Please try again.'));
+      return false;
+    } finally {
+      setClaimBusy(false);
     }
   };
 
+  /** Back on the code step with the reason shown (a wrong or expired code). */
+  const backToClaimCode = () => setRoute('claim-verify');
+
   const completeGift = async () => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
         offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
         kind: 'gift',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
+        ...claimDealFields(),
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        note: giftNote,
         recipient: giftRecipient
           ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
           : undefined,
       });
       setActiveClaim(record);
       markClaimed();
+      setClaimDialog(null);
       setRoute('gift-sent');
-    } catch {
-      // Keep the user on the claim flow until the backend confirms the gift claim.
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t send this gift. Please try again.'));
+    } finally {
+      setClaimBusy(false);
     }
   };
 
@@ -1765,34 +1841,14 @@ function AppInner() {
   /** BUG-005/BUG-006/BUG-009 — "Claim for myself" only completes after the identity confirmation step. */
   const confirmSelfClaim = async () => {
     setClaimSelfConfirmOpen(false);
-    const onClaimed = claimSuccessRef.current;
-    claimSuccessRef.current = null;
-    onClaimed?.();
-
-    try {
-      const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
-        kind: 'self',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
-        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      });
-      setActiveClaim(record);
-      if (claimed) {
-        setClaimedFrom(route);
-        setRoute('claimed-deal');
-        return;
-      }
-      markClaimed();
-      setRoute('claim-success');
-    } catch {
-      // Do not transition to success until backend confirms the claim.
+    setClaimRecipient(null);
+    if (!hasApiConfig()) {
+      await completeClaim();
+      return;
     }
+    const holder = { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone };
+    setRoute('claim-verify');
+    await sendClaimCode(holder);
   };
 
   const [claimPopupOpen, setClaimPopupOpen] = useState(false);
@@ -1836,13 +1892,14 @@ function AppInner() {
    * BUG-006/BUG-008/BUG-009: desktop previously stopped at a toast. Every claim
    * method now lands on a real outcome screen carrying the recorded claim.
    */
-  const finishDesktopClaim = (kind: 'self' | 'gift' | 'someone-else') => {
-    setClaimDialog(null);
+  const finishDesktopClaim = async (kind: 'self' | 'gift' | 'someone-else') => {
     if (kind === 'gift') {
-      completeGift();
+      // Stays open on failure so the reason shows on the review step.
+      await completeGift();
       return;
     }
-    completeClaim();
+    setClaimDialog(null);
+    if (!(await completeClaim())) setClaimDialog('verify');
   };
 
   useEffect(() => {
@@ -2379,9 +2436,24 @@ function AppInner() {
     setRoute(`analytics-${tab}` as Route);
   };
 
-  const dealClaimed = claims.claims.some((claim) => claim.status === 'claimed' && claim.offerId === liveDeal.detail?.id);
+  const dealClaim = claims.claims.find((claim) => claim.status === 'claimed' && claim.offerId === liveDeal.detail?.id);
+  const dealClaimed = Boolean(dealClaim);
+  // Opened from the deal page, the voucher screen shows that deal's voucher, not the latest one.
+  // A scanned pass link opens that voucher, or nothing if it isn't this account's.
+  const scannedPassId = route === 'claimed-deal' ? passIdFromPath(window.location.pathname) : null;
+  const scannedClaim = scannedPassId ? claims.claims.find((claim) => claim.id === scannedPassId) ?? null : undefined;
+  const walletClaim = scannedClaim !== undefined ? scannedClaim : claimedFrom === 'deal-detail' ? dealClaim : undefined;
 
   /** Opens the customer's chat with the deal's branch; rejects when it can't be opened. */
+  // Closing the comments or reviews sheet refreshes the page's counts, so a new post shows.
+  useEffect(() => {
+    if (route === 'comments' || route === 'reviews') dealSheetOpen.current = true;
+    else if (dealSheetOpen.current) {
+      dealSheetOpen.current = false;
+      if (route === 'deal-detail') liveDeal.reload();
+    }
+  }, [route, liveDeal.reload]);
+
   const openDealChat = async () => {
     const branchId = liveDeal.detail?.branchId;
     if (!branchId) throw new Error('Chat is not available for this deal');
@@ -2443,9 +2515,11 @@ function AppInner() {
       />
     );
 
-  const cancelActiveClaim = () => {
-    const active = claims.claims.find((entry) => entry.kind !== 'gift');
-    if (active) claims.removeClaim(active.ref);
+  /** Releases the voucher on the API first; rejects, keeping it, when the API refuses. */
+  const cancelActiveClaim = async () => {
+    const active = walletClaim ?? currentVoucher(claims.claims);
+    if (active?.id) await claims.deleteClaim(active.id);
+    else if (active) claims.removeClaim(active.ref);
     setActiveClaim(null);
     resetClaim();
     setRoute('home');
@@ -2843,6 +2917,7 @@ function AppInner() {
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
         onCancelClaim={cancelActiveClaim}
+        claim={walletClaim}
       />
     ) : (
       <ClaimedDealScreen
@@ -2850,8 +2925,20 @@ function AppInner() {
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
         onCancelClaim={cancelActiveClaim}
+        claim={walletClaim}
       />
     );
+
+  /** The code step: self claims finish here, others go on to their summary. */
+  const onClaimCode = (code: string) => {
+    if (claimRecipient) {
+      setClaimCode(code);
+      setClaimError(null);
+      setRoute('claim-summary');
+      return;
+    }
+    void completeClaim(code);
+  };
 
   const renderRoute = () => {
     // Sign In opened from the business sign-up modal: authenticating resumes
@@ -3607,6 +3694,13 @@ function AppInner() {
               open
               deal={selectedDeal}
               onAuthenticated={() => {
+                if (hasApiConfig()) {
+                  // A real sign-in, then back to this deal to claim it.
+                  window.sessionStorage.setItem(RETURN_PATH_KEY, window.location.pathname);
+                  setSignInFrom('deal-detail');
+                  setRoute('sign-in');
+                  return;
+                }
                 signIn();
                 setRoute('claim-confirm');
               }}
@@ -3618,8 +3712,16 @@ function AppInner() {
         <>
           {renderDetail()}
           <ClaimAuthSheet
+            detail={liveDeal.detail}
             open
             onAuthenticated={() => {
+              if (hasApiConfig()) {
+                // A real sign-in, then back to this deal to claim it.
+                window.sessionStorage.setItem(RETURN_PATH_KEY, window.location.pathname);
+                setSignInFrom('deal-detail');
+                setRoute('sign-in');
+                return;
+              }
               signIn();
               setRoute('claim-confirm');
             }}
@@ -3634,6 +3736,7 @@ function AppInner() {
           <>
             {renderDetail()}
             <ClaimConfirmationModal
+              detail={liveDeal.detail}
               open
               onClose={() => setRoute('deal-detail')}
               onConfirm={() => setRoute('claim-identity')}
@@ -3644,7 +3747,7 @@ function AppInner() {
       return (
         <>
           {renderDetail()}
-          <ClaimConfirmSheet open onClose={() => setRoute('deal-detail')} onConfirm={() => setRoute('claim-identity')} />
+          <ClaimConfirmSheet open detail={liveDeal.detail} email={profile.email} onClose={() => setRoute('deal-detail')} onConfirm={() => setRoute('claim-identity')} />
         </>
       );
 
@@ -3671,6 +3774,7 @@ function AppInner() {
         <>
           {renderDetail()}
           <ClaimIdentitySheet
+            detail={liveDeal.detail}
             open
             identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
             onClaimSelf={() => setClaimSelfConfirmOpen(true)}
@@ -3698,6 +3802,13 @@ function AppInner() {
                   phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
                 });
                 setRoute('claim-verify');
+                void sendClaimCode(
+                  holderFromRecipient({
+                    name: `${values.firstName} ${values.lastName}`.trim(),
+                    email: values.email,
+                    phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                  }),
+                );
               }}
               onClose={() => setRoute('deal-detail')}
             />
@@ -3715,6 +3826,13 @@ function AppInner() {
                 phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
               });
               setRoute('claim-verify');
+              void sendClaimCode(
+                holderFromRecipient({
+                  name: `${values.firstName} ${values.lastName}`.trim(),
+                  email: values.email,
+                  phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                }),
+              );
             }}
             onBack={() => setRoute('claim-identity')}
             onClose={() => setRoute('deal-detail')}
@@ -3730,9 +3848,13 @@ function AppInner() {
             <RecipientVerificationModal
               open
               recipient={claimRecipient}
+              target={claimHolder?.email}
+              error={claimError}
+              busy={claimBusy}
+              onResend={() => claimHolder && void sendClaimCode(claimHolder)}
               deal={selectedDeal}
-              onVerify={() => setRoute('claim-summary')}
-              onBack={() => setRoute('claim-recipient')}
+              onVerify={onClaimCode}
+              onBack={() => setRoute(claimRecipient ? 'claim-recipient' : 'deal-detail')}
               onClose={() => setRoute('deal-detail')}
             />
           </>
@@ -3743,8 +3865,12 @@ function AppInner() {
           <RecipientVerificationSheet
             open
             recipient={claimRecipient}
-            onVerify={() => setRoute('claim-summary')}
-            onBack={() => setRoute('claim-recipient')}
+            target={claimHolder?.email}
+            error={claimError}
+            busy={claimBusy}
+            onResend={() => claimHolder && void sendClaimCode(claimHolder)}
+            onVerify={onClaimCode}
+            onBack={() => setRoute(claimRecipient ? 'claim-recipient' : 'deal-detail')}
             onClose={() => setRoute('deal-detail')}
           />
         </>
@@ -3756,10 +3882,11 @@ function AppInner() {
           <>
             {renderDetail()}
             <RecipientSummaryModal
+              detail={liveDeal.detail}
               open
               recipient={claimRecipient}
               deal={selectedDeal}
-              onConfirm={completeClaim}
+              onConfirm={() => void completeClaim().then((done) => done || backToClaimCode())}
               onEdit={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
             />
@@ -3769,9 +3896,10 @@ function AppInner() {
         <>
           {renderDetail()}
           <RecipientSummarySheet
+            detail={liveDeal.detail}
             open
             recipient={claimRecipient}
-            onContinue={completeClaim}
+            onContinue={() => void completeClaim().then((done) => done || backToClaimCode())}
             onEdit={() => setRoute('claim-recipient')}
             onClose={() => setRoute('deal-detail')}
           />
@@ -3787,10 +3915,11 @@ function AppInner() {
               open
               onContinue={(values) => {
                 setGiftRecipient({
-                  name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+                  name: `${values.firstName} ${values.lastName}`.trim(),
                   email: values.email,
                   phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
                 });
+                setGiftNote(values.note);
                 setRoute('claim-gift-confirm');
               }}
               onClose={() => setRoute('deal-detail')}
@@ -3801,13 +3930,15 @@ function AppInner() {
         <>
           {renderDetail()}
           <GiftRecipientDetailsSheet
+            detail={liveDeal.detail}
             open
             onContinue={(values) => {
               setGiftRecipient({
                 name: `${values.firstName} ${values.lastName}`.trim(),
                 email: values.email,
-                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : '0801 234 5678',
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
               });
+              setGiftNote(values.note);
               setRoute('claim-gift-confirm');
             }}
             onClose={() => setRoute('deal-detail')}
@@ -3821,8 +3952,12 @@ function AppInner() {
           <>
             {renderDetail()}
             <ConfirmGiftSendModal
+              detail={liveDeal.detail}
               open
               recipient={giftRecipient}
+              note={giftNote}
+              error={claimError}
+              busy={claimBusy}
               onSend={completeGift}
               onEdit={() => setRoute('claim-gift')}
               onClose={() => setRoute('deal-detail')}
@@ -3833,8 +3968,11 @@ function AppInner() {
         <>
           {renderDetail()}
           <ConfirmGiftSendSheet
+            detail={liveDeal.detail}
             open
             recipient={giftRecipient}
+            error={claimError}
+            busy={claimBusy}
             onConfirm={completeGift}
             onEdit={() => setRoute('claim-gift')}
             onClose={() => setRoute('deal-detail')}
@@ -3927,6 +4065,7 @@ function AppInner() {
             {renderClaimed()}
             <ContactBusinessModal
               open
+              code={(walletClaim ?? currentVoucher(claims.claims))?.code}
               onChat={() => setRoute('merchant-chat')}
               onClose={() => setRoute('claimed-deal')}
             />
@@ -3935,7 +4074,7 @@ function AppInner() {
       return (
         <>
           {renderClaimed()}
-          <ContactBusinessSheet open onChat={() => setRoute('merchant-chat')} onClose={() => setRoute('claimed-deal')} />
+          <ContactBusinessSheet open code={(walletClaim ?? currentVoucher(claims.claims))?.code} onChat={() => setRoute('merchant-chat')} onClose={() => setRoute('claimed-deal')} />
         </>
       );
 
@@ -3983,6 +4122,8 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopDealTermsScreen
+            detail={liveDeal.detail}
+            loading={liveDeal.loading}
             onNav={feedNav}
             onBack={() => setRoute(termsFrom)}
             onClaim={() => startClaim('deal-terms')}
@@ -3990,6 +4131,8 @@ function AppInner() {
         );
       return (
         <DealTermsScreen
+          detail={liveDeal.detail}
+          loading={liveDeal.loading}
           onBack={() => setRoute(termsFrom)}
           onClaim={() => startClaim('deal-terms')}
         />
@@ -4442,22 +4585,16 @@ function AppInner() {
           <DesktopSavedItemsScreen
             onNav={feedNav}
             onBack={() => setRoute('account')}
-            onOpenDeal={() => setRoute('deal-detail')}
-            onOpenBusiness={() => {
-              setProfileFrom('saved');
-              setRoute('spa-profile');
-            }}
+            onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
+            onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
             onBrowse={() => setRoute('discover')}
           />
         );
       return (
         <SavedItemsScreen
           onBack={() => setRoute('home')}
-          onOpenDeal={() => setRoute('deal-detail')}
-          onOpenBusiness={() => {
-            setProfileFrom('saved');
-            setRoute('spa-profile');
-          }}
+          onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
+          onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
           onBrowse={() => setRoute('discover')}
         />
       );
@@ -4477,6 +4614,9 @@ function AppInner() {
      * Platform Admin → Referral programme. Not reachable from user navigation;
      * an admin opens `/admin/referral` directly to swap the explainer video.
      */
+    case 'gift-reject':
+      return <GiftRejectScreen token={GIFT_REJECT_TOKEN} onDone={() => setRoute(authed ? 'home' : 'welcome')} />;
+
     case 'not-found': {
       const leave = () => setRoute(!authed ? 'welcome' : isBusinessRole(sessionUser?.role) ? 'business-overview' : 'home');
       return isDesktop ? <DesktopNotFoundScreen onHome={leave} /> : <NotFoundScreen onHome={leave} />;
@@ -6612,6 +6752,7 @@ function AppInner() {
           />
         ) : (
           <ClaimIdentitySheet
+            detail={liveDeal.detail}
             open
             identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
             onClose={closeClaimPopup}
@@ -6652,22 +6793,28 @@ function AppInner() {
           onClose={() => setClaimDialog(null)}
           onContinue={(values) => {
             setGiftRecipient({
-              name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+              name: `${values.firstName} ${values.lastName}`.trim(),
               email: values.email,
               phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
             });
+            setGiftNote(values.note);
+            setClaimError(null);
             setClaimDialog('giftConfirm');
           }}
         />
       )}
       {isDesktop && claimDialog === 'giftConfirm' && (
         <ConfirmGiftSendModal
+          detail={liveDeal.detail}
           open
           recipient={giftRecipient}
+          note={giftNote}
+          error={claimError}
+          busy={claimBusy}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onEdit={() => setClaimDialog('gift')}
-          onSend={() => finishDesktopClaim('gift')}
+          onSend={() => void finishDesktopClaim('gift')}
         />
       )}
       {isDesktop && claimDialog === 'other' && (
@@ -6681,6 +6828,13 @@ function AppInner() {
               phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
             });
             setClaimDialog('verify');
+            void sendClaimCode(
+              holderFromRecipient({
+                name: `${values.firstName} ${values.lastName}`.trim(),
+                email: values.email,
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+              }),
+            );
           }}
         />
       )}
@@ -6688,19 +6842,28 @@ function AppInner() {
         <RecipientVerificationModal
           open
           recipient={claimRecipient}
+          target={claimHolder?.email}
+          error={claimError}
+          busy={claimBusy}
+          onResend={() => claimHolder && void sendClaimCode(claimHolder)}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
-          onVerify={() => setClaimDialog('summary')}
+          onVerify={(code) => {
+            setClaimCode(code);
+            setClaimError(null);
+            setClaimDialog('summary');
+          }}
           onBack={() => setClaimDialog('other')}
         />
       )}
       {isDesktop && claimDialog === 'summary' && (
         <RecipientSummaryModal
+          detail={liveDeal.detail}
           open
           recipient={claimRecipient}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
-          onConfirm={() => finishDesktopClaim('someone-else')}
+          onConfirm={() => void finishDesktopClaim('someone-else')}
           onEdit={() => setClaimDialog('other')}
         />
       )}

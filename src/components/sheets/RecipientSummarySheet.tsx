@@ -1,8 +1,12 @@
 import { Icon } from '../ui/Icon';
+import { formatNaira, type DealDetail } from '../../hooks/useDealDetail';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { SheetShell } from './SheetShell';
 import { maskPhone } from '../../utils/format';
 
 export interface RecipientSummarySheetProps {
+  /** The live deal this sheet is for. */
+  detail?: DealDetail | null;
   open: boolean;
   onClose: () => void;
   onContinue: () => void;
@@ -11,17 +15,17 @@ export interface RecipientSummarySheetProps {
   recipient?: { name: string; email: string; phone?: string } | null;
 }
 
-export function RecipientSummarySheet({ open, onClose, onContinue, onEdit, recipient }: RecipientSummarySheetProps) {
-  const recipientName = recipient?.name ?? 'Samuel Adeleke';
-  const recipientEmail = recipient?.email ?? 'samuel.adeleke@example.com';
-  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
+export function RecipientSummarySheet({ open, onClose, onContinue, onEdit, recipient, detail }: RecipientSummarySheetProps) {
+  const recipientName = recipient?.name ?? '';
+  const recipientEmail = recipient?.email ?? '';
+  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '';
   const initials =
     recipientName
       .split(/\s+/)
       .map((part) => part.charAt(0))
       .join('')
       .toUpperCase()
-      .slice(0, 2) || 'SA';
+      .slice(0, 2);
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="flex justify-center pt-3 pb-3">
@@ -56,20 +60,11 @@ export function RecipientSummarySheet({ open, onClose, onContinue, onEdit, recip
             <div className="flex items-center gap-3">
               <div className="relative w-12 h-12 rounded-full bg-gradient-to-tr from-primary-container to-primary flex items-center justify-center text-on-primary font-bold text-lg shadow-sm">
                 <span>{initials}</span>
-                <span
-                  className="absolute -bottom-0.5 -right-0.5 bg-primary-container text-on-primary p-0.5 rounded-full ring-2 ring-surface-canvas"
-                  title="Verified"
-                >
-                  <Icon name="check" className="text-[14px]" filled />
-                </span>
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <h2 className="text-base font-bold text-text-primary">{recipientName}</h2>
                 </div>
-                <span className="inline-flex items-center text-xs font-semibold text-badge-discount-text bg-badge-discount-bg border border-badge-discount-text/20 px-2 py-0.5 rounded-full mt-0.5">
-                  ✓ Verified Contact
-                </span>
               </div>
             </div>
             <div className="w-9 h-9 rounded-full bg-surface-tint-blue text-primary-container flex items-center justify-center">
@@ -98,29 +93,31 @@ export function RecipientSummarySheet({ open, onClose, onContinue, onEdit, recip
         <section className="bg-surface-tint-blue/50 border border-border-active rounded-2xl p-4 mb-6">
           <div className="flex items-center justify-between mb-2.5">
             <span className="text-[11px] font-bold text-text-tertiary uppercase tracking-wider">Attached Perk</span>
-            <span className="bg-badge-discount-bg text-badge-discount-text text-xs font-bold px-2 py-0.5 rounded-md">
-              20% OFF
-            </span>
+            {detail && detail.discountPercent > 0 && (
+              <span className="bg-badge-discount-bg text-badge-discount-text text-xs font-bold px-2 py-0.5 rounded-md">
+                {detail.discountPercent}% OFF
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 rounded-xl bg-surface-container overflow-hidden shrink-0 border border-border-subtle">
               <img
-                alt="Urban Grill & Bistro Burger"
+                alt={detail?.title ?? ''}
                 className="w-full h-full object-cover"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBgxtHhHYkFK-oOHk2m2MiNyZ1CcnAPqiv36HD1dpTEMozJIs1lH9FP1irg5ws60AmGFOaMwdr53oSPADNKGebNtJhWXfCzby8UCggA6vq9WcsPswGiH-XuF19e2EWVAfclb__-Y4_mDnpeWj8xdX4ilC11h6I8nu11PnNV3LudPZAYGULQ_KXehKm5FbtHveev6WfLg5GyMmzOV98upg6WVBJ5wM5p-ULNWCtVgMx0-Kf4E93pqdM86g"
+                src={detail?.image ?? NO_IMAGE}
               />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-bold text-text-primary truncate">Urban Grill &amp; Bistro</h3>
+              <h3 className="text-sm font-bold text-text-primary truncate">{detail?.businessName}</h3>
               <p className="text-xs text-text-secondary mt-0.5">
-                Lunch Combo • <span className="font-bold text-text-primary">₦9,600</span>
+                {detail?.title} • <span className="font-bold text-text-primary">{formatNaira(detail?.price ?? 0)}</span>
               </p>
             </div>
           </div>
           <div className="mt-3 pt-3 border-t border-border-active/70 flex items-start gap-2 text-[11px] text-text-tertiary leading-snug">
             <Icon name="info" className="text-[16px] text-primary-container shrink-0 mt-0.5" />
             <span>
-              Claim voucher will be generated in <strong>Samuel Adeleke's</strong> name. Payment is settled upon
+              Claim voucher will be generated in <strong>{recipientName}'s</strong> name. Payment is settled upon
               redemption.
             </span>
           </div>

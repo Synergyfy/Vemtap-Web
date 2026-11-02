@@ -192,6 +192,35 @@ export const dealDistanceKm = (deal: Pick<DealDetail, 'latitude' | 'longitude'>,
   return 6371 * 2 * Math.asin(Math.sqrt(a));
 };
 
+export const formatNaira = (value: number) =>
+  new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(value);
+
+export interface DealRule {
+  icon: string;
+  body: string;
+}
+
+/** The deal's real rules, grouped as the Terms pages show them; a group with nothing in it stays empty. */
+export const dealTermsSections = (deal: DealDetail): { validity: DealRule[]; redemption: DealRule[]; merchant: DealRule[] } => ({
+  validity: [
+    { icon: 'event_available', body: deal.endDate ? `Valid until ${deal.endDate.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}.` : 'This deal has no end date.' },
+    ...(deal.windowLabel ? [{ icon: 'schedule', body: `Redeemable ${deal.windowLabel}.` }] : []),
+  ],
+  redemption: [
+    ...(deal.claimLimitLabel ? [{ icon: 'person', body: `Limit: ${deal.claimLimitLabel}.` }] : []),
+    ...(deal.address ? [{ icon: 'pin_drop', body: `Valid at ${deal.branchName ? `${deal.branchName}, ` : ''}${deal.address}.` }] : []),
+    ...(deal.channelsLabel ? [{ icon: 'room_service', body: `Available for ${deal.channelsLabel}.` }] : []),
+    ...deal.claimSteps.map((step) => ({ icon: 'qr_code_scanner', body: step })),
+  ],
+  merchant: deal.terms.map((term) => ({ icon: 'gavel', body: term })),
+});
+
+/** Why the deal can't be claimed any more; null while it still can. */
+export const dealUnavailableLabel = (deal: Pick<DealDetail, 'isExpired' | 'quantity' | 'claimedCount'>): string | null => {
+  if (deal.isExpired) return 'Deal ended';
+  return deal.quantity != null && deal.claimedCount >= deal.quantity ? 'Sold out' : null;
+};
+
 /** A wa.me link for the merchant's WhatsApp number, else their phone number; null when they have neither. */
 export const dealWhatsappLink = (deal: Pick<DealDetail, 'phone' | 'profile'>): string | null => {
   const digits = (deal.profile?.whatsapp ?? deal.phone ?? '').replace(/\D/g, '');

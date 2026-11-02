@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
-import { parsePrice } from '../../utils/format';
 import { getAccessToken } from '../../services/api/client';
 import { NO_IMAGE } from '../../utils/homeOffer';
 import { useLocation, formatDistanceKm } from '../../context/LocationContext';
 import { useDealReviews, reviewTimeLabel } from '../../hooks/useDealReviews';
-import { dealDistanceKm, dealTimeLeft, dealWhatsappLink, useDealSaved, type DealDetail } from '../../hooks/useDealDetail';
+import { dealDistanceKm, dealTimeLeft, dealUnavailableLabel, dealWhatsappLink, useDealSaved, type DealDetail } from '../../hooks/useDealDetail';
 import { mapEmbedUrl, mapsLink, todayHours } from '../../hooks/usePublicBusiness';
 import { useAuth } from '../../context/AuthContext';
-import { useClaims, type ClaimKind, type ClaimRecord } from '../../context/ClaimsContext';
+import { useClaims, type ClaimHolder, type ClaimKind, type ClaimRecord } from '../../context/ClaimsContext';
 import { useProfile } from '../../context/ProfileContext';
+import { ShareModal } from '../../components/desktop/dialogs/ShareModal';
 import { CommentsDrawer } from '../../components/desktop/dialogs/CommentsDrawer';
 import { HowToClaimModal } from '../../components/desktop/dialogs/HowToClaimModal';
 import { ClaimConfirmationModal } from '../../components/desktop/dialogs/ClaimConfirmationModal';
@@ -50,6 +51,7 @@ interface DesktopDealDetailScreenProps {
 type Dialog =
   | null
   | 'comments'
+  | 'share'
   | 'howTo'
   | 'claimConfirm'
   | 'auth'
@@ -142,6 +144,11 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
   const profile = useProfile();
   const { lat, lng } = useLocation();
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [claimHolder, setClaimHolder] = useState<ClaimHolder | null>(null);
+  const [claimCode, setClaimCode] = useState('');
+  const [giftNote, setGiftNote] = useState('');
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
   const [pendingStep, setPendingStep] = useState<PendingStep>('identity');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
@@ -234,6 +241,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
   const mapUrl = mapsLink({ latitude: detail.latitude, longitude: detail.longitude, name: dealBusiness, address: detail.address, city: null });
   const mapEmbed = mapEmbedUrl(detail.latitude, detail.longitude);
   const whatsapp = dealWhatsappLink(detail);
+  const unavailable = dealUnavailableLabel(detail);
   const vouchersLeft = detail.quantity != null ? Math.max(detail.quantity - detail.claimedCount, 0) : null;
   const claimedPercent = detail.quantity ? Math.min(100, Math.round((detail.claimedCount / detail.quantity) * 100)) : 0;
   const ratedReviews = reviews.filter((review) => review.rating != null);
@@ -247,28 +255,61 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
     setDialog(step);
   };
 
-  const completeClaim = async () => {
-    const kind: ClaimKind =
-      dialog === 'giftConfirm' ? 'gift' : dialog === 'summary' ? 'someone-else' : 'self';
+  // A claim is two API steps: a code is emailed to the holder, then traded for
+  // the voucher. Only gifts go straight through.
+  const sendClaimCode = async (holder: ClaimHolder) => {
+    setClaimHolder(holder);
+    setClaimError(null);
+    setClaimBusy(true);
+    try {
+      await claims.requestClaimCode(detail.id, holder);
+    } catch (error) {
+      setClaimError(error instanceof Error ? error.message : 'We couldn’t send the code. Please try again.');
+    } finally {
+      setClaimBusy(false);
+    }
+  };
 
+  const claimForSelf = () => {
+    if (!profile.phone.trim()) {
+      setDialog(null);
+      showToast('Add a phone number to your profile to claim this deal.');
+      return;
+    }
+    setClaimRecipient(null);
+    setDialog('verify');
+    void sendClaimCode({ firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone });
+  };
+
+  const completeClaim = async (kind: ClaimKind, code?: string) => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        offerId: detail.id,
         kind,
-        dealTitle: selectedDeal?.title ?? dealTitle,
-        dealBusiness: selectedDeal?.business ?? dealBusiness,
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location ?? dealLocation,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
+        dealTitle: detail.title,
+        dealBusiness: detail.businessName,
+        dealImage: detail.image,
+        dealLocation: detail.address ?? dealLocation,
+        dealPrice: detail.price,
+        dealOldPrice: detail.oldPrice,
         discountLabel: selectedDeal?.discountLabel,
+        dealPhone: detail.phone ?? undefined,
+        dealLatitude: detail.latitude ?? undefined,
+        dealLongitude: detail.longitude ?? undefined,
         terms: detail.terms,
+        code,
+        email: claimHolder?.email,
+        note: kind === 'gift' ? giftNote : undefined,
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
         recipient: kind === 'self' ? undefined : claimRecipient ?? undefined,
       });
       markClaimed();
       setDialog(null);
       setClaimRecipient(null);
+      setClaimHolder(null);
+      setClaimCode('');
       if (onClaimComplete) {
         onClaimComplete(record);
         return;
@@ -278,8 +319,16 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
           ? `Gift pass ${record.ref} dispatched to ${record.recipient?.name ?? 'your recipient'}!`
           : `Deal claimed! Present ${record.ref} at the local merchant.`,
       );
-    } catch {
-      // Do not show a success state until the backend confirms the claim.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'We couldn’t confirm this claim. Please try again.';
+      if (kind === 'gift') {
+        setClaimError(message);
+        return;
+      }
+      setClaimError(message);
+      setDialog('verify');
+    } finally {
+      setClaimBusy(false);
     }
   };
 
@@ -289,13 +338,6 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
       return;
     }
     onChat().catch(() => showToast('Chat couldn’t be opened. Please try again.'));
-  };
-
-  const copyDealLink = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
-    }
-    showToast('Deal link copied to clipboard!');
   };
 
   const shareWhatsApp = () => {
@@ -461,7 +503,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
                     </button>
                     <button
                       type="button"
-                      onClick={copyDealLink}
+                      onClick={() => setDialog('share')}
                       className="h-10 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 transition-colors"
                     >
                       <Icon name="share" className="text-[18px]" />
@@ -838,9 +880,10 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
                       <button
                         type="button"
                         onClick={() => startClaim('identity')}
-                        className="w-full h-14 bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] transition-all transform active:scale-[0.98] cursor-pointer"
+                        disabled={Boolean(unavailable)}
+                        className="w-full h-14 bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] transition-all transform active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <span>Claim Deal Now ({formatCurrency(dealPrice)})</span>
+                        <span>{unavailable ?? `Claim Deal Now (${formatCurrency(dealPrice)})`}</span>
                         <Icon name="arrow_forward" className="text-[20px]" />
                       </button>
 
@@ -927,6 +970,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
         </div>
       )}
 
+      <ShareModal open={dialog === 'share'} onClose={() => setDialog(null)} deal={selectedDeal} />
       <CommentsDrawer
         open={dialog === 'comments'}
         onClose={() => setDialog(null)}
@@ -942,9 +986,10 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
         distance={distance}
       />
       <ClaimConfirmationModal
+        detail={detail}
         open={dialog === 'claimConfirm'}
         onClose={() => setDialog(null)}
-        onConfirm={completeClaim}
+        onConfirm={claimForSelf}
         deal={selectedDeal}
       />
       <ClaimAuthModal
@@ -952,6 +997,12 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
         deal={selectedDeal}
         onClose={() => setDialog(null)}
         onAuthenticated={() => {
+          if (hasApiConfig()) {
+            // A real sign-in, then back to this deal to claim it.
+            window.sessionStorage.setItem('vemtap_return_to', window.location.pathname);
+            onNav('sign-in');
+            return;
+          }
           signIn();
           setDialog(pendingStep);
         }}
@@ -961,7 +1012,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
         identity={{ name: profile.fullName }}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
-        onClaimSelf={completeClaim}
+        onClaimSelf={claimForSelf}
         onGift={() => setDialog('gift')}
         onSomeoneElse={() => {
           setClaimRecipient(null);
@@ -975,25 +1026,44 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
           setClaimRecipient({
             name: `${values.firstName} ${values.lastName}`.trim(),
             email: values.email,
-            phone: values.phone || undefined,
+            phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
           });
           setDialog('verify');
+          void sendClaimCode({
+            firstName: values.firstName,
+            lastName: values.lastName,
+            email: values.email,
+            phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : '',
+          });
         }}
       />
       <RecipientVerificationModal
         open={dialog === 'verify'}
         recipient={claimRecipient}
+        target={claimHolder?.email}
+        error={claimError}
+        busy={claimBusy}
+        onResend={() => claimHolder && void sendClaimCode(claimHolder)}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
-        onVerify={() => setDialog('summary')}
-        onBack={() => setDialog('someoneElse')}
+        onVerify={(code) => {
+          if (claimRecipient) {
+            setClaimCode(code);
+            setClaimError(null);
+            setDialog('summary');
+            return;
+          }
+          void completeClaim('self', code);
+        }}
+        onBack={() => (claimRecipient ? setDialog('someoneElse') : setDialog(null))}
       />
       <RecipientSummaryModal
+        detail={detail}
         open={dialog === 'summary'}
         recipient={claimRecipient}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
-        onConfirm={completeClaim}
+        onConfirm={() => void completeClaim('someone-else', claimCode)}
         onEdit={() => setDialog('someoneElse')}
       />
       <GiftRecipientDetailsModal
@@ -1006,16 +1076,21 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
             email: values.email,
             phone: values.phone || undefined,
           });
+          setGiftNote(values.note);
           setDialog('giftConfirm');
         }}
       />
       <ConfirmGiftSendModal
+        detail={detail}
         open={dialog === 'giftConfirm'}
         recipient={claimRecipient}
+        note={giftNote}
+        error={claimError}
+        busy={claimBusy}
         deal={selectedDeal}
         onClose={() => setDialog(null)}
         onEdit={() => setDialog('gift')}
-        onSend={completeClaim}
+        onSend={() => void completeClaim('gift')}
       />
     </DesktopPage>
   );

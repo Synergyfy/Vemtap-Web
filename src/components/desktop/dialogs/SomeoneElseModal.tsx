@@ -107,7 +107,7 @@ export function SomeoneElseModal({ open, onClose, onContinue }: SomeoneElseModal
               <label className={labelClass}>Email Address</label>
               <input
                 className={inputClass}
-                placeholder="samuel@example.com"
+                placeholder="Their email address"
                 type="email"
                 required
                 value={email}

@@ -1,11 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { useLocation, formatDistanceKm } from '../context/LocationContext';
 import { useDealLikes } from '../hooks/useDealLikes';
-import { dealDistanceKm, dealEndsLabel, dealWhatsappLink, useDealSaved, type DealDetail } from '../hooks/useDealDetail';
+import { dealDistanceKm, dealEndsLabel, dealUnavailableLabel, dealWhatsappLink, useDealSaved, type DealDetail } from '../hooks/useDealDetail';
 import { mapEmbedUrl, todayHours } from '../hooks/usePublicBusiness';
 import { getAccessToken } from '../services/api/client';
 import { NO_IMAGE } from '../utils/homeOffer';
@@ -121,7 +121,16 @@ export function DealDetailScreen({
   const { saved, toggle: toggleSaved } = useDealSaved(dealId);
   const { lat, lng } = useLocation();
   const [photoIndex, setPhotoIndex] = useState(0);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  const showToast = (message: string) => {
+    window.clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
 
   useEffect(() => {
     setPhotoIndex(0);
@@ -157,6 +166,7 @@ export function DealDetailScreen({
   const distance = formatDistanceKm(dealDistanceKm(detail, lat, lng));
   const mapEmbed = mapEmbedUrl(detail.latitude, detail.longitude);
   const whatsapp = dealWhatsappLink(detail);
+  const unavailable = dealUnavailableLabel(detail);
   const subtitleParts = [detail.category, distance, detail.branchName].filter(Boolean);
   const pills = [
     { icon: 'schedule', label: dealEndsLabel(detail.endDate) ?? (detail.isExpired ? 'Deal ended' : null) },
@@ -164,25 +174,28 @@ export function DealDetailScreen({
     { icon: 'person', label: detail.claimLimitLabel },
   ].filter((pill): pill is { icon: string; label: string } => Boolean(pill.label));
 
-  const requireSignIn = () => {
+  const requireSignIn = (action: string) => {
     if (getAccessToken()) return false;
-    setActionError('Please sign in to do that.');
+    showToast(`Please sign in to ${action}.`);
     return true;
   };
   const onLike = () => {
-    if (requireSignIn()) return;
-    setActionError(null);
-    toggleLike(detail.id).catch(() => setActionError('That didn’t save. Please try again.'));
+    if (requireSignIn('like deals')) return;
+    toggleLike(detail.id, likesCount).then(
+      (result) => showToast(result.liked ? 'You liked this deal' : 'Like removed'),
+      () => showToast('Could not save your like. Please try again.'),
+    );
   };
   const openChat = () => {
-    if (requireSignIn()) return;
-    setActionError(null);
-    onChat().catch(() => setActionError('Chat couldn’t be opened. Please try again.'));
+    if (requireSignIn('message this business')) return;
+    onChat().catch(() => showToast('Chat couldn’t be opened. Please try again.'));
   };
   const onSave = () => {
-    if (requireSignIn()) return;
-    setActionError(null);
-    toggleSaved().catch(() => setActionError('That didn’t save. Please try again.'));
+    if (requireSignIn('save deals')) return;
+    toggleSaved().then(
+      (isSaved) => showToast(isSaved ? 'Saved to your deals' : 'Removed from saved deals'),
+      () => showToast('Could not save this deal. Please try again.'),
+    );
   };
 
   return (
@@ -479,15 +492,17 @@ export function DealDetailScreen({
           </button>
         </div>
 
-        {actionError && (
-          <p role="alert" className="mt-space-sm text-center font-caption text-caption text-error">{actionError}</p>
-        )}
-
         <div className="mt-space-lg mb-space-xs flex items-center justify-center gap-1.5 text-text-tertiary">
           <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
           <span className="font-caption text-caption font-medium">VEMTAP verified discount guarantee</span>
         </div>
       </div>
+
+      {toast && (
+        <div role="status" className="fixed bottom-36 left-1/2 -translate-x-1/2 z-50 w-max max-w-[calc(100%-32px)] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-lg font-label-md text-label-md">
+          {toast}
+        </div>
+      )}
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_-8px_24px_-4px_rgba(17,24,39,0.08)] pb-safe">
         <div className="px-margin pt-3 pb-4 flex flex-col items-center">
@@ -504,10 +519,11 @@ export function DealDetailScreen({
             <button
               type="button"
               onClick={onClaim}
-              className="w-full h-[54px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:scale-[0.98] transition-transform"
+              disabled={Boolean(unavailable)}
+              className="w-full h-[54px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100"
             >
               <Icon name="local_activity" className="text-[20px]" />
-              <span>Claim Deal</span>
+              <span>{unavailable ?? 'Claim Deal'}</span>
             </button>
           )}
           <div className="flex items-center gap-1 mt-2 text-text-secondary">

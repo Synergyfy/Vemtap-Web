@@ -1,8 +1,9 @@
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
-import { CLAIM_CODE } from '../../../scripts/ClaimedDealScreen';
 
 interface ContactBusinessModalProps {
+  /** The voucher's code, when there is one. */
+  code?: string;
   open: boolean;
   onChat: () => void;
   onClose: () => void;
@@ -59,7 +60,7 @@ function ContactRow({ icon, iconClass, title, badge, subtitle, onClick, href }: 
   );
 }
 
-export function ContactBusinessModal({ open, onChat, onClose }: ContactBusinessModalProps) {
+export function ContactBusinessModal({ open, onChat, onClose, code }: ContactBusinessModalProps) {
   return (
     <DesktopModal open={open} onClose={onClose} maxWidth="max-w-lg">
       <div className="flex items-start justify-between gap-space-md p-space-lg border-b border-border-subtle">
@@ -122,8 +123,13 @@ export function ContactBusinessModal({ open, onChat, onClose }: ContactBusinessM
               <span className="text-badge-discount-text">Open Now</span> • Closes at 10:00 PM
             </p>
             <p className="font-caption text-caption text-text-secondary mt-0.5">
-              Mention voucher code <strong className="font-mono text-text-primary font-semibold">{CLAIM_CODE}</strong>{' '}
-              when connecting with the merchant.
+              {code ? (
+                <>
+                  Mention voucher code <strong className="font-mono text-text-primary font-semibold">{code}</strong> when connecting with the merchant.
+                </>
+              ) : (
+                'Mention your voucher when connecting with the merchant.'
+              )}
             </p>
           </div>
         </div>

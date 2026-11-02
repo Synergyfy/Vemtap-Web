@@ -1,25 +1,22 @@
 import { useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
+import { useDealDetail } from '../hooks/useDealDetail';
+import { useVoucherQr } from '../hooks/useVoucherQr';
+import { mapEmbedUrl } from '../hooks/usePublicBusiness';
+import { NO_IMAGE } from '../utils/homeOffer';
+import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { Icon } from '../components/ui/Icon';
-import { useClaims } from '../context/ClaimsContext';
+import { currentVoucher, useClaims, type ClaimRecord } from '../context/ClaimsContext';
 import { useProfile } from '../context/ProfileContext';
 
 interface ClaimedDealScreenProps {
   onBack: () => void;
   onContact: () => void;
   onReview: () => void;
-  onCancelClaim: () => void;
+  onCancelClaim: () => Promise<void>;
+  /** Open this voucher; otherwise the latest one. */
+  claim?: ClaimRecord | null;
 }
-
-/** Fallback shown only when no claim record exists (deep link / cleared storage). */
-export const CLAIM_CODE = 'VT-48F261';
-const CASHIER_PIN = '8821';
-
-const HERO_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDHNsQYzlQAh9oju3O9Pp7b2OqE4Q1w9NTs0_fLXsac8VzxG06oD2NcwkkT8F3q8guxDTRfKEplRfmk3C-S9j62uAZ-X3SG4rkR3dDcngRx8sOpiwe5UeKWYk-lyy81904uUukw2Do3wMAOVj0Vg_7dv90NC6KTvhmoR0HFL6aPR56jOI4gZrX7w67mzbdQcgA44gm5lNRoAe6oGg6V1rNX8nBhjhfYCCBlRIssV7QqZImEOkPqpYnQDw';
-
-const MAP_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBRzuuVi9eFa4IfiKY-0CLXnUqZT2sbZNosW0fYczr-35iaT8YS48jMPhxX5FhnlpIT0M6U61-52cj6dPjBQzinsAIKVmlZpDUKfvnY7-G3LByd50m-xoQvFZg9A_dkudzO9jz0LRWmtKBN1qsOyrPwhv2R0EFtDw9bUTJM-yJ2xFm00pWt8sgDfxXVcbelWtpObOkpjajIiqRQK8pSgKgT2aPd465gP81ZRfUsDx5-0GtlsxHiafGQhg';
 
 const formatCurrency = (value: number | undefined) => {
   const safeValue = Number(value ?? 0);
@@ -30,8 +27,6 @@ const formatCurrency = (value: number | undefined) => {
     maximumFractionDigits: 0,
   }).format(safeValue);
 };
-
-const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Apo%20Boulevard%2C%20Abuja';
 
 const REDEEM_STEPS = (business: string, code: string) => [
   {
@@ -52,62 +47,23 @@ const REDEEM_STEPS = (business: string, code: string) => [
   },
 ];
 
-const DEAL_RULES = [
-  { icon: 'calendar_today', text: 'Valid Monday – Friday, 12:00 PM – 4:00 PM (Lunch hours).' },
-  { icon: 'restaurant', text: 'Dine-in exclusive (Takeaway & delivery excluded).' },
-  { icon: 'confirmation_number', text: 'One claim voucher valid per table / visit.' },
-  { icon: 'block', text: 'Cannot be combined with student or other combo promos.' },
-];
-
-function QrCodeArt() {
-  return (
-    <svg className="w-full h-full" fill="currentColor" viewBox="0 0 100 100">
-      <rect fill="#141B2B" height="30" rx="3" width="30" x="0" y="0" />
-      <rect fill="#FFFFFF" height="20" rx="2" width="20" x="5" y="5" />
-      <rect fill="#141B2B" height="10" rx="1" width="10" x="10" y="10" />
-      <rect fill="#141B2B" height="30" rx="3" width="30" x="70" y="0" />
-      <rect fill="#FFFFFF" height="20" rx="2" width="20" x="75" y="5" />
-      <rect fill="#141B2B" height="10" rx="1" width="10" x="80" y="10" />
-      <rect fill="#141B2B" height="30" rx="3" width="30" x="0" y="70" />
-      <rect fill="#FFFFFF" height="20" rx="2" width="20" x="5" y="75" />
-      <rect fill="#141B2B" height="10" rx="1" width="10" x="10" y="80" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="36" y="4" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="48" y="12" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="58" y="4" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="36" y="20" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="4" y="38" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="16" y="46" />
-      <rect fill="#141B2B" height="14" rx="1" width="6" x="28" y="38" />
-      <rect fill="#141B2B" height="6" rx="1" width="14" x="68" y="38" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="88" y="44" />
-      <rect fill="#141B2B" height="8" rx="1" width="6" x="38" y="68" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="48" y="74" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="62" y="68" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="76" y="78" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="88" y="70" />
-      <rect fill="#141B2B" height="6" rx="1" width="14" x="38" y="86" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="60" y="88" />
-      <rect fill="#141B2B" height="6" rx="1" width="10" x="82" y="90" />
-      <rect fill="#066CF4" height="28" rx="6" width="28" x="36" y="36" />
-      <path d="M44 44L50 56L56 44" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
-    </svg>
-  );
-}
-
-export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }: ClaimedDealScreenProps) {
+export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim, claim: openClaim }: ClaimedDealScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | 'redeem' | 'cancel'>(null);
   const [copied, setCopied] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
 
-  // Most recent redeemable claim (localStorage-backed; backend gap: `GET /claims/:ref`).
-  const { claims } = useClaims();
+  // From `GET /me/claims`.
+  const { claims, claimsLoading } = useClaims();
   const profile = useProfile();
-  const claim = claims.find((entry) => entry.kind !== 'gift') ?? null;
-  const claimCode = claim?.code ?? CLAIM_CODE;
-  const businessName = claim?.dealBusiness ?? 'Local dining partner';
-  const offerTitle = claim?.dealTitle ?? 'Featured Local Deal';
-  const heroImage = claim?.dealImage ?? HERO_IMG;
+  // `null` from a scanned link means that voucher isn't this account's.
+  const claim = openClaim === undefined ? currentVoucher(claims) ?? null : openClaim;
+  const liveDeal = useDealDetail(claim?.offerId);
+  const terms = claim?.terms?.length ? claim.terms : liveDeal.detail?.terms ?? [];
+  const claimCode = claim?.code ?? '';
+  const businessName = claim?.dealBusiness ?? '';
+  const offerTitle = claim?.dealTitle ?? '';
+  const heroImage = claim?.dealImage ?? NO_IMAGE;
   const dealPrice = Number(claim?.dealPrice ?? 0);
   const dealOldPrice = Number(claim?.dealOldPrice ?? (claim?.dealPrice ?? dealPrice) ?? 0);
   const discountAmount = dealOldPrice > dealPrice ? Math.max(dealOldPrice - dealPrice, 0) : 0;
@@ -115,6 +71,23 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
   const holderName = claim?.recipient?.name || profile.fullName;
   const holderContact = claim?.recipient?.phone || claim?.recipient?.email || profile.maskedPhone;
   const redeemSteps = REDEEM_STEPS(businessName, claimCode);
+  const expiryLabel = claim?.expiresAt
+    ? new Date(claim.expiresAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
+  const claimState = claim?.state ?? 'ACTIVE';
+  const usable = claimState === 'ACTIVE';
+  const stateLabel = claimState === 'REDEEMED' ? 'REDEEMED' : claimState === 'EXPIRED' ? 'EXPIRED' : 'ACTIVE CLAIM • READY TO USE';
+  const hasPoint = claim?.dealLatitude != null && claim.dealLongitude != null;
+  const directionsUrl = hasPoint
+    ? `https://www.google.com/maps/search/?api=1&query=${claim.dealLatitude},${claim.dealLongitude}`
+    : claim?.dealLocation
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(claim.dealLocation)}`
+      : null;
+  const mapUrl = mapEmbedUrl(claim?.dealLatitude ?? null, claim?.dealLongitude ?? null);
+  const businessInitials = businessName.split(/\s+/).map((word) => word[0]).join('').slice(0, 2).toUpperCase();
+
+  // Scanning opens this voucher's own pass page.
+  const qrImage = useVoucherQr(claim?.id);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -122,10 +95,18 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
   };
 
   const copyCode = () => {
-    navigator.clipboard?.writeText(claimCode).catch(() => undefined);
-    setCopied(true);
-    showToast(`Merchant Code Copied: ${claimCode}`);
-    window.setTimeout(() => setCopied(false), 2000);
+    if (!navigator.clipboard) {
+      showToast('Could not copy the code');
+      return;
+    }
+    navigator.clipboard.writeText(claimCode).then(
+      () => {
+        setCopied(true);
+        showToast(`Merchant Code Copied: ${claimCode}`);
+        window.setTimeout(() => setCopied(false), 2000);
+      },
+      () => showToast('Could not copy the code'),
+    );
   };
 
   const sharePass = () => {
@@ -141,10 +122,10 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
   const handleConfirm = () => {
     if (confirming === 'redeem') {
       setConfirming(null);
-      showToast('Pass marked as presented in-store!');
+      showBarcode();
     } else if (confirming === 'cancel') {
       setConfirming(null);
-      onCancelClaim();
+      onCancelClaim().catch(() => showToast('This claim couldn’t be cancelled. Please try again.'));
     }
   };
 
@@ -152,6 +133,32 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
     qrRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     showToast('Displaying full scannable pass');
   };
+
+  if (!claim && claimsLoading) {
+    return (
+      <AppScreen>
+        <SkeletonGroup label="Loading your voucher" className="px-margin pt-10 space-y-space-sm">
+          <Skeleton className="h-44 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
+          <Skeleton className="h-11 w-full rounded-2xl" />
+        </SkeletonGroup>
+      </AppScreen>
+    );
+  }
+
+  if (!claim) {
+    return (
+      <AppScreen>
+        <div className="px-margin pt-10">
+          <div className="rounded-3xl bg-surface-canvas p-6 text-center shadow-sm space-y-3">
+            <Icon name="local_activity" className="text-[32px] text-primary" />
+            <p className="font-label-md text-label-md text-text-primary font-semibold">We couldn’t find this voucher.</p>
+            <button type="button" onClick={onBack} className="h-11 w-full rounded-xl bg-primary text-on-primary font-button-primary text-button-primary">Go back</button>
+          </div>
+        </div>
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>
@@ -203,13 +210,15 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
               <div className="inline-flex items-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-xs py-1 rounded-full w-fit">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
                 <span className="font-label-sm text-label-sm uppercase tracking-wider font-semibold">
-                  ACTIVE CLAIM • READY TO USE
+                  {stateLabel}
                 </span>
               </div>
-              <div className="inline-flex items-center gap-1 text-on-surface-variant">
+              {expiryLabel ? (
+<div className="inline-flex items-center gap-1 text-on-surface-variant">
                 <Icon name="hourglass_top" className="text-[16px] text-tertiary" />
-                <span className="font-caption text-caption">Expires Oct 18, 2024 at 11:59 PM (in 2 days)</span>
+                <span className="font-caption text-caption">Expires {expiryLabel}</span>
               </div>
+) : null}
             </div>
 
             <div className="p-space-md space-y-space-sm">
@@ -265,14 +274,14 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
             <div className="p-space-md text-center space-y-space-sm bg-surface-subtle" ref={qrRef}>
               <div className="inline-block p-space-sm bg-surface-canvas rounded-2xl shadow-sm">
                 <div className="w-48 h-48 mx-auto flex items-center justify-center relative bg-surface-bright rounded-lg p-2">
-                  <QrCodeArt />
+                  {qrImage ? <img alt={`QR code for ${claimCode}`} className="w-full h-full" src={qrImage} /> : <span className="font-caption text-caption text-text-secondary text-center px-2">Show code {claimCode} to the cashier</span>}
                 </div>
                 <span className="inline-block mt-2 font-caption text-caption text-on-surface-variant font-medium">
-                  Scan to Redeem Instantly
+                  Scan to Open This Pass
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-space-xs">
+              <div className="grid grid-cols-1 gap-space-xs">
                 <div className="bg-surface-canvas p-space-xs rounded-xl flex flex-col items-center justify-center">
                   <span className="font-caption text-caption text-on-surface-variant">Merchant Code</span>
                   <div className="flex items-center gap-1 mt-0.5">
@@ -289,12 +298,6 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
                     </button>
                   </div>
                 </div>
-                <div className="bg-surface-canvas p-space-xs rounded-xl flex flex-col items-center justify-center">
-                  <span className="font-caption text-caption text-on-surface-variant">Cashier PIN</span>
-                  <span className="font-heading-sm text-heading-sm font-bold text-primary mt-0.5 tracking-widest">
-                    {CASHIER_PIN}
-                  </span>
-                </div>
               </div>
 
               <p className="font-caption text-caption text-on-surface-variant px-space-sm">
@@ -304,6 +307,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
           </div>
 
           <div className="space-y-space-xs">
+            {usable && (
             <button
               type="button"
               onClick={() => setConfirming('redeem')}
@@ -312,6 +316,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
               <Icon name="check_circle" className="text-[20px]" />
               <span>Use Deal Now (Confirm In-Store)</span>
             </button>
+            )}
             <div className="grid grid-cols-2 gap-space-xs">
               <button
                 type="button"
@@ -321,8 +326,9 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
                 <Icon name="chat" className="text-[18px]" />
                 <span>Direct Chat</span>
               </button>
-              <a
-                href={DIRECTIONS_URL}
+              {directionsUrl ? (
+<a
+ href={directionsUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="h-11 rounded-xl bg-surface-container-low text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 active:bg-surface-container"
@@ -330,6 +336,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
                 <Icon name="directions" className="text-[18px]" />
                 <span>Get Directions</span>
               </a>
+) : null}
             </div>
           </div>
 
@@ -337,7 +344,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
             <div className="flex items-center justify-between">
               <h3 className="font-heading-sm text-heading-sm text-on-surface">Claim Verification</h3>
               <span className="bg-surface-container-high text-on-secondary-container px-2 py-0.5 rounded-full font-label-sm text-label-sm">
-                #CLM-982410
+                #{claimCode}
               </span>
             </div>
             <div className="space-y-space-xs text-body-md font-body-md">
@@ -352,7 +359,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
                         hour: 'numeric',
                         minute: '2-digit',
                       })
-                    : 'Oct 15, 2024 • 10:42 AM'}
+                    : '—'}
                 </span>
               </div>
               <div className="flex items-center justify-between py-1">
@@ -390,7 +397,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
               </div>
               <div>
                 <h3 className="font-heading-sm text-heading-sm text-on-surface">How to Redeem</h3>
-                <p className="font-caption text-caption text-on-surface-variant">4 quick steps at the restaurant</p>
+                <p className="font-caption text-caption text-on-surface-variant">4 quick steps at the business</p>
               </div>
             </div>
             <div className="space-y-space-sm relative">
@@ -408,51 +415,44 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
             </div>
           </div>
 
-          <div className="rounded-2xl bg-surface-canvas p-space-md shadow-sm space-y-space-xs">
+          {terms.length ? (
+<div className="rounded-2xl bg-surface-canvas p-space-md shadow-sm space-y-space-xs">
             <h3 className="font-heading-sm text-heading-sm text-on-surface">Terms &amp; Deal Rules</h3>
             <ul className="space-y-space-2xs text-on-surface-variant font-caption text-caption">
-              {DEAL_RULES.map((rule) => (
-                <li key={rule.text} className="flex items-center gap-2">
-                  <Icon name={rule.icon} className="text-[16px] text-primary" />
-                  <span>{rule.text}</span>
+              {terms.map((term) => (
+                <li key={term} className="flex items-center gap-2">
+                  <Icon name="check_circle" className="text-[16px] text-primary" />
+                  <span>{term}</span>
                 </li>
               ))}
             </ul>
           </div>
+) : null}
 
           <div className="rounded-2xl bg-surface-canvas p-space-md shadow-sm space-y-space-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-primary font-bold">
-                  UG
+                  {businessInitials}
                 </div>
                 <div>
                   <h4 className="font-heading-sm text-heading-sm text-on-surface">{businessName}</h4>
-                  <span className="inline-flex items-center gap-1 font-caption text-caption text-badge-discount-text font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" /> Open Now • Closes 10:00 PM
-                  </span>
                 </div>
               </div>
             </div>
 
-            <div
-              className="w-full h-32 rounded-xl bg-cover bg-center relative overflow-hidden flex items-end p-space-xs shadow-inner"
-              style={{ backgroundImage: `url('${MAP_IMG}')` }}
-            >
-              <div className="bg-surface-canvas/90 backdrop-blur-md px-space-xs py-1 rounded-lg flex items-center gap-1 text-on-surface">
-                <Icon name="location_on" className="text-[16px] text-primary" />
-                <span className="font-caption text-caption font-semibold">0.8 km away • 4 mins drive</span>
-              </div>
-            </div>
+            {mapUrl ? <iframe title={`Map of ${businessName}`} className="w-full h-32 rounded-xl shadow-inner" src={mapUrl} loading="lazy" /> : null}
 
             <div className="grid grid-cols-2 gap-space-xs pt-1">
-              <a
-                href="tel:+2348000001234"
+              {claim?.dealPhone ? (
+<a
+ href={`tel:${claim.dealPhone}`}
                 className="h-10 rounded-xl bg-surface-container-low text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 active:bg-surface-container"
               >
                 <Icon name="call" className="text-[18px] text-primary" />
                 <span>Call Branch</span>
               </a>
+) : null}
               <button
                 type="button"
                 onClick={onContact}
@@ -484,6 +484,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
                 <span>Review Merchant</span>
               </button>
             </div>
+            {usable && (
             <button
               type="button"
               onClick={() => setConfirming('cancel')}
@@ -491,6 +492,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
             >
               Cancel this claim (releases voucher for others)
             </button>
+            )}
           </div>
         </div>
 
@@ -503,6 +505,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
             <Icon name="qr_code_scanner" className="text-[20px]" />
             <span>Barcode</span>
           </button>
+          {usable && (
           <button
             type="button"
             onClick={() => setConfirming('redeem')}
@@ -511,6 +514,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim }
             <Icon name="bolt" className="text-[20px]" />
             <span>Use Deal</span>
           </button>
+          )}
         </div>
       </main>
 

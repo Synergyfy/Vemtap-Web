@@ -1,8 +1,9 @@
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
-import { CLAIM_CODE } from '../../scripts/ClaimedDealScreen';
 
 interface ContactBusinessSheetProps {
+  /** The voucher's code, when there is one. */
+  code?: string;
   open: boolean;
   onChat: () => void;
   onClose: () => void;
@@ -67,7 +68,7 @@ function ContactRow({
   );
 }
 
-export function ContactBusinessSheet({ open, onChat, onClose }: ContactBusinessSheetProps) {
+export function ContactBusinessSheet({ open, onChat, onClose, code }: ContactBusinessSheetProps) {
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="w-full flex justify-center pt-3 pb-1">
@@ -146,8 +147,13 @@ export function ContactBusinessSheet({ open, onChat, onClose }: ContactBusinessS
               <span className="text-badge-discount-text">Open Now</span> • Closes at 10:00 PM
             </p>
             <p className="font-caption text-caption text-text-secondary mt-0.5">
-              Mention voucher code <strong className="font-mono text-text-primary font-semibold">{CLAIM_CODE}</strong>{' '}
-              when connecting with the merchant.
+              {code ? (
+                <>
+                  Mention voucher code <strong className="font-mono text-text-primary font-semibold">{code}</strong> when connecting with the merchant.
+                </>
+              ) : (
+                'Mention your voucher when connecting with the merchant.'
+              )}
             </p>
           </div>
         </div>

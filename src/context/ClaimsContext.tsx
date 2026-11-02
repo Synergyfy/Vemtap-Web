@@ -37,6 +37,13 @@ export interface ClaimRecord {
   code: string;
   /** `gift-sent` for gifts (not yet redeemed); `claimed` for redeemable passes. */
   status: 'claimed' | 'gift-sent';
+  /** What the API says about the voucher now. */
+  state?: 'ACTIVE' | 'REDEEMED' | 'EXPIRED';
+  /** When the voucher stops being redeemable. */
+  expiresAt?: number;
+  dealPhone?: string;
+  dealLatitude?: number;
+  dealLongitude?: number;
   /**
    * Snapshot of the merchant terms that applied at the moment of claiming.
    * Frozen on the record so later edits to the live offer cannot rewrite an
@@ -61,6 +68,9 @@ export interface ClaimInput {
   dealPrice?: number;
   dealOldPrice?: number;
   discountLabel?: string;
+  dealPhone?: string;
+  dealLatitude?: number;
+  dealLongitude?: number;
   recipient?: ClaimParty;
   sender?: ClaimParty;
   firstName?: string;
@@ -69,12 +79,26 @@ export interface ClaimInput {
   phone?: string;
   code?: string;
   giftToken?: string;
+  /** The sender's message on a gift. */
+  note?: string;
   /** Terms in force when the claim is made; snapshotted onto the record. */
   terms?: string[];
 }
 
+/** Who the emailed claim code goes to; the voucher is issued to this person. */
+export interface ClaimHolder {
+  firstName: string;
+  lastName?: string;
+  email: string;
+  phone: string;
+}
+
 interface ClaimsContextValue {
   claims: ClaimRecord[];
+  /** True until `GET /me/claims` has answered for this session. */
+  claimsLoading: boolean;
+  /** Step 1 of a claim: emails a code to the holder. Rejects with the API's reason. */
+  requestClaimCode: (offerId: string, holder: ClaimHolder) => Promise<void>;
   recordClaim: (input: ClaimInput) => Promise<ClaimRecord>;
   byRef: (ref: string) => ClaimRecord | undefined;
   latestOf: (kind: ClaimKind) => ClaimRecord | undefined;
@@ -84,6 +108,12 @@ interface ClaimsContextValue {
   getClaimQr: (id: string) => Promise<unknown>;
   deleteClaim: (id: string) => Promise<unknown>;
 }
+
+/** The voucher to open when none is named: the newest usable one, else the newest of any state. */
+export const currentVoucher = (claims: ClaimRecord[]): ClaimRecord | undefined => {
+  const vouchers = claims.filter((entry) => entry.kind !== 'gift');
+  return vouchers.find((entry) => entry.state !== 'REDEEMED' && entry.state !== 'EXPIRED') ?? vouchers[0];
+};
 
 const CLAIMS_KEY = 'vemtap_claims';
 const LEGACY_CLAIMED_KEY = 'vemtap_claimed';
@@ -145,6 +175,15 @@ const newCode = (existing: ClaimRecord[]) => {
   return `VT-${Date.now().toString(36).toUpperCase()}`;
 };
 
+const toNumber = (value: unknown) => {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+const toTime = (value: unknown) => {
+  const parsed = typeof value === 'string' || value instanceof Date ? new Date(value).getTime() : NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
   const asArray = Array.isArray(payload)
     ? payload
@@ -179,7 +218,9 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
               ? offer.name.trim()
               : 'Live claim';
 
-    const claimKind: ClaimKind = item.kind === 'gift' || item.kind === 'someone-else' ? item.kind : 'self';
+    // `/me/gifts` rows name who they went to; they are never the sender's voucher.
+    const giftTo = typeof item.recipientEmail === 'string' ? item.recipientEmail : undefined;
+    const claimKind: ClaimKind = giftTo ? 'gift' : item.kind === 'gift' || item.kind === 'someone-else' ? item.kind : 'self';
     const claimId =
       typeof item.id === 'string' && item.id.trim()
         ? item.id.trim()
@@ -189,7 +230,9 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
     const normalizedRef =
       typeof item.ref === 'string' && item.ref.trim()
         ? item.ref.trim()
-        : claimId ?? `VT-${Date.now().toString(36).toUpperCase()}`;
+        : typeof item.claimCode === 'string' && item.claimCode.trim()
+          ? item.claimCode.trim()
+          : claimId ?? `VT-${Date.now().toString(36).toUpperCase()}`;
 
     const claimRecord: ClaimRecord = {
       id: claimId,
@@ -198,13 +241,23 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
       offerId: typeof item.offerId === 'string' ? item.offerId : typeof offer.id === 'string' ? offer.id : undefined,
       dealTitle,
       dealBusiness: businessName,
-      dealImage: typeof item.dealImage === 'string' ? item.dealImage : typeof offer.image === 'string' ? offer.image : undefined,
-      code: typeof item.code === 'string' && item.code.trim() ? item.code.trim() : typeof item.claimCode === 'string' ? item.claimCode.trim() : newCode([]),
-      status: item.status === 'gift-sent' || item.status === 'gift' ? 'gift-sent' : 'claimed',
+      dealImage: typeof item.dealImage === 'string' ? item.dealImage : typeof offer.mainImage === 'string' ? offer.mainImage : typeof offer.image === 'string' ? offer.image : undefined,
+      dealLocation: typeof offer.branchAddress === 'string' ? offer.branchAddress : typeof offer.branchName === 'string' && offer.branchName ? offer.branchName : undefined,
+      dealPrice: toNumber(offer.calculatedPrice),
+      dealOldPrice: toNumber(offer.originalPrice),
+      discountLabel: toNumber(offer.discountPercent) ? `${toNumber(offer.discountPercent)}% OFF` : undefined,
+      dealPhone: typeof offer.branchPhone === 'string' ? offer.branchPhone : undefined,
+      dealLatitude: toNumber(offer.branchLatitude),
+      dealLongitude: toNumber(offer.branchLongitude),
+      code: typeof item.code === 'string' && item.code.trim() ? item.code.trim() : typeof item.claimCode === 'string' ? item.claimCode.trim() : normalizedRef,
+      status: giftTo || item.status === 'gift-sent' || item.status === 'gift' ? 'gift-sent' : 'claimed',
+      state: item.status === 'ACTIVE' || item.status === 'REDEEMED' || item.status === 'EXPIRED' ? item.status : undefined,
+      expiresAt: toTime(item.expiresAt),
       terms: Array.isArray(item.terms) ? item.terms.filter((value): value is string => typeof value === 'string') : undefined,
-      createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
-      recipient:
-        item.recipient && typeof item.recipient === 'object'
+      createdAt: typeof item.createdAt === 'number' ? item.createdAt : toTime(item.claimedAt) ?? toTime(item.createdAt) ?? Date.now(),
+      recipient: giftTo
+        ? { name: '', email: giftTo }
+        : item.recipient && typeof item.recipient === 'object'
           ? {
               name: typeof (item.recipient as Record<string, unknown>).name === 'string' ? (item.recipient as Record<string, unknown>).name as string : '',
               email: typeof (item.recipient as Record<string, unknown>).email === 'string' ? (item.recipient as Record<string, unknown>).email as string : '',
@@ -227,6 +280,18 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
   return normalized;
 };
 
+/**
+ * A gift email opens the deal with `?giftToken=`. The token waits here through
+ * sign-in, and goes with the recipient's claim so the gift is marked accepted.
+ */
+const GIFT_TOKEN_KEY = 'vemtap_gift_token';
+export const rememberGiftLink = (search: string) => {
+  const token = new URLSearchParams(search).get('giftToken');
+  if (token) window.sessionStorage.setItem(GIFT_TOKEN_KEY, token);
+};
+
+const apiMessage = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
+
 const ClaimsContext = createContext<ClaimsContextValue | null>(null);
 
 export function ClaimsProvider({ children }: { children: ReactNode }) {
@@ -234,11 +299,16 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
   // `/me/claims` and `/me/gifts` are customer-only: business accounts and
   // signed-out visitors would only get a 403/401, so they don't ask.
   const isCustomer = useSessionUser().data?.role === 'Customer';
+  const [claimsLoading, setClaimsLoading] = useState(() => hasApiConfig());
 
   useEffect(() => {
-    if (!hasApiConfig() || !isCustomer) return;
+    if (!hasApiConfig() || !isCustomer) {
+      setClaimsLoading(false);
+      return;
+    }
 
     let ignore = false;
+    setClaimsLoading(true);
 
     const hydrate = async () => {
       try {
@@ -272,6 +342,8 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         writeClaims(dedupedClaims);
       } catch {
         // Fail silently so the local fallback remains available while the API is unavailable.
+      } finally {
+        if (!ignore) setClaimsLoading(false);
       }
     };
 
@@ -288,13 +360,16 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         ref: newRef(input.kind, claims),
         kind: input.kind,
         offerId: input.offerId,
-        dealTitle: input.dealTitle ?? 'Live claim',
-        dealBusiness: input.dealBusiness ?? 'Partner merchant',
+        dealTitle: input.dealTitle ?? '',
+        dealBusiness: input.dealBusiness ?? '',
         dealImage: input.dealImage,
         dealLocation: input.dealLocation,
         dealPrice: input.dealPrice,
         dealOldPrice: input.dealOldPrice,
         discountLabel: input.discountLabel,
+        dealPhone: input.dealPhone,
+        dealLatitude: input.dealLatitude,
+        dealLongitude: input.dealLongitude,
         terms: input.terms,
         code: input.code ?? newCode(claims),
         status: input.kind === 'gift' ? 'gift-sent' : 'claimed',
@@ -303,68 +378,49 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         sender: input.sender,
       };
 
-      if (hasApiConfig() && input.offerId) {
-        const payload = {
-          offerId: input.offerId,
-          firstName: input.firstName ?? input.sender?.name?.split(' ')[0] ?? 'Customer',
-          lastName: input.lastName ?? input.sender?.name?.split(' ').slice(1).join(' ') ?? '',
-          email: input.email ?? input.sender?.email ?? '',
-          phone: input.phone ?? input.sender?.phone ?? '',
-          code: input.code,
-          giftToken: input.giftToken,
-        };
+      if (hasApiConfig()) {
+        if (!input.offerId) throw new Error('This deal can’t be claimed right now.');
+        // Only the API creates a voucher: gifts directly, everything else by
+        // trading the emailed code. There is no local fallback.
+        if (input.kind !== 'gift' && !input.code) throw new Error('Enter the code we emailed you.');
 
+        const giftToken = input.giftToken ?? window.sessionStorage.getItem(GIFT_TOKEN_KEY) ?? undefined;
         let response: unknown;
         try {
           if (input.kind === 'gift') {
-            response = await apiPost<{ message?: string; data?: Record<string, unknown>; claim?: Record<string, unknown> }>('/catalogue/offers/claim/gift', {
+            response = await apiPost<unknown>('/catalogue/offers/claim/gift', {
               offerId: input.offerId,
-              firstName: payload.firstName,
-              lastName: payload.lastName,
-              email: payload.email,
-              phone: payload.phone,
-              recipientName: input.recipient?.name,
               recipientEmail: input.recipient?.email,
-              recipientPhone: input.recipient?.phone,
+              senderName: input.sender?.name,
+              ...(input.note?.trim() ? { note: input.note.trim() } : {}),
             });
-          } else if (!input.code) {
-            response = await apiPost<{ message?: string; data?: Record<string, unknown>; claim?: Record<string, unknown> }>('/catalogue/offers/claim/request', payload);
           } else {
-            response = await apiPost<{ message?: string; data?: Record<string, unknown>; claim?: Record<string, unknown> }>('/catalogue/offers/claim/verify', payload);
+            response = await apiPost<unknown>('/catalogue/offers/claim/verify', {
+              offerId: input.offerId,
+              email: input.email ?? input.recipient?.email ?? input.sender?.email ?? '',
+              code: input.code,
+              ...(giftToken ? { giftToken } : {}),
+            });
+            if (giftToken) window.sessionStorage.removeItem(GIFT_TOKEN_KEY);
           }
         } catch (error) {
-          throw new Error('Claim could not be confirmed by the backend.');
+          throw new Error(apiMessage(error, 'We couldn’t confirm this claim. Please try again.'));
         }
 
-        const serverEntry =
-          (response && typeof response === 'object' && 'claim' in response && response.claim && typeof response.claim === 'object')
-            ? response.claim
-            : (response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object')
-              ? response.data
-              : response;
+        const body = (response && typeof response === 'object' ? response : {}) as Record<string, unknown>;
+        const server = ((body.claim ?? body.data ?? body) as Record<string, unknown>) ?? {};
+        const claimCode = typeof server.claimCode === 'string' ? server.claimCode : typeof server.code === 'string' ? server.code : undefined;
+        if (input.kind !== 'gift' && !claimCode) throw new Error('We couldn’t confirm this claim. Please try again.');
 
-        const normalized = normalizeClaimList(Array.isArray(serverEntry) ? serverEntry : [serverEntry]);
-        const confirmed = normalized[0] ?? record;
-
-        const persisted = {
+        // The API answers with the voucher's identity; the deal's details come from the page.
+        const persisted: ClaimRecord = {
           ...record,
-          ...confirmed,
-          id: confirmed.id ?? record.id,
-          ref: confirmed.ref ?? record.ref,
-          kind: confirmed.kind ?? record.kind,
-          dealTitle: confirmed.dealTitle || record.dealTitle,
-          dealBusiness: confirmed.dealBusiness || record.dealBusiness,
-          dealImage: confirmed.dealImage ?? record.dealImage,
-          dealLocation: confirmed.dealLocation ?? record.dealLocation,
-          dealPrice: confirmed.dealPrice ?? record.dealPrice,
-          dealOldPrice: confirmed.dealOldPrice ?? record.dealOldPrice,
-          discountLabel: confirmed.discountLabel ?? record.discountLabel,
-          code: confirmed.code || record.code,
-          status: confirmed.status ?? record.status,
-          createdAt: confirmed.createdAt || record.createdAt,
-          recipient: confirmed.recipient ?? record.recipient,
-          sender: confirmed.sender ?? record.sender,
-          terms: confirmed.terms ?? record.terms,
+          id: typeof server.id === 'string' ? server.id : record.id,
+          // A gift has no voucher code until the recipient accepts it.
+          ref: claimCode ?? (typeof body.giftToken === 'string' ? body.giftToken : record.ref),
+          code: claimCode ?? '',
+          state: input.kind === 'gift' ? undefined : 'ACTIVE',
+          expiresAt: toTime(server.expiresAt),
         };
 
         setClaims((current) => {
@@ -399,6 +455,14 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
     },
     [claims],
   );
+
+  const requestClaimCode = useCallback(async (offerId: string, holder: ClaimHolder) => {
+    try {
+      await apiPost<unknown>('/catalogue/offers/claim/request', { offerId, ...holder });
+    } catch (error) {
+      throw new Error(apiMessage(error, 'We couldn’t send the code. Please try again.'));
+    }
+  }, []);
 
   const byRef = useCallback(
     (ref: string) => {
@@ -457,8 +521,8 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<ClaimsContextValue>(
-    () => ({ claims, recordClaim, byRef, latestOf, removeClaim, getGift, rejectGift, getClaimQr, deleteClaim }),
-    [claims, recordClaim, byRef, latestOf, removeClaim, getGift, rejectGift, getClaimQr, deleteClaim],
+    () => ({ claims, claimsLoading, requestClaimCode, recordClaim, byRef, latestOf, removeClaim, getGift, rejectGift, getClaimQr, deleteClaim }),
+    [claims, claimsLoading, requestClaimCode, recordClaim, byRef, latestOf, removeClaim, getGift, rejectGift, getClaimQr, deleteClaim],
   );
 
   return <ClaimsContext.Provider value={value}>{children}</ClaimsContext.Provider>;

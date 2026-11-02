@@ -55,10 +55,10 @@ export function useDealLikes(offerIds: string[]) {
     };
   }, [idsKey]);
 
-  /** Flips the like; resolves to the saved state, or rejects (after rolling back) when it fails. */
-  const toggleLike = useCallback(async (offerId: string): Promise<DealLikeState> => {
+  /** Flips the like (`knownCount`: the count shown, until this deal's status has loaded); resolves to the saved state, or rejects (after rolling back) when it fails. */
+  const toggleLike = useCallback(async (offerId: string, knownCount = 0): Promise<DealLikeState> => {
     if (pending.current.has(offerId)) throw new Error('Like already in progress');
-    const previous: DealLikeState = likesRef.current[offerId] ?? { liked: false, count: 0 };
+    const previous: DealLikeState = likesRef.current[offerId] ?? { liked: false, count: knownCount };
     const liked = !previous.liked;
     setLikes((prev) => ({ ...prev, [offerId]: { liked, count: Math.max(0, previous.count + (liked ? 1 : -1)) } }));
     pending.current.add(offerId);

@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
+import { dealTermsSections, dealUnavailableLabel, formatNaira, type DealDetail, type DealRule } from '../../hooks/useDealDetail';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 
@@ -6,105 +9,14 @@ interface DesktopDealTermsScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
   onClaim: () => void;
+  detail: DealDetail | null;
+  loading: boolean;
 }
-
-const SNAPSHOT_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDEBYnKZ7qmo4ZHAT78FFcT91JUyGf10RRM_Y--CfFDoa5ApOSbzv4c06L1hCbsbHsJXQVMbzxnjE2L5I1oiKsnNWPzi3ZR67H9dkhVIeYFB8QKSe2RpH1vQUDlUpFZn7oJr4QO9yaoc1Jt6yIww-kRKaKPxdZwmm75pv6XQFPCOCXWBKj14d3WltjpMyzYkYkTNWItc3ns-LZg2sSWhR9Efhi7hzacrjwc8n5wyPXXniZT3N-7TrwQ0w';
-
-const SNAPSHOT_ALT =
-  'Gourmet charcoal grilled lunch combo platter with glazed chicken, crispy golden wedges, and crisp garden salad inside a warm modern bistro setting with shallow depth of field and vibrant natural light.';
-
-interface RuleRow {
-  icon: string;
-  body: ReactNode;
-  caption?: string;
-}
-
-const VALIDITY_RULES: RuleRow[] = [
-  {
-    icon: 'event_available',
-    body: (
-      <>
-        Valid until <span className="font-label-md text-label-md text-primary-container">20 Sep 2025</span> (or while
-        daily merchant allocation lasts).
-      </>
-    ),
-    caption: 'Claims replenish daily at 10:00 AM WAT.',
-  },
-  {
-    icon: 'schedule',
-    body: (
-      <>
-        Redeemable during standard lunch hours:{' '}
-        <span className="font-label-md text-label-md text-text-primary">12:00 PM – 4:30 PM</span>, Monday through
-        Saturday.
-      </>
-    ),
-    caption: 'Kitchen orders close 20 minutes before cutoff window.',
-  },
-];
-
-const REDEMPTION_RULES: RuleRow[] = [
-  {
-    icon: 'person',
-    body: <>One claim per customer per visit. Splitting table tabs to claim duplicate offers is not permitted.</>,
-  },
-  {
-    icon: 'pin_drop',
-    body: (
-      <>
-        Valid exclusively at the{' '}
-        <span className="font-label-md text-label-md text-text-primary">featured local merchant</span> in your selected area.
-      </>
-    ),
-    caption: 'Not valid at airport kiosks or sister branches.',
-  },
-  {
-    icon: 'qr_code_scanner',
-    body: (
-      <>
-        Must show your active VEMTAP claim confirmation screen to staff{' '}
-        <span className="font-label-md text-label-md text-text-primary">prior to ordering</span>. Screenshots and
-        forwarded photos are not accepted.
-      </>
-    ),
-  },
-  {
-    icon: 'room_service',
-    body: (
-      <>
-        Available for{' '}
-        <span className="font-label-md text-label-md text-text-primary">Dine-in and Takeaway only</span>. Not applicable
-        on third-party delivery services (Glovo, Chowdeck, etc.).
-      </>
-    ),
-  },
-];
-
-const EXCLUSION_RULES: RuleRow[] = [
-  {
-    icon: 'do_not_disturb_on',
-    body: (
-      <>
-        Cannot be combined with other ongoing promotions, student discounts, happy hour menus, or loyalty vouchers.
-      </>
-    ),
-  },
-  {
-    icon: 'inventory_2',
-    body: (
-      <>
-        Subject to daily kitchen stock availability. In the rare event of side item depletion, a chef-curated equal
-        substitute will be provided.
-      </>
-    ),
-  },
-];
 
 interface DealTermsSectionProps {
   icon: string;
   title: string;
-  rules: RuleRow[];
+  rules: DealRule[];
 }
 
 function DealTermsSection({ icon, title, rules }: DealTermsSectionProps) {
@@ -134,16 +46,13 @@ function DealTermsSection({ icon, title, rules }: DealTermsSectionProps) {
       </button>
       {open && (
         <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm space-y-space-md border border-border-subtle">
-          {rules.map((rule) => (
-            <div key={rule.icon} className="flex items-start gap-space-sm">
+          {rules.map((rule, index) => (
+            <div key={`${index}-${rule.body}`} className="flex items-start gap-space-sm">
               <div className="w-6 h-6 rounded-full bg-surface-container-low text-primary flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Icon name={rule.icon} className="text-[15px]" />
               </div>
               <div className="flex-1">
                 <p className="font-body-md text-body-md text-text-primary">{rule.body}</p>
-                {rule.caption && (
-                  <p className="font-caption text-caption text-text-tertiary mt-0.5">{rule.caption}</p>
-                )}
               </div>
             </div>
           ))}
@@ -153,7 +62,7 @@ function DealTermsSection({ icon, title, rules }: DealTermsSectionProps) {
   );
 }
 
-export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTermsScreenProps) {
+export function DesktopDealTermsScreen({ onNav, onBack, onClaim, detail, loading }: DesktopDealTermsScreenProps) {
   const [faqOpen, setFaqOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const claimTimer = useRef<number | null>(null);
@@ -170,6 +79,29 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
     claimTimer.current = window.setTimeout(() => onClaim(), 600);
   };
 
+  if (!detail) {
+    return (
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="deal-detail">
+        <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
+          <div className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-8">
+            {loading ? (
+              <SkeletonGroup label="Loading deal terms" className="space-y-space-md">
+                <Skeleton className="h-10 w-64" />
+                <Skeleton className="h-24 w-full rounded-xl" />
+                <Skeleton className="h-64 w-full rounded-xl" />
+              </SkeletonGroup>
+            ) : (
+              <p className="pt-10 text-center font-label-md text-label-md text-text-primary">This deal isn’t available.</p>
+            )}
+          </div>
+        </div>
+      </DesktopPage>
+    );
+  }
+
+  const sections = dealTermsSections(detail);
+  const unavailable = dealUnavailableLabel(detail);
+
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="deal-detail">
       <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
@@ -182,7 +114,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
               </button>
               <span className="text-outline-variant">/</span>
               <button className="hover:text-primary transition-colors" onClick={() => onNav('deals')} type="button">
-                Featured local deal
+                {detail.title}
               </button>
               <span className="text-outline-variant">/</span>
               <span className="text-text-primary font-medium">Deal Terms</span>
@@ -190,8 +122,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
             <div className="pt-1">
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Deal Terms</h1>
               <p className="font-body-md text-body-md text-text-secondary mt-1 max-w-2xl">
-                Review the validity window, redemption rules and exclusions for the featured local deal before you
-                claim it at checkout.
+                Review the validity window, redemption rules and exclusions for this deal before you claim it.
               </p>
             </div>
           </div>
@@ -201,27 +132,29 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
               <section>
                 <div className="bg-surface-container-lowest rounded-xl p-space-sm shadow-sm flex items-center gap-space-sm transition-all border border-border-subtle">
                   <div className="relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container-high">
-                    <img className="w-full h-full object-cover" alt={SNAPSHOT_ALT} src={SNAPSHOT_IMAGE} />
-                    <div className="absolute top-1 left-1 bg-badge-discount-bg text-badge-discount-text px-1.5 py-0.5 rounded-full font-caption text-caption flex items-center gap-0.5 shadow-sm">
-                      <Icon name="bolt" filled className="text-[11px]" />
-                      -20%
-                    </div>
+                    <img className="w-full h-full object-cover" alt={detail.title} src={detail.image ?? NO_IMAGE} />
+                    {detail.discountPercent > 0 && (
+                <div className="absolute top-1 left-1 bg-badge-discount-bg text-badge-discount-text px-1.5 py-0.5 rounded-full font-caption text-caption flex items-center gap-0.5 shadow-sm">
+                  <Icon name="bolt" filled className="text-[11px]" />
+                  -{detail.discountPercent}%
+                </div>
+              )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-space-2xs text-text-tertiary font-caption text-caption truncate">
                       <Icon name="storefront" className="text-[14px]" />
-                      <span className="truncate">Local dining partner • Nearby</span>
+                      <span className="truncate">{detail.businessName}{detail.branchName ? ` • ${detail.branchName}` : ''}</span>
                     </div>
-                    <h2 className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">
-                      Featured local deal
-                    </h2>
+                    <h2 className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">{detail.title}</h2>
                     <div className="flex items-baseline gap-space-2xs mt-1">
-                      <span className="font-heading-sm text-heading-sm text-primary">₦9,600</span>
-                      <span className="font-caption text-caption text-text-tertiary line-through">₦12,000</span>
-                      <span className="ml-auto bg-surface-tint-blue text-primary px-2 py-0.5 rounded-full font-caption text-caption flex items-center gap-1">
-                        <Icon name="verified" className="text-[12px]" />
-                        Vetted Deal
-                      </span>
+                      <span className="font-heading-sm text-heading-sm text-primary">{formatNaira(detail.price)}</span>
+                      {detail.oldPrice > detail.price && <span className="font-caption text-caption text-text-tertiary line-through">{formatNaira(detail.oldPrice)}</span>}
+                      {detail.verified && (
+                  <span className="ml-auto bg-surface-tint-blue text-primary px-2 py-0.5 rounded-full font-caption text-caption flex items-center gap-1">
+                    <Icon name="verified" className="text-[12px]" />
+                    Verified Merchant
+                  </span>
+                )}
                     </div>
                   </div>
                 </div>
@@ -240,23 +173,16 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
                       </p>
                     </div>
                   </div>
-                  <span className="bg-surface-container-highest text-text-secondary px-2.5 py-1 rounded-full font-caption text-caption shrink-0">
-                    3 min read
-                  </span>
                 </div>
               </section>
 
               <DealTermsSection
                 icon="calendar_clock"
                 title={'Deal Validity & Timing'}
-                rules={VALIDITY_RULES}
+                rules={sections.validity}
               />
-              <DealTermsSection icon="rule" title="Redemption Rules" rules={REDEMPTION_RULES} />
-              <DealTermsSection
-                icon="block"
-                title={'Combinability & Exclusions'}
-                rules={EXCLUSION_RULES}
-              />
+              {sections.redemption.length > 0 && <DealTermsSection icon="rule" title="Redemption Rules" rules={sections.redemption} />}
+              {sections.merchant.length > 0 && <DealTermsSection icon="block" title="Merchant Terms" rules={sections.merchant} />}
 
               <section className="mt-space-lg">
                 <div className="bg-surface-container-low rounded-xl p-space-md space-y-space-sm">
@@ -279,9 +205,8 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
                   </button>
                   {faqOpen && (
                     <div className="pt-space-xs text-text-secondary font-body-md text-body-md">
-                      Yes! Unredeemed claims can be released penalty-free up to 30 minutes before the end of the daily
-                      lunch window so other members can enjoy them.
-                    </div>
+                      You can release an unredeemed claim from My Deals at any time, without penalty.
+                </div>
                   )}
                 </div>
               </section>
@@ -292,7 +217,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
                     <Icon name="shield" className="text-[20px]" />
                   </div>
                   <p className="font-caption text-caption text-text-secondary flex-1">
-                    Terms set by <strong className="text-text-primary font-label-sm">Urban Grill &amp; Bistro</strong>{' '}
+                    Terms set by <strong className="text-text-primary font-label-sm">{detail.businessName}</strong>{' '}
                     in accordance with VEMTAP consumer fair-use policy.
                   </p>
                 </div>
@@ -307,23 +232,25 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
                     <span>Instant code activation</span>
                   </div>
                   <div className="font-caption text-caption text-text-secondary">
-                    Total: <span className="font-label-md text-label-md text-text-primary">₦9,600</span>
+                    Total: <span className="font-label-md text-label-md text-text-primary">{formatNaira(detail.price)}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between bg-surface-subtle rounded-lg px-space-sm py-2">
                   <span className="font-caption text-caption text-text-secondary">Deal price</span>
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">₦9,600</span>
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">{formatNaira(detail.price)}</span>
                 </div>
-                <div className="flex items-center justify-between bg-badge-discount-bg rounded-lg px-space-sm py-2">
+                {detail.oldPrice > detail.price && (
+                  <div className="flex items-center justify-between bg-badge-discount-bg rounded-lg px-space-sm py-2">
                   <span className="font-caption text-caption text-text-secondary">You save today</span>
-                  <span className="font-label-md text-label-md font-semibold text-badge-discount-text">₦2,400</span>
-                </div>
+                  <span className="font-label-md text-label-md font-semibold text-badge-discount-text">{formatNaira(detail.oldPrice - detail.price)}</span>
+                  </div>
+                )}
 
                 <button
                   type="button"
                   onClick={handleClaim}
-                  disabled={processing}
+                  disabled={processing || Boolean(unavailable)}
                   className="w-full h-[54px] bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.28)] active:scale-[0.98] transition-all disabled:opacity-70"
                 >
                   {processing ? (
@@ -334,7 +261,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
                   ) : (
                     <>
                       <Icon name="shopping_bag" className="text-[20px]" />
-                      <span>Claim Deal</span>
+                      <span>{unavailable ?? 'Claim Deal'}</span>
                     </>
                   )}
                 </button>
@@ -347,7 +274,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim }: DesktopDealTe
               <div className="p-space-sm rounded-xl bg-surface-tint-blue flex items-start gap-2">
                 <Icon name="info" className="text-primary text-[18px] shrink-0 mt-0.5" />
                 <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                  Questions about this voucher? Message the selected local merchant from your Messages hub.
+                  Questions about this voucher? Message {detail.businessName} from your Messages hub.
                 </p>
               </div>
 

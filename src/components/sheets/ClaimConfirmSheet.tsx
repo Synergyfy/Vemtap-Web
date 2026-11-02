@@ -1,38 +1,39 @@
 import { useState } from 'react';
 import { Icon } from '../ui/Icon';
+import { formatNaira, type DealDetail } from '../../hooks/useDealDetail';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { SheetShell } from './SheetShell';
 
-const DEAL_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCK4Pwz9CVEhljjHVcnT9BgI3Nbi9M9b9FWI65bQmcAwi6z5H71R5ZWNcp3kMOEEoE5uD_moOYuJIip6emFcbDXzgjC9iHz1cM4t4et9ZtLjup8r-LYHxyKhr8cvaRwiiaocICSuaV-SCxGKG2hQzWubPAuBLJnQ9yfX8y2fwHJAkT_sQc-xVvaKyerZrNXlhrFsyPz-6nwXC6s_wD9Rxgpa5GHNuBzONM_Yy0KG0yc';
-
-const DEAL_ALT =
-  'Vibrant gourmet grilled artisan burger with golden crispy shoestring fries served on a dark rustic wooden board in a softly lit upscale restaurant ambiance';
-
-const HOW_TO_CLAIM_STEPS = [
+const HOW_TO_CLAIM_DEFAULT = [
   'Tap Confirm to instantly obtain your one-time digital dynamic QR code pass.',
   'Arrive at the featured local business during the active redemption window.',
   'Present the QR screen before requesting the bill to redeem your discount right away.',
 ];
 
-const TERMS_BULLETS = [
-  '• Valid strictly for dine-in patrons between Monday and Friday.',
-  '• Cannot be combined with other ongoing happy hour promotions.',
-  '• One claim allowed per party per table.',
-  '• Reservation expires if unredeemed within the 48-hour voucher countdown window.',
-];
-
 type NestedSheet = 'howTo' | 'terms' | null;
 
 export interface ClaimConfirmSheetProps {
+  /** The live deal this sheet is for. */
+  detail?: DealDetail | null;
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  /** The signed-in customer's email. */
+  email?: string;
 }
 
-export function ClaimConfirmSheet({ open, onClose, onConfirm }: ClaimConfirmSheetProps) {
+export function ClaimConfirmSheet({ open, onClose, onConfirm, detail, email }: ClaimConfirmSheetProps) {
   const [consent, setConsent] = useState(true);
   const [status, setStatus] = useState<'idle' | 'locking' | 'success'>('idle');
   const [nested, setNested] = useState<NestedSheet>(null);
+  const howToSteps = detail?.claimSteps.length ? detail.claimSteps : HOW_TO_CLAIM_DEFAULT;
+  const termLines = [
+    detail?.windowLabel ? `Valid ${detail.windowLabel}.` : null,
+    detail?.channelsLabel ? `Redeem by: ${detail.channelsLabel}.` : null,
+    detail?.claimLimitLabel ? `Limit: ${detail.claimLimitLabel}.` : null,
+    ...(detail?.terms ?? []),
+  ].filter((term): term is string => Boolean(term));
+  const saving = detail ? detail.oldPrice - detail.price : 0;
 
   const close = () => {
     setStatus('idle');
@@ -85,30 +86,32 @@ export function ClaimConfirmSheet({ open, onClose, onConfirm }: ClaimConfirmShee
           <div className="flex flex-col bg-surface-subtle rounded-2xl p-space-md shadow-sm mb-space-md">
             <div className="flex items-center gap-space-sm mb-space-sm">
               <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 shadow-sm relative">
-                <img className="w-full h-full object-cover" alt={DEAL_ALT} src={DEAL_IMAGE} />
+                <img className="w-full h-full object-cover" alt={detail?.title ?? ''} src={detail?.image ?? NO_IMAGE} />
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-label-sm text-label-sm text-text-secondary truncate">
-                  Local dining partner
+                  {detail?.businessName}
                 </span>
-                <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured local deal</h3>
+                <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">{detail?.title}</h3>
               </div>
             </div>
             <div className="flex flex-col gap-space-2xs bg-surface-canvas rounded-xl p-space-sm shadow-sm">
               <div className="flex items-baseline justify-between">
                 <span className="font-label-sm text-label-sm text-text-secondary">Pay at Venue</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-heading-sm text-heading-sm text-text-primary">₦9,600</span>
-                  <span className="font-label-sm text-label-sm text-badge-discount-text bg-badge-discount-bg px-1.5 py-0.5 rounded-md font-semibold">
-                    Save ₦2,400
-                  </span>
+                  <span className="font-heading-sm text-heading-sm text-text-primary">{formatNaira(detail?.price ?? 0)}</span>
+                  {saving > 0 && (
+                    <span className="font-label-sm text-label-sm text-badge-discount-text bg-badge-discount-bg px-1.5 py-0.5 rounded-md font-semibold">
+                      Save {formatNaira(saving)}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex items-center justify-between pt-space-xs mt-space-2xs">
                 <span className="font-caption text-caption text-text-tertiary">Claiming as</span>
                 <div className="flex items-center gap-1 text-on-surface-variant">
                   <Icon name="account_circle" className="text-[15px] text-text-tertiary" />
-                  <span className="font-label-sm text-label-sm text-text-primary font-medium">john@email.com</span>
+                  <span className="font-label-sm text-label-sm text-text-primary font-medium">{email}</span>
                 </div>
               </div>
             </div>
@@ -222,7 +225,7 @@ export function ClaimConfirmSheet({ open, onClose, onConfirm }: ClaimConfirmShee
             </button>
           </div>
           <div className="flex flex-col gap-space-md overflow-y-auto mb-space-lg">
-            {HOW_TO_CLAIM_STEPS.map((step, index) => (
+            {howToSteps.map((step, index) => (
               <div key={step} className="flex gap-space-sm items-start">
                 <div className="w-7 h-7 rounded-full bg-surface-tint-blue text-primary-container flex items-center justify-center shrink-0 font-label-md text-label-md font-semibold">
                   {index + 1}
@@ -255,7 +258,7 @@ export function ClaimConfirmSheet({ open, onClose, onConfirm }: ClaimConfirmShee
             </button>
           </div>
           <div className="flex flex-col gap-space-sm overflow-y-auto mb-space-lg font-body-md text-body-md text-text-secondary">
-            {TERMS_BULLETS.map((bullet) => (
+            {termLines.map((bullet) => (
               <p key={bullet}>{bullet}</p>
             ))}
           </div>
