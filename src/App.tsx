@@ -4615,7 +4615,8 @@ function AppInner() {
       );
 
     case 'account-settings':
-      if (isDesktop) return <DesktopAccountSettingsScreen onNav={feedNav} />;
+      if (isDesktop)
+        return <DesktopAccountSettingsScreen onNav={feedNav} onOpenAddresses={() => setRoute('addresses')} />;
       return (
         <AccountSettingsScreen
           onBack={() => setRoute('settings')}

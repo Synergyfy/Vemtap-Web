@@ -1,13 +1,20 @@
 import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { DeleteAccountSheet } from '../../components/DeleteAccountSheet';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../context/ProfileContext';
+import { deviceIcon, deviceLabel, relativeTime, useAccountSecurity, type NotificationPrefKey } from '../../hooks/useAccountSecurity';
+import { useSavedAddresses } from '../../hooks/useSavedAddresses';
+import { useSessionUser } from '../../hooks/useSessionUser';
 import { hasApiConfig } from '../../lib/api';
 import { accountService, authService } from '../../services';
 import { apiErrorMessage } from '../../services/errorMessages';
+
+const naira = (value: number) =>
+  new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(value);
 
 function PasswordChangeModal({
   open,
@@ -142,225 +149,98 @@ function PasswordChangeModal({
 
 interface DesktopAccountSettingsScreenProps {
   onNav: (key: DesktopNavKey) => void;
+  /** Opens the saved addresses screen, where the default place is chosen. */
+  onOpenAddresses?: () => void;
 }
 
 const SETTINGS_TABS = [
   { id: 'personal-profile', label: 'Personal Profile', icon: 'account_circle', trail: 'dot' as const },
-  { id: 'security-login', label: 'Security & Login', icon: 'lock', trail: 'badge' as const, badge: 'High' },
+  { id: 'security-login', label: 'Security & Login', icon: 'lock', trail: 'badge' as const },
   { id: 'notification-channels', label: 'Notification Preferences', icon: 'notifications_active', trail: 'chevron' as const },
   { id: 'payment-methods', label: 'Saved Payment & Settlement', icon: 'account_balance_wallet', trail: 'chevron' as const },
   { id: 'privacy-ndpr', label: 'Privacy & NDPR Data Rights', icon: 'policy', trail: 'chevron' as const },
   { id: 'support-desk', label: 'Help & Support Desk', icon: 'support_agent', trail: 'chevron' as const },
 ];
 
-const TOGGLES = [
+/** Notification channels, each backed by a `/notifications/preferences` key. */
+const TOGGLES: Array<{
+  id: NotificationPrefKey;
+  icon: string;
+  iconClass: string;
+  title: string;
+  tag: string;
+  desc: string;
+}> = [
   {
-    id: 'whatsapp',
-    icon: 'chat',
+    id: 'marketing',
+    icon: 'local_offer',
     iconClass: 'bg-badge-discount-bg text-badge-discount-text',
-    title: 'WhatsApp Deal Alerts & Vouchers',
+    title: 'Deal Alerts & Promotions',
     tag: 'Most Popular',
-    desc: 'Instant voucher redemption codes, table bookings, and digital merchant receipts straight to your WhatsApp.',
-    defaultChecked: true,
+    desc: 'New deals, flash discounts and vouchers from businesses you follow and near you.',
   },
   {
     id: 'email',
     icon: 'mark_email_read',
     iconClass: 'bg-surface-container-lowest text-primary shadow-sm',
-    title: 'Email Weekly Neighborhood Digest',
+    title: 'Email Notifications',
     tag: '',
-    desc: 'Curated flash discounts and weekend dining recommendations in Apo, Gudu, and Maitama.',
-    defaultChecked: true,
+    desc: 'Receipts, account notices and updates sent to your email address.',
   },
   {
     id: 'push',
     icon: 'notifications',
     iconClass: 'bg-surface-container-lowest text-secondary shadow-sm',
-    title: 'Push Notifications for Order Updates',
+    title: 'Push Notifications',
     tag: '',
-    desc: 'Kitchen dispatch, delivery courier proximity tracking, and pickup counters.',
-    defaultChecked: true,
+    desc: 'Order, booking and message updates on this browser and your other devices.',
   },
   {
     id: 'sms',
     icon: 'sms',
     iconClass: 'bg-surface-container-lowest text-outline shadow-sm',
-    title: 'SMS Backup for Offline Verification',
+    title: 'SMS Notifications',
     tag: '',
-    desc: 'Guaranteed offline fallback when cellular data connectivity drops across market clusters.',
-    defaultChecked: true,
+    desc: 'Text message alerts to your phone number when you are offline.',
   },
 ];
 
-type CredentialMode = 'pin';
+const splitName = (value: string) => {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
+};
 
-function CredentialModal({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState({ current: false, next: false, confirm: false });
-
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [onClose]);
-
-  const submit = () => {
-    if (!/^\d{4}$/.test(current)) return setError('Your current PIN is 4 digits');
-    if (!/^\d{4}$/.test(next)) return setError('The new PIN must be 4 digits');
-    if (next === current) return setError('The new PIN must differ from the current one');
-    if (next !== confirm) return setError('Confirmation does not match');
-    setError(null);
-    onSaved();
-  };
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-inverse-surface/40 backdrop-blur-sm">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Change transaction PIN"
-        className="w-full max-w-md rounded-2xl bg-surface-canvas border border-border-subtle shadow-2xl p-space-xl flex flex-col gap-space-md"
-      >
-        <div className="flex items-start justify-between gap-space-sm">
-          <div className="flex items-center gap-space-sm">
-            <span className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
-              <Icon name="dialpad" className="text-[20px]" />
-            </span>
-            <div className="flex flex-col">
-              <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Change transaction PIN</h2>
-              <p className="font-caption text-caption text-text-secondary">Used for voucher redemption and secure checkout</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-text-tertiary hover:text-on-surface hover:bg-surface-subtle transition-colors"
-          >
-            <Icon name="close" className="text-[18px]" />
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-space-sm">
-          {(['current', 'next', 'confirm'] as const).map((fieldName) => {
-            const label =
-              fieldName === 'current' ? 'Current PIN' : fieldName === 'next' ? 'New PIN' : 'Confirm new PIN';
-            const value = fieldName === 'current' ? current : fieldName === 'next' ? next : confirm;
-            const setter = fieldName === 'current' ? setCurrent : fieldName === 'next' ? setNext : setConfirm;
-            const placeholder = '••••';
-            const inputType = revealed[fieldName] ? 'text' : 'password';
-            const sanitizedValue = value.replace(/\D/g, '').slice(0, 4);
-
-            return (
-              <label key={fieldName} className="flex flex-col gap-space-2xs">
-                <span className="font-label-sm text-label-sm text-text-secondary font-semibold">{label}</span>
-                <div className="relative">
-                  <input
-                    type={inputType}
-                    inputMode="numeric"
-                    maxLength={4}
-                    value={value}
-                    onChange={(event) => setter(sanitizedValue !== event.target.value ? event.target.value.replace(/\D/g, '').slice(0, 4) : sanitizedValue)}
-                    placeholder={placeholder}
-                    className="h-11 w-full pr-11 px-space-sm rounded-xl bg-surface-subtle border border-border-subtle font-body-md text-body-md text-on-surface tracking-widest outline-none focus:border-primary transition-colors"
-                  />
-                  <button
-                    type="button"
-                    aria-label={revealed[fieldName] ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
-                    onClick={() => setRevealed((currentState) => ({ ...currentState, [fieldName]: !currentState[fieldName] }))}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-text-tertiary hover:bg-surface-container hover:text-on-surface transition-colors"
-                  >
-                    <Icon name={revealed[fieldName] ? 'visibility_off' : 'visibility'} className="text-[18px]" />
-                  </button>
-                </div>
-              </label>
-            );
-          })}
-        </div>
-
-        {error && (
-          <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-lg bg-error-container text-error font-label-sm text-label-sm">
-            <Icon name="error" className="text-[16px]" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <div className="flex items-center justify-end gap-space-sm pt-space-2xs">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-11 px-space-md rounded-xl bg-surface-container text-on-surface font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center gap-space-2xs shadow-sm active:scale-[0.98] transition-transform"
-          >
-            <span>Update PIN</span>
-            <Icon name="check" className="text-[18px]" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsScreenProps) {
+export function DesktopAccountSettingsScreen({ onNav, onOpenAddresses }: DesktopAccountSettingsScreenProps) {
   const canSwitch = useCanSwitchToBusiness();
   const [activeTab, setActiveTab] = useState('personal-profile');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
-  const [credential, setCredential] = useState<CredentialMode | null>(null);
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const { signOut } = useAuth();
   const profile = useProfile();
-  const [securityState, setSecurityState] = useState<Record<string, unknown>>({});
-  const [toggles, setToggles] = useState<Record<string, boolean>>(
-    Object.fromEntries(TOGGLES.map((toggle) => [toggle.id, toggle.defaultChecked])),
-  );
-  const timers = useRef<number[]>([]);
+  const security = useAccountSecurity();
+  const sessionUser = useSessionUser();
+  const { addresses } = useSavedAddresses();
+  const savings = useQuery({
+    queryKey: ['me', 'savings', 'settings-30d'],
+    queryFn: () => accountService.getSavings({ days: 30, limit: 1 }),
+    enabled: hasApiConfig(),
+  });
+  const [form, setForm] = useState({ fullName: '', phone: '' });
+
+  const fullName = profile.fullName || 'User';
+  const resetForm = () => setForm({ fullName: profile.fullName, phone: profile.phone });
+  // Follow the live profile until the customer starts editing.
+  useEffect(() => {
+    if (saveState === 'idle') setForm({ fullName: profile.fullName, phone: profile.phone });
+  }, [profile.fullName, profile.phone]);
 
   useEffect(() => {
-    if (!hasApiConfig()) return;
-
-    let cancelled = false;
-    const loadSecurity = async () => {
-      try {
-        const response = await accountService.getSecurity();
-        if (!cancelled) {
-          const nextSecurityState =
-            response && typeof response === 'object' && 'data' in response && response.data && typeof response.data === 'object'
-              ? (response.data as Record<string, unknown>)
-              : (response && typeof response === 'object' ? (response as Record<string, unknown>) : {});
-
-          setSecurityState(nextSecurityState);
-        }
-      } catch (error) {
-        console.warn('Unable to load security settings:', error);
-      }
-    };
-
-    loadSecurity();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+    if (saveState !== 'saved') return;
+    const timer = window.setTimeout(() => setSaveState('idle'), 2500);
+    return () => window.clearTimeout(timer);
+  }, [saveState]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -368,7 +248,41 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
   };
 
   const handlePasswordReset = () => {
+    if (!security.hasPin) {
+      showToast('You sign in with Google, so there is no PIN to change');
+      return;
+    }
     setShowPasswordChangeModal(true);
+  };
+
+  const toggleChannel = (key: NotificationPrefKey, title: string, value: boolean) => {
+    security.updatePref.mutate(
+      { key, value },
+      {
+        onSuccess: () => showToast(`${title} turned ${value ? 'on' : 'off'}`),
+        onError: (error) => showToast(apiErrorMessage(error, `Couldn't update ${title.toLowerCase()}`)),
+      },
+    );
+  };
+
+  const revokeOne = (id: string, name: string) => {
+    security.revokeDevice.mutate(id, {
+      onSuccess: () => showToast(`${name} signed out`),
+      onError: (error) => showToast(apiErrorMessage(error, `Couldn't sign out ${name}`)),
+    });
+  };
+
+  const [signingOutOthers, setSigningOutOthers] = useState(false);
+  const signOutOthers = async () => {
+    setSigningOutOthers(true);
+    try {
+      const count = await security.revokeOthers();
+      showToast(`Signed out of ${count} other device${count === 1 ? '' : 's'}`);
+    } catch (error) {
+      showToast(apiErrorMessage(error, "Couldn't sign out every device. Please try again."));
+    } finally {
+      setSigningOutOthers(false);
+    }
   };
 
   const goToSection = (id: string) => {
@@ -377,26 +291,46 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const fullName = profile.fullName || 'User';
   const emailAddress = profile.email || 'No email';
-  const phoneNumber = profile.phone || 'No phone number';
   const memberTenureLabel = (() => {
     if (!profile.createdAt) return 'New member';
     const date = new Date(profile.createdAt);
     if (Number.isNaN(date.getTime())) return 'New member';
     return `Joined ${new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date)}`;
   })();
-  const securityLabel = typeof securityState?.status === 'string' && securityState.status.trim() ? securityState.status : 'Protected';
+  const securityLabel = security.twoFactorEnabled ? 'Strong' : security.emailVerified ? 'Protected' : 'Verify Email';
+  const activeCount = security.activeDevices.length;
+  const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0] ?? null;
+  const savedLast30 = (() => {
+    const data = savings.data as { totalSavedAmount?: unknown } | undefined;
+    const value = Number(data?.totalSavedAmount);
+    return Number.isFinite(value) ? value : 0;
+  })();
+  const avatarUrl = security.avatar ?? sessionUser.data?.avatar ?? null;
+  const dirty = form.fullName.trim() !== profile.fullName.trim() || form.phone.trim() !== profile.phone.trim();
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     if (saveState !== 'idle') return;
+    const { firstName, lastName } = splitName(form.fullName);
+    if (!firstName) {
+      showToast('Enter your full name');
+      return;
+    }
+    if (!dirty) {
+      showToast('No changes to save');
+      return;
+    }
     setSaveState('saving');
-    const first = window.setTimeout(() => {
+    try {
+      const phone = form.phone.trim();
+      await accountService.updateProfile({ firstName, lastName, ...(phone ? { phone } : {}) });
+      profile.update({ firstName, lastName, phone });
+      security.refreshSession();
       setSaveState('saved');
-      const second = window.setTimeout(() => setSaveState('idle'), 2500);
-      timers.current.push(second);
-    }, 800);
-    timers.current.push(first);
+    } catch (error) {
+      setSaveState('idle');
+      showToast(apiErrorMessage(error, "Couldn't save your profile. Please try again."));
+    }
   };
 
   return (
@@ -418,7 +352,9 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
             </nav>
             <div className="flex items-center gap-2 bg-badge-discount-bg text-badge-discount-text px-3 py-1 rounded-full">
               <Icon name="verified" className="text-[16px]" />
-              <span className="font-caption text-caption font-semibold">{securityLabel} • NDPR Consumer Data Vault Level 1 Verified</span>
+              <span className="font-caption text-caption font-semibold">
+                {securityLabel} • {security.emailVerified ? 'Email verified' : 'Email not verified'}
+              </span>
             </div>
           </div>
 
@@ -430,14 +366,15 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
               </div>
               <h1 className="font-display-hero text-display-hero text-on-surface">Account Settings &amp; Preferences</h1>
               <p className="font-body-lg text-body-lg text-on-surface-variant">
-                Manage your personal profile, security credentials, notification channels, and privacy preferences
-                across the Apo hyper-local grid.
+                Manage your personal profile, security credentials, notification channels, and privacy preferences.
               </p>
             </div>
             <div className="hidden xl:flex items-center gap-4 shrink-0">
               <div className="text-right">
-                <p className="font-caption text-caption text-outline">Active Security Sync</p>
-                <p className="font-label-md text-label-md text-on-surface font-semibold">Abuja Grid • TLS 1.3</p>
+                <p className="font-caption text-caption text-outline">Signed-in Devices</p>
+                <p className="font-label-md text-label-md text-on-surface font-semibold">
+                  {security.devicesLoading ? 'Loading…' : `${activeCount} active session${activeCount === 1 ? '' : 's'}`}
+                </p>
               </div>
               <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary">
                 <Icon name="cloud_done" className="text-[20px]" />
@@ -450,30 +387,29 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
               <div className="bg-surface-container-lowest rounded-xl p-4 shadow-sm relative overflow-hidden">
                 <div className="absolute -top-12 -right-12 w-28 h-28 bg-primary/5 rounded-full pointer-events-none" />
                 <div className="flex items-center gap-3 mb-4 relative">
-                  <div className="relative w-16 h-16 rounded-full overflow-hidden shrink-0 shadow-md">
-                    <img
-                      alt="Portrait of a young stylish Nigerian woman named Zainab Ahmed wearing modern warm cream attire in natural sunlit urban Abuja interior soft shallow depth of field authentic editorial style"
-                      className="w-full h-full object-cover"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjNZatag_QoLkDjmoCYPJpUDckcokkYIWMIZajf_FMN0Sw_ejBsAcYbai1052NlTNHPM-UQUAFKDcwGnfLnIW3DGRYBW6e6KUUqQAs_mQOFtbdhEgrcbmlzO-8MLYwy0sgdbVXhZ8vsQpYDNfm_qPeMI2Ibc3Ka43baOpMMbUM_8oHB-tWVg4Cruk6fgVmVgImC_Rjlibh7Nckzo47BZjUQakbQPZFfMvZp0t3JY1N"
-                    />
-                    <button
-                      aria-label="Update avatar"
-                      className="absolute inset-0 bg-on-background/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center text-on-primary"
-                      type="button"
-                    >
-                      <Icon name="photo_camera" className="text-[18px]" />
-                    </button>
+                  <div className="relative w-16 h-16 rounded-full overflow-hidden shrink-0 shadow-md bg-primary flex items-center justify-center">
+                    {avatarUrl ? (
+                      <img alt={fullName} className="w-full h-full object-cover" src={avatarUrl} />
+                    ) : (
+                      <span className="font-heading-sm text-heading-sm text-on-primary font-semibold">
+                        {profile.initials || 'U'}
+                      </span>
+                    )}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate">
                         {fullName}
                       </h3>
-                      <span title="Identity Verified">
-                        <Icon name="verified" className="text-primary text-[16px]" />
-                      </span>
+                      {security.emailVerified && (
+                        <span title="Email verified">
+                          <Icon name="verified" className="text-primary text-[16px]" />
+                        </span>
+                      )}
                     </div>
-                    <p className="font-caption text-caption text-on-surface-variant truncate">{profile.email ? 'Account verified' : 'Profile pending completion'}</p>
+                    <p className="font-caption text-caption text-on-surface-variant truncate">
+                      {security.emailVerified ? 'Account verified' : profile.isComplete ? 'Email not verified' : 'Profile pending completion'}
+                    </p>
                     <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-surface-container text-primary font-caption text-caption font-medium">
                       Consumer Tier
                     </span>
@@ -491,19 +427,19 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                 </div>
                 <div className="mt-4 pt-2 flex items-center justify-between text-on-surface-variant">
                   <div className="flex flex-col">
-                    <span className="font-caption text-caption text-outline">Saved this month</span>
-                    <span className="font-label-md text-label-md text-badge-discount-text font-bold">₦18,450</span>
+                    <span className="font-caption text-caption text-outline">Saved in the last 30 days</span>
+                    <span className="font-label-md text-label-md text-badge-discount-text font-bold">
+                      {savings.isLoading ? '…' : naira(savedLast30)}
+                    </span>
                   </div>
-                  <svg className="w-20 h-6 overflow-visible text-badge-discount-text" fill="none" viewBox="0 0 80 24">
-                    <path
-                      d="M0 20 L 15 16 L 30 18 L 45 10 L 60 12 L 75 4 L 80 3"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                    />
-                    <circle cx="80" cy="3" fill="currentColor" r="2.5" />
-                  </svg>
+                  <button
+                    type="button"
+                    onClick={() => onNav('my-deals')}
+                    className="inline-flex items-center gap-1 font-caption text-caption text-primary font-semibold hover:underline"
+                  >
+                    <span>My Deals</span>
+                    <Icon name="arrow_forward" className="text-[14px]" />
+                  </button>
                 </div>
               </div>
 
@@ -526,7 +462,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                     {tab.trail === 'dot' && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
                     {tab.trail === 'badge' && (
                       <span className="font-caption text-caption text-badge-discount-text bg-badge-discount-bg px-1.5 py-0.5 rounded">
-                        {tab.badge}
+                        {securityLabel}
                       </span>
                     )}
                     {tab.trail === 'chevron' && <Icon name="chevron_right" className="text-[16px] text-outline" />}
@@ -555,7 +491,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                   <span>Merchant Ecosystem</span>
                 </div>
                 <p className="font-body-md text-body-md text-on-surface-variant text-sm">
-                  {canSwitch ? 'Your business is on VEMTAP' : 'Operate a store or artisanal service in Apo?'}
+                  {canSwitch ? 'Your business is on VEMTAP' : 'Operate a store or service business?'}
                 </p>
                 <button
                   onClick={() => onNav('for-merchants')}
@@ -588,7 +524,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                   <div className="flex items-center gap-2 bg-surface-container-low px-3 py-2 rounded-lg text-on-surface-variant font-caption text-caption">
                     <Icon name="pin_drop" className="text-[16px] text-badge-discount-text" />
                     <span>
-                      Primary Hub: <strong>Apo FCT</strong>
+                      Primary Hub: <strong>{defaultAddress ? defaultAddress.area || defaultAddress.label : 'Not set'}</strong>
                     </span>
                   </div>
                 </div>
@@ -606,7 +542,8 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         className="w-full h-[52px] px-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                         id="full-name"
                         type="text"
-                        defaultValue={fullName}
+                        value={form.fullName}
+                        onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -615,13 +552,14 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         htmlFor="display-name"
                       >
                         <span>Community Display Name</span>
-                        <span className="font-caption text-caption text-outline">Visible to Apo vendors</span>
+                        <span className="font-caption text-caption text-outline">Your first name, shown to businesses</span>
                       </label>
                       <input
-                        className="w-full h-[52px] px-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        className="w-full h-[52px] px-4 bg-surface-container-low rounded-xl text-on-surface-variant font-body-md text-body-md focus:outline-none cursor-default"
                         id="display-name"
                         type="text"
-                        defaultValue={fullName.split(' ')[0] || 'User'}
+                        readOnly
+                        value={splitName(form.fullName).firstName || profile.firstName}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -629,10 +567,18 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         <label className="font-label-md text-label-md text-on-surface font-semibold" htmlFor="email">
                           Email Address
                         </label>
-                        <span className="inline-flex items-center gap-1.5 bg-badge-discount-bg text-badge-discount-text px-2 py-0.5 rounded-full font-caption text-caption font-semibold">
-                          <Icon name="check_circle" className="text-[14px]" />
-                          <span>Verified</span>
-                        </span>
+                        {profile.email && (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-caption font-semibold ${
+                              security.emailVerified
+                                ? 'bg-badge-discount-bg text-badge-discount-text'
+                                : 'bg-surface-container text-on-surface-variant'
+                            }`}
+                          >
+                            <Icon name={security.emailVerified ? 'check_circle' : 'schedule'} className="text-[14px]" />
+                            <span>{security.emailVerified ? 'Verified' : 'Not verified'}</span>
+                          </span>
+                        )}
                       </div>
                       <div className="relative flex items-center">
                         <Icon
@@ -643,7 +589,9 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                           className="w-full h-[52px] pl-12 pr-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                           id="email"
                           type="email"
-                          defaultValue={emailAddress}
+                          readOnly
+                          title="Your sign-in email can't be changed here"
+                          value={emailAddress}
                         />
                       </div>
                     </div>
@@ -652,10 +600,12 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         <label className="font-label-md text-label-md text-on-surface font-semibold" htmlFor="phone">
                           Primary Phone Number
                         </label>
-                        <span className="inline-flex items-center gap-1.5 bg-badge-discount-bg text-badge-discount-text px-2 py-0.5 rounded-full font-caption text-caption font-semibold">
-                          <Icon name="chat" className="text-[14px]" />
-                          <span>WhatsApp Verified</span>
-                        </span>
+                        {profile.hasPhone && (
+                          <span className="inline-flex items-center gap-1.5 bg-badge-discount-bg text-badge-discount-text px-2 py-0.5 rounded-full font-caption text-caption font-semibold">
+                            <Icon name="call" className="text-[14px]" />
+                            <span>On file</span>
+                          </span>
+                        )}
                       </div>
                       <div className="relative flex items-center">
                         <Icon name="call" className="absolute left-4 text-outline text-[20px]" />
@@ -663,7 +613,9 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                           className="w-full h-[52px] pl-12 pr-4 bg-surface-container-low rounded-xl text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                           id="phone"
                           type="tel"
-                          defaultValue={phoneNumber}
+                          placeholder="No phone number"
+                          value={form.phone}
+                          onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
                         />
                       </div>
                     </div>
@@ -679,41 +631,32 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                           Default Delivery &amp; Pickup Neighborhood
                         </h4>
                         <p className="font-body-md text-body-md text-on-surface-variant">
-                          Apo Legislative Quarters, Apo District, Abuja FCT
+                          {defaultAddress
+                            ? [defaultAddress.label, defaultAddress.line, defaultAddress.area].filter(Boolean).join(', ')
+                            : 'No default address saved yet'}
                         </p>
                         <p className="font-caption text-caption text-outline mt-0.5">
-                          Calculates 5km radius merchant flash promotions and free courier zones.
+                          Used for nearby deals, delivery and pickup.
                         </p>
                       </div>
                     </div>
-                    <button className="shrink-0 inline-flex items-center gap-1.5 font-button-secondary text-button-secondary text-primary hover:text-on-primary-fixed-variant transition-colors" type="button">
-                      <span>Change Default Neighborhood</span>
-                      <Icon name="edit_location_alt" className="text-[16px]" />
-                    </button>
-                  </div>
-
-                  <div
-                    aria-hidden="true"
-                    className="w-full h-32 rounded-xl bg-cover bg-center relative overflow-hidden flex items-end p-4 shadow-inner"
-                    title="Apo Legislative Quarters Abuja Nigeria"
-                    style={{
-                      backgroundImage:
-                        "url('https://lh3.googleusercontent.com/aida-public/AB6AXuAS5UKOp-gkKNf8sbfubOVTVaU1H7nTKS67RocUDJQcJb6pb5q-lOJZHOBUDgggNIlsEN45K4t4Q69SHVnPgHz_R2S0nUXNDjISfxWbCYNAM2UMW2uqbnxYBFVjkqbUWm6nVHeiYiSc-p-Vn7B29G-u9G85XhvF8y1z5WlGs1SxMOrdKarkdezoh5-MC1mFUzWcOpbZ07loI5E7kbGZJBUOLGSp0lxUVpiw1awBXrXz')",
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-t from-on-background/80 via-on-background/30 to-transparent" />
-                    <div className="relative z-10 flex items-center justify-between w-full text-on-primary">
-                      <div className="flex items-center gap-2 font-caption text-caption">
-                        <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text" />
-                        <span>Grid Coverage: Apo Zone B, Guzape West, Gudu Link (4.8km Active Radius)</span>
-                      </div>
-                      <span className="font-caption text-caption opacity-80">Refreshed 2 mins ago</span>
-                    </div>
+                    {onOpenAddresses && (
+                      <button
+                        className="shrink-0 inline-flex items-center gap-1.5 font-button-secondary text-button-secondary text-primary hover:text-on-primary-fixed-variant transition-colors"
+                        onClick={onOpenAddresses}
+                        type="button"
+                      >
+                        <span>{defaultAddress ? 'Change Default Neighborhood' : 'Add an Address'}</span>
+                        <Icon name="edit_location_alt" className="text-[16px]" />
+                      </button>
+                    )}
                   </div>
 
                   <div className="pt-2 flex items-center justify-end gap-4">
                     <button
-                      className="px-4 py-2 font-button-secondary text-button-secondary text-on-surface-variant hover:text-on-surface transition-colors"
+                      className="px-4 py-2 font-button-secondary text-button-secondary text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-50"
+                      disabled={!dirty || saveState !== 'idle'}
+                      onClick={resetForm}
                       type="button"
                     >
                       Discard
@@ -724,7 +667,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       }`}
                       disabled={saveState !== 'idle'}
                       id="save-profile-btn"
-                      onClick={saveProfile}
+                      onClick={() => void saveProfile()}
                       type="button"
                     >
                       {saveState === 'idle' && (
@@ -736,7 +679,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       {saveState === 'saving' && (
                         <>
                           <Icon name="sync" className="text-[18px] animate-spin" />
-                          <span>Saving to Apo Grid...</span>
+                          <span>Saving...</span>
                         </>
                       )}
                       {saveState === 'saved' && (
@@ -763,7 +706,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                   </div>
                   <div className="inline-flex items-center gap-1.5 text-badge-discount-text bg-badge-discount-bg px-3 py-1 rounded-full font-label-sm text-label-sm font-medium">
                     <Icon name="shield_lock" className="text-[16px]" />
-                    <span>Multi-Factor Enforced</span>
+                    <span>{security.twoFactorEnabled ? 'Two-Step Verification On' : security.hasPin ? 'PIN Protected' : 'Google Sign-in'}</span>
                   </div>
                 </div>
                 <div className="space-y-6">
@@ -773,27 +716,33 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                         <Icon name="dialpad" className="text-[24px]" />
                       </div>
                       <div>
-                        <h4 className="font-heading-sm text-heading-sm text-on-surface">6-Digit Transaction PIN</h4>
+                        <h4 className="font-heading-sm text-heading-sm text-on-surface">6-Digit PIN</h4>
                         <p className="font-body-md text-body-md text-on-surface-variant">
-                          Required for in-store voucher redemption and merchant QR taps.
+                          {security.hasPin
+                            ? 'Used to sign in and to confirm voucher redemptions.'
+                            : 'You sign in with Google, so your account has no PIN.'}
                         </p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="tracking-[0.4em] font-bold text-on-surface text-[18px] leading-none">
-                            ••••••
-                          </span>
+                          {security.hasPin && (
+                            <span className="tracking-[0.4em] font-bold text-on-surface text-[18px] leading-none">
+                              ••••••
+                            </span>
+                          )}
                           <span className="font-caption text-caption text-badge-discount-text font-medium ml-2">
-                            • Active
+                            • {security.hasPin ? 'Active' : 'Not used'}
                           </span>
                         </div>
                       </div>
                     </div>
-                    <button
-                      className="h-[44px] px-6 bg-surface-container-lowest hover:bg-surface text-on-surface font-label-md text-label-md rounded-lg shadow-sm transition-all shrink-0"
-                      type="button"
-                      onClick={() => setCredential('pin')}
-                    >
-                      Change PIN
-                    </button>
+                    {security.hasPin && (
+                      <button
+                        className="h-[44px] px-6 bg-surface-container-lowest hover:bg-surface text-on-surface font-label-md text-label-md rounded-lg shadow-sm transition-all shrink-0"
+                        type="button"
+                        onClick={handlePasswordReset}
+                      >
+                        Change PIN
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-3">
@@ -813,9 +762,13 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                             </p>
                           </div>
                         </div>
-                        <span className="inline-flex items-center gap-1.5 text-badge-discount-text font-caption text-caption font-semibold shrink-0">
-                          <Icon name="check_circle" className="text-[14px]" />
-                          <span>{profile.email ? 'Verified' : 'Pending'}</span>
+                        <span
+                          className={`inline-flex items-center gap-1.5 font-caption text-caption font-semibold shrink-0 ${
+                            security.emailVerified ? 'text-badge-discount-text' : 'text-on-surface-variant'
+                          }`}
+                        >
+                          <Icon name={security.emailVerified ? 'check_circle' : 'schedule'} className="text-[14px]" />
+                          <span>{security.emailVerified ? 'Verified' : 'Pending'}</span>
                         </span>
                       </div>
 
@@ -825,48 +778,89 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                             <Icon name="lock" className="text-[20px] text-primary" />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-label-md text-label-md text-on-surface font-semibold">Sign-in PIN</p>
-                            <p className="font-caption text-caption text-on-surface-variant">Managed through the auth flow</p>
+                            <p className="font-label-md text-label-md text-on-surface font-semibold">Two-step verification</p>
+                            <p className="font-caption text-caption text-on-surface-variant">
+                              {security.twoFactorEnabled ? 'On — a code is required at sign-in' : 'Off for this account'}
+                            </p>
                           </div>
                         </div>
-                        <button
-                          className="text-primary hover:text-on-primary-fixed-variant font-label-sm text-label-sm font-semibold shrink-0"
-                          type="button"
-                          onClick={() => void handlePasswordReset()}
+                        <span
+                          className={`font-caption text-caption font-semibold shrink-0 ${
+                            security.twoFactorEnabled ? 'text-badge-discount-text' : 'text-on-surface-variant'
+                          }`}
                         >
-                          Change PIN
-                        </button>
+                          {security.twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-3 pt-1">
-                    <div>
-                      <h3 className="font-label-md text-label-md text-on-surface font-semibold">
-                        Trusted device policy
-                      </h3>
-                      <p className="font-caption text-caption text-on-surface-variant mt-1">
-                        Active sessions are controlled by JWT auth and token expiry. New devices can sign in normally,
-                        while older sessions are invalidated when a token expires or the user signs out.
-                      </p>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="font-label-md text-label-md text-on-surface font-semibold">
+                          Signed-in devices
+                        </h3>
+                        <p className="font-caption text-caption text-on-surface-variant mt-1">
+                          Every browser and phone currently signed in to your account. Sign out any you don&apos;t recognise.
+                        </p>
+                      </div>
+                      {security.otherDevices.length > 0 && (
+                        <button
+                          className="text-error hover:text-on-error-container font-label-sm text-label-sm font-semibold shrink-0 disabled:opacity-60"
+                          disabled={signingOutOthers}
+                          onClick={() => void signOutOthers()}
+                          type="button"
+                        >
+                          {signingOutOthers ? 'Signing out…' : `Sign out ${security.otherDevices.length} other${security.otherDevices.length === 1 ? '' : 's'}`}
+                        </button>
+                      )}
                     </div>
 
-                    <div className="p-4 bg-surface-container-low rounded-xl">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-surface-container-lowest text-primary flex items-center justify-center shadow-sm">
-                            <Icon name="devices" className="text-[20px]" />
-                          </div>
-                          <div>
-                            <p className="font-label-md text-label-md text-on-surface font-semibold">Current session</p>
-                            <p className="font-caption text-caption text-on-surface-variant">
-                              Standard secure browser session with JWT authentication
-                            </p>
+                    {security.devicesLoading && (
+                      <p className="font-caption text-caption text-on-surface-variant">Loading signed-in devices…</p>
+                    )}
+                    {!security.devicesLoading && security.devicesError != null && (
+                      <p className="font-caption text-caption text-error">Couldn&apos;t load your signed-in devices.</p>
+                    )}
+                    {!security.devicesLoading && security.devicesError == null && activeCount === 0 && (
+                      <p className="font-caption text-caption text-on-surface-variant">No signed-in devices to show.</p>
+                    )}
+
+                    {security.activeDevices.map((device) => {
+                      const name = deviceLabel(device);
+                      return (
+                        <div className="p-4 bg-surface-container-low rounded-xl" key={device.id}>
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-surface-container-lowest text-primary flex items-center justify-center shadow-sm shrink-0">
+                                <Icon name={deviceIcon(device)} className="text-[20px]" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-label-md text-label-md text-on-surface font-semibold truncate">{name}</p>
+                                <p className="font-caption text-caption text-on-surface-variant truncate">
+                                  {device.ipAddress ? `${device.ipAddress} • ` : ''}
+                                  {device.isCurrent ? 'Active now' : `Last active ${relativeTime(device.lastActiveAt)}`}
+                                  {device.createdAt ? ` • Signed in ${relativeTime(device.createdAt)}` : ''}
+                                </p>
+                              </div>
+                            </div>
+                            {device.isCurrent ? (
+                              <span className="font-caption text-caption text-badge-discount-text font-semibold shrink-0">This device</span>
+                            ) : (
+                              <button
+                                className="text-error hover:text-on-error-container font-caption text-caption font-semibold px-2 py-1 rounded hover:bg-error-container/20 transition-colors shrink-0 disabled:opacity-60"
+                                disabled={security.revokeDevice.isPending || signingOutOthers}
+                                onClick={() => revokeOne(device.id, name)}
+                                type="button"
+                              >
+                                Sign out
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <span className="font-caption text-caption text-badge-discount-text font-semibold">Active</span>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
               </section>
@@ -888,7 +882,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                     </h2>
                   </div>
                   <span className="font-caption text-caption text-on-surface-variant bg-surface-container-low px-3 py-1 rounded-full">
-                    Real-time Abuja Push Network
+                    Saved to your account
                   </span>
                 </div>
                 <div className="space-y-4">
@@ -917,11 +911,11 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer shrink-0">
                         <input
-                          checked={toggles[toggle.id]}
+                          aria-label={toggle.title}
+                          checked={security.prefs[toggle.id]}
                           className="sr-only peer"
-                          onChange={(event) =>
-                            setToggles((current) => ({ ...current, [toggle.id]: event.target.checked }))
-                          }
+                          disabled={!security.prefsLoaded || security.updatePref.isPending}
+                          onChange={(event) => toggleChannel(toggle.id, toggle.title, event.target.checked)}
                           type="checkbox"
                         />
                         <div className="w-12 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-container-lowest after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-container-lowest after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container" />
@@ -993,7 +987,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                       <div>
                         <p className="font-label-md text-label-md text-error font-semibold">Account Erasure</p>
                         <p className="font-caption text-caption text-on-surface-variant">
-                          Requires legal/data-retention API support
+                          Permanently remove your profile &amp; redemption ledger
                         </p>
                       </div>
                     </div>
@@ -1058,8 +1052,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                 </div>
                 <h2 className="font-heading-lg text-heading-lg text-on-surface">Help &amp; Support Desk</h2>
                 <p className="font-body-md text-body-md text-on-surface-variant mt-2">
-                  Reach the Apo Local Concierge daily 8:00 AM – 10:00 PM for voucher disputes, booking changes, or
-                  merchant redirection.
+                  Reach VEMTAP Support for voucher disputes, booking changes, or help with a business.
                 </p>
                 <div className="flex flex-wrap items-center gap-3 mt-5">
                   <button
@@ -1068,7 +1061,7 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
                     type="button"
                   >
                     <Icon name="chat" className="text-[18px]" />
-                    <span>Chat with Apo Desk</span>
+                    <span>Chat with Support</span>
                   </button>
                   <button
                     onClick={() => onNav('orders')}
@@ -1092,15 +1085,6 @@ export function DesktopAccountSettingsScreen({ onNav }: DesktopAccountSettingsSc
           onSaved={() => {
             setShowPasswordChangeModal(false);
             showToast('PIN updated successfully');
-          }}
-        />
-      )}
-      {credential && (
-        <CredentialModal
-          onClose={() => setCredential(null)}
-          onSaved={() => {
-            setCredential(null);
-            showToast('Transaction PIN updated successfully');
           }}
         />
       )}
