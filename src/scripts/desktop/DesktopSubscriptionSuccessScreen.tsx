@@ -1,3 +1,5 @@
+import { useBusinessCard } from '../subscriptionLive';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { SubscriptionChrome } from './SubscriptionChrome';
@@ -28,7 +30,7 @@ const RECEIPT_ROWS = [
 const UNLOCKED_BENEFITS = [
   {
     title: 'Verified storefront active on nearby feeds',
-    body: 'Visible to shoppers within 5km of Apo & Wuse II.',
+    body: 'Visible to shoppers near your branches.',
   },
   {
     title: 'Unlimited deal creation & QR tap codes live',
@@ -58,6 +60,7 @@ export function DesktopSubscriptionSuccessScreen({
 }: DesktopSubscriptionSuccessScreenProps) {
   const [copied, setCopied] = useState(false);
   const live = hasApiConfig();
+  const bizCard = useBusinessCard();
   const subscription = useActiveSubscription();
   const plans = useSubscriptionPlans();
   const billing = useBillingHistory();
@@ -146,12 +149,12 @@ export function DesktopSubscriptionSuccessScreen({
 
         <section className="rounded-xl bg-surface-subtle p-space-md shadow-sm flex items-center gap-space-md">
           <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-            <img alt={STORE_ALT} className="w-full h-full object-cover" src={STORE_IMG} />
+            <img alt={bizCard.live ? `${bizCard.name} logo` : STORE_ALT} className="w-full h-full object-cover" src={bizCard.live ? bizCard.logo || NO_IMAGE : STORE_IMG} />
             <div className="absolute bottom-0 inset-x-0 h-3 bg-gradient-to-t from-text-primary/70 to-transparent" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-space-xs">
-              <span className="font-heading-sm text-heading-sm text-text-primary truncate">Urban Grill &amp; Bistro</span>
+              <span className="font-heading-sm text-heading-sm text-text-primary truncate">{bizCard.live ? bizCard.name : 'Urban Grill & Bistro'}</span>
               <Icon name="verified" filled className="text-primary text-[16px]" />
             </div>
             <span className="font-caption text-caption text-badge-discount-text font-semibold">

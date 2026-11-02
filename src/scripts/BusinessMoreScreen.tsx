@@ -9,6 +9,8 @@ import { hasApiConfig } from '../services/api/client';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { useActiveSubscription } from '../hooks/business/useSubscription';
 import { useLivePos } from './posLive';
+import { useMoreSummary } from '../hooks/business/useMoreSummary';
+import { useVerificationSummary } from '../hooks/business/useVerification';
 
 interface BusinessMoreScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -68,6 +70,10 @@ export function BusinessMoreScreen({
   onSignOut,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
+  // Live: the plan, unread count, cluster, reviews and verification from the API; demo keeps the samples.
+  const more = useMoreSummary();
+  const verification = useVerificationSummary();
+  const liveMore = more.live;
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -97,7 +103,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-tint-blue text-primary',
           title: 'Cluster System',
           sub: 'Mall network, shared QR & deal rotator pool',
-          badge: 'Amaka Mall',
+          badge: liveMore ? more.clusterName ?? undefined : 'Amaka Mall',
           badgeClass: GREEN_BADGE,
           onClick: onOpenCluster || (() => {}),
         },
@@ -140,7 +146,7 @@ export function BusinessMoreScreen({
           icon: 'credit_card',
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Subscription & Billing',
-          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
+          sub: liveMore ? more.planLine ?? 'No plan yet' : 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
           onClick: onOpenSubscription,
         },
         {
@@ -163,7 +169,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Notifications Center',
           sub: 'Till alerts, payout updates & staff clock-ins',
-          badge: '4 unread',
+          badge: liveMore ? (more.unread ? `${more.unread} unread` : undefined) : '4 unread',
           badgeClass: ERROR_BADGE,
           onClick: onOpenNotifications,
         },
@@ -178,8 +184,8 @@ export function BusinessMoreScreen({
           icon: 'verified_user',
           iconClass: GREEN_BADGE,
           title: 'Business Verification',
-          sub: 'CAC, Director ID & Bank Settlement Approved',
-          badge: 'Tier 3',
+          sub: liveMore ? verification.statusLabel : 'CAC, Director ID & Bank Settlement Approved',
+          badge: liveMore ? (verification.verified ? 'Verified' : undefined) : 'Tier 3',
           badgeClass: GREEN_BADGE,
           onClick: onOpenVerification,
         },

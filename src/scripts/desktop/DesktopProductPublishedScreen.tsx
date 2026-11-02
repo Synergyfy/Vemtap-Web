@@ -170,10 +170,12 @@ export function DesktopProductPublishedScreen({
                       Fresh Batch
                     </span>
                   </div>
+                  {!live && (
                   <div className="absolute bottom-3 right-3 px-3 py-1 rounded-lg bg-inverse-surface/85 backdrop-blur-md text-inverse-on-surface font-caption text-caption flex items-center gap-1.5">
                     <Icon name="visibility" className="text-[14px]" />
                     <span>Visible to ~12.4k users</span>
                   </div>
+                  )}
                 </div>
                 <div className="flex items-baseline justify-between mb-space-2xs">
                   <h2 className="font-heading-md text-heading-md text-on-surface font-bold tracking-tight">

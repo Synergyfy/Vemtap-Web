@@ -1246,7 +1246,8 @@ function AppInner() {
   const [posSalePoints, setPosSalePoints] = useState(0);
   /** Points manually awarded to the mobile-flow customer during the sale. */
   const [posCustomerBonus, setPosCustomerBonus] = useState(0);
-  const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
+  // Live: no sample customer — a real one is picked before these screens open.
+  const [posDossierCustomer, setPosDossierCustomer] = useState(() => (hasApiConfig() ? '' : 'Michael James'));
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>([]);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
@@ -2122,7 +2123,7 @@ function AppInner() {
   const [boostItem, setBoostItem] = useState<string | null>(null);
   // Live: the boost or promotion the metrics screen shows (null = latest active).
   const [boostMetricsTarget, setBoostMetricsTarget] = useState<{ kind: 'boost' | 'promotion'; id: string } | null>(null);
-  const [hubCustomerName, setHubCustomerName] = useState('Michael James');
+  const [hubCustomerName, setHubCustomerName] = useState(() => (hasApiConfig() ? '' : 'Michael James'));
   const [hubCustomerId, setHubCustomerId] = useState<string | null>(null);
   // Live deals: the catalogue item a new deal is built on, the deal being
   // viewed or priced, and a one-off catalogue message ("pick an item").
@@ -5881,7 +5882,22 @@ function AppInner() {
       if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
-          <BusinessBranchComparisonScreen onBack={() => setRoute('analytics-overview')} />
+          <BusinessBranchComparisonScreen
+            onBack={() => setRoute('analytics-overview')}
+            onNavigate={(target) =>
+              setRoute(
+                target === 'pricing'
+                  ? 'hub-catalog'
+                  : target === 'business'
+                    ? 'analytics-business'
+                    : target === 'customers'
+                      ? 'analytics-customers'
+                      : target === 'deals'
+                        ? 'analytics-deals'
+                        : 'analytics-pos',
+              )
+            }
+          />
         </div>
       );
 
