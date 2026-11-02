@@ -22,7 +22,7 @@ import { catalogueItemKeys } from './useCatalogueItems';
 import { useAuth } from '../../context/AuthContext';
 import { useSessionUser } from '../useSessionUser';
 import { isBusinessRole } from '../../services/sessionService';
-import { ownerAuthService } from '../../services/ownerAuthService';
+import { ownerAuthService, pendingPin, rememberUpgradePin } from '../../services/ownerAuthService';
 import { getProvisionalReferralCode } from '../../scripts/referralData';
 
 /** The setup draft fields both onboarding screens share. */
@@ -80,17 +80,28 @@ export function useOnboardingSync() {
 
   /**
    * A signed-in customer who chose "Continue with this account" becomes an
-   * owner on the first save (`POST /auth/upgrade-to-owner`), so the business
-   * exists before the profile is patched.
+   * owner only here, on the first save (`POST /auth/upgrade-to-owner`), which
+   * also creates the business — so an abandoned setup leaves a plain customer,
+   * never an owner account with no business.
    */
   const ensureOwner = async (businessName: string) => {
     if (!live || !sessionUser || isBusinessRole(sessionUser.role)) return;
+    const pin = pendingPin();
     try {
       adoptSession(
-        await ownerAuthService.upgrade({ businessName, referralCode: getProvisionalReferralCode() || undefined }),
+        await ownerAuthService.upgrade({
+          ...(pin ? { password: pin } : {}),
+          businessName,
+          referralCode: getProvisionalReferralCode() || undefined,
+        }),
       );
+      rememberUpgradePin(null);
     } catch (e) {
       // PIN accounts confirm their PIN on the account-choice step; send them back there.
+      if (e instanceof Error && /incorrect password/i.test(e.message)) {
+        rememberUpgradePin(null);
+        throw new Error('That PIN is incorrect. Go back and choose "Continue with this account" to enter it again.');
+      }
       if (e instanceof Error && /password confirmation is required/i.test(e.message)) {
         throw new Error('Confirm your PIN to add a business: go back and choose "Continue with this account".');
       }

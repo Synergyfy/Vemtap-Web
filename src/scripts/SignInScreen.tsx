@@ -12,6 +12,10 @@ interface SignInScreenProps {
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
+  /** Prefills the email (e.g. business sign-up found an existing account). */
+  initialIdentifier?: string;
+  /** Why the visitor was sent here, shown above the form. */
+  notice?: string | null;
 }
 
 type Status = 'idle' | 'submitting';
@@ -69,6 +73,8 @@ export function SignInScreen({
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
+  initialIdentifier,
+  notice,
 }: SignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -174,6 +180,11 @@ export function SignInScreen({
           </div>
 
           <form className="flex flex-col gap-space-md" onSubmit={handleSubmit}>
+            {notice && !error ? (
+              <div className="rounded-xl bg-surface-tint-blue px-space-sm py-space-xs text-text-primary font-body-md text-body-md">
+                {notice}
+              </div>
+            ) : null}
             {error ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
                 {error}
@@ -191,6 +202,7 @@ export function SignInScreen({
                   className="w-full h-[52px] pl-[44px] pr-space-md bg-surface-container-lowest text-text-primary rounded-xl font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue shadow-sm transition-colors"
                   id="identifier"
                   name="identifier"
+                  defaultValue={initialIdentifier}
                   placeholder="name@example.com or +234..."
                   type="text"
                   autoComplete="username"
