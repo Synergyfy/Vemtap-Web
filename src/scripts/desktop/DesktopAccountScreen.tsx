@@ -3,6 +3,8 @@ import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../../components/AccountRows';
 import { useProfile } from '../../context/ProfileContext';
+import { activeVouchers, useClaims } from '../../context/ClaimsContext';
+import { useTotalSaved } from '../../hooks/useCustomerDashboard';
 import { hasApiConfig } from '../../services/api/client';
 
 interface DesktopAccountScreenProps {
@@ -85,6 +87,10 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
   const { fullName, email, initials, phone } = useProfile();
   // Live: no sample counts or totals until real figures are wired; demo keeps them.
   const live = hasApiConfig();
+  const totalSaved = useTotalSaved();
+  const { claims, claimsLoading } = useClaims();
+  const activeDeals = activeVouchers(claims).length;
+  const totalSavedLabel = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(totalSaved);
   const activityRows = live ? ACTIVITY_ROWS.map(({ badge: _badge, trail: _trail, ...row }) => row) : ACTIVITY_ROWS;
 
   return (
@@ -181,7 +187,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                     </div>
                     <div className="min-w-0">
                       <span className="font-caption text-caption text-text-secondary block">Total Saved</span>
-                      <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? '—' : '₦18,500'}</span>
+                      <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? totalSavedLabel : '₦18,500'}</span>
                     </div>
                   </div>
                   <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center gap-space-xs">
@@ -190,7 +196,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                     </div>
                     <div className="min-w-0">
                       <span className="font-caption text-caption text-text-secondary block">Active Deals</span>
-                      <span className="font-label-md text-label-md font-bold text-text-primary">{live ? '—' : '3 Live'}</span>
+                      <span className="font-label-md text-label-md font-bold text-text-primary">{live ? (claimsLoading ? '—' : `${activeDeals} Live`) : '3 Live'}</span>
                     </div>
                   </div>
                 </div>

@@ -214,15 +214,16 @@ export function DealDetailScreen({
               <Icon name="share" className="text-[22px]" />
             </button>
             <button
-              aria-label="Save to favorites"
+              aria-label={saved ? 'Remove from saved deals' : 'Save deal'}
+              aria-pressed={saved}
               type="button"
               onClick={onSave}
               className="w-11 h-11 flex items-center justify-center rounded-full active:scale-95 transition-transform"
             >
               <Icon
-                name={saved ? 'favorite' : 'favorite_border'}
+                name={saved ? 'bookmark' : 'bookmark_border'}
                 filled={saved}
-                className={`text-[22px] ${saved ? 'text-error' : 'text-text-secondary hover:text-text-primary'}`}
+                className={`text-[22px] ${saved ? 'text-primary' : 'text-text-secondary hover:text-text-primary'}`}
               />
             </button>
           </div>

@@ -1220,6 +1220,7 @@ function AppInner() {
   const [businessChoiceOpen, setBusinessChoiceOpen] = useState(false);
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
   const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
+  const [activeBookingRef, setActiveBookingRef] = useState<string | undefined>(undefined);
   const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
   /** Where "How to Claim" was opened: a deal page (claim that deal) or the Deals feed (no deal to claim). */
@@ -1231,7 +1232,7 @@ function AppInner() {
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
   // The voucher picked on the dashboard, so its pass and contact sheet show that one.
   const [dashboardClaimRef, setDashboardClaimRef] = useState<string | null>(null);
-  const [activeConversation, setActiveConversation] = useState('urban');
+  const [activeConversation, setActiveConversation] = useState('');
   useCustomerMessagingRealtime(authed);
   useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
   const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
@@ -1538,6 +1539,11 @@ function AppInner() {
     // Only the page this tab opened on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A reload loses which chat was open; the inbox still has it.
+  useEffect(() => {
+    if (route === 'conversation' && !activeConversation) setRouteState('messages');
+  }, [route, activeConversation]);
 
   // A reload loses the just-claimed voucher; its wallet still has it.
   useEffect(() => {
@@ -2470,6 +2476,21 @@ function AppInner() {
       if (route === 'deal-detail') liveDeal.reload();
     }
   }, [route, liveDeal.reload]);
+
+  /** Opens the customer's chat with a branch, or the inbox if it can't be opened. */
+  const openBranchChat = (branchId?: string) => {
+    if (!branchId) {
+      setRoute('messages');
+      return;
+    }
+    messageService
+      .openBranchThread(branchId)
+      .then((threadId) => {
+        setActiveConversation(threadId);
+        setRoute('conversation');
+      })
+      .catch(() => setRoute('messages'));
+  };
 
   const openDealChat = async () => {
     const branchId = liveDeal.detail?.branchId;
@@ -4374,8 +4395,7 @@ function AppInner() {
             onBack={() => setRoute('spa-storefront')}
             onChat={() => {
               // BUG-026: open the receptionist conversation directly.
-              setActiveConversation('glow');
-              setRoute('conversation');
+              setRoute('messages');
             }}
           />
         );
@@ -4393,8 +4413,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('spa-storefront')}
             onChat={() => {
-              setActiveConversation('glow');
-              setRoute('conversation');
+              setRoute('messages');
             }}
           />
         );
@@ -4406,8 +4425,7 @@ function AppInner() {
           onHome={() => setRoute('home')}
           onChat={() => {
             // BUG-026: open the business conversation for the spa receptionist.
-            setActiveConversation('glow');
-            setRoute('conversation');
+            setRoute('messages');
           }}
         />
       );
@@ -4477,7 +4495,10 @@ function AppInner() {
               setActiveOrderRef(ref);
               setRoute('order-detail');
             }}
-            onOpenBooking={() => setRoute('booking-detail')}
+            onOpenBooking={(ref) => {
+              setActiveBookingRef(ref);
+              setRoute('booking-detail');
+            }}
           />
         );
       return (
@@ -4491,38 +4512,36 @@ function AppInner() {
             setActiveOrderRef(ref);
             setRoute('order-detail');
           }}
-          onOpenBooking={() => setRoute('booking-detail')}
+          onOpenBooking={(ref) => {
+              setActiveBookingRef(ref);
+              setRoute('booking-detail');
+            }}
           onNavigate={(target) => setRoute(target)}
         />
       );
 
     case 'order-detail':
       if (isDesktop)
-        return <DesktopOrderDetailScreen orderRef={activeOrderRef} onNav={feedNav} onBack={() => setRoute('orders')} />;
+        return <DesktopOrderDetailScreen orderRef={activeOrderRef} onChat={openBranchChat} onNav={feedNav} onBack={() => setRoute('orders')} />;
       return (
         <OrderDetailScreen
           orderRef={activeOrderRef}
           onBack={() => setRoute('orders')}
-          onChat={() => {
-            setActiveConversation('urban');
-            setRoute('conversation');
-          }}
-          onReorder={() => setRoute('storefront')}
+          onChat={(branchId) => openBranchChat(branchId)}
+          onReorder={() => setRoute('discover')}
           onSupport={() => setRoute('support')}
         />
       );
 
     case 'booking-detail':
       if (isDesktop)
-        return <DesktopBookingDetailScreen onNav={feedNav} onBack={() => setRoute('orders')} />;
+        return <DesktopBookingDetailScreen bookingRef={activeBookingRef} onChat={openBranchChat} onNav={feedNav} onBack={() => setRoute('orders')} />;
       return (
         <BookingDetailScreen
+          bookingRef={activeBookingRef}
           onBack={() => setRoute('orders')}
-          onReschedule={() => setRoute('spa-booking')}
-          onChat={() => {
-            setActiveConversation('glow');
-            setRoute('conversation');
-          }}
+          onBookAgain={() => setRoute('discover')}
+          onChat={(branchId) => openBranchChat(branchId)}
         />
       );
 

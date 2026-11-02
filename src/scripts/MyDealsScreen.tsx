@@ -89,9 +89,11 @@ function ClaimCard({
             alt={claim.dealTitle}
             src={claim.dealImage || NO_IMAGE}
           />
-          <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold tracking-tight">
-            {claim.code}
-          </div>
+          {isGift || forOther ? null : (
+            <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold tracking-tight">
+              {claim.code}
+            </div>
+          )}
         </div>
         <div className="flex flex-col flex-1 min-w-0">
           <div className="flex items-center justify-between gap-1 mb-1">
@@ -124,7 +126,7 @@ function ClaimCard({
         </div>
       </div>
 
-      {forOther || pastLabel ? null : <VoucherStrip code={claim.ref} onCopy={onCopy} copied={copied === claim.ref} />}
+      {forOther || isGift || pastLabel ? null : <VoucherStrip code={claim.ref} onCopy={onCopy} copied={copied === claim.ref} />}
 
       <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption px-1">
         <Icon name="info" className="text-[15px] text-primary" />
@@ -269,7 +271,7 @@ export function MyDealsScreen({ onTab, onShowPass, onGiftReceipt, onNavigate }: 
               {latestGift.dealTitle}
             </span>
             <span className="font-caption text-caption text-text-tertiary">
-              Sent on {formatDate(latestGift.createdAt)} • {latestGift.ref}
+              Sent on {formatDate(latestGift.createdAt)}
             </span>
           </div>
           <button

@@ -3,7 +3,9 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../components/AccountRows';
+import { activeVouchers, useClaims } from '../context/ClaimsContext';
 import { useProfile } from '../context/ProfileContext';
+import { useTotalSaved } from '../hooks/useCustomerDashboard';
 import { hasApiConfig } from '../services/api/client';
 
 export type { AccountTarget };
@@ -85,8 +87,12 @@ const UTILITY_ROWS: AccountRow[] = [
 export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenProps) {
   const canSwitch = useCanSwitchToBusiness();
   const { fullName, email, initials, phone } = useProfile();
-  // Live: no sample counts or totals until real figures are wired; demo keeps them.
+  // Live: real figures here; the rows' sample badges stay out until they are wired. Demo keeps them.
   const live = hasApiConfig();
+  const totalSaved = useTotalSaved();
+  const { claims, claimsLoading } = useClaims();
+  const activeDeals = activeVouchers(claims).length;
+  const totalSavedLabel = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(totalSaved);
   const activityRows = live ? ACTIVITY_ROWS.map(({ badge: _badge, trail: _trail, ...row }) => row) : ACTIVITY_ROWS;
 
   return (
@@ -167,7 +173,7 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
                 </div>
                 <div className="min-w-0">
                   <span className="font-caption text-caption text-text-secondary block">Total Saved</span>
-                  <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? '—' : '₦18,500'}</span>
+                  <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? totalSavedLabel : '₦18,500'}</span>
                 </div>
               </div>
               <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center gap-space-xs">
@@ -176,7 +182,7 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
                 </div>
                 <div className="min-w-0">
                   <span className="font-caption text-caption text-text-secondary block">Active Deals</span>
-                  <span className="font-label-md text-label-md font-bold text-on-surface">{live ? '—' : '3 Live'}</span>
+                  <span className="font-label-md text-label-md font-bold text-on-surface">{live ? (claimsLoading ? '—' : `${activeDeals} Live`) : '3 Live'}</span>
                 </div>
               </div>
             </div>

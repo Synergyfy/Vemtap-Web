@@ -55,6 +55,11 @@ export interface SubmittedOrder {
   paymentRef?: string;
   /** Separate, optional marketing opt-in captured with the order. */
   marketingConsent?: boolean;
+  merchantPhone?: string;
+  merchantAddress?: string;
+  merchantLogo?: string;
+  merchantLatitude?: number;
+  merchantLongitude?: number;
 }
 
 export interface SubmitOrderInput {
@@ -79,6 +84,8 @@ export type SubmitOrderResult = { ok: true; order: SubmittedOrder } | { ok: fals
 export interface OrdersContextValue {
   /** Newest first. */
   orders: SubmittedOrder[];
+  /** True until `GET /catalogue/orders/my-orders` has answered. */
+  ordersLoading: boolean;
   latest: SubmittedOrder | null;
   submit: (input: SubmitOrderInput) => SubmitOrderResult;
   byRef: (ref: string) => SubmittedOrder | undefined;
@@ -177,14 +184,17 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   // `GET /catalogue/orders/my-orders` is customer-only: business accounts and
   // signed-out visitors would only get a 403/401, so they don't ask.
   const isCustomer = useSessionUser().data?.role === 'Customer';
+  const [ordersLoading, setOrdersLoading] = useState(() => hasApiConfig());
 
   useEffect(() => {
     if (!hasApiConfig() || !isCustomer) {
       setOrders([]);
+      setOrdersLoading(false);
       return;
     }
 
     let ignore = false;
+    setOrdersLoading(true);
 
     const hydrate = async () => {
       try {
@@ -199,6 +209,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           setOrders([]);
           writeOrders([]);
         }
+      } finally {
+        if (!ignore) setOrdersLoading(false);
       }
     };
 
@@ -401,6 +413,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const value = useMemo<OrdersContextValue>(
     () => ({
       orders,
+      ordersLoading,
       latest: orders[0] ?? null,
       submit,
       byRef,
@@ -410,7 +423,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       markPaid,
       forMerchant,
     }),
-    [orders, submit, byRef, findByRef, findByCustomer, setStatus, markPaid, forMerchant],
+    [orders, ordersLoading, submit, byRef, findByRef, findByCustomer, setStatus, markPaid, forMerchant],
   );
 
   return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>;

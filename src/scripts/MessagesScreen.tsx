@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
+import { getMessagingSocket } from '../services/messagingSocket';
 import { messageService, type MessageThread, type MessageThreadFilter } from '../services/messageService';
 
 interface MessagesScreenProps {
@@ -30,6 +31,7 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [threads, setThreads] = useState<MessageThread[]>([]);
   const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(() => Boolean(getMessagingSocket()?.connected));
 
   useEffect(() => {
     let isMounted = true;
@@ -48,8 +50,17 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
     };
 
     loadThreads();
+    // New messages and deleted chats reorder the list and its unread badges.
+    const onRealtime = (event: Event) => {
+      const { type } = (event as CustomEvent<{ type: string }>).detail;
+      if (type === 'connect') setConnected(true);
+      if (type === 'disconnect') setConnected(false);
+      if (type === 'newMessage' || type === 'threadDeleted') void loadThreads();
+    };
+    window.addEventListener('vemtap:messaging', onRealtime);
     return () => {
       isMounted = false;
+      window.removeEventListener('vemtap:messaging', onRealtime);
     };
   }, []);
 
@@ -175,13 +186,9 @@ export function MessagesScreen({ onTab, onOpen }: MessagesScreenProps) {
         <div className="px-space-md py-space-xs">
           <div className="flex items-center justify-between px-space-md py-2 bg-badge-discount-bg text-badge-discount-text rounded-lg shadow-sm">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-              <span className="font-caption text-caption font-semibold">Connected</span>
-              <span className="font-caption text-caption opacity-75">• Instant merchant sync active</span>
-            </div>
-            <div className="flex items-center gap-1 font-caption text-caption font-semibold">
-              <span>Apo Hub</span>
-              <Icon name="expand_more" className="text-[14px]" />
+              <span className={`w-2 h-2 rounded-full ${connected ? 'bg-badge-discount-text' : 'bg-outline'}`} />
+              <span className="font-caption text-caption font-semibold">{connected ? 'Connected' : 'Reconnecting…'}</span>
+              {connected ? <span className="font-caption text-caption opacity-75">• Live updates on</span> : null}
             </div>
           </div>
         </div>

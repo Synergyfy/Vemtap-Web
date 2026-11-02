@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useRef, useState, type FormEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
-import { messageService, type MessageItem, type MessageThread } from '../services/messageService';
+import { MessageActions, MessageContent } from '../components/ui/MessageContent';
+import { MessageTicks } from '../components/ui/MessageTicks';
+import { useChatThread } from '../hooks/useChatThread';
+import type { MessageThread } from '../services/messageService';
 
 interface ConversationScreenProps {
   threadId: string;
@@ -17,96 +20,84 @@ const ATTACHMENT_OPTIONS = [
   { icon: 'local_offer', iconBox: 'bg-badge-discount-bg text-badge-discount-text', title: 'Deal Pass', sub: 'Attach voucher code' },
 ];
 
-function formatTime(date: Date): string {
-  const period = date.getHours() >= 12 ? 'PM' : 'AM';
-  const hour = date.getHours() % 12 || 12;
-  const minute = date.getMinutes().toString().padStart(2, '0');
-  return `${hour}:${minute} ${period}`;
-}
-
 export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }: ConversationScreenProps) {
-  const [thread, setThread] = useState<MessageThread | null>(null);
-  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const { thread, messages, loading, typing, online, send, sendFile, editMessage, deleteMessage, notifyTyping } = useChatThread(threadId);
+  const [actionsFor, setActionsFor] = useState<string | number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadThread = async () => {
-      if (!threadId) return;
-
-      setLoading(true);
-      try {
-        const nextThread = await messageService.getThread(threadId);
-        if (!isMounted) return;
-        setThread(nextThread);
-        setMessages(nextThread?.messages ?? []);
-      } catch {
-        if (isMounted) {
-          setThread(null);
-          setMessages([]);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    loadThread();
-    return () => {
-      isMounted = false;
-    };
-  }, [threadId]);
 
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast((curr) => (curr === message ? null : curr)), 2400);
   };
 
-  const appendMessage = (body: string) => {
-    setMessages((current) => [
-      ...current,
-      { id: Date.now(), sender: 'you', author: 'You', time: formatTime(new Date()), body, delivered: true },
-    ]);
+  const scrollToEnd = () => window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
+
+  const deliver = async (text: string) => {
+    scrollToEnd();
+    if (!(await send(text))) showToast('Message could not be sent. Please retry.');
   };
 
-  const sendMessage = async (event?: FormEvent) => {
+  const sendMessage = (event?: FormEvent) => {
     if (event) event.preventDefault();
     const text = draft.trim();
-    if (!text || !threadId) return;
-
-    appendMessage(text);
+    if (!text) return;
     setDraft('');
     setSheetOpen(false);
-
-    try {
-      await messageService.sendReply(threadId, text);
-    } catch {
-      showToast('Message could not be sent. Please retry.');
+    if (editingId) {
+      const id = editingId;
+      setEditingId(null);
+      void editMessage(id, text).then((reason) => reason && showToast(reason));
+      return;
     }
-
-    window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
+    void deliver(text);
   };
 
-  const useReply = (text: string) => {
-    appendMessage(text);
-    if (threadId) {
-      void messageService.sendReply(threadId, text).catch(() => {
-        showToast('Quick reply could not be sent.');
-      });
-    }
-    window.setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 50);
+  const pickFile = (accept: string, capture?: boolean) => {
+    const input = fileInput.current;
+    if (!input) return;
+    input.accept = accept;
+    if (capture) input.setAttribute('capture', 'environment');
+    else input.removeAttribute('capture');
+    input.click();
   };
+
+  const onFilePicked = (file: File | undefined) => {
+    if (!file) return;
+    scrollToEnd();
+    void sendFile(file).then((reason) => reason && showToast(reason));
+  };
+
+  const startEdit = (id: string, body: string) => {
+    setEditingId(id);
+    setDraft(body);
+    setActionsFor(null);
+    inputRef.current?.focus();
+  };
+
+  const removeMessage = (id: string) => {
+    setActionsFor(null);
+    void deleteMessage(id).then((reason) => reason && showToast(reason));
+  };
+
+  const useReply = (text: string) => void deliver(text);
 
   const handleAttachment = (title: string) => {
     setSheetOpen(false);
     if (title === 'Deal Pass' && thread?.deal) {
-      appendMessage(`Attached Deal Pass: ${thread.deal.code} (${thread.deal.title})`);
+      void deliver(`Attached Deal Pass: ${thread.deal.code} (${thread.deal.title})`);
+    } else if (title === 'Camera') {
+      pickFile('image/jpeg,image/png,image/webp', true);
+    } else if (title === 'Gallery') {
+      pickFile('image/jpeg,image/png,image/webp');
+    } else if (title === 'Document') {
+      pickFile('application/pdf');
     } else {
-      showToast(`${title} picker opened.`);
+      showToast('This chat has no deal pass to attach.');
     }
   };
 
@@ -123,16 +114,16 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
     );
   }
 
-  const safeThread = thread ?? {
+  const safeThread: MessageThread = thread ?? {
     id: threadId,
     name: 'Conversation',
     initials: 'C',
     verified: false,
-    time: 'Now',
+    time: '',
     tag: 'Direct Message',
     tagClass: 'bg-surface-container-high text-text-secondary',
     tagIcon: 'chat_bubble_outline',
-    preview: 'No thread loaded yet.',
+    preview: '',
     unread: false,
     filters: ['bookings'],
     messages: [],
@@ -165,7 +156,7 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                   {safeThread.initials}
                 </div>
               )}
-              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-badge-discount-text ring-2 ring-surface" />
+              {online ? <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-badge-discount-text ring-2 ring-surface" /> : null}
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-1">
@@ -173,7 +164,7 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                 {safeThread.verified && <Icon name="verified" filled className="text-primary text-[16px] shrink-0" />}
               </div>
               <span className="font-caption text-caption text-text-secondary truncate">
-                Active now • {safeThread.status ?? 'Secure chat'}
+                {typing ? 'typing…' : online ? 'Active now' : online === false ? 'Offline' : safeThread.location ?? ''}
               </span>
             </div>
           </div>
@@ -230,25 +221,25 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full font-label-sm font-semibold tracking-wide bg-secondary-container text-on-secondary-container">
                   DIRECT CONVERSATION
                 </span>
-                <span className="font-caption text-caption text-text-tertiary">Secure Socket</span>
               </div>
               <p className="font-label-sm text-label-sm text-on-surface-variant">
-                You are messaging directly with the verified management team at <span className="font-semibold text-on-surface">{safeThread.name}</span>.
+                You are messaging directly with <span className="font-semibold text-on-surface">{safeThread.name}</span>.
               </p>
             </div>
           )}
 
-          {/* Date Divider */}
-          <div className="flex items-center justify-center my-space-2xs">
-            <span className="px-3 py-1 rounded-full bg-surface-container-high font-caption text-caption text-text-secondary font-medium tracking-wide">
-              TODAY
-            </span>
-          </div>
-
           {/* Message Bubbles */}
-          {messages.map((message) =>
-            message.sender === 'merchant' ? (
-              <div className="flex flex-col items-start max-w-[82%]" key={message.id}>
+          {messages.map((message, index) => (
+            <Fragment key={message.id}>
+              {message.day && message.day !== messages[index - 1]?.day ? (
+                <div className="flex items-center justify-center my-space-2xs">
+                  <span className="px-3 py-1 rounded-full bg-surface-container-high font-caption text-caption text-text-secondary font-medium tracking-wide">
+                    {message.day.toUpperCase()}
+                  </span>
+                </div>
+              ) : null}
+              {message.sender === 'merchant' ? (
+              <div className="flex flex-col items-start max-w-[82%]">
                 <div className="bg-surface-canvas text-on-surface p-3.5 rounded-2xl rounded-tl-sm shadow-sm border border-outline-variant/30">
                   <div className="flex items-center space-x-1 mb-1">
                     <span className="font-label-sm text-[12px] font-semibold text-text-secondary">{message.author}</span>
@@ -258,26 +249,40 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                       </span>
                     )}
                   </div>
-                  <p className="font-body-md text-body-md leading-relaxed">{message.body}</p>
+                  <MessageContent message={message} className="font-body-md text-body-md leading-relaxed" />
                 </div>
-                <span className="font-caption text-caption text-text-tertiary mt-1 px-1">{message.time}</span>
+                <span className="font-caption text-caption text-text-tertiary mt-1 px-1">
+                  {message.time}
+                  {message.edited ? ' • Edited' : ''}
+                </span>
               </div>
             ) : (
-              <div className="flex flex-col items-end self-end max-w-[82%]" key={message.id}>
-                <div className="bg-primary-container text-on-primary p-3.5 rounded-2xl rounded-tr-sm shadow-sm">
-                  <p className="font-body-md text-body-md leading-relaxed">{message.body}</p>
-                </div>
+              <div className="flex flex-col items-end self-end max-w-[82%]">
+                <button
+                  type="button"
+                  className="bg-primary-container text-on-primary p-3.5 rounded-2xl rounded-tr-sm shadow-sm text-left"
+                  onClick={() => setActionsFor((current) => (current === message.id ? null : message.id))}
+                >
+                  <MessageContent message={message} className="font-body-md text-body-md leading-relaxed" />
+                </button>
                 <div className="flex items-center gap-1 mt-1 px-1">
-                  <span className="font-caption text-caption text-text-tertiary">{message.time}</span>
-                  <Icon
-                    name={message.delivered ? 'done_all' : 'done'}
-                    filled={message.delivered}
-                    className={`text-[15px] ${message.delivered ? 'text-primary' : 'text-text-tertiary'}`}
-                  />
+                  <span className="font-caption text-caption text-text-tertiary">
+                    {message.time}
+                    {message.edited ? ' • Edited' : ''}
+                  </span>
+                  <MessageTicks tick={message.tick} />
                 </div>
+                {actionsFor === message.id && typeof message.id === 'string' && !message.id.startsWith('local-') && !message.deleted ? (
+                  <MessageActions
+                    canEdit={Boolean(message.body)}
+                    onEdit={() => startEdit(String(message.id), message.body)}
+                    onDelete={() => removeMessage(String(message.id))}
+                  />
+                ) : null}
               </div>
-            ),
-          )}
+              )}
+            </Fragment>
+          ))}
         </div>
 
         {/* Modal Backdrop Dim for Attachment options */}
@@ -347,6 +352,31 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
           )}
 
           {/* Composer Deck */}
+          <input
+            ref={fileInput}
+            type="file"
+            hidden
+            aria-label="Choose a file to send"
+            onChange={(event) => {
+              onFilePicked(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+          {editingId ? (
+            <div className="bg-surface-canvas px-space-md pt-space-xs flex items-center justify-between font-label-sm text-label-sm text-text-secondary">
+              <span>Editing message</span>
+              <button
+                type="button"
+                className="text-primary font-semibold"
+                onClick={() => {
+                  setEditingId(null);
+                  setDraft('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
           <div className="bg-surface-canvas p-space-sm pb-safe shadow-[0_-4px_16px_rgba(0,0,0,0.05)] border-t border-border">
             <form className="flex items-center gap-space-xs" onSubmit={sendMessage}>
               <button
@@ -369,7 +399,10 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
                   placeholder={`Message ${safeThread.name}...`}
                   type="text"
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    if (e.target.value) notifyTyping();
+                  }}
                 />
                 <button
                   aria-label="Insert emoji"
@@ -382,10 +415,11 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
               </div>
               <button
                 aria-label="Send message"
-                className="w-11 h-11 rounded-full bg-primary text-on-primary flex items-center justify-center flex-shrink-0 shadow-sm transition-transform active:scale-95"
+                className="w-11 h-11 rounded-full bg-primary text-on-primary flex items-center justify-center flex-shrink-0 shadow-sm transition-transform active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!draft.trim()}
                 type="submit"
               >
-                <Icon name={draft.trim().length > 0 ? 'send' : 'mic'} className="text-[20px]" />
+                <Icon name="send" className="text-[20px]" />
               </button>
             </form>
           </div>

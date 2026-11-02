@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { hasApiConfig } from '../lib/api';
+import { useSessionUser } from '../hooks/useSessionUser';
 import { bookingService } from '../services/bookingService';
 import {
   SPA_ADDONS,
@@ -66,7 +67,15 @@ const buildBookingPayload = (dateISO: string, time: string, notes: string, servi
 
 /** A real appointment record created on confirmation (BUG-025). */
 export interface SpaAppointment {
+  /** Backend id, used to cancel. */
+  id?: string;
+  branchId?: string;
   ref: string;
+  merchantPhone?: string;
+  merchantAddress?: string;
+  merchantImage?: string;
+  merchantLatitude?: number;
+  merchantLongitude?: number;
   merchantName: string;
   clientName: string;
   clientPhone: string;
@@ -115,6 +124,8 @@ export interface BookingValue {
   availableTimes: string[];
   timeAvailable: boolean;
   appointments: SpaAppointment[];
+  /** True until `GET /me/bookings` has answered. */
+  appointmentsLoading: boolean;
   appointmentByRef: (ref: string) => SpaAppointment | undefined;
   setServices: (ids: number[]) => void;
   ensureService: (id: number) => void;
@@ -130,7 +141,8 @@ export interface BookingValue {
   /** Revalidates availability, records the appointment, returns the ref. */
   confirm: () => ConfirmBookingResult;
   /** Cancels a confirmed appointment, releasing its slot. */
-  cancelAppointment: (ref: string) => boolean;
+  /** Rejects with the API's reason when the booking can't be cancelled. */
+  cancelAppointment: (ref: string) => Promise<boolean>;
   reset: () => void;
 }
 
@@ -166,59 +178,40 @@ export function BookingProvider({ children }: { children: ReactNode }) {
   const [confirmedRef, setConfirmedRef] = useState<string | null>(null);
   const [appointments, setAppointments] = useState<SpaAppointment[]>(() => readAppointments());
 
+  // `GET /me/bookings` answers customers and owners; it follows the session so
+  // a sign-in loads them without a page reload.
+  const sessionRole = useSessionUser().data?.role;
+  const canLoadBookings = sessionRole === 'Customer' || sessionRole === 'Owner';
+  const [appointmentsLoading, setAppointmentsLoading] = useState(() => hasApiConfig());
   useEffect(() => {
-    if (!hasApiConfig()) {
+    if (!hasApiConfig() || !canLoadBookings) {
       setAppointments([]);
+      setAppointmentsLoading(false);
       return;
     }
 
-    try {
-      localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(appointments.slice(0, 60)));
-    } catch {
-      /* storage unavailable — keep in-memory */
-    }
-  }, [appointments]);
-
-  useEffect(() => {
-    if (!hasApiConfig()) {
-      setAppointments([]);
-      return;
-    }
-
+    let ignore = false;
+    setAppointmentsLoading(true);
     const loadAppointments = async () => {
       try {
-        const remoteBookings = await bookingService.getMyBookings({ page: 1, limit: 20 });
-        setAppointments(remoteBookings.map((booking) => ({
-          ref: booking.ref,
-          merchantName: booking.merchantName,
-          clientName: booking.clientName,
-          clientPhone: booking.clientPhone,
-          serviceNames: booking.serviceNames,
-          addonNames: booking.addonNames,
-          dateISO: booking.dateISO,
-          dateLong: booking.dateLong,
-          dateShort: booking.dateShort,
-          time: booking.time,
-          durationMinutes: booking.durationMinutes,
-          durationLabel: booking.durationLabel,
-          therapistLabel: booking.therapistLabel,
-          notes: booking.notes,
-          reminder: booking.reminder,
-          servicesSubtotal: booking.servicesSubtotal,
-          discount: booking.discount,
-          payable: booking.payable,
-          status: booking.status,
-          createdAt: booking.createdAt,
-        })));
+        const remoteBookings = await bookingService.getMyBookings({ page: 1, limit: 50 });
+        if (ignore) return;
+        setAppointments(remoteBookings);
         localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(remoteBookings.slice(0, 60)));
       } catch {
+        if (ignore) return;
         setAppointments([]);
         localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify([]));
+      } finally {
+        if (!ignore) setAppointmentsLoading(false);
       }
     };
 
     void loadAppointments();
-  }, []);
+    return () => {
+      ignore = true;
+    };
+  }, [canLoadBookings]);
 
   const services = useMemo(
     () =>
@@ -426,6 +419,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     durationMinutes,
     takenSlots,
     appointments,
+    appointmentsLoading,
     day.dateLong,
     day.dateShort,
     durationLabel,
@@ -437,22 +431,16 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     payable,
   ]);
 
-  const cancelAppointment = useCallback((ref: string) => {
-    let found = false;
-    setAppointments((prev) =>
-      prev.map((appt) => {
-        if (appt.ref !== ref || appt.status !== 'confirmed') return appt;
-        found = true;
-        return { ...appt, status: 'cancelled' as const };
-      }),
-    );
-
-    if (hasApiConfig() && found) {
-      void bookingService.cancelBooking(ref).catch(() => undefined);
-    }
-
-    return found;
-  }, []);
+  const cancelAppointment = useCallback(
+    async (ref: string) => {
+      const target = appointments.find((appt) => appt.ref === ref && appt.status === 'confirmed');
+      if (!target) return false;
+      if (hasApiConfig()) await bookingService.cancelBooking(target.id ?? ref);
+      setAppointments((prev) => prev.map((appt) => (appt.ref === ref ? { ...appt, status: 'cancelled' as const } : appt)));
+      return true;
+    },
+    [appointments],
+  );
 
   const reset = useCallback(() => {
     setServiceIds(DEFAULT_SERVICE_IDS);
@@ -488,6 +476,7 @@ export function BookingProvider({ children }: { children: ReactNode }) {
     availableTimes,
     timeAvailable,
     appointments,
+    appointmentsLoading,
     appointmentByRef,
     setServices,
     ensureService,

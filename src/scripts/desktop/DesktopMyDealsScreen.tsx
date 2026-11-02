@@ -250,16 +250,18 @@ export function DesktopMyDealsScreen({ onNav, onOpenBusiness }: DesktopMyDealsSc
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             src={claim.dealImage || NO_IMAGE}
                           />
-                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold tracking-tight">
-                            {claim.code}
-                          </span>
+                          {!isGift && (
+                            <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold tracking-tight">
+                              {claim.code}
+                            </span>
+                          )}
                         </div>
                         <div className="flex-1 min-w-0 flex flex-col justify-between">
                           <div>
                             <div className="flex items-center justify-between gap-1">
                               <span className="font-caption text-caption text-text-tertiary flex items-center gap-1.5">
                                 <Icon name="confirmation_number" className="text-[14px] text-primary" />
-                                <span>{claim.sentForOther ? claim.dealBusiness : claim.ref}</span>
+                                <span>{isGift ? 'Gift' : claim.ref}</span>
                               </span>
                               <span
                                 className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-caption text-caption ${
@@ -281,7 +283,7 @@ export function DesktopMyDealsScreen({ onNav, onOpenBusiness }: DesktopMyDealsSc
                           </div>
                           <div className="flex items-baseline justify-between mt-0.5 pt-0.5">
                             <span className="font-label-md text-label-md font-mono font-bold tracking-wide text-text-primary">
-                              {claim.code}
+                              {isGift ? '' : claim.code}
                             </span>
                             <span className="font-caption text-caption font-medium flex items-center gap-1 text-text-secondary">
                               <Icon

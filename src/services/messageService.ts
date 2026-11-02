@@ -1,8 +1,11 @@
-import { api, ApiError } from './api/client';
+import { api, ApiError, uploadFile } from './api/client';
 
 export type MessageDirection = 'merchant' | 'you';
 export type MessageThreadFilter = 'deals' | 'bookings';
 export type MessageSecondaryRoute = 'deal-detail' | 'booking-detail' | 'order-detail' | 'deals' | 'dashboard';
+
+/** Ticks: pending (clock), sent (one), delivered (two), read (two blue). */
+export type MessageTick = 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface MessageItem {
   id: string | number;
@@ -13,11 +16,24 @@ export interface MessageItem {
   badge?: string;
   avatar?: string;
   avatarAlt?: string;
-  delivered?: boolean;
+  /** Your messages only. */
+  tick?: MessageTick;
+  /** "Today", "Yesterday" or a date, for the day dividers. */
+  day: string;
+  /** Hosted image or PDF sent with the message. */
+  media?: string;
+  mediaType?: string;
+  edited?: boolean;
+  deleted?: boolean;
 }
 
 export interface MessageThread {
   id: string;
+  /** For presence: `presence:subscribe` follows a business. */
+  businessId?: string;
+  branchId?: string;
+  /** Public code, for the business's profile. */
+  businessCode?: string;
   name: string;
   initials: string;
   verified: boolean;
@@ -142,25 +158,53 @@ const buildInitials = (value: string): string => {
   return words.map((word) => word[0]?.toUpperCase() ?? '').join('').slice(0, 2) || 'V';
 };
 
-const normalizeMessage = (entry: unknown, index: number): MessageItem => {
+const tickOf = (status: string): MessageTick => {
+  switch (status.toUpperCase()) {
+    case 'READ':
+      return 'read';
+    case 'DELIVERED':
+      return 'delivered';
+    case 'FAILED':
+    case 'REJECTED':
+      return 'failed';
+    case 'PENDING':
+    case 'QUEUED':
+      return 'pending';
+    default:
+      return 'sent';
+  }
+};
+
+export const chatDayLabel = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (parsed.toDateString() === today.toDateString()) return 'Today';
+  if (parsed.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(parsed);
+};
+
+const normalizeMessage = (entry: unknown, index: number, merchantName?: string): MessageItem => {
   const item = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
 
   const author =
     pickString(item, ['author', 'senderName', 'fromName', 'name']) ||
     pickString(item, ['participantName', 'merchantName', 'businessName']) ||
-    'Vemtap user';
+    merchantName ||
+    '';
 
   const body =
     pickString(item, ['body', 'message', 'content', 'text', 'summary']) ||
     pickString(item, ['preview']) ||
-    'No message content';
+    '';
 
-  const createdAt = pickString(item, ['createdAt', 'created_at', 'sentAt', 'sent_at', 'timestamp', 'time']);
-  const role = pickString(item, ['role', 'senderRole', 'direction']);
+  const createdAt = pickString(item, ['timestamp', 'createdAt', 'created_at', 'sentAt', 'sent_at', 'time']);
+  const role = pickString(item, ['role', 'senderRole', 'direction']).toLowerCase();
+  // INBOUND means inbound to the business, so it is the customer's own message.
   const userOwned =
-    pickBoolean(item, ['isMine', 'isCurrentUser', 'mine']) ||
-    role.toLowerCase() === 'customer' ||
-    role.toLowerCase() === 'user';
+    pickBoolean(item, ['isMine', 'isCurrentUser', 'mine']) || role === 'customer' || role === 'user' || role === 'inbound';
 
   const sender: MessageDirection = userOwned ? 'you' : 'merchant';
 
@@ -173,21 +217,26 @@ const normalizeMessage = (entry: unknown, index: number): MessageItem => {
     badge: pickString(item, ['badge', 'title']) || undefined,
     avatar: pickString(item, ['avatar', 'avatarUrl', 'imageUrl']) || undefined,
     avatarAlt: pickString(item, ['avatarAlt', 'alt']) || undefined,
-    delivered: sender === 'you' ? true : undefined,
+    tick: sender === 'you' ? tickOf(pickString(item, ['status'])) : undefined,
+    day: chatDayLabel(createdAt),
+    media: pickString(item, ['mediaUrl']) || undefined,
+    mediaType: pickString(item, ['mediaMimeType']) || undefined,
+    edited: pickBoolean(item, ['isEdited']) || undefined,
+    deleted: pickBoolean(item, ['isDeleted']) || undefined,
   };
 };
 
-const normalizeMessages = (payload: unknown): MessageItem[] => {
+const normalizeMessages = (payload: unknown, merchantName?: string): MessageItem[] => {
   const records = extractArray(payload);
   if (records.length === 0 && payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>;
     const nested = record.messages ?? record.items ?? record.data;
     if (nested && typeof nested === 'object') {
-      return normalizeMessages(nested);
+      return normalizeMessages(nested, merchantName);
     }
   }
 
-  return records.map((entry, index) => normalizeMessage(entry, index));
+  return records.map((entry, index) => normalizeMessage(entry, index, merchantName));
 };
 
 const resolveThreadRecord = (payload: unknown): Record<string, unknown> | null => {
@@ -222,8 +271,8 @@ const normalizeThread = (payload: unknown, fallbackIndex = 0): MessageThread => 
   const participantName =
     pickString(record, ['participantName', 'merchantName', 'businessName', 'name', 'title']) ||
     pickString(business, ['name']) ||
-    pickString(record, ['customerName']) ||
-    `Business ${fallbackIndex + 1}`;
+    pickString(branch, ['name']) ||
+    '';
 
   const previewSource =
     pickString(record, ['lastMessageContent', 'lastMessage', 'preview', 'snippet', 'latestMessage', 'message', 'body', 'text']) ||
@@ -251,9 +300,12 @@ const normalizeThread = (payload: unknown, fallbackIndex = 0): MessageThread => 
 
   return {
     id: threadId,
+    businessId: pickString(business, ['id']) || pickString(branch, ['businessId']) || undefined,
+    branchId: pickString(record, ['branchId']) || undefined,
+    businessCode: pickString(business, ['uniqueCode']) || undefined,
     name: participantName,
     initials: buildInitials(participantName),
-    verified: pickBoolean(record, ['verified', 'isVerified', 'isTrusted']) || participantName.toLowerCase().includes('verified'),
+    verified: pickBoolean(record, ['verified', 'isVerified', 'isTrusted']) || pickBoolean(business, ['isVerified']),
     time: formatDisplayTime(updatedAt),
     tag:
       pickString(record, ['tag', 'threadTag', 'label', 'category']) ||
@@ -288,12 +340,6 @@ const normalizeThreadList = (payload: unknown): MessageThread[] => {
 
   return entries.map((entry, index) => normalizeThread(entry, index));
 };
-
-const buildRequestBody = (message: string) => ({
-  message,
-  content: message,
-  text: message,
-});
 
 const handleApiFallback = <TResponse>(fallback: TResponse, error: unknown): TResponse => {
   if (error instanceof ApiError && [404, 405].includes(error.status)) {
@@ -338,8 +384,8 @@ export const messageService = {
         api.get<unknown>('/customer/messaging/threads').then(normalizeThreadList).catch(() => []),
       ]);
       // This endpoint returns only the messages (none yet in a new chat); who the chat is with comes from the thread list.
-      const summary = threads.find((thread) => thread.id === threadId) ?? normalizeThread({ id: threadId, name: 'Conversation' });
-      return { ...summary, messages: normalizeMessages(response) };
+      const summary = threads.find((thread) => thread.id === threadId) ?? normalizeThread({ id: threadId });
+      return { ...summary, messages: normalizeMessages(response, summary.name) };
     } catch (error) {
       return handleApiFallback(null, error);
     }
@@ -353,17 +399,26 @@ export const messageService = {
   startConversation: async (payload: { branchId: string; content: string }) =>
     api.post<unknown>('/customer/messaging/threads/start', { branchId: payload.branchId, content: payload.content }),
 
-  sendReply: async (threadId: string, message: string) => {
-    if (!threadId || !message.trim()) {
-      return null;
-    }
+  /** `POST .../reply` takes `content`. Errors are thrown so the bubble can show it failed. */
+  sendReply: async (threadId: string, message: string) =>
+    api.post<unknown>(`/customer/messaging/threads/${encodeURIComponent(threadId)}/reply`, { content: message }),
 
-    try {
-      return await api.post<unknown>(`/customer/messaging/threads/${encodeURIComponent(threadId)}/reply`, buildRequestBody(message));
-    } catch (error) {
-      return handleApiFallback(null, error);
-    }
+  /** `POST /customer/messaging/media`: an image or PDF, then its message. */
+  sendFile: async (threadId: string, file: File) => {
+    const { url } = await uploadFile<{ url: string }>('/customer/messaging/media', file);
+    return api.post<unknown>(`/customer/messaging/threads/${encodeURIComponent(threadId)}/reply`, {
+      mediaUrl: url,
+      mediaMimeType: file.type,
+    });
   },
+
+  editMessage: async (id: string, content: string) =>
+    api.patch<unknown>(`/customer/messaging/messages/${encodeURIComponent(id)}`, { content }),
+
+  deleteMessage: async (id: string) => api.del<unknown>(`/customer/messaging/messages/${encodeURIComponent(id)}`),
+
+  /** One message from the API or the socket, as the chat renders it. */
+  toMessage: (entry: unknown, merchantName?: string) => normalizeMessage(entry, 0, merchantName),
 
   markAsRead: async (threadId: string) => {
     if (!threadId) {
