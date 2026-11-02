@@ -25,6 +25,14 @@ export interface AnalyticsQuery {
   from?: string;
   to?: string;
   branchId?: string;
+  /** Deals: comma-separated `active,scheduled,expired,paused`. */
+  dealStatus?: string;
+  /** POS: comma-separated `card,transfer,cash`. */
+  paymentMethod?: string;
+  /** POS: comma-separated till ids. */
+  tillId?: string;
+  /** Customers: `new` | `returning` | `lapsed` | `vip` (top-customers list). */
+  cohort?: string;
 }
 
 export interface OverviewAnalytics {

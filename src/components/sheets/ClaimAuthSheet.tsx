@@ -1,13 +1,17 @@
 import { Icon } from '../ui/Icon';
+import { formatNaira, type DealDetail } from '../../hooks/useDealDetail';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { SheetShell } from './SheetShell';
 
 export interface ClaimAuthSheetProps {
+  /** The live deal this sheet is for. */
+  detail?: DealDetail | null;
   open: boolean;
   onClose: () => void;
   onAuthenticated: () => void;
 }
 
-export function ClaimAuthSheet({ open, onClose, onAuthenticated }: ClaimAuthSheetProps) {
+export function ClaimAuthSheet({ open, onClose, onAuthenticated, detail }: ClaimAuthSheetProps) {
   return (
     <SheetShell open={open} onClose={onClose}>
       <div className="w-full flex justify-center pt-3 pb-space-xs">
@@ -41,24 +45,28 @@ export function ClaimAuthSheet({ open, onClose, onAuthenticated }: ClaimAuthShee
           <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-container">
             <img
               className="w-full h-full object-cover"
-              alt="Gourmet artisanal lunch combo meal featuring an elevated smashed cheeseburger with truffle seasoned fries, iced tea, warm ambient natural dining light, studio culinary photography style with subtle gold accents"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDYv-Cf0sSh-nrgo5Kq1VfMrjiQ9cmn_dRuC2o6034OOiGTAZXPWMBS16ckIDydE9blv0uB9M-Kwmm9k97eC2kaWwONQ7n37oXItM5bo4HAnioqAf8Q84CQ1dyHpI624ynaD-Lg3KS0tAr118hBAG8F76AtZBbgC42AtH8H2RV-l6hppFU9mK2AQoF1lla1W8Wy3Stc5j45nyCtYth-Wd1PxxQZSbL3pG5UrKTvE6oX"
+              alt={detail?.title ?? ''}
+              src={detail?.image ?? NO_IMAGE}
             />
-            <div className="absolute top-1 left-1 bg-badge-discount-bg px-1.5 py-0.5 rounded-full flex items-center">
-              <span className="font-caption text-[10px] text-badge-discount-text font-bold leading-none">-20%</span>
-            </div>
+            {detail && detail.discountPercent > 0 && (
+              <div className="absolute top-1 left-1 bg-badge-discount-bg px-1.5 py-0.5 rounded-full flex items-center">
+                <span className="font-caption text-[10px] text-badge-discount-text font-bold leading-none">-{detail.discountPercent}%</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-col min-w-0 flex-1">
             <div className="flex items-center gap-space-2xs">
-              <span className="font-label-sm text-label-sm text-text-secondary truncate">Local dining partner</span>
-              <Icon name="verified" className="text-primary text-[14px]" filled />
+              <span className="font-label-sm text-label-sm text-text-secondary truncate">{detail?.businessName}</span>
+              {detail?.verified && <Icon name="verified" className="text-primary text-[14px]" filled />}
             </div>
-            <p className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">Featured local deal</p>
+            <p className="font-heading-sm text-heading-sm text-text-primary truncate mt-0.5">{detail?.title}</p>
             <div className="flex items-baseline gap-space-xs mt-1">
-              <span className="font-button-primary text-button-primary text-text-primary font-bold">Special rate</span>
-              <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold bg-badge-discount-bg px-space-2xs py-0.5 rounded">
-                Limited offer
-              </span>
+              <span className="font-button-primary text-button-primary text-text-primary font-bold">{formatNaira(detail?.price ?? 0)}</span>
+              {detail && detail.oldPrice > detail.price && (
+                <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold bg-badge-discount-bg px-space-2xs py-0.5 rounded">
+                  Save {formatNaira(detail.oldPrice - detail.price)}
+                </span>
+              )}
             </div>
           </div>
         </div>

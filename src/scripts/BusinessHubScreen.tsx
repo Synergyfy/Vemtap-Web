@@ -65,7 +65,7 @@ export function BusinessHubScreen({
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
   const [dealGroupId, setDealGroupId] = useState<string | null>(null);
   const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
-  const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? 'Michael James');
+  const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? (hasApiConfig() ? '' : 'Michael James'));
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(initialCustomerId ?? null);
 
   useEffect(() => {

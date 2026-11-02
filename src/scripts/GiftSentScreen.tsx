@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -20,18 +19,10 @@ interface GiftSentScreenProps {
 }
 
 export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack, claim }: GiftSentScreenProps) {
-  const [copied, setCopied] = useState(false);
   const recipientName = recipient?.name || 'Recipient';
-  const recipientEmail = recipient?.email || 'No email provided';
+  const recipientEmail = recipient?.email || claim?.recipient?.email || '';
   const recipientPhone = recipient?.phone || claim?.recipient?.phone;
   const maskedPhone = recipientPhone ? maskPhone(recipientPhone) : null;
-  const reference = claim?.ref ?? '#VT-GIFT-83921';
-
-  const copyCode = () => {
-    navigator.clipboard?.writeText(reference).catch(() => undefined);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <AppScreen>
@@ -65,43 +56,27 @@ export function GiftSentScreen({ recipient, onDone, onSendAnother, onBack, claim
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-space-2xs mb-1">
                 <span className="px-space-2xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                  20% OFF
+{claim?.discountLabel ?? 'Gift'}
                 </span>
                 <span className="font-caption text-caption text-text-tertiary">Gift Voucher</span>
               </div>
-              <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured local deal</h3>
+              <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">{claim?.dealTitle}</h3>
               <p className="font-caption text-caption text-text-secondary truncate">
-                Local dining partner • Nearby
+{[claim?.dealBusiness, claim?.dealLocation].filter(Boolean).join(' • ')}
               </p>
             </div>
           </div>
 
           <div className="p-space-md flex flex-col gap-space-md">
-            <div className="flex items-center justify-between py-space-xs bg-surface-subtle px-space-sm rounded-lg">
-              <div className="flex flex-col">
-                <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">
-                  Claim Code Reserved
-                </span>
-                <span className="font-button-primary text-text-primary tracking-wide">{reference}</span>
-              </div>
-              <button
-                type="button"
-                onClick={copyCode}
-                className="flex items-center gap-space-2xs px-space-sm py-1.5 rounded-lg bg-surface-tint-blue text-primary-container font-label-sm text-label-sm active:scale-95 transition-all"
-              >
-                <Icon name={copied ? 'check_circle' : 'content_copy'} className="text-[16px]" />
-                <span>{copied ? 'Copied!' : 'Copy'}</span>
-              </button>
-            </div>
 
             <div className="flex items-start gap-space-sm">
               <div className="w-8 h-8 rounded-full bg-badge-discount-bg flex items-center justify-center shrink-0 mt-0.5">
                 <Icon name="outgoing_mail" className="text-badge-discount-text text-[18px]" />
               </div>
               <div className="flex flex-col flex-1">
-                <span className="font-label-md text-label-md text-text-primary">Verification Dispatched</span>
+                <span className="font-label-md text-label-md text-text-primary">Gift Email Sent</span>
                 <span className="font-caption text-caption text-text-secondary">
-                  Instant link sent via SMS &amp; Email to recipient
+                  A link to accept the gift was sent to their email
                 </span>
               </div>
             </div>

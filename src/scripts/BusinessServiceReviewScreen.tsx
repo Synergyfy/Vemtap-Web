@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasApiConfig } from '../services/api/client';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -16,30 +16,7 @@ interface BusinessServiceReviewScreenProps {
   onSaveDraft: () => void;
 }
 
-const REVIEW_IMAGE = {
-  src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC9REik3ILBvjNtdNDrlCVS0aKSacNyBW1-Z7T2o1OPsRfuGHu8aZt4WZKK-5hiUdQKEwnAuVcj0_v8ej3yUxt_t7U3FFu1vg5L81s8Y6pEOoPyIPX8A7Duvqd4OUN0-0XfD5PcE1_euP9XVjppx4AHgDttFTXDNkYPCxom2rf66-QrMF7VQyaiQ2Gx8iZEPQqCcTXDCKN7qSz8C1WO-s6p7P1XSeUihtm6BK6935LD24Iq4_4Zs51d0Q',
-  alt: 'Close up luxurious aesthetic facial treatment in an upscale wellness spa, organic botanical serum droplet on glowing skin, tranquil soft ambient warm lighting, pristine minimalist modern aesthetic',
-};
-
-const TIER_COPY: Record<string, { name: string; note: string }> = {
-  'essential-glow': { name: 'Essential Glow', note: '60 mins standard care' },
-  'deluxe-radiance': { name: 'Deluxe Radiance + LED Light', note: '75 mins deep rejuvenation' },
-  'vip-serenity': { name: 'VIP Serenity + Scalp Massage', note: '90 mins ultra deluxe suite' },
-};
-
-const HIGHLIGHT_PILLS = ['Sensitive Skin Safe', 'Organic Botanicals', 'LED Therapy Booster', 'Unisex (All Welcome)'];
-
-const REVIEW_BRANCHES: Array<{
-  key: string;
-  name: string;
-  badge: string;
-  rooms: string;
-}> = [
-  { key: 'maitama', name: 'Maitama Heights Studio', badge: 'Flagship', rooms: '3 Treatment Rooms available' },
-  { key: 'wuseII', name: 'Wuse II Sanctuary', badge: 'Secondary', rooms: '2 Treatment Rooms available' },
-];
-
-/** Neutral tile until a live service has a photo. */
+/** Neutral tile until the service has a photo. */
 const LIVE_IMAGE_PLACEHOLDER =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
 
@@ -104,19 +81,18 @@ export function BusinessServiceReviewScreen({
   const basePrice = parseAmount(draft.basePrice);
   const comparePrice = parseAmount(draft.comparePrice);
   const savings = comparePrice - basePrice;
-  // Live: the real branches chosen in the previous step (`locations`).
-  const live = hasApiConfig();
+  // Live: the real branches chosen in the previous step (`locations`) and this business's name.
   const { branches: liveBranches } = useBusinessBranch();
-  const activeBranches = live
-    ? liveBranches
-        .filter((branch) => branch.id && draft.locations.includes(branch.id))
-        .map((branch) => ({
-          key: branch.id as string,
-          name: branch.name,
-          badge: branch.isMainBranch ? 'Main' : 'Branch',
-          rooms: '—',
-        }))
-    : REVIEW_BRANCHES.filter((branch) => draft.branches[branch.key as 'maitama' | 'wuseII']);
+  const myBusiness = useMyBusiness();
+  const businessName = myBusiness.data?.name || 'Your business';
+  const activeBranches = liveBranches
+    .filter((branch) => branch.id && draft.locations.includes(branch.id))
+    .map((branch) => ({
+      key: branch.id as string,
+      name: branch.name,
+      badge: branch.isMainBranch ? 'Main' : 'Branch',
+      address: branch.area || '—',
+    }));
   const activeBranchCount = activeBranches.length;
 
   return (
@@ -178,15 +154,27 @@ export function BusinessServiceReviewScreen({
 
           <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
             <div className="relative w-full h-52 bg-surface-container">
-              <img className="w-full h-full object-cover" alt={live ? draft.title || 'Service photo' : REVIEW_IMAGE.alt} src={draft.image || (live ? LIVE_IMAGE_PLACEHOLDER : REVIEW_IMAGE.src)} />
+              <img
+                className="w-full h-full object-cover"
+                alt={draft.title || 'Service photo'}
+                src={draft.image || LIVE_IMAGE_PLACEHOLDER}
+              />
               <div className="absolute top-space-sm left-space-sm flex flex-wrap gap-space-2xs">
                 <div className="flex items-center space-x-1 bg-surface-canvas/90 backdrop-blur-md px-space-xs py-1 rounded-full shadow-sm">
                   <Icon className="text-[14px] text-text-primary" name="photo_library" />
-                  <span className="font-caption text-caption text-text-primary font-medium">3 Photos</span>
+                  <span className="font-caption text-caption text-text-primary font-medium">
+                    {draft.image ? '1 Photo' : 'No Photo'}
+                  </span>
                 </div>
                 <div className="flex items-center space-x-1 bg-primary text-on-primary px-space-xs py-1 rounded-full shadow-sm">
                   <Icon className="text-[14px] text-on-primary" name="spa" />
-                  <span className="font-caption text-caption text-on-primary font-medium">In-Studio &amp; Mobile</span>
+                  <span className="font-caption text-caption text-on-primary font-medium">
+                    {draft.deliveryFormat === 'both'
+                      ? 'In-Studio & Mobile'
+                      : draft.deliveryFormat === 'mobile'
+                        ? 'Mobile'
+                        : 'In-Studio'}
+                  </span>
                 </div>
               </div>
               <button
@@ -201,7 +189,7 @@ export function BusinessServiceReviewScreen({
             <div className="p-space-md space-y-space-xs">
               <div className="flex items-center space-x-space-2xs text-text-tertiary font-label-sm text-label-sm">
                 <Icon className="text-[16px] text-primary" name="store" />
-                <span className="truncate">{draft.provider}</span>
+                <span className="truncate">{draft.provider || businessName}</span>
               </div>
               <h2 className="font-heading-md text-heading-md text-text-primary leading-tight">{draft.title}</h2>
               <p className="font-body-md text-body-md text-text-secondary">
@@ -253,34 +241,28 @@ export function BusinessServiceReviewScreen({
               )}
             </div>
             <div className="space-y-space-xs">
-              {draft.tiers.map((tier) => {
-                const copy = TIER_COPY[tier.id];
-                return (
-                  <div
-                    key={tier.id}
-                    className="flex items-center justify-between p-space-sm bg-surface-container-lowest rounded-lg shadow-sm"
-                  >
-                    <div className="flex items-center space-x-space-sm min-w-0">
-                      <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                      <div className="min-w-0">
-                        <h4 className="font-label-md text-label-md text-text-primary font-semibold truncate">
-                          {copy ? copy.name : tier.name}
-                        </h4>
-                        <p className="font-caption text-caption text-text-tertiary">
-                          {copy ? copy.note : `${tier.duration} standard care`}
-                        </p>
-                      </div>
+              {draft.tiers.map((tier) => (
+                <div
+                  key={tier.id}
+                  className="flex items-center justify-between p-space-sm bg-surface-container-lowest rounded-lg shadow-sm"
+                >
+                  <div className="flex items-center space-x-space-sm min-w-0">
+                    <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                    <div className="min-w-0">
+                      <h4 className="font-label-md text-label-md text-text-primary font-semibold truncate">
+                        {tier.name}
+                      </h4>
+                      <p className="font-caption text-caption text-text-tertiary">
+                        {tier.duration}
+                        {tier.note ? ` • ${tier.note}` : ''}
+                      </p>
                     </div>
-                    <span className="font-label-md text-label-md text-text-primary font-bold shrink-0">
-                      ₦{tier.price}
-                    </span>
                   </div>
-                );
-              })}
-            </div>
-            <div className="flex items-center space-x-space-xs pt-space-xs text-text-secondary font-label-sm text-label-sm">
-              <Icon className="text-primary text-[18px]" name="badge" />
-              <span>Amara K. &amp; Zainab T. available (Client choice enabled)</span>
+                  <span className="font-label-md text-label-md text-text-primary font-bold shrink-0">
+                    ₦{tier.price}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -312,7 +294,7 @@ export function BusinessServiceReviewScreen({
                     <span className="font-label-md text-label-md text-text-primary font-semibold">{branch.name}</span>
                     <span
                       className={`font-caption text-caption px-space-xs py-0.5 rounded font-medium ${
-                        branch.badge === 'Flagship'
+                        branch.badge === 'Main'
                           ? 'bg-surface-container-high text-on-surface-variant'
                           : 'bg-surface-tint-blue text-primary'
                       }`}
@@ -321,14 +303,14 @@ export function BusinessServiceReviewScreen({
                     </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary">
-                    ₦{draft.basePrice} Base • {branch.rooms}
+                    ₦{draft.basePrice} Base • {branch.address}
                   </p>
                 </div>
               ))}
             </div>
             <div className="flex items-center space-x-space-xs text-text-secondary font-label-sm text-label-sm pt-space-2xs">
               <Icon className="text-tertiary-container text-[18px]" name="schedule" />
-              <span>Minimum 2 hours advance booking required</span>
+              <span>Booking lead notice: {draft.leadNotice}</span>
             </div>
           </div>
 
@@ -349,14 +331,7 @@ export function BusinessServiceReviewScreen({
               </button>
             </div>
             <div className="space-y-space-sm">
-              {(draft.policies && draft.policies.length > 0
-                ? draft.policies
-                : [
-                    { id: 'p1', title: 'Pay at Salon Reception', body: '₦0 Upfront Fee on VEMTAP Instant Booking.' },
-                    { id: 'p2', title: 'Flexible Cancellation', body: 'Free cancellation & reschedule up to 2 hours before slot.' },
-                    { id: 'p3', title: 'Turnaround Buffer', body: '15 mins sanitization and room prep between clients.' },
-                  ]
-              ).map((p) => (
+              {draft.policies.map((p) => (
                 <div key={p.id} className="flex items-start space-x-space-xs">
                   <Icon className="text-primary text-[18px] shrink-0 mt-0.5" name="verified_user" />
                   <div>
@@ -385,19 +360,26 @@ export function BusinessServiceReviewScreen({
               </button>
             </div>
             <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-              A clinically formulated, deeply replenishing facial tailored to combat dry Sahelian climates and city
-              pollution. Includes ultrasonic pore cleanse, cold-pressed antioxidant mist, and botanical serum infused
-              via gentle thermal induction.
+              {draft.description || 'No description provided yet.'}
             </p>
             <div className="flex flex-wrap gap-space-2xs">
-              {HIGHLIGHT_PILLS.map((pill) => (
-                <span
-                  key={pill}
-                  className="font-caption text-caption bg-surface-subtle text-text-secondary px-space-sm py-1 rounded-full"
-                >
-                  {pill}
-                </span>
-              ))}
+              {draft.highlights
+                .filter((highlight) => highlight.active)
+                .map((highlight) => (
+                  <span
+                    key={highlight.text}
+                    className="font-caption text-caption bg-surface-subtle text-text-secondary px-space-sm py-1 rounded-full"
+                  >
+                    {highlight.text}
+                  </span>
+                ))}
+              <span className="font-caption text-caption bg-surface-subtle text-text-secondary px-space-sm py-1 rounded-full">
+                {draft.genderSuitability === 'women'
+                  ? 'Women Only'
+                  : draft.genderSuitability === 'men'
+                    ? 'Men Only'
+                    : 'Unisex (All Welcome)'}
+              </span>
             </div>
           </div>
 

@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { usePublicStats } from '../hooks/usePublicStats';
+import { hasApiConfig } from '../services/api/client';
 
 interface BusinessIntroScreenProps {
   onBack: () => void;
@@ -116,6 +118,11 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
     window.setTimeout(() => howItWorksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
+  // Live: real platform figures; the sample storefront numbers and quote are for running without an API.
+  const live = hasApiConfig();
+  const stats = usePublicStats();
+  const figure = (value?: number) => (value === undefined ? '—' : value.toLocaleString('en-NG'));
+
   return (
     <AppScreen>
       <ScreenHeader title="Business Profile" onBack={onBack} />
@@ -138,7 +145,7 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
               <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md font-label-sm text-label-sm text-text-primary">
                   <Icon name="location_on" className="text-primary text-[16px]" />
-                  Apo District • Abuja
+                  {live ? 'On VEMTAP' : 'Apo District • Abuja'}
                 </span>
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm">
                   <Icon name="verified" className="text-[14px]" filled />
@@ -147,15 +154,15 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
               </div>
               <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-on-primary">
                 <div>
-                  <p className="font-caption text-caption opacity-80 uppercase tracking-wider">Nearby Footfall</p>
+                  <p className="font-caption text-caption opacity-80 uppercase tracking-wider">{live ? 'Live Deals' : 'Nearby Footfall'}</p>
                   <p className="font-heading-sm text-heading-sm font-bold flex items-center gap-1.5">
-                    1,420 Active Shoppers
+                    {live ? `${figure(stats?.activeDeals)} Active Deals` : '1,420 Active Shoppers'}
                     <span className="inline-block w-2 h-2 rounded-full bg-badge-discount-text animate-ping" />
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-caption text-caption opacity-80 uppercase tracking-wider">Avg. Return</p>
-                  <p className="font-heading-sm text-heading-sm font-bold text-inverse-primary">+34% / Mo</p>
+                  <p className="font-caption text-caption opacity-80 uppercase tracking-wider">{live ? 'Businesses' : 'Avg. Return'}</p>
+                  <p className="font-heading-sm text-heading-sm font-bold text-inverse-primary">{live ? figure(stats?.businesses) : '+34% / Mo'}</p>
                 </div>
               </div>
             </div>
@@ -265,14 +272,22 @@ export function BusinessIntroScreen({ onBack, onNext }: BusinessIntroScreenProps
         <div className="px-margin py-space-sm">
           <div className="p-space-md rounded-2xl bg-surface-container flex items-center gap-space-sm">
             <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-surface-dim">
-              <img alt={OWNER_ALT} className="w-full h-full object-cover" src={OWNER_IMG} />
+              {live ? (
+                <div className="w-full h-full bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="storefront" className="text-[22px]" />
+                </div>
+              ) : (
+                <img alt={OWNER_ALT} className="w-full h-full object-cover" src={OWNER_IMG} />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-label-sm text-label-sm text-on-surface italic line-clamp-2">
-                "Within 10 days of listing in Apo, we recorded over 120 voucher redemptions from nearby residents."
+                {live
+                  ? `${figure(stats?.claims)} deals claimed by shoppers on VEMTAP so far — and you keep 100% of your counter sales.`
+                  : '"Within 10 days of listing in Apo, we recorded over 120 voucher redemptions from nearby residents."'}
               </p>
               <p className="font-caption text-caption text-text-secondary mt-0.5 font-medium">
-                Amara K. • Founder, Bloom Wellness &amp; Cafe
+                {live ? 'VEMTAP for Business' : 'Amara K. • Founder, Bloom Wellness & Cafe'}
               </p>
             </div>
           </div>

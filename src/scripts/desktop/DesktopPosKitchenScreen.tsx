@@ -546,7 +546,7 @@ export function DesktopPosKitchenScreen({ onNav, onReturnToRegister }: DesktopPo
             <div className="flex items-center justify-between">
               <span className="font-label-md text-label-md font-semibold text-text-primary">Terminal Shortcuts</span>
               <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                Station POS-NG-ABJ-004
+                {live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Station POS-NG-ABJ-004'}
               </span>
             </div>
             <button

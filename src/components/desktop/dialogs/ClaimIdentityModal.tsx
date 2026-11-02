@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NO_IMAGE } from '../../../utils/homeOffer';
 import { Icon } from '../../ui/Icon';
 import { parsePrice } from '../../../utils/format';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
@@ -77,9 +78,7 @@ export function ClaimIdentityModal({
   const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This business';
   const dealLocation = deal?.location?.trim() || 'Your selected location';
-  const dealImage =
-    deal?.image ||
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuCae9ls0dapHyTLe-tYB9uhNt_hUJE2QAAdV2y_MVPHC76VbKWGYmtiOiPlDFj-_cbwZ4ybtfZvIghTgM4PFsM1-MiS3ASzXHSm7QQ0_QjhA-3HQ_zgW5WfD8CmyMNsBVqD3UPI93tx9chuEy1esEjbXiMYwbt1lUkEWhlqTSIfmIcXeUhHL_1My2jkMLk2CjwQ3_42znyGtZVtN740cPIGEbbniuGZ7eRx1xnRMqkM';
+  const dealImage = deal?.image || NO_IMAGE;
   const price = parsePrice(deal?.price);
   const oldPrice = parsePrice(deal?.oldPrice) || price;
   const discountLabel = deal?.discountLabel || 'Instant VEMTAP savings';

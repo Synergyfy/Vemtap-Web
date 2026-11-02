@@ -1,30 +1,36 @@
-import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { useLocation } from '../context/LocationContext';
+import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
+import { useFilterDraft } from '../hooks/useFilterDraft';
 
-const DISTANCES = ['Near Me', '1 km', '5 km', '10 km', 'Custom'];
-
-const CATEGORIES: { label: string; icon: string }[] = [
-  { label: 'Food & Drinks', icon: 'restaurant' },
-  { label: 'Beauty & Spa', icon: 'spa' },
-  { label: 'Fashion & Apparel', icon: 'apparel' },
-  { label: 'Electronics & Gadgets', icon: 'devices' },
-  { label: 'Health & Fitness', icon: 'fitness_center' },
-  { label: 'Groceries & Supermarket', icon: 'shopping_basket' },
-  { label: 'Home & Living', icon: 'chair' },
-  { label: 'Automotive & Services', icon: 'car_repair' },
+const DISTANCES: { label: string; km: number | null }[] = [
+  { label: 'Near Me', km: null },
+  { label: '1 km', km: 1 },
+  { label: '5 km', km: 5 },
+  { label: '10 km', km: 10 },
 ];
 
-const PRICE_TIERS = ['Any Price', 'Under ₦5,000', '₦5,000 – ₦20,000', '₦20,000 – ₦50,000', '₦50,000+', 'Custom'];
+const PRICE_TIERS: { label: string; min?: number; max?: number }[] = [
+  { label: 'Any Price' },
+  { label: 'Under ₦5,000', max: 5000 },
+  { label: '₦5,000 – ₦20,000', min: 5000, max: 20000 },
+  { label: '₦20,000 – ₦50,000', min: 20000, max: 50000 },
+  { label: '₦50,000+', min: 50000 },
+];
 
-const DISCOUNTS = ['Any Discount', '10%+', '20%+', '30%+', '50%+ Hot Deals'];
+const DISCOUNTS: { label: string; value?: number }[] = [
+  { label: 'Any Discount' },
+  { label: '10%+', value: 10 },
+  { label: '20%+', value: 20 },
+  { label: '30%+', value: 30 },
+  { label: '50%+ Hot Deals', value: 50 },
+];
 
-const AVAILABILITY: { label: string; detail: string; icon: string }[] = [
-  { label: 'Available Now', detail: 'Immediate voucher redemption', icon: 'bolt' },
-  { label: 'Ending Soon', detail: 'Expiring within 24 hours', icon: 'hourglass_top' },
-  { label: 'Walk-ins Accepted', detail: 'No prior reservation required', icon: 'store' },
-  { label: 'Weekend Only Deals', detail: 'Valid on Saturday & Sunday', icon: 'event_available' },
+/** Timing is checked against each offer's own start and end dates. */
+const AVAILABILITY: { key: 'availableNow' | 'endingSoon'; label: string; detail: string; icon: string }[] = [
+  { key: 'availableNow', label: 'Available Now', detail: 'Already started and ready to claim', icon: 'bolt' },
+  { key: 'endingSoon', label: 'Ending Soon', detail: 'Expiring within 24 hours', icon: 'hourglass_top' },
 ];
 
 export interface FiltersScreenProps {
@@ -33,37 +39,14 @@ export interface FiltersScreenProps {
 
 export function FiltersScreen({ onClose }: FiltersScreenProps) {
   const { city, district } = useLocation();
-  const [distanceIndex, setDistanceIndex] = useState(0);
-  const [radius, setRadius] = useState(8);
-  const [categories, setCategories] = useState<number[]>([0, 1]);
-  const [priceIndex, setPriceIndex] = useState(2);
-  const [discountIndex, setDiscountIndex] = useState(2);
-  const [minPrice, setMinPrice] = useState('5,000');
-  const [maxPrice, setMaxPrice] = useState('20,000');
-  const [availability, setAvailability] = useState<boolean[]>([true, false, false, false]);
-
-  const toggleCategory = (index: number) => {
-    setCategories((prev) => (prev.includes(index) ? prev.filter((value) => value !== index) : [...prev, index]));
-  };
-
-  const reset = () => {
-    setDistanceIndex(0);
-    setRadius(8);
-    setCategories([0, 1]);
-    setPriceIndex(2);
-    setDiscountIndex(2);
-    setMinPrice('5,000');
-    setMaxPrice('20,000');
-    setAvailability([true, false, false, false]);
-  };
-
-  const toggleAvailability = (index: number) => {
-    setAvailability((prev) => prev.map((value, i) => (i === index ? !value : value)));
-  };
-
+  const { categories: liveCategories } = useHomeDealCategories();
+  const categories = liveCategories.filter((category) => category.id !== null);
+  const filter = useFilterDraft(onClose);
+  const { draft, radius } = filter;
+  const distanceIndex = !draft.strictDistance ? 0 : DISTANCES.findIndex((item) => item.km === radius);
+  const priceIndex = PRICE_TIERS.findIndex((tier) => tier.min === draft.minPrice && tier.max === draft.maxPrice);
+  const discountIndex = DISCOUNTS.findIndex((item) => item.value === draft.minDiscount);
   const locationLabel = [city, district].filter(Boolean).join(', ') || 'Your area';
-  const activeFilterCount = [true, true, true].filter(Boolean).length;
-  const matchingDealsText = `${Math.max(12, radius * 4 + categories.length * 3)} local verified promotions`;
 
   return (
     <AppScreen>
@@ -83,7 +66,7 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
           <div className="flex items-center gap-space-xs">
             <button
               type="button"
-              onClick={reset}
+              onClick={filter.reset}
               className="h-11 px-space-sm flex items-center justify-center text-primary font-button-secondary text-button-secondary hover:opacity-80 transition-opacity"
             >
               Reset
@@ -104,13 +87,10 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                   <Icon name="tune" className="text-[18px]" />
                 </div>
                 <div>
-                  <p className="font-label-md text-label-md text-text-primary font-semibold">{activeFilterCount} active filters applied</p>
-                  <p className="font-caption text-caption text-text-secondary">Matching {matchingDealsText}</p>
+                  <p className="font-label-md text-label-md text-text-primary font-semibold">{filter.activeCount} active filter{filter.activeCount === 1 ? '' : 's'}</p>
+                  <p className="font-caption text-caption text-text-secondary">{filter.matchText}</p>
                 </div>
               </div>
-              <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold bg-badge-discount-bg px-space-2xs py-0.5 rounded-full">
-                Active
-              </span>
             </div>
 
             <section className="flex flex-col gap-space-sm">
@@ -119,14 +99,17 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                   <h2 className="font-heading-sm text-heading-sm text-text-primary font-semibold">Distance</h2>
                   <span className="font-label-sm text-label-sm text-primary font-semibold">Within {radius} km</span>
                 </div>
-                <p className="font-caption text-caption text-text-secondary">Show deals within your immediate range</p>
+                <p className="font-caption text-caption text-text-secondary">
+                  {filter.hasCoordinates ? 'Show deals within your immediate range' : 'Set your location on the home page to filter by distance'}
+                </p>
               </div>
               <div className="flex items-center gap-space-xs overflow-x-auto pb-1 -mx-margin px-margin no-scrollbar">
-                {DISTANCES.map((label, index) => (
+                {DISTANCES.map(({ label, km }, index) => (
                   <button
                     key={label}
                     type="button"
-                    onClick={() => setDistanceIndex(index)}
+                    disabled={!filter.hasCoordinates}
+                    onClick={() => filter.chooseDistance(km)}
                     className={
                       index === distanceIndex
                         ? 'h-9 px-space-sm rounded-full bg-surface-tint-blue text-primary-container font-label-md text-label-md font-semibold flex items-center gap-1 shadow-sm whitespace-nowrap active:scale-95 transition-all'
@@ -154,7 +137,8 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                     min="1"
                     type="range"
                     value={radius}
-                    onChange={(event) => setRadius(Number(event.target.value))}
+                    disabled={!filter.hasCoordinates}
+                    onChange={(event) => filter.chooseDistance(Number(event.target.value))}
                   />
                 </div>
                 <div className="flex items-center justify-between font-caption text-caption text-text-tertiary">
@@ -169,18 +153,18 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-heading-sm text-heading-sm text-text-primary font-semibold">Category</h2>
-                  <p className="font-caption text-caption text-text-secondary">Select one or multiple categories</p>
+                  <p className="font-caption text-caption text-text-secondary">Select a category</p>
                 </div>
-                <span className="font-caption text-caption text-text-tertiary">{categories.length} Selected</span>
               </div>
               <div className="flex flex-wrap gap-space-xs">
-                {CATEGORIES.map((category, index) => {
-                  const selected = categories.includes(index);
+                {categories.map((category) => {
+                  const selected = draft.categoryId === category.id;
                   return (
                     <button
-                      key={category.label}
+                      key={category.id}
                       type="button"
-                      onClick={() => toggleCategory(index)}
+                      aria-pressed={selected}
+                      onClick={() => filter.patch({ categoryId: selected ? null : category.id })}
                       className={
                         selected
                           ? 'h-10 px-space-sm rounded-full bg-primary-container text-on-primary font-label-md text-label-md font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all'
@@ -188,7 +172,7 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                       }
                     >
                       <Icon
-                        name={category.icon}
+                        name={category.icon ?? 'category'}
                         className={`text-[16px] ${selected ? '' : 'text-text-tertiary'}`}
                       />
                       <span>{category.label}</span>
@@ -205,11 +189,11 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                 <p className="font-caption text-caption text-text-secondary">Nigerian Naira (₦) budget limits</p>
               </div>
               <div className="flex items-center gap-space-xs overflow-x-auto pb-1 -mx-margin px-margin no-scrollbar">
-                {PRICE_TIERS.map((label, index) => (
+                {PRICE_TIERS.map(({ label, min, max }, index) => (
                   <button
                     key={label}
                     type="button"
-                    onClick={() => setPriceIndex(index)}
+                    onClick={() => filter.setPrices(min, max)}
                     className={
                       index === priceIndex
                         ? 'h-9 px-space-sm rounded-full bg-primary-container text-on-primary font-label-md text-label-md font-semibold whitespace-nowrap shadow-sm active:scale-95 transition-all'
@@ -228,8 +212,11 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                     <input
                       className="w-full bg-transparent font-semibold focus:outline-none text-text-primary"
                       type="text"
-                      value={minPrice}
-                      onChange={(event) => setMinPrice(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="0"
+                      aria-label="Minimum price"
+                      value={filter.minPrice}
+                      onChange={(event) => filter.typeMin(event.target.value)}
                     />
                   </div>
                 </div>
@@ -240,8 +227,11 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                     <input
                       className="w-full bg-transparent font-semibold focus:outline-none text-text-primary"
                       type="text"
-                      value={maxPrice}
-                      onChange={(event) => setMaxPrice(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="No limit"
+                      aria-label="Maximum price"
+                      value={filter.maxPrice}
+                      onChange={(event) => filter.typeMax(event.target.value)}
                     />
                   </div>
                 </div>
@@ -254,14 +244,14 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                 <p className="font-caption text-caption text-text-secondary">Minimum guaranteed reduction</p>
               </div>
               <div className="flex items-center gap-space-xs overflow-x-auto pb-1 -mx-margin px-margin no-scrollbar">
-                {DISCOUNTS.map((label, index) => {
+                {DISCOUNTS.map(({ label, value }, index) => {
                   const hot = index === 4;
                   if (index === discountIndex) {
                     return (
                       <button
                         key={label}
                         type="button"
-                        onClick={() => setDiscountIndex(index)}
+                        onClick={() => filter.patch({ minDiscount: value })}
                         className="h-9 px-space-sm rounded-full bg-primary-container text-on-primary font-label-md text-label-md font-semibold whitespace-nowrap shadow-sm active:scale-95 transition-all flex items-center gap-1"
                       >
                         <Icon name="check" className="text-[16px]" />
@@ -274,7 +264,7 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                       <button
                         key={label}
                         type="button"
-                        onClick={() => setDiscountIndex(index)}
+                        onClick={() => filter.patch({ minDiscount: value })}
                         className="h-9 px-space-sm rounded-full bg-surface-container text-tertiary-container font-label-md text-label-md font-semibold whitespace-nowrap active:scale-95 transition-all flex items-center gap-1"
                       >
                         <Icon name="local_fire_department" className="text-[16px] text-tertiary-container" />
@@ -286,7 +276,7 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                     <button
                       key={label}
                       type="button"
-                      onClick={() => setDiscountIndex(index)}
+                      onClick={() => filter.patch({ minDiscount: value })}
                       className="h-9 px-space-sm rounded-full bg-surface-container text-text-secondary font-label-md text-label-md font-medium whitespace-nowrap active:scale-95 transition-all"
                     >
                       {label}
@@ -302,17 +292,18 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                 <p className="font-caption text-caption text-text-secondary">Filter by redemption windows and convenience</p>
               </div>
               <div className="flex flex-col gap-space-xs">
-                {AVAILABILITY.map((item, index) => (
+                {AVAILABILITY.map((item) => (
                   <button
-                    key={item.label}
+                    key={item.key}
                     type="button"
-                    onClick={() => toggleAvailability(index)}
+                    aria-pressed={draft[item.key]}
+                    onClick={() => filter.patch({ [item.key]: !draft[item.key] })}
                     className="bg-surface-canvas p-space-sm rounded-xl shadow-sm flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform text-left"
                   >
                     <div className="flex items-center gap-space-sm">
                       <div
                         className={
-                          availability[index]
+                          draft[item.key]
                             ? 'w-10 h-10 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary-container'
                             : 'w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-text-secondary'
                         }
@@ -326,7 +317,7 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
                     </div>
                     <div
                       className={
-                        availability[index]
+                        draft[item.key]
                           ? 'w-6 h-6 rounded-md bg-primary-container flex items-center justify-center text-on-primary'
                           : 'w-6 h-6 rounded-md bg-surface-container flex items-center justify-center text-transparent'
                       }
@@ -355,10 +346,10 @@ export function FiltersScreen({ onClose }: FiltersScreenProps) {
         <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-surface-canvas/95 backdrop-blur-xl p-space-md pb-safe shadow-[0_-8px_24px_rgba(17,24,39,0.08)] flex flex-col items-center gap-space-2xs z-40">
           <button
             type="button"
-            onClick={onClose}
+            onClick={filter.apply}
             className="w-full h-[54px] bg-primary-container text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] active:scale-[0.98] transition-transform"
           >
-            <span>Show 34 Deals</span>
+            <span>{filter.showLabel}</span>
             <Icon name="arrow_forward" className="text-[20px]" />
           </button>
           <div className="flex items-center gap-1 pt-1 text-text-tertiary font-caption text-caption">

@@ -10,6 +10,7 @@ import {
   type ShellAccountKey,
 } from './PortalShell';
 import { BusinessSidebarRail } from './BusinessSidebarRail';
+import { useLivePos } from '../posLive';
 import { PosNavRail } from './PosNavRail';
 import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 
@@ -79,6 +80,8 @@ interface PosTerminalChromeProps {
 
 export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboard, onSignOut }: PosTerminalChromeProps) {
   const sessionTime = useWatClock();
+  // Live: the open till; the API has no hardware registry, so no device is named.
+  const pos = useLivePos();
   // The POS menu beside the collapsed business rail highlights the item that
   // matches the current terminal page.
   const railKey = TERMINAL_TO_RAIL[activeNav ?? 'register'];
@@ -186,13 +189,15 @@ export function PosTerminalChrome({ children, activeNav, onNav, onExitToDashboar
             <div className="flex items-center gap-1.5">
               <Icon name="pin" className="text-[14px] text-text-tertiary" />
               <span className="text-text-tertiary">Station ID:</span>
-              <span className="font-medium text-text-primary">POS-NG-ABJ-004</span>
+              <span className="font-medium text-text-primary">{pos.live ? (pos.isOpen ? pos.tillName : 'No till open') : 'POS-NG-ABJ-004'}</span>
             </div>
+            {!pos.live && (
             <div className="flex items-center gap-1.5">
-              <Icon name="point_of_sale" className="text-[14px] text-text-tertiary" />
-              <span className="text-text-tertiary">Hardware:</span>
-              <span className="font-medium text-text-primary">PAX A920 Pro Linked</span>
-            </div>
+                <Icon name="point_of_sale" className="text-[14px] text-text-tertiary" />
+                <span className="text-text-tertiary">Hardware:</span>
+                <span className="font-medium text-text-primary">PAX A920 Pro Linked</span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5">
               <Icon name="schedule" className="text-[14px] text-badge-discount-text" />
               <span className="text-text-tertiary">Session:</span>

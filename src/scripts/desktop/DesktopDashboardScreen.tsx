@@ -1,31 +1,32 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCanSwitchToBusiness } from '../../hooks/useCanSwitchToBusiness';
+import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { AnnouncementBanner } from '../../components/AnnouncementBanner';
 import { useBooking } from '../../context/BookingContext';
-import { useLocation, useLocationQuery } from '../../context/LocationContext';
+import { activeVouchers, useClaims, voucherExpiryLabel, type ClaimRecord } from '../../context/ClaimsContext';
+import { useLocation } from '../../context/LocationContext';
 import { useOrders } from '../../context/OrdersContext';
 import { useProfile } from '../../context/ProfileContext';
-import { hasApiConfig } from '../../services/api/client';
-import { catalogueService } from '../../services/catalogueService';
-import type { AnnouncementDestination } from '../../scripts/announcementsData';
-import { dealPrimaryImage } from '../../utils/dealImages';
+import { NEARBY_BUSINESS_LIMIT, useCustomerDashboard } from '../../hooks/useCustomerDashboard';
+import type { ClaimDealSummary } from '../../components/desktop/dialogs/ClaimIdentityModal';
+import type { Announcement, AnnouncementDestination } from '../../scripts/announcementsData';
+import { NO_IMAGE, offerDiscountLabel, offerImage, realOfferId } from '../../utils/homeOffer';
 
 interface DesktopDashboardScreenProps {
   onNav: (key: DesktopNavKey) => void;
   /** Opens the business account-choice flow ("Continue with this account" / "Use a new account"). */
   onStartBusinessSignup: () => void;
+  /** Opens a live deal's page. */
+  onOpenDeal: (deal: ClaimDealSummary) => void;
+  /** Opens this voucher's QR pass. */
+  onShowPass: (claim: ClaimRecord) => void;
+  /** Opens the contact options for this voucher's business. */
+  onContact: (claim: ClaimRecord) => void;
+  onOpenOrder: (ref: string) => void;
+  onOpenBooking: () => void;
+  onScan: () => void;
 }
-
-const SHORTCUTS = [
-  { icon: 'confirmation_number', label: 'My Deals & Vouchers', iconBg: 'bg-surface-tint-blue text-primary', trail: 'dot' as const, target: 'my-deals' as DesktopNavKey },
-  { icon: 'receipt_long', label: 'Orders & Bookings', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'text' as const, trailText: '1 Active', target: 'orders' as DesktopNavKey },
-  { icon: 'bookmark', label: 'Saved Items & Stores', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'text' as const, trailText: '14', target: 'cart' as DesktopNavKey },
-  { icon: 'chat', label: 'Merchant In-App Chats', iconBg: 'bg-badge-discount-bg text-badge-discount-text', trail: 'badge' as const, trailText: '2 new', target: 'messages' as DesktopNavKey },
-  { icon: 'manage_accounts', label: 'Account & Security', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'chevron' as const, target: 'account-settings' as DesktopNavKey },
-];
-
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
 
 const formatCurrency = (value: number | string | undefined): string => {
   const parsed = Number(value ?? 0);
@@ -37,9 +38,6 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-/** Same rule as the home cards and the detail page: the deal's own photo first. */
-const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? FALLBACK_IMAGE;
-
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
   const value = offer.businessName ?? offer.merchantName ?? offer.vendorName ?? offer.branchName ?? business.name ?? business.businessName ?? business.merchantName ?? 'Nearby business';
@@ -49,11 +47,6 @@ const getOfferBusinessName = (offer: Record<string, unknown>): string => {
 const getOfferTitle = (offer: Record<string, unknown>): string => {
   const value = offer.title ?? offer.name ?? offer.itemName ?? offer.offerTitle ?? 'Local offer';
   return typeof value === 'string' && value.trim() ? value : 'Local offer';
-};
-
-const getOfferDescription = (offer: Record<string, unknown>): string => {
-  const value = offer.description ?? offer.summary ?? offer.copy ?? 'Fresh local offer from nearby vendors.';
-  return typeof value === 'string' && value.trim() ? value : 'Fresh local offer from nearby vendors.';
 };
 
 const getOfferPrice = (offer: Record<string, unknown>): number => {
@@ -68,107 +61,108 @@ const getOfferPrice = (offer: Record<string, unknown>): number => {
   return 0;
 };
 
-const getOfferComparePrice = (offer: Record<string, unknown>): number => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const values = [offer.compareAtPrice, offer.originalPrice, offer.listPrice, offer.wasPrice, offer.previousPrice, item?.compareAtPrice, item?.originalPrice, item?.listPrice];
-  for (const value of values) {
-    const numeric = Number(value);
-    if (Number.isFinite(numeric) && numeric >= 0) return numeric;
-  }
-  return getOfferPrice(offer);
-};
-
 const toCuratedDeal = (offer: Record<string, unknown>) => {
   const title = getOfferTitle(offer);
   const business = getOfferBusinessName(offer);
   const price = getOfferPrice(offer);
-  const comparePrice = getOfferComparePrice(offer);
+  const image = offerImage(offer);
+  const discount = offerDiscountLabel(offer);
   return {
+    key: String(offer.id ?? title),
     name: business,
     desc: title,
     price: formatCurrency(price),
-    discount: comparePrice > price ? `${Math.round(((comparePrice - price) / comparePrice) * 100)}%` : 'Live',
-    image: getOfferImage(offer),
+    discount: discount.replace(' OFF', '').replace('Live Deal', 'Live'),
+    image,
     alt: `${title} by ${business}`,
+    deal: { id: realOfferId(offer), title, business, image, price, discountLabel: discount } as ClaimDealSummary,
   };
 };
 
-const toActiveDeal = (offer: Record<string, unknown>) => {
-  const title = getOfferTitle(offer);
-  const business = getOfferBusinessName(offer);
-  const price = getOfferPrice(offer);
-  const comparePrice = getOfferComparePrice(offer);
-  const discountValue = Math.max(comparePrice - price, 0);
+const toActiveDeal = (claim: ClaimRecord) => {
+  const price = claim.dealPrice ?? 0;
+  const oldPrice = claim.dealOldPrice ?? 0;
+  const saved = Math.max(oldPrice - price, 0);
   return {
-    badge: price > 0 ? `${Math.round(((comparePrice - price) / comparePrice) * 100) || 1}% OFF` : 'Live Deal',
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
-    category: business,
-    title,
-    validity: 'Valid today',
+    claim,
+    badge: claim.discountLabel ?? 'Active',
+    distance: claim.dealLocation ?? '',
+    category: claim.dealBusiness,
+    title: claim.dealTitle,
+    desc: claim.dealDescription ?? '',
+    validity: voucherExpiryLabel(claim),
     validityClass: 'bg-surface-tint-blue text-primary',
     validityIcon: 'timer',
-    desc: getOfferDescription(offer),
     price: formatCurrency(price),
-    oldPrice: comparePrice > price ? formatCurrency(comparePrice) : '',
-    save: discountValue > 0 ? `Save ${formatCurrency(discountValue)}` : 'Limited-time offer',
-    id: `ID: ${String(offer.id ?? title)}`,
+    oldPrice: saved > 0 ? formatCurrency(oldPrice) : '',
+    save: saved > 0 ? `Save ${formatCurrency(saved)}` : '',
+    id: `Code: ${claim.code}`,
     secondAction: 'Contact Business',
     secondIcon: 'chat',
-    image: getOfferImage(offer),
-    alt: `${title} by ${business}`,
+    image: claim.dealImage || NO_IMAGE,
+    alt: `${claim.dealTitle} by ${claim.dealBusiness}`,
   };
 };
 
-export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: DesktopDashboardScreenProps) {
+export function DesktopDashboardScreen({
+  onNav,
+  onStartBusinessSignup,
+  onOpenDeal,
+  onShowPass,
+  onContact,
+  onOpenOrder,
+  onOpenBooking,
+  onScan,
+}: DesktopDashboardScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
   const { fullName } = useProfile();
-  const { district, city } = useLocation();
+  const { district, city, radius } = useLocation();
   const { orders } = useOrders();
   const { appointments } = useBooking();
-  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
+  const { claims } = useClaims();
+  const { totalSaved, tier, savedCount, unreadMessages, recommended, nearbyBusinessCount } = useCustomerDashboard();
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
 
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
-  useEffect(() => {
-    let ignore = false;
-    const loadOffers = async () => {
-      if (!hasApiConfig()) {
-        if (!ignore) setPublicOffers([]);
-        return;
+  const [sharedRef, setSharedRef] = useState<string | null>(null);
+  const curatedDeals = useMemo(() => recommended.slice(0, 2).map(toCuratedDeal), [recommended]);
+  const vouchers = useMemo(() => activeVouchers(claims), [claims]);
+  const activeDeals = useMemo(() => vouchers.slice(0, 2).map(toActiveDeal), [vouchers]);
+  const activeDealCount = vouchers.length;
+  const openOrders = orders.filter((order) => !['completed', 'cancelled', 'refunded'].includes(order.status)).length;
+  const upcomingBookings = appointments.filter((appointment) => appointment.status === 'confirmed').length;
+  const shortcuts = [
+    { icon: 'confirmation_number', label: 'My Deals & Vouchers', iconBg: 'bg-surface-tint-blue text-primary', trail: activeDealCount > 0 ? ('dot' as const) : ('chevron' as const), target: 'my-deals' as DesktopNavKey },
+    { icon: 'receipt_long', label: 'Orders & Bookings', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'text' as const, trailText: `${openOrders + upcomingBookings} Active`, target: 'orders' as DesktopNavKey },
+    { icon: 'bookmark', label: 'Saved Items & Stores', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'text' as const, trailText: String(savedCount), target: 'cart' as DesktopNavKey },
+    { icon: 'chat', label: 'Merchant In-App Chats', iconBg: 'bg-badge-discount-bg text-badge-discount-text', trail: unreadMessages > 0 ? ('badge' as const) : ('chevron' as const), trailText: `${unreadMessages} new`, target: 'messages' as DesktopNavKey },
+    { icon: 'manage_accounts', label: 'Account & Security', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'chevron' as const, target: 'account-settings' as DesktopNavKey },
+  ];
+  const nearbyLabel = nearbyBusinessCount === null ? null : nearbyBusinessCount >= NEARBY_BUSINESS_LIMIT ? `${NEARBY_BUSINESS_LIMIT}+` : String(nearbyBusinessCount);
+
+  const shareDeal = async (claim: ClaimRecord) => {
+    if (!claim.offerId) return;
+    const url = `${window.location.origin}/deals/${encodeURIComponent(claim.offerId)}`;
+    try {
+      if (navigator.share) await navigator.share({ title: claim.dealTitle, url });
+      else {
+        await navigator.clipboard.writeText(url);
+        setSharedRef(claim.ref);
+        window.setTimeout(() => setSharedRef(null), 2000);
       }
+    } catch {
+      // The customer closed the share sheet, or the browser refused the clipboard.
+    }
+  };
 
-      try {
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 4 });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch {
-        if (!ignore) setPublicOffers([]);
-      }
-    };
-
-    loadOffers();
-    return () => { ignore = true; };
-  }, [locationQuery]);
-
-  const curatedDeals = useMemo(() => publicOffers.slice(0, 2).map(toCuratedDeal), [publicOffers]);
-  const activeDeals = useMemo(() => publicOffers.slice(0, 2).map(toActiveDeal), [publicOffers]);
-  const activeDealCount = publicOffers.length;
-  const savingsEstimate = publicOffers.reduce((sum, offer) => {
-    const price = getOfferPrice(offer);
-    const compare = getOfferComparePrice(offer);
-    return sum + Math.max(compare - price, 0);
-  }, 0);
   const stats = useMemo(
     () => [
       {
-        label: 'Live Deals',
+        label: 'Active Deals',
         value: String(activeDealCount),
-        suffix: activeDealCount === 1 ? 'Nearby offer' : 'Ready to redeem',
+        suffix: 'Ready to redeem',
         suffixClass: 'text-badge-discount-text',
-        note: 'with current partner catalogue',
-        noteStrong: formatCurrency(savingsEstimate),
+        note: activeDealCount > 0 ? 'Show the QR pass at the business' : 'No vouchers to redeem yet',
+        noteStrong: '',
         noteIcon: 'savings',
         noteIconClass: 'text-badge-discount-text',
         icon: 'local_offer',
@@ -176,11 +170,11 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
         bubble: 'bg-surface-tint-blue opacity-60',
       },
       {
-        label: 'Saved Potential',
-        value: formatCurrency(savingsEstimate),
+        label: 'Total Saved',
+        value: formatCurrency(totalSaved),
         suffix: '',
         suffixClass: '',
-        note: 'based on active nearby offers',
+        note: 'across your redeemed deals',
         noteStrong: '',
         noteIcon: 'storefront',
         noteIconClass: 'text-primary',
@@ -191,7 +185,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
       {
         label: 'Bookings',
         value: String(appointments.length),
-        suffix: appointments.length === 1 ? 'Scheduled' : 'Active',
+        suffix: appointments.length === 1 ? 'Booking' : 'Bookings',
         suffixClass: 'text-primary',
         note: appointments.length > 0 ? 'Latest appointment in your account' : 'No bookings yet',
         noteStrong: '',
@@ -215,10 +209,18 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
         bubble: 'bg-surface-container-high opacity-60',
       },
     ],
-    [activeDealCount, savingsEstimate, appointments.length, orders.length],
+    [activeDealCount, totalSaved, appointments.length, orders.length],
   );
 
-  const handleAnnouncementNavigate = (destination: AnnouncementDestination) => {
+  const handleAnnouncementNavigate = (destination: AnnouncementDestination, item: Announcement) => {
+    if (item.dealId) {
+      onOpenDeal({ id: item.dealId, title: item.title });
+      return;
+    }
+    if (item.href) {
+      window.location.assign(item.href);
+      return;
+    }
     switch (destination) {
       case 'deals':
         onNav('deals');
@@ -233,7 +235,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
         onNav('orders');
         break;
       case 'saved':
-        onNav('cart');
+        onNav('saved');
         break;
       case 'subscription':
         onNav('for-business');
@@ -266,17 +268,19 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
               <div className="hidden sm:flex items-center gap-2 bg-surface-canvas px-3 py-1.5 rounded-full shadow-sm">
                 <span className="inline-block w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
                 <span className="font-caption text-caption text-text-secondary">
-                  Connected to Apo NFC Grid Node • 0.3ms latency
+                  Live in {district}, {city}
                 </span>
               </div>
             </div>
 
             <section className="mt-6 mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div className="space-y-3 max-w-2xl">
-                <div className="inline-flex items-center gap-1.5 bg-surface-tint-blue text-primary font-label-sm text-label-sm px-3 py-1 rounded-full font-semibold">
-                  <Icon name="verified" className="text-[16px]" />
-                  <span>VEMTAP Elite Consumer Tier</span>
-                </div>
+                {tier && (
+                  <div className="inline-flex items-center gap-1.5 bg-surface-tint-blue text-primary font-label-sm text-label-sm px-3 py-1 rounded-full font-semibold">
+                    <Icon name="verified" className="text-[16px]" />
+                    <span>VEMTAP {tier.tier} Tier</span>
+                  </div>
+                )}
                 <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
                   Hello, {firstName} 👋
                 </h1>
@@ -286,6 +290,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <button
+                  onClick={onScan}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-canvas hover:bg-surface text-text-primary font-label-md text-label-md shadow-sm transition-all"
                   type="button"
                 >
@@ -298,7 +303,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                   type="button"
                 >
                   <Icon name="explore" className="text-[18px]" />
-                  <span>Explore Apo Deals</span>
+                  <span>Explore {district} Deals</span>
                 </button>
               </div>
             </section>
@@ -356,7 +361,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                       <Icon name="verified_user" className="text-primary text-[24px]" />
                       <h2 className="font-heading-lg text-heading-lg text-text-primary">Active Deals &amp; Passes</h2>
                       <span className="px-2.5 py-0.5 bg-primary-container text-on-primary font-caption text-caption rounded-full font-bold ml-2">
-                        2 ACTIVE
+                        {activeDealCount} ACTIVE
                       </span>
                     </div>
                     <button
@@ -370,7 +375,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                   </div>
                   {activeDeals.length > 0 ? activeDeals.map((deal) => (
                     <div
-                      key={deal.id}
+                      key={deal.claim.ref}
                       className="bg-surface-canvas rounded-xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6"
                     >
                       <div className="md:w-52 h-44 rounded-lg overflow-hidden shrink-0 relative">
@@ -378,9 +383,11 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                         <span className="absolute top-2 left-2 px-2 py-0.5 bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold rounded-md shadow-sm">
                           {deal.badge}
                         </span>
-                        <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-inverse-surface/80 backdrop-blur-sm text-surface-canvas font-caption text-caption rounded">
-                          {deal.distance}
-                        </span>
+                        {deal.distance && (
+                          <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-inverse-surface/80 backdrop-blur-sm text-inverse-on-surface font-caption text-caption rounded">
+                            {deal.distance}
+                          </span>
+                        )}
                       </div>
                       <div className="flex-1 flex flex-col justify-between">
                         <div>
@@ -398,21 +405,23 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                               <span>{deal.validity}</span>
                             </span>
                           </div>
-                          <p className="font-body-md text-body-md text-text-secondary mb-3">{deal.desc}</p>
+                          {deal.desc && <p className="font-body-md text-body-md text-text-secondary mb-3">{deal.desc}</p>}
                           <div className="flex items-center gap-4 font-label-md text-label-md mb-4">
                             <span className="text-text-primary font-bold text-heading-sm">{deal.price}</span>
                             <span className="text-text-tertiary line-through font-caption text-caption">
                               {deal.oldPrice}
                             </span>
-                            <span className="text-badge-discount-text font-caption text-caption font-semibold bg-badge-discount-bg px-2 py-0.5 rounded">
-                              {deal.save}
-                            </span>
+                            {deal.save && (
+                              <span className="text-badge-discount-text font-caption text-caption font-semibold bg-badge-discount-bg px-2 py-0.5 rounded">
+                                {deal.save}
+                              </span>
+                            )}
                             <span className="text-text-tertiary text-caption font-mono">{deal.id}</span>
                           </div>
                         </div>
                         <div className="flex items-center flex-wrap gap-3 pt-3 border-t border-surface-subtle">
                           <button
-                            onClick={() => onNav('my-deals')}
+                            onClick={() => onShowPass(deal.claim)}
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-label-md text-label-md transition-colors shadow-sm"
                             type="button"
                           >
@@ -420,6 +429,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                             <span>View Voucher QR Pass</span>
                           </button>
                           <button
+                            onClick={() => onContact(deal.claim)}
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors"
                             type="button"
                           >
@@ -427,18 +437,20 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                             <span>{deal.secondAction}</span>
                           </button>
                           <button
-                            aria-label="Share Deal"
+                            aria-label={sharedRef === deal.claim.ref ? 'Deal link copied' : 'Share Deal'}
+                            disabled={!deal.claim.offerId}
+                            onClick={() => void shareDeal(deal.claim)}
                             className="ml-auto p-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-secondary"
                             type="button"
                           >
-                            <Icon name="share" className="text-[18px]" />
+                            <Icon name={sharedRef === deal.claim.ref ? 'check' : 'share'} className="text-[18px]" />
                           </button>
                         </div>
                       </div>
                     </div>
                   )) : (
                     <div className="rounded-xl bg-surface-canvas p-6 text-text-secondary shadow-sm">
-                      Active vouchers will appear here when the partner catalogue is live.
+                      You have no active vouchers yet. Claim a deal and its QR pass will appear here.
                     </div>
                   )}
                 </div>
@@ -465,7 +477,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                     <div className="rounded-xl border border-dashed border-border-subtle bg-surface-canvas p-6 text-center shadow-sm">
                       <p className="font-heading-sm text-heading-sm text-text-primary mb-1">No recent activity</p>
                       <p className="font-body-md text-body-md text-text-secondary">
-                        Your live orders and bookings will appear here once the backend starts returning your account activity.
+                        Your orders and bookings will appear here.
                       </p>
                     </div>
                   ) : (
@@ -481,7 +493,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-bold">
                                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                  <span>UPCOMING APPOINTMENT</span>
+                                  <span>{appointment.status === 'confirmed' ? 'UPCOMING APPOINTMENT' : appointment.status.toUpperCase()}</span>
                                 </span>
                                 <span className="font-caption text-caption text-text-tertiary">• Booking #{appointment.ref}</span>
                               </div>
@@ -501,7 +513,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                               <span>{appointment.status === 'confirmed' ? 'Confirmed by Host' : appointment.status}</span>
                             </span>
                             <button
-                              onClick={() => onNav('spa-storefront')}
+                              onClick={onOpenBooking}
                               className="w-full md:w-auto px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors text-center"
                               type="button"
                             >
@@ -521,7 +533,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                             <div>
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded bg-surface-subtle text-text-secondary font-caption text-caption font-bold">
-                                  {order.fulfillment === 'delivery' ? 'DELIVERY ORDER' : 'IN-STORE NFC TAP'}
+                                  {order.fulfillment === 'delivery' ? 'DELIVERY ORDER' : 'PICKUP ORDER'}
                                 </span>
                                 <span className="font-caption text-caption text-text-tertiary">• {new Date(order.submittedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
                               </div>
@@ -538,11 +550,11 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                           <div className="flex flex-col sm:flex-row md:flex-col items-end gap-2 w-full md:w-auto shrink-0 pt-1 md:pt-0">
                             <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{formatCurrency(order.total)}</span>
                             <button
-                              onClick={() => onNav('orders')}
+                              onClick={() => onOpenOrder(order.ref)}
                               className="w-full md:w-auto px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors text-center"
                               type="button"
                             >
-                              Reorder / View Receipt
+                              View Order
                             </button>
                           </div>
                         </div>
@@ -555,9 +567,9 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <Icon name="near_me" className="text-primary text-[22px]" />
-                      <h3 className="font-heading-md text-heading-md text-text-primary">Apo Active Partner Radar</h3>
+                      <h3 className="font-heading-md text-heading-md text-text-primary">{district} Active Partner Radar</h3>
                     </div>
-                    <span className="font-caption text-caption text-text-secondary">Radius: 5.0 km</span>
+                    <span className="font-caption text-caption text-text-secondary">Radius: {radius} km</span>
                   </div>
                   <div className="w-full h-56 rounded-xl bg-surface-subtle relative overflow-hidden flex items-center justify-center shadow-inner">
                     <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/40 to-transparent pointer-events-none" />
@@ -566,10 +578,10 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                         <Icon name="explore" className="text-[20px]" />
                       </div>
                       <h4 className="font-heading-sm text-heading-sm text-text-primary">
-                        18 Local Merchants Active Near You
+                        {nearbyLabel === null ? 'Local Merchants Near You' : `${nearbyLabel} Local ${nearbyBusinessCount === 1 ? 'Merchant' : 'Merchants'} Active Near You`}
                       </h4>
                       <p className="font-caption text-caption text-text-secondary mt-1">
-                        Instant Tap savings enabled across Apo Resettlement, Legislative Zone &amp; Durumi Axis.
+                        Businesses within {radius} km of {district}, {city}.
                       </p>
                       <button
                         onClick={() => onNav('discover')}
@@ -587,7 +599,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                 <div className="bg-surface-canvas rounded-xl p-6 shadow-sm">
                   <h3 className="font-heading-sm text-heading-sm text-text-primary mb-4">Quick Shortcuts</h3>
                   <div className="flex flex-col gap-1.5">
-                    {SHORTCUTS.map((shortcut) => (
+                    {shortcuts.map((shortcut) => (
                       <button
                         key={shortcut.label}
                         onClick={() => onNav(shortcut.target)}
@@ -627,12 +639,13 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                       <Icon name="auto_awesome" className="text-tertiary-container text-[20px]" />
                       <h3 className="font-heading-sm text-heading-sm text-text-primary">Curated For You</h3>
                     </div>
-                    <span className="font-caption text-caption text-text-tertiary">Based on your taste</span>
+                    <span className="font-caption text-caption text-text-tertiary">Picked for you</span>
                   </div>
                   <div className="flex flex-col gap-4">
                     {curatedDeals.length > 0 ? curatedDeals.map((item) => (
                       <div
-                        key={item.name}
+                        key={item.key}
+                        onClick={() => onOpenDeal(item.deal)}
                         className="flex gap-3 group cursor-pointer hover:bg-surface-subtle p-2 rounded-xl transition-colors"
                       >
                         <div className="w-20 h-20 rounded-lg overflow-hidden shrink-0 relative">
@@ -651,7 +664,6 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                           <div className="flex items-center justify-between mt-0.5">
                             <span className="font-label-md text-label-md text-text-primary font-bold">{item.price}</span>
                             <button
-                              onClick={() => onNav('deal-detail')}
                               className="text-primary font-label-sm text-label-sm font-semibold hover:underline"
                               type="button"
                             >
@@ -662,7 +674,7 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
                       </div>
                     )) : (
                       <div className="rounded-xl bg-surface-subtle p-3 text-text-secondary text-caption">
-                        Curated recommendations will sync here when the live catalog is ready.
+                        New deals picked for you will appear here.
                       </div>
                     )}
                   </div>
@@ -694,17 +706,17 @@ export function DesktopDashboardScreen({ onNav, onStartBusinessSignup }: Desktop
 
                 <div className="px-4 py-3 text-center">
                   <p className="font-caption text-caption text-text-tertiary">
-                    Own a Business in {district}, {city}?
+                    {canSwitch ? 'Your business is on VEMTAP' : `Own a Business in ${district}, ${city}?`}
                   </p>
                   <p className="mt-1.5 font-label-md text-label-md text-text-secondary">
-                    Switch to a business account.
+                    {canSwitch ? 'Manage your deals and customers.' : 'Switch to a business account.'}
                   </p>
                   <button
                     onClick={onStartBusinessSignup}
                     className="mt-1 font-label-md text-label-md text-primary font-semibold hover:underline inline-flex items-center gap-1.5"
                     type="button"
                   >
-                    <span>Get Started</span>
+                    <span>{canSwitch ? 'Switch to Business' : 'Get Started'}</span>
                     <Icon name="arrow_forward" className="text-[16px]" />
                   </button>
                 </div>

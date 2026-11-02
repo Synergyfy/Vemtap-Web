@@ -6,6 +6,9 @@ import {
   type Subscription,
 } from '../services/subscriptionService';
 import { formatNaira } from '../utils/format';
+import { hasApiConfig } from '../services/api/client';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useBranches } from '../hooks/business/useBranchesAndTeam';
 
 /**
  * Live subscription helpers shared by the billing and add-on screens: which
@@ -60,4 +63,18 @@ export function creditBundleLine(plan: CreditPlan | null, kind: 'sms' | 'ai'): s
   const amount = kind === 'sms' ? plan.smsAmount : plan.aiAmount;
   if (!amount) return null;
   return `${formatNaira(Number(plan.price))} / ${amount} ${kind.toUpperCase()}`;
+}
+
+/** The signed-in business's card on the subscription screens: name, logo and branches. */
+export function useBusinessCard() {
+  const live = hasApiConfig();
+  const business = useMyBusiness().data;
+  const branches = useBranches().data ?? [];
+  return {
+    live,
+    name: business?.name ?? 'Your business',
+    logo: business?.logoUrl ?? null,
+    branchLine: branches.map((branch) => branch.name).join(' • ') || 'No branches yet',
+    branchCount: branches.length,
+  };
 }

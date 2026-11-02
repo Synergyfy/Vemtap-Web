@@ -1,12 +1,19 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
-import { useLocation, useLocationQuery } from '../context/LocationContext';
-import { hasApiConfig } from '../services/api/client';
-import { catalogueService } from '../services/catalogueService';
-import { dealPrimaryImage } from '../utils/dealImages';
+import { Skeleton } from '../components/ui/Skeleton';
+import { useLocation } from '../context/LocationContext';
+import { useDealFilters } from '../context/DealFiltersContext';
+import { useFeaturedDeals, useSavedDeals, type FeaturedSort } from '../hooks/useFeaturedDeals';
+import { sponsoredService } from '../services/sponsoredService';
+import { isVerifiedOffer, offerDiscountLabel, offerEndsLabel, offerImage, offerLocationLabel, realOfferId } from '../utils/homeOffer';
 
 interface FeaturedDeal {
+  id: string;
+  offerId?: string;
+  campaignId?: string;
+  verified: boolean;
   img: string;
   alt: string;
   discount: string;
@@ -17,7 +24,6 @@ interface FeaturedDeal {
   urgencyText: string;
   urgencyClass: string;
   merchant: string;
-  rating: string;
   title: string;
   desc: string;
   oldPrice: string;
@@ -35,8 +41,8 @@ const formatCurrency = (value: number | string | undefined): string => {
   }).format(parsed);
 };
 
-/** Same rule as the home cards and the detail page: the deal's own photo first. */
-const getOfferImage = (offer: Record<string, unknown>): string => dealPrimaryImage(offer) ?? 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=80';
+/** Same rule as the home cards and the detail page: the deal's own photo first; never a stock photo. */
+const getOfferImage = (offer: Record<string, unknown>): string => offerImage(offer);
 
 const getOfferBusinessName = (offer: Record<string, unknown>): string => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
@@ -50,8 +56,8 @@ const getOfferTitle = (offer: Record<string, unknown>): string => {
 };
 
 const getOfferDescription = (offer: Record<string, unknown>): string => {
-  const value = offer.description ?? offer.summary ?? offer.copy ?? 'Fresh local offer from nearby vendors.';
-  return typeof value === 'string' && value.trim() ? value : 'Fresh local offer from nearby vendors.';
+  const value = offer.description ?? offer.summary ?? offer.copy;
+  return typeof value === 'string' && value.trim() ? value : '';
 };
 
 const getOfferPrice = (offer: Record<string, unknown>): number => {
@@ -97,37 +103,45 @@ const toFeaturedDeal = (offer: Record<string, unknown>): FeaturedDeal => {
   const business = getOfferBusinessName(offer);
   const discountValue = Math.max(comparePrice - price, 0);
 
+  const campaignId = typeof offer.campaignId === 'string' ? offer.campaignId : undefined;
+  const location = offerLocationLabel(offer);
+
   return {
+    id: String(offer.id ?? `${business}-${title}`),
+    offerId: realOfferId(offer),
+    campaignId,
+    verified: isVerifiedOffer(offer),
     img: getOfferImage(offer),
     alt: `${title} by ${business}`,
-    discount: price > 0 ? 'Live Deal' : 'Offer',
-    promo: 'Promoted',
-    distance: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
-    area: typeof offer.distance === 'string' && offer.distance.trim() ? offer.distance : 'Nearby',
+    discount: offerDiscountLabel(offer),
+    promo: campaignId ? 'Promoted' : 'Featured',
+    distance: location,
+    area: '',
     urgencyIcon: 'schedule',
-    urgencyText: 'Live now',
+    urgencyText: offerEndsLabel(offer),
     urgencyClass: 'bg-error-container/90 text-on-error-container',
     merchant: business,
-    rating: '4.9',
     title,
     desc: getOfferDescription(offer),
     oldPrice: comparePrice > price ? formatCurrency(comparePrice) : '',
     price: formatCurrency(price),
-    save: price > 0 ? `Save ${formatCurrency(discountValue)}` : 'Limited-time',
+    save: discountValue > 0 ? `Save ${formatCurrency(discountValue)}` : '',
   };
 };
 
-const SORTS: { label: string; icon: string; filled?: boolean }[] = [
-  { label: 'Closest to You', icon: 'near_me', filled: true },
-  { label: 'Highest Discount', icon: 'percent' },
-  { label: 'Ending Soon', icon: 'timer' },
-  { label: 'Popular', icon: 'local_fire_department' },
+const SORTS: { key: FeaturedSort; label: string; icon: string; filled?: boolean }[] = [
+  { key: 'closest', label: 'Closest to You', icon: 'near_me', filled: true },
+  { key: 'discount', label: 'Highest Discount', icon: 'percent' },
+  { key: 'ending', label: 'Ending Soon', icon: 'timer' },
+  { key: 'popular', label: 'Popular', icon: 'local_fire_department' },
 ];
 
-const RADII = ['3 km', '5 km', '10 km', '25 km'];
+const RADII = [3, 5, 10, 25];
 
 export interface FeaturedDealsScreenProps {
   onBack: () => void;
+  onOpenFilters: () => void;
+  onBoost: () => void;
   onOpenDeal: (deal?: { id?: string | number; title?: string; business?: string; location?: string; price?: number | string; oldPrice?: number | string; discountLabel?: string; image?: string }) => void;
 }
 
@@ -148,50 +162,34 @@ function dealCardProps(
   };
 }
 
-export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenProps) {
-  const { city, district } = useLocation();
+export function FeaturedDealsScreen({ onBack, onOpenFilters, onBoost, onOpenDeal }: FeaturedDealsScreenProps) {
+  const canSwitch = useCanSwitchToBusiness();
+  const { city, district, radius, lat, lng, hasCoordinates, setLocation } = useLocation();
+  const { setFilters, activeCount } = useDealFilters();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [radius, setRadius] = useState('10 km');
   const [sortIndex, setSortIndex] = useState(0);
-  const [saved, setSaved] = useState<boolean[]>([]);
   const [toast, setToast] = useState<string | null>(null);
-  const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const toastTimers = useRef<number[]>([]);
   const locationLabel = [city, district].filter(Boolean).join(', ') || 'Your area';
+  const feed = useFeaturedDeals(SORTS[sortIndex].key);
+  const { saved, toggleSaved } = useSavedDeals();
+  const deals = useMemo(() => feed.offers.filter(isUsableOffer).map(toFeaturedDeal), [feed.offers]);
 
-  // Nearest first within the radius once the customer has a location.
-  const locationQuery = useLocationQuery();
-  useEffect(() => {
-    let ignore = false;
-    const loadOffers = async () => {
-      if (!hasApiConfig()) {
-        if (!ignore) setPublicOffers([]);
-        return;
-      }
-
-      try {
-        const response = await catalogueService.getPublicOffers({ ...locationQuery, page: 1, limit: 5 });
-        const rows = Array.isArray(response?.data) ? response.data : [];
-        if (!ignore) setPublicOffers(rows as Record<string, unknown>[]);
-      } catch {
-        if (!ignore) setPublicOffers([]);
-      }
-    };
-
-    loadOffers();
-    return () => {
-      ignore = true;
-    };
-  }, [locationQuery]);
-
-  const deals = useMemo(() => publicOffers.filter(isUsableOffer).slice(0, 5).map(toFeaturedDeal), [publicOffers]);
-
-  useEffect(() => {
-    setSaved((prev) => {
-      if (prev.length === deals.length) return prev;
-      return Array.from({ length: deals.length }, (_, index) => prev[index] ?? false);
-    });
+  // Category pills — live categories extracted from the current deals feed.
+  const categories = useMemo(() => {
+    const businessNames = deals
+      .map((deal) => deal.merchant)
+      .filter((name) => name && name !== 'Nearby business');
+    const unique = [...new Set(businessNames)].sort();
+    return [{ value: '', label: 'All' }, ...unique.map((name) => ({ value: name, label: name }))];
   }, [deals]);
+
+  const [selectedCategory, setSelectedCategory] = useState('');
+
+  const filteredDeals = useMemo(() => {
+    if (selectedCategory === '') return deals;
+    return deals.filter((deal) => deal.merchant === selectedCategory);
+  }, [deals, selectedCategory]);
 
   useEffect(() => {
     const timers = toastTimers.current;
@@ -204,8 +202,26 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
     toastTimers.current.push(timer);
   };
 
-  const toggleSaved = (index: number) => {
-    setSaved((prev) => prev.map((value, i) => (i === index ? !value : value)));
+  const saveDeal = async (offerId: string | undefined) => {
+    if (!offerId) return;
+    const result = await toggleSaved(offerId);
+    showToast('error' in result ? result.error : result.saved ? 'Saved to your deals' : 'Removed from saved deals');
+  };
+
+  /** What the deal page needs; a tap on a promoted deal is counted for its campaign. */
+  const toDealPayload = (deal: FeaturedDeal) => ({
+    id: deal.id,
+    title: deal.title,
+    business: deal.merchant,
+    location: deal.distance,
+    price: Number(String(deal.price).replace(/[^\d.]/g, '')) || undefined,
+    oldPrice: Number(String(deal.oldPrice).replace(/[^\d.]/g, '')) || undefined,
+    discountLabel: deal.discount,
+    image: deal.img,
+  });
+  const openDeal = (deal: FeaturedDeal) => {
+    if (deal.campaignId && deal.offerId) sponsoredService.track(deal.campaignId, deal.offerId, 'tap');
+    onOpenDeal(toDealPayload(deal));
   };
 
   return (
@@ -224,20 +240,23 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-space-2xs min-w-0">
                 <h1 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured Deals</h1>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption uppercase tracking-wider font-semibold">
-                  Promoted
-                </span>
+                {feed.hasPromoted ? (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption uppercase tracking-wider font-semibold">
+                    Promoted
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-space-2xs">
             <button
-              aria-label="Filter deals"
+              aria-label={activeCount ? `Filter deals, ${activeCount} active` : 'Filter deals'}
               type="button"
-              onClick={() => setDrawerOpen(true)}
-              className="w-11 h-11 flex items-center justify-center text-text-secondary hover:text-text-primary rounded-full active:scale-95 transition-transform"
+              onClick={onOpenFilters}
+              className="relative w-11 h-11 flex items-center justify-center text-text-secondary hover:text-text-primary rounded-full active:scale-95 transition-transform"
             >
               <Icon name="tune" className="text-[22px]" />
+              {activeCount > 0 ? <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-primary text-on-primary text-[10px] font-bold flex items-center justify-center">{activeCount}</span> : null}
             </button>
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
               <Icon name="person" className="text-on-primary text-[18px]" />
@@ -260,15 +279,38 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                   onClick={() => setDrawerOpen((open) => !open)}
                   className="flex items-center gap-0.5 font-label-md text-label-md text-primary font-bold active:scale-95 transition-transform"
                 >
-                  <span>{radius}</span>
+                  <span>{radius} km</span>
                   <Icon name="expand_more" className="text-[16px]" />
                 </button>
               </div>
               <div className="flex items-center gap-1 px-space-xs py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-caption text-caption font-semibold flex-shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                <span>{deals.length} live deal{deals.length === 1 ? '' : 's'}</span>
+                <span>{feed.loading ? 'Loading…' : `${filteredDeals.length} live deal${filteredDeals.length === 1 ? '' : 's'}`}</span>
               </div>
             </div>
+
+            {/* Category pills — live categories from the deals feed */}
+            {categories.length > 1 && (
+              <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-1 -mx-margin px-margin">
+                {categories.map((choice) => {
+                  const isSelected = selectedCategory === choice.value;
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      onClick={() => setSelectedCategory(choice.value)}
+                      className={`h-9 px-space-md rounded-full font-label-md text-label-md transition-all whitespace-nowrap flex-shrink-0 ${
+                        isSelected
+                          ? 'bg-primary text-on-primary font-semibold shadow-sm'
+                          : 'bg-surface-container-low text-text-secondary'
+                      }`}
+                    >
+                      {choice.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <div
               className={
@@ -277,14 +319,16 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                   : 'hidden'
               }
             >
-              <span className="font-caption text-caption text-text-secondary pl-1">Max distance:</span>
+              <span className="font-caption text-caption text-text-secondary pl-1">{hasCoordinates ? 'Max distance:' : 'Set your location first'}</span>
               <div className="flex items-center gap-1">
                 {RADII.map((value) => (
                   <button
                     key={value}
                     type="button"
+                    disabled={!hasCoordinates}
                     onClick={() => {
-                      setRadius(value);
+                      setLocation(district, value, { city, lat, lng });
+                      setFilters({ strictDistance: true });
                       setDrawerOpen(false);
                     }}
                     className={
@@ -293,7 +337,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                         : 'px-2.5 py-1 rounded-full text-caption font-label-sm font-semibold bg-surface-canvas text-text-secondary transition-all'
                     }
                   >
-                    {value}
+                    {value} km
                   </button>
                 ))}
               </div>
@@ -302,8 +346,9 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
             <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-1 -mx-margin px-margin">
               {SORTS.map((sort, index) => (
                 <button
-                  key={sort.label}
+                  key={sort.key}
                   type="button"
+                  aria-pressed={index === sortIndex}
                   onClick={() => setSortIndex(index)}
                   className={
                     index === sortIndex
@@ -320,21 +365,36 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
             <div className="flex items-start gap-space-xs p-space-xs bg-surface-container-low rounded-xl mb-1">
               <Icon name="verified_user" className="text-primary text-[17px] mt-0.5 flex-shrink-0" />
               <p className="font-caption text-caption text-text-secondary leading-snug">
-                Promoted and sponsored offers from verified local merchants near your GPS pinpoint. Ranked strictly by
-                geographic distance.
+                {feed.hasPromoted ? 'Promoted offers come first. ' : ''}Live deals near {locationLabel}, sorted by {SORTS[sortIndex].label.toLowerCase()}.
               </p>
             </div>
           </section>
 
           <section className="flex flex-col gap-space-md px-margin py-space-md">
-            {deals.length === 0 ? (
+            {feed.loading ? (
+              [0, 1, 2].map((key) => (
+                <div key={key} role="status" aria-busy="true" className="flex flex-col bg-surface-canvas rounded-2xl shadow-sm overflow-hidden">
+                  <span className="sr-only">Loading featured deals</span>
+                  <Skeleton className="w-full h-44 rounded-none" />
+                  <div className="p-space-md space-y-2">
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="h-3 w-full" />
+                    <div className="flex items-center justify-between pt-1">
+                      <Skeleton className="h-7 w-24" />
+                      <Skeleton className="h-11 w-32 rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : filteredDeals.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-space-lg text-text-secondary">
-                Live featured deals will appear here when the public offers feed is available.
+                {selectedCategory !== '' ? `No live deals from ${selectedCategory} right now.` : activeCount ? 'No live deals match your filters.' : 'No featured deals near you yet.'}
               </div>
-            ) : deals.map((deal, index) => (
+            ) : filteredDeals.map((deal) => (
               <article
-                key={`${deal.title}-${deal.merchant}-${index}`}
-                {...dealCardProps(onOpenDeal)}
+                key={deal.id}
+                {...dealCardProps(() => openDeal(deal))}
                 className="flex flex-col bg-surface-canvas rounded-2xl shadow-sm overflow-hidden active:shadow-md transition-shadow cursor-pointer"
               >
                 <div className="relative w-full h-44 overflow-hidden">
@@ -349,24 +409,25 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                     </span>
                   </div>
                   <button
-                    aria-label="Save deal"
+                    aria-label={deal.offerId && saved[deal.offerId] ? 'Remove from saved deals' : 'Save deal'}
+                    aria-pressed={Boolean(deal.offerId && saved[deal.offerId])}
+                    disabled={!deal.offerId}
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      toggleSaved(index);
+                      void saveDeal(deal.offerId);
                     }}
                     className={
-                      saved[index]
+                      deal.offerId && saved[deal.offerId]
                         ? 'absolute top-3 right-3 w-9 h-9 rounded-full bg-error-container backdrop-blur-md flex items-center justify-center text-error shadow-sm active:scale-90 transition-transform'
                         : 'absolute top-3 right-3 w-9 h-9 rounded-full bg-surface-canvas/90 backdrop-blur-md flex items-center justify-center text-text-primary shadow-sm active:scale-90 transition-transform'
                     }
                   >
-                    <Icon name={saved[index] ? 'favorite' : 'favorite_border'} className="text-[20px]" filled={saved[index]} />
+                    <Icon name={deal.offerId && saved[deal.offerId] ? 'favorite' : 'favorite_border'} className="text-[20px]" filled={Boolean(deal.offerId && saved[deal.offerId])} />
                   </button>
                   <div className="absolute bottom-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-canvas/95 backdrop-blur-md shadow-sm">
                     <Icon name="near_me" className="text-primary text-[14px]" filled />
                     <span className="font-caption text-caption text-text-primary font-bold">{deal.distance}</span>
-                    <span className="font-caption text-caption text-text-secondary">• {deal.area}</span>
                   </div>
                   <div
                     className={`absolute bottom-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full backdrop-blur-md font-caption text-caption font-semibold ${deal.urgencyClass}`}
@@ -379,16 +440,16 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                   <div className="flex items-center justify-between gap-space-xs">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-label-md text-label-md font-bold text-text-primary truncate">{deal.merchant}</span>
-                      <Icon name="check_circle" className="text-primary text-[16px] flex-shrink-0" filled />
-                      <span className="font-caption text-caption text-text-tertiary">Verified Partner</span>
-                    </div>
-                    <div className="flex items-center gap-0.5 text-tertiary-container flex-shrink-0">
-                      <Icon name="star" className="text-[15px]" filled />
-                      <span className="font-caption text-caption font-bold text-text-primary">{deal.rating}</span>
+                      {deal.verified ? (
+                        <>
+                          <Icon name="check_circle" className="text-primary text-[16px] flex-shrink-0" filled />
+                          <span className="font-caption text-caption text-text-tertiary">Verified Partner</span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <h3 className="font-heading-sm text-heading-sm text-text-primary leading-snug font-bold">{deal.title}</h3>
-                  <p className="font-body-md text-caption text-text-secondary line-clamp-1">{deal.desc}</p>
+                  {deal.desc ? <p className="font-body-md text-caption text-text-secondary line-clamp-1">{deal.desc}</p> : null}
                   <div className="flex items-center justify-between gap-space-sm pt-space-xs mt-1">
                     <div className="flex flex-col">
                       <span className="font-caption text-caption text-text-tertiary line-through leading-none">{deal.oldPrice}</span>
@@ -399,16 +460,10 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
                     </div>
                     <button
                       type="button"
-                      onClick={() => onOpenDeal({
-                        id: `${deal.title}-${deal.merchant}-${index}`,
-                        title: deal.title,
-                        business: deal.merchant,
-                        location: deal.area,
-                        price: Number(String(deal.price).replace(/[^\d.]/g, '')) || undefined,
-                        oldPrice: Number(String(deal.oldPrice).replace(/[^\d.]/g, '')) || undefined,
-                        discountLabel: deal.discount,
-                        image: deal.img,
-                      })}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openDeal(deal);
+                      }}
                       className="h-11 px-space-lg rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold shadow-sm active:scale-95 transition-transform flex items-center gap-1"
                     >
                       <span>View Deal</span>
@@ -427,26 +482,25 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
               </div>
               <h4 className="font-label-md text-label-md font-bold text-text-primary">About Featured Listings</h4>
               <p className="font-caption text-caption text-text-secondary max-w-xs leading-relaxed">
-                Featured Deals are sponsored placements boosted by verified local merchants. Ranking is strictly computed
-                based on exact real-time GPS proximity to {locationLabel}.
+                Promoted deals are paid placements by local businesses and are labelled as Promoted. Everything else is ranked by the sort you choose.
               </p>
               <button
                 type="button"
-                onClick={() => showToast(`Ranking is based on live GPS distance from ${locationLabel}`)}
+                onClick={onOpenFilters}
                 className="mt-space-xs font-caption text-caption text-primary font-semibold flex items-center gap-0.5 active:opacity-75"
               >
-                <span>Learn how VEMTAP ranking works</span>
+                <span>Filter these deals</span>
                 <Icon name="arrow_forward" className="text-[14px]" />
               </button>
             </div>
             <div className="mt-space-lg flex items-center gap-1.5 text-center justify-center">
-              <span className="font-caption text-caption text-text-secondary">Own a business in Abuja?</span>
+              <span className="font-caption text-caption text-text-secondary">{canSwitch ? 'Your business is on VEMTAP' : `Own a business${city && city !== 'Your city' ? ` in ${city}` : ''}?`}</span>
               <button
                 type="button"
-                onClick={() => showToast('Business Boost opens in the merchant hub')}
+                onClick={onBoost}
                 className="font-caption text-caption font-semibold text-primary flex items-center gap-0.5 active:opacity-75"
               >
-                <span>Boost your deals on VEMTAP</span>
+                <span>{canSwitch ? 'Switch to Business' : 'Boost your deals on VEMTAP'}</span>
                 <Icon name="chevron_right" className="text-[14px]" />
               </button>
             </div>
@@ -455,7 +509,7 @@ export function FeaturedDealsScreen({ onBack, onOpenDeal }: FeaturedDealsScreenP
       </main>
 
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

@@ -11,6 +11,14 @@ export interface SessionUser {
   phone?: string | null;
   avatar?: string | null;
   role: UserRole;
+  /** Owner in the DB, even while the token is scoped to the customer shell. */
+  isOwnerAccount?: boolean;
+  /** The account's business-side role, whatever shell the token is scoped to. */
+  businessRole?: 'Owner' | 'Manager' | 'Staff' | null;
+  /** A business exists for this account, even on a customer token. */
+  hasBusiness?: boolean;
+  /** The shell a dual-role account last used. */
+  lastActiveShell?: 'customer' | 'business' | null;
   roleTag?: string | null;
   permissions?: string[] | null;
   status?: string;

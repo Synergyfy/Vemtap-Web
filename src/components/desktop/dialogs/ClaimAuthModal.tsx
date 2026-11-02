@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { NO_IMAGE } from '../../../utils/homeOffer';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 import { parsePrice } from '../../../utils/format';
@@ -12,6 +13,7 @@ export interface ClaimAuthModalProps {
     business?: string;
     price?: number | string;
     oldPrice?: number | string;
+    image?: string;
   } | null;
 }
 
@@ -22,8 +24,8 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated, deal }: ClaimAu
   const [revealed, setRevealed] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(899);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
-  const dealTitle = deal?.title || 'Featured local deal';
-  const businessName = deal?.business?.trim() || 'Local dining partner';
+  const dealTitle = deal?.title ?? '';
+  const businessName = deal?.business?.trim() ?? '';
   const dealPrice = parsePrice(deal?.price);
   const oldPrice = parsePrice(deal?.oldPrice) || dealPrice;
 
@@ -87,8 +89,8 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated, deal }: ClaimAu
           <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-surface-container">
             <img
               className="w-full h-full object-cover"
-              alt="Close up plate of gourmet grilled bistro lunch combo with steak medallions, green asparagus and sauce in warm lighting"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuClOfKRpt4W6Yn_nLUR-w5MAux4WskBj8emCq4hdaaipD9AoyBRrJXHmB5wGuhQnYd4v_kpL9fcpl43_ZO6NS7c5RgipPCTkJMrlfY-njIZBJjmcwCDjKW8A8lOiRPjJ6D02RFoAuQtedZHQIntn1gugDFBD9dgMIaPUDiWqK7nEl2RuD2qqWg2Ev7lkE4R8JmBT6ysuxixg5-ny-CtTQkBe0IkSoxgqrn6bbwxahVJ"
+              alt={dealTitle}
+              src={deal?.image || NO_IMAGE}
             />
           </div>
           <div className="flex-1 min-w-0">
@@ -102,9 +104,11 @@ export function ClaimAuthModal({ open, onClose, onAuthenticated, deal }: ClaimAu
               <span className="font-heading-sm text-heading-sm text-text-primary font-bold">
                 {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(dealPrice)}
               </span>
-              <span className="font-caption text-caption text-text-tertiary line-through">
-                {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(oldPrice)}
-              </span>
+              {oldPrice > dealPrice && (
+                <span className="font-caption text-caption text-text-tertiary line-through">
+                  {new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(oldPrice)}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1 text-tertiary-container">
               <Icon name="timer" className="text-[14px] animate-pulse" />

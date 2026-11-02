@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { useMoreSummary } from '../../hooks/business/useMoreSummary';
+import { useVerificationSummary } from '../../hooks/business/useVerification';
+import { useLivePos } from '../posLive';
 
 interface DesktopBusinessMoreScreenProps {
   onNav: (key: string) => void;
@@ -66,6 +70,12 @@ export function DesktopBusinessMoreScreen({
 }: DesktopBusinessMoreScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const { branch } = useBusinessBranch();
+  const pos = useLivePos();
+  // Live: the plan, unread count, cluster, reviews and verification from the API; demo keeps the samples.
+  const more = useMoreSummary();
+  const verification = useVerificationSummary();
+  const liveMore = more.live;
 
   useEffect(
     () => () => {
@@ -84,7 +94,7 @@ export function DesktopBusinessMoreScreen({
     {
       key: 'cluster',
       label: 'Cluster System',
-      badge: 'Amaka Mall',
+      badge: liveMore ? more.clusterName ?? undefined : 'Amaka Mall',
       badgeClass: GREEN_BADGE,
       rows: [
         {
@@ -211,8 +221,8 @@ export function DesktopBusinessMoreScreen({
           key: 'reviews',
           icon: 'hotel_class',
           title: 'Reviews & Ratings',
-          sub: '4.9 ★ · 128 verified customer reviews',
-          badge: '3 new',
+          sub: liveMore ? more.reviewsLine ?? 'No reviews yet' : '4.9 ★ · 128 verified customer reviews',
+          badge: liveMore ? (more.pendingReviews ? `${more.pendingReviews} new` : undefined) : '3 new',
           badgeClass: GREEN_BADGE,
           onClick: () => showToast('Opening 3 new reviews'),
         },
@@ -222,7 +232,7 @@ export function DesktopBusinessMoreScreen({
           iconClass: NEUTRAL_ICON,
           title: 'Notifications Center',
           sub: 'Till alerts, payout updates & staff clock-ins',
-          badge: '4 unread',
+          badge: liveMore ? (more.unread ? `${more.unread} unread` : undefined) : '4 unread',
           badgeClass: ERROR_BADGE,
           onClick: onOpenNotifications,
         },
@@ -237,7 +247,7 @@ export function DesktopBusinessMoreScreen({
           icon: 'credit_card',
           iconClass: NEUTRAL_ICON,
           title: 'Subscription & Billing',
-          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
+          sub: liveMore ? more.planLine ?? 'No plan yet' : 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
           onClick: onOpenSubscription,
         },
         {
@@ -245,8 +255,8 @@ export function DesktopBusinessMoreScreen({
           icon: 'verified_user',
           iconClass: GREEN_BADGE,
           title: 'Business Verification',
-          sub: 'CAC, Director ID & Bank Settlement Approved',
-          badge: 'Tier 3',
+          sub: liveMore ? verification.statusLabel : 'CAC, Director ID & Bank Settlement Approved',
+          badge: liveMore ? (verification.verified ? 'Verified' : undefined) : 'Tier 3',
           badgeClass: GREEN_BADGE,
           onClick: onOpenVerification,
         },
@@ -365,23 +375,33 @@ export function DesktopBusinessMoreScreen({
           <div className="flex items-start justify-between gap-space-sm relative z-10">
             <div className="flex items-center gap-space-sm min-w-0">
               <div className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden bg-surface-container-high shadow-inner">
-                <img alt="Urban Grill & Bistro logo" className="w-full h-full object-cover" src={LOGO_SRC} />
+                {!liveMore || more.logoUrl ? (
+                  <img alt={`${liveMore ? more.name ?? 'Business' : 'Urban Grill & Bistro'} logo`} className="w-full h-full object-cover" src={liveMore ? more.logoUrl ?? '' : LOGO_SRC} />
+                ) : (
+                  <div className="w-full h-full bg-surface-tint-blue text-primary flex items-center justify-center font-heading-sm text-heading-sm">
+                    {(more.name ?? 'B').charAt(0).toUpperCase()}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="font-heading-sm text-heading-sm text-text-primary tracking-tight truncate">
-                    Urban Grill &amp; Bistro
+                    {liveMore ? more.name ?? 'Your business' : 'Urban Grill & Bistro'}
                   </span>
-                  <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />
+                  {(!liveMore || more.verified) && <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="font-caption text-caption text-text-tertiary">#VG-80492</span>
+                  <span className="font-caption text-caption text-text-tertiary">{liveMore ? more.code ?? '—' : '#VG-80492'}</span>
                   <span className="w-1 h-1 rounded-full bg-border-subtle" />
-                  <span className="font-caption text-caption text-primary font-medium">Growth Plan</span>
+                  <span className="font-caption text-caption text-primary font-medium">
+                    {liveMore ? (more.planName ? `${more.planName} Plan` : 'No plan yet') : 'Growth Plan'}
+                  </span>
                 </div>
                 <div className="mt-1 flex items-center gap-1 text-text-secondary min-w-0">
                   <Icon name="location_on" className="text-[15px] text-text-tertiary shrink-0" />
-                  <span className="font-label-sm text-label-sm truncate">Wuse II, Abuja</span>
+                  <span className="font-label-sm text-label-sm truncate">
+                    {liveMore ? branch.area || branch.name || more.location || '—' : 'Wuse II, Abuja'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -399,12 +419,14 @@ export function DesktopBusinessMoreScreen({
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />
               <span className="font-caption text-caption text-text-primary font-medium truncate">
-                Terminal 01 Online
+                {liveMore ? (pos.isOpen ? `${pos.tillName} Open` : 'No register open') : 'Terminal 01 Online'}
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0 text-text-tertiary">
-              <Icon name="cloud_done" className="text-[14px]" />
-              <span className="font-caption text-caption">Synced 2m ago</span>
+              <Icon name={liveMore && pos.offline.pendingCount ? 'cloud_upload' : 'cloud_done'} className="text-[14px]" />
+              <span className="font-caption text-caption">
+                {liveMore ? (pos.offline.pendingCount ? `${pos.offline.pendingCount} to sync` : 'All synced') : 'Synced 2m ago'}
+              </span>
             </div>
           </div>
         </section>

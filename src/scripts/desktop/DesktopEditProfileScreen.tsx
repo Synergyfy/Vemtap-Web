@@ -1,34 +1,48 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
-import { useProfile } from '../../context/ProfileContext';
+import { useEditProfile } from '../../hooks/useEditProfile';
+import { apiErrorMessage } from '../../services/errorMessages';
 
 interface DesktopEditProfileScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
 }
 
-const AVATAR_URL =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAWtbunYzQIPzZu8IFliEeDjcfIlsT2lnGlhG4NgJvukajbLSvMfRPjRw5e8KNQaWWwogqIKcyb-L5lfxrP5bgB3HcsiOj4RlXpers0FRYqQeMG4gzeeHAQ03OrO0FtEqceG2y7OISa1P6m0lTVodgzascGABQMJyz8jnw-KChw93sJS93sG4r3Zb9bTmgu8IaggCsl4dk-Wx0-w8_vxmB2o1fgfaS2s6uu7jhL5VZ_ZZeKJDTr-bZ1yA';
-const AVATAR_ALT =
-  'Editorial warm studio portrait of Zainab Ahmed, a radiant 28-year-old Nigerian woman with stylish braided hair, luminous skin, and an authentic gentle smile, wearing a modern cobalt blue collar shirt, soft warm ambient lighting, natural depth of field, high-fidelity lifestyle photo';
-
 const GENDERS = ['Female', 'Male', 'Prefer not to say'] as const;
-type Gender = (typeof GENDERS)[number];
 
 export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileScreenProps) {
-  const profile = useProfile();
-  const [firstName, setFirstName] = useState(profile.firstName || 'User');
-  const [lastName, setLastName] = useState(profile.lastName || '');
-  const [email, setEmail] = useState(profile.email || '');
-  const [phone, setPhone] = useState(profile.phone || '');
-  const [birthday, setBirthday] = useState('14 October');
-  const [gender, setGender] = useState<Gender>('Female');
-  const [saving, setSaving] = useState(false);
+  const account = useEditProfile();
+  const [firstName, setFirstName] = useState(account.firstName);
+  const [lastName, setLastName] = useState(account.lastName);
+  const [phone, setPhone] = useState(account.phone);
+  const [gender, setGender] = useState(account.gender);
+  const [districtId, setDistrictId] = useState(account.homeDistrictId ?? '');
+  const [touched, setTouched] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [avatar, setAvatar] = useState(account.avatar);
   const [toast, setToast] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const saving = account.save.isPending;
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+
+  // Follow the live profile until the customer edits a field.
+  useEffect(() => {
+    if (touched) return;
+    setFirstName(account.firstName);
+    setLastName(account.lastName);
+    setPhone(account.phone);
+    setGender(account.gender);
+    setDistrictId(account.homeDistrictId ?? '');
+  }, [touched, account.firstName, account.lastName, account.phone, account.gender, account.homeDistrictId]);
+  useEffect(() => setAvatar(account.avatar), [account.avatar]);
+
+  const edit = <T,>(setter: (value: T) => void) => (value: T) => {
+    setTouched(true);
+    setter(value);
+  };
 
   const showToast = (message: string) => {
     setToast(message);
@@ -36,22 +50,49 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
     timers.current.push(timer);
   };
 
-  const memberSinceLabel = (() => {
-    if (!profile.createdAt) return 'New member';
-    const date = new Date(profile.createdAt);
-    if (Number.isNaN(date.getTime())) return 'New member';
-    return `Active member since ${new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date)}`;
-  })();
+  const memberSinceLabel = account.memberSince ? `Active member since ${account.memberSince}` : 'VEMTAP member';
+
+  const pickPhoto = () => fileInput.current?.click();
+
+  const onPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      setAvatar(await account.uploadAvatar(file));
+      showToast('Profile photo updated');
+    } catch (error) {
+      showToast(apiErrorMessage(error, "Couldn't upload your photo"));
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
 
   const saveProfile = () => {
     if (saving) return;
-    setSaving(true);
-    const timer = window.setTimeout(() => {
-      setSaving(false);
-      showToast('Profile updated successfully!');
-    }, 700);
-    timers.current.push(timer);
+    if (!firstName.trim()) {
+      showToast('Enter your first name');
+      return;
+    }
+    account.save.mutate(
+      {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(gender ? { gender } : {}),
+        homeDistrictId: districtId || null,
+      },
+      {
+        onSuccess: () => {
+          setTouched(false);
+          showToast('Profile updated successfully!');
+        },
+        onError: (error) => showToast(apiErrorMessage(error, "Couldn't save your profile. Please try again.")),
+      },
+    );
   };
+
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || 'U';
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
@@ -59,7 +100,7 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
         <div className="w-full max-w-7xl mx-auto px-6 lg:px-12 py-8">
           {toast && (
             <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 transition-all duration-300">
-              <div className="bg-text-primary text-on-primary px-space-md py-space-xs rounded-full shadow-xl flex items-center gap-space-xs text-label-md font-label-md">
+              <div className="bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-full shadow-xl flex items-center gap-space-xs text-label-md font-label-md">
                 <Icon name="check_circle" className="text-[18px] text-badge-discount-text" filled />
                 <span>{toast}</span>
               </div>
@@ -90,13 +131,31 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
             <aside className="w-full flex flex-col gap-6 lg:sticky lg:top-24">
               <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col items-center text-center">
                 <div className="relative">
-                  <div className="w-28 h-28 rounded-full overflow-hidden shadow-md bg-surface-container-high">
-                    <img className="w-full h-full object-cover" src={AVATAR_URL} alt={AVATAR_ALT} />
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(event) => void onPhoto(event.target.files?.[0])}
+                  />
+                  <div className="relative w-28 h-28 rounded-full overflow-hidden shadow-md bg-surface-container-high">
+                    {avatar ? (
+                      <img className="w-full h-full object-cover" src={avatar} alt={`${firstName} ${lastName}`.trim() || 'Profile photo'} />
+                    ) : (
+                      <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-heading-md text-heading-md">
+                        {initials}
+                      </div>
+                    )}
+                    {uploading && (
+                      <div className="absolute inset-0 rounded-full bg-inverse-surface/50 flex items-center justify-center">
+                        <Icon name="progress_activity" className="text-[24px] text-inverse-on-surface animate-spin" />
+                      </div>
+                    )}
                   </div>
                   <button
                     aria-label="Upload new profile picture"
                     type="button"
-                    onClick={() => showToast('Photo selector opened')}
+                    onClick={pickPhoto}
                     className="absolute bottom-0 right-0 w-9 h-9 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
                   >
                     <Icon name="photo_camera" className="text-[18px]" filled />
@@ -104,13 +163,13 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast('Photo selector opened')}
+                  onClick={pickPhoto}
                   className="mt-space-sm text-primary font-button-secondary text-button-secondary hover:opacity-75 transition-opacity"
                 >
                   Change Photo
                 </button>
                 <span className="text-text-tertiary font-caption text-caption mt-space-2xs">
-                  JPG, PNG or WEBP under 5MB
+                  JPG, PNG or WEBP under 4MB
                 </span>
               </div>
 
@@ -121,14 +180,22 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                   </div>
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-space-2xs truncate">
-                      <span className="font-label-md text-label-md text-text-primary truncate">Verified Consumer</span>
-                      <Icon name="check_circle" className="text-[16px] text-badge-discount-text shrink-0" filled />
+                      <span className="font-label-md text-label-md text-text-primary truncate">
+                        {account.emailVerified ? 'Verified Consumer' : 'Consumer'}
+                      </span>
+                      {account.emailVerified && (
+                        <Icon name="check_circle" className="text-[16px] text-badge-discount-text shrink-0" filled />
+                      )}
                     </div>
                     <span className="text-text-secondary font-caption text-caption">{memberSinceLabel}</span>
                   </div>
                 </div>
-                <span className="bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-space-xs py-space-2xs rounded-full shrink-0">
-                  Level 2
+                <span
+                  className={`font-label-sm text-label-sm px-space-xs py-space-2xs rounded-full shrink-0 ${
+                    account.emailVerified ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'
+                  }`}
+                >
+                  {account.emailVerified ? 'Email verified' : 'Email unverified'}
                 </span>
               </div>
             </aside>
@@ -145,7 +212,7 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                       id="firstName"
                       type="text"
                       value={firstName}
-                      onChange={(event) => setFirstName(event.target.value)}
+                      onChange={(event) => edit(setFirstName)(event.target.value)}
                     />
                   </div>
                   <div className="flex flex-col gap-space-2xs">
@@ -157,7 +224,7 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                       id="lastName"
                       type="text"
                       value={lastName}
-                      onChange={(event) => setLastName(event.target.value)}
+                      onChange={(event) => edit(setLastName)(event.target.value)}
                     />
                   </div>
                 </div>
@@ -173,13 +240,17 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                         className="w-full h-[52px] pl-12 pr-24 bg-surface-container-low rounded-xl text-text-primary font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                         id="emailInput"
                         type="email"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
+                        value={account.email}
+                        readOnly
+                        placeholder="No email on file"
+                        title="Your sign-in email can't be changed here"
                       />
-                      <span className="absolute right-3 flex items-center gap-1 bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-                        <Icon name="check" className="text-[13px] text-badge-discount-text" filled />
-                        <span className="text-badge-discount-text font-label-sm text-caption">Verified</span>
-                      </span>
+                      {account.email && account.emailVerified && (
+                        <span className="absolute right-3 flex items-center gap-1 bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
+                          <Icon name="check" className="text-[13px] text-badge-discount-text" filled />
+                          <span className="text-badge-discount-text font-label-sm text-caption">Verified</span>
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -201,56 +272,33 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                         id="phoneInput"
                         type="tel"
                         value={phone}
-                        onChange={(event) => setPhone(event.target.value)}
+                        placeholder="Phone number"
+                        onChange={(event) => edit(setPhone)(event.target.value)}
                       />
-                      <span className="absolute right-3 flex items-center gap-1 bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-                        <Icon name="check" className="text-[13px] text-badge-discount-text" filled />
-                        <span className="text-badge-discount-text font-label-sm text-caption">Verified</span>
-                      </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-space-2xs">
                   <label className="text-text-secondary font-label-sm text-label-sm">Default Shopping District</label>
-                  <button
-                    type="button"
-                    onClick={() => showToast('Opening Abuja neighborhood selector')}
-                    className="h-[52px] w-full bg-surface-container-low rounded-xl px-space-md flex items-center justify-between text-left hover:bg-surface-container-high transition-colors"
-                  >
-                    <div className="flex items-center gap-space-xs min-w-0">
+                  <div className="relative h-[52px] w-full bg-surface-container-low rounded-xl px-space-md flex items-center justify-between focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                    <div className="flex items-center gap-space-xs min-w-0 flex-1">
                       <Icon name="location_on" className="text-[20px] text-primary shrink-0" filled />
-                      <span className="text-text-primary font-body-md text-body-md truncate">
-                        Apo District, Abuja, NG
-                      </span>
+                      <select
+                        aria-label="Default shopping district"
+                        value={districtId}
+                        onChange={(event) => edit(setDistrictId)(event.target.value)}
+                        className="w-full appearance-none bg-transparent border-0 outline-none text-text-primary font-body-md text-body-md truncate cursor-pointer"
+                      >
+                        <option value="">{account.districts.length ? 'Choose your district' : 'No districts available'}</option>
+                        {account.districts.map((district) => (
+                          <option key={district.id} value={district.id}>
+                            {district.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <Icon name="chevron_right" className="text-[20px] text-text-tertiary shrink-0" />
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-space-2xs">
-                  <div className="flex items-center justify-between">
-                    <label className="text-text-secondary font-label-sm text-label-sm" htmlFor="birthdayInput">
-                      Birthday (For merchant perks)
-                    </label>
-                    <span className="text-text-tertiary font-caption text-caption">Optional</span>
-                  </div>
-                  <div className="relative flex items-center">
-                    <Icon
-                      name="featured_seasonal_and_gifts"
-                      className="absolute left-4 text-[20px] text-tertiary shrink-0"
-                      filled
-                    />
-                    <input
-                      className="w-full h-[52px] pl-12 pr-32 bg-surface-container-low rounded-xl text-text-primary font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                      id="birthdayInput"
-                      type="text"
-                      value={birthday}
-                      onChange={(event) => setBirthday(event.target.value)}
-                    />
-                    <span className="absolute right-3 text-badge-discount-text text-label-sm font-label-sm bg-badge-discount-bg px-2 py-0.5 rounded-full shrink-0">
-                      Treats active
-                    </span>
+                    <Icon name="expand_more" className="text-[20px] text-text-tertiary shrink-0 pointer-events-none" />
                   </div>
                 </div>
 
@@ -262,7 +310,7 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                         <button
                           key={option}
                           type="button"
-                          onClick={() => setGender(option)}
+                          onClick={() => edit(setGender)(option)}
                           className="h-9 px-space-md rounded-full bg-surface-tint-blue text-primary font-label-md text-label-md flex items-center gap-1 shadow-sm hover:scale-105 transition-transform"
                         >
                           <Icon name="check" className="text-[16px]" filled />
@@ -272,7 +320,7 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                         <button
                           key={option}
                           type="button"
-                          onClick={() => setGender(option)}
+                          onClick={() => edit(setGender)(option)}
                           className="h-9 px-space-md rounded-full bg-surface-container-low text-text-secondary font-label-md text-label-md hover:bg-surface-container-high transition-colors"
                         >
                           {option}
@@ -290,8 +338,8 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                 <div className="flex flex-col">
                   <span className="text-text-primary font-heading-sm text-label-md">Instant Tap &amp; Checkout Ready</span>
                   <p className="text-text-secondary font-caption text-caption mt-0.5 leading-relaxed">
-                    Your profile metadata ensures contactless NFC redemption and customized dining discounts in Abuja
-                    venues without manual verification.
+                    Your name and phone number are shown to businesses when you redeem a deal, so checkout is quick
+                    and needs no manual verification.
                   </p>
                 </div>
               </div>

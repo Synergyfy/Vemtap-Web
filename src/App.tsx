@@ -5,9 +5,11 @@ import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { isBusinessRole } from './services/sessionService';
+import { isBusinessRole, type SessionUser } from './services/sessionService';
+import { Skeleton, SkeletonGroup } from './components/ui/Skeleton';
 import { useSessionUser } from './hooks/useSessionUser';
-import { SESSION_EXPIRED_EVENT } from './services/api/client';
+import { ApiError, SESSION_EXPIRED_EVENT } from './services/api/client';
+import { businessService } from './services/businessService';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
 import type { CatalogueItem } from './services/catalogueItemsService';
@@ -15,18 +17,20 @@ import { ownerAuthService, OTP_GATE_MESSAGE } from './services/ownerAuthService'
 import { apiErrorMessage } from './services/errorMessages';
 import { startGoogleSignIn, takeGoogleRedirectResult, type GoogleIntent } from './services/googleAuth';
 import { catalogueService } from './services/catalogueService';
+import { messageService } from './services/messageService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { LocationProvider, useLocation } from './context/LocationContext';
+import { DealFiltersProvider } from './context/DealFiltersContext';
 import { AREA_NOT_FOUND, findPlace, getCurrentPlace, type PickedPlace } from './services/currentLocation';
-import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
+import { ClaimsProvider, currentVoucher, rememberGiftLink, useClaims, type ClaimHolder, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
 import { parsePrice } from './utils/format';
+import type { CustomerNotificationDestination } from './utils/customerNotificationDestination';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
 import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
-import { ProductDetailScreen } from './scripts/ProductDetailScreen';
 import { CheckoutScreen } from './scripts/CheckoutScreen';
 import { OrderPlacedScreen } from './scripts/OrderPlacedScreen';
 import { ContactsProvider, useContacts } from './context/ContactsContext';
@@ -55,6 +59,10 @@ import { StartVemtapScreen } from './scripts/StartVemtapScreen';
 import { AccountScreen } from './scripts/AccountScreen';
 import { SettingsScreen } from './scripts/SettingsScreen';
 import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
+import { NotFoundScreen } from './scripts/NotFoundScreen';
+import { GiftRejectScreen } from './scripts/GiftRejectScreen';
+import { VoucherRedeemScreen } from './scripts/VoucherRedeemScreen';
+import { DesktopNotFoundScreen } from './scripts/desktop/DesktopNotFoundScreen';
 import { SupportLegalScreen } from './scripts/SupportLegalScreen';
 import { EditProfileScreen } from './scripts/EditProfileScreen';
 import { RewardsScreen } from './scripts/RewardsScreen';
@@ -120,10 +128,12 @@ import { DesktopSegmentActionsScreen } from './scripts/desktop/DesktopSegmentAct
 import { DesktopSegmentCreateScreen } from './scripts/desktop/DesktopSegmentCreateScreen';
 import { DesktopSegmentDetailScreen } from './scripts/desktop/DesktopSegmentDetailScreen';
 import { DesktopHowToClaimScreen } from './scripts/desktop/DesktopHowToClaimScreen';
+import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
+import { ProductDetailScreen } from './scripts/ProductDetailScreen';
+import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDetailScreen';
 import { DesktopClaimSuccessScreen } from './scripts/desktop/DesktopClaimSuccessScreen';
 import { DesktopGiftSentScreen } from './scripts/desktop/DesktopGiftSentScreen';
 import { DesktopClaimedDealScreen } from './scripts/desktop/DesktopClaimedDealScreen';
-import { DesktopMerchantChatScreen } from './scripts/desktop/DesktopMerchantChatScreen';
 import { DesktopDealTermsScreen } from './scripts/desktop/DesktopDealTermsScreen';
 import { DesktopStorefrontMenuScreen } from './scripts/desktop/DesktopStorefrontMenuScreen';
 import { DesktopCheckoutScreen } from './scripts/desktop/DesktopCheckoutScreen';
@@ -160,13 +170,11 @@ import { HowToClaimScreen } from './scripts/HowToClaimScreen';
 import { ClaimSuccessScreen } from './scripts/ClaimSuccessScreen';
 import { GiftSentScreen, type GiftRecipientSummary } from './scripts/GiftSentScreen';
 import { ClaimedDealScreen } from './scripts/ClaimedDealScreen';
-import { MerchantChatScreen } from './scripts/MerchantChatScreen';
 import { DealTermsScreen } from './scripts/DealTermsScreen';
 import { DiscoverScreen } from './scripts/DiscoverScreen';
 import { MerchantDealsScreen } from './scripts/MerchantDealsScreen';
 import { ProductsCatalogueScreen } from './scripts/ProductsCatalogueScreen';
 import { MenuProductsScreen } from './scripts/MenuProductsScreen';
-import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
 import { BusinessAccountChoiceScreen } from './scripts/BusinessAccountChoiceScreen';
 import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
 import type { ProfileSetupDraft } from './scripts/ProfileSetupScreen';
@@ -282,7 +290,6 @@ import { DesktopFeaturedDealsScreen } from './scripts/desktop/DesktopFeaturedDea
 import { DesktopFiltersScreen } from './scripts/desktop/DesktopFiltersScreen';
 import { DesktopDealDetailScreen } from './scripts/desktop/DesktopDealDetailScreen';
 import { DesktopUrbanGrillStorefrontScreen } from './scripts/desktop/DesktopUrbanGrillStorefrontScreen';
-import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDetailScreen';
 import { DesktopSpaStorefrontScreen } from './scripts/desktop/DesktopSpaStorefrontScreen';
 import { DesktopAllProductsScreen } from './scripts/desktop/DesktopAllProductsScreen';
 import { DesktopAllServicesScreen } from './scripts/desktop/DesktopAllServicesScreen';
@@ -317,9 +324,9 @@ import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealL
 import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
 import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
 import { BusinessStorefrontPreviewScreen } from './scripts/desktop/BusinessStorefrontPreviewScreen';
-import { dealImageList, dealPrimaryImage } from './utils/dealImages';
+import { dealIdFromPath, useDealDetail } from './hooks/useDealDetail';
 import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
-import { MOBILE_ACCOUNT_NAV_EVENT } from './utils/appEvents';
+import { MOBILE_ACCOUNT_NAV_EVENT, SEARCH_PICK_EVENT, type SearchPick } from './utils/appEvents';
 import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
 import { DesktopBusinessBranchPricingScreen } from './scripts/desktop/DesktopBusinessBranchPricingScreen';
 import { DesktopBusinessCustomersScreen } from './scripts/desktop/DesktopBusinessCustomersScreen';
@@ -558,7 +565,9 @@ type Route =
   | 'claim-gift-confirm'
   | 'claimed-contact'
   | 'claimed-terms'
-  | 'admin-referral';
+  | 'admin-referral'
+  | 'not-found'
+  | 'gift-reject';
 
 const ROUTE_PATH: Record<Route, string> = {
   welcome: '/onboarding',
@@ -743,9 +752,17 @@ const ROUTE_PATH: Record<Route, string> = {
   // Platform Admin — deliberately absent from every user nav; admins open it
   // directly. Gating is the backend's job once auth exists.
   'admin-referral': '/admin/referral',
+  'not-found': '/not-found',
+  'gift-reject': '/deals/gift-reject',
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
+// Several routes share a placeholder path (e.g. every business sub-page is `/discover` until a
+// business is chosen). Loading or going Back to that path must open the page it names, not
+// whichever route was listed last (`/discover` resolved to the sample booking confirmation).
+PATH_ROUTE.set(ROUTE_PATH.discover, 'discover');
+PATH_ROUTE.set(ROUTE_PATH.messages, 'messages');
+PATH_ROUTE.set(ROUTE_PATH.orders, 'orders');
 
 const OVERLAY_ROUTES = new Set<Route>([
   'comments',
@@ -835,6 +852,68 @@ function isPortalRoute(route: Route) {
   return PORTAL_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
+/**
+ * Pages of the customer shell: an owner reaching one gets a customer token.
+ * Anything not here and not a portal page (public business pages, sign-in,
+ * help, legal) is neutral and keeps the current token.
+ */
+const CUSTOMER_SHELL_ROUTES = new Set<Route>([
+  ...CLAIM_STEP_ROUTES,
+  'home',
+  'deals',
+  'featured-deals',
+  'filters',
+  'discover',
+  'saved',
+  'referrals',
+  'account',
+  'account-settings',
+  'savings',
+  'notifications',
+  'addresses',
+  'preferences',
+  'settings',
+  'edit-profile',
+  'rewards',
+  'scan',
+  'activity',
+  'dashboard',
+  'orders',
+  'order-detail',
+  'booking-detail',
+  'my-deals',
+  'messages',
+  'conversation',
+  'cart',
+  'checkout',
+  'claim-success',
+  'claimed-deal',
+]);
+
+/** A voucher's own pass page, the link in its QR. */
+const PASS_PATH = '/my/claimed-deal/';
+const passIdFromPath = (path: string) => (path.startsWith(PASS_PATH) ? decodeURIComponent(path.slice(PASS_PATH.length).replace(/\/+$/, '')) || null : null);
+const pathRef = (value: string): string | null => {
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded && !decoded.includes('/') ? decoded : null;
+  } catch {
+    return null;
+  }
+};
+const bookingRefFromPath = (path: string): string | null => {
+  const match = /^\/orders\/booking\/([^/]+)$/.exec(path);
+  return match ? pathRef(match[1]) : null;
+};
+const conversationRefFromPath = (path: string): string | null => {
+  const match = /^\/messages\/(?:conversation\/)?([^/]+)$/.exec(path);
+  return match && match[1] !== 'conversation' ? pathRef(match[1]) : null;
+};
+const orderRefFromPath = (path: string): string | null => {
+  const match = /^\/orders\/([^/]+)$/.exec(path);
+  return match && match[1] !== 'booking' && match[1] !== 'order' ? pathRef(match[1]) : null;
+};
+
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
 ]);
@@ -846,9 +925,59 @@ const AUTH_INTENT_KEY = 'vemtap_auth_intent';
 
 const hasOnboarded = () => window.localStorage.getItem(ONBOARDED_KEY) === '1';
 
+/** Live: signed-in customer pages; signed out (or an ended session) goes to onboarding. */
+const SIGNED_IN_ROUTES = new Set<Route>([
+  'deals',
+  'featured-deals',
+  'filters',
+  'discover',
+  'saved',
+  'dashboard',
+  'account',
+  'account-settings',
+  'settings',
+  'savings',
+  'rewards',
+  'notifications',
+  'addresses',
+  'preferences',
+  'edit-profile',
+  'referrals',
+  'activity',
+  'orders',
+  'order-detail',
+  'booking-detail',
+  'my-deals',
+  'messages',
+  'conversation',
+  // Post-sign-up steps: the account exists before these open.
+  'location-permission',
+  'manual-location',
+  'confirm-location',
+  'discovering',
+]);
+
+/** Sign-up and sign-in pages: a signed-in visitor opening one returns to their shell. */
+const SIGNED_OUT_ROUTES = new Set<Route>([
+  'welcome',
+  'discover-deals',
+  'start-vemtap',
+  'auth-code',
+  'business-auth',
+  'sign-in',
+  'forgot-pin',
+  'verify-email',
+  'profile-setup',
+]);
+const isSignedOutPath = (path: string) => {
+  const found = PATH_ROUTE.get(path);
+  return found !== undefined && SIGNED_OUT_ROUTES.has(found);
+};
+
 function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
   if (DESKTOP_ONLY_ROUTES.has(found) && !isDesktop) return authed ? 'home' : 'welcome';
   if (authed) return found;
+  if (hasApiConfig() && SIGNED_IN_ROUTES.has(found)) return 'welcome';
   if (CLAIM_STEP_ROUTES.has(found)) return 'claim-auth';
   if (AUTH_ROUTES.has(found)) return 'welcome';
   return found;
@@ -856,8 +985,9 @@ function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
 
 function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSlug?: string): Route {
   switch (section) {
+    // The bundled demo storefront sub-pages are retired: their links land on the live business page.
     case 'deals':
-      return 'storefront';
+      return 'business-profile';
     case 'products':
       return 'product-detail';
     case 'checkout':
@@ -865,11 +995,11 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
     case 'order-placed':
       return 'order-placed';
     case 'menu':
-      return 'storefront-menu';
+      return 'business-profile';
     case 'services':
-      return serviceSlug ? 'service-detail' : 'spa-services';
+      return serviceSlug ? 'service-detail' : 'business-profile';
     case 'shop':
-      return 'spa-storefront';
+      return 'business-profile';
     case 'booking':
       return 'spa-booking';
     case 'booking/checkout':
@@ -903,11 +1033,22 @@ function dealDetailPath(deal?: ClaimDealSummary | null): string {
  * The route a URL opens. `resume` (the first page load only, never Back/Forward)
  * reopens an unfinished business sign-up or setup from the bare entry URL.
  */
-function entryRoute(path: string, authed: boolean, isDesktop: boolean, resume = false): Route {
+function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume = false): Route {
+  const path = rawPath.replace(/\/+$/, '') || '/';
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
+  if (path === ROUTE_PATH['gift-reject']) return 'gift-reject';
   if (path.startsWith('/deals/')) return 'deal-detail';
+  if (path.startsWith(PASS_PATH)) return guardRoute('claimed-deal', authed, isDesktop);
+  if (bookingRefFromPath(path)) return guardRoute('booking-detail', authed, isDesktop);
+  if (orderRefFromPath(path)) return guardRoute('order-detail', authed, isDesktop);
+  if (conversationRefFromPath(path)) return guardRoute('conversation', authed, isDesktop);
   const direct = PATH_ROUTE.get(path);
+  if (authed && hasApiConfig() && isSignedOutPath(path)) return 'home';
+  // A page load can't restore a sign-up in progress unless a business one was saved.
+  if (resume && !authed && hasApiConfig() && (direct === 'verify-email' || direct === 'profile-setup') && !getBusinessSignup()?.email) {
+    return 'start-vemtap';
+  }
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
   }
@@ -919,12 +1060,14 @@ function entryRoute(path: string, authed: boolean, isDesktop: boolean, resume = 
       isDesktop,
     );
   }
+  if (direct === undefined && path !== '/') return 'not-found';
   // Live mode: the customer home is for signed-in users only — "onboarded on
   // this device before" survives sign-out and expired sessions. An unfinished
-  // business sign-up or setup reopens on the page after the last one completed.
+  // business sign-up reopens where it stopped. Signed-in accounts always land on
+  // home: unfinished setup resumes only from "Set up your business on VEMTAP".
   if (hasApiConfig()) {
     if (!authed) return (resume && getBusinessSignup()?.stage) || 'welcome';
-    return resume && hasUnfinishedBusinessSetup() ? 'business-onboarding' : 'home';
+    return 'home';
   }
   return (authed || hasOnboarded()) ? 'home' : 'welcome';
 }
@@ -934,6 +1077,7 @@ export default function App() {
     <AuthProvider>
       <ProfileProvider>
         <LocationProvider>
+          <DealFiltersProvider>
           <ClaimsProvider>
             <OrdersProvider>
               <ContactsProvider>
@@ -956,6 +1100,7 @@ export default function App() {
               </ContactsProvider>
             </OrdersProvider>
           </ClaimsProvider>
+          </DealFiltersProvider>
         </LocationProvider>
       </ProfileProvider>
     </AuthProvider>
@@ -964,13 +1109,20 @@ export default function App() {
 
 /** The result Google sent back to `/google-callback`, read once per page load. */
 const GOOGLE_REDIRECT = takeGoogleRedirectResult();
+/** The URL this tab opened; a protected one is returned to after signing in. */
+const ENTRY_PATH = window.location.pathname;
+rememberGiftLink(window.location.search);
+const GIFT_REJECT_TOKEN = new URLSearchParams(window.location.search).get('token') ?? '';
+const RETURN_PATH_KEY = 'vemtap_return_to';
 
 function AppInner() {
-  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession } = useAuth();
-  const sessionUser = useSessionUser().data;
+  const { authed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession, switchShell } = useAuth();
+  const sessionQuery = useSessionUser();
+  const sessionUser = sessionQuery.data;
   // A live owner already has their business identity: business entry points
   // should open their dashboard instead of starting sign-up again.
-  const isBusinessSession = hasApiConfig() && !!sessionUser && isBusinessRole(sessionUser.role);
+  // Includes an owner whose token is currently scoped to the customer shell.
+  const isBusinessSession = hasApiConfig() && !!sessionUser && (Boolean(sessionUser.businessRole) || isBusinessRole(sessionUser.role));
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -1042,6 +1194,28 @@ function AppInner() {
   const [dealFrom, setDealFrom] = useState<Route>('home');
   const [selectedDeal, setSelectedDeal] = useState<ClaimDealSummary | null>(null);
   const [commentsModalOnly, setCommentsModalOnly] = useState(false);
+  const dealChatOpening = useRef(false);
+  const dealSheetOpen = useRef(false);
+  // A reloaded or shared /deals/<title>-<id> link has no selected deal yet, so its id comes from the URL.
+  // On a deal's own page its link decides the deal, so refresh, Back and shared links open the right one.
+  const liveDeal = useDealDetail((route === 'deal-detail' ? dealIdFromPath(window.location.pathname) : undefined) ?? selectedDeal?.id ?? dealIdFromPath(window.location.pathname));
+  const liveDealDetail = liveDeal.detail;
+  useEffect(() => {
+    if (!liveDealDetail) return;
+    // The claim flow, sheets and share page read the selected deal, so keep it on the live values.
+    setSelectedDeal({
+      id: liveDealDetail.id,
+      title: liveDealDetail.title,
+      business: liveDealDetail.businessName,
+      location: liveDealDetail.address ?? liveDealDetail.branchName ?? undefined,
+      price: liveDealDetail.price,
+      oldPrice: liveDealDetail.oldPrice,
+      image: liveDealDetail.image,
+      images: liveDealDetail.images,
+      discountLabel: liveDealDetail.discountPercent > 0 ? `${liveDealDetail.discountPercent}% OFF` : undefined,
+      commentCount: liveDealDetail.reviewsCount,
+    });
+  }, [liveDealDetail]);
   const [bizFrom, setBizFrom] = useState<Route>('discover');
   const [profileFrom, setProfileFrom] = useState<Route>('discover');
   const [catalogueFrom, setCatalogueFrom] = useState<Route>('storefront');
@@ -1049,6 +1223,11 @@ function AppInner() {
   const [detailProduct, setDetailProduct] = useState<CatalogueProduct | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return (match?.productId ? findProduct(match.productId) : undefined) ?? null;
+  });
+  /** The live product/service page: `/business/<code>/products/<itemId>`. */
+  const [liveItem, setLiveItem] = useState<{ code: string; id: string } | null>(() => {
+    const match = resolveBusinessPath(window.location.pathname);
+    return match?.productId ? { code: match.business.slug, id: match.productId } : null;
   });
   const [detailService, setDetailService] = useState<SpaCatalogueService | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
@@ -1069,14 +1248,23 @@ function AppInner() {
    */
   const [businessChoiceOpen, setBusinessChoiceOpen] = useState(false);
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
-  const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
-  const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
+  const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(() => orderRefFromPath(window.location.pathname) ?? undefined);
+  const [activeBookingRef, setActiveBookingRef] = useState<string | undefined>(() => bookingRefFromPath(window.location.pathname) ?? undefined);
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
+  /** Where "How to Claim" was opened: a deal page (claim that deal) or the Deals feed (no deal to claim). */
+  const [howToClaimFrom, setHowToClaimFrom] = useState<Route>('deal-detail');
+  const openHowToClaim = (from: Route) => {
+    setHowToClaimFrom(from);
+    setRoute('how-to-claim');
+  };
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
-  const [activeConversation, setActiveConversation] = useState('urban');
+  // The voucher picked on the dashboard, so its pass and contact sheet show that one.
+  const [dashboardClaimRef, setDashboardClaimRef] = useState<string | null>(null);
+  const [activeConversation, setActiveConversation] = useState(() => conversationRefFromPath(window.location.pathname) ?? '');
   useCustomerMessagingRealtime(authed);
   useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
   const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
+  const [giftNote, setGiftNote] = useState('');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
   const [claimSelfConfirmOpen, setClaimSelfConfirmOpen] = useState(false);
@@ -1088,7 +1276,8 @@ function AppInner() {
   const [posSalePoints, setPosSalePoints] = useState(0);
   /** Points manually awarded to the mobile-flow customer during the sale. */
   const [posCustomerBonus, setPosCustomerBonus] = useState(0);
-  const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
+  // Live: no sample customer — a real one is picked before these screens open.
+  const [posDossierCustomer, setPosDossierCustomer] = useState(() => (hasApiConfig() ? '' : 'Michael James'));
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>([]);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
@@ -1172,7 +1361,6 @@ function AppInner() {
   };
 
   const resolveRoutePath = useCallback((target: Route, overrideDeal?: ClaimDealSummary | null) => {
-    const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : null;
     const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : null;
     const dealForRoute = overrideDeal ?? selectedDeal ?? null;
 
@@ -1198,13 +1386,13 @@ function AppInner() {
       case 'service-detail':
         return detailService && activeSpaBusiness ? servicePath(activeSpaBusiness.slug, detailService.slug) : '/discover';
       case 'product-detail':
-        return detailProduct && activeUrbanBusiness ? productPath(activeUrbanBusiness.slug, detailProduct.id) : '/discover';
+        return liveItem ? productPath(liveItem.code, liveItem.id) : '/discover';
       case 'deal-detail':
         return dealForRoute ? dealDetailPath(dealForRoute) : '/deals';
       default:
         return ROUTE_PATH[target];
     }
-  }, [detailProduct, detailService, selectedBusiness, selectedDeal]);
+  }, [liveItem, detailService, selectedBusiness, selectedDeal]);
 
   const setRoute = (target: Route, nextDeal?: ClaimDealSummary | null) => {
     if (target === route) return;
@@ -1226,6 +1414,12 @@ function AppInner() {
 
   const startCheckout = () => {
     if (cart.count === 0) return;
+    if (hasApiConfig() && !authed) {
+      // Orders belong to an account; the cart waits through sign-in.
+      window.sessionStorage.setItem(RETURN_PATH_KEY, ROUTE_PATH.cart);
+      setRoute('sign-in');
+      return;
+    }
     setRoute('checkout');
   };
 
@@ -1278,32 +1472,143 @@ function AppInner() {
     if (authed) clearBusinessSignup();
   }, [authed]);
 
-  // Live: an owner opening the app with setup unfinished (saved on their
-  // account, e.g. on another device) goes back to it, once per page load.
-  const setupResumeChecked = useRef(false);
+  // The page decides the shell: an owner reaching a business page by any means
+  // (link, Back, reload) gets a business token, and a customer page a customer
+  // token. Neutral pages keep what they have. Held while a sign-in or "Set up
+  // your business" is choosing where to go.
+  const [shellHold, setShellHold] = useState(Boolean(GOOGLE_REDIRECT));
+  // A signed-in visitor opened a sign-up or sign-in page (URL, Back): their
+  // shell is only known once the session loads.
+  const [returningToShell, setReturningToShell] = useState(
+    () => authed && hasApiConfig() && !GOOGLE_REDIRECT && isSignedOutPath(window.location.pathname),
+  );
+  const [shellSwitchFailed, setShellSwitchFailed] = useState<Route | null>(null);
+  const shellSwitchInFlight = useRef(false);
+  const onBusinessPage = isPortalRoute(route) || route === 'business-onboarding' || route === 'business-verification';
+  // A scanned voucher that isn't this customer's: a business account scans it for redeeming.
+  const scanNeedsBusiness =
+    route === 'claimed-deal' &&
+    !claims.claimsLoading &&
+    Boolean(passIdFromPath(window.location.pathname)) &&
+    !claims.claims.some((claim) => claim.id === passIdFromPath(window.location.pathname) && !claim.sentForOther);
+  const shellRoleNeeded: 'Owner' | 'Manager' | 'Staff' | 'Customer' | null = shellHold || returningToShell
+    ? null
+    : scanNeedsBusiness && sessionUser?.businessRole && sessionUser.role === 'Customer'
+      ? sessionUser.businessRole
+    : onBusinessPage && sessionUser?.businessRole && sessionUser.role === 'Customer'
+      ? sessionUser.businessRole
+      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && !passIdFromPath(window.location.pathname) && isBusinessRole(sessionUser?.role)
+        ? 'Customer'
+        : null;
+  const shellSwitching = shellRoleNeeded !== null && shellSwitchFailed !== route;
   useEffect(() => {
-    if (!isBusinessSession || setupResumeChecked.current) return;
-    setupResumeChecked.current = true;
-    void hydrateBusinessSetupFromServer().then((saved) => {
-      const current = routeRef.current;
-      if (!hasUnfinishedBusinessSetup(saved) || (current !== 'home' && current !== 'welcome')) return;
-      setBusinessSetupSkipIntro(true);
-      setRouteState('business-onboarding');
-    });
-  }, [isBusinessSession]);
+    if (!shellSwitching || !shellRoleNeeded || shellSwitchInFlight.current) return;
+    shellSwitchInFlight.current = true;
+    const failedOn = route;
+    void switchShell(shellRoleNeeded)
+      .then(() => setShellSwitchFailed(null))
+      .catch((error) => {
+        console.error('Could not switch shell:', error);
+        // Show the page anyway; it reports its own errors.
+        setShellSwitchFailed(failedOn);
+      })
+      .finally(() => {
+        shellSwitchInFlight.current = false;
+      });
+  }, [shellSwitching, shellRoleNeeded, route, switchShell]);
+
+  // Business pages need a business: plain customers never see them, and an owner
+  // without one goes home. Finished owners have no setup to open. Only a saved
+  // run keeps /business-onboarding, including Back from its verification step.
+  const plainCustomerOnBusinessPage =
+    hasApiConfig() &&
+    onBusinessPage &&
+    !!sessionUser &&
+    !sessionUser.businessRole &&
+    (sessionUser.role === 'Customer' || sessionUser.role === 'USER');
+  const [accessChecked, setAccessChecked] = useState<Route | null>(null);
+  const accessCheckPending =
+    hasApiConfig() &&
+    !!sessionUser &&
+    !shellHold &&
+    !returningToShell &&
+    !shellSwitching &&
+    accessChecked !== route &&
+    ((isPortalRoute(route) && sessionUser.role === 'Owner' && !sessionUser.businessId) ||
+      (route === 'business-onboarding' && isBusinessRole(sessionUser.role) && Boolean(sessionUser.businessId)));
+  useEffect(() => {
+    if (plainCustomerOnBusinessPage) setRouteState('home');
+  }, [plainCustomerOnBusinessPage]);
+  useEffect(() => {
+    if (!accessCheckPending) return;
+    let ignore = false;
+    const checkedRoute = route;
+    const settle = (next: Route | null) => {
+      if (ignore) return;
+      setAccessChecked(checkedRoute);
+      if (next) setRouteState(next);
+    };
+    if (checkedRoute === 'business-onboarding') {
+      void hydrateBusinessSetupFromServer().then((saved) => {
+        const runOpen = hasUnfinishedBusinessSetup(saved) || (saved?.screensDone && saved.verificationState !== 'complete');
+        settle(runOpen ? null : 'business-overview');
+      });
+    } else {
+      // The session can predate a business setup just created, so ask the API.
+      void businessService
+        .myBusiness()
+        .then((business) => settle(business?.id ? null : 'home'))
+        .catch((error) => settle(error instanceof ApiError && error.status === 404 ? 'home' : null));
+    }
+    return () => {
+      ignore = true;
+    };
+  }, [accessCheckPending, route]);
+
+  // Remember the protected page a signed-out visitor opened, for after sign-in.
+  useEffect(() => {
+    const opened = PATH_ROUTE.get(ENTRY_PATH);
+    if (hasApiConfig() && !authed && passIdFromPath(ENTRY_PATH)) window.sessionStorage.setItem(RETURN_PATH_KEY, ENTRY_PATH);
+    if (!hasApiConfig() || authed || !opened || opened === 'home') return;
+    if (SIGNED_IN_ROUTES.has(opened) || isPortalRoute(opened)) window.sessionStorage.setItem(RETURN_PATH_KEY, ENTRY_PATH);
+    // Only the page this tab opened on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A reload loses which chat was open; the inbox still has it.
+  useEffect(() => {
+    if (route === 'conversation' && !activeConversation) setRouteState('messages');
+  }, [route, activeConversation]);
+
+  // A reload loses the just-claimed voucher; its wallet still has it.
+  useEffect(() => {
+    if (route === 'claim-success' && !activeClaim) setRouteState('my-deals');
+  }, [route, activeClaim]);
+
+  // The referral admin page is for platform admins only.
+  const adminCheckPending =
+    hasApiConfig() && route === 'admin-referral' && (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin'));
+  useEffect(() => {
+    if (!hasApiConfig() || route !== 'admin-referral') return;
+    if (!authed) setRouteState('sign-in');
+    else if (sessionUser && sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin') setRouteState('home');
+  }, [authed, route, sessionUser]);
 
   // Opening a portal page signed out (with the API configured) goes to sign in;
-  // the customer home without a session (signed out, expired) goes to onboarding.
+  // customer pages without a session (signed out, expired) go to onboarding.
   useEffect(() => {
     if (!hasApiConfig() || authed) return;
     if (isPortalRoute(route)) setRouteState('sign-in');
-    else if (route === 'home') setRouteState('welcome');
+    else if (route === 'home' || SIGNED_IN_ROUTES.has(route)) setRouteState('welcome');
   }, [authed, route]);
 
   useEffect(() => {
     const expected =
-      route === 'customer-invite-join'
-        ? null // dynamic /join/{slug}?invite=… path — never overwritten
+      route === 'customer-invite-join' ||
+      route === 'not-found' ||
+      (route === 'claimed-deal' && passIdFromPath(window.location.pathname)) ||
+      (route === 'deal-detail' && window.location.pathname.startsWith('/deals/'))
+        ? null // dynamic /join/{slug}?invite=…, a deal's own link and unknown paths — never overwritten
         : resolveRoutePath(route);
     if (expected && window.location.pathname !== expected) {
       window.history.replaceState(null, '', expected);
@@ -1319,13 +1624,20 @@ function AppInner() {
     const onPopState = () => {
       const path = window.location.pathname;
       setRouteState(entryRoute(path, authed, isDesktop));
+      const orderRef = orderRefFromPath(path);
+      if (orderRef) setActiveOrderRef(orderRef);
+      const bookingRef = bookingRefFromPath(path);
+      if (bookingRef) setActiveBookingRef(bookingRef);
+      const conversationRef = conversationRefFromPath(path);
+      if (conversationRef) setActiveConversation(conversationRef);
+      if (authed && hasApiConfig() && isSignedOutPath(path)) setReturningToShell(true);
       const match = resolveBusinessPath(path);
       if (match) {
         setSelectedBusiness((prev) => (prev && prev.slug === match.business.slug ? prev : match.business));
       }
-      if (match?.section === 'products') {
-        const base = findProduct(match.productId);
-        if (base) setDetailProduct((prev) => (prev && prev.id === base.id ? prev : base));
+      if (match?.section === 'products' && match.productId) {
+        const next = { code: match.business.slug, id: match.productId };
+        setLiveItem((prev) => (prev && prev.code === next.code && prev.id === next.id ? prev : next));
       }
       if (match?.section === 'services' && match.serviceSlug) {
         const base = findSpaService(match.serviceSlug);
@@ -1337,12 +1649,11 @@ function AppInner() {
   }, [authed, isDesktop, route, detailProduct, detailService, resolveRoutePath, selectedBusiness]);
 
   useEffect(() => {
-    if (route !== 'product-detail' || detailProduct) return;
+    if (route !== 'product-detail' || liveItem) return;
     const match = resolveBusinessPath(window.location.pathname);
-    const base = match?.productId ? findProduct(match.productId) : undefined;
-    if (base) setDetailProduct(base);
-    else setRouteState('storefront-products');
-  }, [route, detailProduct]);
+    if (match?.productId) setLiveItem({ code: match.business.slug, id: match.productId });
+    else setRouteState('discover');
+  }, [route, liveItem]);
 
   /**
    * Capture a referral code from the URL once, before the path-sync effect
@@ -1380,57 +1691,87 @@ function AppInner() {
   const openDeal = async (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
 
-    let nextDeal = deal ?? null;
-    const offerId = nextDeal && typeof nextDeal.id !== 'undefined' ? String(nextDeal.id) : '';
-    if (offerId) {
-      try {
-        const response = await catalogueService.getPublicOfferDetails(offerId);
-        const payload = response && typeof response === 'object' ? (response as Record<string, unknown>) : null;
-        if (payload) {
-          const nestedItem = Array.isArray(payload.items) && typeof payload.items[0] === 'object' ? (payload.items[0] as Record<string, unknown>) : null;
-          const business = payload.business && typeof payload.business === 'object' ? (payload.business as Record<string, unknown>) : {};
-          nextDeal = {
-            ...nextDeal,
-            title: typeof payload.title === 'string' && payload.title.trim() ? payload.title : nextDeal?.title,
-            business:
-              typeof payload.businessName === 'string' && payload.businessName.trim()
-                ? payload.businessName
-                : typeof business.name === 'string' && business.name.trim()
-                  ? business.name
-                  : nextDeal?.business,
-            location:
-              typeof payload.location === 'string' && payload.location.trim()
-                ? payload.location
-                : typeof business.location === 'string' && business.location.trim()
-                  ? business.location
-                  : nextDeal?.location,
-            price:
-              typeof payload.price === 'number'
-                ? payload.price
-                : typeof nestedItem?.price === 'number'
-                  ? nestedItem.price
-                  : nextDeal?.price,
-            oldPrice:
-              typeof payload.originalPrice === 'number'
-                ? payload.originalPrice
-                : typeof nestedItem?.originalPrice === 'number'
-                  ? nestedItem.originalPrice
-                  : nextDeal?.oldPrice,
-            discountLabel:
-              typeof payload.badge === 'string' && payload.badge.trim() ? payload.badge : nextDeal?.discountLabel,
-            // Same rule as the deal cards, so the card photo and the detail hero match.
-            image: dealPrimaryImage(payload) ?? nextDeal?.image,
-            images: dealImageList(payload),
-          };
-        }
-      } catch {
-        // Keep the clicked offer visible even when the detail lookup is unavailable.
-      }
-    }
-
-    setSelectedDeal(nextDeal ?? null);
-    setRoute('deal-detail', nextDeal ?? null);
+    // Open the page straight away: its skeleton shows until `useDealDetail` loads the deal.
+    setSelectedDeal(deal ?? null);
+    setRoute('deal-detail', deal ?? null);
+    // Reopening the same deal refreshes its counts in the background.
+    liveDeal.reload();
   };
+
+  const openCustomerNotificationDestination = (destination: CustomerNotificationDestination) => {
+    const target = entryRoute(destination.path, authed, isDesktop);
+    if (target === 'not-found') return;
+
+    if (destination.kind === 'order') setActiveOrderRef(destination.ref);
+    if (destination.kind === 'booking') setActiveBookingRef(destination.ref);
+    if (destination.kind === 'conversation') setActiveConversation(destination.ref);
+    if (destination.path.startsWith(PASS_PATH)) setClaimedFrom('notifications');
+    if (destination.kind === 'deal') setSelectedDeal(null);
+
+    if (window.location.pathname !== destination.path) {
+      window.history.pushState(null, '', destination.path);
+    }
+    setRouteState(target);
+    if (destination.kind === 'deal') liveDeal.reload();
+  };
+
+  /** Opens a live business page by its public code (`uniqueCode`). */
+  const openBusiness = (ref: { code: string; id?: string; name?: string }, from: Route) => {
+    const next: BusinessProfileRef = { slug: ref.code, id: ref.id ?? '', name: ref.name ?? '', venue: 'urban' };
+    setSelectedBusiness(next);
+    setProfileFrom(from);
+    const target = businessPath(next);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('business-profile');
+  };
+
+  /** Opens a live product/service page for an item of the business with this code. */
+  const openItem = (code: string, itemId: string, from: Route) => {
+    setLiveItem({ code, id: itemId });
+    setDetailFrom(from);
+    const target = productPath(code, itemId);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('product-detail');
+  };
+
+  /** Opens the business behind a deal: its real code comes from the deal's public details. */
+  const openBusinessForDeal = async (deal: ClaimDealSummary | null | undefined, from: Route) => {
+    const offerId = deal?.id != null ? String(deal.id) : '';
+    if (!offerId) return;
+    try {
+      const response = await catalogueService.getPublicOfferDetails(offerId);
+      const record = response && typeof response === 'object' ? (response as Record<string, unknown>) : {};
+      const payload = (record.data && typeof record.data === 'object' ? record.data : record) as Record<string, unknown>;
+      const business = (payload.business && typeof payload.business === 'object' ? payload.business : {}) as Record<string, unknown>;
+      const code = typeof business.uniqueCode === 'string' && business.uniqueCode ? business.uniqueCode : typeof business.slug === 'string' ? business.slug : '';
+      if (code) openBusiness({ code, id: typeof business.id === 'string' ? business.id : undefined, name: typeof business.name === 'string' ? business.name : undefined }, from);
+    } catch {
+      // The deal page stays open; nothing to navigate to without the business's code.
+    }
+  };
+
+  // Global search (desktop navbar / mobile home) → open the picked deal or business, or the Deals page with the term.
+  const [dealsSearch, setDealsSearch] = useState({ query: '', key: 0 });
+  const searchPickRef = useRef<(pick: SearchPick) => void>(() => undefined);
+  searchPickRef.current = (pick: SearchPick) => {
+    if (pick.kind === 'deal') void openDeal(route, pick.deal);
+    else if (pick.kind === 'business') openBusiness({ code: pick.code, id: pick.id, name: pick.name }, route);
+    else {
+      setDealsSearch((prev) => ({ query: pick.query, key: prev.key + 1 }));
+      setRoute('deals');
+    }
+  };
+  useEffect(() => {
+    const onPick = (event: Event) => {
+      const pick = (event as CustomEvent<SearchPick>).detail;
+      if (pick) searchPickRef.current(pick);
+    };
+    window.addEventListener(SEARCH_PICK_EVENT, onPick);
+    return () => window.removeEventListener(SEARCH_PICK_EVENT, onPick);
+  }, []);
+  useEffect(() => {
+    if (route !== 'deals' && dealsSearch.query) setDealsSearch((prev) => ({ ...prev, query: '' }));
+  }, [route, dealsSearch.query]);
 
   const openDealComments = (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
@@ -1440,7 +1781,7 @@ function AppInner() {
   };
 
   const startClaim = (from: Route) => {
-    if (claimed) {
+    if (dealClaimed) {
       setClaimedFrom(from);
       setRoute('claimed-deal');
       return;
@@ -1448,52 +1789,105 @@ function AppInner() {
     setRoute(authed ? 'claim-confirm' : 'claim-auth');
   };
 
-  const completeClaim = async () => {
+  /** The deal as the page shows it, frozen onto the voucher. */
+  const claimDealFields = () => ({
+    dealTitle: liveDeal.detail?.title ?? selectedDeal?.title,
+    dealBusiness: liveDeal.detail?.businessName ?? selectedDeal?.business,
+    dealImage: liveDeal.detail?.image ?? selectedDeal?.image,
+    dealLocation: liveDeal.detail?.address ?? selectedDeal?.location,
+    dealPrice: liveDeal.detail?.price ?? parsePrice(selectedDeal?.price),
+    dealOldPrice: liveDeal.detail?.oldPrice ?? (parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price)),
+    discountLabel: selectedDeal?.discountLabel,
+    dealPhone: liveDeal.detail?.phone ?? undefined,
+    branchId: liveDeal.detail?.branchId ?? undefined,
+    dealLatitude: liveDeal.detail?.latitude ?? undefined,
+    dealLongitude: liveDeal.detail?.longitude ?? undefined,
+    terms: liveDeal.detail?.terms,
+  });
+
+  // A claim is two API steps: a code is emailed to the holder, then the code is
+  // traded for the voucher. Self claims trade it on the code step; claims for
+  // someone else trade it after their summary.
+  const [claimHolder, setClaimHolder] = useState<ClaimHolder | null>(null);
+  const [claimCode, setClaimCode] = useState('');
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
+
+  const sendClaimCode = async (holder: ClaimHolder) => {
+    const offerId = selectedDeal?.id ? String(selectedDeal.id) : liveDeal.detail?.id;
+    setClaimHolder(holder);
+    setClaimError(null);
+    setClaimBusy(true);
+    try {
+      if (!offerId) throw new Error('This deal can’t be claimed right now.');
+      await claims.requestClaimCode(offerId, holder);
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t send the code. Please try again.'));
+    } finally {
+      setClaimBusy(false);
+    }
+  };
+
+  const holderFromRecipient = (recipient: { name: string; email: string; phone?: string }): ClaimHolder => {
+    const [firstName = '', ...rest] = recipient.name.trim().split(/\s+/);
+    return { firstName, lastName: rest.join(' '), email: recipient.email, phone: recipient.phone ?? '' };
+  };
+
+  const completeClaim = async (code = claimCode): Promise<boolean> => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : liveDeal.detail?.id,
         kind: claimRecipient ? 'someone-else' : 'self',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
+        ...claimDealFields(),
+        code: hasApiConfig() ? code : undefined,
+        email: claimHolder?.email,
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
         recipient: claimRecipient ?? undefined,
       });
       setActiveClaim(record);
       setClaimRecipient(null);
+      setClaimHolder(null);
+      setClaimCode('');
       markClaimed();
+      claimSuccessRef.current?.();
+      claimSuccessRef.current = null;
       setRoute('claim-success');
-    } catch {
-      // Do not continue to the success screen unless the backend confirms the claim.
+      return true;
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t confirm this claim. Please try again.'));
+      return false;
+    } finally {
+      setClaimBusy(false);
     }
   };
 
+  /** Back on the code step with the reason shown (a wrong or expired code). */
+  const backToClaimCode = () => setRoute('claim-verify');
+
   const completeGift = async () => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
         offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
         kind: 'gift',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
+        ...claimDealFields(),
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        note: giftNote,
         recipient: giftRecipient
           ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
           : undefined,
       });
       setActiveClaim(record);
       markClaimed();
+      setClaimDialog(null);
       setRoute('gift-sent');
-    } catch {
-      // Keep the user on the claim flow until the backend confirms the gift claim.
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t send this gift. Please try again.'));
+    } finally {
+      setClaimBusy(false);
     }
   };
 
@@ -1523,34 +1917,14 @@ function AppInner() {
   /** BUG-005/BUG-006/BUG-009 — "Claim for myself" only completes after the identity confirmation step. */
   const confirmSelfClaim = async () => {
     setClaimSelfConfirmOpen(false);
-    const onClaimed = claimSuccessRef.current;
-    claimSuccessRef.current = null;
-    onClaimed?.();
-
-    try {
-      const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
-        kind: 'self',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
-        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      });
-      setActiveClaim(record);
-      if (claimed) {
-        setClaimedFrom(route);
-        setRoute('claimed-deal');
-        return;
-      }
-      markClaimed();
-      setRoute('claim-success');
-    } catch {
-      // Do not transition to success until backend confirms the claim.
+    setClaimRecipient(null);
+    if (!hasApiConfig()) {
+      await completeClaim();
+      return;
     }
+    const holder = { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone };
+    setRoute('claim-verify');
+    await sendClaimCode(holder);
   };
 
   const [claimPopupOpen, setClaimPopupOpen] = useState(false);
@@ -1594,13 +1968,14 @@ function AppInner() {
    * BUG-006/BUG-008/BUG-009: desktop previously stopped at a toast. Every claim
    * method now lands on a real outcome screen carrying the recorded claim.
    */
-  const finishDesktopClaim = (kind: 'self' | 'gift' | 'someone-else') => {
-    setClaimDialog(null);
+  const finishDesktopClaim = async (kind: 'self' | 'gift' | 'someone-else') => {
     if (kind === 'gift') {
-      completeGift();
+      // Stays open on failure so the reason shows on the review step.
+      await completeGift();
       return;
     }
-    completeClaim();
+    setClaimDialog(null);
+    if (!(await completeClaim())) setClaimDialog('verify');
   };
 
   useEffect(() => {
@@ -1625,11 +2000,8 @@ function AppInner() {
   const accountNav = (target: AccountTarget) => {
     if (target === 'business-onboarding') {
       // An owner switching to the customer view still owns a business.
-      if (isBusinessSession) {
-        setRoute('business-overview');
-        return;
-      }
-      setBusinessOnboardingFrom('account');
+      void openBusinessSetup('account');
+      return;
     }
     setRoute(target);
   };
@@ -1652,8 +2024,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
       case 'sign-in':
         setSignInFrom('welcome');
@@ -1698,6 +2069,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'saved':
+        setRoute('saved');
+        break;
       case 'notifications':
         setRoute('notifications');
         break;
@@ -1711,8 +2085,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
     }
   };
@@ -1735,8 +2108,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
       case 'sign-in':
         setSignInFrom('welcome');
@@ -1779,6 +2151,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'saved':
+        setRoute('saved');
+        break;
       case 'notifications':
         setRoute('notifications');
         break;
@@ -1792,8 +2167,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
     }
   };
@@ -1802,7 +2176,7 @@ function AppInner() {
   const [boostItem, setBoostItem] = useState<string | null>(null);
   // Live: the boost or promotion the metrics screen shows (null = latest active).
   const [boostMetricsTarget, setBoostMetricsTarget] = useState<{ kind: 'boost' | 'promotion'; id: string } | null>(null);
-  const [hubCustomerName, setHubCustomerName] = useState('Michael James');
+  const [hubCustomerName, setHubCustomerName] = useState(() => (hasApiConfig() ? '' : 'Michael James'));
   const [hubCustomerId, setHubCustomerId] = useState<string | null>(null);
   // Live deals: the catalogue item a new deal is built on, the deal being
   // viewed or priced, and a one-off catalogue message ("pick an item").
@@ -2144,18 +2518,92 @@ function AppInner() {
     setRoute(`analytics-${tab}` as Route);
   };
 
+  const dealClaim = claims.claims.find((claim) => claim.status === 'claimed' && !claim.sentForOther && claim.offerId === liveDeal.detail?.id);
+  const dealClaimed = Boolean(dealClaim);
+  // Opened from the deal page, the voucher screen shows that deal's voucher, not the latest one.
+  // A scanned pass link opens that voucher, or nothing if it isn't this account's.
+  const scannedPassId = route === 'claimed-deal' ? passIdFromPath(window.location.pathname) : null;
+  const scannedClaim = scannedPassId ? claims.claims.find((claim) => claim.id === scannedPassId && !claim.sentForOther) ?? null : undefined;
+  const dashboardClaim = (claimedFrom === 'dashboard' || claimedFrom === 'my-deals') && dashboardClaimRef ? claims.claims.find((claim) => claim.ref === dashboardClaimRef) : undefined;
+  const walletClaim = scannedClaim !== undefined ? scannedClaim : claimedFrom === 'deal-detail' ? dealClaim : dashboardClaim;
+  const openDashboardVoucher = (claim: ClaimRecord, target: 'claimed-deal' | 'claimed-contact') => {
+    setDashboardClaimRef(claim.ref);
+    setClaimedFrom('dashboard');
+    setRoute(target);
+  };
+
+  /** Opens the customer's chat with the deal's branch; rejects when it can't be opened. */
+  // Closing the comments or reviews sheet refreshes the page's counts, so a new post shows.
+  useEffect(() => {
+    if (route === 'comments' || route === 'reviews') dealSheetOpen.current = true;
+    else if (dealSheetOpen.current) {
+      dealSheetOpen.current = false;
+      if (route === 'deal-detail') liveDeal.reload();
+    }
+  }, [route, liveDeal.reload]);
+
+  // "New chat" from Messages: the next business opened shows its message box ready,
+  // and the first message sent there opens that conversation.
+  const [chatIntent, setChatIntent] = useState(false);
+  useEffect(() => {
+    if (chatIntent && !['discover', 'business-profile', 'spa-profile', 'storefront'].includes(route)) setChatIntent(false);
+  }, [route, chatIntent]);
+  const startNewChat = () => {
+    setChatIntent(true);
+    setRoute('discover');
+  };
+
+  /** Opens the customer's chat with a branch, or the inbox if it can't be opened. */
+  const openBranchChat = (branchId?: string) => {
+    if (!branchId) {
+      setRoute('messages');
+      return;
+    }
+    messageService
+      .openBranchThread(branchId)
+      .then((threadId) => {
+        setActiveConversation(threadId);
+        setRoute('conversation');
+      })
+      .catch(() => setRoute('messages'));
+  };
+
+  const openDealChat = async () => {
+    const branchId = liveDeal.detail?.branchId;
+    if (!branchId) throw new Error('Chat is not available for this deal');
+    if (dealChatOpening.current) return; // A second click must not race a second new chat into being.
+    dealChatOpening.current = true;
+    try {
+      const threadId = await messageService.openBranchThread(branchId);
+      setActiveConversation(threadId);
+      setRoute('conversation');
+    } finally {
+      dealChatOpening.current = false;
+    }
+  };
+
   const renderDetail = () =>
     isDesktop ? (
       <DesktopDealDetailScreen
         onNav={feedNav}
         onBack={() => setRoute(dealFrom)}
         onClaimComplete={handleClaimComplete}
-        deal={selectedDeal}
+        onOpenBusiness={() => void openBusinessForDeal(selectedDeal, 'deal-detail')}
+        detail={liveDeal.detail}
+        loading={liveDeal.loading}
+        error={liveDeal.error}
+        onRetry={liveDeal.reload}
+        onChat={openDealChat}
+        claimed={dealClaimed}
+        onViewWallet={() => {
+          setClaimedFrom('deal-detail');
+          setRoute('claimed-deal');
+        }}
       />
     ) : (
       <DealDetailScreen
         onBack={() => setRoute(dealFrom)}
-        onHowToClaim={() => setRoute('how-to-claim')}
+        onHowToClaim={() => openHowToClaim('deal-detail')}
         onTerms={() => {
           setTermsFrom('deal-detail');
           setRoute('deal-terms');
@@ -2167,22 +2615,25 @@ function AppInner() {
         onReviews={() => setRoute('reviews')}
         onShare={() => setRoute('share')}
         onClaim={() => startClaim('deal-detail')}
-        onMerchant={() => {
-          setProfileFrom('deal-detail');
-          setRoute('business-profile');
-        }}
-        claimed={claimed}
+        onMerchant={() => void openBusinessForDeal(selectedDeal, 'deal-detail')}
+        claimed={dealClaimed}
         onViewWallet={() => {
           setClaimedFrom('deal-detail');
           setRoute('claimed-deal');
         }}
-        deal={selectedDeal}
+        detail={liveDeal.detail}
+        loading={liveDeal.loading}
+        error={liveDeal.error}
+        onRetry={liveDeal.reload}
+        onChat={openDealChat}
       />
     );
 
-  const cancelActiveClaim = () => {
-    const active = claims.claims.find((entry) => entry.kind !== 'gift');
-    if (active) claims.removeClaim(active.ref);
+  /** Releases the voucher on the API first; rejects, keeping it, when the API refuses. */
+  const cancelActiveClaim = async () => {
+    const active = walletClaim ?? currentVoucher(claims.claims);
+    if (active?.id) await claims.deleteClaim(active.id);
+    else if (active) claims.removeClaim(active.ref);
     setActiveClaim(null);
     resetClaim();
     setRoute('home');
@@ -2396,16 +2847,76 @@ function AppInner() {
     else open();
   };
 
-  /** A signed-in owner with setup still to finish goes back to it; otherwise the dashboard. */
-  const routeSignedInOwner = async () => {
+  /**
+   * A signed-in owner returns to the shell they last used. Unfinished setup, or
+   * no business yet, is the customer shell; setup reopens from its button.
+   * Staff and admins only have the business side.
+   */
+  const resumeReturnPath = () => {
+    const path = window.sessionStorage.getItem(RETURN_PATH_KEY);
+    window.sessionStorage.removeItem(RETURN_PATH_KEY);
+    if (!path) return false;
+    setRoute(entryRoute(path, true, isDesktop));
+    return true;
+  };
+
+  const routeSignedInOwner = async (user?: SessionUser | null, replaceTo?: (target: Route) => void) => {
+    if (!replaceTo && resumeReturnPath()) return;
+    const go = replaceTo ?? setRoute;
     const saved = await hydrateBusinessSetupFromServer();
-    if (hasUnfinishedBusinessSetup(saved)) {
-      setAuthIntent('customer');
-      setBusinessSetupSkipIntro(true);
+    const customerShell =
+      user?.lastActiveShell === 'customer' ||
+      (user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId));
+    if (!customerShell) {
+      go('business-overview');
+      return;
+    }
+    setAuthIntent('customer');
+    go('home');
+  };
+
+  // The session has loaded: a customer (or an owner on a customer token) stays on
+  // home; a business token goes back through the same choice as signing in.
+  useEffect(() => {
+    if (!returningToShell || !(sessionUser || sessionQuery.isError)) return;
+    if (!isBusinessRole(sessionUser?.role)) {
+      setReturningToShell(false);
+      return;
+    }
+    void routeSignedInOwner(sessionUser, setRouteState).finally(() => setReturningToShell(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returningToShell, sessionUser, sessionQuery.isError]);
+
+  /**
+   * "Set up your business on VEMTAP": the way back into unfinished setup, on the
+   * page after the last one completed. Finished owners get their dashboard.
+   */
+  const openBusinessSetup = async (from: Route = route) => {
+    setBusinessOnboardingFrom(from);
+    if (!isBusinessSession) {
       setRoute('business-onboarding');
       return;
     }
-    setRoute('business-overview');
+    setShellHold(true);
+    try {
+      const owner = sessionUser?.role === 'Customer' ? await switchShell(sessionUser.businessRole ?? 'Owner') : sessionUser;
+      const saved = await hydrateBusinessSetupFromServer();
+      if (hasUnfinishedBusinessSetup(saved)) {
+        setAuthIntent('customer');
+        setBusinessSetupSkipIntro(true);
+        setRoute('business-onboarding');
+      } else if (owner?.role === 'Owner' && !owner.businessId) {
+        setAuthIntent('customer');
+        resumeAtBusinessProfile();
+        setRoute('business-onboarding');
+      } else {
+        setRoute('business-overview');
+      }
+    } catch (error) {
+      console.error('Could not open business setup:', error);
+    } finally {
+      setShellHold(false);
+    }
   };
 
   // Sign-up location (live): the browser's position or a typed area becomes
@@ -2448,6 +2959,7 @@ function AppInner() {
     if (result.error) {
       // Closing Google's page is a cancel, not an error.
       if (result.error !== 'access_denied') fail('Google sign-in didn’t complete. Please try again.');
+      setShellHold(false);
       return;
     }
     const { intent } = result.pending;
@@ -2477,7 +2989,7 @@ function AppInner() {
         }
         const business = isBusinessRole(user?.role);
         if (business && user?.businessId && !isNew) {
-          await routeSignedInOwner();
+          await routeSignedInOwner(user);
           return;
         }
         if (intent === 'business') {
@@ -2494,14 +3006,17 @@ function AppInner() {
           return;
         }
         if (business) {
-          enterBusinessProfile();
+          await routeSignedInOwner(user);
           return;
         }
         setAuthIntent('customer');
         // New accounts confirm their phone; returning customers go straight home.
-        setRoute(isNew ? 'google-confirm' : 'home');
+        if (isNew) setRoute('google-confirm');
+        else if (!resumeReturnPath()) setRoute('home');
       } catch (error) {
         fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
+      } finally {
+        setShellHold(false);
       }
     })();
     // Runs once for the page Google returned to.
@@ -2516,6 +3031,7 @@ function AppInner() {
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
         onCancelClaim={cancelActiveClaim}
+        claim={walletClaim}
       />
     ) : (
       <ClaimedDealScreen
@@ -2523,8 +3039,20 @@ function AppInner() {
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
         onCancelClaim={cancelActiveClaim}
+        claim={walletClaim}
       />
     );
+
+  /** The code step: self claims finish here, others go on to their summary. */
+  const onClaimCode = (code: string) => {
+    if (claimRecipient) {
+      setClaimCode(code);
+      setClaimError(null);
+      setRoute('claim-summary');
+      return;
+    }
+    void completeClaim(code);
+  };
 
   const renderRoute = () => {
     // Sign In opened from the business sign-up modal: authenticating resumes
@@ -2732,11 +3260,11 @@ function AppInner() {
                 return;
               }
               if (isBusinessRole(user?.role)) {
-                await routeSignedInOwner();
+                await routeSignedInOwner(user);
                 return;
               }
               // A returning customer goes straight home; onboarding is for sign-up.
-              setRoute(hasApiConfig() ? 'home' : 'discovering');
+              if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
             }}
             onGoogleSignIn={async () => {
               if (hasApiConfig()) {
@@ -2776,11 +3304,11 @@ function AppInner() {
               return;
             }
             if (isBusinessRole(user?.role)) {
-              await routeSignedInOwner();
+              await routeSignedInOwner(user);
               return;
             }
             // A returning customer goes straight home; onboarding is for sign-up.
-            setRoute(hasApiConfig() ? 'home' : 'discovering');
+            if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
           }}
           onGoogleSignIn={async () => {
             if (hasApiConfig()) {
@@ -2830,7 +3358,7 @@ function AppInner() {
               setRoute('profile-setup');
             }}
             onEditEmail={() => setRoute(authEntry)}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
             email={customerSignup.email}
             onResend={async () => {
               if (businessSignup) await requestOwnerSignupOtp(customerSignup.email);
@@ -2850,7 +3378,7 @@ function AppInner() {
             setRoute('profile-setup');
           }}
           onEditEmail={() => setRoute(authEntry)}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           email={businessSignup && !hasApiConfig() ? undefined : customerSignup.email}
           onResend={
             businessSignup
@@ -2891,7 +3419,7 @@ function AppInner() {
               await completeCustomerSignup(details);
               setRoute('location-permission');
             }}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
           />
         );
       return (
@@ -2909,7 +3437,7 @@ function AppInner() {
             await completeCustomerSignup(details);
             setRoute('location-permission');
           }}
-          onBusinessSetup={authIntent === 'business' ? undefined : () => setRoute('business-onboarding')}
+          onBusinessSetup={authIntent === 'business' ? undefined : () => void openBusinessSetup()}
         />
       );
     }
@@ -2970,7 +3498,7 @@ function AppInner() {
             setConfirmFrom('location-permission');
             setRoute('confirm-location');
           }}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
         />
       );
 
@@ -2988,7 +3516,7 @@ function AppInner() {
               }
               setRoute('discovering');
             }}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
             {...confirmPlace}
             initialRadius={savedLocation.radius}
           />
@@ -2998,7 +3526,7 @@ function AppInner() {
           onBack={() => setRoute(confirmFrom)}
           onChangeLocation={() => setRoute('manual-location')}
           onContinue={() => setRoute('discovering')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           {...confirmPlace}
           radius={savedLocation.radius}
         />
@@ -3045,6 +3573,7 @@ function AppInner() {
     case 'home':
       if (isDesktop)
         return (
+          <>
           <DesktopHomeScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'home')}
@@ -3052,23 +3581,51 @@ function AppInner() {
             onOpenDeals={() => setRoute('deals')}
             onOpenDeal={(deal) => openDeal('home', deal ?? null)}
             onClaim={openClaimPopup}
+            onOpenComments={(deal) => openDealComments('home', deal)}
+            onOpenBusiness={(business) => openBusiness(business, 'home')}
           />
+          {commentsModalOnly ? (
+            <CommentsDrawer
+              open
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('home');
+              }}
+              onClaim={() => {
+                setCommentsModalOnly(false);
+                setRoute('deal-detail');
+                openClaimPopup();
+              }}
+            />
+          ) : null}
+          </>
         );
       return (
+        <>
         <HomeScreen
           onTab={(tab) => setRoute(tab)}
           onOpenFilters={() => openFeedRoute('filters', 'home')}
           onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
           onOpenDeals={() => setRoute('deals')}
           onOpenDeal={(deal) => openDeal('home', deal ?? null)}
-          onOpenBusiness={() => {
-            setProfileFrom('home');
-            setRoute('business-profile');
-          }}
+          onOpenBusiness={(business) => openBusiness(business, 'home')}
           onOpenNotifications={() => setRoute('notifications')}
-          onEnroll={() => setRoute('business-onboarding')}
+          onEnroll={() => void openBusinessSetup()}
           onAccount={() => setRoute('account')}
+          onOpenComments={(deal) => openDealComments('home', deal)}
         />
+        {commentsModalOnly ? (
+          <CommentsSheet
+            open
+            deal={selectedDeal}
+            onClose={() => {
+              setCommentsModalOnly(false);
+              setRoute('home');
+            }}
+          />
+        ) : null}
+        </>
       );
 
     case 'deals':
@@ -3076,12 +3633,15 @@ function AppInner() {
         return (
           <>
             <DesktopDealsScreen
+              key={`deals-${dealsSearch.key}`}
+              initialSearch={dealsSearch.query}
               onNav={feedNav}
               onOpenFilters={() => openFeedRoute('filters', 'deals')}
               onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
               onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
               onOpenComments={(deal) => openDealComments('deals', deal ?? null)}
               onClaim={openClaimPopup}
+              onHowToClaim={() => openHowToClaim('deals')}
             />
             {commentsModalOnly ? (
               <CommentsDrawer
@@ -3103,12 +3663,16 @@ function AppInner() {
       return (
         <>
           <DealsScreen
+            key={`deals-${dealsSearch.key}`}
+            initialSearch={dealsSearch.query}
             onTab={(tab) => setRoute(tab)}
             onOpenFilters={() => openFeedRoute('filters', 'deals')}
             onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
             onOpenNotifications={() => setRoute('notifications')}
             onClaim={openClaimPopup}
             onAccount={() => setRoute('account')}
+            onHowToClaim={() => openHowToClaim('deals')}
+            onOpenComments={(deal) => openDealComments('deals', deal)}
           />
           {commentsModalOnly ? (
             <CommentsSheet
@@ -3132,22 +3696,20 @@ function AppInner() {
             onOpenDeal={(deal) => openDeal('featured-deals', deal)}
           />
         );
-      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)} />;
+      return (
+        <FeaturedDealsScreen
+          onBack={() => setRoute(feedFrom)}
+          onOpenFilters={() => openFeedRoute('filters', 'featured-deals')}
+          onBoost={() => void openBusinessSetup()}
+          onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)}
+        />
+      );
 
     case 'filters':
       if (isDesktop) return <DesktopFiltersScreen onNav={feedNav} onClose={() => setRoute(feedFrom)} />;
       return <FiltersScreen onClose={() => setRoute(feedFrom)} />;
 
     case 'deal-detail':
-      if (isDesktop)
-        return (
-          <DesktopDealDetailScreen
-            onNav={feedNav}
-            onBack={() => setRoute(dealFrom)}
-            onClaimComplete={handleClaimComplete}
-            deal={selectedDeal}
-          />
-        );
       return <>{renderDetail()}</>;
 
     case 'comments':
@@ -3187,6 +3749,7 @@ function AppInner() {
       return commentsModalOnly ? (
         <CommentsSheet
           open
+          deal={selectedDeal}
           onClose={() => {
             setCommentsModalOnly(false);
             setRoute(dealFrom);
@@ -3197,6 +3760,7 @@ function AppInner() {
           {renderDetail()}
           <CommentsSheet
             open
+            deal={selectedDeal}
             onClose={() => {
               setCommentsModalOnly(false);
               setRoute('deal-detail');
@@ -3244,6 +3808,13 @@ function AppInner() {
               open
               deal={selectedDeal}
               onAuthenticated={() => {
+                if (hasApiConfig()) {
+                  // A real sign-in, then back to this deal to claim it.
+                  window.sessionStorage.setItem(RETURN_PATH_KEY, window.location.pathname);
+                  setSignInFrom('deal-detail');
+                  setRoute('sign-in');
+                  return;
+                }
                 signIn();
                 setRoute('claim-confirm');
               }}
@@ -3255,8 +3826,16 @@ function AppInner() {
         <>
           {renderDetail()}
           <ClaimAuthSheet
+            detail={liveDeal.detail}
             open
             onAuthenticated={() => {
+              if (hasApiConfig()) {
+                // A real sign-in, then back to this deal to claim it.
+                window.sessionStorage.setItem(RETURN_PATH_KEY, window.location.pathname);
+                setSignInFrom('deal-detail');
+                setRoute('sign-in');
+                return;
+              }
               signIn();
               setRoute('claim-confirm');
             }}
@@ -3271,6 +3850,7 @@ function AppInner() {
           <>
             {renderDetail()}
             <ClaimConfirmationModal
+              detail={liveDeal.detail}
               open
               onClose={() => setRoute('deal-detail')}
               onConfirm={() => setRoute('claim-identity')}
@@ -3281,7 +3861,7 @@ function AppInner() {
       return (
         <>
           {renderDetail()}
-          <ClaimConfirmSheet open onClose={() => setRoute('deal-detail')} onConfirm={() => setRoute('claim-identity')} />
+          <ClaimConfirmSheet open detail={liveDeal.detail} email={profile.email} onClose={() => setRoute('deal-detail')} onConfirm={() => setRoute('claim-identity')} />
         </>
       );
 
@@ -3308,6 +3888,7 @@ function AppInner() {
         <>
           {renderDetail()}
           <ClaimIdentitySheet
+            detail={liveDeal.detail}
             open
             identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
             onClaimSelf={() => setClaimSelfConfirmOpen(true)}
@@ -3335,6 +3916,13 @@ function AppInner() {
                   phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
                 });
                 setRoute('claim-verify');
+                void sendClaimCode(
+                  holderFromRecipient({
+                    name: `${values.firstName} ${values.lastName}`.trim(),
+                    email: values.email,
+                    phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                  }),
+                );
               }}
               onClose={() => setRoute('deal-detail')}
             />
@@ -3352,6 +3940,13 @@ function AppInner() {
                 phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
               });
               setRoute('claim-verify');
+              void sendClaimCode(
+                holderFromRecipient({
+                  name: `${values.firstName} ${values.lastName}`.trim(),
+                  email: values.email,
+                  phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                }),
+              );
             }}
             onBack={() => setRoute('claim-identity')}
             onClose={() => setRoute('deal-detail')}
@@ -3367,9 +3962,13 @@ function AppInner() {
             <RecipientVerificationModal
               open
               recipient={claimRecipient}
+              target={claimHolder?.email}
+              error={claimError}
+              busy={claimBusy}
+              onResend={() => claimHolder && void sendClaimCode(claimHolder)}
               deal={selectedDeal}
-              onVerify={() => setRoute('claim-summary')}
-              onBack={() => setRoute('claim-recipient')}
+              onVerify={onClaimCode}
+              onBack={() => setRoute(claimRecipient ? 'claim-recipient' : 'deal-detail')}
               onClose={() => setRoute('deal-detail')}
             />
           </>
@@ -3380,8 +3979,12 @@ function AppInner() {
           <RecipientVerificationSheet
             open
             recipient={claimRecipient}
-            onVerify={() => setRoute('claim-summary')}
-            onBack={() => setRoute('claim-recipient')}
+            target={claimHolder?.email}
+            error={claimError}
+            busy={claimBusy}
+            onResend={() => claimHolder && void sendClaimCode(claimHolder)}
+            onVerify={onClaimCode}
+            onBack={() => setRoute(claimRecipient ? 'claim-recipient' : 'deal-detail')}
             onClose={() => setRoute('deal-detail')}
           />
         </>
@@ -3393,10 +3996,11 @@ function AppInner() {
           <>
             {renderDetail()}
             <RecipientSummaryModal
+              detail={liveDeal.detail}
               open
               recipient={claimRecipient}
               deal={selectedDeal}
-              onConfirm={completeClaim}
+              onConfirm={() => void completeClaim().then((done) => done || backToClaimCode())}
               onEdit={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
             />
@@ -3406,9 +4010,10 @@ function AppInner() {
         <>
           {renderDetail()}
           <RecipientSummarySheet
+            detail={liveDeal.detail}
             open
             recipient={claimRecipient}
-            onContinue={completeClaim}
+            onContinue={() => void completeClaim().then((done) => done || backToClaimCode())}
             onEdit={() => setRoute('claim-recipient')}
             onClose={() => setRoute('deal-detail')}
           />
@@ -3424,10 +4029,11 @@ function AppInner() {
               open
               onContinue={(values) => {
                 setGiftRecipient({
-                  name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+                  name: `${values.firstName} ${values.lastName}`.trim(),
                   email: values.email,
                   phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
                 });
+                setGiftNote(values.note);
                 setRoute('claim-gift-confirm');
               }}
               onClose={() => setRoute('deal-detail')}
@@ -3438,13 +4044,15 @@ function AppInner() {
         <>
           {renderDetail()}
           <GiftRecipientDetailsSheet
+            detail={liveDeal.detail}
             open
             onContinue={(values) => {
               setGiftRecipient({
                 name: `${values.firstName} ${values.lastName}`.trim(),
                 email: values.email,
-                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : '0801 234 5678',
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
               });
+              setGiftNote(values.note);
               setRoute('claim-gift-confirm');
             }}
             onClose={() => setRoute('deal-detail')}
@@ -3458,8 +4066,12 @@ function AppInner() {
           <>
             {renderDetail()}
             <ConfirmGiftSendModal
+              detail={liveDeal.detail}
               open
               recipient={giftRecipient}
+              note={giftNote}
+              error={claimError}
+              busy={claimBusy}
               onSend={completeGift}
               onEdit={() => setRoute('claim-gift')}
               onClose={() => setRoute('deal-detail')}
@@ -3470,8 +4082,11 @@ function AppInner() {
         <>
           {renderDetail()}
           <ConfirmGiftSendSheet
+            detail={liveDeal.detail}
             open
             recipient={giftRecipient}
+            error={claimError}
+            busy={claimBusy}
             onConfirm={completeGift}
             onEdit={() => setRoute('claim-gift')}
             onClose={() => setRoute('deal-detail')}
@@ -3484,9 +4099,11 @@ function AppInner() {
         return (
           <DesktopHowToClaimScreen
             onNav={feedNav}
-            onBack={() => setRoute('deal-detail')}
-            onClaim={() => startClaim('how-to-claim')}
-            onTerms={() => {
+            onBack={() => setRoute(howToClaimFrom)}
+            backLabel={howToClaimFrom === 'deals' ? 'Deals' : 'Deal'}
+            onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+            detail={howToClaimFrom === 'deals' ? null : liveDeal.detail}
+            onTerms={howToClaimFrom === 'deals' ? undefined : () => {
               setTermsFrom('how-to-claim');
               setRoute('deal-terms');
             }}
@@ -3494,9 +4111,10 @@ function AppInner() {
         );
       return (
         <HowToClaimScreen
-          onBack={() => setRoute('deal-detail')}
-          onClaim={() => startClaim('how-to-claim')}
-          onTerms={() => {
+          onBack={() => setRoute(howToClaimFrom)}
+          onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+          detail={howToClaimFrom === 'deals' ? null : liveDeal.detail}
+          onTerms={howToClaimFrom === 'deals' ? undefined : () => {
             setTermsFrom('how-to-claim');
             setRoute('deal-terms');
           }}
@@ -3551,17 +4169,28 @@ function AppInner() {
         />
       );
 
-    case 'claimed-deal':
+    case 'claimed-deal': {
+      // A merchant scanning a voucher QR gets the redeem step, not the customer's pass.
+      const scannedId = passIdFromPath(window.location.pathname);
+      if (scannedId && isBusinessRole(sessionUser?.role)) {
+        return <VoucherRedeemScreen claimId={scannedId} onDone={() => setRoute('business-overview')} />;
+      }
       return <>{renderClaimed()}</>;
+    }
 
-    case 'claimed-contact':
+    case 'claimed-contact': {
+      const contactClaim = walletClaim ?? currentVoucher(claims.claims);
       if (isDesktop)
         return (
           <>
             {renderClaimed()}
             <ContactBusinessModal
               open
-              onChat={() => setRoute('merchant-chat')}
+              code={contactClaim?.code}
+              businessName={contactClaim?.dealBusiness}
+              phone={contactClaim?.dealPhone}
+              address={contactClaim?.dealLocation}
+              onChat={() => openBranchChat(contactClaim?.branchId)}
               onClose={() => setRoute('claimed-deal')}
             />
           </>
@@ -3569,9 +4198,18 @@ function AppInner() {
       return (
         <>
           {renderClaimed()}
-          <ContactBusinessSheet open onChat={() => setRoute('merchant-chat')} onClose={() => setRoute('claimed-deal')} />
+          <ContactBusinessSheet
+            open
+            code={contactClaim?.code}
+            businessName={contactClaim?.dealBusiness}
+            phone={contactClaim?.dealPhone}
+            address={contactClaim?.dealLocation}
+            onChat={() => openBranchChat(contactClaim?.branchId)}
+            onClose={() => setRoute('claimed-deal')}
+          />
         </>
       );
+    }
 
     case 'claimed-terms': {
       // Show the terms frozen onto the claim, not whatever the live offer has.
@@ -3591,32 +4229,12 @@ function AppInner() {
       );
     }
 
-    case 'merchant-chat':
-      if (isDesktop)
-        return (
-          <DesktopMerchantChatScreen
-            onNav={feedNav}
-            onBack={() => setRoute(chatFrom)}
-            onViewQr={() => {
-              setClaimedFrom('merchant-chat');
-              setRoute('claimed-deal');
-            }}
-          />
-        );
-      return (
-        <MerchantChatScreen
-          onBack={() => setRoute(chatFrom)}
-          onViewQr={() => {
-            setClaimedFrom('merchant-chat');
-            setRoute('claimed-deal');
-          }}
-        />
-      );
-
     case 'deal-terms':
       if (isDesktop)
         return (
           <DesktopDealTermsScreen
+            detail={liveDeal.detail}
+            loading={liveDeal.loading}
             onNav={feedNav}
             onBack={() => setRoute(termsFrom)}
             onClaim={() => startClaim('deal-terms')}
@@ -3624,19 +4242,36 @@ function AppInner() {
         );
       return (
         <DealTermsScreen
+          detail={liveDeal.detail}
+          loading={liveDeal.loading}
           onBack={() => setRoute(termsFrom)}
           onClaim={() => startClaim('deal-terms')}
         />
       );
 
     case 'storefront':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
+      if (isDesktop)
+        return (
+          <DesktopUrbanGrillStorefrontScreen
+            business={selectedBusiness}
+            onNav={feedNav}
+            onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+            onOpenDeal={(deal) => openDeal('business-profile', deal)}
+            onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+            onCheckout={startCheckout}
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
+          />
+        );
       return (
         <MerchantDealsScreen
           business={selectedBusiness}
           onBack={() => setRoute(bizFrom)}
           onOpenDeal={() => openDeal('storefront')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           onShowGrid={() => {
             setCatalogueFrom('storefront');
             setRoute('storefront-products');
@@ -3692,47 +4327,36 @@ function AppInner() {
       );
 
     case 'business-profile':
+    case 'spa-profile':
       if (isDesktop)
         return (
           <DesktopUrbanGrillStorefrontScreen
             business={selectedBusiness}
             onNav={feedNav}
             activeNav="discover"
-            onClaim={openClaimPopup}
+            onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+            onOpenDeal={(deal) => openDeal('business-profile', deal)}
+            onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
             onCheckout={startCheckout}
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
           />
         );
       return (
         <BusinessProfileScreen
-          venue="urban"
           business={selectedBusiness}
           onBack={() => setRoute(profileFrom)}
-          onOpenDeals={() => {
-            setBizFrom('business-profile');
-            setRoute('storefront');
+          onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+          onOpenDeal={(deal) => openDeal('business-profile', deal)}
+          onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+          startChat={chatIntent}
+          onChatStarted={(branchId) => {
+            setChatIntent(false);
+            openBranchChat(branchId);
           }}
-          onOpenProducts={() => {
-            setCatalogueFrom('business-profile');
-            setRoute('storefront-products');
-          }}
-          onClaim={openClaimPopup}
-        />
-      );
-
-    case 'spa-profile':
-      if (isDesktop) return <DesktopSpaStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
-      return (
-        <BusinessProfileScreen
-          venue="spa"
-          business={selectedBusiness}
-          onBack={() => setRoute(profileFrom)}
-          onOpenDeals={() => setRoute(profileFrom)}
-          onOpenServices={() => {
-            setBizFrom('spa-profile');
-            setRoute('spa-services');
-          }}
-          onOpenService={(name) => openService(name, 'spa-profile')}
-          onClaim={openClaimPopup}
         />
       );
 
@@ -3765,20 +4389,31 @@ function AppInner() {
         />
       );
 
-    case 'product-detail':
-      if (isDesktop) return <DesktopProductDetailScreen onNav={feedNav} onBack={() => setRoute('storefront')} />;
-      if (!detailProduct) return null;
+    case 'product-detail': {
+      const backToBusiness = () => {
+        if (liveItem) openBusiness({ code: liveItem.code }, 'product-detail');
+      };
+      const goBack = () => (detailFrom === 'business-profile' ? backToBusiness() : setRoute(detailFrom));
+      if (isDesktop)
+        return (
+          <DesktopProductDetailScreen
+            itemId={liveItem?.id ?? null}
+            businessCode={liveItem?.code ?? null}
+            onNav={feedNav}
+            onBack={goBack}
+            onOpenBusiness={backToBusiness}
+            onOpenItem={(itemId) => liveItem && openItem(liveItem.code, itemId, 'product-detail')}
+          />
+        );
       return (
         <ProductDetailScreen
-          product={detailProduct}
-          onBack={() => setRoute(detailFrom)}
-          onCheckout={startCheckout}
-          onOpenBusiness={() => {
-            setProfileFrom('product-detail');
-            setRoute('business-profile');
-          }}
+          itemId={liveItem?.id ?? null}
+          businessCode={liveItem?.code ?? null}
+          onBack={goBack}
+          onOpenBusiness={backToBusiness}
         />
       );
+    }
 
     case 'checkout':
       if (isDesktop)
@@ -3796,10 +4431,7 @@ function AppInner() {
             order={orderSummary}
             onClose={() => setRoute('home')}
             onHome={() => setRoute('discover')}
-            onTrack={() => {
-              setChatFrom('order-placed');
-              setRoute('merchant-chat');
-            }}
+            onTrack={() => openBranchChat(orderSummary?.merchantId)}
           />
         );
       return (
@@ -3807,10 +4439,7 @@ function AppInner() {
           order={orderSummary}
           onClose={() => setRoute('home')}
           onHome={() => setRoute('discover')}
-          onTrack={() => {
-            setChatFrom('order-placed');
-            setRoute('merchant-chat');
-          }}
+          onTrack={() => openBranchChat(orderSummary?.merchantId)}
         />
       );
 
@@ -3842,8 +4471,7 @@ function AppInner() {
             onBack={() => setRoute('spa-storefront')}
             onChat={() => {
               // BUG-026: open the receptionist conversation directly.
-              setActiveConversation('glow');
-              setRoute('conversation');
+              setRoute('messages');
             }}
           />
         );
@@ -3861,8 +4489,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('spa-storefront')}
             onChat={() => {
-              setActiveConversation('glow');
-              setRoute('conversation');
+              setRoute('messages');
             }}
           />
         );
@@ -3874,8 +4501,7 @@ function AppInner() {
           onHome={() => setRoute('home')}
           onChat={() => {
             // BUG-026: open the business conversation for the spa receptionist.
-            setActiveConversation('glow');
-            setRoute('conversation');
+            setRoute('messages');
           }}
         />
       );
@@ -3892,7 +4518,7 @@ function AppInner() {
         // A live owner taps this from their customer view: send them back to
         // the business dashboard rather than through setup again.
         if (isBusinessSession) {
-          setRoute('business-overview');
+          void openBusinessSetup('dashboard');
           return;
         }
         setBusinessOnboardingFrom('dashboard');
@@ -3903,21 +4529,35 @@ function AppInner() {
           setRoute('business-auth');
         }
       };
-      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} onStartBusinessSignup={startBusinessSignup} />;
+      if (isDesktop)
+        return (
+          <DesktopDashboardScreen
+            onNav={feedNav}
+            onStartBusinessSignup={startBusinessSignup}
+            onOpenDeal={(deal) => void openDeal('dashboard', deal)}
+            onShowPass={(claim) => openDashboardVoucher(claim, 'claimed-deal')}
+            onContact={(claim) => openDashboardVoucher(claim, 'claimed-contact')}
+            onOpenOrder={(ref) => {
+              setActiveOrderRef(ref);
+              setRoute('order-detail');
+            }}
+            onOpenBooking={() => setRoute('booking-detail')}
+            onScan={() => setRoute('scan')}
+          />
+        );
       return (
         <DashboardScreen
           onTab={(tab) => setRoute(tab)}
           onNavigate={(target) => {
             if (target === 'business-onboarding') {
-              setBusinessOnboardingFrom('dashboard');
+              void openBusinessSetup('dashboard');
+              return;
             }
             setRoute(target);
           }}
           onStartBusinessSignup={startBusinessSignup}
-          onShowQR={() => {
-            setClaimedFrom('dashboard');
-            setRoute('claimed-deal');
-          }}
+          onOpenDeal={(deal) => void openDeal('dashboard', deal)}
+          onShowQR={(claim) => openDashboardVoucher(claim, 'claimed-deal')}
         />
       );
     }
@@ -3931,7 +4571,10 @@ function AppInner() {
               setActiveOrderRef(ref);
               setRoute('order-detail');
             }}
-            onOpenBooking={() => setRoute('booking-detail')}
+            onOpenBooking={(ref) => {
+              setActiveBookingRef(ref);
+              setRoute('booking-detail');
+            }}
           />
         );
       return (
@@ -3945,59 +4588,67 @@ function AppInner() {
             setActiveOrderRef(ref);
             setRoute('order-detail');
           }}
-          onOpenBooking={() => setRoute('booking-detail')}
+          onOpenBooking={(ref) => {
+              setActiveBookingRef(ref);
+              setRoute('booking-detail');
+            }}
           onNavigate={(target) => setRoute(target)}
         />
       );
 
     case 'order-detail':
       if (isDesktop)
-        return <DesktopOrderDetailScreen orderRef={activeOrderRef} onNav={feedNav} onBack={() => setRoute('orders')} />;
+        return <DesktopOrderDetailScreen orderRef={activeOrderRef} onChat={openBranchChat} onNav={feedNav} onBack={() => setRoute('orders')} />;
       return (
         <OrderDetailScreen
           orderRef={activeOrderRef}
           onBack={() => setRoute('orders')}
-          onChat={() => {
-            setActiveConversation('urban');
-            setRoute('conversation');
-          }}
-          onReorder={() => setRoute('storefront')}
+          onChat={(branchId) => openBranchChat(branchId)}
+          onReorder={() => setRoute('discover')}
           onSupport={() => setRoute('support')}
         />
       );
 
     case 'booking-detail':
       if (isDesktop)
-        return <DesktopBookingDetailScreen onNav={feedNav} onBack={() => setRoute('orders')} />;
+        return <DesktopBookingDetailScreen bookingRef={activeBookingRef} onChat={openBranchChat} onNav={feedNav} onBack={() => setRoute('orders')} />;
       return (
         <BookingDetailScreen
+          bookingRef={activeBookingRef}
           onBack={() => setRoute('orders')}
-          onReschedule={() => setRoute('spa-booking')}
-          onChat={() => {
-            setActiveConversation('glow');
-            setRoute('conversation');
-          }}
+          onBookAgain={() => setRoute('discover')}
+          onChat={(branchId) => openBranchChat(branchId)}
         />
       );
 
     case 'my-deals':
-      if (isDesktop) return <DesktopMyDealsScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopMyDealsScreen onNav={feedNav} onOpenBusiness={(business) => openBusiness(business, 'my-deals')} />;
       return (
         <MyDealsScreen
           onTab={(tab) => setRoute(tab)}
-          onShowPass={() => {
+          onShowPass={(claim) => {
+            setDashboardClaimRef(claim.ref);
             setClaimedFrom('my-deals');
             setRoute('claimed-deal');
+          }}
+          onGiftReceipt={(claim) => {
+            setGiftRecipient(null); // The receipt reads this gift's own recipient, not the last one sent.
+            setActiveClaim(claim);
+            setRoute('gift-sent');
           }}
           onNavigate={(target) => setRoute(target)}
         />
       );
 
+    // The old scripted merchant chat; a voucher's chat now opens the real branch thread.
+    case 'merchant-chat':
     case 'messages':
-      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} onNewChat={startNewChat} />;
       return (
         <MessagesScreen
           onTab={(tab) => setRoute(tab)}
+          onNewChat={startNewChat}
+          onOpenSettings={() => setRoute('account-settings')}
           onOpen={(threadId) => {
             setActiveConversation(threadId);
             setRoute('conversation');
@@ -4006,7 +4657,7 @@ function AppInner() {
       );
 
     case 'conversation':
-      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} initialThread={activeConversation} />;
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} initialThread={activeConversation} onNewChat={startNewChat} />;
       return (
         <ConversationScreen
           threadId={activeConversation}
@@ -4026,12 +4677,13 @@ function AppInner() {
           onBack={() => setRoute('dashboard')}
           onCheckout={startCheckout}
           onBrowseDeals={() => setRoute('deals')}
-          onOpenStorefront={() => setRoute('storefront-menu')}
+          onOpenStorefront={() => setRoute('discover')}
         />
       );
 
     case 'account-settings':
-      if (isDesktop) return <DesktopAccountSettingsScreen onNav={feedNav} />;
+      if (isDesktop)
+        return <DesktopAccountSettingsScreen onNav={feedNav} onOpenAddresses={() => setRoute('addresses')} />;
       return (
         <AccountSettingsScreen
           onBack={() => setRoute('settings')}
@@ -4050,34 +4702,8 @@ function AppInner() {
           <DesktopDiscoverScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'discover')}
-            onOpenBusiness={(business) => {
-              const normalized = (business.name ?? '').toLowerCase();
-              const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
-              const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
-
-              const businessName = business.name?.trim() || 'Business storefront';
-              const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
-              const businessRef: BusinessProfileRef = {
-                slug: slugBase,
-                id: business.id || slugBase,
-                name: businessName,
-                venue: isSpa ? 'spa' : 'urban',
-              };
-
-              setSelectedBusiness(businessRef);
-              setProfileFrom('discover');
-
-              if (isSpa) {
-                setRoute('spa-profile');
-                return;
-              }
-
-              if (isUrban || !isSpa) {
-                setRoute('business-profile');
-                return;
-              }
-            }}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
+            onBusinessSetup={() => void openBusinessSetup()}
           />
         );
       return (
@@ -4088,35 +4714,10 @@ function AppInner() {
             else if (tab === 'saved') setRoute('saved');
             else if (tab === 'account') setRoute('account');
           }}
-          onOpenBusiness={(business) => {
-            const normalized = (business.name ?? '').toLowerCase();
-            const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
-            const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
-            const businessName = business.name?.trim() || 'Business storefront';
-            const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
-            const businessRef: BusinessProfileRef = {
-              slug: slugBase,
-              id: business.id || slugBase,
-              name: businessName,
-              venue: isSpa ? 'spa' : 'urban',
-            };
-
-            setSelectedBusiness(businessRef);
-            setProfileFrom('discover');
-
-            if (isSpa) {
-              setRoute('spa-profile');
-              return;
-            }
-
-            if (isUrban || !isSpa) {
-              setRoute('business-profile');
-              return;
-            }
-          }}
+          onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
           onOpenFilters={() => openFeedRoute('filters', 'discover')}
           onOpenNotifications={() => setRoute('notifications')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
         />
       );
 
@@ -4126,22 +4727,18 @@ function AppInner() {
           <DesktopSavedItemsScreen
             onNav={feedNav}
             onBack={() => setRoute('account')}
-            onOpenDeal={() => setRoute('deal-detail')}
-            onOpenBusiness={() => {
-              setProfileFrom('saved');
-              setRoute('spa-profile');
-            }}
+            onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
+            onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
+            onOpenService={(item) => openItem(item.code ?? '', item.id, 'saved')}
             onBrowse={() => setRoute('discover')}
           />
         );
       return (
         <SavedItemsScreen
           onBack={() => setRoute('home')}
-          onOpenDeal={() => setRoute('deal-detail')}
-          onOpenBusiness={() => {
-            setProfileFrom('saved');
-            setRoute('spa-profile');
-          }}
+          onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
+          onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
+          onOpenService={(item) => openItem(item.code ?? '', item.id, 'saved')}
           onBrowse={() => setRoute('discover')}
         />
       );
@@ -4161,6 +4758,14 @@ function AppInner() {
      * Platform Admin → Referral programme. Not reachable from user navigation;
      * an admin opens `/admin/referral` directly to swap the explainer video.
      */
+    case 'gift-reject':
+      return <GiftRejectScreen token={GIFT_REJECT_TOKEN} onDone={() => setRoute(authed ? 'home' : 'welcome')} />;
+
+    case 'not-found': {
+      const leave = () => setRoute(!authed ? 'welcome' : isBusinessRole(sessionUser?.role) ? 'business-overview' : 'home');
+      return isDesktop ? <DesktopNotFoundScreen onHome={leave} /> : <NotFoundScreen onHome={leave} />;
+    }
+
     case 'admin-referral':
       return <AdminReferralScreen onBack={() => setRoute('business-referrals')} />;
 
@@ -4291,6 +4896,7 @@ function AppInner() {
             onOpenRewards={() => setRoute('rewards')}
             onBrowseDeals={() => setRoute('discover')}
             onOpenPreferences={() => setRoute('preferences')}
+            onOpenDestination={openCustomerNotificationDestination}
           />
         );
       return (
@@ -4308,6 +4914,7 @@ function AppInner() {
           onOpenRewards={() => setRoute('rewards')}
           onBrowseDeals={() => setRoute('discover')}
           onOpenPreferences={() => setRoute('preferences')}
+          onOpenDestination={openCustomerNotificationDestination}
         />
       );
 
@@ -4342,7 +4949,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('support-legal')}
             onStartChat={() => setRoute('support')}
-            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenMerchant={() => void openBusinessSetup()}
             onOpenTerms={() => setRoute('terms')}
           />
         );
@@ -4350,7 +4957,7 @@ function AppInner() {
         <HelpCentreScreen
           onBack={() => setRoute('support-legal')}
           onStartChat={() => setRoute('support')}
-          onOpenMerchant={() => setRoute('business-onboarding')}
+          onOpenMerchant={() => void openBusinessSetup()}
           onOpenTerms={() => setRoute('terms')}
         />
       );
@@ -4381,13 +4988,11 @@ function AppInner() {
           <DesktopScanScreen
             onNav={feedNav}
             onBack={() => setRoute('dashboard')}
-            onOpenTableMenu={() => setRoute('public-pos-menu')}
           />
         );
       return (
         <ScanScreen
           onBack={() => setRoute('dashboard')}
-          onOpenTableMenu={() => setRoute('public-pos-menu')}
         />
       );
 
@@ -4397,21 +5002,17 @@ function AppInner() {
           <DesktopActivityScreen
             onNav={feedNav}
             onBack={() => setRoute('dashboard')}
-            onOpenReceipt={() => setRoute('order-detail')}
-            onWriteReview={() => setRoute('reviews')}
             onOpenOrders={() => setRoute('orders')}
-            onOpenService={() => setRoute('service-detail')}
-            onBrowse={() => setRoute('discover')}
+            onOpenDeal={(deal) => void openDeal('activity', deal)}
+            onOpenBusiness={(business) => openBusiness(business, 'activity')}
           />
         );
       return (
         <ActivityScreen
           onBack={() => setRoute('dashboard')}
-          onOpenReceipt={() => setRoute('order-detail')}
-          onWriteReview={() => setRoute('reviews')}
           onOpenOrders={() => setRoute('orders')}
-          onOpenService={() => setRoute('service-detail')}
-          onBrowse={() => setRoute('discover')}
+          onOpenDeal={(deal) => void openDeal('activity', deal)}
+          onOpenBusiness={(business) => openBusiness(business, 'activity')}
         />
       );
 
@@ -4571,7 +5172,7 @@ function AppInner() {
           onActivate={() => setRoute('subscription')}
           onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
-          onCreateDeal={() => setRoute('deals')}
+          onCreateDeal={() => setRoute('hub-deals')}
           onQrStands={() => setRoute('business-overview')}
         />
       ) : (
@@ -4581,7 +5182,7 @@ function AppInner() {
           onActivate={() => setRoute('subscription')}
           onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
-          onCreateDeal={() => setRoute('deals')}
+          onCreateDeal={() => setRoute('hub-deals')}
           onQrStands={() => setRoute('business-overview')}
         />
       );
@@ -4802,7 +5403,7 @@ function AppInner() {
             segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onLaunchCampaign={() => openBoost()}
-            onOpenMessages={() => setRoute('messages')}
+            onOpenMessages={() => setRoute('business-messages')}
             onOpenDeals={() => setRoute('hub-deals')}
             onOpenCrm={() => setRoute('hub-customers')}
           />
@@ -4813,7 +5414,7 @@ function AppInner() {
             segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onLaunchCampaign={() => openBoost()}
-            onOpenMessages={() => setRoute('messages')}
+            onOpenMessages={() => setRoute('business-messages')}
             onOpenDeals={() => setRoute('hub-deals')}
             onOpenCrm={() => setRoute('hub-customers')}
           />
@@ -4910,7 +5511,7 @@ function AppInner() {
           <HelpCentreScreen
             onBack={() => setRoute('business-more')}
             onStartChat={() => setRoute('support')}
-            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenMerchant={() => void openBusinessSetup()}
             onOpenTerms={() => setRoute('terms')}
           />
         </div>
@@ -5363,7 +5964,22 @@ function AppInner() {
       if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
-          <BusinessBranchComparisonScreen onBack={() => setRoute('analytics-overview')} />
+          <BusinessBranchComparisonScreen
+            onBack={() => setRoute('analytics-overview')}
+            onNavigate={(target) =>
+              setRoute(
+                target === 'pricing'
+                  ? 'hub-catalog'
+                  : target === 'business'
+                    ? 'analytics-business'
+                    : target === 'customers'
+                      ? 'analytics-customers'
+                      : target === 'deals'
+                        ? 'analytics-deals'
+                        : 'analytics-pos',
+              )
+            }
+          />
         </div>
       );
 
@@ -6268,7 +6884,15 @@ function AppInner() {
   return (
     <StoreOrderingProvider>
     <>
-      {renderRoute()}
+      {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending ? (
+        <SkeletonGroup label="Loading" className="mx-auto w-full max-w-5xl space-y-4 p-6">
+          <Skeleton className="h-10 w-1/2" />
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </SkeletonGroup>
+      ) : (
+        renderRoute()
+      )}
 
       {claimPopupOpen &&
         (isDesktop ? (
@@ -6283,6 +6907,7 @@ function AppInner() {
           />
         ) : (
           <ClaimIdentitySheet
+            detail={liveDeal.detail}
             open
             identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
             onClose={closeClaimPopup}
@@ -6323,22 +6948,28 @@ function AppInner() {
           onClose={() => setClaimDialog(null)}
           onContinue={(values) => {
             setGiftRecipient({
-              name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+              name: `${values.firstName} ${values.lastName}`.trim(),
               email: values.email,
               phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
             });
+            setGiftNote(values.note);
+            setClaimError(null);
             setClaimDialog('giftConfirm');
           }}
         />
       )}
       {isDesktop && claimDialog === 'giftConfirm' && (
         <ConfirmGiftSendModal
+          detail={liveDeal.detail}
           open
           recipient={giftRecipient}
+          note={giftNote}
+          error={claimError}
+          busy={claimBusy}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onEdit={() => setClaimDialog('gift')}
-          onSend={() => finishDesktopClaim('gift')}
+          onSend={() => void finishDesktopClaim('gift')}
         />
       )}
       {isDesktop && claimDialog === 'other' && (
@@ -6352,6 +6983,13 @@ function AppInner() {
               phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
             });
             setClaimDialog('verify');
+            void sendClaimCode(
+              holderFromRecipient({
+                name: `${values.firstName} ${values.lastName}`.trim(),
+                email: values.email,
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+              }),
+            );
           }}
         />
       )}
@@ -6359,19 +6997,28 @@ function AppInner() {
         <RecipientVerificationModal
           open
           recipient={claimRecipient}
+          target={claimHolder?.email}
+          error={claimError}
+          busy={claimBusy}
+          onResend={() => claimHolder && void sendClaimCode(claimHolder)}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
-          onVerify={() => setClaimDialog('summary')}
+          onVerify={(code) => {
+            setClaimCode(code);
+            setClaimError(null);
+            setClaimDialog('summary');
+          }}
           onBack={() => setClaimDialog('other')}
         />
       )}
       {isDesktop && claimDialog === 'summary' && (
         <RecipientSummaryModal
+          detail={liveDeal.detail}
           open
           recipient={claimRecipient}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
-          onConfirm={() => finishDesktopClaim('someone-else')}
+          onConfirm={() => void finishDesktopClaim('someone-else')}
           onEdit={() => setClaimDialog('other')}
         />
       )}

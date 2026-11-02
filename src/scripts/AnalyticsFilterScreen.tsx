@@ -3,7 +3,18 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { hasApiConfig } from '../services/api/client';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
-import { presetDays, setAnalyticsFilter, useAnalyticsFilter } from './analyticsLive';
+import {
+  COHORT_VALUES,
+  DEAL_STATUS_VALUES,
+  SETTLEMENT_VALUES,
+  labelsFor,
+  presetDays,
+  setAnalyticsFilter,
+  useAnalyticsFilter,
+  valuesFor,
+} from './analyticsLive';
+import { useLivePos } from './posLive';
+import { useBusinessAnalytics } from '../hooks/business/useBusinessAnalytics';
 
 interface AnalyticsFilterScreenProps {
   onBack: () => void;
@@ -78,11 +89,38 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
   const [preset, setPreset] = useState<string>(filter.preset);
   const [location, setLocation] = useState<string>(filter.branchId ?? 'all');
   const [tab, setTab] = useState<string>('deals');
-  const [dealStatuses, setDealStatuses] = useState<string[]>(['Active']);
-  const [channels, setChannels] = useState<string[]>(['QR & POS', 'Storefront']);
-  const [settlements, setSettlements] = useState<string[]>(['Card', 'Transfer']);
-  const [tills, setTills] = useState<string[]>(['Till #01', 'Till #02']);
-  const [cohort, setCohort] = useState<string>('all');
+  // Live: chips start from the applied filter and send real values; demo keeps the sample picks.
+  const liveFilters = hasApiConfig();
+  const dealOptions = liveFilters ? Object.keys(DEAL_STATUS_VALUES) : DEAL_STATUSES;
+  const settlementOptions = liveFilters ? Object.keys(SETTLEMENT_VALUES) : SETTLEMENTS;
+  const [dealStatuses, setDealStatuses] = useState<string[]>(() =>
+    liveFilters ? labelsFor(DEAL_STATUS_VALUES, filter.dealStatus) : ['Active'],
+  );
+  // No discovery-channel data exists yet, so live never sends or shows a channel filter.
+  const [channels, setChannels] = useState<string[]>(liveFilters ? [] : ['QR & POS', 'Storefront']);
+  const [settlements, setSettlements] = useState<string[]>(() =>
+    liveFilters ? labelsFor(SETTLEMENT_VALUES, filter.paymentMethod) : ['Card', 'Transfer'],
+  );
+  // Live: the business's own tills and customer count; the samples are for running without an API.
+  const livePos = useLivePos();
+  const customerTotal = useBusinessAnalytics('customers', filter.days).data?.total.current;
+  const tillOptions = hasApiConfig() ? livePos.tills.map((till) => till.name) : TILLS;
+  const defaultTills = hasApiConfig() ? [] : ['Till #01', 'Till #02'];
+  const [tills, setTills] = useState<string[]>(() =>
+    hasApiConfig()
+      ? livePos.tills.filter((till) => filter.tillId.includes(till.id)).map((till) => till.name)
+      : defaultTills,
+  );
+  // Tills arrive after the screen opens: show the applied ones once they load.
+  const tillsLoaded = livePos.tills.length > 0;
+  useEffect(() => {
+    if (!hasApiConfig() || !tillsLoaded || !filter.tillId.length) return;
+    setTills(livePos.tills.filter((till) => filter.tillId.includes(till.id)).map((till) => till.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tillsLoaded]);
+  const [cohort, setCohort] = useState<string>(() =>
+    liveFilters ? labelsFor(COHORT_VALUES, filter.cohort ? [filter.cohort] : [])[0] ?? 'all' : 'all',
+  );
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -129,12 +167,12 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
   const reset = () => {
     setPreset('30 Days');
     setLocation('all');
-    setDealStatuses(['Active']);
-    setChannels(['QR & POS', 'Storefront']);
-    setSettlements(['Card', 'Transfer']);
-    setTills(['Till #01', 'Till #02']);
+    setDealStatuses(liveFilters ? [] : ['Active']);
+    setChannels(liveFilters ? [] : ['QR & POS', 'Storefront']);
+    setSettlements(liveFilters ? [] : ['Card', 'Transfer']);
+    setTills(defaultTills);
     setCohort('all');
-    setAnalyticsFilter({ preset: '30 Days', days: 30, branchId: null });
+    setAnalyticsFilter({ preset: '30 Days', days: 30, branchId: null, dealStatus: [], paymentMethod: [], tillId: [], cohort: null });
     showToast('Filters reset to defaults');
   };
 
@@ -146,7 +184,16 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
       setApplied(true);
       // Persist the scope the analytics screens read: the preset and branch
       // drive every module's query (and the export's range) from here on.
-      setAnalyticsFilter({ preset, days: presetDays(preset), branchId: location === 'all' ? null : location });
+      setAnalyticsFilter({
+        preset,
+        days: presetDays(preset),
+        branchId: location === 'all' ? null : location,
+        // The deal, POS and customer views each send their own part of these.
+        dealStatus: liveFilters ? valuesFor(DEAL_STATUS_VALUES, dealStatuses) : [],
+        paymentMethod: liveFilters ? valuesFor(SETTLEMENT_VALUES, settlements) : [],
+        tillId: liveFilters ? livePos.tills.filter((till) => tills.includes(till.name)).map((till) => till.id) : [],
+        cohort: liveFilters && cohort !== 'all' ? COHORT_VALUES[cohort] ?? null : null,
+      });
       showToast('Filters applied across analytics');
       revertTimer.current = window.setTimeout(() => setApplied(false), 2400);
     }, 900);
@@ -305,7 +352,7 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
               <>
                 <Panel title="Deal status">
                   <ChipRow
-                    options={DEAL_STATUSES}
+                    options={dealOptions}
                     selected={dealStatuses}
                     onToggle={(value) => toggleIn(setDealStatuses, dealStatuses, value)}
                   />
@@ -324,23 +371,28 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
 
             {tab === 'pos' && (
               <>
-                <Panel title="Discovery channel">
+                {!liveFilters && (
+<Panel title="Discovery channel">
                   <ChipRow
                     options={CHANNELS}
                     selected={channels}
                     onToggle={(value) => toggleIn(setChannels, channels, value)}
                   />
                 </Panel>
+)}
                 <Panel title="Settlement channel">
                   <ChipRow
-                    options={SETTLEMENTS}
+                    options={settlementOptions}
                     selected={settlements}
                     onToggle={(value) => toggleIn(setSettlements, settlements, value)}
                   />
                 </Panel>
                 <Panel title="Till selection">
                   <div className="grid grid-cols-2 gap-space-xs">
-                    {TILLS.map((till) => {
+                    {tillOptions.length === 0 && (
+                    <span className="col-span-2 font-caption text-caption text-text-secondary">No tills set up yet.</span>
+                  )}
+                  {tillOptions.map((till) => {
                       const active = tills.includes(till);
                       return (
                         <button
@@ -367,7 +419,7 @@ export function AnalyticsFilterScreen({ onBack }: AnalyticsFilterScreenProps) {
             {tab === 'customers' && (
               <Panel title="Customer cohort">
                 <div className="flex flex-col gap-space-2xs">
-                  {[{ key: 'all', label: 'All cohorts', meta: '1,482 profiles' }, ...COHORTS.map((label) => ({ key: label, label, meta: '' }))].map(
+                  {[{ key: 'all', label: 'All cohorts', meta: hasApiConfig() ? (customerTotal === undefined ? '—' : `${customerTotal.toLocaleString('en-NG')} profiles`) : '1,482 profiles' }, ...COHORTS.map((label) => ({ key: label, label, meta: '' }))].map(
                     (item) => {
                       const active = cohort === item.key;
                       return (

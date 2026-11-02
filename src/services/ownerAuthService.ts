@@ -42,5 +42,7 @@ export const ownerAuthService = {
     api.post<OwnerSession>('/auth/register/owner', input),
 
   /** Local-auth accounts confirm their password; Google accounts omit it. */
+  /** New token scoped to one shell of a dual-role account; the API remembers the shell. */
+  switchRole: (role: 'Owner' | 'Manager' | 'Staff' | 'Customer') => api.post<OwnerSession>('/auth/switch-role', { role }),
   upgrade: (input: { password?: string } & OwnerBusinessFields) => api.post<OwnerSession>('/auth/upgrade-to-owner', input),
 };

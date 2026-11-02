@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useDealDetail } from '../../hooks/useDealDetail';
+import { useVoucherQr } from '../../hooks/useVoucherQr';
+import { mapEmbedUrl } from '../../hooks/usePublicBusiness';
+import { NO_IMAGE } from '../../utils/homeOffer';
+import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
-import { useClaims } from '../../context/ClaimsContext';
+import { currentVoucher, useClaims, type ClaimRecord } from '../../context/ClaimsContext';
 import { useProfile } from '../../context/ProfileContext';
 
 interface DesktopClaimedDealScreenProps {
@@ -9,15 +14,10 @@ interface DesktopClaimedDealScreenProps {
   onBack: () => void;
   onContact: () => void;
   onReview: () => void;
-  onCancelClaim: () => void;
+  onCancelClaim: () => Promise<void>;
+  /** Open this voucher; otherwise the latest one. */
+  claim?: ClaimRecord | null;
 }
-
-/** Fallback shown only when no claim record exists (deep link / cleared storage). */
-const CLAIM_CODE = 'VT-48F261';
-const CASHIER_PIN = '8821';
-
-const HERO_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDHNsQYzlQAh9oju3O9Pp7b2OqE4Q1w9NTs0_fLXsac8VzxG06oD2NcwkkT8F3q8guxDTRfKEplRfmk3C-S9j62uAZ-X3SG4rkR3dDcngRx8sOpiwe5UeKWYk-lyy81904uUukw2Do3wMAOVj0Vg_7dv90NC6KTvhmoR0HFL6aPR56jOI4gZrX7w67mzbdQcgA44gm5lNRoAe6oGg6V1rNX8nBhjhfYCCBlRIssV7QqZImEOkPqpYnQDw';
 
 const formatCurrency = (value: number | undefined) => {
   const safeValue = Number(value ?? 0);
@@ -28,11 +28,6 @@ const formatCurrency = (value: number | undefined) => {
     maximumFractionDigits: 0,
   }).format(safeValue);
 };
-
-const MAP_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBRzuuVi9eFa4IfiKY-0CLXnUqZT2sbZNosW0fYczr-35iaT8YS48jMPhxX5FhnlpIT0M6U61-52cj6dPjBQzinsAIKVmlZpDUKfvnY7-G3LByd50m-xoQvFZg9A_dkudzO9jz0LRWmtKBN1qsOyrPwhv2R0EFtDw9bUTJM-yJ2xFm00pWt8sgDfxXVcbelWtpObOkpjajIiqRQK8pSgKgT2aPd465gP81ZRfUsDx5-0GtlsxHiafGQhg';
-
-const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Apo%20Boulevard%2C%20Abuja';
 
 const REDEEM_STEPS = (business: string, code: string): { title: string; body: ReactNode }[] => [
   {
@@ -57,60 +52,12 @@ const REDEEM_STEPS = (business: string, code: string): { title: string; body: Re
   },
 ];
 
-const DEAL_RULES = [
-  { icon: 'calendar_today', text: 'Valid Monday – Friday, 12:00 PM – 4:00 PM (Lunch hours).' },
-  { icon: 'restaurant', text: 'Dine-in exclusive (Takeaway & delivery excluded).' },
-  { icon: 'confirmation_number', text: 'One claim voucher valid per table / visit.' },
-  { icon: 'block', text: 'Cannot be combined with student or other combo promos.' },
-];
-
-const INCLUDED_ITEMS = [
-  'Choice of Dry-aged Angus burger or marinated grilled chicken supreme',
-  'Truffle parmesan hand-cut fries or garden crisp salad',
-  'Cold-pressed peach cooler or signature hibiscus iced tea',
-];
-
-function QrCodeArt() {
-  return (
-    <svg className="w-full h-full" fill="currentColor" viewBox="0 0 100 100">
-      <rect fill="#141B2B" height="30" rx="3" width="30" x="0" y="0" />
-      <rect fill="#FFFFFF" height="20" rx="2" width="20" x="5" y="5" />
-      <rect fill="#141B2B" height="10" rx="1" width="10" x="10" y="10" />
-      <rect fill="#141B2B" height="30" rx="3" width="30" x="70" y="0" />
-      <rect fill="#FFFFFF" height="20" rx="2" width="20" x="75" y="5" />
-      <rect fill="#141B2B" height="10" rx="1" width="10" x="80" y="10" />
-      <rect fill="#141B2B" height="30" rx="3" width="30" x="0" y="70" />
-      <rect fill="#FFFFFF" height="20" rx="2" width="20" x="5" y="75" />
-      <rect fill="#141B2B" height="10" rx="1" width="10" x="10" y="80" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="36" y="4" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="48" y="12" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="58" y="4" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="36" y="20" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="4" y="38" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="16" y="46" />
-      <rect fill="#141B2B" height="14" rx="1" width="6" x="28" y="38" />
-      <rect fill="#141B2B" height="6" rx="1" width="14" x="68" y="38" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="88" y="44" />
-      <rect fill="#141B2B" height="8" rx="1" width="6" x="38" y="68" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="48" y="74" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="62" y="68" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="76" y="78" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="88" y="70" />
-      <rect fill="#141B2B" height="6" rx="1" width="14" x="38" y="86" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="60" y="88" />
-      <rect fill="#141B2B" height="6" rx="1" width="10" x="82" y="90" />
-      <rect fill="#066CF4" height="28" rx="6" width="28" x="36" y="36" />
-      <path d="M44 44L50 56L56 44" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
-    </svg>
-  );
-}
-
 export function DesktopClaimedDealScreen({
   onNav,
   onBack,
   onContact,
   onReview,
-  onCancelClaim,
+  onCancelClaim, claim: openClaim,
 }: DesktopClaimedDealScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<null | 'redeem' | 'cancel'>(null);
@@ -118,14 +65,17 @@ export function DesktopClaimedDealScreen({
   const qrRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
 
-  // Most recent redeemable claim (localStorage-backed; backend gap: `GET /claims/:ref`).
-  const { claims } = useClaims();
+  // From `GET /me/claims`.
+  const { claims, claimsLoading } = useClaims();
   const profile = useProfile();
-  const claim = claims.find((entry) => entry.kind !== 'gift') ?? null;
-  const claimCode = claim?.code ?? CLAIM_CODE;
-  const businessName = claim?.dealBusiness ?? 'Local dining partner';
-  const offerTitle = claim?.dealTitle ?? 'Featured local deal';
-  const heroImage = claim?.dealImage ?? HERO_IMG;
+  // `null` from a scanned link means that voucher isn't this account's.
+  const claim = openClaim === undefined ? currentVoucher(claims) ?? null : openClaim;
+  const liveDeal = useDealDetail(claim?.offerId);
+  const terms = claim?.terms?.length ? claim.terms : liveDeal.detail?.terms ?? [];
+  const claimCode = claim?.code ?? '';
+  const businessName = claim?.dealBusiness ?? '';
+  const offerTitle = claim?.dealTitle ?? '';
+  const heroImage = claim?.dealImage ?? NO_IMAGE;
   const dealPrice = Number(claim?.dealPrice ?? 0);
   const dealOldPrice = Number(claim?.dealOldPrice ?? (claim?.dealPrice ?? dealPrice) ?? 0);
   const discountAmount = dealOldPrice > dealPrice ? Math.max(dealOldPrice - dealPrice, 0) : 0;
@@ -133,6 +83,23 @@ export function DesktopClaimedDealScreen({
   const holderName = claim?.recipient?.name || profile.fullName;
   const holderContact = claim?.recipient?.phone || claim?.recipient?.email || profile.maskedPhone;
   const redeemSteps = REDEEM_STEPS(businessName, claimCode);
+  const expiryLabel = claim?.expiresAt
+    ? new Date(claim.expiresAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
+  const claimState = claim?.state ?? 'ACTIVE';
+  const usable = claimState === 'ACTIVE';
+  const stateLabel = claimState === 'REDEEMED' ? 'REDEEMED' : claimState === 'EXPIRED' ? 'EXPIRED' : 'ACTIVE CLAIM • READY TO USE';
+  const hasPoint = claim?.dealLatitude != null && claim.dealLongitude != null;
+  const directionsUrl = hasPoint
+    ? `https://www.google.com/maps/search/?api=1&query=${claim.dealLatitude},${claim.dealLongitude}`
+    : claim?.dealLocation
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(claim.dealLocation)}`
+      : null;
+  const mapUrl = mapEmbedUrl(claim?.dealLatitude ?? null, claim?.dealLongitude ?? null);
+  const businessInitials = businessName.split(/\s+/).map((word) => word[0]).join('').slice(0, 2).toUpperCase();
+
+  // Scanning opens this voucher's own pass page.
+  const qrImage = useVoucherQr(claim?.id);
 
   useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
@@ -144,10 +111,18 @@ export function DesktopClaimedDealScreen({
   };
 
   const copyCode = () => {
-    navigator.clipboard?.writeText(claimCode).catch(() => undefined);
-    setCopied(true);
-    showToast(`Merchant Code Copied: ${claimCode}`);
-    timers.current.push(window.setTimeout(() => setCopied(false), 2000));
+    if (!navigator.clipboard) {
+      showToast('Could not copy the code');
+      return;
+    }
+    navigator.clipboard.writeText(claimCode).then(
+      () => {
+        setCopied(true);
+        showToast(`Merchant Code Copied: ${claimCode}`);
+        timers.current.push(window.setTimeout(() => setCopied(false), 2000));
+      },
+      () => showToast('Could not copy the code'),
+    );
   };
 
   const sharePass = () => {
@@ -163,10 +138,10 @@ export function DesktopClaimedDealScreen({
   const handleConfirm = () => {
     if (confirming === 'redeem') {
       setConfirming(null);
-      showToast('Pass marked as presented in-store!');
+      showBarcode();
     } else if (confirming === 'cancel') {
       setConfirming(null);
-      onCancelClaim();
+      onCancelClaim().catch(() => showToast('This claim couldn’t be cancelled. Please try again.'));
     }
   };
 
@@ -174,6 +149,33 @@ export function DesktopClaimedDealScreen({
     qrRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     showToast('Displaying full scannable pass');
   };
+
+  if (!claim && claimsLoading) {
+    return (
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="my-deals">
+        <SkeletonGroup label="Loading your voucher" className="w-full max-w-[1200px] mx-auto px-6 py-space-lg grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-space-md">
+          <Skeleton className="h-[520px] w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
+        </SkeletonGroup>
+      </DesktopPage>
+    );
+  }
+
+  if (!claim) {
+    return (
+      <DesktopPage withHeader withFooter onNav={onNav} activeNav="my-deals">
+        <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
+          <div className="max-w-md mx-auto px-margin pt-space-3xl">
+            <div className="rounded-3xl bg-surface-canvas p-6 text-center shadow-sm space-y-3">
+              <Icon name="local_activity" className="text-[32px] text-primary" />
+              <p className="font-label-md text-label-md text-text-primary font-semibold">We couldn’t find this voucher.</p>
+              <button type="button" onClick={onBack} className="h-11 w-full rounded-xl bg-primary text-on-primary font-button-primary text-button-primary">Go back</button>
+            </div>
+          </div>
+        </div>
+      </DesktopPage>
+    );
+  }
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="my-deals">
@@ -236,13 +238,15 @@ export function DesktopClaimedDealScreen({
                   <div className="inline-flex items-center gap-space-2xs bg-badge-discount-bg text-badge-discount-text px-space-xs py-1 rounded-full w-fit">
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
                     <span className="font-label-sm text-label-sm uppercase tracking-wider font-semibold">
-                      ACTIVE CLAIM • READY TO USE
+                      {stateLabel}
                     </span>
                   </div>
-                  <div className="inline-flex items-center gap-1 text-text-secondary">
+                  {expiryLabel ? (
+<div className="inline-flex items-center gap-1 text-text-secondary">
                     <Icon name="hourglass_top" className="text-[16px] text-primary" />
-                    <span className="font-caption text-caption">Expires Oct 18, 2024 at 11:59 PM (in 2 days)</span>
+                    <span className="font-caption text-caption">Expires {expiryLabel}</span>
                   </div>
+) : null}
                 </div>
 
                 <div className="p-space-md space-y-space-sm">
@@ -300,14 +304,14 @@ export function DesktopClaimedDealScreen({
                 <div className="p-space-md text-center space-y-space-sm bg-surface-subtle" ref={qrRef}>
                   <div className="inline-block p-space-sm bg-surface-canvas rounded-2xl shadow-sm">
                     <div className="w-56 h-56 mx-auto flex items-center justify-center relative bg-surface rounded-lg p-2">
-                      <QrCodeArt />
+                      {qrImage ? <img alt={`QR code for ${claimCode}`} className="w-full h-full" src={qrImage} /> : <span className="font-caption text-caption text-text-secondary text-center px-2">Show code {claimCode} to the cashier</span>}
                     </div>
                     <span className="inline-block mt-2 font-caption text-caption text-text-secondary font-medium">
-                      Scan to Redeem Instantly
+                      Scan to Open This Pass
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-space-xs">
+                  <div className="grid grid-cols-1 gap-space-xs">
                     <div className="bg-surface-canvas p-space-xs rounded-xl flex flex-col items-center justify-center">
                       <span className="font-caption text-caption text-text-secondary">Merchant Code</span>
                       <div className="flex items-center gap-1 mt-0.5">
@@ -324,12 +328,6 @@ export function DesktopClaimedDealScreen({
                           <Icon name={copied ? 'check' : 'content_copy'} className="text-[16px]" />
                         </button>
                       </div>
-                    </div>
-                    <div className="bg-surface-canvas p-space-xs rounded-xl flex flex-col items-center justify-center">
-                      <span className="font-caption text-caption text-text-secondary">Cashier PIN</span>
-                      <span className="font-heading-sm text-heading-sm font-bold text-primary mt-0.5 tracking-widest">
-                        {CASHIER_PIN}
-                      </span>
                     </div>
                   </div>
 
@@ -351,39 +349,17 @@ export function DesktopClaimedDealScreen({
                       <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
                         Validity Window
                       </span>
-                      <p className="font-label-md text-label-md font-semibold text-text-primary mt-0.5">
-                        Mon–Fri, 12:00 PM – 4:00 PM
-                      </p>
                       <p className="font-caption text-caption text-error font-medium">
-                        Expires Oct 18, 2024 at 11:59 PM
+                        {expiryLabel ? `Expires ${expiryLabel}` : ''}
                       </p>
                     </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-surface-canvas text-left shadow-sm">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                        Included Items in this Claim
-                      </span>
-                      <span className="font-caption text-caption text-primary font-medium">3 of 3 Included</span>
-                    </div>
-                    <ul className="flex flex-col gap-1.5 font-body-md text-body-md text-text-primary">
-                      {INCLUDED_ITEMS.map((item) => (
-                        <li className="flex items-center gap-2" key={item}>
-                          <Icon name="check_circle" className="text-[16px] text-badge-discount-text" />
-                          <span>
-                            <strong>1x</strong> {item}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
 
                   <div className="p-3 rounded-xl bg-surface-tint-blue flex items-start gap-2 text-text-primary text-left">
                     <Icon name="info" className="text-primary text-[20px] shrink-0 mt-0.5" />
                     <p className="font-caption text-caption leading-relaxed">
                       <strong>Settlement Notice:</strong> Pay the discounted bill directly to the{' '}
-                      <strong>{businessName}</strong> cashier at redemption via card or cash. Zero upfront checkout
+                      <strong>{businessName}</strong> cashier at redemption. Zero upfront checkout
                       fees charged by VEMTAP.
                     </p>
                   </div>
@@ -394,7 +370,7 @@ export function DesktopClaimedDealScreen({
                 <div className="flex items-center justify-between">
                   <h3 className="font-heading-sm text-heading-sm text-text-primary">Claim Verification</h3>
                   <span className="bg-surface-container-high text-text-secondary px-2 py-0.5 rounded-full font-label-sm text-label-sm">
-                    #{claim?.ref ?? 'CLM-982410'}
+                    #{claimCode}
                   </span>
                 </div>
                 <div className="space-y-space-xs text-body-md font-body-md">
@@ -409,7 +385,7 @@ export function DesktopClaimedDealScreen({
                             hour: 'numeric',
                             minute: '2-digit',
                           })
-                        : 'Oct 15, 2024 • 10:42 AM'}
+                    : '—'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-1">
@@ -447,7 +423,7 @@ export function DesktopClaimedDealScreen({
                   </div>
                   <div>
                     <h3 className="font-heading-sm text-heading-sm text-text-primary">How to Redeem</h3>
-                    <p className="font-caption text-caption text-text-secondary">4 quick steps at the restaurant</p>
+                    <p className="font-caption text-caption text-text-secondary">4 quick steps at the business</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-space-sm">
@@ -468,51 +444,44 @@ export function DesktopClaimedDealScreen({
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-surface-canvas p-space-md shadow-sm space-y-space-xs">
+              {terms.length ? (
+<div className="rounded-2xl bg-surface-canvas p-space-md shadow-sm space-y-space-xs">
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">Terms &amp; Deal Rules</h3>
                 <ul className="grid grid-cols-1 md:grid-cols-2 gap-space-xs text-text-secondary font-caption text-caption">
-                  {DEAL_RULES.map((rule) => (
-                    <li className="flex items-center gap-2" key={rule.text}>
-                      <Icon name={rule.icon} className="text-[16px] text-primary" />
-                      <span>{rule.text}</span>
-                    </li>
-                  ))}
+                  {terms.map((term) => (
+                <li key={term} className="flex items-center gap-2">
+                  <Icon name="check_circle" className="text-[16px] text-primary" />
+                  <span>{term}</span>
+                </li>
+              ))}
                 </ul>
               </div>
+) : null}
 
               <div className="rounded-2xl bg-surface-canvas p-space-md shadow-sm space-y-space-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary font-bold">
-                      UG
+                      {businessInitials}
                     </div>
                     <div>
                       <h4 className="font-heading-sm text-heading-sm text-text-primary">{businessName}</h4>
-                      <span className="inline-flex items-center gap-1 font-caption text-caption text-badge-discount-text font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" /> Open Now • Closes 10:00 PM
-                      </span>
                     </div>
                   </div>
                 </div>
 
-                <div
-                  className="w-full h-32 rounded-xl bg-cover bg-center relative overflow-hidden flex items-end p-space-xs shadow-inner"
-                  style={{ backgroundImage: `url('${MAP_IMG}')` }}
-                >
-                  <div className="bg-surface-canvas/90 backdrop-blur-md px-space-xs py-1 rounded-lg flex items-center gap-1 text-text-primary">
-                    <Icon name="location_on" className="text-[16px] text-primary" />
-                    <span className="font-caption text-caption font-semibold">0.8 km away • 4 mins drive</span>
-                  </div>
-                </div>
+                {mapUrl ? <iframe title={`Map of ${businessName}`} className="w-full h-32 rounded-xl shadow-inner" src={mapUrl} loading="lazy" /> : null}
 
                 <div className="grid grid-cols-2 gap-space-xs pt-1">
-                  <a
-                    href="tel:+2348000001234"
+                  {claim?.dealPhone ? (
+<a
+ href={`tel:${claim.dealPhone}`}
                     className="h-10 rounded-xl bg-surface-container-low text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors"
                   >
                     <Icon name="call" className="text-[18px] text-primary" />
                     <span>Call Branch</span>
                   </a>
+) : null}
                   <button
                     type="button"
                     onClick={onContact}
@@ -531,9 +500,10 @@ export function DesktopClaimedDealScreen({
                   <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-semibold">
                     Pass Actions
                   </span>
-                  <span className="font-caption text-caption text-badge-discount-text font-semibold">Ready</span>
+                  <span className="font-caption text-caption text-badge-discount-text font-semibold">{usable ? 'Ready' : claimState === 'REDEEMED' ? 'Redeemed' : 'Expired'}</span>
                 </div>
 
+                {usable && (
                 <button
                   type="button"
                   onClick={() => setConfirming('redeem')}
@@ -542,6 +512,7 @@ export function DesktopClaimedDealScreen({
                   <Icon name="check_circle" className="text-[20px]" />
                   <span>Use Deal Now (Confirm In-Store)</span>
                 </button>
+                )}
 
                 <div className="grid grid-cols-2 gap-space-xs">
                   <button
@@ -552,8 +523,9 @@ export function DesktopClaimedDealScreen({
                     <Icon name="chat" className="text-[18px]" />
                     <span>Direct Chat</span>
                   </button>
-                  <a
-                    href={DIRECTIONS_URL}
+                  {directionsUrl ? (
+<a
+ href={directionsUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="h-11 rounded-xl bg-surface-container-low text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors"
@@ -561,6 +533,7 @@ export function DesktopClaimedDealScreen({
                     <Icon name="directions" className="text-[18px]" />
                     <span>Get Directions</span>
                   </a>
+) : null}
                 </div>
 
                 <div className="h-px bg-border-subtle" />
@@ -574,6 +547,7 @@ export function DesktopClaimedDealScreen({
                     <Icon name="qr_code_scanner" className="text-[20px]" />
                     <span>Barcode</span>
                   </button>
+                  {usable && (
                   <button
                     type="button"
                     onClick={() => setConfirming('redeem')}
@@ -582,6 +556,7 @@ export function DesktopClaimedDealScreen({
                     <Icon name="bolt" className="text-[20px]" />
                     <span>Use Deal</span>
                   </button>
+                  )}
                 </div>
 
                 <div className="h-px bg-border-subtle" />
@@ -605,6 +580,7 @@ export function DesktopClaimedDealScreen({
                   </button>
                 </div>
 
+                {usable && (
                 <button
                   type="button"
                   onClick={() => setConfirming('cancel')}
@@ -612,13 +588,14 @@ export function DesktopClaimedDealScreen({
                 >
                   Cancel this claim (releases voucher for others)
                 </button>
+                )}
               </div>
 
               <div className="px-4 py-3 rounded-xl bg-surface-tint-blue flex items-start gap-2">
                 <Icon name="info" className="text-primary text-[18px] shrink-0 mt-0.5" />
                 <p className="font-caption text-caption text-text-secondary leading-relaxed">
                   In-person settlement: pay the discounted bill directly at{' '}
-                  <strong className="text-text-primary">{businessName}</strong> via card or cash.
+                  <strong className="text-text-primary">{businessName}</strong>.
                 </p>
               </div>
             </aside>

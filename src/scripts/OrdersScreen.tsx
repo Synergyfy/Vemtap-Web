@@ -4,8 +4,9 @@ import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useOrders, type SubmittedOrder } from '../context/OrdersContext';
 import { useBooking, type SpaAppointment } from '../context/BookingContext';
+import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
+import { NO_IMAGE } from '../utils/homeOffer';
 import {
-  MERCHANT_IMAGE,
   PAYMENT_STATUS_LABELS,
   formatOrderTime,
   isActiveOrderStatus,
@@ -20,13 +21,11 @@ interface OrdersScreenProps {
   onTab: (tab: MobileTabKey) => void;
   onOpenConversation: (threadId: string) => void;
   onOpenOrder: (ref: string) => void;
-  onOpenBooking: () => void;
+  onOpenBooking: (ref: string) => void;
   onNavigate: (target: OrdersTarget) => void;
 }
 
 type Hub = 'orders' | 'bookings';
-
-const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Maitama%20Heights%2C%20Abuja';
 
 const ORDER_STEPS = [
   { label: 'Received', icon: 'check' },
@@ -35,14 +34,9 @@ const ORDER_STEPS = [
   { label: 'Picked Up', icon: 'done_all' },
 ];
 
-const BOOKING_FILTERS = [
-  { key: 'all', label: 'All', count: 2 },
-  { key: 'upcoming', label: 'Upcoming', count: 1 },
-  { key: 'past', label: 'Past', count: 1 },
-] as const;
 
 type OrderFilterKey = 'all' | 'active' | 'completed';
-type BookingFilterKey = (typeof BOOKING_FILTERS)[number]['key'];
+type BookingFilterKey = 'all' | 'upcoming' | 'past';
 
 export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBooking, onNavigate }: OrdersScreenProps) {
   const [hub, setHub] = useState<Hub>('orders');
@@ -50,6 +44,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
   const [bookingFilter, setBookingFilter] = useState<BookingFilterKey>('all');
   const orders = useOrders();
   const spaBooking = useBooking();
+  const loading = orders.ordersLoading || spaBooking.appointmentsLoading;
 
   const myOrders = orders.orders;
   const activeOrders = myOrders.filter((order) => isActiveOrderStatus(order.status));
@@ -144,7 +139,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
               <span className="font-caption text-caption text-error font-semibold shrink-0">• Awaiting payment</span>
             )}
           </div>
-          <span className="font-mono font-caption text-caption text-text-tertiary shrink-0">#{order.ref}</span>
+          <span className="font-mono font-caption text-caption text-text-tertiary shrink-0">#{order.ref.length > 12 ? order.ref.slice(0, 8).toUpperCase() : order.ref}</span>
         </div>
 
         {active ? (
@@ -205,7 +200,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
             <img
               className="w-full h-full object-cover"
               alt={order.merchantName}
-              src={order.lines[0]?.image || MERCHANT_IMAGE}
+              src={order.lines[0]?.image || order.merchantLogo || NO_IMAGE}
             />
           </div>
           <div className="flex flex-col flex-1 min-w-0">
@@ -298,7 +293,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
         <div className="px-margin pt-space-xs mb-space-sm">
           <div className="flex items-center gap-space-xs bg-surface-container-low p-1 rounded-xl shadow-sm">
             {hubChip('orders', 'Orders', myOrders.length)}
-            {hubChip('bookings', 'Bookings', spaBooking.appointments.length || 2)}
+            {hubChip('bookings', 'Bookings', spaBooking.appointments.length)}
           </div>
         </div>
 
@@ -332,7 +327,14 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
         </div>
 
         <div className="px-margin flex flex-col gap-space-md">
-          {hub === 'orders' && (
+          {loading ? (
+            <SkeletonGroup label="Loading your orders and bookings" className="flex flex-col gap-space-md">
+              {[0, 1, 2].map((key) => (
+                <Skeleton key={key} className="h-40 w-full rounded-xl" />
+              ))}
+            </SkeletonGroup>
+          ) : null}
+          {!loading && hub === 'orders' && (
             <>
               {showActiveOrder &&
                 (activeOrders.length > 0 ? (
@@ -372,7 +374,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
             </>
           )}
 
-          {hub === 'bookings' && (
+          {!loading && hub === 'bookings' && (
             <>
               {showUpcomingBooking &&
                 (upcomingAppointments.length > 0 ? (
@@ -387,16 +389,16 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                           CONFIRMED • {appointment.ref}
                         </span>
                         <span className="font-label-sm text-label-sm font-bold text-text-primary">
-                          ₦{appointment.payable.toLocaleString('en-US')}
+                          {appointment.payable > 0 ? `₦${appointment.payable.toLocaleString('en-US')}` : ''}
                         </span>
                       </div>
                       <button
                         type="button"
-                        onClick={onOpenBooking}
+                        onClick={() => onOpenBooking(appointment.ref)}
                         className="flex gap-space-sm items-start text-left w-full rounded-lg hover:bg-surface-subtle transition-colors p-space-2xs -m-space-2xs"
                       >
                         <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                          <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={DIRECTIONS_URL} />
+                          <img className="w-full h-full object-cover" alt={appointment.merchantName} src={appointment.merchantImage || NO_IMAGE} />
                         </div>
                         <div className="flex flex-col flex-1 min-w-0">
                           <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
@@ -411,9 +413,6 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                           <p className="font-caption text-caption text-text-secondary truncate">
                             {appointment.serviceNames.join(' & ')}
                           </p>
-                          <span className="font-caption text-caption text-text-tertiary">
-                            Specialist: {appointment.therapistLabel}
-                          </span>
                         </div>
                       </button>
                     </article>
@@ -439,12 +438,12 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                           {appointment.status.toUpperCase()} • {appointment.ref}
                         </span>
                         <span className="font-label-sm text-label-sm font-bold text-text-primary">
-                          ₦{appointment.payable.toLocaleString('en-US')}
+                          {appointment.payable > 0 ? `₦${appointment.payable.toLocaleString('en-US')}` : ''}
                         </span>
                       </div>
                       <div className="flex gap-space-sm items-start">
                         <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-                          <img className="w-full h-full object-cover" alt="Serene luxury spa treatment room" src={DIRECTIONS_URL} />
+                          <img className="w-full h-full object-cover" alt={appointment.merchantName} src={appointment.merchantImage || NO_IMAGE} />
                         </div>
                         <div className="flex flex-col flex-1 min-w-0">
                           <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
@@ -481,7 +480,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
                 Need help with an order or booking?
               </h4>
               <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                Our Abuja support team can chase receipts, reschedule visits, or resolve disputes.{' '}
+                Our support team can chase receipts, reschedule visits, or resolve disputes.{' '}
                 <button
                   type="button"
                   onClick={() => onNavigate('support')}

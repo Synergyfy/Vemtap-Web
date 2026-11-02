@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
-import { downloadCsv } from '../../utils/exportCsv';
-import { printKvTable, printReport } from '../../utils/printReport';
+import { SAVINGS_TIMEFRAMES, useSavingsLedger, type SavingsTimeframe } from '../../hooks/useSavingsLedger';
 
 interface DesktopSavingsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -11,103 +10,9 @@ interface DesktopSavingsScreenProps {
   onSupport: () => void;
 }
 
-type Timeframe = 'month' | 'quarter' | 'all';
-
-const TOTALS: Record<Timeframe, string> = {
-  month: '₦48,500',
-  quarter: '₦124,300',
-  all: '₦289,750',
-};
-
-const TIMEFRAMES: Array<{ key: Timeframe; label: string }> = [
-  { key: 'month', label: 'This Month' },
-  { key: 'quarter', label: 'Last 3 Mo' },
-  { key: 'all', label: 'All Time' },
-];
-
-const CATEGORIES = [
-  {
-    icon: 'restaurant',
-    iconClass: 'bg-surface-tint-blue text-primary',
-    label: 'Food & Dining',
-    meta: '6 redemptions • 58%',
-    amount: '₦28,400',
-    width: 58,
-    barClass: 'bg-primary',
-  },
-  {
-    icon: 'spa',
-    iconClass: 'bg-surface-container text-secondary',
-    label: 'Wellness & Beauty',
-    meta: '5 redemptions • 29%',
-    amount: '₦14,100',
-    width: 29,
-    barClass: 'bg-secondary-container',
-  },
-  {
-    icon: 'shopping_bag',
-    iconClass: 'bg-tertiary-fixed text-tertiary',
-    label: 'Fashion & Retail',
-    meta: '3 redemptions • 13%',
-    amount: '₦6,000',
-    width: 13,
-    barClass: 'bg-tertiary-fixed-dim',
-  },
-];
-
-const LEDGER_ITEMS = [
-  {
-    name: 'Urban Grill & Bistro',
-    time: 'Oct 15, 2024 • 1:15 PM',
-    code: 'VT-48F261',
-    saved: '₦2,400',
-    deal: '20% Off Lunch Combo',
-    was: '₦12,000',
-    paid: '₦9,600',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCDpJzehdTIakEd1l0aHtXcEENngWKwUL79INnAJtrU09GrivYgMJR4bfgrzFW318ScXl0skr_aEHzNQD7QfiJsaiqoijzaaynQlWxZyBYVXbPuzyXRFL0KhJm_qz0GVXxnnzaYO7EtTpNNxAfyVpFtKxpzJr2p9OsYYpi8vyqER9UYoSuziYcx3K51XiE0wupPjYGE5yh58M5pAMtp1GABh-h5X8PLxP_vgJqz6wg6-gNeyqKdFvUXKA',
-    alt: 'A modern Lagos artisanal bistro restaurant burger and cocktail served on a rustic stone platter with soft natural light and subtle blue napkins',
-  },
-  {
-    name: 'Glow & Serenity Spa & Salon',
-    time: 'Oct 04, 2024 • 3:30 PM',
-    code: 'VT-SPA8821',
-    saved: '₦5,000',
-    deal: 'Weekend Glow Facial Promo',
-    was: '₦25,000',
-    paid: '₦20,000',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAXMfSfZGmy3oINAHONydpb5CJi5oKMrEIJzLcwXjGwSL5LXAuV1NIoEFEQBwRVTR9qfVCIVXApxL9rJR9Cysn6trPdZ2CZQYtCYWONxf_AGSTYprhNQWKz-LEMe2lXnULPYwdfbUuwbvieSnkuCHrs8z9zu0Q_lY5eLIGg2EeFpBnQgpRA0XPnyDHEltjX5gXIwODoDViuvn9CyvTa272siegnOxY7E2S_dqdSiMzRk25EQPWHuj3uNg',
-    alt: 'An upscale serene day spa interior featuring smooth warm bamboo minimalist stone water accents clean white rolled linen towels and deep relaxed ambient lighting',
-  },
-  {
-    name: 'The Daily Knead Bakery',
-    time: 'Sept 28, 2024 • 9:45 AM',
-    code: 'VT-BAK4192',
-    saved: '₦1,200',
-    deal: '15% Off Morning Pastry Pack',
-    was: '₦8,000',
-    paid: '₦6,800',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuC16GrqfAPlFKScFIyWtL5Ht6ORXy6PLGkXXX42qPyfLAx1VNz3aRXLC_nm8l550rsb_M_jsAQZy74_g2JGZlEZN2pXJBIuIgoefbc3asRpC4idVjY6fb39GjFKbmlwj2zFgBeVOW8-amrF-gvQhwhBgShtReKeHuonzYu7P0HRdZrKbUZS1IooMD7lGjeJA4u9jv2VD4E57buWekoGkTC2vKmP7TtdS2IfFz4icwQ6SV4qftT0dhwfUw',
-    alt: 'Fresh golden brown sourdough croissants and buttery artisan pastries resting on a clean marble counter in a chic modern bakery',
-  },
-  {
-    name: 'Sole District Apparel',
-    time: 'Sept 19, 2024 • 5:20 PM',
-    code: 'VT-SOL9910',
-    saved: '₦6,000',
-    deal: 'Flash Voucher Redemption',
-    was: '₦35,000',
-    paid: '₦29,000',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDeyOzl-DW9E35EiZof0vPXfxq1u2rQ3OTRVxGI0PvxMsUwbYwmacHMinRDAiuipZwtB8vnuTK6DhNAVygBtodPYaGnXUCohJw6NuBK4zF5n7sQC7l-uQszgaoUzlS1w0xkg-v1qZYJta_rwdVEVsWAXqWg1NF8cYciDe6bO50phJmxCx9yIOnLlJDil_IHxxATHKRPYfwTWRtdAAZFcFiQ28h4xAPjW0IGfrpsRWPNElgvlShg1jh9aQ',
-    alt: 'Boutique high-end contemporary streetwear and luxury sneakers displayed on minimalist light oak shelving with warm boutique spotlighting',
-  },
-];
-
 export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }: DesktopSavingsScreenProps) {
-  const [timeframe, setTimeframe] = useState<Timeframe>('month');
+  const [timeframe, setTimeframe] = useState<SavingsTimeframe>('month');
+  const savings = useSavingsLedger(timeframe);
   const [exportPhase, setExportPhase] = useState<'idle' | 'preparing' | 'done'>('idle');
   const [toast, setToast] = useState<string | null>(null);
 
@@ -119,36 +24,20 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
   const runExport = () => {
     if (exportPhase !== 'idle') return;
     setExportPhase('preparing');
-    window.setTimeout(() => {
-      const timeframeLabel = TIMEFRAMES.find((item) => item.key === timeframe)?.label ?? 'This Month';
-      downloadCsv(
-        'vemtap-savings-statement.csv',
-        ['Merchant', 'Redeemed', 'Code', 'Deal', 'Was', 'Paid', 'Saved'],
-        LEDGER_ITEMS.map((item) => [item.name, item.time, item.code, item.deal, item.was, item.paid, item.saved]),
-      );
-      printReport(
-        `VEMTAP Savings Statement — ${timeframeLabel}`,
-        `${printKvTable('Statement', [
-          ['Period', timeframeLabel],
-          ['Total saved', TOTALS[timeframe]],
-          ['Redemptions', `${LEDGER_ITEMS.length}`],
-        ])}
-         ${printKvTable(
-           'Redemptions',
-           LEDGER_ITEMS.map(
-             (item) => [`${item.name} — ${item.time}`, `${item.deal} • paid ${item.paid} (was ${item.was}) • saved ${item.saved} • ${item.code}`] as [string, string],
-           ),
-         )}
-         ${printKvTable(
-           'By category',
-           CATEGORIES.map((category) => [category.label, `${category.amount} — ${category.meta}`] as [string, string]),
-         )}
-         <p class="foot">A CSV copy of this statement downloaded alongside the PDF.</p>`,
-      );
+    try {
+      const count = savings.exportStatement();
+      if (count === 0) {
+        setExportPhase('idle');
+        showToast('No redemptions to export for this period');
+        return;
+      }
       setExportPhase('done');
       showToast('Statement downloaded to Files');
       window.setTimeout(() => setExportPhase('idle'), 2000);
-    }, 1200);
+    } catch {
+      setExportPhase('idle');
+      showToast('The statement couldn’t be downloaded. Please try again.');
+    }
   };
 
   return (
@@ -173,14 +62,14 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
                 Savings History &amp; Ledger
               </h1>
               <p className="font-body-lg text-body-lg text-text-secondary mt-2">
-                Every naira you have kept with VEMTAP passes, audited and synced: lifetime savings, category splits,
-                and a verified ledger of each redemption.
+                Every naira you have kept with VEMTAP passes: your savings, category splits and a ledger of each
+                redemption.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-space-xs self-start md:self-auto shrink-0">
               <span className="flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-container-lowest shadow-sm font-label-sm text-label-sm text-text-secondary">
                 <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text inline-block animate-pulse" />
-                <span>Audited &amp; Synced</span>
+                <span>{savings.loading ? 'Syncing…' : 'Synced'}</span>
               </span>
               <button
                 type="button"
@@ -196,7 +85,7 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
           <section className="rounded-xl bg-surface-container-lowest p-space-lg lg:p-8 shadow-md space-y-space-md relative overflow-hidden mb-6">
             <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-surface-tint-blue opacity-70 pointer-events-none" />
             <div className="relative z-10 grid grid-cols-3 gap-1 p-1 rounded-full bg-surface-container-low max-w-md">
-              {TIMEFRAMES.map((item) => (
+              {SAVINGS_TIMEFRAMES.map((item) => (
                 <button
                   key={item.key}
                   type="button"
@@ -214,14 +103,11 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
               <div className="space-y-space-2xs">
                 <div className="flex items-center space-x-space-2xs text-text-secondary">
                   <Icon name="savings" className="text-[16px] text-primary" />
-                  <span className="font-label-md text-label-md text-text-secondary">Total Lifetime Savings</span>
+                  <span className="font-label-md text-label-md text-text-secondary">{timeframe === 'all' ? 'Total Lifetime Savings' : 'Total Savings'}</span>
                 </div>
                 <div className="flex items-baseline space-x-space-xs flex-wrap">
                   <span className="font-display-hero text-display-hero text-text-primary tracking-tight">
-                    {TOTALS[timeframe]}
-                  </span>
-                  <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-medium">
-                    +18% vs last mo
+                    {savings.totalLabel}
                   </span>
                 </div>
               </div>
@@ -230,14 +116,14 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
                 <div className="p-space-xs rounded-lg bg-surface-subtle flex flex-col justify-between">
                   <span className="font-caption text-caption text-text-tertiary">Deals Redeemed</span>
                   <div className="flex items-baseline space-x-1 mt-1">
-                    <span className="font-heading-sm text-heading-sm text-text-primary">14</span>
+                    <span className="font-heading-sm text-heading-sm text-text-primary">{savings.records}</span>
                     <span className="font-caption text-caption text-text-secondary">deals</span>
                   </div>
                 </div>
                 <div className="p-space-xs rounded-lg bg-surface-subtle flex flex-col justify-between">
                   <span className="font-caption text-caption text-text-tertiary">Avg Discount</span>
                   <div className="flex items-baseline space-x-1 mt-1">
-                    <span className="font-heading-sm text-heading-sm text-primary">22%</span>
+                    <span className="font-heading-sm text-heading-sm text-primary">{savings.avgDiscount}%</span>
                     <span className="font-caption text-caption text-text-secondary">off</span>
                   </div>
                 </div>
@@ -251,7 +137,7 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
                     <Icon name="arrow_forward" className="text-[12px] text-primary" />
                   </span>
                   <div className="flex items-baseline space-x-1 mt-1">
-                    <span className="font-heading-sm text-heading-sm text-badge-discount-text">1,450</span>
+                    <span className="font-heading-sm text-heading-sm text-badge-discount-text">{savings.points === null ? '—' : savings.points.toLocaleString()}</span>
                     <span className="font-caption text-caption text-text-secondary">pts</span>
                   </div>
                 </button>
@@ -264,11 +150,11 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
               <section className="space-y-space-sm">
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-md text-heading-md text-text-primary">Savings by Category</h2>
-                  <span className="font-caption text-caption text-text-secondary">3 active categories</span>
+                  <span className="font-caption text-caption text-text-secondary">{savings.categories.length} active {savings.categories.length === 1 ? 'category' : 'categories'}</span>
                 </div>
                 <div className="p-space-md rounded-xl bg-surface-container-lowest shadow-sm space-y-space-md">
                   <div className="w-full h-2.5 rounded-full bg-surface-container-low flex overflow-hidden">
-                    {CATEGORIES.map((category) => (
+                    {savings.categories.map((category) => (
                       <div
                         key={category.label}
                         className={`h-full ${category.barClass}`}
@@ -277,7 +163,7 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
                     ))}
                   </div>
                   <div className="space-y-space-sm">
-                    {CATEGORIES.map((category) => (
+                    {savings.categories.map((category) => (
                       <div key={category.label} className="flex items-center justify-between gap-3">
                         <div className="flex items-center space-x-space-sm min-w-0">
                           <div
@@ -307,8 +193,7 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
                       Guaranteed Ledger Integrity
                     </h4>
                     <p className="font-caption text-caption text-text-secondary mt-0.5">
-                      Your ledger accurately records in-store and checkout discounts guaranteed by VEMTAP passes. All
-                      redemptions are cryptographically signed at merchant terminals.
+                      Your ledger records the discount on every VEMTAP pass a merchant has redeemed.
                     </p>
                   </div>
                 </div>
@@ -320,23 +205,36 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
                 <div className="flex items-center space-x-space-2xs">
                   <h2 className="font-heading-md text-heading-md text-text-primary">Transaction Ledger</h2>
                   <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-secondary-container font-caption text-caption font-semibold">
-                    14 records
+                    {savings.records} {savings.records === 1 ? 'record' : 'records'}
                   </span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast('Showing latest redemptions first')}
+                  onClick={savings.toggleSort}
                   className="font-caption text-caption text-primary flex items-center space-x-0.5 hover:underline"
                 >
-                  <span>Sort: Latest</span>
+                  <span>Sort: {savings.sort === 'latest' ? 'Latest' : 'Oldest'}</span>
                   <Icon name="expand_more" className="text-[14px]" />
                 </button>
               </div>
 
               <div className="space-y-space-xs">
-                {LEDGER_ITEMS.map((item) => (
+            {savings.items.length === 0 && (
+              <div className="p-space-md rounded-xl bg-surface-container-lowest shadow-sm text-center font-caption text-caption text-text-secondary">
+                {savings.loading ? (
+                  'Loading your savings…'
+                ) : savings.failed ? (
+                  <button type="button" onClick={savings.retry} className="text-primary font-semibold hover:underline">
+                    Your savings couldn’t be loaded. Click to retry.
+                  </button>
+                ) : (
+                  'No redemptions in this period yet.'
+                )}
+              </div>
+            )}
+                {savings.items.map((item) => (
                   <div
-                    key={item.name}
+                    key={item.id}
                     className="p-space-md rounded-xl bg-surface-container-lowest shadow-sm space-y-space-xs"
                   >
                     <div className="flex items-start justify-between gap-space-xs">
@@ -392,7 +290,7 @@ export function DesktopSavingsScreen({ onNav, onBack, onOpenRewards, onSupport }
             <button
               type="button"
               onClick={runExport}
-              disabled={exportPhase !== 'idle'}
+              disabled={exportPhase !== 'idle' || savings.loading}
               className="w-full max-w-md h-[52px] rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-md active:scale-95 transition-transform disabled:opacity-90"
             >
               {exportPhase === 'idle' && <Icon name="download" className="text-[20px]" />}

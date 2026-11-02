@@ -4,24 +4,29 @@ import { parsePrice } from '../../../utils/format';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 
 import type { ClaimDealSummary } from './ClaimIdentityModal';
+import type { DealDetail } from '../../../hooks/useDealDetail';
 
 export interface HowToClaimModalProps {
   open: boolean;
   onClose: () => void;
   onProceed: () => void;
   deal?: ClaimDealSummary | null;
+  /** The live deal, for its real redemption rules and terms. */
+  detail?: DealDetail | null;
+  /** "1.2 km" from the customer, when both locations are known. */
+  distance?: string;
 }
 
 interface Step {
   icon: string;
   iconClass: string;
   title: string;
-  badge: string;
+  badge?: string;
   badgeClass: string;
   copy: string;
 }
 
-const buildSteps = (dealBusiness: string, dealLocation: string): Step[] => [
+const buildSteps = (dealBusiness: string, dealLocation: string, windowLabel?: string | null, distance?: string): Step[] => [
   {
     icon: 'touch_app',
     iconClass: 'bg-surface-tint-blue text-primary',
@@ -34,9 +39,9 @@ const buildSteps = (dealBusiness: string, dealLocation: string): Step[] => [
     icon: 'storefront',
     iconClass: 'bg-surface-container text-on-secondary-container',
     title: `2. Visit ${dealBusiness}`,
-    badge: 'Nearby',
+    badge: distance,
     badgeClass: 'font-caption text-caption text-text-secondary bg-surface-container',
-    copy: `Head to the active branch in ${dealLocation} during the valid redemption window for this offer.`,
+    copy: `Head to the active branch in ${dealLocation}${windowLabel ? ` during the redemption window: ${windowLabel}` : ' during the valid redemption window for this offer'}.`,
   },
   {
     icon: 'qr_code_2',
@@ -44,25 +49,26 @@ const buildSteps = (dealBusiness: string, dealLocation: string): Step[] => [
     title: '3. Show Voucher & Pay at Counter',
     badge: 'Pay at Venue',
     badgeClass: 'font-label-sm text-label-sm text-primary font-bold',
-    copy: `Present your QR pass or claim code to the team at ${dealBusiness}. Settle the discounted total at the counter with card, transfer, or cash.`,
+    copy: `Present your QR pass or claim code to the team at ${dealBusiness}. Settle the discounted total at the counter.`,
   },
 ];
 
-const TERMS: string[] = [
-  'Valid strictly for dine-in and scheduled takeaway.',
-  'Limit of 2 voucher claims per customer per week.',
-  'Voucher expires 48 hours after claiming if not redeemed.',
-  'Cannot be combined with ongoing in-house happy hour promotions.',
-  'NDPR compliant: Your personal payment details are never stored.',
-];
+const PRIVACY_NOTE = 'NDPR compliant: Your personal payment details are never stored.';
 
-export function HowToClaimModal({ open, onClose, onProceed, deal }: HowToClaimModalProps) {
+export function HowToClaimModal({ open, onClose, onProceed, deal, detail, distance }: HowToClaimModalProps) {
   const [agreed, setAgreed] = useState(true);
-  const dealTitle = deal?.title?.trim() || 'Featured local deal';
-  const dealBusiness = deal?.business?.trim() || 'Local dining partner';
-  const dealLocation = deal?.location?.trim() || 'your selected area';
+  const dealTitle = deal?.title?.trim() ?? '';
+  const dealBusiness = deal?.business?.trim() ?? '';
+  const dealLocation = deal?.location?.trim() || 'your area';
   const dealPrice = parsePrice(deal?.price);
-  const steps = buildSteps(dealBusiness, dealLocation);
+  const steps = buildSteps(dealBusiness, dealLocation, detail?.windowLabel, distance);
+  const terms = [
+    detail?.windowLabel ? `Valid ${detail.windowLabel}.` : null,
+    detail?.channelsLabel ? `Redeem by: ${detail.channelsLabel}.` : null,
+    detail?.claimLimitLabel ? `Limit: ${detail.claimLimitLabel}.` : null,
+    ...(detail?.terms ?? []),
+    PRIVACY_NOTE,
+  ].filter((term): term is string => Boolean(term));
 
   return (
     <DesktopModal
@@ -107,7 +113,7 @@ export function HowToClaimModal({ open, onClose, onProceed, deal }: HowToClaimMo
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5 gap-space-sm">
                     <h3 className="font-heading-sm text-heading-sm text-on-surface">{step.title}</h3>
-                    <span className={`${step.badgeClass} px-space-xs py-0.5 rounded whitespace-nowrap`}>{step.badge}</span>
+                    {step.badge && <span className={`${step.badgeClass} px-space-xs py-0.5 rounded whitespace-nowrap`}>{step.badge}</span>}
                   </div>
                   <p className="font-body-md text-body-md text-text-secondary leading-snug">{step.copy}</p>
                 </div>
@@ -122,14 +128,14 @@ export function HowToClaimModal({ open, onClose, onProceed, deal }: HowToClaimMo
             <span className="font-heading-sm text-heading-sm text-on-surface">Deal Terms &amp; Conditions</span>
           </div>
           <ul className="space-y-space-xs font-body-md text-body-md text-text-secondary">
-            {TERMS.map((term, index) => (
+            {terms.map((term, index) => (
               <li key={term} className="flex items-start gap-space-sm">
                 <Icon
                   name="check_circle"
                   filled
                   className="text-[18px] text-badge-discount-text shrink-0 mt-0.5"
                 />
-                <span className={index === TERMS.length - 1 ? 'text-on-surface font-medium' : undefined}>{term}</span>
+                <span className={index === terms.length - 1 ? 'text-on-surface font-medium' : undefined}>{term}</span>
               </li>
             ))}
           </ul>

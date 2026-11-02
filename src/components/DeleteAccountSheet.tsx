@@ -206,7 +206,7 @@ export function DeleteAccountSheet({ open, onClose, onCompleted }: DeleteAccount
                     clearRequest();
                     onCompleted();
                   }}
-                  className="w-full h-12 rounded-xl bg-error text-on-error font-button text-button font-semibold active:scale-[0.98] transition-transform mt-space-2xs"
+                  className="w-full h-12 rounded-xl bg-error text-on-error font-button-primary text-button-primary font-semibold active:scale-[0.98] transition-transform mt-space-2xs"
                 >
                   Done
                 </button>

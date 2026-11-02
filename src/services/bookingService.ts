@@ -14,6 +14,15 @@ export interface BookingApiRecord {
   itemId?: string | null;
   itemName?: string;
   notes?: string | null;
+  merchant?: {
+    logoUrl?: string | null;
+    coverImage?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    city?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
   createdAt?: string;
   customer?: { id?: string; firstName?: string; lastName?: string; phone?: string; name?: string };
 }
@@ -47,7 +56,15 @@ const normalizeBookingStatus = (value?: string): 'confirmed' | 'cancelled' | 'co
 };
 
 export interface NormalizedBookingAppointment {
+  /** Backend id, used to cancel. */
+  id?: string;
+  branchId?: string;
   ref: string;
+  merchantPhone?: string;
+  merchantAddress?: string;
+  merchantImage?: string;
+  merchantLatitude?: number;
+  merchantLongitude?: number;
   merchantName: string;
   clientName: string;
   clientPhone: string;
@@ -79,20 +96,31 @@ export const normalizeBookingRecord = (
   const lastName = record.customer?.lastName ?? '';
   const clientName = [firstName, lastName].filter(Boolean).join(' ') || 'Customer';
 
+  const day = record.date ? new Date(`${record.date.slice(0, 10)}T00:00:00`) : null;
+  const duration = record.durationMinutes ?? 0;
+  const merchant = record.merchant;
+
   return {
+    id: record.id,
+    branchId: record.branchId,
     ref: record.reference ?? record.ref ?? record.id ?? `BK-${Date.now()}`,
-    merchantName: record.businessName ?? record.branchName ?? 'VEMTAP merchant',
+    merchantName: record.businessName ?? record.branchName ?? '',
+    merchantPhone: merchant?.phone ?? undefined,
+    merchantAddress: [merchant?.address, merchant?.city].filter(Boolean).join(', ') || undefined,
+    merchantImage: merchant?.coverImage ?? merchant?.logoUrl ?? undefined,
+    merchantLatitude: merchant?.latitude ?? undefined,
+    merchantLongitude: merchant?.longitude ?? undefined,
     clientName,
     clientPhone: record.customer?.phone ?? '',
-    serviceNames: record.itemName ? [record.itemName] : ['Booked service'],
+    serviceNames: record.itemName ? [record.itemName] : [],
     addonNames: [],
-    dateISO: record.date ?? new Date().toISOString().slice(0, 10),
-    dateLong: record.date ?? new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    dateShort: record.date ?? new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    time: record.time ?? '1:00 PM',
-    durationMinutes: record.durationMinutes ?? 60,
-    durationLabel: `${Math.max(record.durationMinutes ?? 60, 30)} mins`,
-    therapistLabel: 'Assigned specialist',
+    dateISO: record.date ?? '',
+    dateLong: day ? day.toLocaleDateString('en-NG', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '',
+    dateShort: day ? day.toLocaleDateString('en-NG', { weekday: 'short', month: 'short', day: 'numeric' }) : '',
+    time: record.time ?? '',
+    durationMinutes: duration,
+    durationLabel: duration ? `${duration} mins` : '',
+    therapistLabel: '',
     notes: record.notes ?? '',
     reminder: true,
     servicesSubtotal: 0,

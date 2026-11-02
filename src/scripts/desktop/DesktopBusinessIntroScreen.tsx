@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
+import { usePublicStats } from '../../hooks/usePublicStats';
+import { hasApiConfig } from '../../services/api/client';
 
 interface DesktopBusinessIntroScreenProps {
   onStart: () => void;
@@ -105,6 +107,10 @@ export function DesktopBusinessIntroScreen({ onStart, onExit }: DesktopBusinessI
   const [shoppers, setShoppers] = useState('1,420');
   const [users, setUsers] = useState('2,850');
   const [densityTag, setDensityTag] = useState('High Density Zone');
+  // Live: real platform figures; the sample storefront numbers and quote are for running without an API.
+  const live = hasApiConfig();
+  const stats = usePublicStats();
+  const figure = (value?: number) => (value === undefined ? '—' : value.toLocaleString('en-NG'));
   const [selectedPowers, setSelectedPowers] = useState<number[]>([]);
 
   const handleSlider = (raw: string) => {
@@ -237,30 +243,32 @@ export function DesktopBusinessIntroScreen({ onStart, onExit }: DesktopBusinessI
                 </div>
                 <div className="grid grid-cols-2 gap-space-md pt-space-xs">
                   <div className="bg-surface-subtle p-space-md rounded-lg">
-                    <span className="font-caption text-caption text-text-secondary">Foot Traffic Ready</span>
+                    <span className="font-caption text-caption text-text-secondary">{live ? 'On VEMTAP Today' : 'Foot Traffic Ready'}</span>
                     <div className="flex items-baseline gap-space-2xs mt-1">
                       <span className="font-display-hero text-heading-lg text-primary font-bold" id="shoppers-stat">
-                        {shoppers}
+                        {live ? figure(stats?.activeDeals) : shoppers}
                       </span>
-                      <span className="font-caption text-caption text-text-secondary">Active Shoppers</span>
+                      <span className="font-caption text-caption text-text-secondary">{live ? 'Live Deals' : 'Active Shoppers'}</span>
                     </div>
-                    <p className="font-caption text-caption text-badge-discount-text mt-1 flex items-center gap-1">
-                      <Icon name="trending_up" className="text-[14px]" />
-                      +18% from last weekend
-                    </p>
+                    {!live && (
+                      <p className="font-caption text-caption text-badge-discount-text mt-1 flex items-center gap-1">
+                        <Icon name="trending_up" className="text-[14px]" />
+                        +18% from last weekend
+                      </p>
+                    )}
                   </div>
                   <div className="bg-surface-subtle p-space-md rounded-lg">
-                    <span className="font-caption text-caption text-text-secondary">Consumer Density</span>
+                    <span className="font-caption text-caption text-text-secondary">{live ? 'Local Businesses' : 'Consumer Density'}</span>
                     <div className="flex items-baseline gap-space-2xs mt-1">
                       <span className="font-display-hero text-heading-lg text-text-primary font-bold" id="users-stat">
-                        {users}
+                        {live ? figure(stats?.businesses) : users}
                       </span>
-                      <span className="font-caption text-caption text-text-secondary">Local Users</span>
+                      <span className="font-caption text-caption text-text-secondary">{live ? 'Businesses' : 'Local Users'}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-space-2xs">
                       <span className="inline-block w-2 h-2 rounded-full bg-badge-discount-text" />
                       <span className="font-label-sm text-caption text-badge-discount-text font-semibold" id="density-tag">
-                        {densityTag}
+                        {live ? `${figure(stats?.claims)} deals claimed` : densityTag}
                       </span>
                     </div>
                   </div>
@@ -287,14 +295,14 @@ export function DesktopBusinessIntroScreen({ onStart, onExit }: DesktopBusinessI
                   <div className="absolute bottom-space-md left-space-md right-space-md flex items-end justify-between">
                     <div>
                       <span className="px-space-xs py-space-2xs rounded bg-primary text-on-primary font-caption text-caption uppercase tracking-wider font-semibold">
-                        Verified Merchant
+                        {live ? 'Example Storefront' : 'Verified Merchant'}
                       </span>
                       <h3 className="text-on-primary font-heading-md text-heading-md font-bold mt-1">
                         Bloom Wellness &amp; Cafe
                       </h3>
                       <div className="flex items-center gap-space-2xs text-surface-container-low font-caption text-caption mt-0.5">
                         <Icon name="location_on" className="text-[16px] text-badge-discount-text" />
-                        <span>Plot 42, Apo District, Gudu Corridor, Abuja</span>
+                        <span>{live ? 'Your storefront address shows here' : 'Plot 42, Apo District, Gudu Corridor, Abuja'}</span>
                       </div>
                     </div>
                     <div className="w-12 h-12 rounded-full bg-surface-canvas flex items-center justify-center text-primary shadow-lg">
@@ -318,21 +326,21 @@ export function DesktopBusinessIntroScreen({ onStart, onExit }: DesktopBusinessI
                       </div>
                     </div>
                     <span className="px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
-                      Active in Apo
+                      {live ? 'Example' : 'Active in Apo'}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-space-sm text-center">
                     <div className="p-space-xs rounded bg-surface-container-low">
-                      <p className="font-caption text-caption text-text-secondary">Customer Return Rate</p>
-                      <p className="font-heading-sm text-heading-sm text-text-primary font-bold">68.4%</p>
+                      <p className="font-caption text-caption text-text-secondary">{live ? 'Businesses' : 'Customer Return Rate'}</p>
+                      <p className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? figure(stats?.businesses) : '68.4%'}</p>
                     </div>
                     <div className="p-space-xs rounded bg-surface-container-low">
-                      <p className="font-caption text-caption text-text-secondary">Avg Check-In Time</p>
-                      <p className="font-heading-sm text-heading-sm text-text-primary font-bold">1.2 sec</p>
+                      <p className="font-caption text-caption text-text-secondary">{live ? 'Live Deals' : 'Avg Check-In Time'}</p>
+                      <p className="font-heading-sm text-heading-sm text-text-primary font-bold">{live ? figure(stats?.activeDeals) : '1.2 sec'}</p>
                     </div>
                     <div className="p-space-xs rounded bg-surface-container-low">
-                      <p className="font-caption text-caption text-text-secondary">District Rank</p>
-                      <p className="font-heading-sm text-heading-sm text-primary font-bold">#1 Cafe</p>
+                      <p className="font-caption text-caption text-text-secondary">{live ? 'Branches' : 'District Rank'}</p>
+                      <p className="font-heading-sm text-heading-sm text-primary font-bold">{live ? figure(stats?.branches) : '#1 Cafe'}</p>
                     </div>
                   </div>
                   <div className="pt-space-xs flex items-center justify-between">
@@ -349,7 +357,7 @@ export function DesktopBusinessIntroScreen({ onStart, onExit }: DesktopBusinessI
                         </span>
                       </div>
                       <span className="font-caption text-caption text-text-secondary">
-                        +418 repeat customers unlocked this month
+                        {live ? `${figure(stats?.claims)} deals claimed on VEMTAP` : '+418 repeat customers unlocked this month'}
                       </span>
                     </div>
                     <span className="font-label-sm text-caption text-primary font-semibold flex items-center gap-0.5">
@@ -365,22 +373,29 @@ export function DesktopBusinessIntroScreen({ onStart, onExit }: DesktopBusinessI
                 />
                 <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-space-md">
                   <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 shadow-sm bg-surface-container">
-                    <img
+                    {live ? (
+                      <div className="w-full h-full bg-surface-tint-blue text-primary flex items-center justify-center">
+                        <Icon name="storefront" className="text-[28px]" />
+                      </div>
+                    ) : (
+                      <img
                       className="w-full h-full object-cover"
                       alt="Portrait photo of Amara K, an energetic West African female founder and hospitality business owner, smiling warmly, professional cafe store setting in background, warm natural lighting, confident modern entrepreneur"
                       src={AMARA_IMAGE}
                     />
+                    )}
                   </div>
                   <div className="space-y-space-2xs">
                     <p className="font-body-md text-body-md text-text-primary italic">
-                      “Within three weeks of placing the VEMTAP Tap Pass at our front desk, walk-ins from surrounding
-                      offices doubled. No aggregators taking 20% cut—just real neighborhood loyalty.”
+                      {live
+                        ? `${figure(stats?.claims)} deals claimed by shoppers on VEMTAP so far. No aggregator commission on your counter sales.`
+                        : '“Within three weeks of placing the VEMTAP Tap Pass at our front desk, walk-ins from surrounding offices doubled. No aggregators taking 20% cut—just real neighborhood loyalty.”'}
                     </p>
                     <div className="flex items-center gap-space-sm pt-space-2xs">
-                      <span className="font-label-md text-label-md font-bold text-text-primary">Amara K.</span>
+                      <span className="font-label-md text-label-md font-bold text-text-primary">{live ? 'VEMTAP for Business' : 'Amara K.'}</span>
                       <span className="w-1 h-1 rounded-full bg-outline" />
                       <span className="font-caption text-caption text-text-secondary">
-                        Founder, Bloom Wellness &amp; Cafe (Apo, Abuja)
+                        {live ? 'Platform figures, updated live' : 'Founder, Bloom Wellness & Cafe (Apo, Abuja)'}
                       </span>
                     </div>
                   </div>

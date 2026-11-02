@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { ServiceImageUploader } from '../../components/ServiceImageUploader';
-import { hasApiConfig } from '../../services/api/client';
 import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { ServiceLocationSelectorModal } from '../../components/ServiceLocationSelectorModal';
-import { SERVICE_LOCATIONS, locationsToBranches } from '../serviceStudioShared';
+import { liveServiceLocations, locationsToBranches, resolveSelectedLocations } from '../serviceStudioShared';
 import { describeServiceSector, getBusinessClassificationOptions } from '../serviceClassification';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -72,10 +72,14 @@ export function DesktopAddServiceStep1Screen({
   businessSubcategories = [],
 }: DesktopAddServiceStep1ScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
-  // Live: preview this business, not the sample spa.
-  const live = hasApiConfig();
+  // Live: preview this business, not a sample business.
   const myBusiness = useMyBusiness();
-  const previewBusiness = live ? myBusiness.data?.name ?? 'Your business' : 'Glow & Serenity Spa';
+  const { branches } = useBusinessBranch();
+  const businessName = myBusiness.data?.name || 'Your business';
+  // Live: the business's own branches feed the location picker (and the demo
+  // sample list applies only where there are no real branches at all).
+  const availableLocations = liveServiceLocations(branches);
+  const assignedLocations = resolveSelectedLocations(draft.locations, branches);
   const [consent, setConsent] = useState(true);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
 
@@ -117,9 +121,6 @@ export function DesktopAddServiceStep1Screen({
                 <h1 className="font-heading-lg text-heading-lg text-text-primary">
                   Step 1 of 4: Service Basics &amp; Media
                 </h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-surface-tint-blue font-caption text-caption font-medium text-primary">
-                  Draft v1.3
-                </span>
               </div>
             </div>
             <div className="flex items-center gap-space-md">
@@ -159,7 +160,7 @@ export function DesktopAddServiceStep1Screen({
                   </p>
                 </div>
                 <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold px-2 py-1 bg-surface-subtle rounded-md self-start">
-                  {live ? (draft.image ? '1 photo added' : 'No photo yet') : '5 / 10 Added'}
+                  {draft.image ? '1 photo added' : 'No photo yet'}
                 </span>
               </div>
 
@@ -224,7 +225,7 @@ export function DesktopAddServiceStep1Screen({
                       </div>
                       <div className="flex flex-col">
                         <span className="font-label-md text-label-md font-semibold text-text-primary">
-                          {draft.provider}
+                          {draft.provider || businessName}
                         </span>
                         <span className="font-caption text-caption text-text-secondary">
                           {draft.locations.length === 0
@@ -243,13 +244,13 @@ export function DesktopAddServiceStep1Screen({
                   </div>
                   {draft.locations.length > 0 && (
                     <div className="flex flex-wrap gap-2">
-                      {SERVICE_LOCATIONS.filter((loc) => draft.locations.includes(loc.id)).map((loc) => (
+                      {assignedLocations.map((loc) => (
                         <span
                           key={loc.id}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold"
                         >
                           <Icon name="location_on" className="text-[12px]" />
-                          {loc.name.split('(')[0].trim()}
+                          {loc.name}
                         </span>
                       ))}
                     </div>
@@ -259,6 +260,7 @@ export function DesktopAddServiceStep1Screen({
               <ServiceLocationSelectorModal
                 isOpen={locationModalOpen}
                 selectedLocations={draft.locations}
+                locations={availableLocations.length ? availableLocations : undefined}
                 onSave={(locs) =>
                   onDraftChange({ locations: locs, branches: locationsToBranches(locs) })
                 }
@@ -579,7 +581,7 @@ export function DesktopAddServiceStep1Screen({
               </div>
               <div className="rounded-xl overflow-hidden shadow-md bg-surface-canvas group">
                 <div className="relative aspect-[16/10] bg-surface-container-high overflow-hidden">
-                  <img alt="Service preview" className="w-full h-full object-cover" src={draft.image || (live ? EMPTY_PREVIEW : 'https://lh3.googleusercontent.com/aida-public/AB6AXuB4wRhk7Z2awcljAxG1LjsDB3N2bAN7rQlDkEXDILlYF6i09D_DE0_JDmPFddvIXLKfZ-TtuSypTz0Kl3jUy7knUpU3HB4NuSb137foMDpgotXoiK7w3GVbU1FRlvDkCRSfNt7lLHtinSDkQaVQwt40lHDAj3DUxzf9tBWYtOf7qlTY-_mE9_3gDNIH9wVJF72-OJb0k0sqg-vLThSLsh7dq90yBqvw9fzIB1gXV-Fo2ZXSueR6oLefog')} />
+                  <img alt="Service preview" className="w-full h-full object-cover" src={draft.image || EMPTY_PREVIEW} />
                   <div className="absolute top-3 left-3">
                     <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-xs">
                       Instant Confirmation
@@ -593,10 +595,7 @@ export function DesktopAddServiceStep1Screen({
                   <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
                     <span className="font-semibold text-text-primary flex items-center gap-1">
                       <Icon name="verified" className="text-primary text-[16px]" />
-                      {previewBusiness}
-                    </span>
-                    <span className="flex items-center gap-0.5 text-text-tertiary">
-                      <Icon name="near_me" className="text-[14px]" /> 0.8 km away
+                      {draft.provider || businessName}
                     </span>
                   </div>
                   <h3 className="font-heading-sm text-heading-sm font-semibold text-text-primary leading-snug line-clamp-2">
@@ -604,7 +603,7 @@ export function DesktopAddServiceStep1Screen({
                   </h3>
                   <div className="flex items-center gap-1 font-caption text-caption text-text-secondary">
                     <Icon name="spa" className="text-[15px] text-badge-discount-text" />
-                    <span>{live ? draft.subCategory || 'Bookable service' : 'Sensitive Skin Safe • Steam & LED'}</span>
+                    <span>{draft.subCategory || 'Bookable service'}</span>
                   </div>
                   <div className="pt-2 flex items-center justify-between">
                     <div className="flex flex-col">

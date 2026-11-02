@@ -8,36 +8,36 @@ interface DesktopPreferencesScreenProps {
 }
 
 const LANGUAGES = [
-  { id: 'en', label: 'English', native: 'English' },
-  { id: 'ha', label: 'Hausa', native: 'Hausa' },
-  { id: 'yo', label: 'Yoruba', native: 'Yoruba' },
-  { id: 'ig', label: 'Igbo', native: 'Igbo' },
+  { id: 'en', label: 'English', native: 'English', available: true },
+  { id: 'ha', label: 'Hausa', native: 'Hausa', available: false },
+  { id: 'yo', label: 'Yoruba', native: 'Yoruba', available: false },
+  { id: 'ig', label: 'Igbo', native: 'Igbo', available: false },
 ];
 
 const APPEARANCE = [
-  { id: 'system', label: 'System default', icon: 'settings_suggest' },
-  { id: 'light', label: 'Light', icon: 'light_mode' },
-  { id: 'dark', label: 'Dark', icon: 'dark_mode' },
+  { id: 'system', label: 'System default', icon: 'settings_suggest', available: false },
+  { id: 'light', label: 'Light', icon: 'light_mode', available: true },
+  { id: 'dark', label: 'Dark', icon: 'dark_mode', available: false },
 ];
 
 const CURRENCY = [
-  { id: 'ngn', label: 'Nigerian Naira (₦)', code: 'NGN' },
-  { id: 'usd', label: 'US Dollar ($)', code: 'USD' },
-  { id: 'gbp', label: 'British Pound (£)', code: 'GBP' },
+  { id: 'ngn', label: 'Nigerian Naira (₦)', code: 'NGN', available: true },
+  { id: 'usd', label: 'US Dollar ($)', code: 'USD', available: false },
+  { id: 'gbp', label: 'British Pound (£)', code: 'GBP', available: false },
 ];
 
 const BEHAVIOUR = [
   {
     id: 'haptics',
     title: 'Haptic feedback',
-    desc: 'Light taps on claims and checkouts.',
+    desc: 'Light taps on claims and checkouts. Coming soon.',
     onLabel: 'Haptics enabled',
     offLabel: 'Haptics disabled',
   },
   {
     id: 'compact',
     title: 'Compact deal cards',
-    desc: 'Fit more offers on screen at once.',
+    desc: 'Fit more offers on screen at once. Coming soon.',
     onLabel: 'Compact mode on',
     offLabel: 'Compact mode off',
   },
@@ -45,9 +45,10 @@ const BEHAVIOUR = [
 
 export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesScreenProps) {
   const [language, setLanguage] = useState('en');
-  const [appearance, setAppearance] = useState('system');
+  const [appearance, setAppearance] = useState('light');
   const [currency, setCurrency] = useState('ngn');
-  const [toggles, setToggles] = useState<Record<string, boolean>>({ haptics: true, compact: false });
+  // Neither behaviour exists in the app yet, so both stay off and locked.
+  const toggles: Record<string, boolean> = { haptics: false, compact: false };
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
 
@@ -63,14 +64,6 @@ export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesSc
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   };
 
-  const toggleBehaviour = (id: string) => {
-    setToggles((prev) => {
-      const next = !prev[id];
-      const meta = BEHAVIOUR.find((item) => item.id === id);
-      if (meta) showToast(next ? meta.onLabel : meta.offLabel);
-      return { ...prev, [id]: next };
-    });
-  };
 
   const sectionTitle = 'font-label-md text-label-md text-text-primary font-bold uppercase tracking-wider';
 
@@ -106,17 +99,18 @@ export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesSc
                   <button
                     key={item.id}
                     type="button"
+                disabled={!item.available}
                     onClick={() => {
                       setLanguage(item.id);
                       showToast('Language set to ' + item.label);
                     }}
-                    className={`w-full flex items-center justify-between gap-3 p-space-md text-left hover:bg-surface-subtle transition-colors ${
+                    className={`disabled:opacity-50 disabled:cursor-not-allowed w-full flex items-center justify-between gap-3 p-space-md text-left hover:bg-surface-subtle transition-colors ${
                       index > 0 ? 'border-t border-border-subtle' : ''
                     }`}
                   >
                     <div className="flex flex-col min-w-0">
                       <span className="font-label-md text-label-md text-text-primary font-semibold">{item.native}</span>
-                      <span className="font-caption text-caption text-text-secondary mt-0.5">{item.label}</span>
+                      <span className="font-caption text-caption text-text-secondary mt-0.5">{item.available ? item.label : `${item.label} · Coming soon`}</span>
                     </div>
                     {language === item.id ? (
                       <Icon name="check_circle" className="text-[20px] text-primary" filled />
@@ -135,11 +129,12 @@ export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesSc
                   <button
                     key={item.id}
                     type="button"
+                disabled={!item.available}
                     onClick={() => {
                       setAppearance(item.id);
                       showToast('Appearance: ' + item.label);
                     }}
-                    className={`flex flex-col items-center gap-space-2xs p-space-sm rounded-xl border transition-colors ${
+                    className={`disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center gap-space-2xs p-space-sm rounded-xl border transition-colors ${
                       appearance === item.id
                         ? 'border-primary bg-surface-tint-blue'
                         : 'border-border-subtle bg-surface-container-lowest hover:border-text-tertiary'
@@ -150,7 +145,7 @@ export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesSc
                       className={'text-[22px] ' + (appearance === item.id ? 'text-primary' : 'text-text-secondary')}
                       filled={appearance === item.id}
                     />
-                    <span className="font-caption text-caption text-text-primary font-medium">{item.label}</span>
+                    <span className="font-caption text-caption text-text-primary font-medium">{item.available ? item.label : `${item.label} · Coming soon`}</span>
                   </button>
                 ))}
               </div>
@@ -163,15 +158,16 @@ export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesSc
                   <button
                     key={item.id}
                     type="button"
+                disabled={!item.available}
                     onClick={() => {
                       setCurrency(item.id);
                       showToast('Currency set to ' + item.code);
                     }}
-                    className={`w-full flex items-center justify-between gap-3 p-space-md text-left hover:bg-surface-subtle transition-colors ${
+                    className={`disabled:opacity-50 disabled:cursor-not-allowed w-full flex items-center justify-between gap-3 p-space-md text-left hover:bg-surface-subtle transition-colors ${
                       index > 0 ? 'border-t border-border-subtle' : ''
                     }`}
                   >
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">{item.label}</span>
+                    <span className="font-label-md text-label-md text-text-primary font-semibold">{item.available ? item.label : `${item.label} · Coming soon`}</span>
                     {currency === item.id ? (
                       <Icon name="check_circle" className="text-[20px] text-primary" filled />
                     ) : (
@@ -181,7 +177,7 @@ export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesSc
                 ))}
               </div>
               <p className="font-caption text-caption text-text-secondary">
-                Merchant prices remain in Naira; other currencies are display-only estimates.
+                Prices are shown in Naira, the currency businesses charge in.
               </p>
             </section>
 
@@ -203,8 +199,8 @@ export function DesktopPreferencesScreen({ onNav, onBack }: DesktopPreferencesSc
                       aria-label={'Toggle ' + item.title}
                       aria-pressed={toggles[item.id]}
                       type="button"
-                      onClick={() => toggleBehaviour(item.id)}
-                      className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center ${
+                      disabled
+                      className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 flex items-center disabled:opacity-50 disabled:cursor-not-allowed ${
                         toggles[item.id] ? 'bg-primary justify-end' : 'bg-surface-container-high justify-start'
                       }`}
                     >

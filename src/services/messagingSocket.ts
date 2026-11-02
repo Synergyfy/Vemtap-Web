@@ -32,7 +32,6 @@ export function getMessagingSocket(): Socket | null {
     trackedSocket.on('connect', () => {
       if (activeThreadId) {
         socket.emit('joinThread', { threadId: activeThreadId });
-        socket.emit('presence:subscribe', { businessIds: [activeThreadId] });
       }
     });
 
@@ -100,6 +99,24 @@ export const markDelivered = (threadId: string, messageId?: string, messageIds?:
   const socket = getMessagingSocket();
   if (!socket) return;
   socket.emit('markDelivered', { threadId, messageId, messageIds });
+};
+
+/** Follows a business's online state; the snapshot arrives in the ack, changes as `presence:update`. */
+export const subscribeBusinessPresence = (businessId: string, onStatus: (online: boolean) => void) => {
+  const socket = getMessagingSocket();
+  if (!socket) return;
+  socket.emit(
+    'presence:subscribe',
+    { businessIds: [businessId] },
+    (snapshot?: { businesses?: Record<string, { isOnline?: boolean }> }) => {
+      const status = snapshot?.businesses?.[businessId];
+      if (status) onStatus(status.isOnline === true);
+    },
+  );
+};
+
+export const unsubscribeBusinessPresence = (businessId: string) => {
+  getMessagingSocket()?.emit('presence:unsubscribe', { businessIds: [businessId] });
 };
 
 export const messagingSocket = {
