@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { getMessagingSocket } from '../services/messagingSocket';
 import { messageService, type MessageThread, type MessageThreadFilter } from '../services/messageService';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface MessagesScreenProps {
   onTab: (tab: MobileTabKey) => void;
@@ -120,8 +121,8 @@ export function MessagesScreen({ onTab, onOpen, onOpenSettings, onNewChat }: Mes
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

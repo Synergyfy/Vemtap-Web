@@ -9,6 +9,7 @@ import type { CatalogueItem } from '../services/catalogueItemsService';
 import { dealBadgeLabel, isOfferPaused, offerClaimStats, offerSlot, pricingTypeLabel, redemptionWindowLabel } from './catalogueLive';
 import { DealEndDialog, type DealEndRequest } from '../components/DealEndDialog';
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessDealDetailScreenProps {
   /** Live: the deal group to show; demo shows the sample deal. */
@@ -246,8 +247,8 @@ export function BusinessDealDetailScreen({
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

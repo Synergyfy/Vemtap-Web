@@ -2542,6 +2542,8 @@ function AppInner() {
       if (key === 'dashboard') setRoute('business-hub');
       else if (key === 'notifications') setRoute('business-notifications');
       else if (key === 'settings') setRoute('business-settings');
+      // "Switch to Customer Dashboard": the route change switches the session to the customer shell.
+      else if (key === 'customer') setRoute('dashboard');
     };
     window.addEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
     return () => window.removeEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);

@@ -6,6 +6,7 @@ import {
   INITIAL_VERIFICATION_DRAFT,
 } from './verificationDraft';
 import { useVerificationSummary } from '../hooks/business/useVerification';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface VerificationStatusCenterScreenProps {
   onBack: () => void;
@@ -58,8 +59,8 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
               >
                 <Icon name="help_outline" className="text-[20px]" />
               </button>
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm shadow-primary/20">
-                <Icon name="person" className="text-on-primary text-[18px]" />
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm shadow-primary/20 overflow-hidden">
+                <UserAvatar textClassName="text-on-primary text-[13px]" />
               </div>
             </div>
           </div>

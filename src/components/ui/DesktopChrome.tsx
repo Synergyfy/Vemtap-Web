@@ -11,6 +11,7 @@ import { Logo } from './Logo';
 import { usePublicSearch } from '../../hooks/usePublicSearch';
 import { SearchResults } from '../search/SearchResults';
 import { pickSearchResult } from '../../utils/appEvents';
+import { UserAvatar } from './UserAvatar';
 
 /** Navbar search: live deals + businesses from `GET /public/search`; Enter shows all matching deals. */
 function NavbarSearch() {
@@ -161,7 +162,7 @@ const CUSTOMER_RAIL_ICONS: Readonly<Record<string, string>> = {
 
 export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = false }: DesktopNavHeaderProps) {
   const { authed, signOut } = useAuth();
-  const { fullName, email, initials } = useProfile();
+  const { fullName, email } = useProfile();
   const { district, city, radius, setLocation } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -451,8 +452,8 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
                   onClick={() => setMenuOpen((open) => !open)}
                   className="flex items-center gap-space-xs pl-space-xs rounded-xl hover:bg-surface-subtle transition-colors"
                 >
-                  <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 text-on-primary text-[12px] font-bold">
-                    {initials || 'U'}
+                  <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 text-on-primary text-[12px] font-bold overflow-hidden">
+                    <UserAvatar textClassName="" />
                   </span>
                   <span className="hidden lg:flex flex-col text-left leading-tight">
                     <span className="font-label-md text-label-md text-text-primary">{fullName || 'User'}</span>

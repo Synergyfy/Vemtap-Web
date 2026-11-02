@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/ui/Icon';
-import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from '../../utils/appEvents';
+import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT, MOBILE_ACCOUNT_NAV_EVENT } from '../../utils/appEvents';
+import { useProfile } from '../../context/ProfileContext';
+import { useSessionUser } from '../../hooks/useSessionUser';
+import { hasApiConfig } from '../../services/api/client';
+import { UserAvatar } from '../../components/ui/UserAvatar';
+
+/** "Owner" / "Manager" / "Staff" for the signed-in business account. */
+const accountRoleLabel = (role?: string | null, businessRole?: string | null) => businessRole || role || 'Business account';
+
 
 // Re-exported here for existing desktop imports; the canonical constants live
 // in `src/utils/appEvents.ts` so mobile/tablet headers can share them.
@@ -185,7 +193,7 @@ export function PortalBody({ children, content = 'contained' }: PortalBodyProps)
   return <div className={`flex flex-col w-full ${PORTAL_CONTENT}`}>{children}</div>;
 }
 
-export type ShellAccountKey = 'overview' | 'settings' | 'sign-out';
+export type ShellAccountKey = 'overview' | 'settings' | 'customer' | 'sign-out';
 
 interface ShellAccountMenuProps {
   onSelect?: (key: ShellAccountKey) => void;
@@ -197,8 +205,13 @@ interface ShellAccountMenuProps {
  * Avatar + account menu shared by every portal header. Replaces the inert
  * avatar that previously sat in the header with a working menu.
  */
-export function ShellAccountMenu({ onSelect, name = 'Musa Danladi', role = 'Store Manager' }: ShellAccountMenuProps) {
+export function ShellAccountMenu({ onSelect, name: nameProp, role: roleProp }: ShellAccountMenuProps) {
   const { signOut } = useAuth();
+  // Live: the signed-in person and their business role; demo keeps the sample manager.
+  const profile = useProfile();
+  const session = useSessionUser().data;
+  const name = nameProp ?? (hasApiConfig() ? profile.fullName || 'Your account' : 'Musa Danladi');
+  const role = roleProp ?? (hasApiConfig() ? accountRoleLabel(session?.role, session?.businessRole) : 'Store Manager');
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -225,6 +238,11 @@ export function ShellAccountMenu({ onSelect, name = 'Musa Danladi', role = 'Stor
       signOut();
       window.dispatchEvent(new CustomEvent(SIGN_OUT_EVENT));
     }
+    if (key === 'customer') {
+      // Every portal header shares this menu; the router handles the switch in one place.
+      window.dispatchEvent(new CustomEvent(MOBILE_ACCOUNT_NAV_EVENT, { detail: 'customer' }));
+      return;
+    }
     onSelect?.(key);
   };
 
@@ -238,8 +256,8 @@ export function ShellAccountMenu({ onSelect, name = 'Musa Danladi', role = 'Stor
         onClick={() => setOpen((value) => !value)}
         className="flex items-center gap-space-xs rounded-xl hover:bg-surface-subtle transition-colors"
       >
-        <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-          <Icon name="person" filled className="text-on-primary text-[18px]" />
+        <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+          <UserAvatar />
         </span>
         <Icon name="expand_more" className={`text-[16px] text-text-tertiary transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -271,6 +289,15 @@ export function ShellAccountMenu({ onSelect, name = 'Musa Danladi', role = 'Stor
           >
             <Icon name="settings" className="text-[18px]" />
             <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => choose('customer')}
+            className="flex items-center gap-space-sm px-space-sm py-space-xs font-label-md text-label-md text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors text-left"
+          >
+            <Icon name="swap_horiz" className="text-[18px]" />
+            <span>Switch to Customer Dashboard</span>
           </button>
           <div className="h-px bg-border-subtle my-space-2xs" />
           <button

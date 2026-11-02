@@ -10,6 +10,7 @@ import { DealTypeConfigurator, DealTypeSelector } from './deals/DealStudioConfig
 import type { ComboProduct } from './deals/dealStudioShared';
 import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessDealStudioStep1ScreenProps {
   draft: ProductDraft;
@@ -95,8 +96,8 @@ export function BusinessDealStudioStep1Screen({
             >
               Save
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)]">
-              <Icon name="person" className="text-on-primary text-[16px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)] overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

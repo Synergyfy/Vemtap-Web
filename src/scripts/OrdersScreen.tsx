@@ -14,6 +14,7 @@ import {
   orderStatusLabel,
   orderTimeline,
 } from './orderData';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 export type OrdersTarget = 'support' | 'discover' | 'spa-booking';
 
@@ -282,9 +283,9 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
             aria-label="Account"
             type="button"
             onClick={() => onTab('account')}
-            className="w-8 h-8 rounded-full bg-primary flex items-center justify-center active:scale-95 transition-transform"
+            className="w-8 h-8 rounded-full bg-primary flex items-center justify-center active:scale-95 transition-transform overflow-hidden"
           >
-            <Icon name="person" className="text-on-primary text-[18px]" />
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </button>
         </div>
       </header>

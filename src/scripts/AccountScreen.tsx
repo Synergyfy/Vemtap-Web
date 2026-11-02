@@ -8,6 +8,7 @@ import { activeVouchers, useClaims } from '../context/ClaimsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTotalSaved } from '../hooks/useCustomerDashboard';
 import { hasApiConfig } from '../services/api/client';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 export type { AccountTarget };
 
@@ -87,7 +88,7 @@ const UTILITY_ROWS: AccountRow[] = [
 
 export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenProps) {
   const canSwitch = useCanSwitchToBusiness();
-  const { fullName, email, initials, phone } = useProfile();
+  const { fullName, email, phone } = useProfile();
   // Live: real figures here; the rows' sample badges stay out until they are wired. Demo keeps them.
   const live = hasApiConfig();
   const sessionUser = useSessionUser().data;
@@ -127,8 +128,8 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
             >
               <Icon name="help_outline" className="text-[24px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -140,8 +141,8 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-space-sm min-w-0">
                 <div className="relative shrink-0">
-                  <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner">
-                    {initials || 'U'}
+                  <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner overflow-hidden">
+                    <UserAvatar textClassName="" />
                   </div>
                   {verified && (
                     <span

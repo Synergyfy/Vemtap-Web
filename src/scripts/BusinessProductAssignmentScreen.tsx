@@ -7,6 +7,7 @@ import { useBranches } from '../hooks/business/useBranchesAndTeam';
 import { apiErrorMessage } from '../services/errorMessages';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProductAssignmentScreenProps {
   onBack: () => void;
@@ -135,8 +136,8 @@ export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: Bu
               Product Assignment
             </h1>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <Icon name="person" className="text-on-primary text-[18px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </header>

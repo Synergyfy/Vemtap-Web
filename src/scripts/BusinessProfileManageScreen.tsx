@@ -8,6 +8,7 @@ import { CHANNEL_PLATFORMS, CHANNEL_PLATFORM_BY_ID, isChannelPlatform } from '..
 import { apiErrorMessage } from '../services/errorMessages';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProfileManageScreenProps {
   onBack: () => void;
@@ -164,8 +165,8 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

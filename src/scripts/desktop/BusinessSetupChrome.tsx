@@ -3,6 +3,7 @@ import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 import { BusinessSetupProgress } from '../../components/BusinessSetupProgress';
 import { useBusinessSetupNav } from '../businessSetup';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 
 export type BusinessSetupNavKey = 'profile' | 'locations' | 'catalog' | 'payouts' | 'deals';
 
@@ -47,8 +48,8 @@ export function BusinessSetupChrome({ children, activeNav: _activeNav = 'profile
                 <Icon name="help" className="text-[18px]" />
                 <span>Support</span>
               </button>
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                <Icon name="person" className="text-on-primary text-[18px]" />
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+                <UserAvatar textClassName="text-on-primary text-[13px]" />
               </div>
             </div>
           </div>
