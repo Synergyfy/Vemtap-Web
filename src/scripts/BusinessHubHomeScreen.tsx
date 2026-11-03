@@ -5,6 +5,8 @@ import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBa
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import type { FeatureId } from './businessFeatures';
 
 export type HubModuleKey = 'deals' | 'catalog' | 'services' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile' | 'referrals';
 
@@ -98,8 +100,27 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
   // Branch switching lives only in the header's MobileLocationMenu.
   const { branch } = useBusinessBranch();
   const { offerings, mode } = useBusinessOfferings();
+  const { features } = useBusinessFeatures();
 
-  const menuCards = MENU_CARDS.map((card) => {
+  // Cards for tools the business has switched off are dropped (Business Profile
+  // is always available).
+  const CARD_FEATURE: Partial<Record<HubModuleKey, FeatureId>> = {
+    deals: 'deals',
+    customers: 'customers',
+    loyalty: 'loyalty',
+    staff: 'staff',
+    locations: 'locations',
+    referrals: 'referrals',
+  };
+  const visibleCards = MENU_CARDS.filter((card) => {
+    // The catalogue card covers Products *and* Services — at least one of the
+    // two always stays on, so this card never disappears.
+    if (card.key === 'catalog') return Boolean(features.products || features.services);
+    const feature = CARD_FEATURE[card.key];
+    return feature === undefined || Boolean(features[feature]);
+  });
+
+  const menuCards = visibleCards.map((card) => {
     if (card.key === 'catalog') {
       if (mode === 'products') {
         return {

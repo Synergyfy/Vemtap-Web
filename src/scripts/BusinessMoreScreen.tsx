@@ -4,6 +4,8 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import type { FeatureId } from './businessFeatures';
 import { URBAN_BUSINESS } from './businessData';
 
 interface BusinessMoreScreenProps {
@@ -64,6 +66,7 @@ export function BusinessMoreScreen({
   onSignOut,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
+  const { features } = useBusinessFeatures();
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -82,7 +85,7 @@ export function BusinessMoreScreen({
 
   // Order mirrors the desktop More side-menu list — keep both in sync.
   // POS and Store Front now live in the POS menu (Overview quick action).
-  const sections: SectionData[] = [
+  const allSections: SectionData[] = [
     {
       key: 'cluster',
       label: 'Cluster System',
@@ -210,6 +213,17 @@ export function BusinessMoreScreen({
       ],
     },
   ];
+
+  // Sections that belong to a switched-off tool are removed from the list.
+  const SECTION_FEATURE: Partial<Record<string, FeatureId>> = {
+    cluster: 'cluster',
+    marketing: 'deals',
+    analytics: 'analytics',
+  };
+  const sections = allSections.filter((section) => {
+    const feature = SECTION_FEATURE[section.key];
+    return feature === undefined || Boolean(features[feature]);
+  });
 
   const renderRow = (row: RowData) => (
     <button

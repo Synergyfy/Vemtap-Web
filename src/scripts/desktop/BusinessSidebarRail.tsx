@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
+  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from './businessSidebarConfig';
 import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 
 interface BusinessSidebarRailProps {
   active?: string;
@@ -31,7 +33,7 @@ export function BusinessSidebarRail({
   collapsed = false,
 }: BusinessSidebarRailProps) {
   const { offerings, mode } = useBusinessOfferings();
-  const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
+  const { features } = useBusinessFeatures();
 
   const getSubItemLabel = (subItem: BusinessSidebarSubItem) => {
     if (subItem.key === 'business-catalog') return 'My Products';
@@ -44,8 +46,21 @@ export function BusinessSidebarRail({
     return subItem.label;
   };
 
-  // Sections hidden from the main rail (e.g. Store Front, which moved inside POS).
-  const visibleSections = sections.filter((section) => !section.hidden);
+  // Sections hidden from the main rail (e.g. Store Front, which moved inside POS),
+  // minus the tools the business has switched off.
+  const visibleSections = filterSidebarSections(sections, (id) => Boolean(features[id])).filter(
+    (section) => !section.hidden
+  );
+
+  // Highlight: if the resolved group is one the business has switched off (or
+  // an entry moved groups, e.g. Bookings when POS is off), follow the entry to
+  // the group that is actually on screen.
+  const resolved = resolveSidebarActive(active);
+  const activeSectionKey = visibleSections.some((section) => section.key === resolved.sectionKey)
+    ? resolved.sectionKey
+    : visibleSections.find((section) => section.items?.some((item) => item.key === resolved.itemKey))?.key ??
+      resolved.sectionKey;
+  const activeItemKey = resolved.itemKey;
 
   const activeSectionHasChildren = visibleSections.some(
     (s) => s.key === activeSectionKey && !s.link && s.items && s.items.length > 0

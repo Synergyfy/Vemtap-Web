@@ -7,6 +7,7 @@ import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { BusinessOfferingsProvider } from './context/BusinessOfferingsContext';
+import { BusinessFeaturesProvider, useBusinessFeatures } from './context/BusinessFeaturesContext';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
@@ -37,7 +38,9 @@ import { DiscoverDealsScreen } from './scripts/DiscoverDealsScreen';
 import { StartVemtapScreen } from './scripts/StartVemtapScreen';
 import { AccountScreen } from './scripts/AccountScreen';
 import { SettingsScreen } from './scripts/SettingsScreen';
-import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
+import { AdminLoginScreen } from './scripts/admin/AdminLoginScreen';
+import { AdminDashboardScreen } from './scripts/admin/AdminDashboardScreen';
+import { isAdminAuthenticated } from './scripts/admin/adminAuth';
 import { SupportLegalScreen } from './scripts/SupportLegalScreen';
 import { EditProfileScreen } from './scripts/EditProfileScreen';
 import { RewardsScreen } from './scripts/RewardsScreen';
@@ -59,6 +62,17 @@ import { NotificationsScreen } from './scripts/NotificationsScreen';
 import { HelpCentreScreen } from './scripts/HelpCentreScreen';
 import { AccountSettingsScreen } from './scripts/AccountSettingsScreen';
 import { DashboardScreen } from './scripts/DashboardScreen';
+import { BusinessFeatureSetupScreen } from './scripts/BusinessFeatureSetupScreen';
+import { BusinessManageFeaturesScreen } from './scripts/BusinessManageFeaturesScreen';
+import {
+  BUSINESS_FEATURES,
+  FEATURE_MANAGE_ROUTE,
+  FEATURE_SETUP_ROUTE,
+  findDisabledRoute,
+  resolveFeatureRoute,
+  type FeatureId,
+  type FeatureState,
+} from './scripts/businessFeatures';
 import { MyDealsScreen } from './scripts/MyDealsScreen';
 import { MessagesScreen } from './scripts/MessagesScreen';
 import { ConversationScreen } from './scripts/ConversationScreen';
@@ -283,6 +297,8 @@ import { DesktopMoreAddOnsScreen } from './scripts/desktop/DesktopMoreAddOnsScre
 import { DesktopBusinessNotificationsScreen } from './scripts/desktop/DesktopBusinessNotificationsScreen';
 import { DesktopBusinessHelpSupportScreen } from './scripts/desktop/DesktopBusinessHelpSupportScreen';
 import { DesktopBusinessSettingsScreen } from './scripts/desktop/DesktopBusinessSettingsScreen';
+import { DesktopBusinessFeatureSetupScreen } from './scripts/desktop/DesktopBusinessFeatureSetupScreen';
+import { DesktopBusinessManageFeaturesScreen } from './scripts/desktop/DesktopBusinessManageFeaturesScreen';
 import { DesktopDealsWorkspaceScreen } from './scripts/desktop/DesktopDealsWorkspaceScreen';
 import { DesktopDealStudioFlow } from './scripts/desktop/DesktopDealStudioFlow';
 import { DesktopBusinessProfilePreviewStudioScreen } from './scripts/desktop/DesktopBusinessProfilePreviewStudioScreen';
@@ -484,6 +500,8 @@ type Route =
   | 'business-notifications'
   | 'business-support'
   | 'business-settings'
+  | 'business-manage-features'
+  | 'business-feature-setup'
   | 'deal-detail'
   | 'how-to-claim'
   | 'claim-success'
@@ -527,6 +545,46 @@ type Route =
   | 'claim-gift-confirm'
   | 'claimed-contact'
   | 'claimed-terms'
+  | 'admin-login'
+  | 'admin-overview'
+  | 'admin-customers'
+  | 'admin-businesses'
+  | 'admin-businesses-verification'
+  | 'admin-businesses-categories'
+  | 'admin-locations'
+  | 'admin-locations-hierarchy'
+  | 'admin-locations-map'
+  | 'admin-locations-geofencing'
+  | 'admin-locations-fleet'
+  | 'admin-deals'
+  | 'admin-deals-flagged'
+  | 'admin-deals-moderation'
+  | 'admin-deals-featured'
+  | 'admin-orders'
+  | 'admin-orders-transactions'
+  | 'admin-orders-terminals'
+  | 'admin-orders-disputes'
+  | 'admin-marketing'
+  | 'admin-marketing-ads'
+  | 'admin-marketing-performance'
+  | 'admin-marketing-slots'
+  | 'admin-marketing-broadcasts'
+  | 'admin-subscriptions'
+  | 'admin-subscriptions-subscriptions'
+  | 'admin-subscriptions-payments'
+  | 'admin-subscriptions-ad-billing'
+  | 'admin-subscriptions-escrow'
+  | 'admin-subscriptions-invoices'
+  | 'admin-analytics'
+  | 'admin-analytics-growth'
+  | 'admin-analytics-deals'
+  | 'admin-analytics-clusters'
+  | 'admin-analytics-revenue'
+  | 'admin-settings'
+  | 'admin-settings-support'
+  | 'admin-settings-disputes'
+  | 'admin-settings-team'
+  | 'admin-settings-audit'
   | 'admin-referral';
 
 const ROUTE_PATH: Record<Route, string> = {
@@ -663,6 +721,8 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-notifications': '/business/notifications',
   'business-support': '/business/support',
   'business-settings': '/business/settings',
+  'business-manage-features': '/business/settings/features',
+  'business-feature-setup': '/business/setup/features',
   'deal-detail': '/deals/lunch-combo',
   'how-to-claim': '/how-to-claim',
   'claim-success': '/claim/success',
@@ -708,12 +768,61 @@ const ROUTE_PATH: Record<Route, string> = {
   'claimed-terms': '/my/claimed-deal/terms',
   // Platform Admin — deliberately absent from every user nav; admins open it
   // directly. Gating is the backend's job once auth exists.
+  // Platform Admin — command centre and management console
+  'admin-login': '/admin/login',
+  'admin-overview': '/admin',
+  'admin-customers': '/admin/customers',
+  'admin-businesses': '/admin/businesses',
+  'admin-businesses-verification': '/admin/businesses/verification',
+  'admin-businesses-categories': '/admin/businesses/categories',
+  'admin-locations': '/admin/locations',
+  'admin-locations-hierarchy': '/admin/locations/hierarchy',
+  'admin-locations-map': '/admin/locations/map',
+  'admin-locations-geofencing': '/admin/locations/geofencing',
+  'admin-locations-fleet': '/admin/locations/fleet',
+  'admin-deals': '/admin/deals',
+  'admin-deals-flagged': '/admin/deals/flagged',
+  'admin-deals-moderation': '/admin/deals/moderation',
+  'admin-deals-featured': '/admin/deals/featured',
+  'admin-orders': '/admin/orders',
+  'admin-orders-transactions': '/admin/orders/transactions',
+  'admin-orders-terminals': '/admin/orders/terminals',
+  'admin-orders-disputes': '/admin/orders/disputes',
+  'admin-marketing': '/admin/marketing',
+  'admin-marketing-ads': '/admin/marketing/ads',
+  'admin-marketing-performance': '/admin/marketing/performance',
+  'admin-marketing-slots': '/admin/marketing/slots',
+  'admin-marketing-broadcasts': '/admin/marketing/broadcasts',
+  'admin-subscriptions': '/admin/subscriptions',
+  'admin-subscriptions-subscriptions': '/admin/subscriptions/subscriptions',
+  'admin-subscriptions-payments': '/admin/subscriptions/payments',
+  'admin-subscriptions-ad-billing': '/admin/subscriptions/ad-billing',
+  'admin-subscriptions-escrow': '/admin/subscriptions/escrow',
+  'admin-subscriptions-invoices': '/admin/subscriptions/invoices',
+  'admin-analytics': '/admin/analytics',
+  'admin-analytics-growth': '/admin/analytics/growth',
+  'admin-analytics-deals': '/admin/analytics/deals',
+  'admin-analytics-clusters': '/admin/analytics/clusters',
+  'admin-analytics-revenue': '/admin/analytics/revenue',
+  'admin-settings': '/admin/settings',
+  'admin-settings-support': '/admin/settings/support',
+  'admin-settings-disputes': '/admin/settings/disputes',
+  'admin-settings-team': '/admin/settings/team',
+  'admin-settings-audit': '/admin/settings/audit',
   'admin-referral': '/admin/referral',
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
 PATH_ROUTE.set('/business/hub/services', 'hub-services');
 PATH_ROUTE.set('/business/services', 'hub-services');
+PATH_ROUTE.set('/admin/overview', 'admin-overview');
+PATH_ROUTE.set('/admin/', 'admin-overview');
+PATH_ROUTE.set('/admin/locations/hierarchy', 'admin-locations-hierarchy');
+PATH_ROUTE.set('/admin/locations/map', 'admin-locations-map');
+PATH_ROUTE.set('/admin/deals/featured', 'admin-deals-featured');
+PATH_ROUTE.set('/admin/orders/transactions', 'admin-orders-transactions');
+PATH_ROUTE.set('/admin/marketing/ads', 'admin-marketing-ads');
+PATH_ROUTE.set('/admin/marketing/performance', 'admin-marketing-performance');
 
 const OVERLAY_ROUTES = new Set<Route>([
   'comments',
@@ -825,6 +934,13 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
 function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
+  if (path === '/admin/login') return 'admin-login';
+  if (path === '/admin' || path === '/admin/' || path === '/admin/overview') return 'admin-overview';
+  if (path.startsWith('/admin/')) {
+    const directAdmin = PATH_ROUTE.get(path);
+    if (directAdmin) return directAdmin;
+    return 'admin-overview';
+  }
   const direct = PATH_ROUTE.get(path);
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
@@ -850,6 +966,7 @@ export default function App() {
               <ContactsProvider>
               <CampaignsProvider>
               <BusinessOfferingsProvider>
+              <BusinessFeaturesProvider>
               <BusinessBranchProvider>
                 <CartProvider>
                   <BookingProvider>
@@ -864,6 +981,7 @@ export default function App() {
                   </BookingProvider>
                 </CartProvider>
               </BusinessBranchProvider>
+              </BusinessFeaturesProvider>
               </BusinessOfferingsProvider>
               </CampaignsProvider>
               </ContactsProvider>
@@ -883,7 +1001,21 @@ function AppInner() {
   const claims = useClaims();
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
-  const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  /**
+   * One shared feature configuration drives setup gating, route guarding and
+   * every navigation decision below — read once here so the desktop rail,
+   * mobile tabs, quick actions and settings can never disagree.
+   */
+  const featureConfig = useBusinessFeatures();
+  const featureRouteContext = {
+    setupComplete: featureConfig.setupComplete,
+    isEnabled: featureConfig.isEnabled,
+  };
+  const featureGuardRef = useRef(featureRouteContext);
+  featureGuardRef.current = featureRouteContext;
+  const [route, setRouteState] = useState<Route>(() =>
+    resolveFeatureRoute(entryRoute(window.location.pathname, authed, isDesktop), featureRouteContext) as Route,
+  );
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
   const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
   /**
@@ -1051,6 +1183,21 @@ function AppInner() {
   };
 
   const setRoute = (target: Route) => {
+    // Feature gate: unfinished setup goes through the setup screen, and routes
+    // belonging to a switched-off tool land on the dashboard instead.
+    const guarded = resolveFeatureRoute(target, featureRouteContext) as Route;
+    if (guarded === route) return;
+    window.history.pushState(null, '', ROUTE_PATH[guarded]);
+    setRouteState(guarded);
+  };
+
+  /**
+   * Navigate without the feature gate. Only used by flows that have just
+   * changed the configuration itself (finishing setup, saving a selection), so
+   * the stale in-render gate cannot bounce the user back to the screen they
+   * have only left.
+   */
+  const setRouteUnguarded = (target: Route) => {
     if (target === route) return;
     window.history.pushState(null, '', ROUTE_PATH[target]);
     setRouteState(target);
@@ -1120,7 +1267,9 @@ function AppInner() {
     }
     const onPopState = () => {
       const path = window.location.pathname;
-      setRouteState(entryRoute(path, authed, isDesktop));
+      setRouteState(
+        resolveFeatureRoute(entryRoute(path, authed, isDesktop), featureGuardRef.current) as Route,
+      );
       const match = resolveBusinessPath(path);
       if (match?.section === 'products') {
         const base = findProduct(match.productId);
@@ -1557,6 +1706,18 @@ function AppInner() {
     }
   };
 
+  /**
+   * Open the first messaging channel the business has switched on — the chat
+   * inbox is only reachable while VEMTAP Chat is on, so SMS-only and
+   * email-only workspaces still land somewhere real.
+   */
+  const openMessages = () => {
+    const flags = featureConfig.features;
+    if (flags.chat) setRoute('business-messages');
+    else if (flags.sms) setRoute('business-messages-sms');
+    else setRoute('business-messages-email');
+  };
+
   const businessTab = (key: BusinessTabKey) => {
     switch (key) {
       case 'overview':
@@ -1566,7 +1727,7 @@ function AppInner() {
         setRoute('business-orders');
         break;
       case 'messages':
-        setRoute('business-messages');
+        openMessages();
         break;
       case 'business':
         setRoute('business-hub');
@@ -1594,6 +1755,8 @@ function AppInner() {
       case 'messages':
       case 'messages-all':
       case 'messages-inquiries':
+        openMessages();
+        break;
       case 'messages-inapp':
         setRoute('business-messages');
         break;
@@ -1734,7 +1897,44 @@ function AppInner() {
         // Dashboard Help & Support — never the public consumer help centre.
         setRoute('business-support');
         break;
+      case 'manage-features':
+      case 'more-manage-features':
+        // Business Settings › Manage Features — the dashboard tool switchboard.
+        setRoute(FEATURE_MANAGE_ROUTE);
+        break;
     }
+  };
+
+  /**
+   * Open a dashboard tool from its feature id — used by the dynamically built
+   * quick actions so every shortcut resolves through the same portal nav as
+   * the sidebar.
+   */
+  const openBusinessFeature = (feature: FeatureId) => {
+    if (feature === 'pos' && !isDesktop) {
+      // Mobile keeps the existing POS menu page (POS + Store Front shortcuts).
+      setRoute('business-pos-menu');
+      return;
+    }
+    businessPortalNav(BUSINESS_FEATURES[feature].navKey);
+  };
+
+  /** Business Settings › Manage Features — validate, persist, then re-check the current page. */
+  const saveManagedFeatures = (selected: FeatureState) => {
+    const result = featureConfig.saveFeatures(selected);
+    if (!result.success) return result;
+    // Defensive: if the page being viewed now belongs to a switched-off tool,
+    // leave it for the dashboard instead of showing a hidden feature.
+    if (findDisabledRoute(route, (id) => Boolean(selected[id]))) setRouteUnguarded('business-overview');
+    return result;
+  };
+
+  /** One-time setup screen — persists the selection and enters the dashboard. */
+  const completeFeatureSetup = (selected: FeatureState) => {
+    const result = featureConfig.saveFeatures(selected, { completeSetup: true });
+    if (!result.success) return result;
+    setRouteUnguarded('business-overview');
+    return result;
   };
 
   // The collapsed business rail inside the POS shell navigates via a window
@@ -2215,6 +2415,12 @@ function AppInner() {
       const enterDashboard = () => {
         clearProvisionalReferralCode();
         setWelcomeBusiness(null);
+        // A business that has never picked its tools does that once, right
+        // before its first dashboard entry — returning owners skip straight in.
+        if (welcomeAudience === 'business' && !featureConfig.setupComplete) {
+          setRoute(FEATURE_SETUP_ROUTE as Route);
+          return;
+        }
         setRoute('home');
       };
       if (isDesktop)
@@ -3225,8 +3431,84 @@ function AppInner() {
      * Platform Admin → Referral programme. Not reachable from user navigation;
      * an admin opens `/admin/referral` directly to swap the explainer video.
      */
-    case 'admin-referral':
-      return <AdminReferralScreen onBack={() => setRoute('business-referrals')} />;
+    case 'admin-login':
+      return (
+        <AdminLoginScreen
+          onLoginSuccess={() => setRoute('admin-overview')}
+          onBackToApp={() => setRoute('home')}
+        />
+      );
+
+    case 'admin-overview':
+    case 'admin-customers':
+    case 'admin-businesses':
+    case 'admin-businesses-verification':
+    case 'admin-businesses-categories':
+    case 'admin-locations':
+    case 'admin-locations-hierarchy':
+    case 'admin-locations-map':
+    case 'admin-locations-geofencing':
+    case 'admin-locations-fleet':
+    case 'admin-deals':
+    case 'admin-deals-flagged':
+    case 'admin-deals-moderation':
+    case 'admin-deals-featured':
+    case 'admin-orders':
+    case 'admin-orders-transactions':
+    case 'admin-orders-terminals':
+    case 'admin-orders-disputes':
+    case 'admin-marketing':
+    case 'admin-marketing-ads':
+    case 'admin-marketing-performance':
+    case 'admin-marketing-slots':
+    case 'admin-marketing-broadcasts':
+    case 'admin-subscriptions':
+    case 'admin-subscriptions-subscriptions':
+    case 'admin-subscriptions-payments':
+    case 'admin-subscriptions-ad-billing':
+    case 'admin-subscriptions-escrow':
+    case 'admin-subscriptions-invoices':
+    case 'admin-analytics':
+    case 'admin-analytics-growth':
+    case 'admin-analytics-deals':
+    case 'admin-analytics-clusters':
+    case 'admin-analytics-revenue':
+    case 'admin-settings':
+    case 'admin-settings-support':
+    case 'admin-settings-disputes':
+    case 'admin-settings-team':
+    case 'admin-settings-audit':
+    case 'admin-referral': {
+      if (!isAdminAuthenticated()) {
+        return (
+          <AdminLoginScreen
+            onLoginSuccess={() => setRoute('admin-overview')}
+            onBackToApp={() => setRoute('home')}
+          />
+        );
+      }
+      const currentAdminPath = ROUTE_PATH[route] || '/admin';
+      const navigateAdminPath = (path: string) => {
+        if (path === '/dashboard') { setRoute('dashboard'); return; }
+        if (path === '/') { setRoute('home'); return; }
+        const targetRoute = PATH_ROUTE.get(path);
+        if (targetRoute) {
+          setRoute(targetRoute as Route);
+        } else if (path.startsWith('/admin')) {
+          // Fallback: update URL but keep showing admin dashboard with the new path
+          window.history.pushState(null, '', path);
+          // Force re-render by updating a local state — handled via AdminDashboardScreen currentPath
+          setRoute('admin-overview');
+        }
+      };
+      return (
+        <AdminDashboardScreen
+          currentPath={currentAdminPath}
+          onNavigate={navigateAdminPath}
+        />
+      );
+    }
+
 
     /**
      * Google profile confirmation — shown after the Google button and before
@@ -3953,6 +4235,7 @@ function AppInner() {
         return (
           <DesktopBusinessSettingsScreen
             onNav={businessPortalNav}
+            onOpenFeatures={() => setRoute(FEATURE_MANAGE_ROUTE)}
             onSignOut={() => {
               signOut();
               setRoute('welcome');
@@ -3965,10 +4248,52 @@ function AppInner() {
             onBack={() => setRoute('business-more')}
             onOpenPrivacy={() => setRoute('privacy')}
             onOpenTerms={() => setRoute('terms')}
+            onOpenFeatures={() => setRoute(FEATURE_MANAGE_ROUTE)}
             onSignOut={() => {
               signOut();
               setRoute('welcome');
             }}
+          />
+        </div>
+      );
+
+    case 'business-feature-setup':
+      // One-time dashboard tool selection — only reachable while setup is
+      // unfinished, and it never reappears for returning businesses.
+      if (isDesktop)
+        return (
+          <DesktopBusinessFeatureSetupScreen
+            initial={featureConfig.features}
+            recommended={featureConfig.recommended}
+            onSave={completeFeatureSetup}
+          />
+        );
+      return (
+        <BusinessFeatureSetupScreen
+          initial={featureConfig.features}
+          recommended={featureConfig.recommended}
+          onSave={completeFeatureSetup}
+        />
+      );
+
+    case 'business-manage-features':
+      // Business Settings › Manage Features — pending selection, saved explicitly.
+      if (isDesktop)
+        return (
+          <DesktopBusinessManageFeaturesScreen
+            onNav={businessPortalNav}
+            initial={featureConfig.features}
+            recommended={featureConfig.recommended}
+            onSave={saveManagedFeatures}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessManageFeaturesScreen
+            onBack={() => setRoute('business-settings')}
+            initial={featureConfig.features}
+            recommended={featureConfig.recommended}
+            onSave={saveManagedFeatures}
           />
         </div>
       );
@@ -3996,7 +4321,8 @@ function AppInner() {
             onAddOns={() => setRoute('business-add-ons')}
             onOpenOrders={() => setRoute('business-orders')}
             onOpenBookings={() => setRoute('business-bookings')}
-            onOpenMessages={() => setRoute('business-messages')}
+            onOpenMessages={openMessages}
+            onOpenFeature={openBusinessFeature}
           />
         );
       return (
@@ -4007,15 +4333,16 @@ function AppInner() {
           onAddOns={() => setRoute('business-add-ons')}
           onOpenOrders={() => setRoute('business-orders')}
           onOpenBookings={() => setRoute('business-bookings')}
-          onOpenMessages={() => setRoute('business-messages')}
+          onOpenMessages={openMessages}
           onOpenPosMenu={() => setRoute('business-pos-menu')}
+          onOpenFeature={openBusinessFeature}
         />
       );
 
     case 'business-pos-menu':
       // Mobile-only POS menu page (POS overview quick action). Desktop uses the
       // POS rail instead — fall back to the POS overview if reached there.
-      if (isDesktop) return <DesktopBusinessOverviewScreen onNav={businessPortalNav} onSubscribe={() => setRoute('business-subscription')} onBoost={() => openBoost()} onAddOns={() => setRoute('business-add-ons')} onOpenOrders={() => setRoute('business-orders')} onOpenBookings={() => setRoute('business-bookings')} onOpenMessages={() => setRoute('business-messages')} />;
+      if (isDesktop) return <DesktopBusinessOverviewScreen onNav={businessPortalNav} onSubscribe={() => setRoute('business-subscription')} onBoost={() => openBoost()} onAddOns={() => setRoute('business-add-ons')} onOpenOrders={() => setRoute('business-orders')} onOpenBookings={() => setRoute('business-bookings')} onOpenMessages={openMessages} onOpenFeature={openBusinessFeature} />;
       return (
         <BusinessPosMenuScreen
           onOpenPage={(key) => businessPortalNav(key)}
@@ -4032,7 +4359,7 @@ function AppInner() {
             onBackToCatalog={() => setRoute('hub-catalog')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'business-hub':
       if (isDesktop)
@@ -4049,7 +4376,7 @@ function AppInner() {
           initialStep="hub"
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
-          onOpenMessages={() => setRoute('business-messages')}
+          onOpenMessages={openMessages}
           onPreviewStorefront={() => setRoute('storefront')}
           onOpenModule={openHubModule}
         />
@@ -4064,7 +4391,7 @@ function AppInner() {
             onOpenBranch={() => setRoute('hub-branch-detail')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} onAddLocation={() => setRoute('business-add-location')} />;
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} onAddLocation={() => setRoute('business-add-location')} />;
 
     case 'business-add-location':
       // Dashboard-only paid add-location flow: branch form → ₦2,000 checkout.
@@ -4113,7 +4440,7 @@ function AppInner() {
             onBackToLocations={() => setRoute('hub-locations')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} onAddLocation={() => setRoute('business-add-location')} />;
+      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} onAddLocation={() => setRoute('business-add-location')} />;
 
     case 'hub-catalog':
       if (isDesktop)
@@ -4124,7 +4451,7 @@ function AppInner() {
             onOpenServices={() => setRoute('hub-services')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-services':
       if (isDesktop)
@@ -4134,7 +4461,7 @@ function AppInner() {
             onBackToCatalog={() => setRoute('hub-catalog')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-deals':
       if (isDesktop)
@@ -4149,7 +4476,7 @@ function AppInner() {
             onBoost={(dealName) => openBoost(dealName)}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'deal-studio':
       if (isDesktop)
@@ -4184,7 +4511,7 @@ function AppInner() {
           initialStep="customers"
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
-          onOpenMessages={() => setRoute('business-messages')}
+          onOpenMessages={openMessages}
           onPreviewStorefront={() => setRoute('storefront')}
           onOpenModule={openHubModule}
           onViewCustomerProfile={(name) => {
@@ -4214,7 +4541,7 @@ function AppInner() {
             onPreviewStorefront={() => setRoute('storefront')}
           />
         );
-      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'deal-location-pricing':
       if (isDesktop)
@@ -4225,7 +4552,7 @@ function AppInner() {
             onSave={() => setRoute('hub-deals')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'deal-create-locations':
       if (isDesktop)
@@ -4236,7 +4563,7 @@ function AppInner() {
             onReview={() => setRoute('hub-deal-detail')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'business-profile-studio':
       if (isDesktop)
@@ -4246,7 +4573,7 @@ function AppInner() {
             onDiscard={() => setRoute('business-overview')}
           />
         );
-      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-deal-detail':
       if (isDesktop)
@@ -4255,12 +4582,12 @@ function AppInner() {
             onNav={businessPortalNav}
             onEditPricing={() => setRoute('deal-location-pricing')}
             onConfigureCap={() => setRoute('deal-location-pricing')}
-            onChat={() => setRoute('business-messages')}
+            onChat={openMessages}
             onBoost={() => openBoost('Weekend Prime Lunch Combo')}
             onEditDeal={() => setRoute('deal-studio')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={openMessages} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
 
     case 'hub-customer-profile':
       if (isDesktop)
@@ -4271,7 +4598,7 @@ function AppInner() {
           initialCustomer={hubCustomerName}
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
-          onOpenMessages={() => setRoute('business-messages')}
+          onOpenMessages={openMessages}
           onPreviewStorefront={() => setRoute('storefront')}
           onOpenModule={openHubModule}
           onViewCustomerProfile={(name) => setHubCustomerName(name)}
@@ -5154,8 +5481,8 @@ function AppInner() {
       if (isDesktop)
         return (
           <DesktopClusterOnboardingScreen
-            onComplete={() => setRoute('cluster-system')}
-            onSkip={() => setRoute('business-overview')}
+            onComplete={() => setRoute('business-feature-setup')}
+            onSkip={() => setRoute('business-feature-setup')}
             onCreateDeal={() => setRoute('deal-studio')}
             onCreateProduct={() => setRoute('hub-catalog')}
             onCreateLocation={() => setRoute('deal-create-locations')}
@@ -5163,8 +5490,8 @@ function AppInner() {
         );
       return (
         <ClusterOnboardingScreen
-          onComplete={() => setRoute('cluster-system')}
-          onSkip={() => setRoute('business-overview')}
+          onComplete={() => setRoute('business-feature-setup')}
+          onSkip={() => setRoute('business-feature-setup')}
           onCreateDeal={() => setRoute('deal-studio')}
           onCreateProduct={() => setRoute('hub-catalog')}
           onCreateLocation={() => setRoute('deal-create-locations')}

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
+import type { FeatureId } from '../businessFeatures';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 
 interface DesktopBusinessMoreScreenProps {
@@ -66,6 +68,7 @@ export function DesktopBusinessMoreScreen({
 }: DesktopBusinessMoreScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const { features } = useBusinessFeatures();
 
   useEffect(
     () => () => {
@@ -80,7 +83,7 @@ export function DesktopBusinessMoreScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  const sections: SectionData[] = [
+  const allSections: SectionData[] = [
     {
       key: 'cluster',
       label: 'Cluster System',
@@ -277,6 +280,19 @@ export function DesktopBusinessMoreScreen({
       ],
     },
   ];
+
+  // Sections that belong to a switched-off tool are removed from the list.
+  const SECTION_FEATURE: Partial<Record<string, FeatureId>> = {
+    cluster: 'cluster',
+    'store-ordering': 'storefront',
+    pos: 'pos',
+    analytics: 'analytics',
+    discovery: 'storefront',
+  };
+  const sections = allSections.filter((section) => {
+    const feature = SECTION_FEATURE[section.key];
+    return feature === undefined || Boolean(features[feature]);
+  });
 
   const renderRow = (row: RowData) => (
     <button

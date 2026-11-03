@@ -3,11 +3,13 @@ import { Icon } from './ui/Icon';
 import { Logo } from './ui/Logo';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
+  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from '../scripts/desktop/businessSidebarConfig';
 import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
 
 interface BusinessMobileDrawerProps {
   isOpen: boolean;
@@ -25,7 +27,18 @@ export function BusinessMobileDrawer({
   onSignOut,
 }: BusinessMobileDrawerProps) {
   const { offerings, mode } = useBusinessOfferings();
-  const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
+  const { features } = useBusinessFeatures();
+  // Only the tools the business has switched on appear in the drawer.
+  const visibleSections = filterSidebarSections(BUSINESS_SIDEBAR_SECTIONS, (id) => Boolean(features[id]));
+  // Follow the active entry into whichever group is actually on screen — a
+  // switched-off group (or a moved entry such as Bookings without POS) never
+  // keeps the highlight.
+  const resolved = resolveSidebarActive(active);
+  const activeSectionKey = visibleSections.some((section) => section.key === resolved.sectionKey)
+    ? resolved.sectionKey
+    : visibleSections.find((section) => section.items?.some((item) => item.key === resolved.itemKey))?.key ??
+      resolved.sectionKey;
+  const activeItemKey = resolved.itemKey;
 
   const getSubItemLabel = (subItem: BusinessSidebarSubItem) => {
     if (subItem.key === 'business-catalog') return 'My Products';
@@ -38,7 +51,7 @@ export function BusinessMobileDrawer({
     return subItem.label;
   };
 
-  const activeSectionHasChildren = BUSINESS_SIDEBAR_SECTIONS.some(
+  const activeSectionHasChildren = visibleSections.some(
     (s) => s.key === activeSectionKey && s.items && s.items.length > 0
   );
 
@@ -131,7 +144,7 @@ export function BusinessMobileDrawer({
 
         {/* Scrollable Navigation List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          {BUSINESS_SIDEBAR_SECTIONS.map((section) => {
+          {visibleSections.map((section) => {
             const hasChildren = Boolean(section.items && section.items.length > 0);
             const isSectionActive = activeSectionKey === section.key;
             const isOpen = openSectionKey === section.key;

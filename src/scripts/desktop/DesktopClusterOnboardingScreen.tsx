@@ -159,15 +159,7 @@ export function DesktopClusterOnboardingScreen({
             <span className="text-xs text-text-secondary hidden sm:inline">
               Step: <strong className="text-text-primary capitalize">{step.replace('_', ' ')}</strong>
             </span>
-            {step !== 'success' && (
-              <button
-                type="button"
-                onClick={onSkip}
-                className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors px-3 py-1.5 rounded-lg hover:bg-surface-subtle"
-              >
-                Skip for now
-              </button>
-            )}
+
           </div>
         </div>
       </header>
@@ -246,13 +238,6 @@ export function DesktopClusterOnboardingScreen({
                 >
                   <span>Check Location Availability</span>
                   <Icon name="near_me" className="text-[18px]" />
-                </button>
-                <button
-                  type="button"
-                  onClick={onSkip}
-                  className="px-6 h-12 bg-surface-subtle hover:bg-surface-container text-text-secondary font-medium text-sm rounded-xl transition-colors"
-                >
-                  Skip to Dashboard
                 </button>
               </div>
             </div>
@@ -1003,21 +988,14 @@ export function DesktopClusterOnboardingScreen({
             </div>
 
             {/* Buttons */}
-            <div className="flex items-center justify-center gap-4 pt-2">
+            <div className="flex items-center justify-center pt-2">
               <button
                 type="button"
                 onClick={onComplete}
                 className="px-8 h-12 bg-primary-container hover:opacity-95 text-on-primary font-semibold text-sm rounded-xl flex items-center gap-2 shadow-lg shadow-primary/20 transition-all"
               >
-                <span>Enter Cluster System</span>
-                <Icon name="hub" className="text-[18px]" />
-              </button>
-              <button
-                type="button"
-                onClick={onSkip}
-                className="px-6 h-12 bg-surface-subtle hover:bg-surface-container text-text-secondary font-medium text-sm rounded-xl transition-colors"
-              >
-                Continue to Business Overview
+                <span>Continue to Dashboard</span>
+                <Icon name="arrow_forward" className="text-[18px]" />
               </button>
             </div>
           </div>

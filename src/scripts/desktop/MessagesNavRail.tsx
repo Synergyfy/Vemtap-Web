@@ -1,18 +1,13 @@
 import { Icon } from '../../components/ui/Icon';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
+  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSubItem,
 } from './businessSidebarConfig';
 
-/** The Messages section of the main business sidebar — reused as the messages rail. */
-const MESSAGES_SECTION = BUSINESS_SIDEBAR_SECTIONS.find((section) => section.key === 'messages')!;
-
 const RAIL_TOP: Record<'16' | '20', string> = { '16': 'top-16', '20': 'top-20' };
-
-const MESSAGE_NAV_GROUPS: ReadonlyArray<{ label: string; items: BusinessSidebarSubItem[] }> = [
-  { label: 'Channels', items: MESSAGES_SECTION.items ?? [] },
-];
 
 interface MessagesNavRailProps {
   active?: string;
@@ -27,7 +22,16 @@ interface MessagesNavRailProps {
  * — the main rail simply collapses to icons, same as POS mode.
  */
 export function MessagesNavRail({ active, onSelect, headerHeight = '16' }: MessagesNavRailProps) {
+  const { features } = useBusinessFeatures();
   const { itemKey: activeItemKey } = resolveSidebarActive(active);
+
+  // Only the channels the business has switched on (In-App Chat / SMS / Email).
+  const visibleSections = filterSidebarSections(BUSINESS_SIDEBAR_SECTIONS, (id) => Boolean(features[id]));
+  const messagesSection = visibleSections.find((section) => section.key === 'messages');
+  const groups: Array<{ label: string; items: BusinessSidebarSubItem[] }> = [];
+  if (messagesSection) groups.push({ label: 'Channels', items: messagesSection.items ?? [] });
+
+  if (groups.length === 0) return null;
 
   return (
     <aside
@@ -35,7 +39,7 @@ export function MessagesNavRail({ active, onSelect, headerHeight = '16' }: Messa
       aria-label="Messages navigation"
     >
       <nav className="flex flex-col p-2 lg:p-3">
-        {MESSAGE_NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.label} className="mb-space-xs last:mb-0">
             <span className="hidden lg:block px-3 py-1.5 font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-tertiary truncate">
               {group.label}

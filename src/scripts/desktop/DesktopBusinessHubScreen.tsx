@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
+import type { FeatureId } from '../businessFeatures';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { HubModuleKey } from '../BusinessHubHomeScreen';
 
@@ -111,6 +113,23 @@ export function DesktopBusinessHubScreen({
 }: DesktopBusinessHubScreenProps) {
   const [branchKey, setBranchKey] = useState('wuse-ii');
   const [toast, setToast] = useState<string | null>(null);
+  const { features } = useBusinessFeatures();
+
+  // Modules for tools the business has switched off are dropped (the catalogue
+  // card stays — at least one offering is always on, and Business Profile is core).
+  const CARD_FEATURE: Partial<Record<HubModuleKey, FeatureId>> = {
+    deals: 'deals',
+    customers: 'customers',
+    loyalty: 'loyalty',
+    locations: 'locations',
+    staff: 'staff',
+    referrals: 'referrals',
+  };
+  const visibleModules = HUB_MODULES.filter((card) => {
+    if (card.key === 'catalog') return Boolean(features.products || features.services);
+    const feature = CARD_FEATURE[card.key];
+    return feature === undefined || Boolean(features[feature]);
+  });
 
   const showToast = (message: string) => {
     setToast(message);
@@ -145,14 +164,16 @@ export function DesktopBusinessHubScreen({
             </p>
           </div>
           <div className="flex items-center gap-space-sm flex-shrink-0">
-            <button
-              type="button"
-              onClick={onPreviewStorefront}
-              className="flex items-center gap-space-xs px-space-lg h-[46px] rounded-xl bg-primary-container text-on-primary hover:opacity-90 transition-opacity font-button-primary text-button-primary shadow-md"
-            >
-              <span>Preview Storefront</span>
-              <Icon name="open_in_new" className="text-[18px]" />
-            </button>
+            {features.storefront && (
+              <button
+                type="button"
+                onClick={onPreviewStorefront}
+                className="flex items-center gap-space-xs px-space-lg h-[46px] rounded-xl bg-primary-container text-on-primary hover:opacity-90 transition-opacity font-button-primary text-button-primary shadow-md"
+              >
+                <span>Preview Storefront</span>
+                <Icon name="open_in_new" className="text-[18px]" />
+              </button>
+            )}
           </div>
         </section>
 
@@ -217,7 +238,7 @@ export function DesktopBusinessHubScreen({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-md">
-            {HUB_MODULES.map((card) => (
+            {visibleModules.map((card) => (
               <button
                 key={card.key}
                 type="button"

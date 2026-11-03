@@ -501,7 +501,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                   type="checkbox"
                   onChange={() => setGrantAccess((current) => !current)}
                 />
-                <div className="w-12 h-7 bg-surface-container rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-primary after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary-container" />
+                <div className="w-8 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-3.5 after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all after:shadow-xs peer-checked:bg-primary" />
               </label>
             </div>
           </div>

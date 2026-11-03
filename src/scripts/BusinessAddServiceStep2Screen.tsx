@@ -234,7 +234,7 @@ export function BusinessAddServiceStep2Screen({
               </div>
               <button
                 aria-checked={draft.tiersEnabled}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors focus:outline-none ${
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
                   draft.tiersEnabled ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 id="tier-toggle"
@@ -243,8 +243,8 @@ export function BusinessAddServiceStep2Screen({
                 onClick={() => onDraftChange({ tiersEnabled: !draft.tiersEnabled })}
               >
                 <span
-                  className={`w-6 h-6 rounded-full bg-surface shadow-md transform transition-transform ${
-                    draft.tiersEnabled ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    draft.tiersEnabled ? 'translate-x-3.5' : 'translate-x-0'
                   }`}
                 />
               </button>

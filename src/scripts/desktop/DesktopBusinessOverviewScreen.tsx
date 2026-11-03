@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
+import { getEnabledQuickActions, type FeatureId } from '../businessFeatures';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
 interface DesktopBusinessOverviewScreenProps {
@@ -12,6 +14,8 @@ interface DesktopBusinessOverviewScreenProps {
   onOpenOrders?: () => void;
   onOpenBookings?: () => void;
   onOpenMessages?: () => void;
+  /** Opens a dashboard tool by feature id — powers the generated quick actions. */
+  onOpenFeature: (feature: FeatureId) => void;
 }
 
 const RECENT_ORDERS = [
@@ -32,10 +36,16 @@ export function DesktopBusinessOverviewScreen({
   onOpenOrders,
   onOpenBookings,
   onOpenMessages,
+  onOpenFeature,
 }: DesktopBusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
-  const { offerings, mode } = useBusinessOfferings();
+  const { mode } = useBusinessOfferings();
+  const { features } = useBusinessFeatures();
   const [bannerIndex, setBannerIndex] = useState(0);
+
+  // Quick actions come straight from the saved feature configuration.
+  const quickActions = getEnabledQuickActions((id) => Boolean(features[id]));
+  const hasMessaging = Boolean(features.chat || features.sms || features.email);
 
   useEffect(() => {
     const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % 2), 5000);
@@ -45,38 +55,50 @@ export function DesktopBusinessOverviewScreen({
   const stats = branch.stats;
 
   const todayStats = [
-    {
-      icon: 'receipt_long',
-      iconBox: 'bg-surface-tint-blue text-primary',
-      label: 'Orders Today',
-      value: stats.orders,
-      note: 'Live count',
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'payments',
-      iconBox: 'bg-badge-discount-bg text-badge-discount-text',
-      label: 'Revenue Today',
-      value: stats.revenue,
-      note: stats.revenueDelta,
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'calendar_month',
-      iconBox: 'bg-tertiary-fixed text-tertiary',
-      label: 'Bookings',
-      value: stats.bookings,
-      note: 'Next in 35 mins',
-      onClick: onOpenBookings ?? onOpenOrders,
-    },
-    {
-      icon: 'chat_bubble',
-      iconBox: 'bg-secondary-container text-on-secondary-container',
-      label: 'Unread Messages',
-      value: stats.unread,
-      note: 'Open inquiries',
-      onClick: onOpenMessages,
-    },
+    ...(features.pos
+      ? [
+          {
+            icon: 'receipt_long',
+            iconBox: 'bg-surface-tint-blue text-primary',
+            label: 'Orders Today',
+            value: stats.orders,
+            note: 'Live count',
+            onClick: onOpenOrders,
+          },
+          {
+            icon: 'payments',
+            iconBox: 'bg-badge-discount-bg text-badge-discount-text',
+            label: 'Revenue Today',
+            value: stats.revenue,
+            note: stats.revenueDelta,
+            onClick: onOpenOrders,
+          },
+        ]
+      : []),
+    ...(features.bookings
+      ? [
+          {
+            icon: 'calendar_month',
+            iconBox: 'bg-tertiary-fixed text-tertiary',
+            label: 'Bookings',
+            value: stats.bookings,
+            note: 'Next in 35 mins',
+            onClick: onOpenBookings ?? onOpenOrders,
+          },
+        ]
+      : []),
+    ...(hasMessaging
+      ? [
+          {
+            icon: 'chat_bubble',
+            iconBox: 'bg-secondary-container text-on-secondary-container',
+            label: 'Unread Messages',
+            value: stats.unread,
+            note: 'Open inquiries',
+            onClick: onOpenMessages,
+          },
+        ]
+      : []),
   ];
 
   const banners = [
@@ -181,62 +203,18 @@ export function DesktopBusinessOverviewScreen({
             </div>
           </section>
 
-          {/* Offering Enable Prompt Banner */}
-          {!offerings.hasServices && (
-            <section className="p-4 rounded-2xl bg-gradient-to-r from-surface-tint-blue/80 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-4 shadow-sm">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="w-12 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
-                  <Icon name="content_cut" className="text-[24px]" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">Enable Services</h3>
-                  <p className="font-body-md text-body-md text-text-secondary">
-                    Also provide services? Turn this on in your business profile to activate service bookings and packages.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onNav('business-profile')}
-                className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm cursor-pointer"
-              >
-                Enable in Profile
-              </button>
-            </section>
-          )}
-
-          {!offerings.hasProducts && (
-            <section className="p-4 rounded-2xl bg-gradient-to-r from-surface-tint-blue/80 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-4 shadow-sm">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="w-12 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
-                  <Icon name="inventory_2" className="text-[24px]" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">Enable Products</h3>
-                  <p className="font-body-md text-body-md text-text-secondary">
-                    Also sell products? Turn this on in your business profile to activate product stock, catalogue, and inventory.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onNav('business-profile')}
-                className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm cursor-pointer"
-              >
-                Enable in Profile
-              </button>
-            </section>
-          )}
-
           {/* Main desktop grid */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-space-lg">
             {/* Wide column: stats + quick actions */}
             <div className="xl:col-span-8 space-y-space-md">
               {/* Today's Stats */}
+              {todayStats.length > 0 && (
               <section className="grid grid-cols-2 md:grid-cols-4 gap-space-xs">
                 {todayStats.map((stat) => (
                   <button
-                    className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform"
+                    className={`bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform ${
+                      todayStats.length === 1 ? 'col-span-2 md:col-span-1' : ''
+                    }`}
                     key={stat.label}
                     type="button"
                     onClick={stat.onClick}
@@ -252,43 +230,42 @@ export function DesktopBusinessOverviewScreen({
                   </button>
                 ))}
               </section>
+              )}
 
-              {/* Quick Actions */}
-              <section className="grid grid-cols-2 gap-space-xs">
-                <button
-                  className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform cursor-pointer"
-                  type="button"
-                  onClick={() => onNav('business-catalog')}
-                >
-                  <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
-                    <Icon name={mode === 'services' ? 'content_cut' : 'inventory_2'} className="text-[20px]" />
-                  </div>
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">
-                    {mode === 'services' ? 'My Services' : mode === 'products' ? 'My Products' : 'Catalogue'}
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary">
-                    {mode === 'services' ? 'Service menu & pricing' : 'Manage inventory & prices'}
-                  </span>
-                </button>
-                <button
-                  className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform cursor-pointer"
-                  type="button"
-                  onClick={onBoost}
-                >
-                  <div className="w-9 h-9 rounded-lg bg-tertiary-fixed text-tertiary flex items-center justify-center">
-                    <Icon name="rocket_launch" className="text-[20px]" />
-                  </div>
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">
-                    {mode === 'services' ? 'Service Deals' : mode === 'products' ? 'Product Deals' : 'Product & Service Deals'}
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary">Your budget, your reach</span>
-                </button>
+              {/* Quick Actions — clean grid limited to max 4 actions */}
+              {quickActions.length > 0 && (
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-label-md text-label-md font-bold text-text-primary">Quick Actions</h3>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-space-xs">
+                  {quickActions.slice(0, 4).map((action) => (
+                    <button
+                      className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1.5 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform cursor-pointer border border-border-subtle/40"
+                      type="button"
+                      key={action.feature}
+                      onClick={() => onOpenFeature(action.feature)}
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                        <Icon name={action.icon} className="text-[20px]" />
+                      </div>
+                      <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
+                        {action.label}
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary truncate">
+                        {action.sub}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </section>
+              )}
             </div>
 
             {/* Narrow column: recent activity */}
             <div className="xl:col-span-4 space-y-space-md">
               {/* Recent Orders */}
+              {features.pos && (
               <section>
                 <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -329,8 +306,10 @@ export function DesktopBusinessOverviewScreen({
                   </div>
                 </div>
               </section>
+              )}
 
               {/* Recent Messages */}
+              {hasMessaging && (
               <section>
                 <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -373,6 +352,7 @@ export function DesktopBusinessOverviewScreen({
                   </div>
                 </div>
               </section>
+              )}
             </div>
           </div>
         </div>

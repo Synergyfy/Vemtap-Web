@@ -319,13 +319,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   aria-label="Toggle Products"
                   aria-checked={offeringsDraft.hasProducts}
                   onClick={() => handleToggleOffering('products')}
-                  className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${
-                    offeringsDraft.hasProducts ? 'bg-primary' : 'bg-surface-container-high'
+                  className={`w-8 h-5 rounded-full transition-colors relative shrink-0 p-0.5 inline-flex items-center ${
+                    offeringsDraft.hasProducts ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
                   }`}
                 >
                   <span
-                    className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
-                      offeringsDraft.hasProducts ? 'translate-x-6' : 'translate-x-0.5'
+                    className={`block w-3.5 h-3.5 rounded-full bg-white shadow-xs transition-transform ${
+                      offeringsDraft.hasProducts ? 'translate-x-3.5' : 'translate-x-0'
                     }`}
                   />
                 </button>
@@ -354,13 +354,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   aria-label="Toggle Services"
                   aria-checked={offeringsDraft.hasServices}
                   onClick={() => handleToggleOffering('services')}
-                  className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${
-                    offeringsDraft.hasServices ? 'bg-primary' : 'bg-surface-container-high'
+                  className={`w-8 h-5 rounded-full transition-colors relative shrink-0 p-0.5 inline-flex items-center ${
+                    offeringsDraft.hasServices ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
                   }`}
                 >
                   <span
-                    className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
-                      offeringsDraft.hasServices ? 'translate-x-6' : 'translate-x-0.5'
+                    className={`block w-3.5 h-3.5 rounded-full bg-white shadow-xs transition-transform ${
+                      offeringsDraft.hasServices ? 'translate-x-3.5' : 'translate-x-0'
                     }`}
                   />
                 </button>

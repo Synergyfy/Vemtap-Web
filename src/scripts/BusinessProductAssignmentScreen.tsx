@@ -165,20 +165,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
               </div>
               <button
                 aria-checked={maitamaOn}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${
-                  maitamaOn ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                  maitamaOn ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 role="switch"
                 type="button"
                 onClick={() => setMaitamaOn((on) => !on)}
               >
-                <span className="w-6 h-6 rounded-full bg-surface-container-lowest shadow-md flex items-center justify-center">
-                  <Icon
-                    name={maitamaOn ? 'check' : 'close'}
-                    filled={maitamaOn}
-                    className={`text-[14px] ${maitamaOn ? 'text-primary' : 'text-outline'}`}
-                  />
-                </span>
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    maitamaOn ? 'translate-x-3.5' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-space-xs">
@@ -242,20 +240,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
               </div>
               <button
                 aria-checked={victoriaOn}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${
-                  victoriaOn ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                  victoriaOn ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 role="switch"
                 type="button"
                 onClick={() => setVictoriaOn((on) => !on)}
               >
-                <span className="w-6 h-6 rounded-full bg-surface-container-lowest shadow-md flex items-center justify-center">
-                  <Icon
-                    name={victoriaOn ? 'check' : 'close'}
-                    filled={victoriaOn}
-                    className={`text-[14px] ${victoriaOn ? 'text-primary' : 'text-outline'}`}
-                  />
-                </span>
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    victoriaOn ? 'translate-x-3.5' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-space-xs">
@@ -343,14 +339,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
                     </div>
                     <button
                       aria-checked={dealLink}
-                      className={`w-9 h-5 rounded-full p-0.5 flex items-center shrink-0 transition-colors ${
-                        dealLink ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                      className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                        dealLink ? 'bg-primary' : 'bg-surface-container-highest'
                       }`}
                       role="switch"
                       type="button"
                       onClick={() => setDealLink((on) => !on)}
                     >
-                      <span className="w-4 h-4 rounded-full bg-surface-container-lowest shadow-sm" />
+                      <span
+                        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                          dealLink ? 'translate-x-3.5' : 'translate-x-0'
+                        }`}
+                      />
                     </button>
                   </div>
                 </>
@@ -375,20 +375,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName }: BusinessPr
               </div>
               <button
                 aria-checked={garkiOn}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${
-                  garkiOn ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                  garkiOn ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 role="switch"
                 type="button"
                 onClick={() => setGarkiOn((on) => !on)}
               >
-                <span className="w-6 h-6 rounded-full bg-surface-container-lowest shadow-md flex items-center justify-center">
-                  <Icon
-                    name={garkiOn ? 'check' : 'close'}
-                    filled={garkiOn}
-                    className={`text-[14px] ${garkiOn ? 'text-primary' : 'text-outline'}`}
-                  />
-                </span>
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    garkiOn ? 'translate-x-3.5' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
             <div className="bg-surface-container rounded-lg p-space-sm flex items-start gap-space-xs">

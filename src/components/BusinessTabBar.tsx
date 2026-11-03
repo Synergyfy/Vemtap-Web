@@ -1,4 +1,5 @@
 import { Icon } from './ui/Icon';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
 
 export type BusinessTabKey = 'overview' | 'orders' | 'messages' | 'business' | 'more';
 
@@ -22,10 +23,26 @@ const TABS: { key: BusinessTabKey; icon: string; label: string; badge?: string; 
 ];
 
 export function BusinessTabBar({ active = 'orders', onTab }: BusinessTabBarProps) {
+  const { features } = useBusinessFeatures();
+
+  // Tabs for tools the business has switched off disappear (Orders needs POS,
+  // Messages needs at least one channel), so the bar only offers live pages.
+  const visibleTabs = TABS.filter((tab) => {
+    if (tab.key === 'orders') return Boolean(features.pos);
+    if (tab.key === 'messages') return Boolean(features.chat || features.sms || features.email);
+    return true;
+  }).map((tab) => {
+    // The unread badge counts in-app chat only.
+    if (tab.key === 'messages' && !features.chat) {
+      return { ...tab, badge: undefined, badgeClass: undefined };
+    }
+    return tab;
+  });
+
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-1px_12px_rgba(0,0,0,0.05)]">
       <div className="flex justify-between items-center h-20 px-space-xs">
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const isActive = tab.key === active;
           return (
             <button

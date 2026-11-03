@@ -349,7 +349,7 @@ export function DesktopBusinessProfileContactScreen({
                             {showError ? (
                               <span className="font-caption text-caption text-error flex items-center gap-space-2xs">
                                 <Icon name="error" className="text-[14px]" />
-                                {result.error}
+                                {'error' in result ? result.error : ''}
                               </span>
                             ) : result.ok ? (
                               <a
@@ -421,14 +421,10 @@ export function DesktopBusinessProfileContactScreen({
                       aria-pressed={draft.prefs.inApp}
                       aria-label="Allow In-App Direct Chat"
                       onClick={() => togglePref('inApp')}
-                      className={`w-12 h-7 rounded-full relative transition-colors focus:outline-none flex-shrink-0 p-0.5 ${
-                        draft.prefs.inApp ? 'bg-primary' : 'bg-surface-variant'
-                      }`}
+                      className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${draft.prefs.inApp ? 'bg-primary' : 'bg-surface-container-highest'}`}
                     >
                       <span
-                        className={`w-6 h-6 bg-surface-canvas rounded-full shadow-md block transition-transform ${
-                          draft.prefs.inApp ? 'translate-x-5' : 'translate-x-0'
-                        }`}
+                        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${draft.prefs.inApp ? 'translate-x-3.5' : 'translate-x-0'}`}
                       />
                     </button>
                   </div>
@@ -450,14 +446,10 @@ export function DesktopBusinessProfileContactScreen({
                       aria-pressed={draft.prefs.whatsapp}
                       aria-label="Receive deal claims via WhatsApp alerts"
                       onClick={() => togglePref('whatsapp')}
-                      className={`w-12 h-7 rounded-full relative transition-colors focus:outline-none flex-shrink-0 p-0.5 ${
-                        draft.prefs.whatsapp ? 'bg-primary' : 'bg-surface-variant'
-                      }`}
+                      className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${draft.prefs.whatsapp ? 'bg-primary' : 'bg-surface-container-highest'}`}
                     >
                       <span
-                        className={`w-6 h-6 bg-surface-canvas rounded-full shadow-md block transition-transform ${
-                          draft.prefs.whatsapp ? 'translate-x-5' : 'translate-x-0'
-                        }`}
+                        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${draft.prefs.whatsapp ? 'translate-x-3.5' : 'translate-x-0'}`}
                       />
                     </button>
                   </div>

@@ -7,7 +7,8 @@ import { BusinessModeHeader } from './BusinessModeHeader';
 
 interface BusinessOrdersHubScreenProps {
   onTab: (tab: BusinessTabKey) => void;
-  onSwitchBookings: () => void;
+  /** Hidden while the Bookings tool is switched off in Manage Features. */
+  onSwitchBookings?: () => void;
   onOpenOrder: () => void;
 }
 
@@ -203,7 +204,8 @@ export function BusinessOrdersHubScreen({
               </button>
             </div>
           </div>
-          {/* Switcher: Orders vs Bookings */}
+          {/* Switcher: Orders vs Bookings — only while the Bookings tool is on */}
+          {onSwitchBookings && (
           <div className="p-1 bg-surface-container-high rounded-xl flex items-center gap-1">
             <button
               className="flex-1 py-2 rounded-lg bg-surface-container-lowest text-primary-container font-button-primary text-button-primary shadow-sm flex items-center justify-center gap-space-xs transition-all"
@@ -225,6 +227,7 @@ export function BusinessOrdersHubScreen({
               </span>
             </button>
           </div>
+          )}
           {/* Status Chips Bar */}
           <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
             {STATUS_CHIPS.map((chip) => {

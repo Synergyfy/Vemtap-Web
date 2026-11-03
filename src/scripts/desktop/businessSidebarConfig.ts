@@ -1,3 +1,9 @@
+import {
+  getNavKeyFeature,
+  SECTION_FEATURES,
+  type FeatureId,
+} from '../businessFeatures';
+
 export interface BusinessSidebarSubItem {
   key: string;
   label: string;
@@ -23,6 +29,8 @@ export interface BusinessSidebarSection {
    * Used by POS, which is now a page with its own side menu (the POS rail).
    */
   link?: boolean;
+  /** Feature that owns this section's badge — dropped from the rail when it is off. */
+  badgeFeature?: FeatureId;
   items?: BusinessSidebarSubItem[];
 }
 
@@ -40,6 +48,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'messages-inapp',
     badge: '2',
     badgeClass: 'bg-tertiary-container text-on-tertiary',
+    badgeFeature: 'chat',
     // Messages is a page with its own side menu (the messages rail) — navigate
     // directly, no dropdown chevron on the main rail. The rail lists the
     // channels: In-App Chat, SMS and Email.
@@ -74,6 +83,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'pos-home',
     badge: '4',
     badgeClass: 'bg-primary-container text-on-primary',
+    badgeFeature: 'pos',
     // POS is a page with its own side menu (the POS rail) — navigate directly,
     // no dropdown chevron on the main rail.
     link: true,
@@ -93,6 +103,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'store-ordering-dashboard',
     badge: 'Live',
     badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+    badgeFeature: 'storefront',
     // Store Front lives inside POS now — hidden from the main rail, rendered as
     // its own group in the POS side menu.
     hidden: true,
@@ -126,6 +137,78 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     ],
   },
 ];
+
+/**
+ * Applies the saved feature selection to the rail config:
+ *
+ * - a section whose features are all switched off disappears,
+ * - an entry that belongs to a switched-off tool disappears,
+ * - `defaultKey` falls back to the first entry that is still there, so a
+ *   section header never jumps to a hidden page,
+ * - badges tied to a switched-off tool are dropped.
+ *
+ * Returns new objects — the shared config above is never mutated.
+ */
+export function filterSidebarSections(
+  sections: BusinessSidebarSection[],
+  isEnabled: (id: FeatureId) => boolean
+): BusinessSidebarSection[] {
+  const itemVisible = (item: BusinessSidebarSubItem) => {
+    const feature = getNavKeyFeature(item.key);
+    return feature === undefined || isEnabled(feature);
+  };
+
+  let list = sections;
+
+  // POS off but Bookings on: the Bookings entry moves into the Business group so
+  // appointments stay reachable from the rail without a "POS" header that only
+  // contains bookings.
+  if (!isEnabled('pos') && isEnabled('bookings')) {
+    list = sections.map((section) => {
+      if (section.key === 'pos' && section.items?.some((item) => item.key === 'orders-bookings')) {
+        return { ...section, items: section.items.filter((item) => item.key !== 'orders-bookings') };
+      }
+      if (section.key === 'business' && section.items) {
+        const bookings: BusinessSidebarSubItem = {
+          key: 'orders-bookings',
+          label: 'Bookings',
+          icon: 'calendar_month',
+        };
+        const at = section.items.findIndex((item) => item.key === 'business-services');
+        const items = [...section.items];
+        items.splice(at < 0 ? items.length : at + 1, 0, bookings);
+        return { ...section, items };
+      }
+      return section;
+    });
+  }
+
+  const filtered: BusinessSidebarSection[] = [];
+
+  for (const section of list) {
+    const required = SECTION_FEATURES[section.key];
+    if (required && !required.some(isEnabled)) continue;
+
+    const items = section.items ? section.items.filter(itemVisible) : undefined;
+    // A section that only existed to hold tool entries has nothing left to show.
+    if (section.items && section.items.length > 0 && (!items || items.length === 0)) continue;
+
+    const badgeVisible = !section.badgeFeature || isEnabled(section.badgeFeature);
+
+    filtered.push({
+      ...section,
+      items,
+      defaultKey:
+        items && items.length > 0 && !items.some((item) => item.key === section.defaultKey)
+          ? items[0].key
+          : section.defaultKey,
+      badge: badgeVisible ? section.badge : undefined,
+      badgeClass: badgeVisible ? section.badgeClass : undefined,
+    });
+  }
+
+  return filtered;
+}
 
 /**
  * Normalizes any legacy or sub-route key to its canonical section and item keys.

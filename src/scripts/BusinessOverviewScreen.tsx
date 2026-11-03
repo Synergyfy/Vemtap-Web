@@ -5,6 +5,8 @@ import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBa
 import { BusinessModeHeader } from './BusinessModeHeader';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import { getEnabledQuickActions, type FeatureId } from './businessFeatures';
 
 interface BusinessOverviewScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -16,6 +18,8 @@ interface BusinessOverviewScreenProps {
   onOpenMessages: () => void;
   /** Opens the POS menu page (Point of Sale + Store Front pages). */
   onOpenPosMenu: () => void;
+  /** Opens a dashboard tool by feature id — powers the generated quick actions. */
+  onOpenFeature: (feature: FeatureId) => void;
 }
 
 const RECENT_ORDERS = [
@@ -36,11 +40,17 @@ export function BusinessOverviewScreen({
   onOpenOrders,
   onOpenBookings,
   onOpenMessages,
-  onOpenPosMenu,
+  onOpenPosMenu: _onOpenPosMenu,
+  onOpenFeature,
 }: BusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
-  const { offerings, mode } = useBusinessOfferings();
+  const { mode } = useBusinessOfferings();
+  const { features } = useBusinessFeatures();
   const [bannerIndex, setBannerIndex] = useState(0);
+
+  // Quick actions come straight from the saved feature configuration.
+  const quickActions = getEnabledQuickActions((id) => Boolean(features[id]));
+  const hasMessaging = Boolean(features.chat || features.sms || features.email);
 
   useEffect(() => {
     const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % 2), 5000);
@@ -50,38 +60,50 @@ export function BusinessOverviewScreen({
   const stats = branch.stats;
 
   const todayStats = [
-    {
-      icon: 'receipt_long',
-      iconBox: 'bg-surface-tint-blue text-primary',
-      label: 'Orders Today',
-      value: stats.orders,
-      note: 'Live count',
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'payments',
-      iconBox: 'bg-badge-discount-bg text-badge-discount-text',
-      label: 'Revenue Today',
-      value: stats.revenue,
-      note: stats.revenueDelta,
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'calendar_month',
-      iconBox: 'bg-tertiary-fixed text-tertiary',
-      label: 'Bookings',
-      value: stats.bookings,
-      note: 'Next in 35 mins',
-      onClick: onOpenBookings,
-    },
-    {
-      icon: 'chat_bubble',
-      iconBox: 'bg-secondary-container text-on-secondary-container',
-      label: 'Unread Messages',
-      value: stats.unread,
-      note: 'Open inquiries',
-      onClick: onOpenMessages,
-    },
+    ...(features.pos
+      ? [
+          {
+            icon: 'receipt_long',
+            iconBox: 'bg-surface-tint-blue text-primary',
+            label: 'Orders Today',
+            value: stats.orders,
+            note: 'Live count',
+            onClick: onOpenOrders,
+          },
+          {
+            icon: 'payments',
+            iconBox: 'bg-badge-discount-bg text-badge-discount-text',
+            label: 'Revenue Today',
+            value: stats.revenue,
+            note: stats.revenueDelta,
+            onClick: onOpenOrders,
+          },
+        ]
+      : []),
+    ...(features.bookings
+      ? [
+          {
+            icon: 'calendar_month',
+            iconBox: 'bg-tertiary-fixed text-tertiary',
+            label: 'Bookings',
+            value: stats.bookings,
+            note: 'Next in 35 mins',
+            onClick: onOpenBookings,
+          },
+        ]
+      : []),
+    ...(hasMessaging
+      ? [
+          {
+            icon: 'chat_bubble',
+            iconBox: 'bg-secondary-container text-on-secondary-container',
+            label: 'Unread Messages',
+            value: stats.unread,
+            note: 'Open inquiries',
+            onClick: onOpenMessages,
+          },
+        ]
+      : []),
   ];
 
   const banners = [
@@ -187,133 +209,76 @@ export function BusinessOverviewScreen({
             </div>
           </div>
 
-          {/* Offering Enable Prompt Banner */}
-          {!offerings.hasServices && (
-            <div className="px-margin pt-space-xs">
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-surface-tint-blue/70 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-3 shadow-sm">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
-                    <Icon name="content_cut" className="text-[20px]" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-label-md text-label-md font-bold text-text-primary">Enable Services</h3>
-                    <p className="font-caption text-caption text-text-secondary truncate">
-                      Also provide services? Turn this on in your business profile.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onTab('business')}
-                  className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm"
-                >
-                  Enable
-                </button>
+          {/* Branch Stats — single line display */}
+          {todayStats.length > 0 && (
+            <div className="px-margin mt-space-md">
+              <div
+                className={`grid gap-2 ${
+                  todayStats.length === 1
+                    ? 'grid-cols-1'
+                    : todayStats.length === 2
+                    ? 'grid-cols-2'
+                    : todayStats.length === 3
+                    ? 'grid-cols-3'
+                    : 'grid-flow-col auto-cols-[minmax(105px,1fr)] overflow-x-auto no-scrollbar'
+                }`}
+              >
+                {todayStats.map((stat) => (
+                  <button
+                    className="bg-surface-canvas rounded-xl p-2.5 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform min-w-0"
+                    key={stat.label}
+                    type="button"
+                    onClick={stat.onClick}
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${stat.iconBox}`}>
+                      <Icon name={stat.icon} className="text-[17px]" />
+                    </div>
+                    <span className="font-caption text-[11px] leading-tight text-text-secondary truncate w-full">
+                      {stat.label}
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-heading-sm text-[15px] leading-tight font-bold text-text-primary truncate">
+                        {stat.value}
+                      </span>
+                      <span className="font-caption text-[10px] text-text-tertiary truncate">{stat.note}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {!offerings.hasProducts && (
-            <div className="px-margin pt-space-xs">
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-surface-tint-blue/70 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-3 shadow-sm">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-sm">
-                    <Icon name="inventory_2" className="text-[20px]" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-label-md text-label-md font-bold text-text-primary">Enable Products</h3>
-                    <p className="font-caption text-caption text-text-secondary truncate">
-                      Also sell products? Turn this on in your business profile.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onTab('business')}
-                  className="px-3.5 py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold shrink-0 hover:bg-primary-container active:scale-95 transition-all shadow-sm"
-                >
-                  Enable
-                </button>
+          {/* Quick Actions — horizontal sliding row (max 4 actions, 3-4 visible on row) */}
+          {quickActions.length > 0 && (
+            <div className="px-margin mt-space-md">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-label-md text-label-md font-bold text-text-primary">Quick Actions</h3>
+                {quickActions.length > 3 && (
+                  <span className="font-caption text-[11px] text-text-tertiary">Swipe</span>
+                )}
+              </div>
+              <div className="flex items-stretch gap-2.5 overflow-x-auto pb-1.5 no-scrollbar snap-x">
+                {quickActions.slice(0, 4).map((action) => (
+                  <button
+                    key={action.feature}
+                    type="button"
+                    onClick={() => onOpenFeature(action.feature)}
+                    className="snap-start shrink-0 w-[86px] sm:w-[94px] bg-surface-canvas rounded-xl p-2.5 shadow-sm flex flex-col items-center text-center gap-1.5 active:scale-95 transition-transform hover:shadow-md border border-border-subtle/40"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                      <Icon name={action.icon} className="text-[20px]" />
+                    </div>
+                    <span className="font-label-sm text-[11px] font-semibold text-text-primary line-clamp-1 w-full text-center">
+                      {action.label}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
-
-          {/* Branch Stats */}
-          <div className="px-margin mt-space-md grid grid-cols-2 gap-space-xs">
-            {todayStats.map((stat) => (
-              <button
-                className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
-                key={stat.label}
-                type="button"
-                onClick={stat.onClick}
-              >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${stat.iconBox}`}>
-                  <Icon name={stat.icon} className="text-[20px]" />
-                </div>
-                <span className="font-caption text-caption text-text-secondary">{stat.label}</span>
-                <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{stat.value}</span>
-                  <span className="font-caption text-caption text-text-tertiary">{stat.note}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* Quick Actions */}
-          <div className="px-margin mt-space-sm flex flex-col gap-space-xs">
-            {/* POS — full-width primary quick action opening the POS menu page */}
-            <button
-              className="bg-gradient-to-r from-primary to-primary-container rounded-xl p-3 shadow-sm flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
-              type="button"
-              onClick={onOpenPosMenu}
-            >
-              <div className="w-9 h-9 rounded-lg bg-surface-canvas/90 text-primary flex items-center justify-center shrink-0">
-                <Icon name="point_of_sale" className="text-[20px]" />
-              </div>
-              <div className="flex flex-col min-w-0 flex-1">
-                <span className="font-label-md text-label-md font-semibold text-on-primary">POS</span>
-                <span className="font-caption text-caption text-on-primary/80 truncate">
-                  Register, orders &amp; store front
-                </span>
-              </div>
-              <Icon name="chevron_right" className="text-[20px] text-on-primary shrink-0" />
-            </button>
-
-            <div className="grid grid-cols-2 gap-space-xs">
-              <button
-                className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
-                type="button"
-                onClick={() => onTab('business')}
-              >
-                <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
-                  <Icon name={mode === 'services' ? 'content_cut' : 'inventory_2'} className="text-[20px]" />
-                </div>
-                <span className="font-label-md text-label-md font-semibold text-text-primary">
-                  {mode === 'services' ? 'My Services' : mode === 'products' ? 'My Products' : 'My Catalogue'}
-                </span>
-                <span className="font-caption text-caption text-text-secondary truncate">
-                  {mode === 'services' ? 'Rates & durations' : 'Stock & inventory'}
-                </span>
-              </button>
-              <button
-                className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
-                type="button"
-                onClick={onBoost}
-              >
-                <div className="w-9 h-9 rounded-lg bg-tertiary-fixed text-tertiary flex items-center justify-center">
-                  <Icon name="rocket_launch" className="text-[20px]" />
-                </div>
-                <span className="font-label-md text-label-md font-semibold text-text-primary">
-                  {mode === 'services' ? 'Service Deals' : mode === 'products' ? 'Product Deals' : 'Product & Service Deals'}
-                </span>
-                <span className="font-caption text-caption text-text-secondary truncate">
-                  {mode === 'services' ? 'Special packages' : 'Discounts & offers'}
-                </span>
-              </button>
-            </div>
-          </div>
 
           {/* Recent Orders */}
+          {features.pos && (
           <div className="px-margin mt-space-sm">
             <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2">
@@ -356,8 +321,10 @@ export function BusinessOverviewScreen({
               </div>
             </div>
           </div>
+          )}
 
           {/* Recent Messages */}
+          {hasMessaging && (
           <div className="px-margin mt-space-xs">
             <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2">
@@ -400,6 +367,7 @@ export function BusinessOverviewScreen({
               </div>
             </div>
           </div>
+          )}
         </div>
         <BusinessTabBar active="overview" onTab={onTab} />
       </AppScreen>

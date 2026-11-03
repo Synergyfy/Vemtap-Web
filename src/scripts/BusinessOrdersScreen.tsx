@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { BusinessTabKey } from '../components/BusinessTabBar';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
 import { BusinessOrdersHubScreen } from './BusinessOrdersHubScreen';
 import { BusinessBookingsHubScreen } from './BusinessBookingsHubScreen';
 import { BusinessPosOrdersScreen } from './BusinessPosOrdersScreen';
@@ -22,6 +23,7 @@ export function BusinessOrdersScreen({
 }) {
   const [step, setStep] = useState<BusinessOrdersStep>(initialStep);
   const [detailFrom, setDetailFrom] = useState<HubStep>('orders');
+  const { features } = useBusinessFeatures();
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -51,7 +53,8 @@ export function BusinessOrdersScreen({
         return (
           <BusinessOrdersHubScreen
             onTab={handleTab}
-            onSwitchBookings={() => setStep('bookings')}
+            // The Orders ↔ Bookings switcher only exists while Bookings is on.
+            onSwitchBookings={features.bookings ? () => setStep('bookings') : undefined}
             onOpenOrder={() => openDetail('orders')}
           />
         );

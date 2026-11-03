@@ -6,6 +6,8 @@ import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPorta
 
 interface DesktopBusinessSettingsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
+  /** Business Settings › Manage Features — the dashboard tool switchboard. */
+  onOpenFeatures?: () => void;
   /** Called after account deletion completes — sign out and leave the portal. */
   onSignOut?: () => void;
 }
@@ -26,13 +28,13 @@ function Toggle({ checked, onChange, label }: ToggleProps) {
       aria-label={label}
       type="button"
       onClick={onChange}
-      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+      className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
         checked ? 'bg-primary' : 'bg-outline-variant'
       }`}
     >
       <span
-        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-surface-container-lowest shadow-sm transition duration-200 ease-in-out ${
-          checked ? 'translate-x-5' : 'translate-x-0'
+        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+          checked ? 'translate-x-3.5' : 'translate-x-0'
         }`}
       />
     </button>
@@ -172,7 +174,7 @@ function CredentialModal({
  * menu. Existing-account controls: security (transaction PIN / password /
  * 2FA), NDPR data rights, notification preferences and account deletion.
  */
-export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusinessSettingsScreenProps) {
+export function DesktopBusinessSettingsScreen({ onNav, onOpenFeatures, onSignOut }: DesktopBusinessSettingsScreenProps) {
   const { signOut } = useAuth();
   const [credential, setCredential] = useState<CredentialMode | null>(null);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
@@ -262,6 +264,33 @@ export function DesktopBusinessSettingsScreen({ onNav, onSignOut }: DesktopBusin
           </div>
           <ActionButton label="Edit business profile" onClick={() => onNav('business-profile')} />
         </section>
+
+        {onOpenFeatures && (
+          <section className="rounded-2xl bg-surface-canvas shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between gap-space-sm px-space-lg py-space-md border-b border-border-subtle">
+              <div className="flex items-center gap-space-sm">
+                <span className="w-10 h-10 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="dashboard_customize" className="text-[20px]" />
+                </span>
+                <div className="flex flex-col">
+                  <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Dashboard Tools</h2>
+                  <span className="font-caption text-caption text-text-secondary">
+                    Switch POS, Deals, Analytics and other tools on or off
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="divide-y divide-border-subtle">
+              <SettingRow
+                icon="widgets"
+                iconClass="bg-surface-tint-blue text-primary"
+                title="Manage Features"
+                desc="Choose which tools appear in your dashboard, sidebar and quick actions"
+                trailing={<ActionButton label="Manage features" onClick={onOpenFeatures} />}
+              />
+            </div>
+          </section>
+        )}
 
 
         <section className="rounded-2xl bg-surface-canvas shadow-sm overflow-hidden">
