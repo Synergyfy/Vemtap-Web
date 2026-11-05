@@ -188,7 +188,7 @@ export function ClaimSuccessScreen({ onViewMyDeal, onContinue, onBack, claim }: 
             onClick={onViewMyDeal}
             className="relative w-full h-[54px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs group"
           >
-            <span>View My Deal</span>
+            <span>{claim?.sentForOther ? 'View in My Deals' : 'View My Deal'}</span>
             <Icon name="arrow_forward" className="text-xl group-hover:translate-x-0.5 transition-transform" />
           </button>
           <button

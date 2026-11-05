@@ -16,6 +16,8 @@ interface DesktopMyDealsScreenProps {
   onNav: (key: DesktopNavKey) => void;
   /** Opens the live page of the voucher's business. */
   onOpenBusiness: (business: { code: string; id?: string; name?: string }) => void;
+  /** The tab to open on; Active when not set. */
+  initialFilter?: FilterKey;
 }
 
 const FILTERS = [
@@ -46,7 +48,7 @@ const initialsOf = (name: string) =>
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(value);
 
-export function DesktopMyDealsScreen({ onNav, onOpenBusiness }: DesktopMyDealsScreenProps) {
+export function DesktopMyDealsScreen({ onNav, onOpenBusiness, initialFilter = 'active' }: DesktopMyDealsScreenProps) {
   const { claims, claimsLoading, removeClaim, deleteClaim } = useClaims();
   const { district } = useLocation();
   const totalSaved = useTotalSaved();
@@ -54,7 +56,7 @@ export function DesktopMyDealsScreen({ onNav, onOpenBusiness }: DesktopMyDealsSc
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
   const profile = useProfile();
-  const [activeFilter, setActiveFilter] = useState<FilterKey>('active');
+  const [activeFilter, setActiveFilter] = useState<FilterKey>(initialFilter);
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
 
   const needle = query.trim().toLowerCase();

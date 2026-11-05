@@ -346,17 +346,17 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
   const [claims, setClaims] = useState<ClaimRecord[]>(readClaims);
   // `/me/claims` and `/me/gifts` are customer-only: business accounts and
   // signed-out visitors would only get a 403/401, so they don't ask.
-  const isCustomer = useSessionUser().data?.role === 'Customer';
-  const [claimsLoading, setClaimsLoading] = useState(() => hasApiConfig());
+  const session = useSessionUser();
+  const isCustomer = session.data?.role === 'Customer';
+  const [hydrated, setHydrated] = useState(false);
+  // Still loading while the session is unknown, so saved claims aren't read as the final list.
+  const claimsLoading = hasApiConfig() && (session.isLoading || (isCustomer && !hydrated));
 
   useEffect(() => {
-    if (!hasApiConfig() || !isCustomer) {
-      setClaimsLoading(false);
-      return;
-    }
+    setHydrated(false);
+    if (!hasApiConfig() || !isCustomer) return;
 
     let ignore = false;
-    setClaimsLoading(true);
 
     const hydrate = async () => {
       try {
@@ -367,31 +367,34 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
 
         if (ignore) return;
 
-        const hydratedClaims = [
-          ...(claimsResult.status === 'fulfilled' ? normalizeClaimList(claimsResult.value) : []),
-          ...(giftsResult.status === 'fulfilled' ? normalizeClaimList(giftsResult.value) : []),
-        ];
+        // A listing that failed keeps what we already hold for it, so an outage can't empty the wallet.
+        setClaims((current) => {
+          const hydratedClaims = [
+            ...(claimsResult.status === 'fulfilled' ? normalizeClaimList(claimsResult.value) : current.filter((claim) => claim.kind !== 'gift')),
+            ...(giftsResult.status === 'fulfilled' ? normalizeClaimList(giftsResult.value) : current.filter((claim) => claim.kind === 'gift')),
+          ];
 
-        const dedupedClaims = hydratedClaims.filter(
-          (claim, index, source) => source.findIndex((candidate) => candidate.ref === claim.ref) === index,
-        );
+          const dedupedClaims = hydratedClaims.filter(
+            (claim, index, source) => source.findIndex((candidate) => candidate.ref === claim.ref) === index,
+          );
 
-        try {
-          if (dedupedClaims.length > 0) {
-            window.localStorage.setItem(LEGACY_CLAIMED_KEY, '1');
-          } else {
-            window.localStorage.removeItem(LEGACY_CLAIMED_KEY);
+          try {
+            if (dedupedClaims.length > 0) {
+              window.localStorage.setItem(LEGACY_CLAIMED_KEY, '1');
+            } else {
+              window.localStorage.removeItem(LEGACY_CLAIMED_KEY);
+            }
+          } catch {
+            // storage unavailable; this is only legacy compatibility cleanup
           }
-        } catch {
-          // storage unavailable; this is only legacy compatibility cleanup
-        }
 
-        setClaims(dedupedClaims);
-        writeClaims(dedupedClaims);
+          writeClaims(dedupedClaims);
+          return dedupedClaims;
+        });
       } catch {
         // Fail silently so the local fallback remains available while the API is unavailable.
       } finally {
-        if (!ignore) setClaimsLoading(false);
+        if (!ignore) setHydrated(true);
       }
     };
 
