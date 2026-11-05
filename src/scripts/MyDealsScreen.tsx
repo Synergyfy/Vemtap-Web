@@ -17,6 +17,8 @@ interface MyDealsScreenProps {
   /** Opens this gift's dispatch receipt. */
   onGiftReceipt: (claim: ClaimRecord) => void;
   onNavigate: (target: MyDealsTarget) => void;
+  /** The tab to open on; Active when not set. */
+  initialFilter?: FilterKey;
 }
 
 const FILTERS = [
@@ -189,8 +191,8 @@ function ClaimCard({
   );
 }
 
-export function MyDealsScreen({ onTab, onShowPass, onGiftReceipt, onNavigate }: MyDealsScreenProps) {
-  const [filter, setFilter] = useState<FilterKey>('active');
+export function MyDealsScreen({ onTab, onShowPass, onGiftReceipt, onNavigate, initialFilter = 'active' }: MyDealsScreenProps) {
+  const [filter, setFilter] = useState<FilterKey>(initialFilter);
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [qr, setQr] = useState<ClaimRecord | null>(null);

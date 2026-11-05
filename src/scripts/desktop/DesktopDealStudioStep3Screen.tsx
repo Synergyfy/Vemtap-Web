@@ -170,6 +170,8 @@ export function DesktopDealStudioStep3Screen({
   const [durationOpen, setDurationOpen] = useState(false);
   const [editingStep, setEditingStep] = useState<number | null>(null);
   const [draftStep, setDraftStep] = useState('');
+  const [editingTerm, setEditingTerm] = useState<number | null>(null);
+  const [draftTerm, setDraftTerm] = useState('');
   const [addingStep, setAddingStep] = useState(false);
   const [newStep, setNewStep] = useState('');
   const [newTerm, setNewTerm] = useState('');
@@ -254,6 +256,15 @@ export function DesktopDealStudioStep3Screen({
 
   const removeTerm = (index: number) => {
     onStudioChange({ terms: studio.terms.filter((_, position) => position !== index) });
+  };
+
+  const commitTermEdit = (index: number) => {
+    const value = draftTerm.trim();
+    if (value.length > 0) {
+      onStudioChange({ terms: studio.terms.map((term, position) => (position === index ? value : term)) });
+    }
+    setEditingTerm(null);
+    setDraftTerm('');
   };
 
   const addTerm = (value: string) => {
@@ -761,7 +772,34 @@ export function DesktopDealStudioStep3Screen({
                     {studio.terms.map((term, index) => (
                       <div key={`${term}-${index}`} className="flex items-start gap-space-sm p-space-sm bg-surface rounded-lg">
                         <Icon name="verified" className="text-primary text-[18px] mt-0.5" />
-                        <span className="flex-1 font-body-md text-body-md text-on-surface">{term}</span>
+                        {editingTerm === index ? (
+                          <input
+                            autoFocus
+                            type="text"
+                            aria-label={`Term ${index + 1}`}
+                            value={draftTerm}
+                            onChange={(event) => setDraftTerm(event.target.value)}
+                            onBlur={() => commitTermEdit(index)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') commitTermEdit(index);
+                              if (event.key === 'Escape') setEditingTerm(null);
+                            }}
+                            className="flex-1 font-body-md text-body-md text-on-surface bg-surface-canvas rounded-lg px-space-xs py-space-2xs outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        ) : (
+                          <span className="flex-1 font-body-md text-body-md text-on-surface">{term}</span>
+                        )}
+                        <button
+                          type="button"
+                          title="Edit Term"
+                          onClick={() => {
+                            setEditingTerm(index);
+                            setDraftTerm(term);
+                          }}
+                          className="text-text-tertiary hover:text-primary transition-colors"
+                        >
+                          <Icon name="edit" className="text-[18px]" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => removeTerm(index)}

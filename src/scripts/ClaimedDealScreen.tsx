@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { useDealDetail } from '../hooks/useDealDetail';
 import { useVoucherQr } from '../hooks/useVoucherQr';
@@ -29,7 +29,12 @@ const formatCurrency = (value: number | undefined) => {
   }).format(safeValue);
 };
 
-const REDEEM_STEPS = (business: string, code: string) => [
+interface RedeemStep {
+  title: string;
+  body?: ReactNode;
+}
+
+const REDEEM_STEPS = (business: string, code: string): RedeemStep[] => [
   {
     title: 'Visit the Branch',
     body: `Head to ${business} to redeem your voucher.`,
@@ -71,7 +76,13 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim, 
   const discountLabel = claim?.discountLabel ?? (discountAmount > 0 ? `Save ${formatCurrency(discountAmount)}` : 'Special offer');
   const holderName = claim?.recipient?.name || profile.fullName;
   const holderContact = claim?.recipient?.phone || claim?.recipient?.email || profile.maskedPhone;
-  const redeemSteps = REDEEM_STEPS(businessName, claimCode);
+  // The business's own steps when it set them, else the standard ones; neither until the deal has loaded.
+  const ownSteps = liveDeal.detail?.ownClaimSteps ?? [];
+  const redeemSteps: RedeemStep[] = liveDeal.loading
+    ? []
+    : ownSteps.length
+      ? ownSteps.map((title) => ({ title }))
+      : REDEEM_STEPS(businessName, claimCode);
   const expiryLabel = claim?.expiresAt
     ? new Date(claim.expiresAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
     : null;
@@ -398,18 +409,18 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim, 
               </div>
               <div>
                 <h3 className="font-heading-sm text-heading-sm text-on-surface">How to Redeem</h3>
-                <p className="font-caption text-caption text-on-surface-variant">4 quick steps at the business</p>
+                <p className="font-caption text-caption text-on-surface-variant">{redeemSteps.length ? `${redeemSteps.length} quick step${redeemSteps.length === 1 ? '' : 's'} at the business` : 'Quick steps at the business'}</p>
               </div>
             </div>
             <div className="space-y-space-sm relative">
               {redeemSteps.map((step, index) => (
-                <div key={step.title} className="flex items-start gap-space-sm">
+                <div key={`${index}-${step.title}`} className="flex items-start gap-space-sm">
                   <div className="w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-sm text-label-sm font-semibold shrink-0 mt-0.5">
                     {index + 1}
                   </div>
                   <div>
                     <p className="font-body-md text-body-md font-medium text-on-surface">{step.title}</p>
-                    <p className="font-caption text-caption text-on-surface-variant">{step.body}</p>
+                    {step.body && <p className="font-caption text-caption text-on-surface-variant">{step.body}</p>}
                   </div>
                 </div>
               ))}

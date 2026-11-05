@@ -59,7 +59,10 @@ const buildSteps = (branch: string | null | undefined, distance: string | undefi
 
 export function HowToClaimScreen({ onBack, onClaim, onTerms, detail }: HowToClaimScreenProps) {
   const { lat, lng } = useLocation();
-  const steps = buildSteps(detail?.branchName ?? detail?.address, detail ? formatDistanceKm(dealDistanceKm(detail, lat, lng)) : undefined);
+  // The business's own steps when it set them, else the standard ones.
+  const steps = detail?.ownClaimSteps.length
+    ? detail.ownClaimSteps.map((body, index) => ({ step: String(index + 1), title: `Step ${index + 1}`, icon: 'qr_code_scanner', body, extra: null }))
+    : buildSteps(detail?.branchName ?? detail?.address, detail ? formatDistanceKm(dealDistanceKm(detail, lat, lng)) : undefined);
   return (
     <AppScreen>
       <ScreenHeader title="How to Claim" onBack={onBack} />
@@ -71,7 +74,7 @@ export function HowToClaimScreen({ onBack, onClaim, onTerms, detail }: HowToClai
             Instant Guarantee
           </span>
           <h2 className="font-display-hero-mobile text-display-hero-mobile text-on-surface tracking-tight">
-            Claim your deal in 3 simple steps
+            Claim your deal in {steps.length} simple step{steps.length === 1 ? '' : 's'}
           </h2>
           <p className="font-body-md text-body-md text-text-secondary mt-space-2xs leading-relaxed">
             Fast, seamless local savings with zero upfront commitment.

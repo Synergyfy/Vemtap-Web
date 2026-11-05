@@ -152,6 +152,16 @@ export function BusinessDealStudioStep3Screen({
   const removeTerm = (index: number) =>
     onStudioChange({ terms: studio.terms.filter((_, position) => position !== index) });
 
+  const setTerm = (index: number, value: string) =>
+    onStudioChange({ terms: studio.terms.map((term, position) => (position === index ? value : term)) });
+
+  // A term left blank is dropped, so it can't count towards the one a deal needs.
+  const commitTerm = (index: number) => {
+    const value = studio.terms[index]?.trim();
+    if (value) setTerm(index, value);
+    else removeTerm(index);
+  };
+
   const addTerm = (term: string) => {
     const trimmed = term.trim();
     if (!trimmed) return;
@@ -242,7 +252,7 @@ export function BusinessDealStudioStep3Screen({
                 <div className="flex flex-col gap-space-xs">
                   {studio.claimSteps.map((step, index) => (
                     <div
-                      key={`${index}-${step.slice(0, 12)}`}
+                      key={index}
                       className="flex items-start gap-space-xs p-space-sm bg-surface-subtle rounded-xl border border-border-subtle transition-all"
                     >
                       <span className="text-text-tertiary cursor-grab pt-1 shrink-0" title="Drag to reorder">
@@ -307,12 +317,19 @@ export function BusinessDealStudioStep3Screen({
                 <div className="flex flex-col gap-space-xs">
                   {studio.terms.map((term, index) => (
                     <div
-                      key={`${index}-${term.slice(0, 12)}`}
+                      key={index}
                       className="flex items-center justify-between gap-space-xs p-space-sm bg-surface-subtle rounded-xl border border-border-subtle transition-all"
                     >
                       <div className="flex items-start gap-space-xs flex-grow">
                         <Icon name="check_circle" className="text-primary text-[18px] mt-0.5 shrink-0" />
-                        <span className="font-body-md text-body-md text-on-surface">{term}</span>
+                        <input
+                          aria-label={`Term ${index + 1}`}
+                          className="w-full bg-transparent font-body-md text-body-md text-on-surface focus:outline-none"
+                          type="text"
+                          value={term}
+                          onChange={(event) => setTerm(index, event.target.value)}
+                          onBlur={() => commitTerm(index)}
+                        />
                       </div>
                       <button
                         aria-label="Remove rule"

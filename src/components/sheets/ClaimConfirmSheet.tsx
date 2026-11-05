@@ -26,7 +26,7 @@ export function ClaimConfirmSheet({ open, onClose, onConfirm, detail, email }: C
   const [consent, setConsent] = useState(true);
   const [status, setStatus] = useState<'idle' | 'locking' | 'success'>('idle');
   const [nested, setNested] = useState<NestedSheet>(null);
-  const howToSteps = detail?.claimSteps.length ? detail.claimSteps : HOW_TO_CLAIM_DEFAULT;
+  const howToSteps = detail?.ownClaimSteps.length ? detail.ownClaimSteps : HOW_TO_CLAIM_DEFAULT;
   const termLines = [
     detail?.windowLabel ? `Valid ${detail.windowLabel}.` : null,
     detail?.channelsLabel ? `Redeem by: ${detail.channelsLabel}.` : null,
