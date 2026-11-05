@@ -305,17 +305,17 @@ function GreetingHeader({ onLocation, onNotifications, onAccount }: { onLocation
           <button
             type="button"
             onClick={onLocation}
-            className="flex items-center gap-1.5 text-left group transition-transform active:scale-95"
+            className="flex items-center gap-1.5 max-w-full min-w-0 text-left group transition-transform active:scale-95"
           >
-            <Icon name="location_on" className="text-primary text-[20px]" filled />
-            <span className="font-button-primary text-button-primary text-text-primary">
+            <Icon name="location_on" className="text-primary text-[20px] shrink-0" filled />
+            <span className="font-button-primary text-button-primary text-text-primary truncate min-w-0">
               {district}, {city}
             </span>
             <Icon
               name="keyboard_arrow_down"
-              className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform"
+              className="text-text-secondary text-[18px] group-hover:translate-y-0.5 transition-transform shrink-0"
             />
-            <span className="ml-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-medium">
+            <span className="ml-1 shrink-0 whitespace-nowrap px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-medium">
               Within {radius} km
             </span>
           </button>

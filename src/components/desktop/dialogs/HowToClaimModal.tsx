@@ -61,7 +61,16 @@ export function HowToClaimModal({ open, onClose, onProceed, deal, detail, distan
   const dealBusiness = deal?.business?.trim() ?? '';
   const dealLocation = deal?.location?.trim() || 'your area';
   const dealPrice = parsePrice(deal?.price);
-  const steps = buildSteps(dealBusiness, dealLocation, detail?.windowLabel, distance);
+  // The business's own steps when it set them, else the standard ones.
+  const steps: Step[] = detail?.ownClaimSteps.length
+    ? detail.ownClaimSteps.map((copy, index) => ({
+        icon: 'qr_code_2',
+        iconClass: 'bg-surface-tint-blue text-primary',
+        title: `Step ${index + 1}`,
+        badgeClass: '',
+        copy,
+      }))
+    : buildSteps(dealBusiness, dealLocation, detail?.windowLabel, distance);
   const terms = [
     detail?.windowLabel ? `Valid ${detail.windowLabel}.` : null,
     detail?.channelsLabel ? `Redeem by: ${detail.channelsLabel}.` : null,
@@ -97,7 +106,7 @@ export function HowToClaimModal({ open, onClose, onProceed, deal, detail, distan
       <div className="px-space-xl py-space-sm overflow-y-auto space-y-space-lg">
         <div className="space-y-space-sm">
           <span className="font-label-sm text-label-sm uppercase tracking-wider text-text-tertiary font-bold block">
-            Simple 3-Step Redemption Flow
+            Simple {steps.length}-Step Redemption Flow
           </span>
           <div className="space-y-space-sm">
             {steps.map((step) => (

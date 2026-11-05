@@ -1293,6 +1293,7 @@ function AppInner() {
   const [giftNote, setGiftNote] = useState('');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
+  const [myDealsOpensGifted, setMyDealsOpensGifted] = useState(false);
   const [claimSelfConfirmOpen, setClaimSelfConfirmOpen] = useState(false);
   const [posCart, setPosCart] = useState<PosCartLine[]>([]);
   const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>([]);
@@ -1624,6 +1625,10 @@ function AppInner() {
   useEffect(() => {
     if (route === 'claim-success' && !activeClaim) setRouteState('my-deals');
   }, [route, activeClaim]);
+
+  useEffect(() => {
+    if (route !== 'my-deals') setMyDealsOpensGifted(false);
+  }, [route]);
 
   // The referral admin page is for platform admins only.
   const adminCheckPending =
@@ -2574,7 +2579,36 @@ function AppInner() {
   const scannedPassId = route === 'claimed-deal' ? passIdFromPath(window.location.pathname) : null;
   const scannedClaim = scannedPassId ? claims.claims.find((claim) => claim.id === scannedPassId && !claim.sentForOther) ?? null : undefined;
   const dashboardClaim = (claimedFrom === 'dashboard' || claimedFrom === 'my-deals') && dashboardClaimRef ? claims.claims.find((claim) => claim.ref === dashboardClaimRef) : undefined;
-  const walletClaim = scannedClaim !== undefined ? scannedClaim : claimedFrom === 'deal-detail' ? dealClaim : dashboardClaim;
+  const walletClaim =
+    scannedClaim !== undefined
+      ? scannedClaim
+      : claimedFrom === 'deal-detail'
+        ? dealClaim
+        : claimedFrom === 'claim-success' && activeClaim?.kind === 'self'
+          ? activeClaim
+          : dashboardClaim;
+  // A voucher made for someone else is theirs to open; the claimer follows it under Gifted in My Deals.
+  const viewClaimedDeal = () => {
+    if (activeClaim?.sentForOther) {
+      setMyDealsOpensGifted(true);
+      setRoute('my-deals');
+      return;
+    }
+    setClaimedFrom('claim-success');
+    setRoute('claimed-deal');
+  };
+  // The voucher page with nothing of this account's to open, only claims made for others: those live in My Deals.
+  const onlyClaimsForOthers =
+    route === 'claimed-deal' &&
+    !claims.claimsLoading &&
+    walletClaim === undefined &&
+    !currentVoucher(claims.claims) &&
+    claims.claims.some((claim) => claim.sentForOther);
+  useEffect(() => {
+    if (!onlyClaimsForOthers) return;
+    setMyDealsOpensGifted(true);
+    setRouteState('my-deals');
+  }, [onlyClaimsForOthers]);
   const openDashboardVoucher = (claim: ClaimRecord, target: 'claimed-deal' | 'claimed-contact') => {
     setDashboardClaimRef(claim.ref);
     setClaimedFrom('dashboard');
@@ -4260,10 +4294,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('deal-detail')}
             claim={activeClaim}
-            onViewMyDeal={() => {
-              setClaimedFrom('claim-success');
-              setRoute('claimed-deal');
-            }}
+            onViewMyDeal={viewClaimedDeal}
             onContinue={() => setRoute('home')}
           />
         );
@@ -4271,10 +4302,7 @@ function AppInner() {
         <ClaimSuccessScreen
           onBack={() => setRoute('deal-detail')}
           claim={activeClaim}
-          onViewMyDeal={() => {
-            setClaimedFrom('claim-success');
-            setRoute('claimed-deal');
-          }}
+          onViewMyDeal={viewClaimedDeal}
           onContinue={() => setRoute('home')}
         />
       );
@@ -4302,6 +4330,7 @@ function AppInner() {
       );
 
     case 'claimed-deal': {
+      if (onlyClaimsForOthers) return null;
       // A merchant scanning a voucher QR gets the redeem step, not the customer's pass.
       const scannedId = passIdFromPath(window.location.pathname);
       if (scannedId && isBusinessRole(sessionUser?.role)) {
@@ -4754,9 +4783,10 @@ function AppInner() {
       );
 
     case 'my-deals':
-      if (isDesktop) return <DesktopMyDealsScreen onNav={feedNav} onOpenBusiness={(business) => openBusiness(business, 'my-deals')} />;
+      if (isDesktop) return <DesktopMyDealsScreen initialFilter={myDealsOpensGifted ? 'gifted' : undefined} onNav={feedNav} onOpenBusiness={(business) => openBusiness(business, 'my-deals')} />;
       return (
         <MyDealsScreen
+          initialFilter={myDealsOpensGifted ? 'gifted' : undefined}
           onTab={(tab) => setRoute(tab)}
           onShowPass={(claim) => {
             setDashboardClaimRef(claim.ref);

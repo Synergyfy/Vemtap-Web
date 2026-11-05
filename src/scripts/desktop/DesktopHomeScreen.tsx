@@ -675,7 +675,7 @@ export function DesktopHomeScreen({
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Deals Near You</h3>
-                    <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-secondary-container font-caption text-caption font-bold">
+                    <span className="shrink-0 whitespace-nowrap px-2 py-0.5 rounded-full bg-surface-container-high text-on-secondary-container font-caption text-caption font-bold">
                       Within {radius}km
                     </span>
                   </div>
@@ -1258,7 +1258,7 @@ export function DesktopHomeScreen({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-space-sm">
               <h2 className="font-heading-md text-heading-md font-bold text-text-primary">Deals Near You</h2>
-              <span className="hidden sm:inline-flex px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold">
+              <span className="hidden sm:inline-flex shrink-0 whitespace-nowrap px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold">
                 Within {radius}km
               </span>
             </div>

@@ -29,7 +29,12 @@ const formatCurrency = (value: number | undefined) => {
   }).format(safeValue);
 };
 
-const REDEEM_STEPS = (business: string, code: string): { title: string; body: ReactNode }[] => [
+interface RedeemStep {
+  title: string;
+  body?: ReactNode;
+}
+
+const REDEEM_STEPS = (business: string, code: string): RedeemStep[] => [
   {
     title: 'Visit the Branch',
     body: `Head to ${business} to redeem your voucher.`,
@@ -82,7 +87,13 @@ export function DesktopClaimedDealScreen({
   const discountLabel = claim?.discountLabel ?? (discountAmount > 0 ? `Save ${formatCurrency(discountAmount)}` : 'Special offer');
   const holderName = claim?.recipient?.name || profile.fullName;
   const holderContact = claim?.recipient?.phone || claim?.recipient?.email || profile.maskedPhone;
-  const redeemSteps = REDEEM_STEPS(businessName, claimCode);
+  // The business's own steps when it set them, else the standard ones; neither until the deal has loaded.
+  const ownSteps = liveDeal.detail?.ownClaimSteps ?? [];
+  const redeemSteps: RedeemStep[] = liveDeal.loading
+    ? []
+    : ownSteps.length
+      ? ownSteps.map((title) => ({ title }))
+      : REDEEM_STEPS(businessName, claimCode);
   const expiryLabel = claim?.expiresAt
     ? new Date(claim.expiresAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
     : null;
@@ -423,21 +434,21 @@ export function DesktopClaimedDealScreen({
                   </div>
                   <div>
                     <h3 className="font-heading-sm text-heading-sm text-text-primary">How to Redeem</h3>
-                    <p className="font-caption text-caption text-text-secondary">4 quick steps at the business</p>
+                    <p className="font-caption text-caption text-text-secondary">{redeemSteps.length ? `${redeemSteps.length} quick step${redeemSteps.length === 1 ? '' : 's'} at the business` : 'Quick steps at the business'}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-space-sm">
                   {redeemSteps.map((step, index) => (
                     <div
                       className="flex items-start gap-space-sm p-3 rounded-xl bg-surface-subtle"
-                      key={step.title}
+                      key={`${index}-${step.title}`}
                     >
                       <div className="w-6 h-6 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-label-sm text-label-sm font-semibold shrink-0 mt-0.5">
                         {index + 1}
                       </div>
                       <div>
                         <p className="font-body-md text-body-md font-medium text-text-primary">{step.title}</p>
-                        <p className="font-caption text-caption text-text-secondary">{step.body}</p>
+                        {step.body && <p className="font-caption text-caption text-text-secondary">{step.body}</p>}
                       </div>
                     </div>
                   ))}
