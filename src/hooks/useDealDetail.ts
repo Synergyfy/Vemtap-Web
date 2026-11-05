@@ -3,6 +3,7 @@ import { api, ApiError, getAccessToken, hasApiConfig } from '../services/api/cli
 import { API_ENDPOINTS } from '../services/api/endpoints';
 import { catalogueService } from '../services/catalogueService';
 import { dealEngagementService } from '../services/dealEngagementService';
+import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT } from '../scripts/deals/dealStudioShared';
 import { dealImageList, dealPrimaryImage } from '../utils/dealImages';
 import { realOfferId } from '../utils/homeOffer';
 import { toBusiness, type PublicBusiness } from './usePublicBusiness';
@@ -33,6 +34,8 @@ export interface DealDetail {
   claimedCount: number;
   terms: string[];
   claimSteps: string[];
+  /** The steps the business wrote itself; empty when it kept Deal Studio's pre-filled ones. */
+  ownClaimSteps: string[];
   /** "Dine-in & Takeout". */
   channelsLabel: string | null;
   /** "1 Claim / Person". */
@@ -112,6 +115,10 @@ const windowLabel = (value: unknown): string | null => {
 const claimLimitLabel = (limit: number | null, period: unknown): string | null =>
   limit && limit > 0 ? `${limit} Claim${limit === 1 ? '' : 's'} / Person${PERIOD_LABELS[String(period)] ?? ''}` : null;
 
+const PREFILLED_CLAIM_STEPS = [LIVE_DEAL_STUDIO_DRAFT.claimSteps, INITIAL_DEAL_STUDIO_DRAFT.claimSteps];
+const isPrefilledClaimSteps = (steps: string[]) =>
+  PREFILLED_CLAIM_STEPS.some((prefilled) => prefilled.length === steps.length && prefilled.every((step, index) => step === steps[index]));
+
 const toDetail = (offer: Record<string, unknown>, profile: PublicBusiness | null, engagement: Record<string, unknown>): DealDetail => {
   const business = rec(offer.business);
   const branch = rec(offer.branch);
@@ -121,6 +128,7 @@ const toDetail = (offer: Record<string, unknown>, profile: PublicBusiness | null
   const end = str(offer.endDate);
   const endDate = end && !Number.isNaN(new Date(end).getTime()) ? new Date(end) : null;
   const liveBranch = profile?.branches.find((entry) => entry.id === str(offer.branchId));
+  const claimSteps = strings(offer.claimSteps);
   return {
     id: String(offer.id),
     title: str(offer.name) ?? str(offer.title) ?? 'Deal',
@@ -136,7 +144,8 @@ const toDetail = (offer: Record<string, unknown>, profile: PublicBusiness | null
     quantity: num(offer.quantity),
     claimedCount: Math.max(0, num(offer.claimedCount) ?? 0),
     terms: strings(offer.terms),
-    claimSteps: strings(offer.claimSteps),
+    claimSteps,
+    ownClaimSteps: isPrefilledClaimSteps(claimSteps) ? [] : claimSteps,
     channelsLabel: channelsLabel(offer.redemptionChannels),
     claimLimitLabel: claimLimitLabel(num(offer.maxClaimsPerCustomer), offer.claimLimitPeriod),
     windowLabel: windowLabel(offer.redemptionWindows),
