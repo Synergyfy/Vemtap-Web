@@ -14,6 +14,9 @@ export const AREA_UNNAMED = "Couldn't name your area. Showing deals near you.";
 /** The district used when the API can't name the customer's position. */
 export const UNNAMED_DISTRICT = 'Current location';
 
+/** How long to wait before asking the API to name the position again. */
+const NAME_RETRY_DELAY_MS = 1200;
+
 const currentPosition = () =>
   new Promise<GeolocationPosition>((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -28,6 +31,15 @@ const currentPosition = () =>
     );
   });
 
+/** The API's name for a point, asked twice: the geocoding provider can fail for a moment. */
+const nameOf = async (lat: number, lng: number) => {
+  const lookup = () => geocodingService.reverse(lat, lng).catch(() => null);
+  const first = await lookup();
+  if (first?.district || first?.city) return first;
+  await new Promise((resolve) => window.setTimeout(resolve, NAME_RETRY_DELAY_MS));
+  return lookup();
+};
+
 /**
  * The browser's position, named by the API. Throws a customer-facing message
  * when the browser can't or won't share it; when only the naming fails the
@@ -38,7 +50,7 @@ export async function getCurrentPlace(): Promise<PickedPlace> {
   const { coords } = await currentPosition();
   const lat = Number(coords.latitude.toFixed(5));
   const lng = Number(coords.longitude.toFixed(5));
-  const named = await geocodingService.reverse(lat, lng).catch(() => null);
+  const named = await nameOf(lat, lng);
   return {
     district: named?.district || named?.city || UNNAMED_DISTRICT,
     city: named?.city || undefined,

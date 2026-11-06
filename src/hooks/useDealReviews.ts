@@ -6,6 +6,8 @@ import { realOfferId } from '../utils/homeOffer';
 export interface DealReview {
   id: string;
   reviewerName: string;
+  /** The reviewer's profile photo; null shows their initials. */
+  reviewerAvatar: string | null;
   comment: string;
   /** 1–5, or null for a plain comment. */
   rating: number | null;
@@ -31,6 +33,7 @@ const toReview = (value: unknown): DealReview | null => {
   return {
     id: row.id,
     reviewerName: typeof row.reviewerName === 'string' && row.reviewerName.trim() ? row.reviewerName.trim() : 'Customer',
+    reviewerAvatar: typeof row.reviewerAvatar === 'string' && row.reviewerAvatar.trim() ? row.reviewerAvatar : null,
     comment: row.comment,
     rating: Number.isFinite(rating) && rating >= 1 ? Math.min(5, Math.round(rating)) : null,
     likesCount: Math.max(0, Number(row.likesCount) || 0),
