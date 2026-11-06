@@ -4,6 +4,9 @@ import { PosToggle } from '../../components/PosControls';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { usePosSettings } from '../../context/PosSettingsContext';
 import { hasApiConfig } from '../../services/api/client';
+import { useLivePos } from '../posLive';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { apiErrorMessage } from '../../services/errorMessages';
 import { usePosSettingsQuery, useUpdatePosSettings } from '../../hooks/business/usePosSettingsApi';
 
 interface DesktopPosGeneralSettingsScreenProps {
@@ -155,6 +158,31 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
     { key: 'till-02', name: 'Till 02', station: 'Counter Back / Takeaway', float: '20,000', hardware: 'Thermal Printer #2 · Card Reader #2', active: false },
     { key: 'till-03', name: 'Till 03', station: 'Terrace Bar', float: '25,000', hardware: 'Mobile Reader (Bluetooth)', active: false },
   ]);
+  const pos = useLivePos();
+  const { activeBranchId } = useBusinessBranch();
+  const [tillError, setTillError] = useState<string | null>(null);
+  // Live: this branch's real tills; the station and float samples are demo-only.
+  const shownTills = live
+    ? pos.tills.map((till) => ({
+        key: till.id,
+        name: till.name,
+        station: till.code,
+        float: '',
+        hardware: till.deviceLabel || 'No device linked',
+        active: Boolean(till.occupant),
+      }))
+    : tillsList;
+  const addLiveTill = async () => {
+    if (!activeBranchId || !newTillName.trim()) return;
+    setTillError(null);
+    try {
+      await pos.mutations.createTill.mutateAsync({ branchId: activeBranchId, name: newTillName.trim() });
+      setNewTillName('');
+      setShowAddTill(false);
+    } catch (error) {
+      setTillError(apiErrorMessage(error, 'Could not add the till.'));
+    }
+  };
   const [showAddTill, setShowAddTill] = useState(false);
   const [newTillName, setNewTillName] = useState('');
   const [newTillStation, setNewTillStation] = useState('');
@@ -434,7 +462,7 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
                         className="w-full h-10 px-3 rounded-lg border border-border-subtle text-body-md bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
                       />
                     </div>
-                    <div>
+                    <div className={live ? 'hidden' : undefined}>
                       <label className="font-caption text-caption text-text-secondary block mb-1">Counter / Station Location</label>
                       <input
                         type="text"
@@ -444,7 +472,7 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
                         className="w-full h-10 px-3 rounded-lg border border-border-subtle text-body-md bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
                       />
                     </div>
-                    <div>
+                    <div className={live ? 'hidden' : undefined}>
                       <label className="font-caption text-caption text-text-secondary block mb-1">Default Starting Float (₦)</label>
                       <input
                         type="text"
@@ -458,6 +486,10 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
                   <button
                     type="button"
                     onClick={() => {
+                      if (live) {
+                        void addLiveTill();
+                        return;
+                      }
                       if (!newTillName.trim()) return;
                       setTillsList((prev) => [
                         ...prev,
@@ -482,7 +514,8 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
                 </div>
               )}
 
-              {tillsList.map((till) => (
+              {tillError && <p className="font-caption text-caption text-error p-3" role="alert">{tillError}</p>}
+              {shownTills.map((till) => (
                 <div key={till.key} className="p-space-md flex items-center justify-between gap-space-md border-b border-border-subtle last:border-b-0">
                   <div className="flex items-center gap-space-sm min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
@@ -505,10 +538,12 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
                       <span className="font-caption text-caption text-text-tertiary mt-0.5">{till.hardware}</span>
                     </div>
                   </div>
+                  {!live && (
                   <div className="text-right shrink-0">
                     <span className="font-label-md text-label-md font-bold text-text-primary block">₦{till.float}</span>
                     <span className="font-caption text-caption text-text-secondary">Default Opening Float</span>
                   </div>
+                  )}
                 </div>
               ))}
             </Card>

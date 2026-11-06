@@ -4,6 +4,9 @@ import { Icon } from '../components/ui/Icon';
 import { PosOwnerHeader, PosToggle } from '../components/PosControls';
 import { usePosSettings } from '../context/PosSettingsContext';
 import { hasApiConfig } from '../services/api/client';
+import { useLivePos } from './posLive';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { apiErrorMessage } from '../services/errorMessages';
 import { usePosSettingsQuery, useUpdatePosSettings } from '../hooks/business/usePosSettingsApi';
 
 interface BusinessPosSettingsScreenProps {
@@ -155,6 +158,31 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
     { key: 'till-02', name: 'Till 02', station: 'Counter Back / Takeaway', float: '20,000', hardware: 'Thermal Printer #2 · Card Reader #2', active: false },
     { key: 'till-03', name: 'Till 03', station: 'Terrace Bar', float: '25,000', hardware: 'Mobile Reader (Bluetooth)', active: false },
   ]);
+  const pos = useLivePos();
+  const { activeBranchId } = useBusinessBranch();
+  const [tillError, setTillError] = useState<string | null>(null);
+  // Live: this branch's real tills; the station and float samples are demo-only.
+  const shownTills = live
+    ? pos.tills.map((till) => ({
+        key: till.id,
+        name: till.name,
+        station: till.code,
+        float: '',
+        hardware: till.deviceLabel || 'No device linked',
+        active: Boolean(till.occupant),
+      }))
+    : tillsList;
+  const addLiveTill = async () => {
+    if (!activeBranchId || !newTillName.trim()) return;
+    setTillError(null);
+    try {
+      await pos.mutations.createTill.mutateAsync({ branchId: activeBranchId, name: newTillName.trim() });
+      setNewTillName('');
+      setShowAddTill(false);
+    } catch (error) {
+      setTillError(apiErrorMessage(error, 'Could not add the till.'));
+    }
+  };
   const [showAddTill, setShowAddTill] = useState(false);
   const [newTillName, setNewTillName] = useState('');
   const [newTillStation, setNewTillStation] = useState('');
@@ -413,7 +441,7 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
                         className="w-full h-8 px-2.5 rounded-lg border border-border-subtle text-[12px] bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
                       />
                     </div>
-                    <div>
+                    <div className={live ? 'hidden' : undefined}>
                       <label className="font-caption text-[10px] text-text-secondary block mb-0.5">Counter / Station Location</label>
                       <input
                         type="text"
@@ -424,7 +452,7 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
                       />
                     </div>
                   </div>
-                  <div>
+                  <div className={live ? 'hidden' : undefined}>
                     <label className="font-caption text-[10px] text-text-secondary block mb-0.5">Default Starting Float (₦)</label>
                     <input
                       type="text"
@@ -437,6 +465,10 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
                   <button
                     type="button"
                     onClick={() => {
+                      if (live) {
+                        void addLiveTill();
+                        return;
+                      }
                       if (!newTillName.trim()) return;
                       setTillsList((prev) => [
                         ...prev,
@@ -461,7 +493,8 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
                 </div>
               )}
 
-              {tillsList.map((till) => (
+              {tillError && <p className="font-caption text-caption text-error p-3" role="alert">{tillError}</p>}
+              {shownTills.map((till) => (
                 <div key={till.key} className="p-3 flex items-start justify-between gap-2 border-b border-border-subtle last:border-b-0">
                   <div className="flex items-start gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0 mt-0.5">
@@ -484,10 +517,12 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
                       <span className="font-caption text-[10px] text-text-tertiary mt-0.5">{till.hardware}</span>
                     </div>
                   </div>
+                  {!live && (
                   <div className="text-right shrink-0">
                     <span className="font-label-sm text-[12px] font-bold text-text-primary block">₦{till.float}</span>
                     <span className="font-caption text-[10px] text-text-secondary">Opening Float</span>
                   </div>
+                  )}
                 </div>
               ))}
             </Card>

@@ -67,6 +67,7 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
 /** Live setup starts from an empty product — the sample above is demo-only. */
 export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   ...INITIAL_PRODUCT_DRAFT,
+  loyaltyPoints: '',
   title: '',
   producer: '',
   description: '',

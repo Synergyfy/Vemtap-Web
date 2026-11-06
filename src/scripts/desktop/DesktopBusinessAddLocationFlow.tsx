@@ -68,7 +68,7 @@ export function DesktopBusinessAddLocationFlow({
     <DesktopBusinessAddBranchScreen
       onBack={onExit}
       onSaved={(info) => {
-        setDraft({ name: info?.name ?? '', address: info?.address ?? '', district: info?.district ?? '' });
+        setDraft({ name: info?.name ?? '', address: info?.address ?? '', district: info?.district ?? '', offerings: info?.offerings });
         setView('checkout');
       }}
     />

@@ -74,4 +74,4 @@ export const INITIAL_SERVICE_DRAFT: ServiceDraft = {
 };
 
 /** Creating starts blank everywhere — demo mode no longer uses a sample service. */
-export const BLANK_SERVICE_DRAFT: ServiceDraft = { ...INITIAL_SERVICE_DRAFT };
+export const BLANK_SERVICE_DRAFT: ServiceDraft = { ...INITIAL_SERVICE_DRAFT, loyaltyPoints: '' };

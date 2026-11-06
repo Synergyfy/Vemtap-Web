@@ -4,6 +4,8 @@ import { api } from './api/client';
 export interface CatalogueItem {
   id: string;
   name: string;
+  /** Points a customer earns on each one sold. */
+  loyaltyPointsValue?: number | null;
   price?: number | string | null;
   compareAtPrice?: number | string | null;
   shortDescription?: string | null;
@@ -59,6 +61,7 @@ export interface BookingRules {
 /** Mirrors `CreateCatalogueItemDto` (subset the web sends). `branchId` is required. */
 export interface CatalogueItemInput {
   name: string;
+  loyaltyPointsValue?: number;
   description: string;
   price?: number;
   compareAtPrice?: number;
@@ -207,6 +210,7 @@ export interface ProductDraftLike {
   tags?: string[];
   /** Units on hand when there are no variants. */
   stock?: string;
+  loyaltyPoints?: string;
 }
 
 /** Variant label "Regular — 300g Cut": name and cut travel together as the API has one name field. */
@@ -239,6 +243,7 @@ export function productDraftToInput(draft: ProductDraftLike, branchId: string, e
     ? draft.variants.reduce((sum, v) => sum + (toPrice(v.inventory) ?? 0), 0)
     : toPrice(draft.stock);
   return clean({
+    loyaltyPointsValue: toPrice(draft.loyaltyPoints),
     name: draft.title.trim(),
     // The backend requires a description; fall back to the name.
     description: draft.description.trim() || draft.title.trim(),
@@ -262,6 +267,7 @@ export function productDraftToInput(draft: ProductDraftLike, branchId: string, e
 }
 
 export interface ServiceDraftLike {
+  loyaltyPoints?: string;
   title: string;
   description: string;
   basePrice: string;
@@ -322,6 +328,7 @@ export function serviceDraftToInput(draft: ServiceDraftLike, branchId: string, e
     capacity: draft.concurrentBookings,
   }) as BookingRules;
   return clean({
+    loyaltyPointsValue: toPrice(draft.loyaltyPoints),
     name: draft.title.trim(),
     description: draft.description.trim() || draft.title.trim(),
     price: toPrice(draft.standardPrice) ?? toPrice(draft.basePrice),
@@ -376,6 +383,7 @@ export function itemToProductDraft(item: CatalogueItem) {
   });
   const modes = item.fulfillmentModes ?? null;
   return {
+    loyaltyPoints: item.loyaltyPointsValue ? String(item.loyaltyPointsValue) : '',
     publishedItemId: item.id,
     title: item.name,
     description: item.description ?? '',
@@ -411,6 +419,7 @@ export function itemToServiceDraft(item: CatalogueItem) {
   const minutes = item.duration?.match(/(\d+)/);
   const locations = soldAt(item);
   return {
+    loyaltyPoints: item.loyaltyPointsValue ? String(item.loyaltyPointsValue) : '',
     publishedItemId: item.id,
     title: item.name,
     description: item.description ?? '',

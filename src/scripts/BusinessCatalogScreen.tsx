@@ -12,6 +12,7 @@ import { hasApiConfig } from '../services/api/client';
 import { useCatalogueItemMutations, useCatalogueItems } from '../hooks/business/useCatalogueItems';
 import { toPrice, type CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
 
 interface BusinessCatalogScreenProps {
   onBack: () => void;
@@ -149,6 +150,7 @@ export function BusinessCatalogScreen({
   onAddProduct,
   onAddService,
 }: BusinessCatalogScreenProps) {
+  const { offerings, mode } = useBusinessOfferings();
   const [items, setItems] = useState<CatalogItem[]>(SEED_ITEMS);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -170,9 +172,16 @@ export function BusinessCatalogScreen({
   const loadingLive = live && (products.isLoading || services.isLoading);
 
   const importedProducts = useImportedProducts();
-  const allItems = [...importedProducts.map(importedToCatalogItem), ...(live ? liveItems : items)];
+  const allItems = [...(offerings.hasProducts ? importedProducts.map(importedToCatalogItem) : []), ...(live ? liveItems : items)];
 
   const query = search.trim().toLowerCase();
+
+  const headingText =
+    mode === 'both'
+      ? 'Add your products or services'
+      : mode === 'services'
+      ? 'Add your services'
+      : 'Add your products';
 
   const categoryChoices = [
     { value: '', label: 'All categories' },
@@ -241,46 +250,50 @@ export function BusinessCatalogScreen({
           </div>
 
           <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-            Add your products or services
+            {headingText}
           </h2>
           <p className="font-body-md text-body-md text-text-secondary mt-space-2xs leading-relaxed">
             Add what you offer so customers can discover, order, and engage with your business storefront across all
             active locations.
           </p>
 
-          <div className="grid grid-cols-2 gap-space-sm mt-space-lg">
-            <button
-              className="group relative flex flex-col p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left"
-              type="button"
-              onClick={() => setMethodsOpen(true)}
-            >
-              <div className="w-10 h-10 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center mb-space-sm group-hover:bg-primary group-hover:text-on-primary transition-colors">
-                <Icon name="shopping_bag" className="text-[22px]" />
-              </div>
-              <span className="font-heading-sm text-heading-sm text-text-primary flex items-center gap-1">
-                Add Product
-                <Icon name="tv_displays" className="text-[18px] text-primary-container font-bold" />
-              </span>
-              <span className="font-caption text-caption text-text-secondary mt-1 line-clamp-2">
-                One at a time, or bulk import a CSV/Excel file.
-              </span>
-            </button>
-            <button
-              className="group relative flex flex-col p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left"
-              type="button"
-              onClick={onAddService}
-            >
-              <div className="w-10 h-10 rounded-full bg-tertiary-fixed text-tertiary flex items-center justify-center mb-space-sm group-hover:bg-tertiary-container group-hover:text-on-tertiary-container transition-colors">
-                <Icon className="text-[22px]" filled name="auto_awesome" />
-              </div>
-              <span className="font-heading-sm text-heading-sm text-text-primary flex items-center gap-1">
-                Add Service
-                <Icon name="tv_displays" className="text-[18px] text-tertiary font-bold" />
-              </span>
-              <span className="font-caption text-caption text-text-secondary mt-1 line-clamp-2">
-                Spa sessions, salon, dining tasting experiences.
-              </span>
-            </button>
+          <div className={`grid ${mode === 'both' ? 'grid-cols-2' : 'grid-cols-1'} gap-space-sm mt-space-lg`}>
+            {offerings.hasProducts && (
+              <button
+                className="group relative flex flex-col p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left"
+                type="button"
+                onClick={() => setMethodsOpen(true)}
+              >
+                <div className="w-10 h-10 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center mb-space-sm group-hover:bg-primary group-hover:text-on-primary transition-colors">
+                  <Icon name="shopping_bag" className="text-[22px]" />
+                </div>
+                <span className="font-heading-sm text-heading-sm text-text-primary flex items-center gap-1">
+                  Add Product
+                  <Icon name="tv_displays" className="text-[18px] text-primary-container font-bold" />
+                </span>
+                <span className="font-caption text-caption text-text-secondary mt-1 line-clamp-2">
+                  One at a time, or bulk import a CSV/Excel file.
+                </span>
+              </button>
+            )}
+            {offerings.hasServices && (
+              <button
+                className="group relative flex flex-col p-space-md rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md active:scale-[0.98] transition-all text-left"
+                type="button"
+                onClick={onAddService}
+              >
+                <div className="w-10 h-10 rounded-full bg-tertiary-fixed text-tertiary flex items-center justify-center mb-space-sm group-hover:bg-tertiary-container group-hover:text-on-tertiary-container transition-colors">
+                  <Icon className="text-[22px]" filled name="auto_awesome" />
+                </div>
+                <span className="font-heading-sm text-heading-sm text-text-primary flex items-center gap-1">
+                  Add Service
+                  <Icon name="tv_displays" className="text-[18px] text-tertiary font-bold" />
+                </span>
+                <span className="font-caption text-caption text-text-secondary mt-1 line-clamp-2">
+                  Spa sessions, salon, dining tasting experiences.
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="mt-space-md p-space-md rounded-xl bg-surface-subtle shadow-sm flex items-start gap-space-sm">

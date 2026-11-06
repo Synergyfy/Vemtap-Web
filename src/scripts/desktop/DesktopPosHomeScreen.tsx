@@ -3,12 +3,12 @@ import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../../services/errorMessages';
-import { planErrorMessage } from '../../services/planErrors';
 import { posService } from '../../services/posService';
 import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { isLowStock } from '../catalogueLive';
 import { naira, timeLabel, useLivePos } from '../posLive';
+import { useRegisterShift } from '../useRegisterShift';
 
 interface DesktopPosHomeScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -138,25 +138,28 @@ export function DesktopPosHomeScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos.error]);
 
-  /** Live: the drawer button opens the register on a till, or closes the open one. */
-  const toggleRegister = () => {
-    if (pos.isOpen) {
-      if (!window.confirm(`Close the register on ${pos.tillName} and end this shift?`)) return;
-      pos.mutations.closeRegister.mutate(
-        {},
-        {
-          onSuccess: (session) =>
-            showToast(`Register closed · ${naira(Number(session.totalSales) || 0)} in ${session.transactionCount ?? 0} sales`),
-          onError: (error) => showToast(apiErrorMessage(error, 'Could not close the register.')),
-        },
-      );
-      return;
-    }
-    pos
-      .openOnTill()
-      .then(() => showToast('Register open — you can start selling'))
-      .catch((error: unknown) => showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not open the register.')));
-  };
+  const {
+    registerOpen,
+    openingFloat,
+    cashSales,
+    cardSales,
+    expectedCashInDrawer,
+    shiftLabel,
+    tillLabel,
+    openRegisterModal,
+    setOpenRegisterModal,
+    closeRegisterModal,
+    setCloseRegisterModal,
+    openFloatInput,
+    setOpenFloatInput,
+    countedCashInput,
+    setCountedCashInput,
+    closeNotes,
+    setCloseNotes,
+    busy,
+    confirmOpen,
+    confirmClose,
+  } = useRegisterShift(pos, showToast);
 
   const startSale = () => {
     if (live && !pos.isOpen) {
@@ -168,7 +171,7 @@ export function DesktopPosHomeScreen({
 
   const popDrawer = () => {
     if (live) {
-      toggleRegister();
+      (registerOpen ? setCloseRegisterModal : setOpenRegisterModal)(true);
       return;
     }
     if (drawerState === 'popping') return;
@@ -588,33 +591,59 @@ export function DesktopPosHomeScreen({
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm">
               <div className="flex items-center justify-between mb-space-md">
                 <div>
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold tracking-tight">
-                    Till & Cash Drawer
-                  </span>
-                  <span className="block font-caption text-caption text-text-secondary">Physical safe balance & drops</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-heading-sm text-heading-sm text-text-primary font-semibold tracking-tight">
+                      Till &amp; Cash Drawer
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-caption font-semibold ${registerOpen ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'}`}>
+                      {registerOpen ? `${shiftLabel} Active` : 'Register Closed'}
+                    </span>
+                  </div>
+                  <span className="block font-caption text-caption text-text-secondary mt-0.5">Physical safe balance, shifts &amp; end-of-day closeouts</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={popDrawer}
-                  className="px-space-sm py-1.5 rounded-lg bg-surface-container-high text-on-surface hover:bg-secondary-container active:scale-[0.98] transition-all font-button-secondary text-button-secondary font-medium flex items-center gap-1 shadow-sm"
-                >
-                  {drawerState === 'popping' ? (
-                    <>
-                      <Icon name="sync" className="text-[18px] animate-spin" />
-                      <span>Popping...</span>
-                    </>
-                  ) : drawerState === 'open' ? (
-                    <>
-                      <Icon name="check_circle" className="text-[18px] text-badge-discount-text" />
-                      <span>Drawer Open</span>
-                    </>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={popDrawer}
+                    className="px-space-sm py-1.5 rounded-lg bg-surface-container-high text-on-surface hover:bg-secondary-container active:scale-[0.98] transition-all font-button-secondary text-button-secondary font-medium flex items-center gap-1 shadow-sm"
+                  >
+                    {drawerState === 'popping' ? (
+                      <>
+                        <Icon name="sync" className="text-[18px] animate-spin" />
+                        <span>Popping...</span>
+                      </>
+                    ) : drawerState === 'open' ? (
+                      <>
+                        <Icon name="check_circle" className="text-[18px] text-badge-discount-text" />
+                        <span>Drawer Open</span>
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="lock_open" className="text-[18px]" />
+                        <span>Pop Drawer (F5)</span>
+                      </>
+                    )}
+                  </button>
+                  {registerOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setCloseRegisterModal(true)}
+                      className="px-space-sm py-1.5 rounded-lg bg-error-container text-on-error-container hover:bg-error/20 active:scale-[0.98] transition-all font-button-secondary text-button-secondary font-medium flex items-center gap-1 shadow-sm"
+                    >
+                      <Icon name="lock" className="text-[18px]" />
+                      <span>Close Register (End Day)</span>
+                    </button>
                   ) : (
-                    <>
-                      <Icon name="lock_open" className="text-[18px]" />
-                      <span>{v(pos.isOpen ? 'Close Register (F5)' : 'Open Register (F5)', 'Pop Drawer (F5)')}</span>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => setOpenRegisterModal(true)}
+                      className="px-space-sm py-1.5 rounded-lg bg-primary text-on-primary hover:bg-primary-container active:scale-[0.98] transition-all font-button-secondary text-button-secondary font-medium flex items-center gap-1 shadow-sm"
+                    >
+                      <Icon name="point_of_sale" className="text-[18px]" />
+                      <span>Open Register</span>
+                    </button>
                   )}
-                </button>
+                </div>
               </div>
               <div className="space-y-space-sm">
                 <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-subtle">
@@ -631,6 +660,13 @@ export function DesktopPosHomeScreen({
                   <div className="text-right">
                     <span className="font-heading-sm text-heading-sm font-bold text-badge-discount-text">{v(naira(expectedCash), '₦142,400')}</span>
                     <span className="block font-caption text-caption text-badge-discount-text">{v('Float + cash sales', 'Exact float + sales match')}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-subtle">
+                  <span className="font-body-md text-body-md text-text-secondary">Card &amp; Bank Transfers</span>
+                  <div className="text-right">
+                    <span className="font-label-md text-label-md font-bold text-primary">₦{cardSales.toLocaleString()}</span>
+                    <span className="block font-caption text-caption text-text-tertiary">Direct settlement</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-subtle">
@@ -739,9 +775,193 @@ export function DesktopPosHomeScreen({
           </div>
         </div>
       </section>
+
+      {/* Open Register Modal (Desktop) */}
+      {openRegisterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md bg-surface-canvas rounded-2xl p-6 shadow-2xl border border-border-subtle flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="point_of_sale" className="text-[22px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">Open Register &amp; Start Shift</h3>
+                  <span className="font-caption text-caption text-text-secondary">{tillLabel}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenRegisterModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[20px]" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="font-label-sm text-label-sm font-semibold text-text-primary">Opening Cash Float Amount (₦)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-[16px] font-bold text-text-secondary">₦</span>
+                <input
+                  type="text"
+                  value={openFloatInput}
+                  onChange={(e) => setOpenFloatInput(e.target.value)}
+                  placeholder="0"
+                  className="w-full h-11 pl-8 pr-3 rounded-xl border border-border-subtle text-body-md font-bold bg-surface-subtle text-text-primary focus:outline-none focus:border-primary"
+                />
+              </div>
+              <p className="font-caption text-caption text-text-tertiary">
+                Verify cash in the physical drawer before starting transactions.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setOpenRegisterModal(false)}
+                className="h-11 rounded-xl bg-surface-container text-text-secondary font-label-md font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmOpen()}
+                disabled={busy}
+                className="h-11 rounded-xl bg-primary text-on-primary font-label-md font-semibold flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Icon name="check" className="text-[18px]" />
+                <span>Open Register</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close Register / End Day Modal (Desktop) */}
+      {closeRegisterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-lg bg-surface-canvas rounded-2xl p-6 shadow-2xl border border-border-subtle flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-error-container text-on-error-container flex items-center justify-center">
+                  <Icon name="lock" className="text-[22px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">Close Register (End of Day Closeout)</h3>
+                  <span className="font-caption text-caption text-text-secondary">{tillLabel}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCloseRegisterModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[20px]" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-surface-subtle text-caption">
+              <div>
+                <span className="text-text-secondary block">Opening Shift Float:</span>
+                <strong className="text-text-primary font-bold text-body-md">₦{openingFloat.toLocaleString()}</strong>
+              </div>
+              <div>
+                <span className="text-text-secondary block">Cash Sales Collected:</span>
+                <strong className="text-primary font-bold text-body-md">+₦{cashSales.toLocaleString()}</strong>
+              </div>
+              <div>
+                <span className="text-text-secondary block">Card &amp; Bank Transfers:</span>
+                <strong className="text-text-primary font-bold text-body-md">₦{cardSales.toLocaleString()}</strong>
+              </div>
+              <div>
+                <span className="text-text-secondary block">Expected Cash in Drawer:</span>
+                <strong className="text-badge-discount-text font-bold text-body-md">₦{expectedCashInDrawer.toLocaleString()}</strong>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="font-label-sm text-label-sm font-semibold text-text-primary">
+                Actual Physical Cash Counted in Drawer (₦)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-[16px] font-bold text-text-secondary">₦</span>
+                <input
+                  type="text"
+                  value={countedCashInput}
+                  onChange={(e) => setCountedCashInput(e.target.value)}
+                  placeholder="0"
+                  className="w-full h-11 pl-8 pr-3 rounded-xl border border-border-subtle text-body-md font-bold bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              {(() => {
+                const counted = Number(countedCashInput.replace(/[^\d]/g, '') || 0);
+                const diff = counted - expectedCashInDrawer;
+                if (diff === 0) {
+                  return (
+                    <span className="font-caption text-caption font-semibold text-badge-discount-text flex items-center gap-1">
+                      <Icon name="check_circle" className="text-[15px]" />
+                      <span>Balanced: ₦0.00 Float Variance (Cash matches expected)</span>
+                    </span>
+                  );
+                } else if (diff > 0) {
+                  return (
+                    <span className="font-caption text-caption font-semibold text-primary flex items-center gap-1">
+                      <Icon name="trending_up" className="text-[15px]" />
+                      <span>Over by +₦{diff.toLocaleString()} (Excess cash in drawer)</span>
+                    </span>
+                  );
+                } else {
+                  return (
+                    <span className="font-caption text-caption font-semibold text-error flex items-center gap-1">
+                      <Icon name="warning" className="text-[15px]" />
+                      <span>Short by -₦{Math.abs(diff).toLocaleString()} (Drawer shortage)</span>
+                    </span>
+                  );
+                }
+              })()}
+            </div>
+
+            <div className={live ? 'hidden' : undefined}>
+              <label className="font-caption text-caption text-text-secondary block mb-1">Reconciliation &amp; Safe Drop Notes</label>
+              <input
+                type="text"
+                value={closeNotes}
+                onChange={(e) => setCloseNotes(e.target.value)}
+                placeholder="e.g. Verified by Store Manager, excess cash transferred to safe"
+                className="w-full h-10 px-3 rounded-xl border border-border-subtle text-body-sm bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCloseRegisterModal(false)}
+                className="h-11 rounded-xl bg-surface-container text-text-secondary font-label-md font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmClose()}
+                disabled={busy}
+                className="h-11 rounded-xl bg-error-container text-on-error-container font-label-md font-semibold flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Icon name="check" className="text-[18px]" />
+                <span>Confirm Close &amp; Print Z-Report</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
-          {toast}
+        <div className="fixed bottom-24 right-8 z-50 pointer-events-none">
+          <div className="bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 font-label-sm">
+            <Icon name="check_circle" className="text-badge-discount-text text-[18px]" />
+            <span>{toast}</span>
+          </div>
         </div>
       )}
     </PosTerminalChrome>

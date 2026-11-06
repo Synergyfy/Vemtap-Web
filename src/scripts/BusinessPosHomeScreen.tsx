@@ -5,6 +5,7 @@ import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { apiErrorMessage } from '../services/errorMessages';
 import { formatRelativeTime } from '../utils/format';
 import { naira, useLivePos } from './posLive';
+import { useRegisterShift } from './useRegisterShift';
 
 interface BusinessPosHomeScreenProps {
   initialOffline?: boolean;
@@ -109,21 +110,6 @@ export function BusinessPosHomeScreen({
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
-  // Shift & Cash Drawer State
-  const [registerOpen, setRegisterOpen] = useState(true);
-  const [openingFloat, setOpeningFloat] = useState(50000);
-  const cashSales = 92400;
-  const cardSales = 179050;
-  const safeDrops = 0;
-  const [openRegisterModal, setOpenRegisterModal] = useState(false);
-  const [closeRegisterModal, setCloseRegisterModal] = useState(false);
-  const [openFloatInput, setOpenFloatInput] = useState('50,000');
-  const [countedCashInput, setCountedCashInput] = useState('142,400');
-  const [closeNotes, setCloseNotes] = useState('');
-  const [lastZReport, setLastZReport] = useState<string | null>(null);
-
-  const expectedCashInDrawer = openingFloat + cashSales - safeDrops;
-
   useEffect(
     () => () => {
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -168,6 +154,31 @@ export function BusinessPosHomeScreen({
       },
     );
   };
+
+  const {
+    registerOpen,
+    openingFloat,
+    cashSales,
+    cardSales,
+    expectedCashInDrawer,
+    shiftLabel,
+    tillLabel,
+    cashierLabel,
+    openRegisterModal,
+    setOpenRegisterModal,
+    closeRegisterModal,
+    setCloseRegisterModal,
+    openFloatInput,
+    setOpenFloatInput,
+    countedCashInput,
+    setCountedCashInput,
+    closeNotes,
+    setCloseNotes,
+    lastZReport,
+    busy,
+    confirmOpen,
+    confirmClose,
+  } = useRegisterShift(pos, showToast);
 
   const hardwareSoon = () => showToast('Hardware status is coming soon.');
 
@@ -482,7 +493,7 @@ export function BusinessPosHomeScreen({
                     </span>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${registerOpen ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'}`}>
-                    {registerOpen ? 'Shift #0842' : 'Closed'}
+                    {registerOpen ? shiftLabel : 'Closed'}
                   </span>
                 </div>
 
@@ -505,13 +516,13 @@ export function BusinessPosHomeScreen({
 
                     <div className="flex items-center justify-between text-[11px] text-text-secondary px-1">
                       <span>Card / Transfer: <strong>₦{cardSales.toLocaleString()}</strong></span>
-                      <span>Variance: <strong className="text-badge-discount-text">₦0.00 (Balanced)</strong></span>
+                      {!live && <span>Variance: <strong className="text-badge-discount-text">₦0.00 (Balanced)</strong></span>}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 pt-0.5">
                       <button
                         type="button"
-                        onClick={() => showToast('Cash drawer opened · ₦45,000 counted')}
+                        onClick={() => showToast('Cash drawer opened')}
                         className="h-9 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-[12px] font-semibold flex items-center justify-center gap-1 active:scale-95 transition-all"
                       >
                         <Icon name="lock_open" className="text-[16px]" />
@@ -693,7 +704,7 @@ export function BusinessPosHomeScreen({
                 </div>
                 <div>
                   <h3 className="font-label-sm text-[14px] font-bold text-text-primary">Open Register &amp; Start Shift</h3>
-                  <span className="font-caption text-[11px] text-text-secondary">Wuse II • Till 01</span>
+                  <span className="font-caption text-[11px] text-text-secondary">{tillLabel}</span>
                 </div>
               </div>
               <button
@@ -713,7 +724,7 @@ export function BusinessPosHomeScreen({
                   type="text"
                   value={openFloatInput}
                   onChange={(e) => setOpenFloatInput(e.target.value)}
-                  placeholder="50,000"
+                  placeholder="0"
                   className="w-full h-10 pl-7 pr-3 rounded-xl border border-border-subtle text-[14px] font-bold bg-surface-subtle text-text-primary focus:outline-none focus:border-primary"
                 />
               </div>
@@ -725,7 +736,7 @@ export function BusinessPosHomeScreen({
             <div className="p-2.5 rounded-xl bg-surface-container-low flex flex-col gap-1 text-[11px] text-text-secondary">
               <div className="flex justify-between">
                 <span>Cashier On Duty:</span>
-                <strong className="text-text-primary">Emeka O.</strong>
+                <strong className="text-text-primary">{cashierLabel}</strong>
               </div>
               <div className="flex justify-between">
                 <span>Shift Start Time:</span>
@@ -743,13 +754,8 @@ export function BusinessPosHomeScreen({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const cleaned = Number(openFloatInput.replace(/[^\d]/g, '') || 50000);
-                  setOpeningFloat(cleaned);
-                  setRegisterOpen(true);
-                  setOpenRegisterModal(false);
-                  showToast(`Shift started! Opening float: ₦${cleaned.toLocaleString()}`);
-                }}
+                onClick={() => void confirmOpen()}
+                disabled={busy}
                 className="h-10 rounded-xl bg-primary text-on-primary text-[12px] font-semibold flex items-center justify-center gap-1 shadow-sm"
               >
                 <Icon name="check" className="text-[16px]" />
@@ -771,7 +777,7 @@ export function BusinessPosHomeScreen({
                 </div>
                 <div>
                   <h3 className="font-label-sm text-[14px] font-bold text-text-primary">Close Register (End Shift)</h3>
-                  <span className="font-caption text-[11px] text-text-secondary">Shift #0842 • Wuse II Till 01</span>
+                  <span className="font-caption text-[11px] text-text-secondary">{tillLabel}</span>
                 </div>
               </div>
               <button
@@ -814,7 +820,7 @@ export function BusinessPosHomeScreen({
                   type="text"
                   value={countedCashInput}
                   onChange={(e) => setCountedCashInput(e.target.value)}
-                  placeholder="142,400"
+                  placeholder="0"
                   className="w-full h-10 pl-7 pr-3 rounded-xl border border-border-subtle text-[14px] font-bold bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
                 />
               </div>
@@ -848,7 +854,7 @@ export function BusinessPosHomeScreen({
               })()}
             </div>
 
-            <div>
+            <div className={live ? 'hidden' : undefined}>
               <label className="font-caption text-[10px] text-text-secondary block mb-0.5">Closing Shift Notes</label>
               <input
                 type="text"
@@ -869,15 +875,8 @@ export function BusinessPosHomeScreen({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const counted = Number(countedCashInput.replace(/[^\d]/g, '') || expectedCashInDrawer);
-                  const diff = counted - expectedCashInDrawer;
-                  const rep = `Shift #0842 closed. Started ₦${openingFloat.toLocaleString()} · Closed ₦${counted.toLocaleString()} (${diff === 0 ? 'Balanced' : diff > 0 ? `+₦${diff} Over` : `-₦${Math.abs(diff)} Short`})`;
-                  setLastZReport(rep);
-                  setRegisterOpen(false);
-                  setCloseRegisterModal(false);
-                  showToast('Register closed! Z-Report printed & synced to cloud.');
-                }}
+                onClick={() => void confirmClose()}
+                disabled={busy}
                 className="h-10 rounded-xl bg-error-container text-on-error-container text-[12px] font-semibold flex items-center justify-center gap-1 shadow-sm"
               >
                 <Icon name="check" className="text-[16px]" />

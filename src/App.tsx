@@ -22,8 +22,9 @@ import { messageService } from './services/messageService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
 import { BusinessOfferingsProvider } from './context/BusinessOfferingsContext';
 import { BusinessFeaturesProvider, useBusinessFeatures } from './context/BusinessFeaturesContext';
-import { FEATURE_MANAGE_ROUTE, FEATURE_SETUP_ROUTE, findDisabledRoute, type FeatureState } from './scripts/businessFeatures';
+import { BUSINESS_FEATURES, FEATURE_MANAGE_ROUTE, FEATURE_SETUP_ROUTE, findDisabledRoute, type FeatureId, type FeatureState } from './scripts/businessFeatures';
 import { isAdminAuthenticated } from './scripts/admin/adminAuth';
+import { addPaidBusinessLocation, getBusinessLocationCount } from './scripts/businessLocationsStore';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
@@ -1059,6 +1060,12 @@ const BusinessStaffScreen = lazyScreen(() => import('./scripts/BusinessStaffScre
 const DesktopStaffDirectoryScreen = lazyScreen(() => import('./scripts/desktop/DesktopStaffDirectoryScreen').then((module) => module.DesktopStaffDirectoryScreen));
 const BusinessInviteStaffScreen = lazyScreen(() => import('./scripts/BusinessInviteStaffScreen').then((module) => module.BusinessInviteStaffScreen));
 const DesktopStaffInviteScreen = lazyScreen(() => import('./scripts/desktop/DesktopStaffInviteScreen').then((module) => module.DesktopStaffInviteScreen));
+const BusinessLoyaltyDemoScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyDemoScreen').then((module) => module.BusinessLoyaltyDemoScreen));
+const DesktopLoyaltyProgrammeDemoScreen = lazyScreen(() => import('./scripts/desktop/DesktopLoyaltyProgrammeDemoScreen').then((module) => module.DesktopLoyaltyProgrammeDemoScreen));
+const DesktopServicesCategoriesDemoScreen = lazyScreen(() => import('./scripts/desktop/DesktopServicesCategoriesDemoScreen').then((module) => module.DesktopServicesCategoriesDemoScreen));
+const BusinessAddBranchScreen = lazyScreen(() => import('./scripts/BusinessAddBranchScreen').then((module) => module.BusinessAddBranchScreen));
+const BusinessAddLocationFlow = lazyScreen(() => import('./scripts/BusinessAddLocationFlow').then((module) => module.BusinessAddLocationFlow));
+const DesktopBusinessAddLocationFlow = lazyScreen(() => import('./scripts/desktop/DesktopBusinessAddLocationFlow').then((module) => module.DesktopBusinessAddLocationFlow));
 const BusinessLoyaltyScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyScreen').then((module) => module.BusinessLoyaltyScreen));
 const BusinessLoyaltyRewardsScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyRewardsScreen').then((module) => module.BusinessLoyaltyRewardsScreen));
 const BusinessAnalyticsScreen = lazyScreen(() => import('./scripts/BusinessAnalyticsScreen').then((module) => module.BusinessAnalyticsScreen));
@@ -2467,6 +2474,7 @@ function AppInner() {
     const moduleRoute: Record<HubModuleKey, Route> = {
       deals: 'hub-deals',
       catalog: 'hub-catalog',
+      services: 'hub-services',
       customers: 'hub-customers',
       loyalty: 'hub-loyalty',
       locations: 'hub-locations',
@@ -2682,6 +2690,15 @@ function AppInner() {
         setRoute(FEATURE_MANAGE_ROUTE);
         break;
     }
+  };
+
+  /** Opens a dashboard tool from a quick action, through the same nav as the sidebar. */
+  const openBusinessFeature = (feature: FeatureId) => {
+    if (feature === 'pos' && !isDesktop) {
+      setRoute('business-pos-menu');
+      return;
+    }
+    businessPortalNav(BUSINESS_FEATURES[feature].navKey);
   };
 
   /** Business Settings › Manage Features — validate, persist, then re-check the current page. */
@@ -6026,6 +6043,7 @@ function AppInner() {
         return (
           <DesktopBusinessOverviewScreen
             onNav={businessPortalNav}
+            onOpenFeature={openBusinessFeature}
             onSubscribe={() => setRoute('business-subscription')}
             onBoost={() => openBoost()}
             onAddOns={() => setRoute('business-add-ons')}
@@ -6044,13 +6062,14 @@ function AppInner() {
           onOpenBookings={() => setRoute('business-bookings')}
           onOpenMessages={openMessages}
           onOpenPosMenu={() => setRoute('business-pos-menu')}
+          onOpenFeature={openBusinessFeature}
         />
       );
 
     case 'business-pos-menu':
       // Mobile-only POS menu page (POS overview quick action). Desktop uses the
       // POS rail instead — fall back to the POS overview if reached there.
-      if (isDesktop) return <DesktopBusinessOverviewScreen onNav={businessPortalNav} onSubscribe={() => setRoute('business-subscription')} onBoost={() => openBoost()} onAddOns={() => setRoute('business-add-ons')} onOpenOrders={() => setRoute('business-orders')} onOpenBookings={() => setRoute('business-bookings')} onOpenMessages={openMessages} />;
+      if (isDesktop) return <DesktopBusinessOverviewScreen onOpenFeature={openBusinessFeature} onNav={businessPortalNav} onSubscribe={() => setRoute('business-subscription')} onBoost={() => openBoost()} onAddOns={() => setRoute('business-add-ons')} onOpenOrders={() => setRoute('business-orders')} onOpenBookings={() => setRoute('business-bookings')} onOpenMessages={openMessages} />;
       return (
         <BusinessPosMenuScreen
           onOpenPage={(key) => businessPortalNav(key)}
@@ -6091,6 +6110,20 @@ function AppInner() {
         />
       );
 
+    case 'business-add-location': {
+      // The paid flow is a demo: live owners add a real branch from the same page.
+      const leave = () => setRoute('hub-locations');
+      if (hasApiConfig()) {
+        return isDesktop ? <DesktopBusinessAddBranchScreen onBack={leave} onSaved={leave} /> : <BusinessAddBranchScreen onBack={leave} onSaved={leave} />;
+      }
+      const save = (location: { name: string; address: string; district: string }, feePaid: number) => {
+        addPaidBusinessLocation({ id: `loc-${Date.now()}`, name: location.name, address: location.address, district: location.district, feePaid });
+        leave();
+      };
+      const Flow = isDesktop ? DesktopBusinessAddLocationFlow : BusinessAddLocationFlow;
+      return <Flow businessName="Urban Grill & Bistro" locationCount={getBusinessLocationCount()} onExit={leave} onLocationPaid={save} />;
+    }
+
     case 'hub-locations':
       if (isDesktop)
         return (
@@ -6100,7 +6133,7 @@ function AppInner() {
             <DesktopBusinessLocationsHubScreen
               onNav={businessPortalNav}
               // Live owners are already set up: the add-branch form opens here.
-              onAddBranch={() => (hasApiConfig() ? setAddingBranch(true) : setRoute('business-onboarding'))}
+              onAddBranch={() => (hasApiConfig() ? setAddingBranch(true) : setRoute('business-add-location'))}
               onOpenBranch={(branchId) => {
                 setSelectedBranchId(branchId ?? null);
                 setRoute('hub-branch-detail');
@@ -6108,7 +6141,7 @@ function AppInner() {
             />
           )
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onAddLocation={() => setRoute('business-add-location')} onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-branch-detail':
       if (isDesktop)
@@ -6119,7 +6152,7 @@ function AppInner() {
             onBackToLocations={() => setRoute('hub-locations')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onAddLocation={() => setRoute('business-add-location')} onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-catalog':
     case 'hub-catalog-new-product':
@@ -6148,11 +6181,15 @@ function AppInner() {
     case 'hub-services':
       if (isDesktop)
         return (
-          <DesktopServicesCategoriesScreen
-            onNav={businessPortalNav}
-            onBackToCatalog={() => setRoute('hub-catalog')}
-            onAddService={() => setRoute('hub-catalog-new-service')}
-          />
+          hasApiConfig() ? (
+            <DesktopServicesCategoriesScreen
+              onNav={businessPortalNav}
+              onBackToCatalog={() => setRoute('hub-catalog')}
+              onAddService={() => setRoute('hub-catalog-new-service')}
+            />
+          ) : (
+            <DesktopServicesCategoriesDemoScreen onNav={businessPortalNav} onBackToCatalog={() => setRoute('hub-catalog')} />
+          )
         );
       return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
@@ -6383,12 +6420,17 @@ function AppInner() {
     case 'hub-loyalty':
       if (isDesktop)
         return (
-          <DesktopLoyaltyProgrammeScreen
-            onNav={businessPortalNav}
-            onOpenRewards={() => setRoute('hub-loyalty-rewards')}
-          />
+          hasApiConfig() ? (
+            <DesktopLoyaltyProgrammeScreen onNav={businessPortalNav} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+          ) : (
+            <DesktopLoyaltyProgrammeDemoScreen onNav={businessPortalNav} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+          )
         );
-      return <BusinessLoyaltyScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />;
+      return hasApiConfig() ? (
+        <BusinessLoyaltyScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+      ) : (
+        <BusinessLoyaltyDemoScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+      );
 
     case 'hub-loyalty-rewards':
       if (isDesktop)
@@ -6747,6 +6789,7 @@ function AppInner() {
         return (
           <DesktopPosSwitchScreen
             onNav={posTerminalNav}
+            onOpenSettings={() => setRoute('pos-settings')}
             onBack={goBackToPrevious}
             onConfirm={() => setRoute('pos-home')}
           />
