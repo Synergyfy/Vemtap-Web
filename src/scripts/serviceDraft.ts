@@ -31,6 +31,7 @@ export interface ServiceDraft {
   concurrentBookings: number;
   leadNotice: string;
   bookingHorizon: string;
+  loyaltyPoints?: string;
 }
 
 /**

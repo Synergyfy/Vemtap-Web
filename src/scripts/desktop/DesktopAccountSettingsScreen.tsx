@@ -918,7 +918,7 @@ export function DesktopAccountSettingsScreen({ onNav, onOpenAddresses }: Desktop
                           onChange={(event) => toggleChannel(toggle.id, toggle.title, event.target.checked)}
                           type="checkbox"
                         />
-                        <div className="w-12 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-container-lowest after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-container-lowest after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container" />
+                        <div className="w-8 h-5 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-3.5 after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all after:shadow-xs peer-checked:bg-primary" />
                       </label>
                     </div>
                   ))}

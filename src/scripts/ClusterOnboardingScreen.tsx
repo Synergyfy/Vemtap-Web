@@ -248,15 +248,7 @@ export function ClusterOnboardingScreen({
           </div>
         </div>
 
-        {step !== 'success' && (
-          <button
-            type="button"
-            onClick={onSkip}
-            className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors px-2 py-1"
-          >
-            Skip for now
-          </button>
-        )}
+
       </header>
 
       {/* Main Content Area */}
@@ -264,25 +256,24 @@ export function ClusterOnboardingScreen({
         {/* ================= STEP 1: INTRO ================= */}
         {step === 'intro' && (
           <div className="flex flex-col gap-5 pt-2">
-            {/* Hero Banner */}
+            {/* Hero Banner with Desktop-aligned content */}
             <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary-container to-blue-700 p-6 text-white shadow-xl">
               <div className="relative z-10">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[11px] font-semibold tracking-wider uppercase mb-3">
                   <Icon name="verified" className="text-[14px]" />
-                  <span>Verified Merchant Program</span>
+                  <span>Local Merchant Collective</span>
                 </div>
                 <h2 className="text-2xl font-bold tracking-tight text-white mb-2">
-                  Multiply Your Footfall With VEMTAP Clusters
+                  Connect With Your Local Commercial Cluster
                 </h2>
                 <p className="text-white/85 text-sm leading-relaxed">
-                  Join physical shopping centers, commercial plazas, and markets. Share one QR
-                  point and promote your deals to every nearby customer.
+                  VEMTAP organizes businesses inside malls, commercial plazas, and market districts into location clusters. Every cluster shares one community QR touchpoint and an automated deal rotator pool.
                 </p>
               </div>
               <div className="absolute -bottom-8 -right-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
             </div>
 
-            {/* Value Proposition Cards */}
+            {/* Value Proposition Cards - 4 cards matching desktop */}
             <div className="grid grid-cols-1 gap-3">
               <div className="p-4 rounded-2xl bg-surface-subtle border border-border-subtle flex items-start gap-3.5">
                 <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
@@ -290,11 +281,10 @@ export function ClusterOnboardingScreen({
                 </div>
                 <div>
                   <h3 className="font-semibold text-text-primary text-sm">
-                    Shared Customer Traffic
+                    Shared Footfall
                   </h3>
                   <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-                    When shoppers scan the cluster pass at any entrance or counter, your verified
-                    deals are immediately presented.
+                    Shoppers browsing neighboring stores discover your deals automatically.
                   </p>
                 </div>
               </div>
@@ -305,11 +295,10 @@ export function ClusterOnboardingScreen({
                 </div>
                 <div>
                   <h3 className="font-semibold text-text-primary text-sm">
-                    VEMTAP Deal Rotator Pool
+                    Fair Deal Rotator
                   </h3>
                   <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-                    Admin-balanced algorithm rotates deals from all members fairly, driving repeat
-                    cross-store visits.
+                    VEMTAP rotates top offers across all cluster businesses in balanced intervals.
                   </p>
                 </div>
               </div>
@@ -320,17 +309,30 @@ export function ClusterOnboardingScreen({
                 </div>
                 <div>
                   <h3 className="font-semibold text-text-primary text-sm">
-                    Single Shared QR &amp; Smart Pass
+                    Single Cluster QR
                   </h3>
                   <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-                    One unified printable pass and NFC point covers the entire mall or plaza. No
-                    clutter for shoppers.
+                    One unified printable pass and NFC point for mall entrances and directories.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-surface-subtle border border-border-subtle flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                  <Icon name="trending_up" className="text-[20px]" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-text-primary text-sm">
+                    Zero Extra Cost
+                  </h3>
+                  <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
+                    Fully included in your active merchant subscription and onboarding.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* CTA */}
+            {/* CTA - Single Check Location for Clusters button only */}
             <div className="flex flex-col gap-2.5 pt-2">
               <button
                 type="button"
@@ -339,13 +341,6 @@ export function ClusterOnboardingScreen({
               >
                 <span>Check Location for Clusters</span>
                 <Icon name="near_me" className="text-[18px]" />
-              </button>
-              <button
-                type="button"
-                onClick={onSkip}
-                className="w-full h-11 bg-surface-subtle hover:bg-surface-container rounded-xl flex items-center justify-center text-text-secondary font-medium text-sm transition-colors"
-              >
-                Skip to Business Dashboard
               </button>
             </div>
           </div>
@@ -917,15 +912,8 @@ export function ClusterOnboardingScreen({
                 onClick={onComplete}
                 className="w-full h-12 bg-primary-container active:scale-[0.98] transition-all rounded-xl flex items-center justify-center gap-2 text-on-primary font-semibold text-sm shadow-md"
               >
-                <span>Go to Cluster System Dashboard</span>
-                <Icon name="hub" className="text-[18px]" />
-              </button>
-              <button
-                type="button"
-                onClick={onSkip}
-                className="w-full h-11 bg-surface-subtle hover:bg-surface-container rounded-xl flex items-center justify-center text-text-secondary font-medium text-sm transition-colors"
-              >
-                Continue to Business Overview
+                <span>Continue to Dashboard</span>
+                <Icon name="arrow_forward" className="text-[18px]" />
               </button>
             </div>
           </div>

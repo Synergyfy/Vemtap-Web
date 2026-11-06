@@ -170,6 +170,29 @@ export function BusinessAddServiceStep2Screen({
                   <Icon name="local_offer" className="text-text-tertiary text-[20px]" />
                 </div>
               </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-label-sm text-label-sm text-text-secondary font-medium" htmlFor="service-loyalty-points">
+                    Reward Points Awarded <span className="font-caption text-caption text-text-tertiary">(Optional)</span>
+                  </label>
+                  <span className="font-caption text-[10px] text-primary font-bold bg-surface-tint-blue px-2 py-0.5 rounded-full">
+                    Loyalty Perk
+                  </span>
+                </div>
+                <div className="flex items-center bg-surface-container-low rounded-xl px-space-md h-[48px]">
+                  <Icon name="stars" className="text-primary text-[18px] mr-2" />
+                  <input
+                    className="w-full bg-transparent font-body-md text-body-md text-text-primary focus:outline-none"
+                    id="service-loyalty-points"
+                    inputMode="numeric"
+                    placeholder="e.g. 90 (leave empty for default store formula)"
+                    type="text"
+                    value={draft.loyaltyPoints || ''}
+                    onChange={(event) => onDraftChange({ loyaltyPoints: event.target.value })}
+                  />
+                  <span className="text-text-tertiary font-caption text-[11px] font-semibold">pts</span>
+                </div>
+              </div>
             </div>
             <div className="flex flex-col gap-2 pt-2">
               <div className="flex items-center justify-between">
@@ -235,7 +258,7 @@ export function BusinessAddServiceStep2Screen({
               </div>
               <button
                 aria-checked={draft.tiersEnabled}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors focus:outline-none ${
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
                   draft.tiersEnabled ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 id="tier-toggle"
@@ -244,8 +267,8 @@ export function BusinessAddServiceStep2Screen({
                 onClick={() => onDraftChange({ tiersEnabled: !draft.tiersEnabled })}
               >
                 <span
-                  className={`w-6 h-6 rounded-full bg-surface shadow-md transform transition-transform ${
-                    draft.tiersEnabled ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    draft.tiersEnabled ? 'translate-x-3.5' : 'translate-x-0'
                   }`}
                 />
               </button>

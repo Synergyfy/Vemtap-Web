@@ -12,6 +12,7 @@ interface DesktopPosGeneralSettingsScreenProps {
 
 const SETTINGS_TABS = [
   { key: 'business', label: 'Business', icon: 'storefront' },
+  { key: 'tills', label: 'Registers & Tills', icon: 'point_of_sale' },
   { key: 'receipt', label: 'Receipt', icon: 'receipt_long' },
   { key: 'tax', label: 'Tax & Pricing', icon: 'percent' },
   { key: 'alerts', label: 'Alerts', icon: 'notifications' },
@@ -149,6 +150,15 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
   const [tab, setTab] = useState<SettingsTabKey>('business');
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [tillsList, setTillsList] = useState([
+    { key: 'till-01', name: 'Till 01', station: 'Counter Front', float: '50,000', hardware: 'Thermal Printer #1 · POS Terminal #1', active: true },
+    { key: 'till-02', name: 'Till 02', station: 'Counter Back / Takeaway', float: '20,000', hardware: 'Thermal Printer #2 · Card Reader #2', active: false },
+    { key: 'till-03', name: 'Till 03', station: 'Terrace Bar', float: '25,000', hardware: 'Mobile Reader (Bluetooth)', active: false },
+  ]);
+  const [showAddTill, setShowAddTill] = useState(false);
+  const [newTillName, setNewTillName] = useState('');
+  const [newTillStation, setNewTillStation] = useState('');
+  const [newTillFloat, setNewTillFloat] = useState('30,000');
   const [draft, setDraft] = useState<SettingsDraft>({
     businessName: s.businessName,
     businessAddress: s.businessAddress,
@@ -380,6 +390,129 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
               placeholder="+234 …"
             />
           </Card>
+        )}
+
+        {tab === 'tills' && (
+          <div className="flex flex-col gap-space-md">
+            <div className="bg-surface-tint-blue/80 rounded-2xl p-space-md border border-primary/20 flex flex-col gap-space-xs shadow-sm">
+              <div className="flex items-center gap-space-xs text-primary font-heading-sm text-heading-sm font-bold">
+                <Icon name="point_of_sale" className="text-[20px]" />
+                <span>Branch Registers &amp; Physical Tills Configuration</span>
+              </div>
+              <p className="font-body-md text-body-md text-text-primary leading-relaxed">
+                Configure your checkout counters and cash drawer stations for this branch. Each till manages its own starting cash float, receipt printers, and shift audit.
+              </p>
+            </div>
+
+            <Card>
+              <div className="p-space-md border-b border-border-subtle flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">Configured Branch Tills</span>
+                  <span className="font-caption text-caption text-text-secondary">Wuse II Branch • 3 Checkout Stations Setup</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddTill(!showAddTill)}
+                  className="px-space-md py-2 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold flex items-center gap-space-xs shadow-sm hover:bg-primary-container active:scale-95 transition-all"
+                >
+                  <Icon name={showAddTill ? 'close' : 'add'} className="text-[18px]" />
+                  <span>{showAddTill ? 'Cancel' : 'Add Till Station'}</span>
+                </button>
+              </div>
+
+              {showAddTill && (
+                <div className="p-space-md bg-surface-container-low flex flex-col gap-space-md border-b border-border-subtle">
+                  <span className="font-label-md text-label-md font-bold text-text-primary">New Register / Till Setup</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
+                    <div>
+                      <label className="font-caption text-caption text-text-secondary block mb-1">Till Identifier</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Till 04, VIP Bar Till"
+                        value={newTillName}
+                        onChange={(e) => setNewTillName(e.target.value)}
+                        className="w-full h-10 px-3 rounded-lg border border-border-subtle text-body-md bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-caption text-caption text-text-secondary block mb-1">Counter / Station Location</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Garden Patio, Drive-thru"
+                        value={newTillStation}
+                        onChange={(e) => setNewTillStation(e.target.value)}
+                        className="w-full h-10 px-3 rounded-lg border border-border-subtle text-body-md bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-caption text-caption text-text-secondary block mb-1">Default Starting Float (₦)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 50,000"
+                        value={newTillFloat}
+                        onChange={(e) => setNewTillFloat(e.target.value)}
+                        className="w-full h-10 px-3 rounded-lg border border-border-subtle text-body-md bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newTillName.trim()) return;
+                      setTillsList((prev) => [
+                        ...prev,
+                        {
+                          key: `till-0${prev.length + 1}`,
+                          name: newTillName.trim(),
+                          station: newTillStation.trim() || 'Counter Station',
+                          float: newTillFloat.trim() || '30,000',
+                          hardware: 'Assigned on pairing',
+                          active: false,
+                        },
+                      ]);
+                      setNewTillName('');
+                      setNewTillStation('');
+                      setShowAddTill(false);
+                      setDirty(true);
+                    }}
+                    className="self-end px-space-md py-2 rounded-xl bg-primary text-on-primary text-label-md font-semibold"
+                  >
+                    Save New Till
+                  </button>
+                </div>
+              )}
+
+              {tillsList.map((till) => (
+                <div key={till.key} className="p-space-md flex items-center justify-between gap-space-md border-b border-border-subtle last:border-b-0">
+                  <div className="flex items-center gap-space-sm min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                      <Icon name="point_of_sale" className="text-[20px]" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-label-md text-label-md font-bold text-text-primary">{till.name}</span>
+                        {till.active ? (
+                          <span className="px-2 py-0.5 rounded-full text-caption font-semibold bg-badge-discount-bg text-badge-discount-text">
+                            Active Shift
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-caption font-medium bg-surface-container text-text-secondary">
+                            Idle / Ready
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-body-md text-body-md text-text-secondary">{till.station}</span>
+                      <span className="font-caption text-caption text-text-tertiary mt-0.5">{till.hardware}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="font-label-md text-label-md font-bold text-text-primary block">₦{till.float}</span>
+                    <span className="font-caption text-caption text-text-secondary">Default Opening Float</span>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          </div>
         )}
 
 

@@ -117,9 +117,15 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
         </section>
 
         <section className="px-margin pt-3 pb-4">
-          <h2 className="font-heading-sm text-heading-sm text-on-surface">Where is your business located?</h2>
+          <div className="flex items-center justify-between gap-space-sm">
+            <h2 className="font-heading-sm text-heading-sm text-on-surface">Where is your business located?</h2>
+            <span className="bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
+              Primary · Free
+            </span>
+          </div>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
-            Customers will use this information to discover your business and redeem local offers near them.
+            This is your primary business location — it's free and serves as your default. Customers use it to
+            discover your business and redeem local offers near them.
           </p>
         </section>
 
@@ -344,7 +350,7 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
               })
             }
           >
-            <span>Continue to Branch Details</span>
+            <span>Continue to Business Offerings</span>
             <Icon name="arrow_forward" className="text-[20px]" />
           </button>
           <button
