@@ -1640,6 +1640,14 @@ function AppInner() {
     if (route !== 'my-deals') setMyDealsOpensGifted(false);
   }, [route]);
 
+  // "Sign in" from business sign-up continues into setup, but only on that trip:
+  // once the visitor leaves, a later sign-in is an ordinary one and goes home.
+  useEffect(() => {
+    if (signInFrom !== 'business-auth' || ['sign-in', 'forgot-pin', 'business-auth'].includes(route)) return;
+    setSignInFrom('welcome');
+    setBusinessSignInEmail(null);
+  }, [route, signInFrom]);
+
   // The referral admin page is for platform admins only.
   const adminCheckPending =
     hasApiConfig() && route === 'admin-referral' && (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin'));
