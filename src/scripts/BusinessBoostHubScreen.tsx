@@ -421,35 +421,35 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
   return (
     <AppScreen>
       <header className="sticky top-0 z-40 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-        <div className="h-16 px-margin flex items-center justify-between gap-space-sm">
-          <div className="flex items-center gap-space-xs min-w-0">
+        <div className="h-14 px-margin flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
             <button
               aria-label="Go back"
-              className="w-11 h-11 -ml-space-xs flex items-center justify-center rounded-full text-text-primary hover:bg-surface-container-high transition-colors"
+              className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full text-text-primary hover:bg-surface-container-high transition-colors"
               type="button"
               onClick={onBack}
             >
-              <Icon className="text-[24px]" name="arrow_back" />
+              <Icon className="text-[20px]" name="arrow_back" />
             </button>
             <div className="flex flex-col min-w-0">
-              <h1 className="font-heading-sm text-heading-sm text-text-primary tracking-tight leading-tight truncate">
+              <h1 className="text-[15px] font-bold text-text-primary tracking-tight leading-tight truncate">
                 Campaigns Hub
               </h1>
-              <span className="font-caption text-caption text-text-secondary">Marketing & Growth</span>
+              <span className="text-[11px] text-text-secondary">Marketing & Growth</span>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon className="text-on-primary text-[18px]" name="person" />
+          <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0">
+            <Icon className="text-on-primary text-[15px]" name="person" />
           </div>
         </div>
-        <div className="flex items-center gap-space-xs overflow-x-auto px-margin pb-space-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto px-margin pb-2 no-scrollbar">
           {[
             { label: 'Boost', onClick: () => onBoost(), active: false },
             { label: 'Campaigns', onClick: undefined, active: true },
             { label: 'Customer Segments', onClick: onOpenSegments, active: false },
           ].map((pill) => (
             <button
-              className={`px-3 py-1.5 rounded-full text-label-sm font-label-sm whitespace-nowrap transition-colors ${
+              className={`px-2.5 py-1 rounded-full text-label-sm whitespace-nowrap transition-colors ${
                 pill.active
                   ? 'bg-surface-tint-blue text-primary font-semibold'
                   : 'bg-surface-subtle text-text-secondary hover:bg-surface-container-high'
@@ -466,11 +466,11 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
 
       <div className="flex flex-col w-full pb-32">
         {/* Title + location */}
-        <div className="px-margin pt-space-md pb-space-xs flex flex-col gap-space-sm">
-          <div className="flex items-start justify-between gap-space-sm">
+        <div className="px-margin pt-3 pb-1.5 flex flex-col gap-2.5">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex flex-col min-w-0">
-              <h2 className="font-heading-md text-heading-md text-text-primary">Marketing Campaigns</h2>
-              <p className="font-body-md text-body-md text-text-secondary">
+              <h2 className="text-[15px] font-bold text-text-primary">Marketing Campaigns</h2>
+              <p className="text-[11px] text-text-secondary">
                 Structured promotions & multi-channel marketing
               </p>
             </div>
@@ -481,45 +481,45 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
           </div>
 
           {/* Quick metric strip */}
-          <div className="bg-surface-tint-blue rounded-xl p-space-sm flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-space-2xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-pulse" />
-              <span className="font-label-sm text-label-sm text-primary font-semibold">
+          <div className="bg-surface-tint-blue rounded-xl p-2.5 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
+              <span className="text-[11px] text-primary font-semibold">
                 {activeCampaigns.length} Active Campaigns
               </span>
             </div>
             <div className="h-3 w-px bg-border-active" />
-            <div className="flex items-center gap-space-2xs">
-              <Icon className="text-[16px] text-text-secondary" name="payments" />
-              <span className="font-label-sm text-label-sm text-text-primary font-medium">₦{fmt(activeSpend)} Paced</span>
+            <div className="flex items-center gap-1.5">
+              <Icon className="text-[14px] text-text-secondary" name="payments" />
+              <span className="text-[11px] text-text-primary font-medium">₦{fmt(activeSpend)} Paced</span>
             </div>
             <div className="h-3 w-px bg-border-active" />
-            <div className="flex items-center gap-space-2xs">
-              <Icon className="text-[16px] text-text-secondary" name="radar" />
-              <span className="font-label-sm text-label-sm text-text-primary font-medium">{reachLabel} Reached</span>
+            <div className="flex items-center gap-1.5">
+              <Icon className="text-[14px] text-text-secondary" name="radar" />
+              <span className="text-[11px] text-text-primary font-medium">{reachLabel} Reached</span>
             </div>
           </div>
 
           {/* Create campaign */}
           <button
-            className="w-full h-11 bg-primary-container hover:bg-primary active:scale-[0.98] text-on-primary font-button-primary text-button-primary rounded-xl flex items-center justify-center gap-space-xs transition-all shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)]"
+            className="w-full h-10 bg-primary-container hover:bg-primary active:scale-[0.98] text-on-primary text-[13px] font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_4px_16px_-2px_rgba(6,108,244,0.25)]"
             type="button"
             onClick={() => onBoost()}
           >
-            <Icon className="text-[20px]" name="add_circle" />
+            <Icon className="text-[18px]" name="add_circle" />
             <span>Create Campaign</span>
           </button>
         </div>
 
         {/* Segmented tabs */}
-        <div className="px-margin pt-space-xs pb-space-sm">
-          <div className="flex items-center justify-between bg-surface-container-high p-1 rounded-xl gap-1">
+        <div className="px-margin pt-1 pb-2.5">
+          <div className="flex items-center justify-between bg-surface-container-high p-0.5 rounded-lg gap-0.5">
             {STATUS_TABS.map((tab) => {
               const active = statusTab === tab.key;
               const count = countFor(tab.key);
               return (
                 <button
-                  className={`flex-1 py-1.5 px-1 rounded-lg font-label-sm text-label-sm text-center transition-all ${
+                  className={`flex-1 py-1 px-1 rounded-md text-[11px] text-center transition-all ${
                     active
                       ? 'bg-surface-canvas text-primary font-semibold shadow-sm'
                       : 'text-text-secondary hover:text-text-primary'
@@ -536,73 +536,73 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
         </div>
 
         {/* Campaign list */}
-        <div className="px-margin flex flex-col gap-space-md pb-space-lg">
+        <div className="px-margin flex flex-col gap-2.5 pb-6">
           {visibleCampaigns.map((campaign) => {
             const pct = campaign.total ? Math.round((campaign.spent / campaign.total) * 100) : 0;
             return (
               <div
-                className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04),0_2px_6px_-1px_rgba(13,37,76,0.02)] overflow-hidden"
+                className="bg-surface-canvas rounded-xl shadow-[0_2px_10px_-2px_rgba(13,37,76,0.04)] overflow-hidden border border-border-subtle/50"
                 key={campaign.key}
               >
                 {/* Media header */}
                 <div
-                  className="relative h-28 w-full bg-cover bg-center"
+                  className="relative h-24 w-full bg-cover bg-center"
                   style={{ backgroundImage: `url('${campaign.image}')` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-on-background/80 via-on-background/25 to-transparent" />
-                  <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
+                  <div className="absolute top-2 left-2 flex items-center gap-1 flex-wrap">
                     <span
-                      className={`font-caption text-caption font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${campaign.goalClass}`}
+                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 ${campaign.goalClass}`}
                     >
-                      <Icon className="text-[13px]" name={campaign.goalIcon} />
+                      <Icon className="text-[11px]" name={campaign.goalIcon} />
                       {campaign.goal}
                     </span>
                   </div>
-                  <div className="absolute top-3 right-3">
-                    <span className="bg-surface-canvas/90 backdrop-blur-md text-text-primary font-caption text-caption font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <div className="absolute top-2 right-2">
+                    <span className="bg-surface-canvas/90 backdrop-blur-md text-text-primary text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
                       {campaign.statusLabel}
                     </span>
                   </div>
-                  <div className="absolute bottom-2.5 left-3 right-3 text-on-primary">
-                    <h3 className="font-heading-sm text-heading-sm leading-snug drop-shadow-sm">{campaign.title}</h3>
+                  <div className="absolute bottom-2 left-2.5 right-2.5 text-on-primary">
+                    <h3 className="text-[13px] font-bold leading-tight drop-shadow-sm">{campaign.title}</h3>
                   </div>
                 </div>
 
-                <div className="p-space-md flex flex-col gap-space-sm">
+                <div className="p-3 flex flex-col gap-2.5">
                   {/* Content link */}
-                  <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-space-xs min-w-0">
+                  <div className="bg-surface-subtle p-2 rounded-lg flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${campaign.contentIconBoxClass}`}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${campaign.contentIconBoxClass}`}
                       >
-                        <Icon className="text-[18px]" name={campaign.contentIcon} />
+                        <Icon className="text-[16px]" name={campaign.contentIcon} />
                       </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">
+                        <span className="text-[12px] text-text-primary font-semibold truncate">
                           {campaign.contentName}
                         </span>
-                        <span className="font-caption text-caption text-text-secondary truncate">
+                        <span className="text-[10px] text-text-secondary truncate">
                           {campaign.contentSub}
                         </span>
                       </div>
                     </div>
-                    <Icon className="text-text-tertiary text-[20px] shrink-0" name="chevron_right" />
+                    <Icon className="text-text-tertiary text-[18px] shrink-0" name="chevron_right" />
                   </div>
 
                   {/* Meta rows */}
-                  <div className="flex flex-col gap-space-2xs text-text-secondary font-caption text-caption">
+                  <div className="flex flex-col gap-1 text-text-secondary text-[11px]">
                     {campaign.meta.map((row) => (
-                      <div className="flex items-center gap-space-xs" key={row.text}>
-                        <Icon className="text-[16px] text-primary shrink-0" name={row.icon} />
+                      <div className="flex items-center gap-1.5" key={row.text}>
+                        <Icon className="text-[14px] text-primary shrink-0" name={row.icon} />
                         <span className="truncate">{row.text}</span>
                       </div>
                     ))}
                   </div>
 
                   {/* Pacing bar */}
-                  <div className="flex flex-col gap-1 pt-1">
-                    <div className="flex items-center justify-between font-caption text-caption">
+                  <div className="flex flex-col gap-1 pt-0.5">
+                    <div className="flex items-center justify-between text-[11px]">
                       <span className="text-text-secondary">
                         {campaign.pacingPrefix}:{' '}
                         <strong className="text-text-primary font-semibold">₦{fmt(campaign.spent)}</strong> of ₦
@@ -610,7 +610,7 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
                       </span>
                       <span className="text-primary font-semibold">{pct}% {campaign.pctLabel}</span>
                     </div>
-                    <div className="w-full bg-surface-container rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
                       <div
                         className={`${campaign.barClass} h-full rounded-full transition-all duration-500`}
                         style={{ width: `${pct}%` }}
@@ -620,13 +620,13 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
 
                   {/* KPI grid */}
                   <div
-                    className={`grid ${campaign.kpis.length === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-space-2xs bg-surface-subtle p-space-xs rounded-xl`}
+                    className={`grid ${campaign.kpis.length === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-1 bg-surface-subtle p-2 rounded-lg`}
                   >
                     {campaign.kpis.map((kpi) => (
                       <div className="flex flex-col items-center text-center" key={kpi.label}>
-                        <span className="font-caption text-caption text-text-secondary">{kpi.label}</span>
+                        <span className="text-[10px] text-text-secondary">{kpi.label}</span>
                         <span
-                          className={`font-label-md text-label-md font-bold ${
+                          className={`text-[12px] font-bold ${
                             kpi.valueClass ?? 'text-text-primary'
                           }`}
                         >
@@ -637,19 +637,19 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-space-xs pt-1">
+                  <div className="flex items-center gap-1.5 pt-0.5">
                     <button
-                      className="flex-1 h-10 bg-surface-tint-blue hover:bg-secondary-fixed text-primary font-button-secondary text-button-secondary rounded-lg flex items-center justify-center gap-1 transition-colors"
+                      className="flex-1 h-8 bg-surface-tint-blue hover:bg-secondary-fixed text-primary text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-colors"
                       type="button"
                       onClick={() =>
                         onOpenMetrics(campaign.live ? { kind: campaign.live.kind, id: campaign.live.id } : undefined)
                       }
                     >
-                      <Icon className="text-[18px]" name="query_stats" />
+                      <Icon className="text-[16px]" name="query_stats" />
                       <span>View Insights</span>
                     </button>
                     <button
-                      className="h-10 px-space-sm bg-surface-container-low hover:bg-surface-container text-text-secondary font-label-md text-label-md rounded-lg flex items-center justify-center gap-1 transition-colors"
+                      className="h-8 px-2.5 bg-surface-container-low hover:bg-surface-container text-text-secondary text-[11px] font-medium rounded-lg flex items-center justify-center gap-1 transition-colors"
                       type="button"
                       onClick={() =>
                         live
@@ -661,7 +661,7 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
                             )
                       }
                     >
-                      <Icon className="text-[18px]" name={campaign.manageIcon} />
+                      <Icon className="text-[16px]" name={campaign.manageIcon} />
                       <span>{campaign.manageLabel}</span>
                     </button>
                   </div>
@@ -671,13 +671,13 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
           })}
 
           {/* Strategy tip */}
-          <div className="bg-gradient-to-br from-surface-tint-blue via-surface-canvas to-surface-container p-space-md rounded-xl flex items-start gap-space-sm shadow-sm">
-            <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center shrink-0 text-on-primary shadow-sm">
-              <Icon className="text-[20px]" name="lightbulb" />
+          <div className="bg-gradient-to-br from-surface-tint-blue via-surface-canvas to-surface-container p-3 rounded-xl flex items-start gap-2.5 shadow-sm border border-border-subtle/50">
+            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 text-on-primary shadow-sm">
+              <Icon className="text-[16px]" name="lightbulb" />
             </div>
-            <div className="flex flex-col gap-1">
-              <span className="font-label-sm text-label-sm text-primary font-semibold">Campaign Strategy Tip</span>
-              <p className="font-body-md text-body-md text-text-primary leading-relaxed">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-primary font-semibold">Campaign Strategy Tip</span>
+              <p className="text-[11px] text-text-primary leading-relaxed">
                 Multi-location campaigns scheduled during peak footfall windows achieve{' '}
                 <strong>3.2x higher POS redemption rates</strong> than static boosts. Consider synchronizing your
                 weekend dining runs.
@@ -690,9 +690,9 @@ export function BusinessBoostHubScreen({ onBack, onTab, onBoost, onOpenMetrics, 
       <BoostTabBar active="overview" onTab={onTab} />
 
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-50 pointer-events-none">
-          <div className="bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-full font-label-sm text-label-sm shadow-xl flex items-center gap-2">
-            <Icon className="text-badge-discount-text text-[18px]" name="check_circle" />
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-50 pointer-events-none">
+          <div className="bg-inverse-surface text-inverse-on-surface px-3 py-2 rounded-full text-[11px] font-medium shadow-xl flex items-center gap-1.5">
+            <Icon className="text-badge-discount-text text-[15px]" name="check_circle" />
             <span className="truncate">{toast}</span>
           </div>
         </div>

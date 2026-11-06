@@ -1,28 +1,14 @@
 import { Icon } from '../../components/ui/Icon';
 import { useNavBadges } from '../../hooks/business/useNavBadges';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
+  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSubItem,
 } from './businessSidebarConfig';
 
-/** The POS section of the main business sidebar — reused as the POS rail's primary group. */
-const POS_SECTION = BUSINESS_SIDEBAR_SECTIONS.find((section) => section.key === 'pos')!;
-
-/**
- * Store Front pages replace the old "Terminal" group (Products / Ledger /
- * Settings): the catalogue already lives under Business › Products & Services
- * and VEMTAP does not settle payments yet, so the storefront pages are what a
- * cashier actually needs one tap away.
- */
-const STORE_FRONT_SECTION = BUSINESS_SIDEBAR_SECTIONS.find((section) => section.key === 'store-ordering')!;
-
 const RAIL_TOP: Record<'16' | '20', string> = { '16': 'top-16', '20': 'top-20' };
-
-const POS_NAV_GROUPS: ReadonlyArray<{ label: string; items: BusinessSidebarSubItem[] }> = [
-  { label: 'Point of Sale', items: POS_SECTION.items ?? [] },
-  { label: 'Store Front', items: STORE_FRONT_SECTION.items ?? [] },
-];
 
 interface PosNavRailProps {
   active?: string;
@@ -36,8 +22,18 @@ interface PosNavRailProps {
  * menu never has to swap out — the main rail simply collapses to icons.
  */
 export function PosNavRail({ active, onSelect, headerHeight = '16' }: PosNavRailProps) {
+  const { features } = useBusinessFeatures();
   const { itemKey: activeItemKey } = resolveSidebarActive(active);
   const badgeFor = useNavBadges();
+
+  // Groups come from the shared rail config with the switched-off tools removed:
+  // POS pages only appear while POS is on.
+  const visibleSections = filterSidebarSections(BUSINESS_SIDEBAR_SECTIONS, (id) => Boolean(features[id]));
+  const posSection = visibleSections.find((section) => section.key === 'pos');
+  const groups: Array<{ label: string; items: BusinessSidebarSubItem[] }> = [];
+  if (posSection) groups.push({ label: 'Point of Sale', items: posSection.items ?? [] });
+
+  if (groups.length === 0) return null;
 
   return (
     <aside
@@ -45,7 +41,7 @@ export function PosNavRail({ active, onSelect, headerHeight = '16' }: PosNavRail
       aria-label="Point of Sale navigation"
     >
       <nav className="flex flex-col p-2 lg:p-3">
-        {POS_NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.label} className="mb-space-xs last:mb-0">
             <span className="hidden lg:block px-3 py-1.5 font-label-sm text-label-sm font-semibold uppercase tracking-wider text-text-tertiary truncate">
               {group.label}

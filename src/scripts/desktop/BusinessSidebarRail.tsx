@@ -3,10 +3,13 @@ import { Icon } from '../../components/ui/Icon';
 import { useNavBadges } from '../../hooks/business/useNavBadges';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
+  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from './businessSidebarConfig';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 
 interface BusinessSidebarRailProps {
   active?: string;
@@ -30,11 +33,36 @@ export function BusinessSidebarRail({
   sections = BUSINESS_SIDEBAR_SECTIONS,
   collapsed = false,
 }: BusinessSidebarRailProps) {
-  const { sectionKey: activeSectionKey, itemKey: activeItemKey } = resolveSidebarActive(active);
   const badgeFor = useNavBadges();
+  const { offerings, mode } = useBusinessOfferings();
+  const { features } = useBusinessFeatures();
 
-  // Sections hidden from the main rail (e.g. Store Front, which moved inside POS).
-  const visibleSections = sections.filter((section) => !section.hidden);
+  const getSubItemLabel = (subItem: BusinessSidebarSubItem) => {
+    if (subItem.key === 'business-catalog') return 'My Products';
+    if (subItem.key === 'business-services') return 'My Service';
+    if (subItem.key === 'business-deals') {
+      if (mode === 'products') return 'Product Deals';
+      if (mode === 'services') return 'Service Deals';
+      return 'Deals';
+    }
+    return subItem.label;
+  };
+
+  // Sections hidden from the main rail (e.g. Store Front, which moved inside POS),
+  // minus the tools the business has switched off.
+  const visibleSections = filterSidebarSections(sections, (id) => Boolean(features[id])).filter(
+    (section) => !section.hidden
+  );
+
+  // Highlight: if the resolved group is one the business has switched off (or
+  // an entry moved groups, e.g. Bookings when POS is off), follow the entry to
+  // the group that is actually on screen.
+  const resolved = resolveSidebarActive(active);
+  const activeSectionKey = visibleSections.some((section) => section.key === resolved.sectionKey)
+    ? resolved.sectionKey
+    : visibleSections.find((section) => section.items?.some((item) => item.key === resolved.itemKey))?.key ??
+      resolved.sectionKey;
+  const activeItemKey = resolved.itemKey;
 
   const activeSectionHasChildren = visibleSections.some(
     (s) => s.key === activeSectionKey && !s.link && s.items && s.items.length > 0
@@ -154,14 +182,20 @@ export function BusinessSidebarRail({
                     isOpen ? 'hidden lg:flex' : 'hidden'
                   }`}
                 >
-                  {section.items!.map((subItem) => {
-                    const isSubItemActive = activeItemKey === subItem.key;
+                  {section.items!
+                    .filter((subItem) => {
+                      if (subItem.key === 'business-catalog') return offerings.hasProducts;
+                      if (subItem.key === 'business-services') return offerings.hasServices;
+                      return true;
+                    })
+                    .map((subItem) => {
+                      const isSubItemActive = activeItemKey === subItem.key;
                     return (
                       <button
                         key={subItem.key}
                         type="button"
                         aria-current={isSubItemActive ? 'page' : undefined}
-                        title={subItem.label}
+                        title={getSubItemLabel(subItem)}
                         onClick={() => handleSubItemClick(subItem)}
                         className={`group/sub flex items-center justify-between w-full rounded-lg px-2.5 py-1.5 text-left transition-colors ${
                           isSubItemActive
@@ -181,7 +215,7 @@ export function BusinessSidebarRail({
                             />
                           )}
                           <span className="truncate font-label-sm text-label-sm">
-                            {subItem.label}
+                            {getSubItemLabel(subItem)}
                           </span>
                         </div>
 

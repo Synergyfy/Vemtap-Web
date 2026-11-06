@@ -5,6 +5,7 @@ import { DesktopBusinessBookingsScreen } from './DesktopBusinessBookingsScreen';
 import { DesktopBusinessOrderDetailScreen } from './DesktopBusinessOrderDetailScreen';
 import { type StoreOrder, type StoreOrderOrigin } from '../../scripts/storeOrderingData';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 import { OrderCompletionModal } from '../../components/desktop/dialogs/OrderCompletionModal';
 import { useBranches } from '../../hooks/business/useBranchesAndTeam';
 import { hasApiConfig } from '../../services/api/client';
@@ -35,6 +36,7 @@ export function DesktopBusinessOrdersScreen({
   initialView = 'orders',
 }: DesktopBusinessOrdersScreenProps) {
   const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings, lastError, clearLastError } = useStoreOrdering();
+  const { features } = useBusinessFeatures();
 
   const [view, setView] = useState<'orders' | 'bookings' | 'detail'>(
     initialView === 'bookings' ? 'bookings' : 'orders'
@@ -364,21 +366,23 @@ export function DesktopBusinessOrdersScreen({
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('bookings');
-                  setView('bookings');
-                }}
-                className={`px-space-md py-2 rounded-lg font-label-md text-label-md transition-all flex items-center gap-2 ${
-                  tab === 'bookings'
-                    ? 'bg-surface text-primary font-bold shadow-xs'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                <Icon name="calendar_month" className="text-[18px]" />
-                <span>Bookings &amp; Tables</span>
-              </button>
+              {features.bookings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('bookings');
+                    setView('bookings');
+                  }}
+                  className={`px-space-md py-2 rounded-lg font-label-md text-label-md transition-all flex items-center gap-2 ${
+                    tab === 'bookings'
+                      ? 'bg-surface text-primary font-bold shadow-xs'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="calendar_month" className="text-[18px]" />
+                  <span>Bookings &amp; Tables</span>
+                </button>
+              )}
             </div>
 
             {/* Search and Sort controls */}

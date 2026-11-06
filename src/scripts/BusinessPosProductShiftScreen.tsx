@@ -215,10 +215,10 @@ export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessP
                 setAvailable((value) => !value);
                 showToast(available ? 'Item hidden from this register' : 'Item published to this register');
               }}
-              className={`w-12 h-7 rounded-full p-0.5 transition-colors shrink-0 ${available ? 'bg-primary' : 'bg-outline-variant'}`}
+              className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${available ? 'bg-primary' : 'bg-surface-container-highest'}`}
             >
               <span
-                className={`block w-6 h-6 rounded-full bg-white shadow transition-transform ${available ? 'translate-x-5' : 'translate-x-0'}`}
+                className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${available ? 'translate-x-3.5' : 'translate-x-0'}`}
               />
             </button>
           </div>

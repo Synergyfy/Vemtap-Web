@@ -200,12 +200,14 @@ export function BusinessCreateDealScreen({ onBack, onReview }: BusinessCreateDea
                 </div>
                 <button
                   aria-checked={wuseOn}
-                  className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${wuseOn ? 'bg-primary-container justify-end' : 'bg-surface-container justify-start'}`}
+                  className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${wuseOn ? 'bg-primary' : 'bg-surface-container-highest'}`}
                   role="switch"
                   type="button"
                   onClick={() => setWuseOn((on) => !on)}
                 >
-                  <div className="w-6 h-6 bg-white rounded-full shadow transition-transform" />
+                  <span
+                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${wuseOn ? 'translate-x-3.5' : 'translate-x-0'}`}
+                  />
                 </button>
               </div>
               <div className="bg-surface-subtle rounded-lg p-3 flex flex-col gap-2">
@@ -254,12 +256,14 @@ export function BusinessCreateDealScreen({ onBack, onReview }: BusinessCreateDea
                 </div>
                 <button
                   aria-checked={victoriaOn}
-                  className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${victoriaOn ? 'bg-primary-container justify-end' : 'bg-surface-container justify-start'}`}
+                  className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${victoriaOn ? 'bg-primary' : 'bg-surface-container-highest'}`}
                   role="switch"
                   type="button"
                   onClick={() => setVictoriaOn((on) => !on)}
                 >
-                  <div className="w-6 h-6 bg-white rounded-full shadow transition-transform" />
+                  <span
+                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${victoriaOn ? 'translate-x-3.5' : 'translate-x-0'}`}
+                  />
                 </button>
               </div>
               {victoriaCustom && (
@@ -314,11 +318,11 @@ export function BusinessCreateDealScreen({ onBack, onReview }: BusinessCreateDea
                 </div>
                 <button
                   aria-checked={false}
-                  className="w-12 h-7 bg-surface-container rounded-full p-0.5 flex items-center shrink-0 cursor-not-allowed"
+                  className="relative inline-flex h-5 w-8 shrink-0 cursor-not-allowed rounded-full p-0.5 bg-surface-container opacity-50"
                   role="switch"
                   type="button"
                 >
-                  <div className="w-6 h-6 bg-white rounded-full shadow" />
+                  <span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-xs" />
                 </button>
               </div>
               <div className="bg-surface-container-low rounded-lg p-2.5 flex items-start gap-2">
@@ -361,12 +365,14 @@ export function BusinessCreateDealScreen({ onBack, onReview }: BusinessCreateDea
                 </div>
                 <button
                   aria-checked={giftEnabled}
-                  className={`w-12 h-7 rounded-full p-0.5 flex items-center shrink-0 transition-colors mt-0.5 ${giftEnabled ? 'bg-primary-container justify-end' : 'bg-surface-container justify-start'}`}
+                  className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none mt-0.5 ${giftEnabled ? 'bg-primary' : 'bg-surface-container-highest'}`}
                   role="switch"
                   type="button"
                   onClick={() => setGiftEnabled((on) => !on)}
                 >
-                  <div className="w-6 h-6 bg-white rounded-full shadow transition-transform" />
+                  <span
+                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${giftEnabled ? 'translate-x-3.5' : 'translate-x-0'}`}
+                  />
                 </button>
               </div>
               <div className="h-px bg-surface-container" />
@@ -386,12 +392,14 @@ export function BusinessCreateDealScreen({ onBack, onReview }: BusinessCreateDea
                   </div>
                   <button
                     aria-checked={boostOnLaunch}
-                    className={`w-12 h-7 rounded-full p-0.5 flex items-center shrink-0 transition-colors ${boostOnLaunch ? 'bg-primary-container justify-end' : 'bg-surface-container justify-start'}`}
+                    className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${boostOnLaunch ? 'bg-primary' : 'bg-surface-container-highest'}`}
                     role="switch"
                     type="button"
                     onClick={() => setBoostOnLaunch((on) => !on)}
                   >
-                    <div className="w-6 h-6 bg-white rounded-full shadow transition-transform" />
+                    <span
+                      className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${boostOnLaunch ? 'translate-x-3.5' : 'translate-x-0'}`}
+                    />
                   </button>
                 </div>
               </div>

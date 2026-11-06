@@ -4,7 +4,11 @@ import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { useOverviewData } from '../../hooks/business/useOverviewData';
 import { greeting, todayLabel } from '../../utils/format';
 import { apiErrorMessage } from '../../services/errorMessages';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
+import { getEnabledQuickActions, type FeatureId, type QuickActionKey } from '../businessFeatures';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { BusinessQrScannerModal } from '../../components/BusinessQrScannerModal';
 
 interface DesktopBusinessOverviewScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -14,6 +18,8 @@ interface DesktopBusinessOverviewScreenProps {
   onOpenOrders?: () => void;
   onOpenBookings?: () => void;
   onOpenMessages?: () => void;
+  /** Opens a dashboard tool by feature id — powers the generated quick actions. */
+  onOpenFeature: (feature: FeatureId) => void;
 }
 
 const RECENT_ORDERS = [
@@ -34,13 +40,29 @@ export function DesktopBusinessOverviewScreen({
   onOpenOrders,
   onOpenBookings,
   onOpenMessages,
+  onOpenFeature,
 }: DesktopBusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
+  const { mode } = useBusinessOfferings();
+  const { features } = useBusinessFeatures();
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const overview = useOverviewData();
   // A business already on a paid plan doesn't need the Subscribe slide.
   const bannerCount = overview.onPaidPlan ? 1 : 2;
+
+  // Quick actions come straight from the saved feature configuration.
+  const quickActions = getEnabledQuickActions((id) => Boolean(features[id]));
+  const hasMessaging = Boolean(features.chat || features.sms || features.email);
+
+  const handleQuickAction = (feature: QuickActionKey) => {
+    if (feature === 'qr-scanner') {
+      setScannerOpen(true);
+      return;
+    }
+    onOpenFeature(feature as FeatureId);
+  };
 
   useEffect(() => {
     setBannerIndex(0);
@@ -61,38 +83,50 @@ export function DesktopBusinessOverviewScreen({
   const recentMessages = overview.isLive ? overview.recentMessages : RECENT_MESSAGES;
 
   const todayStats = [
-    {
-      icon: 'receipt_long',
-      iconBox: 'bg-surface-tint-blue text-primary',
-      label: 'Orders Today',
-      value: stats.orders,
-      note: 'Live count',
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'payments',
-      iconBox: 'bg-badge-discount-bg text-badge-discount-text',
-      label: 'Revenue Today',
-      value: stats.revenue,
-      note: stats.revenueDelta,
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'calendar_month',
-      iconBox: 'bg-tertiary-fixed text-tertiary',
-      label: 'Bookings',
-      value: stats.bookings,
-      note: overview.isLive ? 'All time' : 'Next in 35 mins',
-      onClick: onOpenBookings ?? onOpenOrders,
-    },
-    {
-      icon: 'chat_bubble',
-      iconBox: 'bg-secondary-container text-on-secondary-container',
-      label: 'Unread Messages',
-      value: stats.unread,
-      note: 'Open inquiries',
-      onClick: onOpenMessages,
-    },
+    ...(features.pos
+      ? [
+          {
+            icon: 'receipt_long',
+            iconBox: 'bg-surface-tint-blue text-primary',
+            label: 'Orders Today',
+            value: stats.orders,
+            note: 'Live count',
+            onClick: onOpenOrders,
+          },
+          {
+            icon: 'payments',
+            iconBox: 'bg-badge-discount-bg text-badge-discount-text',
+            label: 'Revenue Today',
+            value: stats.revenue,
+            note: stats.revenueDelta,
+            onClick: onOpenOrders,
+          },
+        ]
+      : []),
+    ...(features.bookings
+      ? [
+          {
+            icon: 'calendar_month',
+            iconBox: 'bg-tertiary-fixed text-tertiary',
+            label: 'Bookings',
+            value: stats.bookings,
+            note: overview.isLive ? 'All time' : 'Next in 35 mins',
+            onClick: onOpenBookings ?? onOpenOrders,
+          },
+        ]
+      : []),
+    ...(hasMessaging
+      ? [
+          {
+            icon: 'chat_bubble',
+            iconBox: 'bg-secondary-container text-on-secondary-container',
+            label: 'Unread Messages',
+            value: stats.unread,
+            note: 'Open inquiries',
+            onClick: onOpenMessages,
+          },
+        ]
+      : []),
   ];
 
   const banners = [
@@ -144,6 +178,22 @@ export function DesktopBusinessOverviewScreen({
                     {overview.planBadge}
                   </span>
                 ) : null}
+                {mode === 'products' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="inventory_2" className="text-[13px]" />
+                    PRODUCT BUSINESS
+                  </span>
+                ) : mode === 'services' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-tertiary-fixed text-tertiary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="content_cut" className="text-[13px]" />
+                    SERVICE BUSINESS
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-text-primary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="hub" className="text-[13px]" />
+                    HYBRID BUSINESS
+                  </span>
+                )}
               </div>
             </div>
           </section>
@@ -191,10 +241,13 @@ export function DesktopBusinessOverviewScreen({
             {/* Wide column: stats + quick actions */}
             <div className="xl:col-span-8 space-y-space-md">
               {/* Today's Stats */}
+              {todayStats.length > 0 && (
               <section className="grid grid-cols-2 md:grid-cols-4 gap-space-xs">
                 {todayStats.map((stat) => (
                   <button
-                    className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform"
+                    className={`bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform ${
+                      todayStats.length === 1 ? 'col-span-2 md:col-span-1' : ''
+                    }`}
                     key={stat.label}
                     type="button"
                     onClick={stat.onClick}
@@ -210,8 +263,37 @@ export function DesktopBusinessOverviewScreen({
                   </button>
                 ))}
               </section>
+              )}
 
-              {/* Quick Actions */}
+              {/* Quick Actions — clean grid limited to max 4 actions */}
+              {quickActions.length > 0 && (
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-label-md text-label-md font-bold text-text-primary">Quick Actions</h3>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-space-xs">
+                  {quickActions.slice(0, 5).map((action) => (
+                    <button
+                      className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1.5 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform cursor-pointer border border-border-subtle/40"
+                      type="button"
+                      key={action.feature}
+                      onClick={() => handleQuickAction(action.feature)}
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                        <Icon name={action.icon} className="text-[20px]" />
+                      </div>
+                      <span className="font-label-md text-label-md font-semibold text-text-primary truncate">
+                        {action.label}
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary truncate">
+                        {action.sub}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+              </section>
+              )}
               <section className="grid grid-cols-2 gap-space-xs">
                 <button
                   className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform"
@@ -241,6 +323,7 @@ export function DesktopBusinessOverviewScreen({
             {/* Narrow column: recent activity */}
             <div className="xl:col-span-4 space-y-space-md">
               {/* Recent Orders */}
+              {features.pos && (
               <section>
                 <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -284,8 +367,10 @@ export function DesktopBusinessOverviewScreen({
                   </div>
                 </div>
               </section>
+              )}
 
               {/* Recent Messages */}
+              {hasMessaging && (
               <section>
                 <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -331,6 +416,7 @@ export function DesktopBusinessOverviewScreen({
                   </div>
                 </div>
               </section>
+              )}
             </div>
           </div>
         </div>
@@ -340,6 +426,7 @@ export function DesktopBusinessOverviewScreen({
           {toast}
         </div>
       )}
+      <BusinessQrScannerModal open={scannerOpen} onClose={() => setScannerOpen(false)} onOpenOrders={onOpenOrders ?? (() => onNav('orders'))} />
     </BusinessPortalChrome>
   );
 }

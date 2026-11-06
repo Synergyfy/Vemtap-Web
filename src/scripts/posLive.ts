@@ -126,13 +126,13 @@ export function useLivePos() {
   const breakdownTotal = breakdown.reduce((sum, row) => sum + row.amount, 0);
 
   /** Opens the register on a till — the given one, the first usable one, or a new "Till 01". */
-  const openOnTill = async (tillId?: string) => {
+  const openOnTill = async (tillId?: string, openingCash = 0) => {
     let id = tillId ?? (tills.data ?? []).find((row) => row.status !== 'disabled' && !row.occupant)?.id;
     if (!id) {
       if (!activeBranchId) throw new Error('Pick a branch first.');
       id = (await mutations.createTill.mutateAsync({ branchId: activeBranchId, name: 'Till 01' })).id;
     }
-    return mutations.openRegister.mutateAsync({ openingCash: 0, tillId: id });
+    return mutations.openRegister.mutateAsync({ openingCash, tillId: id });
   };
 
   return {
@@ -146,6 +146,7 @@ export function useLivePos() {
     session,
     isOpen: Boolean(session),
     tillName: till?.name ?? '—',
+    breakdownTotal,
     tills: tills.data ?? [],
     tillsLoaded: tills.isSuccess,
     zReport: zReport.data,

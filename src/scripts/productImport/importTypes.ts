@@ -23,6 +23,7 @@ export type ImportFieldKey =
   | 'unit'
   | 'variants'
   | 'image'
+  | 'points'
   | 'ignore';
 
 export interface ImportFieldSpec {
@@ -50,6 +51,7 @@ export const IMPORT_FIELDS: ImportFieldSpec[] = [
   { key: 'unit', label: 'Unit', hint: 'e.g. piece, kg, pack', icon: 'straighten', singleton: true },
   { key: 'variants', label: 'Variants', hint: 'e.g. Large:1800|Small:1200', icon: 'widgets', singleton: true },
   { key: 'image', label: 'Image URL', hint: 'Link to product photo', icon: 'image', singleton: true },
+  { key: 'points', label: 'Reward Points', hint: 'Bonus loyalty points awarded on purchase', icon: 'stars', singleton: true },
   { key: 'ignore', label: 'Do not import', hint: 'Column kept for review only', icon: 'do_not_disturb_on' },
 ];
 

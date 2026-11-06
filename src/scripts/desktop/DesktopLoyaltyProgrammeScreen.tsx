@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { GivePointsModal } from '../../components/GivePointsModal';
+import { AssignPointsModal } from '../../components/AssignPointsModal';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
 import { hasApiConfig } from '../../services/api/client';
@@ -74,6 +76,8 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
   const [branchScope, setBranchScope] = useState<'all' | 'selected'>('all');
   const [expiryNotice, setExpiryNotice] = useState(true);
   const [passModalOpen, setPassModalOpen] = useState(false);
+  const [givePointsOpen, setGivePointsOpen] = useState(false);
+  const [assignPointsOpen, setAssignPointsOpen] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [toast, setToast] = useState<string | null>(null);
 
@@ -233,6 +237,26 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-space-sm shrink-0">
+              {live && (
+                <button
+                  type="button"
+                  onClick={() => setAssignPointsOpen(true)}
+                  className="h-[46px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary inline-flex items-center gap-space-2xs active:scale-[0.98] transition-transform"
+                >
+                  <Icon name="sell" className="text-[18px] text-primary" />
+                  <span>Assign Points</span>
+                </button>
+              )}
+              {live && (
+                <button
+                  type="button"
+                  onClick={() => setGivePointsOpen(true)}
+                  className="h-[46px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary inline-flex items-center gap-space-2xs active:scale-[0.98] transition-transform"
+                >
+                  <Icon name="stars" className="text-[18px] text-primary" />
+                  <span>Give Points</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="h-[46px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container transition-all flex items-center gap-space-2xs shadow-sm"
@@ -825,6 +849,8 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
           {toast}
         </div>
       )}
+      <AssignPointsModal open={assignPointsOpen} onClose={() => setAssignPointsOpen(false)} onSaved={showToast} />
+      <GivePointsModal open={givePointsOpen} onClose={() => setGivePointsOpen(false)} onGiven={showToast} />
     </EnterpriseShell>
   );
 }

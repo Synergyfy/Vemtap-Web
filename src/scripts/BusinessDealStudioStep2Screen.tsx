@@ -33,7 +33,6 @@ const PREVIEW_IMAGE = {
 
 function Toggle({
   checked,
-  small = false,
   onChange,
 }: {
   checked: boolean;
@@ -41,20 +40,22 @@ function Toggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="relative inline-flex items-center cursor-pointer">
-      <input
-        aria-label="Toggle setting"
-        className="sr-only peer"
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
+    <button
+      aria-label="Toggle setting"
+      aria-checked={checked}
+      className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+        checked ? 'bg-primary' : 'bg-surface-container-highest'
+      }`}
+      role="switch"
+      type="button"
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+          checked ? 'translate-x-3.5' : 'translate-x-0'
+        }`}
       />
-      <div
-        className={`${
-          small ? 'w-10 h-6 peer-checked:after:translate-x-full peer-checked:after:top-[2px] peer-checked:after:left-[2px] after:h-5 after:w-5' : 'w-12 h-7 peer-checked:after:translate-x-full peer-checked:after:top-[2px] peer-checked:after:left-[3px] after:h-6 after:w-6'
-        } bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:border-white after:content-[''] after:absolute after:bg-surface-canvas after:rounded-full after:transition-all peer-checked:bg-primary-container`}
-      />
-    </label>
+    </button>
   );
 }
 
@@ -453,8 +454,8 @@ export function BusinessDealStudioStep2Screen({
                     </span>
                   </div>
                 </div>
-                <div className="w-10 h-6 bg-surface-container-highest rounded-full flex items-center p-0.5 cursor-not-allowed">
-                  <div className="bg-outline-variant w-5 h-5 rounded-full" />
+                <div className="w-8 h-5 bg-surface-container-highest rounded-full flex items-center p-0.5 cursor-not-allowed">
+                  <div className="bg-outline-variant w-3.5 h-3.5 rounded-full" />
                 </div>
               </div>
               <div className="flex flex-col p-space-sm bg-surface-subtle rounded-lg gap-space-xs">

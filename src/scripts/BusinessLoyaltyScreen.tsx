@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { GivePointsModal } from '../components/GivePointsModal';
+import { AssignPointsModal } from '../components/AssignPointsModal';
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
@@ -56,6 +58,8 @@ const ACTIVITY: { member: string; delta: string; positive: boolean; reason: stri
 
 export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyScreenProps) {
   const [tab, setTab] = useState<LoyaltyTab>('programme');
+  const [givePointsOpen, setGivePointsOpen] = useState(false);
+  const [assignPointsOpen, setAssignPointsOpen] = useState(false);
   const [active, setActive] = useState(true);
   const [rules, setRules] = useState(EARNING_RULES);
   const [branchMode, setBranchMode] = useState<'all' | 'selected'>('all');
@@ -203,6 +207,26 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
                 Points rules, branch scope, and member rewards
               </p>
             </div>
+            {live && (
+              <button
+                type="button"
+                onClick={() => setAssignPointsOpen(true)}
+                aria-label="Assign points to products and services"
+                className="h-9 w-9 rounded-xl bg-surface-container-low text-primary inline-flex items-center justify-center shrink-0 active:scale-95 transition-transform"
+              >
+                <Icon name="sell" className="text-[18px]" />
+              </button>
+            )}
+            {live && (
+              <button
+                type="button"
+                onClick={() => setGivePointsOpen(true)}
+                className="h-9 px-space-sm rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold inline-flex items-center gap-1 shrink-0 active:scale-95 transition-transform"
+              >
+                <Icon name="stars" className="text-[16px]" />
+                <span>Give Points</span>
+              </button>
+            )}
           </div>
 
           {/* Segmented control */}
@@ -505,6 +529,8 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
         </div>
       )}
 
+      <AssignPointsModal open={assignPointsOpen} onClose={() => setAssignPointsOpen(false)} onSaved={showToast} />
+      <GivePointsModal open={givePointsOpen} onClose={() => setGivePointsOpen(false)} onGiven={showToast} />
       <BusinessTabBar active="business" onTab={onTab} />
     </AppScreen>
   );

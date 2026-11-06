@@ -1,6 +1,8 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import { getNavKeyFeature } from './businessFeatures';
 
 interface BusinessPosMenuScreenProps {
   /** Navigates to a POS / Store Front page (keys match the desktop sidebar config). */
@@ -92,6 +94,17 @@ function PosMenuSection({
  * "Point of Sale" and "Store Front" (mirrors BUSINESS_SIDEBAR_SECTIONS).
  */
 export function BusinessPosMenuScreen({ onOpenPage, onBack, onTab }: BusinessPosMenuScreenProps) {
+  const { features } = useBusinessFeatures();
+
+  // Rows for tools the business has switched off are dropped (Bookings lives in
+  // this menu but is its own tool; Store Front is optional).
+  const rowVisible = (row: PosRow) => {
+    const feature = getNavKeyFeature(row.key);
+    return feature === undefined || Boolean(features[feature]);
+  };
+  const posRows = POS_ROWS.filter(rowVisible);
+  const storeFrontRows = STORE_FRONT_ROWS.filter(rowVisible);
+
   return (
     <div className="biz-flow">
       <AppScreen>
@@ -120,16 +133,18 @@ export function BusinessPosMenuScreen({ onOpenPage, onBack, onTab }: BusinessPos
               label="Point of Sale"
               badge="Active"
               badgeClass="bg-badge-discount-bg text-badge-discount-text"
-              rows={POS_ROWS}
+              rows={posRows}
               onOpenPage={onOpenPage}
             />
-            <PosMenuSection
-              label="Store Front"
-              badge="Live"
-              badgeClass="bg-badge-discount-bg text-badge-discount-text"
-              rows={STORE_FRONT_ROWS}
-              onOpenPage={onOpenPage}
-            />
+            {storeFrontRows.length > 0 && (
+              <PosMenuSection
+                label="Store Front"
+                badge="Live"
+                badgeClass="bg-badge-discount-bg text-badge-discount-text"
+                rows={storeFrontRows}
+                onOpenPage={onOpenPage}
+              />
+            )}
           </div>
         </div>
 

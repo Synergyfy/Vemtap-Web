@@ -75,6 +75,29 @@ const PAYMENT_LABEL: Record<string, string> = {
 export const orderPaymentLabel = (order: BusinessOrder) =>
   PAYMENT_LABEL[order.paymentStatus ?? 'unpaid'] ?? order.paymentStatus ?? 'Unpaid';
 
+export type OrderChannel = 'storefront' | 'deals' | 'pos';
+
+/** Where an order came from; app orders carry no source, so a deal line marks them. */
+export const orderChannel = (order: BusinessOrder): OrderChannel => {
+  if (order.source === 'pos' || order.payment?.posSaleId) return 'pos';
+  if (order.source === 'deal' || (order.items ?? []).some((line) => line.offer)) return 'deals';
+  return 'storefront';
+};
+
+export type OrderPaymentMethod = 'cash' | 'card' | 'transfer';
+
+const PAYMENT_METHOD: Record<string, OrderPaymentMethod> = {
+  cash: 'cash',
+  card: 'card',
+  'pos-terminal': 'card',
+  transfer: 'transfer',
+  'bank-transfer': 'transfer',
+};
+
+/** How the order was paid; null until a payment is recorded (or for other methods). */
+export const orderPaymentMethod = (order: BusinessOrder): OrderPaymentMethod | null =>
+  PAYMENT_METHOD[order.payment?.method ?? ''] ?? null;
+
 export const isOrderPaid = (order: BusinessOrder) => ['paid-in-store', 'paid-pos'].includes(order.paymentStatus ?? '');
 
 /** "1:45 PM" for a timeline step. */
