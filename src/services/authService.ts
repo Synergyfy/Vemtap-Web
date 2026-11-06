@@ -1,5 +1,5 @@
 import { ApiError, api } from './api/client';
-import { clearAuthTokens, getRefreshToken, setAuthTokens } from './api/client';
+import { clearAuthTokens, getRefreshToken, renewSession, setAuthTokens } from './api/client';
 
 export interface AuthUser {
   id?: string;
@@ -59,7 +59,8 @@ const readTokenValue = (payload: unknown, keys: string[]) => {
 export const storeAuthResponse = (response: unknown) => {
   const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
   if (!accessToken) throw new Error('The response did not include an access token.');
-  setAuthTokens(accessToken, readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']));
+  // A role switch keeps the same session, so it answers without a refresh token.
+  setAuthTokens(accessToken, readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']) ?? getRefreshToken() ?? undefined);
 };
 
 export const authService = {
@@ -132,23 +133,9 @@ export const authService = {
     return response;
   },
 
+  /** Shares the API client's renewal, so a socket reconnect can't spend the token twice. */
   refresh: async () => {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-      throw new Error('No refresh token available.');
-    }
-
-    const response = await api.post<AuthTokensResponse>('/auth/refresh', { refreshToken });
-    const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
-    const nextRefreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']) ?? refreshToken;
-
-    if (!accessToken) {
-      throw new Error('Refresh response did not include a new access token.');
-    }
-
-    setAuthTokens(accessToken, nextRefreshToken ?? refreshToken);
-
-    return response;
+    if (!(await renewSession())) throw new Error('The session could not be renewed.');
   },
 
   /** Starts 2FA setup: a TOTP secret plus a scannable QR for authenticator apps (409 when already on). */
