@@ -6,10 +6,11 @@ import { ReferralField } from '../components/referral/ReferralField';
 import { ReferralConfirmSheet } from '../components/referral/ReferralConfirmSheet';
 import { useReferralIdentity } from '../hooks/useReferralIdentity';
 import { useReferralStep } from '../hooks/useReferralStep';
+import { useProfilePhotoPick } from '../hooks/useProfilePhotoPick';
 
 interface ProfileSetupScreenProps {
   onBack: () => void;
-  onComplete: (details: { firstName: string; lastName: string; phone: string; pin: string }) => Promise<void> | void;
+  onComplete: (details: { firstName: string; lastName: string; phone: string; pin: string; photo?: File }) => Promise<void> | void;
   email?: string;
   code?: string;
   /** "Set up your business on VEMTAP" shortcut (desktop parity). */
@@ -18,6 +19,8 @@ interface ProfileSetupScreenProps {
   initialValues?: ProfileSetupDraft;
   /** Called as name and phone change, so leaving and coming back keeps them (never the PIN). */
   onDraftChange?: (draft: ProfileSetupDraft) => void;
+  /** Shows the optional profile photo field (customer sign-up only). */
+  photoEnabled?: boolean;
 }
 
 export interface ProfileSetupDraft {
@@ -87,7 +90,7 @@ function PinBoxes({
   );
 }
 
-export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initialValues, onDraftChange }: ProfileSetupScreenProps) {
+export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initialValues, onDraftChange, photoEnabled }: ProfileSetupScreenProps) {
   const [firstName, setFirstName] = useState(initialValues?.firstName ?? '');
   const [lastName, setLastName] = useState(initialValues?.lastName ?? '');
   const [phone, setPhone] = useState(initialValues?.phone ?? '');
@@ -99,6 +102,7 @@ export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initia
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const referral = useReferralStep();
+  const profilePhoto = useProfilePhotoPick();
   // Keep what's typed so a return visit refills it (the PIN is never passed on).
   useEffect(() => {
     onDraftChange?.({ firstName, lastName, phone });
@@ -129,7 +133,7 @@ export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initia
     setStatus('saving');
     setError(null);
     try {
-      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
+      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin, photo: profilePhoto.photo }));
     } catch (completeError) {
       setError(completeError instanceof Error ? completeError.message : 'We could not finish your profile setup. Please try again.');
       setStatus('idle');
@@ -190,6 +194,50 @@ export function ProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initia
               </span>
               <span className="font-label-md text-label-md text-text-primary font-semibold">Personal Information</span>
             </div>
+
+            {photoEnabled && (
+              <div className="flex flex-col items-center text-center">
+                <div className="relative">
+                  <input
+                    ref={profilePhoto.fileInput}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(event) => profilePhoto.onPick(event.target.files?.[0])}
+                  />
+                  <div className="w-28 h-28 rounded-full overflow-hidden shadow-md bg-surface-container-high flex items-center justify-center">
+                    {profilePhoto.preview ? (
+                      <img className="w-full h-full object-cover bg-surface-canvas" src={profilePhoto.preview} alt="Your profile photo" />
+                    ) : (
+                      <Icon name="person" className="text-[40px] text-text-tertiary" />
+                    )}
+                  </div>
+                  <button
+                    aria-label="Upload profile picture"
+                    type="button"
+                    onClick={profilePhoto.openPicker}
+                    className="absolute bottom-0 right-0 w-9 h-9 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+                  >
+                    <Icon name="photo_camera" className="text-[18px]" filled />
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={profilePhoto.openPicker}
+                  className="mt-space-sm text-primary font-button-secondary text-button-secondary active:opacity-75 transition-opacity"
+                >
+                  {profilePhoto.preview ? 'Change Photo' : 'Add Photo'}
+                </button>
+                <span className="text-text-tertiary font-caption text-caption mt-space-2xs">
+                  Optional. JPG, PNG or WEBP under 4MB
+                </span>
+                {profilePhoto.photoError && (
+                  <span className="text-error font-caption text-caption mt-space-2xs" role="alert">
+                    {profilePhoto.photoError}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-space-sm">
               <div className="flex flex-col gap-1.5">

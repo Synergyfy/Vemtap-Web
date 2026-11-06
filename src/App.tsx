@@ -97,6 +97,8 @@ import { SignInScreen } from './scripts/SignInScreen';
 import { ForgotPinScreen } from './scripts/ForgotPinScreen';
 import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
 import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
+import { accountService } from './services/accountService';
+import { uploadImage } from './services/uploadService';
 import { LocationPermissionScreen } from './scripts/LocationPermissionScreen';
 import { ManualLocationScreen } from './scripts/ManualLocationScreen';
 import { ConfirmLocationScreen } from './scripts/ConfirmLocationScreen';
@@ -2875,7 +2877,7 @@ function AppInner() {
     setCustomerSignup((current) => ({ ...current, code: nextCode }));
   };
 
-  const completeCustomerSignup = async (details: { firstName: string; lastName: string; phone: string; pin: string }) => {
+  const completeCustomerSignup = async (details: { firstName: string; lastName: string; phone: string; pin: string; photo?: File }) => {
     const email = customerSignup.email.trim().toLowerCase();
     const code = customerSignup.code.replace(/\D/g, '').slice(0, 6);
     const firstName = details.firstName.trim();
@@ -2909,6 +2911,15 @@ function AppInner() {
       }
       // The code was recorded with the sign-up above.
       clearProvisionalReferralCode();
+      // The account exists by now, so a failed upload must not undo the sign-up:
+      // the customer can add the photo from Edit Profile instead.
+      if (details.photo) {
+        try {
+          await accountService.updateProfile({ avatar: await uploadImage(details.photo) });
+        } catch (error) {
+          console.warn('Unable to save the sign-up profile photo:', error);
+        }
+      }
     }
 
     profile.update({
@@ -3577,6 +3588,7 @@ function AppInner() {
             code={customerSignup.code}
             initialValues={signupDraft}
             onDraftChange={saveSignupDraft}
+            photoEnabled={!businessSignup}
             onComplete={async (details) => {
               if (authIntent === 'business') {
                 await completeOwnerSignup(details);
@@ -3595,6 +3607,7 @@ function AppInner() {
           code={customerSignup.code}
           initialValues={signupDraft}
           onDraftChange={saveSignupDraft}
+          photoEnabled={!businessSignup}
           onComplete={async (details) => {
             if (authIntent === 'business') {
               await completeOwnerSignup(details);

@@ -140,7 +140,7 @@ export function DesktopEditProfileScreen({ onNav, onBack }: DesktopEditProfileSc
                   />
                   <div className="relative w-28 h-28 rounded-full overflow-hidden shadow-md bg-surface-container-high">
                     {avatar ? (
-                      <img className="w-full h-full object-cover" src={avatar} alt={`${firstName} ${lastName}`.trim() || 'Profile photo'} />
+                      <img className="w-full h-full object-cover bg-surface-canvas" src={avatar} alt={`${firstName} ${lastName}`.trim() || 'Profile photo'} />
                     ) : (
                       <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-heading-md text-heading-md">
                         {initials}
