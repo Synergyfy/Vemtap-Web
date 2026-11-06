@@ -508,8 +508,10 @@ export function findDisabledRoute(route: string, isEnabled: (id: FeatureId) => b
   return feature !== undefined && !isEnabled(feature);
 }
 
+export type QuickActionKey = FeatureId | 'qr-scanner';
+
 export interface FeatureQuickAction {
-  feature: FeatureId;
+  feature: QuickActionKey;
   icon: string;
   label: string;
   sub: string;
@@ -519,15 +521,18 @@ const PREFERRED_QUICK_ACTIONS: FeatureQuickAction[] = [
   { feature: 'pos', label: 'POS', icon: 'point_of_sale', sub: 'Open register & counter sales' },
   { feature: 'deals', label: 'Deals', icon: 'local_offer', sub: 'Promotions & vouchers' },
   { feature: 'loyalty', label: 'Rewards', icon: 'stars', sub: 'Customer points & perks' },
+  { feature: 'qr-scanner', label: 'QR Scanner', icon: 'qr_code_scanner', sub: 'Scan customer QR or voucher' },
   { feature: 'sms', label: 'SMS', icon: 'sms', sub: 'SMS campaigns & broadcasts' },
 ];
 
 /**
- * Dashboard quick actions prioritize the primary business growth tools (POS, Deals, Rewards, SMS)
+ * Dashboard quick actions prioritize the primary business growth tools (POS, Deals, Rewards, QR Scanner, SMS)
  * while respecting the business's active feature settings.
  */
 export function getEnabledQuickActions(isEnabled: (id: FeatureId) => boolean): FeatureQuickAction[] {
-  const preferred = PREFERRED_QUICK_ACTIONS.filter((item) => isEnabled(item.feature));
+  const preferred = PREFERRED_QUICK_ACTIONS.filter(
+    (item) => item.feature === 'qr-scanner' || isEnabled(item.feature as FeatureId),
+  );
   const remaining = FEATURE_IDS.filter((id) => isEnabled(id) && !preferred.some((p) => p.feature === id)).map((id) => ({
     feature: id,
     icon: BUSINESS_FEATURES[id].icon,

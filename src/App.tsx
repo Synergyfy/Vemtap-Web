@@ -1910,7 +1910,10 @@ function AppInner() {
    * quick actions so every shortcut resolves through the same portal nav as
    * the sidebar.
    */
-  const openBusinessFeature = (feature: FeatureId) => {
+  const openBusinessFeature = (feature: FeatureId | 'qr-scanner') => {
+    if (feature === 'qr-scanner') {
+      return;
+    }
     if (feature === 'pos' && !isDesktop) {
       // Mobile keeps the existing POS menu page (POS + Store Front shortcuts).
       setRoute('business-pos-menu');

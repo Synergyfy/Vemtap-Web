@@ -6,7 +6,8 @@ import { BusinessModeHeader } from './BusinessModeHeader';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
 import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
-import { getEnabledQuickActions, type FeatureId } from './businessFeatures';
+import { getEnabledQuickActions, type FeatureId, type QuickActionKey } from './businessFeatures';
+import { BusinessQrScannerModal } from '../components/BusinessQrScannerModal';
 
 interface BusinessOverviewScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -19,7 +20,7 @@ interface BusinessOverviewScreenProps {
   /** Opens the POS menu page (Point of Sale + Store Front pages). */
   onOpenPosMenu: () => void;
   /** Opens a dashboard tool by feature id — powers the generated quick actions. */
-  onOpenFeature: (feature: FeatureId) => void;
+  onOpenFeature: (feature: FeatureId | 'qr-scanner') => void;
 }
 
 const RECENT_ORDERS = [
@@ -47,10 +48,19 @@ export function BusinessOverviewScreen({
   const { mode } = useBusinessOfferings();
   const { features } = useBusinessFeatures();
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
 
   // Quick actions come straight from the saved feature configuration.
   const quickActions = getEnabledQuickActions((id) => Boolean(features[id]));
   const hasMessaging = Boolean(features.chat || features.sms || features.email);
+
+  const handleQuickAction = (feature: QuickActionKey) => {
+    if (feature === 'qr-scanner') {
+      setQrScannerOpen(true);
+      return;
+    }
+    onOpenFeature(feature as FeatureId);
+  };
 
   useEffect(() => {
     const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % 2), 5000);
@@ -258,11 +268,11 @@ export function BusinessOverviewScreen({
                 )}
               </div>
               <div className="flex items-stretch gap-2.5 overflow-x-auto pb-1.5 no-scrollbar snap-x">
-                {quickActions.slice(0, 4).map((action) => (
+                {quickActions.slice(0, 5).map((action) => (
                   <button
                     key={action.feature}
                     type="button"
-                    onClick={() => onOpenFeature(action.feature)}
+                    onClick={() => handleQuickAction(action.feature)}
                     className="snap-start shrink-0 w-[86px] sm:w-[94px] bg-surface-canvas rounded-xl p-2.5 shadow-sm flex flex-col items-center text-center gap-1.5 active:scale-95 transition-transform hover:shadow-md border border-border-subtle/40"
                   >
                     <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
@@ -370,6 +380,13 @@ export function BusinessOverviewScreen({
           )}
         </div>
         <BusinessTabBar active="overview" onTab={onTab} />
+        <BusinessQrScannerModal
+          isOpen={qrScannerOpen}
+          onClose={() => setQrScannerOpen(false)}
+          onOpenOrder={onOpenOrders}
+          onOpenDeals={() => onOpenFeature('deals')}
+          onOpenLoyalty={() => onOpenFeature('loyalty')}
+        />
       </AppScreen>
     </div>
   );

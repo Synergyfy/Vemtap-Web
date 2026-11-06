@@ -3,8 +3,9 @@ import { Icon } from '../../components/ui/Icon';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
-import { getEnabledQuickActions, type FeatureId } from '../businessFeatures';
+import { getEnabledQuickActions, type FeatureId, type QuickActionKey } from '../businessFeatures';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { BusinessQrScannerModal } from '../../components/BusinessQrScannerModal';
 
 interface DesktopBusinessOverviewScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -15,7 +16,7 @@ interface DesktopBusinessOverviewScreenProps {
   onOpenBookings?: () => void;
   onOpenMessages?: () => void;
   /** Opens a dashboard tool by feature id — powers the generated quick actions. */
-  onOpenFeature: (feature: FeatureId) => void;
+  onOpenFeature: (feature: FeatureId | 'qr-scanner') => void;
 }
 
 const RECENT_ORDERS = [
@@ -42,10 +43,19 @@ export function DesktopBusinessOverviewScreen({
   const { mode } = useBusinessOfferings();
   const { features } = useBusinessFeatures();
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
 
   // Quick actions come straight from the saved feature configuration.
   const quickActions = getEnabledQuickActions((id) => Boolean(features[id]));
   const hasMessaging = Boolean(features.chat || features.sms || features.email);
+
+  const handleQuickAction = (feature: QuickActionKey) => {
+    if (feature === 'qr-scanner') {
+      setQrScannerOpen(true);
+      return;
+    }
+    onOpenFeature(feature as FeatureId);
+  };
 
   useEffect(() => {
     const timer = window.setInterval(() => setBannerIndex((current) => (current + 1) % 2), 5000);
@@ -238,13 +248,13 @@ export function DesktopBusinessOverviewScreen({
                 <div className="flex items-center justify-between">
                   <h3 className="font-label-md text-label-md font-bold text-text-primary">Quick Actions</h3>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-space-xs">
-                  {quickActions.slice(0, 4).map((action) => (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-space-xs">
+                  {quickActions.slice(0, 5).map((action) => (
                     <button
                       className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1.5 text-left hover:scale-[1.01] active:scale-[0.98] transition-transform cursor-pointer border border-border-subtle/40"
                       type="button"
                       key={action.feature}
-                      onClick={() => onOpenFeature(action.feature)}
+                      onClick={() => handleQuickAction(action.feature)}
                     >
                       <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
                         <Icon name={action.icon} className="text-[20px]" />
@@ -357,6 +367,13 @@ export function DesktopBusinessOverviewScreen({
           </div>
         </div>
       </div>
+      <BusinessQrScannerModal
+        isOpen={qrScannerOpen}
+        onClose={() => setQrScannerOpen(false)}
+        onOpenOrder={onOpenOrders}
+        onOpenDeals={() => onOpenFeature('deals')}
+        onOpenLoyalty={() => onOpenFeature('loyalty')}
+      />
     </BusinessPortalChrome>
   );
 }
