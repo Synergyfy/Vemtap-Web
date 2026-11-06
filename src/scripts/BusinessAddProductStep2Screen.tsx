@@ -194,6 +194,46 @@ export function BusinessAddProductStep2Screen({
             </p>
           </section>
 
+          {/* Reward & Loyalty Points */}
+          <section className="flex flex-col gap-space-sm p-space-md rounded-xl bg-surface-container-lowest shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-space-xs">
+                <Icon name="stars" className="text-primary text-[20px]" />
+                <div className="flex flex-col">
+                  <h3 className="font-heading-sm text-heading-sm text-on-surface">Reward &amp; Loyalty Points</h3>
+                  <span className="font-caption text-caption text-text-secondary">
+                    Bonus points customers earn on this product
+                  </span>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[10px] font-bold">
+                Loyalty
+              </span>
+            </div>
+            <div className="flex flex-col gap-space-2xs">
+              <label className="font-label-md text-label-md text-on-surface font-medium flex items-center justify-between" htmlFor="loyalty-points">
+                Points Awarded on Purchase
+                <span className="text-text-tertiary font-caption text-caption">Optional</span>
+              </label>
+              <div className="relative flex items-center">
+                <Icon name="stars" className="absolute left-3.5 text-text-tertiary text-[18px]" />
+                <input
+                  className="w-full h-[46px] pl-10 pr-12 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md focus:outline-none focus:bg-surface-canvas transition-all"
+                  id="loyalty-points"
+                  inputMode="numeric"
+                  placeholder="e.g. 50 (leave empty for default spend rate)"
+                  type="text"
+                  value={draft.loyaltyPoints || ''}
+                  onChange={(event) => onDraftChange({ loyaltyPoints: event.target.value })}
+                />
+                <span className="absolute right-3.5 text-text-tertiary font-caption text-[11px] font-semibold">pts</span>
+              </div>
+              <p className="font-caption text-[11px] text-text-tertiary">
+                If left empty, the standard store formula (₦100 spent = 1 pt) applies automatically.
+              </p>
+            </div>
+          </section>
+
           <section className="flex flex-col gap-space-md p-space-md rounded-xl bg-surface-container-lowest shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-space-xs">

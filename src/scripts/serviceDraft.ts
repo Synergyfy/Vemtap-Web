@@ -27,6 +27,7 @@ export interface ServiceDraft {
   concurrentBookings: number;
   leadNotice: string;
   bookingHorizon: string;
+  loyaltyPoints?: string;
 }
 
 export const INITIAL_SERVICE_DRAFT: ServiceDraft = {
@@ -48,6 +49,7 @@ export const INITIAL_SERVICE_DRAFT: ServiceDraft = {
   standardPrice: '18,000',
   comparePrice: '20,000',
   basePrice: '16,000',
+  loyaltyPoints: '90',
   durationMins: 60,
   bufferMins: 15,
   tiersEnabled: true,

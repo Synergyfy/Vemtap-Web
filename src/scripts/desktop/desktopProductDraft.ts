@@ -20,6 +20,7 @@ export interface ProductDraft {
   branches: Record<string, boolean>;
   pricingMode: 'uniform' | 'custom';
   prepWindow: string;
+  loyaltyPoints?: string;
 }
 
 export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
@@ -49,4 +50,5 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   branches: { wuse: true, garki: true, maitama: false },
   pricingMode: 'custom',
   prepWindow: '20 – 30 Mins',
+  loyaltyPoints: '50',
 };

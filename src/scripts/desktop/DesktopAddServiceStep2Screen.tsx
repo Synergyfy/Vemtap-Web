@@ -217,6 +217,35 @@ export function DesktopAddServiceStep2Screen({
                   <strong>26%</strong> across Lagos &amp; Abuja urban salon appointments on VEMTAP.
                 </p>
               </div>
+
+              {/* Reward & Loyalty Points */}
+              <div className="pt-2 border-t border-border/50 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Icon name="stars" className="text-primary text-[20px]" />
+                    <span className="font-label-md text-label-md font-semibold text-text-primary">Reward Points Awarded</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-bold">
+                    Loyalty Engine
+                  </span>
+                </div>
+                <div className="relative max-w-sm flex items-center">
+                  <Icon name="stars" className="absolute left-3.5 text-text-tertiary text-[18px]" />
+                  <input
+                    id="service-loyalty-points-input"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 90 (leave empty for default store formula)"
+                    value={draft.loyaltyPoints || ''}
+                    onChange={(event) => onDraftChange({ loyaltyPoints: event.target.value })}
+                    className="w-full pl-10 pr-12 py-3 bg-surface-subtle focus:bg-surface-canvas rounded-xl font-body-md text-body-md text-text-primary focus:outline-none transition-all shadow-inner font-semibold"
+                  />
+                  <span className="absolute right-4 font-caption text-caption text-text-tertiary font-medium">pts</span>
+                </div>
+                <p className="font-caption text-caption text-text-tertiary">
+                  Clients booking this service earn these bonus points upon service completion.
+                </p>
+              </div>
             </div>
 
             <div className="bg-surface-canvas rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
