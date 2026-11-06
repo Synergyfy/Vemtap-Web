@@ -452,7 +452,7 @@ ${printKvTable('Revenue Trend', trendBuckets.map((bucket) => [bucket.label, nair
         meta: `${countFmt(customer.visits)} visits`,
         amount: naira(customer.spend),
         tag: customer.tier ? `${customer.tier} Tier` : index === 0 ? 'Top spender' : 'Top customer',
-        avatar: CUSTOMER_AVATAR,
+        avatar: customer.avatarUrl || CUSTOMER_AVATAR,
       }))
     : PATRONS;
   const vipShare = segmentSpend && segmentsData ? Math.round((segmentsData.vip.spend / segmentSpend) * 100) : 0;

@@ -733,7 +733,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                       <img
                         className="w-12 h-12 rounded-full object-cover"
                         alt="Portrait of a sophisticated West African professional male diner wearing clean modern business casual attire smiling in Abuja upscale dining lounge with warm soft ambient lighting"
-                        src={v(CUSTOMER_AVATAR, "https://lh3.googleusercontent.com/aida-public/AB6AXuBOYAjP73ox3oOVHbWhD7w1D9VmweMC7F2b_b9EhIBDpIMs3mSZVM3a3BHNUZdlwuX4Pz1ixYftL_3hDeNbW_R7XJQNMALJ6Q7Mw5I-86706EGYWk0tSoO995c6ECCrzlxWODcjhcfPUbDu9L6UNKv7E6jV6R9Tmm-atK_BadHafPYMNE9zLOM1-7JTFKjHy3mxWpdNLT9Hue_u_Xj1k0tB9rJxQL75OpR1hQGGucR4VbwLAqHmDOuQ-Q")}
+                        src={v(top[0]?.avatarUrl || CUSTOMER_AVATAR, "https://lh3.googleusercontent.com/aida-public/AB6AXuBOYAjP73ox3oOVHbWhD7w1D9VmweMC7F2b_b9EhIBDpIMs3mSZVM3a3BHNUZdlwuX4Pz1ixYftL_3hDeNbW_R7XJQNMALJ6Q7Mw5I-86706EGYWk0tSoO995c6ECCrzlxWODcjhcfPUbDu9L6UNKv7E6jV6R9Tmm-atK_BadHafPYMNE9zLOM1-7JTFKjHy3mxWpdNLT9Hue_u_Xj1k0tB9rJxQL75OpR1hQGGucR4VbwLAqHmDOuQ-Q")}
                       />
                       <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center font-caption text-caption font-bold shadow-xs">
                         #1
@@ -765,7 +765,7 @@ export function DesktopAnalyticsCustomersScreen({ onNav }: DesktopAnalyticsCusto
                       <img
                         className="w-12 h-12 rounded-full object-cover"
                         alt="Portrait of a modern young Nigerian woman smiling joyfully holding a beverage at a chic modern cafe restaurant in Abuja with bright natural daylight"
-                        src={v(CUSTOMER_AVATAR, "https://lh3.googleusercontent.com/aida-public/AB6AXuAadt9PRxWMRd6zM1f1VdTplyPG1ODc3if4sBDs9sKrL4u0LrvUc28BrJn30Tv1EEzZ7wvZdbTq4izrebat5RnA3xgh1gnPJITYHy5-XjQ2oqC2nlnyPTImnhCKWDb26QwwdUvYJhggGLeGX7G_616AEiNPc_nKB1t6_6CHTONr1-3h7a_KQ4_qT0ZjMsjQ6l6SGFU-YXhwOGc69Q04JL1WAPXVNlhrd6KAl6V-BAQuelOCa0sG9Qxuow")}
+                        src={v(top[1]?.avatarUrl || CUSTOMER_AVATAR, "https://lh3.googleusercontent.com/aida-public/AB6AXuAadt9PRxWMRd6zM1f1VdTplyPG1ODc3if4sBDs9sKrL4u0LrvUc28BrJn30Tv1EEzZ7wvZdbTq4izrebat5RnA3xgh1gnPJITYHy5-XjQ2oqC2nlnyPTImnhCKWDb26QwwdUvYJhggGLeGX7G_616AEiNPc_nKB1t6_6CHTONr1-3h7a_KQ4_qT0ZjMsjQ6l6SGFU-YXhwOGc69Q04JL1WAPXVNlhrd6KAl6V-BAQuelOCa0sG9Qxuow")}
                       />
                       <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-badge-discount-text text-white flex items-center justify-center font-caption text-caption font-bold shadow-xs">
                         #2
