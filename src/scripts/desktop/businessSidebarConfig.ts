@@ -104,9 +104,6 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     badge: 'Live',
     badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
     badgeFeature: 'storefront',
-    // Store Front lives inside POS now — hidden from the main rail, rendered as
-    // its own group in the POS side menu.
-    hidden: true,
     items: [
       { key: 'store-ordering-dashboard', label: 'Store Front Dashboard', icon: 'dashboard' },
       { key: 'store-ordering-qr', label: 'QR Codes & Placement', icon: 'qr_code_2' },

@@ -5371,6 +5371,16 @@ function AppInner() {
       return (
         <BusinessMoreScreen
           onTab={businessTab}
+          onOpenPos={() => setRoute('pos-home')}
+          onOpenStorefront={(sub) =>
+            setRoute(
+              sub === 'qr'
+                ? 'store-ordering-qr'
+                : sub === 'settings'
+                ? 'store-ordering-settings'
+                : 'store-ordering-dashboard',
+            )
+          }
           onOpenAnalytics={() => setRoute('analytics-business')}
           onOpenMarketing={() => setRoute('boost-hub')}
           onOpenSubscription={() => setRoute('subscription')}

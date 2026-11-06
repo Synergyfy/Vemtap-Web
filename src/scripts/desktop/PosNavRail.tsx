@@ -25,14 +25,11 @@ export function PosNavRail({ active, onSelect, headerHeight = '16' }: PosNavRail
   const { itemKey: activeItemKey } = resolveSidebarActive(active);
 
   // Groups come from the shared rail config with the switched-off tools removed:
-  // Store Front pages only appear while Store Front is on, POS pages only while
-  // POS is on.
+  // POS pages only appear while POS is on.
   const visibleSections = filterSidebarSections(BUSINESS_SIDEBAR_SECTIONS, (id) => Boolean(features[id]));
   const posSection = visibleSections.find((section) => section.key === 'pos');
-  const storeFrontSection = visibleSections.find((section) => section.key === 'store-ordering');
   const groups: Array<{ label: string; items: BusinessSidebarSubItem[] }> = [];
   if (posSection) groups.push({ label: 'Point of Sale', items: posSection.items ?? [] });
-  if (storeFrontSection) groups.push({ label: 'Store Front', items: storeFrontSection.items ?? [] });
 
   if (groups.length === 0) return null;
 

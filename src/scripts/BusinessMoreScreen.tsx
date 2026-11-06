@@ -10,6 +10,8 @@ import { URBAN_BUSINESS } from './businessData';
 
 interface BusinessMoreScreenProps {
   onTab: (tab: BusinessTabKey) => void;
+  onOpenPos?: () => void;
+  onOpenStorefront?: (sub?: 'dashboard' | 'qr' | 'settings') => void;
   onOpenAnalytics: () => void;
   onOpenMarketing: () => void;
   onOpenSubscription: () => void;
@@ -53,6 +55,8 @@ const ERROR_BADGE = 'bg-error-container text-on-error-container';
 
 export function BusinessMoreScreen({
   onTab,
+  onOpenPos,
+  onOpenStorefront,
   onOpenAnalytics,
   onOpenMarketing,
   onOpenSubscription,
@@ -83,9 +87,64 @@ export function BusinessMoreScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  // Order mirrors the desktop More side-menu list — keep both in sync.
-  // POS and Store Front now live in the POS menu (Overview quick action).
+  // Section order on mobile More:
+  // 1. Point of Sale (POS)
+  // 2. Store Front
+  // 3. Cluster System
+  // followed by Marketing, Analytics, Subscription, Notifications, Verification, Support, Settings.
   const allSections: SectionData[] = [
+    {
+      key: 'pos',
+      label: 'Point of Sale',
+      badge: 'Active',
+      badgeClass: GREEN_BADGE,
+      rows: [
+        {
+          key: 'pos-terminal',
+          icon: 'point_of_sale',
+          iconClass: 'bg-primary-container text-on-primary',
+          title: 'Point of Sale (POS)',
+          sub: 'Counter till, new sales, receipt printing & daily audits',
+          badge: 'Till 01',
+          badgeClass: 'bg-surface-container text-on-surface-variant',
+          onClick: onOpenPos || (() => {}),
+        },
+      ],
+    },
+    {
+      key: 'storefront',
+      label: 'Store Front',
+      badge: 'Live',
+      badgeClass: GREEN_BADGE,
+      rows: [
+        {
+          key: 'store-ordering-dashboard',
+          icon: 'qr_code_scanner',
+          iconClass: 'bg-surface-tint-blue text-primary',
+          title: 'Store Front Dashboard',
+          sub: 'Contactless table ordering, digital menu & orders',
+          badge: 'Live',
+          badgeClass: GREEN_BADGE,
+          onClick: () => onOpenStorefront?.('dashboard'),
+        },
+        {
+          key: 'store-ordering-qr',
+          icon: 'qr_code_2',
+          iconClass: 'bg-surface-container text-on-surface-variant',
+          title: 'QR Codes & Placement',
+          sub: 'Generate table tent stickers & stand QR displays',
+          onClick: () => onOpenStorefront?.('qr'),
+        },
+        {
+          key: 'store-ordering-settings',
+          icon: 'tune',
+          iconClass: 'bg-surface-container text-on-surface-variant',
+          title: 'Store Front Settings',
+          sub: 'Service charges, VAT tax & kitchen print preferences',
+          onClick: () => onOpenStorefront?.('settings'),
+        },
+      ],
+    },
     {
       key: 'cluster',
       label: 'Cluster System',
@@ -216,6 +275,8 @@ export function BusinessMoreScreen({
 
   // Sections that belong to a switched-off tool are removed from the list.
   const SECTION_FEATURE: Partial<Record<string, FeatureId>> = {
+    pos: 'pos',
+    storefront: 'storefront',
     cluster: 'cluster',
     marketing: 'deals',
     analytics: 'analytics',
