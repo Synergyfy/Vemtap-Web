@@ -218,6 +218,40 @@ export function DesktopAddProductStep2Screen({
               </div>
             </section>
 
+            {/* Reward & Loyalty Points */}
+            <section className="bg-surface-canvas rounded-xl shadow-md p-space-lg flex flex-col gap-space-md border border-border/50">
+              <div className="flex items-center justify-between pb-space-xs border-b border-border/50">
+                <div className="flex items-center gap-space-2xs text-primary">
+                  <Icon name="stars" className="text-[22px]" />
+                  <h2 className="font-heading-md text-heading-md text-text-primary">Reward &amp; Loyalty Points</h2>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-bold">
+                  Loyalty Points Engine
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5 max-w-md">
+                <label className="font-label-md text-label-md text-text-primary font-medium" htmlFor="inputLoyaltyPoints">
+                  Points Awarded on Purchase
+                </label>
+                <div className="relative flex items-center">
+                  <Icon name="stars" className="absolute left-3.5 text-text-tertiary text-[18px]" />
+                  <input
+                    id="inputLoyaltyPoints"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 50 (leave empty for default store spend rate)"
+                    value={draft.loyaltyPoints || ''}
+                    onChange={(event) => onDraftChange({ loyaltyPoints: event.target.value })}
+                    className="w-full h-[46px] pl-10 pr-12 rounded-xl bg-surface-subtle font-body-md text-body-md text-text-primary focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-semibold"
+                  />
+                  <span className="absolute right-3.5 text-text-tertiary font-caption text-[11px] font-semibold">pts</span>
+                </div>
+                <p className="font-caption text-caption text-text-tertiary">
+                  Customers who purchase this item earn these bonus points. If left blank, the standard formula applies.
+                </p>
+              </div>
+            </section>
+
             <section className="bg-surface-canvas rounded-xl shadow-md p-space-lg flex flex-col gap-space-md">
               <div className="flex items-center justify-between gap-space-sm pb-space-xs">
                 <div>

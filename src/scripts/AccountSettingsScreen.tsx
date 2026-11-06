@@ -150,6 +150,8 @@ interface AccountSettingsScreenProps {
   onBack: () => void;
   onOpenPrivacy: () => void;
   onOpenTerms: () => void;
+  /** Business Settings › Manage Features — the dashboard tool switchboard. Omitted in consumer mode. */
+  onOpenFeatures?: () => void;
   onSignOut: () => void;
 }
 
@@ -183,8 +185,8 @@ function Toggle({ checked, onChange, label, disabled }: ToggleProps) {
       }`}
     >
       <span
-        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-surface-container-lowest shadow-sm transition duration-200 ease-in-out ${
-          checked ? 'translate-x-5' : 'translate-x-0'
+        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+          checked ? 'translate-x-3.5' : 'translate-x-0'
         }`}
       />
     </button>
@@ -266,7 +268,7 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
   };
 
   const sectionTitle =
-    'font-label-sm text-label-sm text-text-tertiary uppercase tracking-wider font-semibold px-space-2xs';
+    'text-[11px] text-text-tertiary uppercase tracking-wider font-semibold px-1';
   const rowButton =
     'w-full text-left p-space-md flex items-center justify-between gap-space-sm active:bg-surface-subtle transition-colors min-h-[64px]';
   const iconTile = 'w-10 h-10 rounded-xl bg-surface-tint-blue flex items-center justify-center shrink-0';
@@ -287,19 +289,19 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
 
   return (
     <AppScreen>
-      <header className="sticky top-0 z-30 bg-surface-container-lowest/95 backdrop-blur-md shadow-sm">
-        <div className="h-16 px-margin flex items-center justify-between">
-          <div className="flex items-center gap-space-sm min-w-0">
+      <header className="sticky top-0 z-30 bg-surface-container-lowest/95 backdrop-blur-md shadow-xs border-b border-border-subtle/40">
+        <div className="h-14 px-margin flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               aria-label="Go back"
               type="button"
               onClick={onBack}
-              className="w-11 h-11 -ml-space-2xs flex items-center justify-center rounded-full text-on-surface active:bg-surface-container transition-colors"
+              className="w-9 h-9 -ml-1 flex items-center justify-center rounded-full text-on-surface active:bg-surface-container transition-colors"
             >
-              <Icon name="arrow_back_ios_new" className="text-[24px]" />
+              <Icon name="arrow_back_ios_new" className="text-[18px]" />
             </button>
-            <h1 className="font-heading-sm text-heading-sm text-on-surface truncate tracking-tight">
-              Account Settings &amp; Security
+            <h1 className="font-bold text-[15px] text-on-surface truncate tracking-tight">
+              Settings &amp; Security
             </h1>
           </div>
           <div className="flex items-center shrink-0 pl-space-xs">
@@ -323,8 +325,11 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                   Security Status: {securityLabel}
                 </span>
               </div>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-badge-discount-bg text-[10px] text-badge-discount-text font-bold uppercase tracking-wider">
+                Protected
+              </span>
             </div>
-            <Icon name="check_circle" className="text-badge-discount-text text-[18px]" />
+            <Icon name="check_circle" className="text-badge-discount-text text-[16px]" />
           </div>
           <p className="font-body-md text-body-md text-text-secondary leading-snug">{securitySummary}</p>
           <div className="pt-space-2xs flex items-center gap-space-xs text-text-tertiary">
@@ -340,20 +345,21 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           </div>
         </section>
 
-        <section className="space-y-space-xs">
+        {/* Login & Credentials */}
+        <section className="space-y-1">
           <h2 className={sectionTitle}>Login &amp; Credentials</h2>
-          <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-surface-container-lowest rounded-xl shadow-xs border border-border-subtle/50 divide-y divide-border-subtle/40 overflow-hidden">
             <button
               type="button"
               onClick={handlePasswordReset}
               className={`${rowButton} hover:bg-surface-subtle`}
             >
-              <div className="flex items-center gap-space-sm min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={iconTile}>
-                  <Icon name="pin" className="text-primary text-[22px]" />
+                  <Icon name="pin" className="text-primary text-[17px]" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-space-xs">
+                  <div className="flex items-center gap-1.5">
                     <span className={rowTitle}>Security PIN</span>
                     {security.hasPin && <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />}
                   </div>
@@ -473,13 +479,14 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           </div>
         </section>
 
-        <section className="space-y-space-xs">
+        {/* Verification & Alerts */}
+        <section className="space-y-1">
           <h2 className={sectionTitle}>Verification &amp; Alerts</h2>
-          <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
-            <div className="p-space-md flex items-center justify-between gap-space-sm">
-              <div className="flex items-center gap-space-sm min-w-0">
+          <div className="bg-surface-container-lowest rounded-xl shadow-xs border border-border-subtle/50 divide-y divide-border-subtle/40 overflow-hidden">
+            <div className="px-3 py-2 flex items-center justify-between gap-2.5 min-h-[46px]">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={iconTile}>
-                  <Icon name="sms" className="text-primary text-[22px]" />
+                  <Icon name="sms" className="text-primary text-[17px]" />
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>SMS Alerts</span>
@@ -496,10 +503,10 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               />
             </div>
 
-            <div className="p-space-md flex items-center justify-between gap-space-sm bg-surface-subtle">
-              <div className="flex items-center gap-space-sm min-w-0">
+            <div className="px-3 py-2 flex items-center justify-between gap-2.5 bg-surface-subtle/30 min-h-[46px]">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={iconTile}>
-                  <Icon name="mail" className="text-primary text-[22px]" />
+                  <Icon name="mail" className="text-primary text-[17px]" />
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Email Notices</span>
@@ -522,9 +529,9 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               aria-expanded={showAuditLog}
               className={`${rowButton} hover:bg-surface-subtle`}
             >
-              <div className="flex items-center gap-space-sm min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={iconTile}>
-                  <Icon name="manage_history" className="text-primary text-[22px]" />
+                  <Icon name="manage_history" className="text-primary text-[17px]" />
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Security Audit Log</span>
@@ -565,13 +572,14 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
           </div>
         </section>
 
-        <section className="space-y-space-xs">
+        {/* Privacy & Data */}
+        <section className="space-y-1">
           <h2 className={sectionTitle}>Privacy &amp; Data</h2>
-          <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-surface-container-lowest rounded-xl shadow-xs border border-border-subtle/50 divide-y divide-border-subtle/40 overflow-hidden">
             <button type="button" onClick={onOpenPrivacy} className={`${rowButton} hover:bg-surface-subtle`}>
-              <div className="flex items-center gap-space-sm min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={iconTile}>
-                  <Icon name="near_me" className="text-primary text-[22px]" />
+                  <Icon name="near_me" className="text-primary text-[17px]" />
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Location Precision</span>
@@ -590,10 +598,10 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               </div>
             </button>
 
-            <div className="p-space-md flex items-center justify-between gap-space-sm bg-surface-subtle">
-              <div className="flex items-center gap-space-sm min-w-0">
+            <div className="px-3 py-2 flex items-center justify-between gap-2.5 bg-surface-subtle/30 min-h-[46px]">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={iconTile}>
-                  <Icon name="auto_awesome" className="text-primary text-[22px]" />
+                  <Icon name="auto_awesome" className="text-primary text-[17px]" />
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Personalized Deals</span>
@@ -611,9 +619,9 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
             </div>
 
             <button type="button" onClick={onOpenTerms} className={`${rowButton} hover:bg-surface-subtle`}>
-              <div className="flex items-center gap-space-sm min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className={iconTile}>
-                  <Icon name="description" className="text-primary text-[22px]" />
+                  <Icon name="description" className="text-primary text-[17px]" />
                 </div>
                 <div className="min-w-0">
                   <span className={`${rowTitle} block`}>Download Data &amp; Policy</span>
@@ -623,21 +631,18 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
               {chevron}
             </button>
 
-            <div className="h-[1px] bg-surface-container w-full" />
-
-            {/* BUG-018/019: Delete Account lives under Privacy & Data, never beside Sign Out. */}
             <button
               type="button"
               onClick={() => setShowDeleteAccount(true)}
               className={`${rowButton} hover:bg-surface-subtle`}
             >
-              <div className="flex items-center gap-space-sm min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-error-container flex items-center justify-center shrink-0">
-                  <Icon name="delete_forever" className="text-error text-[22px]" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-error-container flex items-center justify-center shrink-0">
+                  <Icon name="delete_forever" className="text-error text-[17px]" />
                 </div>
                 <div className="min-w-0">
-                  <span className={`${rowTitle} block text-error`}>Delete Account &amp; Purge Vouchers</span>
-                  <p className={rowHint}>Permanently remove your profile &amp; redemption ledger</p>
+                  <span className={`${rowTitle} block text-error`}>Delete Account &amp; Purge Data</span>
+                  <p className={rowHint}>Permanently remove profile &amp; records</p>
                 </div>
               </div>
               {chevron}
@@ -670,21 +675,21 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
             if (event.target === event.currentTarget) setConfirmSignOut(false);
           }}
         >
-          <div className="w-full max-w-lg bg-surface rounded-t-2xl p-space-lg shadow-2xl flex flex-col space-y-space-md pb-safe">
+          <div className="w-full max-w-lg bg-surface rounded-t-2xl p-4 shadow-2xl flex flex-col space-y-3 pb-safe">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-error-container text-error flex items-center justify-center">
-                  <Icon name="logout" className="text-[18px]" />
+                <div className="w-7 h-7 rounded-full bg-error-container text-error flex items-center justify-center">
+                  <Icon name="logout" className="text-[16px]" />
                 </div>
-                <h3 className="font-heading-sm text-heading-sm text-on-surface">Sign out everywhere?</h3>
+                <h3 className="font-bold text-sm text-on-surface">Sign out everywhere?</h3>
               </div>
               <button
                 aria-label="Close"
                 type="button"
                 onClick={() => setConfirmSignOut(false)}
-                className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant"
+                className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant"
               >
-                <Icon name="close" className="text-[18px]" />
+                <Icon name="close" className="text-[16px]" />
               </button>
             </div>
             <p className="font-body-md text-body-md text-text-secondary">
@@ -692,11 +697,11 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
                 ? `You'll be signed out of ${security.otherDevices.length} other device${security.otherDevices.length === 1 ? '' : 's'}. This device stays signed in.`
                 : 'No other devices are signed in to your account right now.'}
             </p>
-            <div className="flex gap-space-xs">
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setConfirmSignOut(false)}
-                className="flex-1 h-11 rounded-xl bg-surface-container-low text-text-secondary font-button-secondary text-button-secondary active:bg-surface-container transition-colors"
+                className="flex-1 h-10 rounded-xl bg-surface-container-low text-text-secondary text-xs font-semibold active:bg-surface-container transition-colors"
               >
                 Cancel
               </button>
@@ -730,8 +735,8 @@ export function AccountSettingsScreen({ onBack, onOpenPrivacy, onOpenTerms, onSi
       />
 
       {toast && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-space-md py-2.5 rounded-full shadow-lg font-label-md text-label-md flex items-center gap-2 transition-all duration-300">
-          <Icon name="check_circle" className="text-[18px] text-badge-discount-text" filled />
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-4 py-2 rounded-full shadow-lg text-xs font-medium flex items-center gap-2 transition-all duration-300">
+          <Icon name="check_circle" className="text-[16px] text-badge-discount-text" filled />
           <span>{toast}</span>
         </div>
       )}

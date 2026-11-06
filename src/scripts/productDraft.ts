@@ -30,6 +30,7 @@ export interface ProductDraft {
   tags: string[];
   /** Units on hand when the product has no variants. */
   stock: string;
+  loyaltyPoints?: string;
 }
 
 export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
@@ -60,11 +61,13 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   tags: ['Halal certified', 'Medium Spicy'],
   stock: '',
   prepWindow: '20-30',
+  loyaltyPoints: '50',
 };
 
 /** Live setup starts from an empty product — the sample above is demo-only. */
 export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   ...INITIAL_PRODUCT_DRAFT,
+  loyaltyPoints: '',
   title: '',
   producer: '',
   description: '',

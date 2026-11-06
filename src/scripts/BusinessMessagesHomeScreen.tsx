@@ -240,31 +240,31 @@ export function BusinessMessagesHomeScreen({
     <AppScreen>
       {/* Messages Header */}
       <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-        <div className="h-16 px-margin flex items-center justify-between gap-space-sm">
-          <div className="flex items-center gap-space-sm min-w-0">
-            <h1 className="font-heading-md text-heading-md text-on-surface truncate">Messages</h1>
-            <div className="flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-badge-discount-bg">
-              <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-              <span className="font-caption text-caption text-badge-discount-text font-medium">Online</span>
+        <div className="h-14 px-margin flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-[15px] font-bold text-on-surface truncate">Messages</h1>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg">
+              <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
+              <span className="text-[10px] text-badge-discount-text font-medium">Online</span>
             </div>
           </div>
-          <div className="flex items-center gap-space-xs">
+          <div className="flex items-center gap-1">
             {/* Branch switching lives in the header, like the other business screens. */}
             <MobileLocationMenu />
             <button
               aria-label="Search conversations"
-              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
               type="button"
               onClick={onOpenSearch}
             >
-              <Icon name="search" className="text-[22px]" />
+              <Icon name="search" className="text-[20px]" />
             </button>
             <button
               aria-label="More options"
-              className="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface transition-colors"
               type="button"
             >
-              <Icon name="more_vert" className="text-[22px]" />
+              <Icon name="more_vert" className="text-[20px]" />
             </button>
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
               <UserAvatar textClassName="text-on-primary text-[13px]" />
@@ -276,11 +276,11 @@ export function BusinessMessagesHomeScreen({
 
       <div className="flex flex-col w-full flex-1 pb-24">
         {/* Search Surface */}
-        <div className="px-space-md pt-space-xs pb-space-xs">
-          <div className="flex items-center gap-space-xs bg-surface-container-low px-space-md py-2.5 rounded-xl shadow-sm transition-all">
-            <Icon name="search" className="text-text-secondary text-[20px]" />
+        <div className="px-margin pt-2 pb-1.5">
+          <div className="flex items-center gap-2 bg-surface-container-low px-3 py-2 rounded-xl shadow-sm transition-all">
+            <Icon name="search" className="text-text-secondary text-[18px]" />
             <input
-              className="bg-transparent flex-1 font-body-md text-body-md text-on-surface placeholder:text-text-tertiary focus:outline-none"
+              className="bg-transparent flex-1 text-label-sm text-on-surface placeholder:text-text-tertiary focus:outline-none"
               placeholder="Search customer, deal, order #, or message..."
               type="text"
               readOnly
@@ -288,29 +288,29 @@ export function BusinessMessagesHomeScreen({
             />
             <button
               aria-label="Voice search or filters"
-              className="w-7 h-7 flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-container-high transition-colors"
+              className="w-6 h-6 flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-container-high transition-colors"
               type="button"
               onClick={onOpenSearch}
             >
-              <Icon name="tune" className="text-[18px]" />
+              <Icon name="tune" className="text-[16px]" />
             </button>
           </div>
         </div>
 
         {/* Filter Chips */}
-        <div className="px-space-md py-space-2xs flex items-center gap-space-xs overflow-x-auto no-scrollbar">
+        <div className="px-margin py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {INBOX_CHIPS.map((inboxChip) => {
             const active = inboxChip.key === chip;
             return (
               <button
-                className={`flex items-center gap-1.5 px-space-md py-1.5 rounded-full font-label-md text-label-md shrink-0 transition-colors ${
-                  active ? 'bg-surface-tint-blue text-primary shadow-sm' : 'bg-surface-container-low text-text-secondary hover:text-on-surface'
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-label-sm shrink-0 transition-colors ${
+                  active ? 'bg-surface-tint-blue text-primary font-semibold shadow-sm' : 'bg-surface-container-low text-text-secondary hover:text-on-surface'
                 }`}
                 key={inboxChip.key}
                 type="button"
                 onClick={() => setChip(inboxChip.key)}
               >
-                {active && inboxChip.pulse && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
+                {active && inboxChip.pulse && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
                 <span>{inboxChip.label}</span>
                 <span className={`font-caption text-caption ${active ? 'opacity-80' : 'text-text-tertiary'}`}>
                   {chipCount(inboxChip.key)}
@@ -347,7 +347,7 @@ export function BusinessMessagesHomeScreen({
           )}
           {visibleConversations.map((row) => (
             <button
-              className={`flex items-start gap-space-sm p-space-sm rounded-xl bg-surface-canvas transition-transform cursor-pointer text-left w-full ${
+              className={`flex items-start gap-2.5 p-2.5 rounded-xl bg-surface-canvas transition-transform cursor-pointer text-left w-full border border-border-subtle/40 ${
                 row.unread ? 'shadow-sm active:scale-[0.99]' : 'hover:bg-surface-subtle'
               }`}
               key={row.id}
@@ -364,31 +364,31 @@ export function BusinessMessagesHomeScreen({
               }
             >
               <div className="relative shrink-0">
-                <img alt={row.alt} className="w-[50px] h-[50px] rounded-full object-cover shadow-inner" src={row.img} />
+                <img alt={row.alt} className="w-10 h-10 rounded-full object-cover shadow-inner" src={row.img} />
                 {row.online && (
-                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-badge-discount-text rounded-full ring-2 ring-surface-canvas" />
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-badge-discount-text rounded-full ring-2 ring-surface-canvas" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-space-xs mb-1">
-                  <h2 className="font-heading-sm text-heading-sm text-on-surface truncate">{row.name}</h2>
+                <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                  <h2 className="text-[13px] font-semibold text-on-surface truncate">{row.name}</h2>
                   <span
-                    className={`font-caption text-caption shrink-0 ${row.timePrimary ? 'text-primary font-semibold' : 'text-text-tertiary'}`}
+                    className={`text-[11px] shrink-0 ${row.timePrimary ? 'text-primary font-semibold' : 'text-text-tertiary'}`}
                   >
                     {row.time}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 mb-1.5">
+                <div className="flex items-center gap-1 mb-1">
                   <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-caption text-caption font-medium ${row.chipClass}`}
+                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${row.chipClass}`}
                   >
-                    <Icon name={row.chipIcon} className="text-[12px]" />
+                    <Icon name={row.chipIcon} className="text-[11px]" />
                     {row.chipLabel}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-space-xs">
+                <div className="flex items-center justify-between gap-1.5">
                   <p
-                    className={`font-body-md text-body-md truncate flex items-center gap-1 ${
+                    className={`text-[11px] truncate flex items-center gap-1 ${
                       row.messagePrimary ? 'text-text-primary font-medium' : 'text-text-secondary'
                     }`}
                   >
@@ -411,12 +411,12 @@ export function BusinessMessagesHomeScreen({
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-40 flex justify-end pointer-events-none">
         <button
           aria-label="New broadcast or customer chat"
-          className="flex items-center gap-2 px-space-md py-3 rounded-full bg-primary text-on-primary shadow-lg shadow-primary/30 active:scale-95 transition-transform pointer-events-auto"
+          className="h-10 px-3.5 rounded-full bg-primary text-on-primary shadow-lg shadow-primary/30 active:scale-95 transition-transform pointer-events-auto flex items-center gap-1.5 text-[12px] font-semibold"
           type="button"
           onClick={onNewMessage}
         >
-          <Icon name="add_comment" className="text-[20px]" />
-          <span className="font-button-primary text-button-primary">New Message</span>
+          <Icon name="add_comment" className="text-[18px]" />
+          <span>New Message</span>
         </button>
       </div>
 

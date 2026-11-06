@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { BusinessQrScannerModal } from '../components/BusinessQrScannerModal';
 import { BusinessModeHeader } from './BusinessModeHeader';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { useOverviewData } from '../hooks/business/useOverviewData';
 import { greeting, todayLabel } from '../utils/format';
 import { apiErrorMessage } from '../services/errorMessages';
+import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import { getEnabledQuickActions, type FeatureId, type QuickActionKey } from './businessFeatures';
 
 interface BusinessOverviewScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -18,6 +22,8 @@ interface BusinessOverviewScreenProps {
   onOpenMessages: () => void;
   /** Opens the POS menu page (Point of Sale + Store Front pages). */
   onOpenPosMenu: () => void;
+  /** Opens a dashboard tool by feature id — powers the generated quick actions. */
+  onOpenFeature: (feature: FeatureId) => void;
 }
 
 const RECENT_ORDERS = [
@@ -38,14 +44,30 @@ export function BusinessOverviewScreen({
   onOpenOrders,
   onOpenBookings,
   onOpenMessages,
-  onOpenPosMenu,
+  onOpenPosMenu: _onOpenPosMenu,
+  onOpenFeature,
 }: BusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
+  const { mode } = useBusinessOfferings();
+  const { features } = useBusinessFeatures();
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const overview = useOverviewData();
   // A business already on a paid plan doesn't need the Subscribe slide.
   const bannerCount = overview.onPaidPlan ? 1 : 2;
+
+  // Quick actions come straight from the saved feature configuration.
+  const quickActions = getEnabledQuickActions((id) => Boolean(features[id]));
+  const hasMessaging = Boolean(features.chat || features.sms || features.email);
+
+  const handleQuickAction = (feature: QuickActionKey) => {
+    if (feature === 'qr-scanner') {
+      setScannerOpen(true);
+      return;
+    }
+    onOpenFeature(feature as FeatureId);
+  };
 
   useEffect(() => {
     setBannerIndex(0);
@@ -66,38 +88,50 @@ export function BusinessOverviewScreen({
   const recentMessages = overview.isLive ? overview.recentMessages : RECENT_MESSAGES;
 
   const todayStats = [
-    {
-      icon: 'receipt_long',
-      iconBox: 'bg-surface-tint-blue text-primary',
-      label: 'Orders Today',
-      value: stats.orders,
-      note: 'Live count',
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'payments',
-      iconBox: 'bg-badge-discount-bg text-badge-discount-text',
-      label: 'Revenue Today',
-      value: stats.revenue,
-      note: stats.revenueDelta,
-      onClick: onOpenOrders,
-    },
-    {
-      icon: 'calendar_month',
-      iconBox: 'bg-tertiary-fixed text-tertiary',
-      label: 'Bookings',
-      value: stats.bookings,
-      note: overview.isLive ? 'All time' : 'Next in 35 mins',
-      onClick: onOpenBookings,
-    },
-    {
-      icon: 'chat_bubble',
-      iconBox: 'bg-secondary-container text-on-secondary-container',
-      label: 'Unread Messages',
-      value: stats.unread,
-      note: 'Open inquiries',
-      onClick: onOpenMessages,
-    },
+    ...(features.pos
+      ? [
+          {
+            icon: 'receipt_long',
+            iconBox: 'bg-surface-tint-blue text-primary',
+            label: 'Orders Today',
+            value: stats.orders,
+            note: 'Live count',
+            onClick: onOpenOrders,
+          },
+          {
+            icon: 'payments',
+            iconBox: 'bg-badge-discount-bg text-badge-discount-text',
+            label: 'Revenue Today',
+            value: stats.revenue,
+            note: stats.revenueDelta,
+            onClick: onOpenOrders,
+          },
+        ]
+      : []),
+    ...(features.bookings
+      ? [
+          {
+            icon: 'calendar_month',
+            iconBox: 'bg-tertiary-fixed text-tertiary',
+            label: 'Bookings',
+            value: stats.bookings,
+            note: overview.isLive ? 'All time' : 'Next in 35 mins',
+            onClick: onOpenBookings,
+          },
+        ]
+      : []),
+    ...(hasMessaging
+      ? [
+          {
+            icon: 'chat_bubble',
+            iconBox: 'bg-secondary-container text-on-secondary-container',
+            label: 'Unread Messages',
+            value: stats.unread,
+            note: 'Open inquiries',
+            onClick: onOpenMessages,
+          },
+        ]
+      : []),
   ];
 
   const banners = [
@@ -148,6 +182,22 @@ export function BusinessOverviewScreen({
                     {overview.planBadge}
                   </span>
                 ) : null}
+                {mode === 'products' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="inventory_2" className="text-[13px]" />
+                    PRODUCT BUSINESS
+                  </span>
+                ) : mode === 'services' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-tertiary-fixed text-tertiary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="content_cut" className="text-[13px]" />
+                    SERVICE BUSINESS
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-text-primary font-caption text-caption font-bold tracking-wider">
+                    <Icon name="hub" className="text-[13px]" />
+                    HYBRID BUSINESS
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -192,48 +242,72 @@ export function BusinessOverviewScreen({
             </div>
           </div>
 
-          {/* Branch Stats */}
-          <div className="px-margin mt-space-md grid grid-cols-2 gap-space-xs">
-            {todayStats.map((stat) => (
-              <button
-                className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
-                key={stat.label}
-                type="button"
-                onClick={stat.onClick}
+          {/* Branch Stats — single line display */}
+          {todayStats.length > 0 && (
+            <div className="px-margin mt-space-md">
+              <div
+                className={`grid gap-2 ${
+                  todayStats.length === 1
+                    ? 'grid-cols-1'
+                    : todayStats.length === 2
+                    ? 'grid-cols-2'
+                    : todayStats.length === 3
+                    ? 'grid-cols-3'
+                    : 'grid-flow-col auto-cols-[minmax(105px,1fr)] overflow-x-auto no-scrollbar'
+                }`}
               >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${stat.iconBox}`}>
-                  <Icon name={stat.icon} className="text-[20px]" />
-                </div>
-                <span className="font-caption text-caption text-text-secondary">{stat.label}</span>
-                <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{stat.value}</span>
-                  <span className="font-caption text-caption text-text-tertiary">{stat.note}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* Quick Actions */}
-          <div className="px-margin mt-space-sm flex flex-col gap-space-xs">
-            {/* POS — full-width primary quick action opening the POS menu page */}
-            <button
-              className="bg-gradient-to-r from-primary to-primary-container rounded-xl p-3 shadow-sm flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
-              type="button"
-              onClick={onOpenPosMenu}
-            >
-              <div className="w-9 h-9 rounded-lg bg-surface-canvas/90 text-primary flex items-center justify-center shrink-0">
-                <Icon name="point_of_sale" className="text-[20px]" />
+                {todayStats.map((stat) => (
+                  <button
+                    className="bg-surface-canvas rounded-xl p-2.5 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform min-w-0"
+                    key={stat.label}
+                    type="button"
+                    onClick={stat.onClick}
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${stat.iconBox}`}>
+                      <Icon name={stat.icon} className="text-[17px]" />
+                    </div>
+                    <span className="font-caption text-[11px] leading-tight text-text-secondary truncate w-full">
+                      {stat.label}
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-heading-sm text-[15px] leading-tight font-bold text-text-primary truncate">
+                        {stat.value}
+                      </span>
+                      <span className="font-caption text-[10px] text-text-tertiary truncate">{stat.note}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
-              <div className="flex flex-col min-w-0 flex-1">
-                <span className="font-label-md text-label-md font-semibold text-on-primary">POS</span>
-                <span className="font-caption text-caption text-on-primary/80 truncate">
-                  Register, orders &amp; store front
-                </span>
-              </div>
-              <Icon name="chevron_right" className="text-[20px] text-on-primary shrink-0" />
-            </button>
+            </div>
+          )}
 
-            <div className="grid grid-cols-2 gap-space-xs">
+          {/* Quick Actions — horizontal sliding row (max 4 actions, 3-4 visible on row) */}
+          {quickActions.length > 0 && (
+            <div className="px-margin mt-space-md">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-label-md text-label-md font-bold text-text-primary">Quick Actions</h3>
+                {quickActions.length > 3 && (
+                  <span className="font-caption text-[11px] text-text-tertiary">Swipe</span>
+                )}
+              </div>
+              <div className="flex items-stretch gap-2.5 overflow-x-auto pb-1.5 no-scrollbar snap-x">
+                {quickActions.slice(0, 5).map((action) => (
+                  <button
+                    key={action.feature}
+                    type="button"
+                    onClick={() => handleQuickAction(action.feature)}
+                    className="snap-start shrink-0 w-[86px] sm:w-[94px] bg-surface-canvas rounded-xl p-2.5 shadow-sm flex flex-col items-center text-center gap-1.5 active:scale-95 transition-transform hover:shadow-md border border-border-subtle/40"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                      <Icon name={action.icon} className="text-[20px]" />
+                    </div>
+                    <span className="font-label-sm text-[11px] font-semibold text-text-primary line-clamp-1 w-full text-center">
+                      {action.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            <div className="grid grid-cols-2 gap-space-xs mt-space-xs">
               <button
                 className="bg-surface-canvas rounded-xl p-3 shadow-sm flex flex-col gap-1 text-left active:scale-[0.98] transition-transform"
                 type="button"
@@ -257,9 +331,11 @@ export function BusinessOverviewScreen({
                 <span className="font-caption text-caption text-text-secondary">SMS credits &amp; promotion</span>
               </button>
             </div>
-          </div>
+            </div>
+          )}
 
           {/* Recent Orders */}
+          {features.pos && (
           <div className="px-margin mt-space-sm">
             <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2">
@@ -305,8 +381,10 @@ export function BusinessOverviewScreen({
               </div>
             </div>
           </div>
+          )}
 
           {/* Recent Messages */}
+          {hasMessaging && (
           <div className="px-margin mt-space-xs">
             <div className="bg-surface-canvas rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2">
@@ -352,6 +430,7 @@ export function BusinessOverviewScreen({
               </div>
             </div>
           </div>
+          )}
         </div>
         {toast && (
           <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
@@ -359,6 +438,7 @@ export function BusinessOverviewScreen({
           </div>
         )}
         <BusinessTabBar active="overview" onTab={onTab} />
+        <BusinessQrScannerModal open={scannerOpen} onClose={() => setScannerOpen(false)} onOpenOrders={onOpenOrders} />
       </AppScreen>
     </div>
   );

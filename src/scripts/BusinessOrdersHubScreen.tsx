@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
@@ -9,13 +9,17 @@ import { formatRelativeTime } from '../utils/format';
 import {
   bookingStatus,
   isOpenOrder,
+  orderChannel,
   orderChip,
   orderItemsSummary,
+  orderPaymentMethod,
   orderRef,
   orderStatus,
   orderStatusLabel,
   orderTotalLabel,
   personName,
+  type OrderChannel,
+  type OrderPaymentMethod,
 } from './ordersLive';
 
 import { BusinessModeHeader } from './BusinessModeHeader';
@@ -37,6 +41,70 @@ const STATUS_CHIPS: { key: StatusChipKey; label: string; pulse?: boolean }[] = [
   { key: 'completed', label: 'Completed (18)' },
   { key: 'cancelled', label: 'Cancelled (1)' },
 ];
+
+type ChannelKey = 'all' | OrderChannel;
+type PaymentKey = 'all' | OrderPaymentMethod;
+
+const CHANNEL_OPTIONS: { key: ChannelKey; label: string; icon: string }[] = [
+  { key: 'all', label: 'All Channels', icon: 'apps' },
+  { key: 'storefront', label: 'Store Front', icon: 'storefront' },
+  { key: 'deals', label: 'Deals & Vouchers', icon: 'local_offer' },
+  { key: 'pos', label: 'POS Walk-in', icon: 'point_of_sale' },
+];
+
+const PAYMENT_OPTIONS: { key: PaymentKey; label: string; icon: string }[] = [
+  { key: 'all', label: 'All Payments', icon: 'payments' },
+  { key: 'cash', label: 'Cash', icon: 'payments' },
+  { key: 'card', label: 'POS / Card', icon: 'credit_card' },
+  { key: 'transfer', label: 'Bank Transfer', icon: 'account_balance' },
+];
+
+interface MenuOption<K> {
+  key: K;
+  label: string;
+  count?: number;
+}
+
+/** One of the two side-by-side dropdowns above the feed. */
+function FilterMenu<K extends string>({ title, icon, value, options, open, onToggle, onPick }: { title: string; icon: string; value: K; options: MenuOption<K>[]; open: boolean; onToggle: () => void; onPick: (key: K) => void }) {
+  const current = options.find((option) => option.key === value) ?? options[0];
+  return (
+    <div className="relative flex-1 min-w-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className={`w-full h-10 px-space-xs rounded-xl flex items-center gap-1.5 font-label-md text-label-md transition-all active:scale-[0.98] ${
+          value !== 'all' || open ? 'bg-surface-tint-blue text-primary' : 'bg-surface-container-low text-text-secondary'
+        }`}
+      >
+        <Icon name={icon} className="text-[18px] shrink-0" />
+        <span className="truncate flex-1 text-left">{current.label}</span>
+        <Icon name="expand_more" className={`text-[18px] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <button type="button" aria-label={`Close ${title}`} className="fixed inset-0 z-30 cursor-default" onClick={onToggle} />
+          <div className="absolute z-40 top-full left-0 mt-1 min-w-full w-max max-w-[220px] rounded-xl bg-surface-canvas shadow-lg p-1">
+            {options.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => onPick(option.key)}
+                className={`w-full px-space-xs py-2 rounded-lg flex items-center justify-between gap-space-sm font-label-md text-label-md text-left ${
+                  option.key === value ? 'bg-surface-tint-blue text-primary' : 'text-on-surface'
+                }`}
+              >
+                <span className="truncate">{option.label}</span>
+                {option.count !== undefined && <span className="font-caption text-caption shrink-0">{option.count}</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 interface OrderRow {
   id: string;
@@ -190,11 +258,23 @@ const LIVE_BORDER_CLASS: Record<string, string> = {
   ready: 'border-badge-discount-text',
 };
 
+type FeedRow = OrderRow & {
+  orderId?: string;
+  channel?: OrderChannel;
+  paymentMethod?: OrderPaymentMethod | null;
+  placedAt?: number;
+  phone?: string;
+};
+
 /** A live order in the feed's row shape. */
-const liveRow = (order: BusinessOrder): OrderRow & { orderId: string } => {
+const liveRow = (order: BusinessOrder): FeedRow & { orderId: string } => {
   const status = orderStatus(order);
   return {
     orderId: order.id,
+    channel: orderChannel(order),
+    paymentMethod: orderPaymentMethod(order),
+    placedAt: order.createdAt ? new Date(order.createdAt).getTime() : 0,
+    phone: order.customer?.phone ?? undefined,
     id: orderRef(order),
     badgeLabel: orderStatusLabel(order),
     badgeClass: LIVE_BADGE_CLASS[status] ?? 'bg-error-container text-on-error-container',
@@ -219,7 +299,13 @@ export function BusinessOrdersHubScreen({
   onSwitchBookings,
   onOpenOrder,
 }: BusinessOrdersHubScreenProps) {
-  const [statusChip, setStatusChip] = useState<StatusChipKey>('new');
+  const [statusChip, setStatusChip] = useState<StatusChipKey>('all');
+  const [channel, setChannel] = useState<ChannelKey>('all');
+  const [payment, setPayment] = useState<PaymentKey>('all');
+  const [search, setSearch] = useState('');
+  const [newestFirst, setNewestFirst] = useState(true);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'channel' | 'status' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   // Live: real orders at the active branch, filtered by the status chips.
@@ -231,9 +317,27 @@ export function BusinessOrdersHubScreen({
   const chips = live
     ? STATUS_CHIPS.map((chip) => ({ ...chip, label: `${chip.label.replace(/ \(\d+\)$/, '')} (${countFor(chip.key)})` }))
     : STATUS_CHIPS;
-  const rows: (OrderRow & { orderId?: string })[] = live
-    ? orders.filter((o) => statusChip === 'all' || orderChip(o) === statusChip).map(liveRow)
-    : ORDER_ROWS;
+  const channelCount = (key: ChannelKey) => (key === 'all' ? orders.length : orders.filter((o) => orderChannel(o) === key).length);
+  const rows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const matching = (live ? orders.map(liveRow) : (ORDER_ROWS as FeedRow[])).filter((row, index) => {
+      if (live) {
+        if (statusChip !== 'all' && orderChip(orders[index]) !== statusChip) return false;
+        if (channel !== 'all' && row.channel !== channel) return false;
+        if (payment !== 'all' && row.paymentMethod !== payment) return false;
+      }
+      return !term || [row.id, row.customer, row.items, row.phone].some((field) => field?.toLowerCase().includes(term));
+    });
+    if (!live) return newestFirst ? matching : [...matching].reverse();
+    return [...matching].sort((a, b) => ((a.placedAt ?? 0) - (b.placedAt ?? 0)) * (newestFirst ? -1 : 1));
+  }, [live, orders, statusChip, channel, payment, search, newestFirst]);
+  const filtered = statusChip !== 'all' || channel !== 'all' || payment !== 'all' || Boolean(search.trim());
+  const clearFilters = () => {
+    setStatusChip('all');
+    setChannel('all');
+    setPayment('all');
+    setSearch('');
+  };
   const openOrders = live ? String(orders.filter(isOpenOrder).length) : '8';
   const openBookings = live
     ? String((bookingsQuery.data ?? []).filter((b) => ['booked', 'confirmed'].includes(bookingStatus(b))).length)
@@ -255,27 +359,36 @@ export function BusinessOrdersHubScreen({
       <div className="flex flex-col w-full flex-1 pb-24">
         {/* Header Controls & Context */}
         <div className="bg-surface/95 backdrop-blur-md px-margin pt-space-xs pb-space-sm flex flex-col gap-space-sm shadow-[0_4px_12px_-4px_rgba(20,27,43,0.03)]">
-          {/* Quick Actions */}
-          <div className="flex items-center justify-end">
-            <div className="flex items-center gap-space-2xs">
-              <button
+          {/* Search, sort and filters */}
+          <div className="flex items-center gap-space-2xs">
+            <div className="relative flex-1 min-w-0">
+              <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-text-tertiary" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search order, customer, item"
                 aria-label="Search orders"
-                className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-low hover:bg-surface-container text-on-surface transition-transform active:scale-95"
-                type="button"
-                onClick={() => showToast('Search orders coming soon')}
-              >
-                <Icon name="search" className="text-[20px]" />
-              </button>
-              <button
-                aria-label="Filter orders"
-                className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-low hover:bg-surface-container text-on-surface transition-transform active:scale-95 relative"
-                type="button"
-                onClick={() => showToast('Filters: payment type, branch, time range')}
-              >
-                <Icon name="tune" className="text-[20px]" />
-                <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary-container" />
-              </button>
+                className="w-full h-10 pl-9 pr-3 rounded-xl bg-surface-container-low font-body-md text-body-md text-on-surface placeholder:text-text-tertiary outline-none"
+              />
             </div>
+            <button
+              type="button"
+              onClick={() => setNewestFirst((value) => !value)}
+              className="h-10 px-space-xs rounded-xl flex items-center gap-1 bg-surface-container-low text-text-secondary font-label-md text-label-md shrink-0 active:scale-95 transition-transform"
+            >
+              <Icon name="swap_vert" className="text-[18px]" />
+              <span>{newestFirst ? 'Newest' : 'Oldest'}</span>
+            </button>
+            <button
+              aria-label="Filter orders"
+              className="w-10 h-10 rounded-xl flex items-center justify-center bg-surface-container-low text-on-surface transition-transform active:scale-95 relative shrink-0"
+              type="button"
+              onClick={() => setFilterSheetOpen(true)}
+            >
+              <Icon name="tune" className="text-[20px]" />
+              {payment !== 'all' && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary-container" />}
+            </button>
           </div>
           {/* Switcher: Orders vs Bookings */}
           <div className="p-1 bg-surface-container-high rounded-xl flex items-center gap-1">
@@ -299,27 +412,38 @@ export function BusinessOrdersHubScreen({
               </span>
             </button>
           </div>
-          {/* Status Chips Bar */}
-          <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
-            {chips.map((chip) => {
-              const active = chip.key === statusChip;
-              return (
-                <button
-                  className={`shrink-0 h-9 px-3.5 rounded-full font-label-md text-label-md active:scale-95 transition-all ${
-                    active
-                      ? 'bg-surface-tint-blue text-primary flex items-center gap-1.5 shadow-sm'
-                      : 'bg-surface-container-low text-text-secondary'
-                  }`}
-                  key={chip.key}
-                  type="button"
-                  onClick={() => setStatusChip(chip.key)}
-                >
-                  {active && chip.pulse && <span className="w-2 h-2 rounded-full bg-primary-container animate-pulse" />}
-                  <span>{chip.label}</span>
-                </button>
-              );
-            })}
+          {/* Channel and status */}
+          <div className="flex items-center gap-space-xs">
+            <FilterMenu
+              title="channels"
+              icon={(CHANNEL_OPTIONS.find((option) => option.key === channel) ?? CHANNEL_OPTIONS[0]).icon}
+              value={channel}
+              options={CHANNEL_OPTIONS.map((option) => ({ ...option, count: live ? channelCount(option.key) : undefined }))}
+              open={openMenu === 'channel'}
+              onToggle={() => setOpenMenu((menu) => (menu === 'channel' ? null : 'channel'))}
+              onPick={(key) => {
+                setChannel(key);
+                setOpenMenu(null);
+              }}
+            />
+            <FilterMenu
+              title="statuses"
+              icon="receipt_long"
+              value={statusChip}
+              options={chips.map((chip) => ({ key: chip.key, label: chip.label.replace(/ \(\d+\)$/, '') === 'All' ? 'All Orders' : chip.label.replace(/ \(\d+\)$/, ''), count: live ? countFor(chip.key) : undefined }))}
+              open={openMenu === 'status'}
+              onToggle={() => setOpenMenu((menu) => (menu === 'status' ? null : 'status'))}
+              onPick={(key) => {
+                setStatusChip(key);
+                setOpenMenu(null);
+              }}
+            />
           </div>
+          {filtered && (
+            <button type="button" onClick={clearFilters} className="self-end font-label-md text-label-md text-primary">
+              Clear filters
+            </button>
+          )}
         </div>
 
         {/* Main Scrollable Body Content */}
@@ -345,7 +469,7 @@ export function BusinessOrdersHubScreen({
           <div className="flex flex-col gap-space-2xs">
             {live && !ordersQuery.isLoading && !ordersQuery.isError && !rows.length && (
               <p className="font-caption text-caption text-text-secondary text-center py-space-md">
-                No orders here yet.
+                {filtered ? 'No orders match your filters.' : 'No orders here yet.'}
               </p>
             )}
             {rows.map((row) => (
@@ -379,6 +503,45 @@ export function BusinessOrdersHubScreen({
           <div className="h-4" />
         </div>
       </div>
+      {filterSheetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-scrim/60"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setFilterSheetOpen(false);
+          }}
+        >
+          <div role="dialog" aria-modal="true" aria-label="Filter orders" className="w-full max-w-[430px] bg-surface-canvas rounded-t-2xl p-margin pb-safe flex flex-col gap-space-sm">
+            <h2 className="font-heading-sm text-heading-sm text-on-surface">Filter Orders</h2>
+            <div className="flex flex-col gap-space-2xs">
+              <span className="font-label-md text-label-md text-text-secondary">Payment method</span>
+              <div className="grid grid-cols-2 gap-space-2xs">
+                {PAYMENT_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setPayment(option.key)}
+                    className={`h-10 px-space-xs rounded-lg flex items-center gap-1.5 font-label-md text-label-md ${
+                      payment === option.key ? 'bg-surface-tint-blue text-primary' : 'bg-surface-container-low text-text-secondary'
+                    }`}
+                  >
+                    <Icon name={option.icon} className="text-[18px] shrink-0" />
+                    <span className="truncate">{option.label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="font-caption text-caption text-text-secondary">Orders with no recorded payment only show under All Payments.</p>
+            </div>
+            <div className="flex items-center gap-space-xs pb-space-xs">
+              <button type="button" onClick={clearFilters} className="flex-1 h-11 rounded-xl bg-surface-container-low text-text-secondary font-label-md text-label-md">
+                Reset All
+              </button>
+              <button type="button" onClick={() => setFilterSheetOpen(false)} className="flex-1 h-11 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <BusinessTabBar onTab={onTab} />
       {toast && (
         <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">

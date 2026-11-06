@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { useBusinessOrder, useOrderStatusMutations } from '../hooks/business/useBusinessOrders';
+import { orderChannel, orderTypeLabel, type OrderChannel } from './ordersLive';
 import { hasApiConfig } from '../services/api/client';
 import type { OrderStatus } from '../services/businessOrdersService';
 import { apiErrorMessage } from '../services/errorMessages';
@@ -90,6 +91,12 @@ interface ToastState {
 
 const STEP_RANK: Record<string, number> = { new: 0, processing: 1, ready: 2, completed: 3 };
 
+const ORIGIN_COPY: Record<OrderChannel, { title: string; icon: string }> = {
+  storefront: { title: 'Store Front', icon: 'storefront' },
+  deals: { title: 'VEMTAP Deals', icon: 'local_offer' },
+  pos: { title: 'POS Walk-in', icon: 'point_of_sale' },
+};
+
 export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDetailScreenProps) {
   const [demoAccepted, setAccepted] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -111,6 +118,7 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
   // Live: the real order, with status changes sent to the API.
   const live = hasApiConfig();
   const order = useBusinessOrder(live ? orderId : null).data;
+  const origin = order ? { ...ORIGIN_COPY[orderChannel(order)], note: `Placed through ${orderTypeLabel(order)}.` } : null;
   const { order: statusMutation } = useOrderStatusMutations();
   const status = order ? orderStatus(order) : 'new';
   const rank = STEP_RANK[status] ?? 0;
@@ -295,6 +303,58 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                 <span>{v(`Status: ${status === 'processing' ? 'In preparation' : status}`, 'Ticket sent to Kitchen Display #2')}</span>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Order Origin & Attribution Source Card */}
+        <div className="px-margin mt-space-sm">
+          <div className="rounded-xl bg-surface-canvas shadow-sm p-3.5 border border-border-subtle/50 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-caption text-[10px] uppercase tracking-wider text-text-tertiary font-bold">
+                Order Origin &amp; Placement Channel
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[10px] font-bold flex items-center gap-1">
+                <Icon name="verified" className="text-[12px]" />
+                Attributed Source
+              </span>
+            </div>
+
+            <div className="flex items-start gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                <Icon name={origin?.icon ?? 'local_offer'} className="text-[20px]" />
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-label-sm text-[13px] font-bold text-text-primary">
+                    {origin?.title ?? 'VEMTAP Deals Campaign'}
+                  </span>
+                  {!live && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-badge-discount-bg text-badge-discount-text">
+                    20% Lunch Combo Promo
+                  </span>
+                  )}
+                </div>
+                {origin ? (
+                  <p className="font-caption text-[11px] text-text-secondary mt-0.5 leading-snug">{origin.note}</p>
+                ) : (
+                  <>
+                <p className="font-caption text-[11px] text-text-secondary mt-0.5 leading-snug">
+                  Placed via customer deal claim on <strong>Wuse Weekend Lunch Surge</strong>. Voucher code <code>#LUNCH-20-4G</code> validated.
+                </p>
+                <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border-subtle/40 text-[10px] text-text-tertiary flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <Icon name="hub" className="text-[12px] text-primary" />
+                    Discovery: Cluster Footfall Pool
+                  </span>
+                  <span>•</span>
+                  <span>Scanned: 11:42 AM</span>
+                  <span>•</span>
+                  <span>Fulfillment: Counter Pickup</span>
+                </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

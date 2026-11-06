@@ -107,9 +107,15 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
             <h1 className="font-display-hero text-display-hero text-text-primary font-bold tracking-tight">
               Where is your business located?
             </h1>
-            <p className="font-body-lg text-body-lg text-text-secondary">
-              Customers will use this information to discover your business and redeem local offers near them.
-            </p>
+            <div className="flex items-center gap-space-sm">
+              <p className="font-body-lg text-body-lg text-text-secondary">
+                This is your primary business location — it's free and serves as your default. Customers use it
+                to discover your business and redeem local offers near them.
+              </p>
+              <span className="px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold whitespace-nowrap self-start">
+                Primary · Free
+              </span>
+            </div>
           </div>
           <div className="hidden sm:flex items-center gap-space-sm bg-surface-subtle p-space-xs rounded-xl shadow-sm">
             <div className="w-9 h-9 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary">
@@ -468,7 +474,7 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
               }
               className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
             >
-              <span>Continue to Branch Details</span>
+              <span>Continue to Business Offerings</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
           </div>
