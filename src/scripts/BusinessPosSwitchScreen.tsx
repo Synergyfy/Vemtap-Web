@@ -6,6 +6,7 @@ import { useBusinessBranch, type BusinessBranchData } from '../context/BusinessB
 interface BusinessPosSwitchScreenProps {
   onBack: () => void;
   onConfirm: (branch: BusinessBranchData, till: string) => void;
+  onOpenSettings?: () => void;
 }
 
 const TILLS = [
@@ -14,7 +15,7 @@ const TILLS = [
   { key: 'till-03', name: 'Till 03', meta: 'Terrace bar · Terminal 03 · offline last seen 12m', status: 'Offline', active: false },
 ];
 
-export function BusinessPosSwitchScreen({ onBack, onConfirm }: BusinessPosSwitchScreenProps) {
+export function BusinessPosSwitchScreen({ onBack, onConfirm, onOpenSettings }: BusinessPosSwitchScreenProps) {
   const { branch, branches, switchTo } = useBusinessBranch();
   const [selectedTill, setSelectedTill] = useState('till-01');
   const [selectedBranchKey, setSelectedBranchKey] = useState(branch.key);
@@ -97,6 +98,32 @@ export function BusinessPosSwitchScreen({ onBack, onConfirm }: BusinessPosSwitch
             <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-space-xs py-0.5 rounded-full shrink-0">
               Live
             </span>
+          </div>
+        </div>
+
+        {/* Till Explainer & Setup Info */}
+        <div className="px-margin pt-space-xs pb-space-xs flex flex-col gap-2">
+          <div className="bg-gradient-to-br from-surface-tint-blue/70 via-surface-canvas to-surface-container-low rounded-xl p-3 border border-primary/20 shadow-xs flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 text-primary font-label-sm text-[12px] font-bold">
+              <Icon name="info" className="text-[16px]" />
+              <span>What is a Till?</span>
+            </div>
+            <p className="font-caption text-[11px] text-text-primary leading-relaxed">
+              A <strong>Till</strong> is an independent checkout counter and physical cash drawer (e.g. Counter Front, Bar, Terrace). Selecting a till routes all sales, card terminal pairings, and cash float balancing to that specific station's shift ledger.
+            </p>
+            <div className="flex items-center justify-between pt-1 border-t border-border-subtle/50 mt-1">
+              <span className="font-caption text-[10px] text-text-secondary">
+                Configure or add tills in <strong>POS Settings › Tills</strong>
+              </span>
+              <button
+                type="button"
+                onClick={onOpenSettings ?? (() => showToast('Navigate to POS Settings to manage tills'))}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline shrink-0"
+              >
+                <span>Manage Tills</span>
+                <Icon name="arrow_forward" className="text-[13px]" />
+              </button>
+            </div>
           </div>
         </div>
 

@@ -44,6 +44,12 @@ interface OrderRow {
   paymentText: string;
   paymentChipClass: string;
   paymentIconClass?: string;
+  source: {
+    name: string;
+    sub: string;
+    icon: string;
+    badgeClass: string;
+  };
   action?: { label: string; icon: string; buttonClass?: string; textClass?: string };
 }
 
@@ -66,6 +72,12 @@ const ORDER_ROWS: OrderRow[] = [
     paymentIconClass: 'text-primary',
     paymentText: 'POS Terminal • Pay at Counter',
     paymentChipClass: 'bg-surface-container-high text-on-surface-variant',
+    source: {
+      name: 'Deals',
+      sub: '20% Lunch Promo Voucher',
+      icon: 'local_offer',
+      badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+    },
     action: { label: 'Accept', icon: 'check', buttonClass: 'bg-primary-container text-on-primary' },
   },
   {
@@ -84,6 +96,12 @@ const ORDER_ROWS: OrderRow[] = [
     paymentIcon: 'point_of_sale',
     paymentText: 'POS / Card • Settle at Table',
     paymentChipClass: 'bg-surface-container-highest text-secondary',
+    source: {
+      name: 'Store Front',
+      sub: 'Table 04 Digital QR',
+      icon: 'qr_code_scanner',
+      badgeClass: 'bg-surface-tint-blue text-primary',
+    },
     action: { label: 'Kitchen', icon: 'skillet', buttonClass: 'bg-surface-container text-on-surface' },
   },
   {
@@ -104,6 +122,12 @@ const ORDER_ROWS: OrderRow[] = [
     paymentIcon: 'account_balance',
     paymentText: 'Bank Transfer • Verified',
     paymentChipClass: 'bg-badge-discount-bg text-badge-discount-text',
+    source: {
+      name: 'Cluster Network',
+      sub: 'Amaka Mall Cluster Cross-Promo',
+      icon: 'hub',
+      badgeClass: 'bg-secondary-fixed text-primary',
+    },
     action: { label: 'Ready', icon: 'chevron_right', textClass: 'text-primary' },
   },
   {
@@ -125,6 +149,12 @@ const ORDER_ROWS: OrderRow[] = [
     paymentIconClass: 'text-badge-discount-text',
     paymentText: 'Cash • Pay on Delivery',
     paymentChipClass: 'bg-surface-container-high text-on-surface-variant',
+    source: {
+      name: 'Counter POS',
+      sub: 'Till 01 Cashier Register',
+      icon: 'point_of_sale',
+      badgeClass: 'bg-surface-container text-on-surface-variant',
+    },
     action: { label: 'Handover', icon: 'chevron_right', textClass: 'text-badge-discount-text' },
   },
   {
@@ -143,6 +173,12 @@ const ORDER_ROWS: OrderRow[] = [
     paymentIcon: 'credit_card',
     paymentText: 'POS at Counter • Collected',
     paymentChipClass: 'bg-surface-container-low text-text-secondary',
+    source: {
+      name: 'Store Front',
+      sub: 'Online Store Direct',
+      icon: 'storefront',
+      badgeClass: 'bg-surface-tint-blue text-primary',
+    },
   },
   {
     id: '#VG-93870',
@@ -158,8 +194,14 @@ const ORDER_ROWS: OrderRow[] = [
     time: '12:40 PM',
     timeClass: 'text-text-tertiary font-medium',
     paymentIcon: 'account_balance',
-    paymentText: 'Direct Bank Transfer • Verified',
+    paymentText: 'Bank Transfer • Verified',
     paymentChipClass: 'bg-badge-discount-bg text-badge-discount-text',
+    source: {
+      name: 'Deals',
+      sub: 'Flash Deal Promo',
+      icon: 'local_offer',
+      badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+    },
   },
 ];
 
@@ -271,32 +313,53 @@ export function BusinessOrdersHubScreen({
           </button>
 
           {/* Compact Orders Feed */}
-          <div className="flex flex-col gap-space-2xs">
+          <div className="flex flex-col gap-2">
             {ORDER_ROWS.map((row) => (
               <button
-                className={`w-full flex items-center gap-space-xs px-3 py-3 rounded-xl bg-surface-container-lowest shadow-sm active:scale-[0.99] transition-transform text-left ${
+                className={`w-full flex flex-col gap-1.5 p-3 rounded-xl bg-surface-canvas shadow-xs border border-border-subtle/50 active:scale-[0.99] transition-transform text-left ${
                   row.borderClass ? `border-l-4 ${row.borderClass}` : ''
                 } ${row.badgeLabel === 'Completed' ? 'opacity-75' : ''}`}
                 key={row.id}
                 type="button"
                 onClick={onOpenOrder}
               >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${row.ping ? 'bg-primary-container animate-pulse' : 'bg-surface-container-highest'}`} />
-                <span className="font-label-md text-label-md font-bold text-on-surface tracking-tight shrink-0">
-                  {row.id}
-                </span>
-                <span className="font-caption text-caption text-text-secondary truncate flex-1 min-w-0">
-                  {row.customer} • {row.items}
-                </span>
-                <span
-                  className={`px-1.5 py-0.5 rounded-full font-caption text-caption font-semibold shrink-0 ${row.badgeClass}`}
-                >
-                  {row.badgeLabel}
-                </span>
-                <span className="font-label-md text-label-md font-semibold text-on-surface shrink-0">
-                  {row.price}
-                </span>
-                <Icon name="chevron_right" className="text-text-tertiary text-[18px] shrink-0" />
+                {/* Top Row: ID + Customer + Status + Price */}
+                <div className="flex items-center justify-between gap-2 w-full">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${row.ping ? 'bg-primary animate-pulse' : 'bg-surface-container-highest'}`} />
+                    <span className="font-label-sm text-[13px] font-bold text-on-surface tracking-tight shrink-0">
+                      {row.id}
+                    </span>
+                    <span className="font-caption text-[11px] text-text-secondary truncate">
+                      {row.customer}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${row.badgeClass}`}>
+                      {row.badgeLabel}
+                    </span>
+                    <span className="font-label-sm text-[13px] font-bold text-on-surface">
+                      {row.price}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bottom Row: Source Attributed Tag + Items Summary + Time */}
+                <div className="flex items-center justify-between gap-2 pt-0.5 text-[11px] w-full">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-caption text-[10px] font-semibold shrink-0 ${row.source.badgeClass}`}>
+                      <Icon name={row.source.icon} className="text-[12px]" />
+                      <span>{row.source.name}</span>
+                    </span>
+                    <span className="font-caption text-[10px] text-text-tertiary truncate">
+                      {row.source.sub} • {row.items}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 text-text-tertiary font-caption text-[10px]">
+                    <span>{row.time}</span>
+                    <Icon name="chevron_right" className="text-[15px]" />
+                  </div>
+                </div>
               </button>
             ))}
           </div>

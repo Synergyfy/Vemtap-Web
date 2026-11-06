@@ -515,15 +515,24 @@ export interface FeatureQuickAction {
   sub: string;
 }
 
+const PREFERRED_QUICK_ACTIONS: FeatureQuickAction[] = [
+  { feature: 'pos', label: 'POS', icon: 'point_of_sale', sub: 'Open register & counter sales' },
+  { feature: 'deals', label: 'Deals', icon: 'local_offer', sub: 'Promotions & vouchers' },
+  { feature: 'loyalty', label: 'Rewards', icon: 'stars', sub: 'Customer points & perks' },
+  { feature: 'sms', label: 'SMS', icon: 'sms', sub: 'SMS campaigns & broadcasts' },
+];
+
 /**
- * Dashboard quick actions are generated from the saved selection (in category
- * order) so they can never drift from the feature settings.
+ * Dashboard quick actions prioritize the primary business growth tools (POS, Deals, Rewards, SMS)
+ * while respecting the business's active feature settings.
  */
 export function getEnabledQuickActions(isEnabled: (id: FeatureId) => boolean): FeatureQuickAction[] {
-  return FEATURE_IDS.filter((id) => isEnabled(id)).map((id) => ({
+  const preferred = PREFERRED_QUICK_ACTIONS.filter((item) => isEnabled(item.feature));
+  const remaining = FEATURE_IDS.filter((id) => isEnabled(id) && !preferred.some((p) => p.feature === id)).map((id) => ({
     feature: id,
     icon: BUSINESS_FEATURES[id].icon,
     label: BUSINESS_FEATURES[id].name,
     sub: BUSINESS_FEATURES[id].description,
   }));
+  return [...preferred, ...remaining];
 }

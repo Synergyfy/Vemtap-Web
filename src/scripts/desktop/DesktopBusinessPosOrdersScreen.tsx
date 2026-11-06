@@ -17,9 +17,11 @@ const FILTERS: Array<{ key: PosFilter; label: string; count: number }> = [
 ];
 
 const RECENT = [
-  { id: '#POS-1047', time: '11:42 AM', channel: 'POS', total: '₦6,800.00', method: 'Cash' },
-  { id: '#POS-1046', time: '11:18 AM', channel: 'POS', total: '₦19,400.00', method: 'Transfer' },
-  { id: '#POS-1045', time: '10:41 AM', channel: 'POS', total: '₦8,900.00', method: 'Card ****8821' },
+  { id: '#VG-94021', time: '11:48 AM', channel: 'Deals • 20% Lunch Combo', total: '₦34,500.00', method: 'POS Card' },
+  { id: '#POS-1049', time: '11:42 AM', channel: 'Storefront • Table 04 QR', total: '₦11,200.00', method: 'QR Pay' },
+  { id: '#VG-93988', time: '11:18 AM', channel: 'Cluster • Amaka Mall', total: '₦18,200.00', method: 'Transfer' },
+  { id: '#POS-1047', time: '10:41 AM', channel: 'Counter POS • Till 01', total: '₦6,800.00', method: 'Cash' },
+  { id: '#POS-1046', time: '10:15 AM', channel: 'Storefront • Online Menu', total: '₦19,400.00', method: 'Transfer' },
 ];
 
 export function DesktopBusinessPosOrdersScreen({

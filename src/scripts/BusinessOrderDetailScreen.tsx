@@ -213,6 +213,50 @@ export function BusinessOrderDetailScreen({ onBack }: BusinessOrderDetailScreenP
           </div>
         </div>
 
+        {/* Order Origin & Attribution Source Card */}
+        <div className="px-margin mt-space-sm">
+          <div className="rounded-xl bg-surface-canvas shadow-sm p-3.5 border border-border-subtle/50 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-caption text-[10px] uppercase tracking-wider text-text-tertiary font-bold">
+                Order Origin &amp; Placement Channel
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[10px] font-bold flex items-center gap-1">
+                <Icon name="verified" className="text-[12px]" />
+                Attributed Source
+              </span>
+            </div>
+
+            <div className="flex items-start gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                <Icon name="local_offer" className="text-[20px]" />
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-label-sm text-[13px] font-bold text-text-primary">
+                    VEMTAP Deals Campaign
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-badge-discount-bg text-badge-discount-text">
+                    20% Lunch Combo Promo
+                  </span>
+                </div>
+                <p className="font-caption text-[11px] text-text-secondary mt-0.5 leading-snug">
+                  Placed via customer deal claim on <strong>Wuse Weekend Lunch Surge</strong>. Voucher code <code>#LUNCH-20-4G</code> validated.
+                </p>
+                <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border-subtle/40 text-[10px] text-text-tertiary flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <Icon name="hub" className="text-[12px] text-primary" />
+                    Discovery: Cluster Footfall Pool
+                  </span>
+                  <span>•</span>
+                  <span>Scanned: 11:42 AM</span>
+                  <span>•</span>
+                  <span>Fulfillment: Counter Pickup</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Customer Profile & Direct Contact Card */}
         <div className="px-margin mt-space-md">
           <div className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">

@@ -4974,11 +4974,20 @@ function AppInner() {
     case 'pos-switch':
       if (isDesktop)
         return (
-          <DesktopPosSwitchScreen onNav={posTerminalNav} onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
+          <DesktopPosSwitchScreen
+            onNav={posTerminalNav}
+            onBack={goBackToPrevious}
+            onConfirm={() => setRoute('pos-home')}
+            onOpenSettings={() => setRoute('pos-settings')}
+          />
         );
       return (
         <div className="biz-flow">
-          <BusinessPosSwitchScreen onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
+          <BusinessPosSwitchScreen
+            onBack={goBackToPrevious}
+            onConfirm={() => setRoute('pos-home')}
+            onOpenSettings={() => setRoute('pos-settings')}
+          />
         </div>
       );
 
