@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { BusinessQrScannerModal } from '../../components/BusinessQrScannerModal';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { useOverviewData } from '../../hooks/business/useOverviewData';
 import { greeting, todayLabel } from '../../utils/format';
@@ -37,6 +38,7 @@ export function DesktopBusinessOverviewScreen({
 }: DesktopBusinessOverviewScreenProps) {
   const { branch } = useBusinessBranch();
   const [bannerIndex, setBannerIndex] = useState(0);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const overview = useOverviewData();
   // A business already on a paid plan doesn't need the Subscribe slide.
@@ -235,6 +237,19 @@ export function DesktopBusinessOverviewScreen({
                   <span className="font-label-md text-label-md font-semibold text-text-primary">Paid Add-ons</span>
                   <span className="font-caption text-caption text-text-secondary">SMS credits & promotion</span>
                 </button>
+                <button
+                  className="col-span-2 bg-surface-canvas rounded-xl p-3 shadow-sm flex items-center gap-3 text-left active:scale-[0.98] transition-transform"
+                  type="button"
+                  onClick={() => setScannerOpen(true)}
+                >
+                  <div className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                    <Icon name="qr_code_scanner" className="text-[20px]" />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-label-md text-label-md font-semibold text-text-primary">QR Scanner</span>
+                    <span className="font-caption text-caption text-text-secondary">Scan a customer's voucher or order</span>
+                  </div>
+                </button>
               </section>
             </div>
 
@@ -340,6 +355,7 @@ export function DesktopBusinessOverviewScreen({
           {toast}
         </div>
       )}
+      <BusinessQrScannerModal open={scannerOpen} onClose={() => setScannerOpen(false)} onOpenOrders={onOpenOrders ?? (() => onNav('orders'))} />
     </BusinessPortalChrome>
   );
 }
