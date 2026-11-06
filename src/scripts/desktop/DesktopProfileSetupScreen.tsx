@@ -5,10 +5,11 @@ import { ReferralField } from '../../components/referral/ReferralField';
 import { ReferralConfirmSheet } from '../../components/referral/ReferralConfirmSheet';
 import { useReferralIdentity } from '../../hooks/useReferralIdentity';
 import { useReferralStep } from '../../hooks/useReferralStep';
+import { useProfilePhotoPick } from '../../hooks/useProfilePhotoPick';
 
 interface DesktopProfileSetupScreenProps {
   onBack: () => void;
-  onComplete: (details: { firstName: string; lastName: string; phone: string; pin: string }) => Promise<void> | void;
+  onComplete: (details: { firstName: string; lastName: string; phone: string; pin: string; photo?: File }) => Promise<void> | void;
   /** Hidden during business sign-up (mobile parity). */
   onBusinessSetup?: () => void;
   email?: string;
@@ -17,6 +18,8 @@ interface DesktopProfileSetupScreenProps {
   initialValues?: ProfileSetupDraft;
   /** Called as name and phone change, so leaving and coming back keeps them (never the PIN). */
   onDraftChange?: (draft: ProfileSetupDraft) => void;
+  /** Shows the optional profile photo field (customer sign-up only). */
+  photoEnabled?: boolean;
 }
 
 const PIN_LENGTH = 6;
@@ -102,7 +105,7 @@ function PinGroup({ label, hint, value, onChange, revealed }: PinGroupProps) {
   );
 }
 
-export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initialValues, onDraftChange }: DesktopProfileSetupScreenProps) {
+export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup, initialValues, onDraftChange, photoEnabled }: DesktopProfileSetupScreenProps) {
   const [firstName, setFirstName] = useState(initialValues?.firstName ?? '');
   const [lastName, setLastName] = useState(initialValues?.lastName ?? '');
   const [phone, setPhone] = useState(initialValues?.phone ?? '');
@@ -112,6 +115,7 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup,
   const [error, setError] = useState('');
   const [status, setStatus] = useState<'idle' | 'saving' | 'verified'>('idle');
   const referral = useReferralStep();
+  const profilePhoto = useProfilePhotoPick();
   // Keep what's typed so a return visit refills it (the PIN is never passed on).
   useEffect(() => {
     onDraftChange?.({ firstName, lastName, phone });
@@ -130,7 +134,7 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup,
     setStatus('saving');
     setError('');
     try {
-      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
+      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin, photo: profilePhoto.photo }));
       setStatus('verified');
     } catch (completeError) {
       setError(completeError instanceof Error ? completeError.message : 'We could not finish your profile setup. Please try again.');
@@ -143,7 +147,7 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup,
     const action = pendingAction;
     setPendingAction(null);
     if (action === 'next') {
-      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
+      await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin, photo: profilePhoto.photo }));
       return;
     }
     await finishSetup();
@@ -181,7 +185,7 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup,
       referral.requestConfirmation();
       return;
     }
-    await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin }));
+    await Promise.resolve(onComplete({ firstName: firstName.trim(), lastName: lastName.trim(), phone, pin, photo: profilePhoto.photo }));
   };
 
   return (
@@ -333,6 +337,50 @@ export function DesktopProfileSetupScreen({ onBack, onComplete, onBusinessSetup,
                     </h2>
                     <span className="font-caption text-caption text-text-tertiary">Step 1 of 2</span>
                   </div>
+
+                  {photoEnabled && (
+                    <div className="flex flex-col items-center text-center">
+                      <div className="relative">
+                        <input
+                          ref={profilePhoto.fileInput}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={(event) => profilePhoto.onPick(event.target.files?.[0])}
+                        />
+                        <div className="w-28 h-28 rounded-full overflow-hidden shadow-md bg-surface-container-high flex items-center justify-center">
+                          {profilePhoto.preview ? (
+                            <img className="w-full h-full object-cover bg-surface-canvas" src={profilePhoto.preview} alt="Your profile photo" />
+                          ) : (
+                            <Icon name="person" className="text-[40px] text-text-tertiary" />
+                          )}
+                        </div>
+                        <button
+                          aria-label="Upload profile picture"
+                          type="button"
+                          onClick={profilePhoto.openPicker}
+                          className="absolute bottom-0 right-0 w-9 h-9 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+                        >
+                          <Icon name="photo_camera" className="text-[18px]" filled />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={profilePhoto.openPicker}
+                        className="mt-space-sm text-primary font-button-secondary text-button-secondary active:opacity-75 transition-opacity"
+                      >
+                        {profilePhoto.preview ? 'Change Photo' : 'Add Photo'}
+                      </button>
+                      <span className="text-text-tertiary font-caption text-caption mt-space-2xs">
+                        Optional. JPG, PNG or WEBP under 4MB
+                      </span>
+                      {profilePhoto.photoError && (
+                        <span className="text-error font-caption text-caption mt-space-2xs" role="alert">
+                          {profilePhoto.photoError}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex flex-col gap-space-md">
                     <div className="flex flex-col gap-1.5">
