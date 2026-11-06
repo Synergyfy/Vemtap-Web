@@ -185,7 +185,11 @@ export function CommentsDrawer({ open, onClose, onClaim, deal }: CommentsDrawerP
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-space-sm">
                   <div className="w-9 h-9 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md font-bold flex items-center justify-center">
-                    {reviewerInitials(comment.reviewerName)}
+                    {comment.reviewerAvatar ? (
+                      <img className="w-full h-full rounded-full object-cover bg-surface-canvas" alt="" src={comment.reviewerAvatar} />
+                    ) : (
+                      reviewerInitials(comment.reviewerName)
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-space-xs">

@@ -129,7 +129,11 @@ export function CommentsSheet({ open, onClose, deal }: CommentsSheetProps) {
               <div className="flex items-start gap-3 group">
                 <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container shrink-0 shadow-sm">
                   <div className="w-full h-full bg-primary flex items-center justify-center text-on-primary font-bold text-sm">
-                    {reviewerInitials(comment.reviewerName)}
+                    {comment.reviewerAvatar ? (
+                      <img className="w-full h-full rounded-full object-cover bg-surface-canvas" alt="" src={comment.reviewerAvatar} />
+                    ) : (
+                      reviewerInitials(comment.reviewerName)
+                    )}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">

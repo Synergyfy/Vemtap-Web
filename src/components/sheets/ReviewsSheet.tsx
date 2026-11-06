@@ -237,7 +237,11 @@ export function ReviewsSheet({ open, onClose, deal }: ReviewsSheetProps) {
                 <div className="flex items-start justify-between gap-space-sm">
                   <div className="flex items-center gap-space-sm min-w-0">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center font-label-md text-label-md font-bold shrink-0 bg-surface-container-high text-primary">
-                      {reviewerInitials(review.reviewerName)}
+                      {review.reviewerAvatar ? (
+                      <img className="w-full h-full rounded-full object-cover bg-surface-canvas" alt="" src={review.reviewerAvatar} />
+                    ) : (
+                      reviewerInitials(review.reviewerName)
+                    )}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-space-xs flex-wrap">
