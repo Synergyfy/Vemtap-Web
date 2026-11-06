@@ -119,6 +119,38 @@ const buildUrl = (path: string, params?: Record<string, string | number | boolea
   return queryString ? `${normalizedPath}${normalizedPath.includes('?') ? '&' : '?'}${queryString}` : normalizedPath;
 };
 
+let renewal: Promise<boolean> | null = null;
+
+const refreshTokens = async (): Promise<boolean> => {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+  try {
+    const response = await fetch(buildUrl('/auth/refresh'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!response.ok) return false;
+    const payload: unknown = await response.json();
+    const accessToken = readNestedToken(payload, ['accessToken', 'access_token', 'token']);
+    if (!accessToken) return false;
+    // No new refresh token means another tab just rotated it: keep what's stored, which is newer.
+    const nextRefreshToken = readNestedToken(payload, ['refreshToken', 'refresh_token', 'refresh']) ?? getRefreshToken();
+    setAuthTokens(accessToken, nextRefreshToken ?? undefined);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Renews the access token. Requests that expire together share one call: each refresh token works once. */
+export const renewSession = () => {
+  renewal ??= refreshTokens().finally(() => {
+    renewal = null;
+  });
+  return renewal;
+};
+
 export async function request<TResponse>(path: string, options: ApiRequestOptions = {}): Promise<TResponse> {
   if (!API_BASE_URL) {
     throw new Error('API is not configured. Set VITE_API_BASE_URL in your environment.');
@@ -163,31 +195,8 @@ export async function request<TResponse>(path: string, options: ApiRequestOption
     const isAuthAttempt =
       path === '/auth/login' || path === '/auth/refresh' || path === '/auth/logout' || path === '/pos/staff-pins/verify';
 
-    if (response.status === 401 && !requestOptions.__retry && !isAuthAttempt && refreshToken) {
-      try {
-        const refreshResponse = await fetch(buildUrl('/auth/refresh', {}), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        const refreshPayload = refreshResponse.headers.get('content-type')?.includes('application/json')
-          ? await refreshResponse.json()
-          : await refreshResponse.text();
-
-        if (refreshResponse.ok) {
-          const nextAccessToken = readNestedToken(refreshPayload, ['accessToken', 'access_token', 'token']);
-          const nextRefreshToken = readNestedToken(refreshPayload, ['refreshToken', 'refresh_token', 'refresh']) ?? refreshToken;
-          if (nextAccessToken) {
-            setAuthTokens(nextAccessToken, nextRefreshToken);
-            return request<TResponse>(path, { ...options, __retry: true } as ApiRequestOptions & { __retry?: boolean });
-          }
-        }
-      } catch {
-        // ignore refresh failures and let the normal error handling below fire
-      }
+    if (response.status === 401 && !requestOptions.__retry && !isAuthAttempt && refreshToken && (await renewSession())) {
+      return request<TResponse>(path, { ...options, __retry: true } as ApiRequestOptions & { __retry?: boolean });
     }
 
     if (response.status === 401 && !isAuthAttempt) {
@@ -233,10 +242,14 @@ export async function uploadFile<TResponse>(path: string, file: File, field = 'f
   if (!API_BASE_URL) throw new Error('API is not configured. Set VITE_API_BASE_URL in your environment.');
   const form = new FormData();
   form.append(field, file, file.name);
-  const headers: Record<string, string> = {};
-  const accessToken = getAccessToken();
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const response = await fetch(buildUrl(path), { method: 'POST', headers, body: form });
+  const send = () => {
+    const headers: Record<string, string> = {};
+    const accessToken = getAccessToken();
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    return fetch(buildUrl(path), { method: 'POST', headers, body: form });
+  };
+  let response = await send();
+  if (response.status === 401 && (await renewSession())) response = await send();
   const payload = response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
   if (!response.ok) {
     if (response.status === 401) {

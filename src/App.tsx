@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazyScreen } from './utils/lazyScreen';
 import { useIsDesktop } from './hooks/useIsDesktop';
 import { PosSettingsProvider } from './context/PosSettingsContext';
 import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
@@ -31,8 +32,6 @@ import { parsePrice } from './utils/format';
 import type { CustomerNotificationDestination } from './utils/customerNotificationDestination';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
 import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
-import { CheckoutScreen } from './scripts/CheckoutScreen';
-import { OrderPlacedScreen } from './scripts/OrderPlacedScreen';
 import { ContactsProvider, useContacts } from './context/ContactsContext';
 import { CampaignsProvider } from './context/CampaignsContext';
 import { AccountDeletionProvider } from './context/AccountDeletionContext';
@@ -46,32 +45,10 @@ import {
   servicePath,
   type BusinessProfileRef,
 } from './scripts/businessData';
-import { CustomerInviteJoinScreen } from './scripts/CustomerInviteJoinScreen';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
 import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
-import { ServiceDetailScreen } from './scripts/ServiceDetailScreen';
-import { SpaBookingScheduleScreen } from './scripts/SpaBookingScheduleScreen';
-import { BookingCheckoutScreen } from './scripts/BookingCheckoutScreen';
-import { BookingConfirmedScreen } from './scripts/BookingConfirmedScreen';
 import { WelcomeScreen } from './scripts/WelcomeScreen';
-import { DiscoverDealsScreen } from './scripts/DiscoverDealsScreen';
-import { StartVemtapScreen } from './scripts/StartVemtapScreen';
-import { AccountScreen } from './scripts/AccountScreen';
-import { SettingsScreen } from './scripts/SettingsScreen';
-import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
-import { NotFoundScreen } from './scripts/NotFoundScreen';
-import { GiftRejectScreen } from './scripts/GiftRejectScreen';
-import { VoucherRedeemScreen } from './scripts/VoucherRedeemScreen';
-import { DesktopNotFoundScreen } from './scripts/desktop/DesktopNotFoundScreen';
-import { SupportLegalScreen } from './scripts/SupportLegalScreen';
-import { EditProfileScreen } from './scripts/EditProfileScreen';
-import { RewardsScreen } from './scripts/RewardsScreen';
-import { SavingsScreen } from './scripts/SavingsScreen';
-import { SavedItemsScreen } from './scripts/SavedItemsScreen';
-import { CustomerReferralsScreen } from './scripts/CustomerReferralsScreen';
-import { BusinessReferralsScreen } from './scripts/BusinessReferralsScreen';
-import { OnboardingWelcomeScreen } from './scripts/OnboardingWelcomeScreen';
-import { GoogleProfileConfirmScreen, type GoogleConfirmDetails } from './scripts/GoogleProfileConfirmScreen';
+import type { GoogleConfirmDetails } from './scripts/GoogleProfileConfirmScreen';
 import {
   clearProvisionalReferralCode,
   getProvisionalReferralCode,
@@ -80,107 +57,18 @@ import {
   setProvisionalReferralCode,
 } from './scripts/referralData';
 import { referralsService } from './services/referralsService';
-import { ActivityScreen } from './scripts/ActivityScreen';
-import { NotificationsScreen } from './scripts/NotificationsScreen';
-import { HelpCentreScreen } from './scripts/HelpCentreScreen';
-import { AccountSettingsScreen } from './scripts/AccountSettingsScreen';
-import { DashboardScreen } from './scripts/DashboardScreen';
-import { MyDealsScreen } from './scripts/MyDealsScreen';
-import { MessagesScreen } from './scripts/MessagesScreen';
-import { ConversationScreen } from './scripts/ConversationScreen';
 import { useCustomerMessagingRealtime, useCustomerThreadBinding } from './hooks/useCustomerMessagingRealtime';
-import { OrdersScreen } from './scripts/OrdersScreen';
-import { OrderDetailScreen } from './scripts/OrderDetailScreen';
-import { BookingDetailScreen } from './scripts/BookingDetailScreen';
-import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
-import { ForgotPinScreen } from './scripts/ForgotPinScreen';
-import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
-import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
 import { accountService } from './services/accountService';
 import { uploadImage } from './services/uploadService';
-import { LocationPermissionScreen } from './scripts/LocationPermissionScreen';
-import { ManualLocationScreen } from './scripts/ManualLocationScreen';
-import { ConfirmLocationScreen } from './scripts/ConfirmLocationScreen';
-import { DiscoveringScreen } from './scripts/DiscoveringScreen';
 import { DesktopWelcomeScreen } from './scripts/desktop/DesktopWelcomeScreen';
-import { DesktopDiscoverDealsScreen } from './scripts/desktop/DesktopDiscoverDealsScreen';
-import { DesktopStartVemtapScreen } from './scripts/desktop/DesktopStartVemtapScreen';
-import { DesktopAuthCodeScreen } from './scripts/desktop/DesktopAuthCodeScreen';
 import { DesktopSignInScreen } from './scripts/desktop/DesktopSignInScreen';
-import { DesktopForgotPinScreen } from './scripts/desktop/DesktopForgotPinScreen';
-import { DesktopVerifyEmailScreen } from './scripts/desktop/DesktopVerifyEmailScreen';
-import { DesktopProfileSetupScreen } from './scripts/desktop/DesktopProfileSetupScreen';
-import { DesktopLocationPermissionScreen } from './scripts/desktop/DesktopLocationPermissionScreen';
-import { DesktopManualLocationScreen } from './scripts/desktop/DesktopManualLocationScreen';
-import { DesktopConfirmLocationScreen } from './scripts/desktop/DesktopConfirmLocationScreen';
-import { DesktopAccountScreen } from './scripts/desktop/DesktopAccountScreen';
-import { DesktopSavedItemsScreen } from './scripts/desktop/DesktopSavedItemsScreen';
-import { DesktopCustomerReferralsScreen } from './scripts/desktop/DesktopCustomerReferralsScreen';
-import { DesktopBusinessReferralsScreen } from './scripts/desktop/DesktopBusinessReferralsScreen';
-import { DesktopOnboardingWelcomeScreen } from './scripts/desktop/DesktopOnboardingWelcomeScreen';
-import { DesktopGoogleProfileConfirmScreen } from './scripts/desktop/DesktopGoogleProfileConfirmScreen';
-import { DesktopBusinessHubScreen } from './scripts/desktop/DesktopBusinessHubScreen';
-import { DesktopBusinessMoreScreen } from './scripts/desktop/DesktopBusinessMoreScreen';
-import { DesktopBoostHubScreen } from './scripts/desktop/DesktopBoostHubScreen';
-import { DesktopBoostMetricsScreen } from './scripts/desktop/DesktopBoostMetricsScreen';
-import { DesktopBoostWalletScreen } from './scripts/desktop/DesktopBoostWalletScreen';
-import { DesktopSegmentsHubScreen } from './scripts/desktop/DesktopSegmentsHubScreen';
-import { DesktopSegmentActionsScreen } from './scripts/desktop/DesktopSegmentActionsScreen';
-import { DesktopSegmentCreateScreen } from './scripts/desktop/DesktopSegmentCreateScreen';
-import { DesktopSegmentDetailScreen } from './scripts/desktop/DesktopSegmentDetailScreen';
-import { DesktopHowToClaimScreen } from './scripts/desktop/DesktopHowToClaimScreen';
-import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
-import { ProductDetailScreen } from './scripts/ProductDetailScreen';
-import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDetailScreen';
-import { DesktopClaimSuccessScreen } from './scripts/desktop/DesktopClaimSuccessScreen';
-import { DesktopGiftSentScreen } from './scripts/desktop/DesktopGiftSentScreen';
-import { DesktopClaimedDealScreen } from './scripts/desktop/DesktopClaimedDealScreen';
-import { DesktopDealTermsScreen } from './scripts/desktop/DesktopDealTermsScreen';
-import { DesktopStorefrontMenuScreen } from './scripts/desktop/DesktopStorefrontMenuScreen';
-import { DesktopCheckoutScreen } from './scripts/desktop/DesktopCheckoutScreen';
-import { DesktopOrderPlacedScreen } from './scripts/desktop/DesktopOrderPlacedScreen';
 import { ContactBusinessModal } from './components/desktop/dialogs/ContactBusinessModal';
 import { ClaimedTermsModal } from './components/desktop/dialogs/ClaimedTermsModal';
-import { DesktopSettingsScreen } from './scripts/desktop/DesktopSettingsScreen';
-import { DesktopSupportLegalScreen } from './scripts/desktop/DesktopSupportLegalScreen';
-import { DesktopEditProfileScreen } from './scripts/desktop/DesktopEditProfileScreen';
-import { DesktopPrivacyScreen } from './scripts/desktop/DesktopPrivacyScreen';
-import { DesktopAddressesScreen } from './scripts/desktop/DesktopAddressesScreen';
-import { DesktopPreferencesScreen } from './scripts/desktop/DesktopPreferencesScreen';
-import { DesktopTermsScreen } from './scripts/desktop/DesktopTermsScreen';
-import { DesktopRewardsScreen } from './scripts/desktop/DesktopRewardsScreen';
-import { DesktopSavingsScreen } from './scripts/desktop/DesktopSavingsScreen';
-import { DesktopNotificationsScreen } from './scripts/desktop/DesktopNotificationsScreen';
-import { DesktopHelpCentreScreen } from './scripts/desktop/DesktopHelpCentreScreen';
-import { DesktopSupportScreen } from './scripts/desktop/DesktopSupportScreen';
-import { DesktopActivityScreen } from './scripts/desktop/DesktopActivityScreen';
-import { DesktopScanScreen } from './scripts/desktop/DesktopScanScreen';
-import { DesktopDiscoveringScreen } from './scripts/desktop/DesktopDiscoveringScreen';
-import { SupportScreen } from './scripts/SupportScreen';
-import { TermsScreen } from './scripts/TermsScreen';
-import { PrivacyScreen } from './scripts/PrivacyScreen';
-import { PreferencesScreen } from './scripts/PreferencesScreen';
-import { AddressesScreen } from './scripts/AddressesScreen';
-import { ScanScreen } from './scripts/ScanScreen';
 import { HomeScreen } from './scripts/HomeScreen';
-import { DealsScreen } from './scripts/DealsScreen';
-import { FeaturedDealsScreen } from './scripts/FeaturedDealsScreen';
-import { FiltersScreen } from './scripts/FiltersScreen';
 import { DealDetailScreen } from './scripts/DealDetailScreen';
-import { HowToClaimScreen } from './scripts/HowToClaimScreen';
-import { ClaimSuccessScreen } from './scripts/ClaimSuccessScreen';
-import { GiftSentScreen, type GiftRecipientSummary } from './scripts/GiftSentScreen';
-import { ClaimedDealScreen } from './scripts/ClaimedDealScreen';
-import { DealTermsScreen } from './scripts/DealTermsScreen';
-import { DiscoverScreen } from './scripts/DiscoverScreen';
-import { MerchantDealsScreen } from './scripts/MerchantDealsScreen';
-import { ProductsCatalogueScreen } from './scripts/ProductsCatalogueScreen';
-import { MenuProductsScreen } from './scripts/MenuProductsScreen';
-import { BusinessAccountChoiceScreen } from './scripts/BusinessAccountChoiceScreen';
-import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
+import type { GiftRecipientSummary } from './scripts/GiftSentScreen';
 import type { ProfileSetupDraft } from './scripts/ProfileSetupScreen';
-import { BusinessDealStudioFlow } from './scripts/BusinessDealStudioFlow';
 import {
   BusinessSetupNavContext,
   clearBusinessSetupSnapshot,
@@ -195,72 +83,14 @@ import {
   setBusinessSetupVerificationState,
   type BusinessSetupNavValue,
 } from './scripts/businessSetup';
-import { BusinessVerificationScreen } from './scripts/BusinessVerificationScreen';
-import { VerificationStatusCenterScreen } from './scripts/VerificationStatusCenterScreen';
-import { SubscriptionScreen } from './scripts/SubscriptionScreen';
-import { BusinessOrdersScreen } from './scripts/BusinessOrdersScreen';
-import { BusinessMessagesScreen } from './scripts/BusinessMessagesScreen';
-import { BusinessOverviewScreen } from './scripts/BusinessOverviewScreen';
-import { BusinessPosMenuScreen } from './scripts/BusinessPosMenuScreen';
-import { BusinessHubScreen } from './scripts/BusinessHubScreen';
 import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
-import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
-import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
-import { DesktopStaffDirectoryScreen } from './scripts/desktop/DesktopStaffDirectoryScreen';
-import { BusinessInviteStaffScreen } from './scripts/BusinessInviteStaffScreen';
-import { DesktopStaffInviteScreen } from './scripts/desktop/DesktopStaffInviteScreen';
-import { BusinessLoyaltyScreen } from './scripts/BusinessLoyaltyScreen';
-import { BusinessLoyaltyRewardsScreen } from './scripts/BusinessLoyaltyRewardsScreen';
-import { BusinessAnalyticsScreen } from './scripts/BusinessAnalyticsScreen';
-import { BusinessBranchComparisonScreen } from './scripts/BusinessBranchComparisonScreen';
-import { AnalyticsBusinessScreen } from './scripts/AnalyticsBusinessScreen';
-import { AnalyticsCustomersScreen } from './scripts/AnalyticsCustomersScreen';
-import { AnalyticsDealsScreen } from './scripts/AnalyticsDealsScreen';
-import { AnalyticsLocationsScreen } from './scripts/AnalyticsLocationsScreen';
-import { AnalyticsPosScreen } from './scripts/AnalyticsPosScreen';
-import { AnalyticsExportScreen } from './scripts/AnalyticsExportScreen';
-import { AnalyticsFilterScreen } from './scripts/AnalyticsFilterScreen';
 import type { AnalyticsTabKey } from './components/AnalyticsChrome';
-import { BusinessPosDisplayOrderScreen } from './scripts/BusinessPosDisplayOrderScreen';
-import { BusinessPosDisplayTipScreen } from './scripts/BusinessPosDisplayTipScreen';
-import { BusinessPosDisplayPayScreen } from './scripts/BusinessPosDisplayPayScreen';
-import { BusinessPosDisplayReceiptScreen } from './scripts/BusinessPosDisplayReceiptScreen';
-import { BusinessSplitBillScreen } from './scripts/BusinessSplitBillScreen';
-import { BusinessPosHomeScreen } from './scripts/BusinessPosHomeScreen';
-import { BusinessPosRegisterScreen } from './scripts/BusinessPosRegisterScreen';
-import { BusinessPosCartScreen } from './scripts/BusinessPosCartScreen';
-import { BusinessPosSwitchScreen } from './scripts/BusinessPosSwitchScreen';
-import { BusinessPosCustomerScreen } from './scripts/BusinessPosCustomerScreen';
-import { BusinessPosSaleCompleteScreen } from './scripts/BusinessPosSaleCompleteScreen';
-import { BusinessPosPaymentScreen } from './scripts/BusinessPosPaymentScreen';
-import { BusinessPosProductShiftScreen } from './scripts/BusinessPosProductShiftScreen';
-import { BusinessPosStockScreen } from './scripts/BusinessPosStockScreen';
-import { BusinessPosLedgerScreen } from './scripts/BusinessPosLedgerScreen';
-import { BusinessPosCustomerLookupScreen } from './scripts/BusinessPosCustomerLookupScreen';
-import { BusinessPosOrderLookupScreen } from './scripts/BusinessPosOrderLookupScreen';
-import { BusinessPosCustomerDossierScreen } from './scripts/BusinessPosCustomerDossierScreen';
-import { BusinessPosOfflineCheckoutScreen } from './scripts/BusinessPosOfflineCheckoutScreen';
-import { BusinessPosTransactionDetailScreen } from './scripts/BusinessPosTransactionDetailScreen';
-import { BusinessPosOfflineBufferScreen } from './scripts/BusinessPosOfflineBufferScreen';
-import { BusinessPosKitchenStreamScreen } from './scripts/BusinessPosKitchenStreamScreen';
-import { BusinessPosSettingsScreen } from './scripts/BusinessPosSettingsScreen';
-import { PublicPosMenuScreen } from './scripts/PublicPosMenuScreen';
-import { PublicPosCartReviewScreen } from './scripts/PublicPosCartReviewScreen';
-import { PublicPosOrderTrackingScreen } from './scripts/PublicPosOrderTrackingScreen';
 import type { PosTabKey } from './components/PosTabBar';
 import { type PosCartLine } from './scripts/posCartData';
 import { type PublicCartLine } from './scripts/publicPosData';
 import type { BusinessTabKey } from './components/BusinessTabBar';
-import { BusinessBoostHubScreen } from './scripts/BusinessBoostHubScreen';
-import { BusinessBoostMetricsScreen } from './scripts/BusinessBoostMetricsScreen';
-import { BusinessBoostWalletScreen } from './scripts/BusinessBoostWalletScreen';
-import { BusinessSegmentsHubScreen, type SegmentRef } from './scripts/BusinessSegmentsHubScreen';
-import { BusinessSegmentActionsScreen } from './scripts/BusinessSegmentActionsScreen';
-import { BusinessSegmentCreateScreen } from './scripts/BusinessSegmentCreateScreen';
-import { BusinessSegmentDetailScreen } from './scripts/BusinessSegmentDetailScreen';
-import { ConsumerCartScreen } from './scripts/ConsumerCartScreen';
+import type { SegmentRef } from './scripts/BusinessSegmentsHubScreen';
 import type { BoostTabKey } from './components/BoostTabBar';
-import { ServicesCatalogueScreen } from './scripts/ServicesCatalogueScreen';
 import { CommentsSheet } from './components/sheets/CommentsSheet';
 import { ReviewsSheet } from './components/sheets/ReviewsSheet';
 import { ShareSheet } from './components/sheets/ShareSheet';
@@ -286,108 +116,15 @@ import { ConfirmGiftSendSheet } from './components/sheets/ConfirmGiftSendSheet';
 import { ContactBusinessSheet } from './components/sheets/ContactBusinessSheet';
 import { ClaimedTermsSheet } from './components/sheets/ClaimedTermsSheet';
 import { DesktopHomeScreen } from './scripts/desktop/DesktopHomeScreen';
-import { DesktopDealsScreen } from './scripts/desktop/DesktopDealsScreen';
-import { DesktopDiscoverScreen } from './scripts/desktop/DesktopDiscoverScreen';
-import { DesktopFeaturedDealsScreen } from './scripts/desktop/DesktopFeaturedDealsScreen';
-import { DesktopFiltersScreen } from './scripts/desktop/DesktopFiltersScreen';
 import { DesktopDealDetailScreen } from './scripts/desktop/DesktopDealDetailScreen';
-import { DesktopUrbanGrillStorefrontScreen } from './scripts/desktop/DesktopUrbanGrillStorefrontScreen';
-import { DesktopSpaStorefrontScreen } from './scripts/desktop/DesktopSpaStorefrontScreen';
-import { DesktopAllProductsScreen } from './scripts/desktop/DesktopAllProductsScreen';
-import { DesktopAllServicesScreen } from './scripts/desktop/DesktopAllServicesScreen';
-import { DesktopSpaBookingScreen } from './scripts/desktop/DesktopSpaBookingScreen';
-import { DesktopDashboardScreen } from './scripts/desktop/DesktopDashboardScreen';
-import { DesktopOrdersScreen } from './scripts/desktop/DesktopOrdersScreen';
-import { DesktopOrderDetailScreen } from './scripts/desktop/DesktopOrderDetailScreen';
-import { DesktopBookingDetailScreen } from './scripts/desktop/DesktopBookingDetailScreen';
-import { DesktopMyDealsScreen } from './scripts/desktop/DesktopMyDealsScreen';
-import { DesktopMessagesScreen } from './scripts/desktop/DesktopMessagesScreen';
-import { DesktopCartScreen } from './scripts/desktop/DesktopCartScreen';
-import { DesktopAccountSettingsScreen } from './scripts/desktop/DesktopAccountSettingsScreen';
-import { DesktopBusinessAccountChoiceScreen } from './scripts/desktop/DesktopBusinessAccountChoiceScreen';
-import { DesktopBusinessOnboardingScreen } from './scripts/desktop/DesktopBusinessOnboardingScreen';
-import { DesktopBusinessVerificationScreen } from './scripts/desktop/DesktopBusinessVerificationScreen';
-import { DesktopVerificationStatusCenterScreen } from './scripts/desktop/DesktopVerificationStatusCenterScreen';
-import { DesktopSubscriptionScreen } from './scripts/desktop/DesktopSubscriptionScreen';
-import { DesktopBusinessOrdersScreen } from './scripts/desktop/DesktopBusinessOrdersScreen';
-import { DesktopBusinessPosOrdersScreen } from './scripts/desktop/DesktopBusinessPosOrdersScreen';
-import { DesktopBusinessMessagesWorkspaceScreen } from './scripts/desktop/DesktopBusinessMessagesWorkspaceScreen';
-import { CampaignsChannelScreen } from './scripts/campaigns/CampaignsChannelScreen';
-import { DesktopMoreSubscriptionScreen } from './scripts/desktop/DesktopMoreSubscriptionScreen';
-import { DesktopMoreAddOnsScreen } from './scripts/desktop/DesktopMoreAddOnsScreen';
-import { DesktopBusinessNotificationsScreen } from './scripts/desktop/DesktopBusinessNotificationsScreen';
-import { DesktopBusinessHelpSupportScreen } from './scripts/desktop/DesktopBusinessHelpSupportScreen';
-import { DesktopBusinessSettingsScreen } from './scripts/desktop/DesktopBusinessSettingsScreen';
-import { DesktopDealsWorkspaceScreen } from './scripts/desktop/DesktopDealsWorkspaceScreen';
-import { DesktopDealStudioFlow } from './scripts/desktop/DesktopDealStudioFlow';
-import { DesktopBusinessProfilePreviewStudioScreen } from './scripts/desktop/DesktopBusinessProfilePreviewStudioScreen';
-import { DesktopBusinessOverviewScreen } from './scripts/desktop/DesktopBusinessOverviewScreen';
-import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealLocationPricingScreen';
-import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
-import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
-import { BusinessStorefrontPreviewScreen } from './scripts/desktop/BusinessStorefrontPreviewScreen';
 import { dealIdFromPath, useDealDetail } from './hooks/useDealDetail';
 import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
 import { MOBILE_ACCOUNT_NAV_EVENT, SEARCH_PICK_EVENT, type SearchPick } from './utils/appEvents';
-import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
-import { DesktopBusinessBranchPricingScreen } from './scripts/desktop/DesktopBusinessBranchPricingScreen';
-import { DesktopBusinessCustomersScreen } from './scripts/desktop/DesktopBusinessCustomersScreen';
-import { DesktopCustomerProfileScreen } from './scripts/desktop/DesktopCustomerProfileScreen';
-import { DesktopLoyaltyProgrammeScreen } from './scripts/desktop/DesktopLoyaltyProgrammeScreen';
-import { DesktopLoyaltyRewardsScreen } from './scripts/desktop/DesktopLoyaltyRewardsScreen';
-import { DesktopBusinessCatalogHubScreen } from './scripts/desktop/DesktopBusinessCatalogHubScreen';
-import { DesktopBusinessLocationsHubScreen } from './scripts/desktop/DesktopBusinessLocationsHubScreen';
-import { DesktopBusinessAddBranchScreen } from './scripts/desktop/DesktopBusinessAddBranchScreen';
-import { DesktopBranchDetailScreen } from './scripts/desktop/DesktopBranchDetailScreen';
-import { DesktopServicesCategoriesScreen } from './scripts/desktop/DesktopServicesCategoriesScreen';
-import { DesktopAnalyticsBusinessScreen } from './scripts/desktop/DesktopAnalyticsBusinessScreen';
-import { DesktopAnalyticsDealsScreen } from './scripts/desktop/DesktopAnalyticsDealsScreen';
-import { DesktopAnalyticsPosScreen } from './scripts/desktop/DesktopAnalyticsPosScreen';
-import { DesktopAnalyticsExportScreen } from './scripts/desktop/DesktopAnalyticsExportScreen';
-import { DesktopAnalyticsFilterScreen } from './scripts/desktop/DesktopAnalyticsFilterScreen';
-import { DesktopAnalyticsLocationsScreen } from './scripts/desktop/DesktopAnalyticsLocationsScreen';
-import { DesktopAnalyticsCustomersScreen } from './scripts/desktop/DesktopAnalyticsCustomersScreen';
-import { DesktopPosDisplayOrderScreen } from './scripts/desktop/DesktopPosDisplayOrderScreen';
-import { DesktopPosDisplayTipScreen } from './scripts/desktop/DesktopPosDisplayTipScreen';
-import { DesktopPosDisplayPayScreen } from './scripts/desktop/DesktopPosDisplayPayScreen';
-import { DesktopSplitBillScreen } from './scripts/desktop/DesktopSplitBillScreen';
-import { DesktopPosDisplayReceiptScreen } from './scripts/desktop/DesktopPosDisplayReceiptScreen';
-import { DesktopPosHomeScreen } from './scripts/desktop/DesktopPosHomeScreen';
-import { DesktopPosRegisterScreen } from './scripts/desktop/DesktopPosRegisterScreen';
-import { DesktopPosPaymentScreen } from './scripts/desktop/DesktopPosPaymentScreen';
-import { DesktopPosSaleCompleteScreen } from './scripts/desktop/DesktopPosSaleCompleteScreen';
-import { DesktopPosStockScreen } from './scripts/desktop/DesktopPosStockScreen';
-import { DesktopPosLedgerScreen } from './scripts/desktop/DesktopPosLedgerScreen';
-import { DesktopPosOfflineSaleScreen } from './scripts/desktop/DesktopPosOfflineSaleScreen';
-import { DesktopPosBufferScreen } from './scripts/desktop/DesktopPosBufferScreen';
-import { DesktopPosKitchenScreen } from './scripts/desktop/DesktopPosKitchenScreen';
-import { DesktopPosCartScreen } from './scripts/desktop/DesktopPosCartScreen';
-import { DesktopPosSwitchScreen } from './scripts/desktop/DesktopPosSwitchScreen';
-import { DesktopPosCustomerScreen } from './scripts/desktop/DesktopPosCustomerScreen';
-import { DesktopPosProductShiftScreen } from './scripts/desktop/DesktopPosProductShiftScreen';
-import { DesktopPosCustomerLookupScreen } from './scripts/desktop/DesktopPosCustomerLookupScreen';
-import { DesktopPosOrderLookupScreen } from './scripts/desktop/DesktopPosOrderLookupScreen';
-import { DesktopPosCustomerDossierScreen } from './scripts/desktop/DesktopPosCustomerDossierScreen';
-import { DesktopPosTransactionDetailScreen } from './scripts/desktop/DesktopPosTransactionDetailScreen';
-import { DesktopPublicPosCartScreen } from './scripts/desktop/DesktopPublicPosCartScreen';
-import { DesktopPublicPosTrackingScreen } from './scripts/desktop/DesktopPublicPosTrackingScreen';
-import { DesktopPublicPosMenuScreen } from './scripts/desktop/DesktopPublicPosMenuScreen';
-import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGeneralSettingsScreen';
 import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
 import { type PosTerminalLine } from './scripts/desktop/posTerminalData';
 import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
 import { StoreOrderingProvider } from './context/StoreOrderingContext';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
-import { DesktopStoreOrderingDashboard } from './scripts/desktop/DesktopStoreOrderingDashboard';
-import { DesktopStoreOrderingQrScreen } from './scripts/desktop/DesktopStoreOrderingQrScreen';
-import { DesktopStoreOrderingSettingsScreen } from './scripts/desktop/DesktopStoreOrderingSettingsScreen';
-import { StoreOrderingScreen } from './scripts/StoreOrderingScreen';
-import { ClusterOnboardingScreen } from './scripts/ClusterOnboardingScreen';
-import { DesktopClusterOnboardingScreen } from './scripts/desktop/DesktopClusterOnboardingScreen';
-import { ClusterSystemScreen } from './scripts/ClusterSystemScreen';
-import { DesktopClusterSystemScreen } from './scripts/desktop/DesktopClusterSystemScreen';
-import { ClusterBoostFlow } from './scripts/ClusterBoostFlow';
-import { ClusterBoostListScreen } from './scripts/ClusterBoostListScreen';
 
 type Route =
   | 'welcome'
@@ -1096,6 +833,275 @@ function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume
   return (authed || hasOnboarded()) ? 'home' : 'welcome';
 }
 
+/* Screens load when first opened; only the first pages a visitor sees are bundled up front. */
+const CheckoutScreen = lazyScreen(() => import('./scripts/CheckoutScreen').then((module) => module.CheckoutScreen));
+const OrderPlacedScreen = lazyScreen(() => import('./scripts/OrderPlacedScreen').then((module) => module.OrderPlacedScreen));
+const CustomerInviteJoinScreen = lazyScreen(() => import('./scripts/CustomerInviteJoinScreen').then((module) => module.CustomerInviteJoinScreen));
+const ServiceDetailScreen = lazyScreen(() => import('./scripts/ServiceDetailScreen').then((module) => module.ServiceDetailScreen));
+const SpaBookingScheduleScreen = lazyScreen(() => import('./scripts/SpaBookingScheduleScreen').then((module) => module.SpaBookingScheduleScreen));
+const BookingCheckoutScreen = lazyScreen(() => import('./scripts/BookingCheckoutScreen').then((module) => module.BookingCheckoutScreen));
+const BookingConfirmedScreen = lazyScreen(() => import('./scripts/BookingConfirmedScreen').then((module) => module.BookingConfirmedScreen));
+const DiscoverDealsScreen = lazyScreen(() => import('./scripts/DiscoverDealsScreen').then((module) => module.DiscoverDealsScreen));
+const StartVemtapScreen = lazyScreen(() => import('./scripts/StartVemtapScreen').then((module) => module.StartVemtapScreen));
+const AccountScreen = lazyScreen(() => import('./scripts/AccountScreen').then((module) => module.AccountScreen));
+const SettingsScreen = lazyScreen(() => import('./scripts/SettingsScreen').then((module) => module.SettingsScreen));
+const AdminReferralScreen = lazyScreen(() => import('./scripts/admin/AdminReferralScreen').then((module) => module.AdminReferralScreen));
+const NotFoundScreen = lazyScreen(() => import('./scripts/NotFoundScreen').then((module) => module.NotFoundScreen));
+const GiftRejectScreen = lazyScreen(() => import('./scripts/GiftRejectScreen').then((module) => module.GiftRejectScreen));
+const VoucherRedeemScreen = lazyScreen(() => import('./scripts/VoucherRedeemScreen').then((module) => module.VoucherRedeemScreen));
+const DesktopNotFoundScreen = lazyScreen(() => import('./scripts/desktop/DesktopNotFoundScreen').then((module) => module.DesktopNotFoundScreen));
+const SupportLegalScreen = lazyScreen(() => import('./scripts/SupportLegalScreen').then((module) => module.SupportLegalScreen));
+const EditProfileScreen = lazyScreen(() => import('./scripts/EditProfileScreen').then((module) => module.EditProfileScreen));
+const RewardsScreen = lazyScreen(() => import('./scripts/RewardsScreen').then((module) => module.RewardsScreen));
+const SavingsScreen = lazyScreen(() => import('./scripts/SavingsScreen').then((module) => module.SavingsScreen));
+const SavedItemsScreen = lazyScreen(() => import('./scripts/SavedItemsScreen').then((module) => module.SavedItemsScreen));
+const CustomerReferralsScreen = lazyScreen(() => import('./scripts/CustomerReferralsScreen').then((module) => module.CustomerReferralsScreen));
+const BusinessReferralsScreen = lazyScreen(() => import('./scripts/BusinessReferralsScreen').then((module) => module.BusinessReferralsScreen));
+const OnboardingWelcomeScreen = lazyScreen(() => import('./scripts/OnboardingWelcomeScreen').then((module) => module.OnboardingWelcomeScreen));
+const GoogleProfileConfirmScreen = lazyScreen(() => import('./scripts/GoogleProfileConfirmScreen').then((module) => module.GoogleProfileConfirmScreen));
+const ActivityScreen = lazyScreen(() => import('./scripts/ActivityScreen').then((module) => module.ActivityScreen));
+const NotificationsScreen = lazyScreen(() => import('./scripts/NotificationsScreen').then((module) => module.NotificationsScreen));
+const HelpCentreScreen = lazyScreen(() => import('./scripts/HelpCentreScreen').then((module) => module.HelpCentreScreen));
+const AccountSettingsScreen = lazyScreen(() => import('./scripts/AccountSettingsScreen').then((module) => module.AccountSettingsScreen));
+const DashboardScreen = lazyScreen(() => import('./scripts/DashboardScreen').then((module) => module.DashboardScreen));
+const MyDealsScreen = lazyScreen(() => import('./scripts/MyDealsScreen').then((module) => module.MyDealsScreen));
+const MessagesScreen = lazyScreen(() => import('./scripts/MessagesScreen').then((module) => module.MessagesScreen));
+const ConversationScreen = lazyScreen(() => import('./scripts/ConversationScreen').then((module) => module.ConversationScreen));
+const OrdersScreen = lazyScreen(() => import('./scripts/OrdersScreen').then((module) => module.OrdersScreen));
+const OrderDetailScreen = lazyScreen(() => import('./scripts/OrderDetailScreen').then((module) => module.OrderDetailScreen));
+const BookingDetailScreen = lazyScreen(() => import('./scripts/BookingDetailScreen').then((module) => module.BookingDetailScreen));
+const AuthCodeScreen = lazyScreen(() => import('./scripts/AuthCodeScreen').then((module) => module.AuthCodeScreen));
+const ForgotPinScreen = lazyScreen(() => import('./scripts/ForgotPinScreen').then((module) => module.ForgotPinScreen));
+const VerifyEmailScreen = lazyScreen(() => import('./scripts/VerifyEmailScreen').then((module) => module.VerifyEmailScreen));
+const ProfileSetupScreen = lazyScreen(() => import('./scripts/ProfileSetupScreen').then((module) => module.ProfileSetupScreen));
+const LocationPermissionScreen = lazyScreen(() => import('./scripts/LocationPermissionScreen').then((module) => module.LocationPermissionScreen));
+const ManualLocationScreen = lazyScreen(() => import('./scripts/ManualLocationScreen').then((module) => module.ManualLocationScreen));
+const ConfirmLocationScreen = lazyScreen(() => import('./scripts/ConfirmLocationScreen').then((module) => module.ConfirmLocationScreen));
+const DiscoveringScreen = lazyScreen(() => import('./scripts/DiscoveringScreen').then((module) => module.DiscoveringScreen));
+const DesktopDiscoverDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDiscoverDealsScreen').then((module) => module.DesktopDiscoverDealsScreen));
+const DesktopStartVemtapScreen = lazyScreen(() => import('./scripts/desktop/DesktopStartVemtapScreen').then((module) => module.DesktopStartVemtapScreen));
+const DesktopAuthCodeScreen = lazyScreen(() => import('./scripts/desktop/DesktopAuthCodeScreen').then((module) => module.DesktopAuthCodeScreen));
+const DesktopForgotPinScreen = lazyScreen(() => import('./scripts/desktop/DesktopForgotPinScreen').then((module) => module.DesktopForgotPinScreen));
+const DesktopVerifyEmailScreen = lazyScreen(() => import('./scripts/desktop/DesktopVerifyEmailScreen').then((module) => module.DesktopVerifyEmailScreen));
+const DesktopProfileSetupScreen = lazyScreen(() => import('./scripts/desktop/DesktopProfileSetupScreen').then((module) => module.DesktopProfileSetupScreen));
+const DesktopLocationPermissionScreen = lazyScreen(() => import('./scripts/desktop/DesktopLocationPermissionScreen').then((module) => module.DesktopLocationPermissionScreen));
+const DesktopManualLocationScreen = lazyScreen(() => import('./scripts/desktop/DesktopManualLocationScreen').then((module) => module.DesktopManualLocationScreen));
+const DesktopConfirmLocationScreen = lazyScreen(() => import('./scripts/desktop/DesktopConfirmLocationScreen').then((module) => module.DesktopConfirmLocationScreen));
+const DesktopAccountScreen = lazyScreen(() => import('./scripts/desktop/DesktopAccountScreen').then((module) => module.DesktopAccountScreen));
+const DesktopSavedItemsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSavedItemsScreen').then((module) => module.DesktopSavedItemsScreen));
+const DesktopCustomerReferralsScreen = lazyScreen(() => import('./scripts/desktop/DesktopCustomerReferralsScreen').then((module) => module.DesktopCustomerReferralsScreen));
+const DesktopBusinessReferralsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessReferralsScreen').then((module) => module.DesktopBusinessReferralsScreen));
+const DesktopOnboardingWelcomeScreen = lazyScreen(() => import('./scripts/desktop/DesktopOnboardingWelcomeScreen').then((module) => module.DesktopOnboardingWelcomeScreen));
+const DesktopGoogleProfileConfirmScreen = lazyScreen(() => import('./scripts/desktop/DesktopGoogleProfileConfirmScreen').then((module) => module.DesktopGoogleProfileConfirmScreen));
+const DesktopBusinessHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessHubScreen').then((module) => module.DesktopBusinessHubScreen));
+const DesktopBusinessMoreScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessMoreScreen').then((module) => module.DesktopBusinessMoreScreen));
+const DesktopBoostHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBoostHubScreen').then((module) => module.DesktopBoostHubScreen));
+const DesktopBoostMetricsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBoostMetricsScreen').then((module) => module.DesktopBoostMetricsScreen));
+const DesktopBoostWalletScreen = lazyScreen(() => import('./scripts/desktop/DesktopBoostWalletScreen').then((module) => module.DesktopBoostWalletScreen));
+const DesktopSegmentsHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentsHubScreen').then((module) => module.DesktopSegmentsHubScreen));
+const DesktopSegmentActionsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentActionsScreen').then((module) => module.DesktopSegmentActionsScreen));
+const DesktopSegmentCreateScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentCreateScreen').then((module) => module.DesktopSegmentCreateScreen));
+const DesktopSegmentDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentDetailScreen').then((module) => module.DesktopSegmentDetailScreen));
+const DesktopHowToClaimScreen = lazyScreen(() => import('./scripts/desktop/DesktopHowToClaimScreen').then((module) => module.DesktopHowToClaimScreen));
+const BusinessProfileScreen = lazyScreen(() => import('./scripts/BusinessProfileScreen').then((module) => module.BusinessProfileScreen));
+const ProductDetailScreen = lazyScreen(() => import('./scripts/ProductDetailScreen').then((module) => module.ProductDetailScreen));
+const DesktopProductDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopProductDetailScreen').then((module) => module.DesktopProductDetailScreen));
+const DesktopClaimSuccessScreen = lazyScreen(() => import('./scripts/desktop/DesktopClaimSuccessScreen').then((module) => module.DesktopClaimSuccessScreen));
+const DesktopGiftSentScreen = lazyScreen(() => import('./scripts/desktop/DesktopGiftSentScreen').then((module) => module.DesktopGiftSentScreen));
+const DesktopClaimedDealScreen = lazyScreen(() => import('./scripts/desktop/DesktopClaimedDealScreen').then((module) => module.DesktopClaimedDealScreen));
+const DesktopDealTermsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealTermsScreen').then((module) => module.DesktopDealTermsScreen));
+const DesktopStorefrontMenuScreen = lazyScreen(() => import('./scripts/desktop/DesktopStorefrontMenuScreen').then((module) => module.DesktopStorefrontMenuScreen));
+const DesktopCheckoutScreen = lazyScreen(() => import('./scripts/desktop/DesktopCheckoutScreen').then((module) => module.DesktopCheckoutScreen));
+const DesktopOrderPlacedScreen = lazyScreen(() => import('./scripts/desktop/DesktopOrderPlacedScreen').then((module) => module.DesktopOrderPlacedScreen));
+const DesktopSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSettingsScreen').then((module) => module.DesktopSettingsScreen));
+const DesktopSupportLegalScreen = lazyScreen(() => import('./scripts/desktop/DesktopSupportLegalScreen').then((module) => module.DesktopSupportLegalScreen));
+const DesktopEditProfileScreen = lazyScreen(() => import('./scripts/desktop/DesktopEditProfileScreen').then((module) => module.DesktopEditProfileScreen));
+const DesktopPrivacyScreen = lazyScreen(() => import('./scripts/desktop/DesktopPrivacyScreen').then((module) => module.DesktopPrivacyScreen));
+const DesktopAddressesScreen = lazyScreen(() => import('./scripts/desktop/DesktopAddressesScreen').then((module) => module.DesktopAddressesScreen));
+const DesktopPreferencesScreen = lazyScreen(() => import('./scripts/desktop/DesktopPreferencesScreen').then((module) => module.DesktopPreferencesScreen));
+const DesktopTermsScreen = lazyScreen(() => import('./scripts/desktop/DesktopTermsScreen').then((module) => module.DesktopTermsScreen));
+const DesktopRewardsScreen = lazyScreen(() => import('./scripts/desktop/DesktopRewardsScreen').then((module) => module.DesktopRewardsScreen));
+const DesktopSavingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSavingsScreen').then((module) => module.DesktopSavingsScreen));
+const DesktopNotificationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopNotificationsScreen').then((module) => module.DesktopNotificationsScreen));
+const DesktopHelpCentreScreen = lazyScreen(() => import('./scripts/desktop/DesktopHelpCentreScreen').then((module) => module.DesktopHelpCentreScreen));
+const DesktopSupportScreen = lazyScreen(() => import('./scripts/desktop/DesktopSupportScreen').then((module) => module.DesktopSupportScreen));
+const DesktopActivityScreen = lazyScreen(() => import('./scripts/desktop/DesktopActivityScreen').then((module) => module.DesktopActivityScreen));
+const DesktopScanScreen = lazyScreen(() => import('./scripts/desktop/DesktopScanScreen').then((module) => module.DesktopScanScreen));
+const DesktopDiscoveringScreen = lazyScreen(() => import('./scripts/desktop/DesktopDiscoveringScreen').then((module) => module.DesktopDiscoveringScreen));
+const SupportScreen = lazyScreen(() => import('./scripts/SupportScreen').then((module) => module.SupportScreen));
+const TermsScreen = lazyScreen(() => import('./scripts/TermsScreen').then((module) => module.TermsScreen));
+const PrivacyScreen = lazyScreen(() => import('./scripts/PrivacyScreen').then((module) => module.PrivacyScreen));
+const PreferencesScreen = lazyScreen(() => import('./scripts/PreferencesScreen').then((module) => module.PreferencesScreen));
+const AddressesScreen = lazyScreen(() => import('./scripts/AddressesScreen').then((module) => module.AddressesScreen));
+const ScanScreen = lazyScreen(() => import('./scripts/ScanScreen').then((module) => module.ScanScreen));
+const DealsScreen = lazyScreen(() => import('./scripts/DealsScreen').then((module) => module.DealsScreen));
+const FeaturedDealsScreen = lazyScreen(() => import('./scripts/FeaturedDealsScreen').then((module) => module.FeaturedDealsScreen));
+const FiltersScreen = lazyScreen(() => import('./scripts/FiltersScreen').then((module) => module.FiltersScreen));
+const HowToClaimScreen = lazyScreen(() => import('./scripts/HowToClaimScreen').then((module) => module.HowToClaimScreen));
+const ClaimSuccessScreen = lazyScreen(() => import('./scripts/ClaimSuccessScreen').then((module) => module.ClaimSuccessScreen));
+const GiftSentScreen = lazyScreen(() => import('./scripts/GiftSentScreen').then((module) => module.GiftSentScreen));
+const ClaimedDealScreen = lazyScreen(() => import('./scripts/ClaimedDealScreen').then((module) => module.ClaimedDealScreen));
+const DealTermsScreen = lazyScreen(() => import('./scripts/DealTermsScreen').then((module) => module.DealTermsScreen));
+const DiscoverScreen = lazyScreen(() => import('./scripts/DiscoverScreen').then((module) => module.DiscoverScreen));
+const MerchantDealsScreen = lazyScreen(() => import('./scripts/MerchantDealsScreen').then((module) => module.MerchantDealsScreen));
+const ProductsCatalogueScreen = lazyScreen(() => import('./scripts/ProductsCatalogueScreen').then((module) => module.ProductsCatalogueScreen));
+const MenuProductsScreen = lazyScreen(() => import('./scripts/MenuProductsScreen').then((module) => module.MenuProductsScreen));
+const BusinessAccountChoiceScreen = lazyScreen(() => import('./scripts/BusinessAccountChoiceScreen').then((module) => module.BusinessAccountChoiceScreen));
+const BusinessOnboardingScreen = lazyScreen(() => import('./scripts/BusinessOnboardingScreen').then((module) => module.BusinessOnboardingScreen));
+const BusinessDealStudioFlow = lazyScreen(() => import('./scripts/BusinessDealStudioFlow').then((module) => module.BusinessDealStudioFlow));
+const BusinessVerificationScreen = lazyScreen(() => import('./scripts/BusinessVerificationScreen').then((module) => module.BusinessVerificationScreen));
+const VerificationStatusCenterScreen = lazyScreen(() => import('./scripts/VerificationStatusCenterScreen').then((module) => module.VerificationStatusCenterScreen));
+const SubscriptionScreen = lazyScreen(() => import('./scripts/SubscriptionScreen').then((module) => module.SubscriptionScreen));
+const BusinessOrdersScreen = lazyScreen(() => import('./scripts/BusinessOrdersScreen').then((module) => module.BusinessOrdersScreen));
+const BusinessMessagesScreen = lazyScreen(() => import('./scripts/BusinessMessagesScreen').then((module) => module.BusinessMessagesScreen));
+const BusinessOverviewScreen = lazyScreen(() => import('./scripts/BusinessOverviewScreen').then((module) => module.BusinessOverviewScreen));
+const BusinessPosMenuScreen = lazyScreen(() => import('./scripts/BusinessPosMenuScreen').then((module) => module.BusinessPosMenuScreen));
+const BusinessHubScreen = lazyScreen(() => import('./scripts/BusinessHubScreen').then((module) => module.BusinessHubScreen));
+const BusinessMoreScreen = lazyScreen(() => import('./scripts/BusinessMoreScreen').then((module) => module.BusinessMoreScreen));
+const BusinessStaffScreen = lazyScreen(() => import('./scripts/BusinessStaffScreen').then((module) => module.BusinessStaffScreen));
+const DesktopStaffDirectoryScreen = lazyScreen(() => import('./scripts/desktop/DesktopStaffDirectoryScreen').then((module) => module.DesktopStaffDirectoryScreen));
+const BusinessInviteStaffScreen = lazyScreen(() => import('./scripts/BusinessInviteStaffScreen').then((module) => module.BusinessInviteStaffScreen));
+const DesktopStaffInviteScreen = lazyScreen(() => import('./scripts/desktop/DesktopStaffInviteScreen').then((module) => module.DesktopStaffInviteScreen));
+const BusinessLoyaltyScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyScreen').then((module) => module.BusinessLoyaltyScreen));
+const BusinessLoyaltyRewardsScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyRewardsScreen').then((module) => module.BusinessLoyaltyRewardsScreen));
+const BusinessAnalyticsScreen = lazyScreen(() => import('./scripts/BusinessAnalyticsScreen').then((module) => module.BusinessAnalyticsScreen));
+const BusinessBranchComparisonScreen = lazyScreen(() => import('./scripts/BusinessBranchComparisonScreen').then((module) => module.BusinessBranchComparisonScreen));
+const AnalyticsBusinessScreen = lazyScreen(() => import('./scripts/AnalyticsBusinessScreen').then((module) => module.AnalyticsBusinessScreen));
+const AnalyticsCustomersScreen = lazyScreen(() => import('./scripts/AnalyticsCustomersScreen').then((module) => module.AnalyticsCustomersScreen));
+const AnalyticsDealsScreen = lazyScreen(() => import('./scripts/AnalyticsDealsScreen').then((module) => module.AnalyticsDealsScreen));
+const AnalyticsLocationsScreen = lazyScreen(() => import('./scripts/AnalyticsLocationsScreen').then((module) => module.AnalyticsLocationsScreen));
+const AnalyticsPosScreen = lazyScreen(() => import('./scripts/AnalyticsPosScreen').then((module) => module.AnalyticsPosScreen));
+const AnalyticsExportScreen = lazyScreen(() => import('./scripts/AnalyticsExportScreen').then((module) => module.AnalyticsExportScreen));
+const AnalyticsFilterScreen = lazyScreen(() => import('./scripts/AnalyticsFilterScreen').then((module) => module.AnalyticsFilterScreen));
+const BusinessPosDisplayOrderScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayOrderScreen').then((module) => module.BusinessPosDisplayOrderScreen));
+const BusinessPosDisplayTipScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayTipScreen').then((module) => module.BusinessPosDisplayTipScreen));
+const BusinessPosDisplayPayScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayPayScreen').then((module) => module.BusinessPosDisplayPayScreen));
+const BusinessPosDisplayReceiptScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayReceiptScreen').then((module) => module.BusinessPosDisplayReceiptScreen));
+const BusinessSplitBillScreen = lazyScreen(() => import('./scripts/BusinessSplitBillScreen').then((module) => module.BusinessSplitBillScreen));
+const BusinessPosHomeScreen = lazyScreen(() => import('./scripts/BusinessPosHomeScreen').then((module) => module.BusinessPosHomeScreen));
+const BusinessPosRegisterScreen = lazyScreen(() => import('./scripts/BusinessPosRegisterScreen').then((module) => module.BusinessPosRegisterScreen));
+const BusinessPosCartScreen = lazyScreen(() => import('./scripts/BusinessPosCartScreen').then((module) => module.BusinessPosCartScreen));
+const BusinessPosSwitchScreen = lazyScreen(() => import('./scripts/BusinessPosSwitchScreen').then((module) => module.BusinessPosSwitchScreen));
+const BusinessPosCustomerScreen = lazyScreen(() => import('./scripts/BusinessPosCustomerScreen').then((module) => module.BusinessPosCustomerScreen));
+const BusinessPosSaleCompleteScreen = lazyScreen(() => import('./scripts/BusinessPosSaleCompleteScreen').then((module) => module.BusinessPosSaleCompleteScreen));
+const BusinessPosPaymentScreen = lazyScreen(() => import('./scripts/BusinessPosPaymentScreen').then((module) => module.BusinessPosPaymentScreen));
+const BusinessPosProductShiftScreen = lazyScreen(() => import('./scripts/BusinessPosProductShiftScreen').then((module) => module.BusinessPosProductShiftScreen));
+const BusinessPosStockScreen = lazyScreen(() => import('./scripts/BusinessPosStockScreen').then((module) => module.BusinessPosStockScreen));
+const BusinessPosLedgerScreen = lazyScreen(() => import('./scripts/BusinessPosLedgerScreen').then((module) => module.BusinessPosLedgerScreen));
+const BusinessPosCustomerLookupScreen = lazyScreen(() => import('./scripts/BusinessPosCustomerLookupScreen').then((module) => module.BusinessPosCustomerLookupScreen));
+const BusinessPosOrderLookupScreen = lazyScreen(() => import('./scripts/BusinessPosOrderLookupScreen').then((module) => module.BusinessPosOrderLookupScreen));
+const BusinessPosCustomerDossierScreen = lazyScreen(() => import('./scripts/BusinessPosCustomerDossierScreen').then((module) => module.BusinessPosCustomerDossierScreen));
+const BusinessPosOfflineCheckoutScreen = lazyScreen(() => import('./scripts/BusinessPosOfflineCheckoutScreen').then((module) => module.BusinessPosOfflineCheckoutScreen));
+const BusinessPosTransactionDetailScreen = lazyScreen(() => import('./scripts/BusinessPosTransactionDetailScreen').then((module) => module.BusinessPosTransactionDetailScreen));
+const BusinessPosOfflineBufferScreen = lazyScreen(() => import('./scripts/BusinessPosOfflineBufferScreen').then((module) => module.BusinessPosOfflineBufferScreen));
+const BusinessPosKitchenStreamScreen = lazyScreen(() => import('./scripts/BusinessPosKitchenStreamScreen').then((module) => module.BusinessPosKitchenStreamScreen));
+const BusinessPosSettingsScreen = lazyScreen(() => import('./scripts/BusinessPosSettingsScreen').then((module) => module.BusinessPosSettingsScreen));
+const PublicPosMenuScreen = lazyScreen(() => import('./scripts/PublicPosMenuScreen').then((module) => module.PublicPosMenuScreen));
+const PublicPosCartReviewScreen = lazyScreen(() => import('./scripts/PublicPosCartReviewScreen').then((module) => module.PublicPosCartReviewScreen));
+const PublicPosOrderTrackingScreen = lazyScreen(() => import('./scripts/PublicPosOrderTrackingScreen').then((module) => module.PublicPosOrderTrackingScreen));
+const BusinessBoostHubScreen = lazyScreen(() => import('./scripts/BusinessBoostHubScreen').then((module) => module.BusinessBoostHubScreen));
+const BusinessBoostMetricsScreen = lazyScreen(() => import('./scripts/BusinessBoostMetricsScreen').then((module) => module.BusinessBoostMetricsScreen));
+const BusinessBoostWalletScreen = lazyScreen(() => import('./scripts/BusinessBoostWalletScreen').then((module) => module.BusinessBoostWalletScreen));
+const BusinessSegmentsHubScreen = lazyScreen(() => import('./scripts/BusinessSegmentsHubScreen').then((module) => module.BusinessSegmentsHubScreen));
+const BusinessSegmentActionsScreen = lazyScreen(() => import('./scripts/BusinessSegmentActionsScreen').then((module) => module.BusinessSegmentActionsScreen));
+const BusinessSegmentCreateScreen = lazyScreen(() => import('./scripts/BusinessSegmentCreateScreen').then((module) => module.BusinessSegmentCreateScreen));
+const BusinessSegmentDetailScreen = lazyScreen(() => import('./scripts/BusinessSegmentDetailScreen').then((module) => module.BusinessSegmentDetailScreen));
+const ConsumerCartScreen = lazyScreen(() => import('./scripts/ConsumerCartScreen').then((module) => module.ConsumerCartScreen));
+const ServicesCatalogueScreen = lazyScreen(() => import('./scripts/ServicesCatalogueScreen').then((module) => module.ServicesCatalogueScreen));
+const DesktopDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealsScreen').then((module) => module.DesktopDealsScreen));
+const DesktopDiscoverScreen = lazyScreen(() => import('./scripts/desktop/DesktopDiscoverScreen').then((module) => module.DesktopDiscoverScreen));
+const DesktopFeaturedDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopFeaturedDealsScreen').then((module) => module.DesktopFeaturedDealsScreen));
+const DesktopFiltersScreen = lazyScreen(() => import('./scripts/desktop/DesktopFiltersScreen').then((module) => module.DesktopFiltersScreen));
+const DesktopUrbanGrillStorefrontScreen = lazyScreen(() => import('./scripts/desktop/DesktopUrbanGrillStorefrontScreen').then((module) => module.DesktopUrbanGrillStorefrontScreen));
+const DesktopSpaStorefrontScreen = lazyScreen(() => import('./scripts/desktop/DesktopSpaStorefrontScreen').then((module) => module.DesktopSpaStorefrontScreen));
+const DesktopAllProductsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAllProductsScreen').then((module) => module.DesktopAllProductsScreen));
+const DesktopAllServicesScreen = lazyScreen(() => import('./scripts/desktop/DesktopAllServicesScreen').then((module) => module.DesktopAllServicesScreen));
+const DesktopSpaBookingScreen = lazyScreen(() => import('./scripts/desktop/DesktopSpaBookingScreen').then((module) => module.DesktopSpaBookingScreen));
+const DesktopDashboardScreen = lazyScreen(() => import('./scripts/desktop/DesktopDashboardScreen').then((module) => module.DesktopDashboardScreen));
+const DesktopOrdersScreen = lazyScreen(() => import('./scripts/desktop/DesktopOrdersScreen').then((module) => module.DesktopOrdersScreen));
+const DesktopOrderDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopOrderDetailScreen').then((module) => module.DesktopOrderDetailScreen));
+const DesktopBookingDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopBookingDetailScreen').then((module) => module.DesktopBookingDetailScreen));
+const DesktopMyDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopMyDealsScreen').then((module) => module.DesktopMyDealsScreen));
+const DesktopMessagesScreen = lazyScreen(() => import('./scripts/desktop/DesktopMessagesScreen').then((module) => module.DesktopMessagesScreen));
+const DesktopCartScreen = lazyScreen(() => import('./scripts/desktop/DesktopCartScreen').then((module) => module.DesktopCartScreen));
+const DesktopAccountSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAccountSettingsScreen').then((module) => module.DesktopAccountSettingsScreen));
+const DesktopBusinessAccountChoiceScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessAccountChoiceScreen').then((module) => module.DesktopBusinessAccountChoiceScreen));
+const DesktopBusinessOnboardingScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessOnboardingScreen').then((module) => module.DesktopBusinessOnboardingScreen));
+const DesktopBusinessVerificationScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessVerificationScreen').then((module) => module.DesktopBusinessVerificationScreen));
+const DesktopVerificationStatusCenterScreen = lazyScreen(() => import('./scripts/desktop/DesktopVerificationStatusCenterScreen').then((module) => module.DesktopVerificationStatusCenterScreen));
+const DesktopSubscriptionScreen = lazyScreen(() => import('./scripts/desktop/DesktopSubscriptionScreen').then((module) => module.DesktopSubscriptionScreen));
+const DesktopBusinessOrdersScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessOrdersScreen').then((module) => module.DesktopBusinessOrdersScreen));
+const DesktopBusinessPosOrdersScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessPosOrdersScreen').then((module) => module.DesktopBusinessPosOrdersScreen));
+const DesktopBusinessMessagesWorkspaceScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessMessagesWorkspaceScreen').then((module) => module.DesktopBusinessMessagesWorkspaceScreen));
+const CampaignsChannelScreen = lazyScreen(() => import('./scripts/campaigns/CampaignsChannelScreen').then((module) => module.CampaignsChannelScreen));
+const DesktopMoreSubscriptionScreen = lazyScreen(() => import('./scripts/desktop/DesktopMoreSubscriptionScreen').then((module) => module.DesktopMoreSubscriptionScreen));
+const DesktopMoreAddOnsScreen = lazyScreen(() => import('./scripts/desktop/DesktopMoreAddOnsScreen').then((module) => module.DesktopMoreAddOnsScreen));
+const DesktopBusinessNotificationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessNotificationsScreen').then((module) => module.DesktopBusinessNotificationsScreen));
+const DesktopBusinessHelpSupportScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessHelpSupportScreen').then((module) => module.DesktopBusinessHelpSupportScreen));
+const DesktopBusinessSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessSettingsScreen').then((module) => module.DesktopBusinessSettingsScreen));
+const DesktopDealsWorkspaceScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealsWorkspaceScreen').then((module) => module.DesktopDealsWorkspaceScreen));
+const DesktopDealStudioFlow = lazyScreen(() => import('./scripts/desktop/DesktopDealStudioFlow').then((module) => module.DesktopDealStudioFlow));
+const DesktopBusinessProfilePreviewStudioScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessProfilePreviewStudioScreen').then((module) => module.DesktopBusinessProfilePreviewStudioScreen));
+const DesktopBusinessOverviewScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessOverviewScreen').then((module) => module.DesktopBusinessOverviewScreen));
+const DesktopDealLocationPricingScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealLocationPricingScreen').then((module) => module.DesktopDealLocationPricingScreen));
+const DesktopDealCreateLocationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealCreateLocationsScreen').then((module) => module.DesktopDealCreateLocationsScreen));
+const DesktopBusinessProfileStorefrontScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessProfileStorefrontScreen').then((module) => module.DesktopBusinessProfileStorefrontScreen));
+const BusinessStorefrontPreviewScreen = lazyScreen(() => import('./scripts/desktop/BusinessStorefrontPreviewScreen').then((module) => module.BusinessStorefrontPreviewScreen));
+const DesktopDealAnalyticsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealAnalyticsScreen').then((module) => module.DesktopDealAnalyticsScreen));
+const DesktopBusinessBranchPricingScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessBranchPricingScreen').then((module) => module.DesktopBusinessBranchPricingScreen));
+const DesktopBusinessCustomersScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessCustomersScreen').then((module) => module.DesktopBusinessCustomersScreen));
+const DesktopCustomerProfileScreen = lazyScreen(() => import('./scripts/desktop/DesktopCustomerProfileScreen').then((module) => module.DesktopCustomerProfileScreen));
+const DesktopLoyaltyProgrammeScreen = lazyScreen(() => import('./scripts/desktop/DesktopLoyaltyProgrammeScreen').then((module) => module.DesktopLoyaltyProgrammeScreen));
+const DesktopLoyaltyRewardsScreen = lazyScreen(() => import('./scripts/desktop/DesktopLoyaltyRewardsScreen').then((module) => module.DesktopLoyaltyRewardsScreen));
+const DesktopBusinessCatalogHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessCatalogHubScreen').then((module) => module.DesktopBusinessCatalogHubScreen));
+const DesktopBusinessLocationsHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessLocationsHubScreen').then((module) => module.DesktopBusinessLocationsHubScreen));
+const DesktopBusinessAddBranchScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessAddBranchScreen').then((module) => module.DesktopBusinessAddBranchScreen));
+const DesktopBranchDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopBranchDetailScreen').then((module) => module.DesktopBranchDetailScreen));
+const DesktopServicesCategoriesScreen = lazyScreen(() => import('./scripts/desktop/DesktopServicesCategoriesScreen').then((module) => module.DesktopServicesCategoriesScreen));
+const DesktopAnalyticsBusinessScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsBusinessScreen').then((module) => module.DesktopAnalyticsBusinessScreen));
+const DesktopAnalyticsDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsDealsScreen').then((module) => module.DesktopAnalyticsDealsScreen));
+const DesktopAnalyticsPosScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsPosScreen').then((module) => module.DesktopAnalyticsPosScreen));
+const DesktopAnalyticsExportScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsExportScreen').then((module) => module.DesktopAnalyticsExportScreen));
+const DesktopAnalyticsFilterScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsFilterScreen').then((module) => module.DesktopAnalyticsFilterScreen));
+const DesktopAnalyticsLocationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsLocationsScreen').then((module) => module.DesktopAnalyticsLocationsScreen));
+const DesktopAnalyticsCustomersScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsCustomersScreen').then((module) => module.DesktopAnalyticsCustomersScreen));
+const DesktopPosDisplayOrderScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayOrderScreen').then((module) => module.DesktopPosDisplayOrderScreen));
+const DesktopPosDisplayTipScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayTipScreen').then((module) => module.DesktopPosDisplayTipScreen));
+const DesktopPosDisplayPayScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayPayScreen').then((module) => module.DesktopPosDisplayPayScreen));
+const DesktopSplitBillScreen = lazyScreen(() => import('./scripts/desktop/DesktopSplitBillScreen').then((module) => module.DesktopSplitBillScreen));
+const DesktopPosDisplayReceiptScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayReceiptScreen').then((module) => module.DesktopPosDisplayReceiptScreen));
+const DesktopPosHomeScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosHomeScreen').then((module) => module.DesktopPosHomeScreen));
+const DesktopPosRegisterScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosRegisterScreen').then((module) => module.DesktopPosRegisterScreen));
+const DesktopPosPaymentScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosPaymentScreen').then((module) => module.DesktopPosPaymentScreen));
+const DesktopPosSaleCompleteScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosSaleCompleteScreen').then((module) => module.DesktopPosSaleCompleteScreen));
+const DesktopPosStockScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosStockScreen').then((module) => module.DesktopPosStockScreen));
+const DesktopPosLedgerScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosLedgerScreen').then((module) => module.DesktopPosLedgerScreen));
+const DesktopPosOfflineSaleScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosOfflineSaleScreen').then((module) => module.DesktopPosOfflineSaleScreen));
+const DesktopPosBufferScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosBufferScreen').then((module) => module.DesktopPosBufferScreen));
+const DesktopPosKitchenScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosKitchenScreen').then((module) => module.DesktopPosKitchenScreen));
+const DesktopPosCartScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCartScreen').then((module) => module.DesktopPosCartScreen));
+const DesktopPosSwitchScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosSwitchScreen').then((module) => module.DesktopPosSwitchScreen));
+const DesktopPosCustomerScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCustomerScreen').then((module) => module.DesktopPosCustomerScreen));
+const DesktopPosProductShiftScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosProductShiftScreen').then((module) => module.DesktopPosProductShiftScreen));
+const DesktopPosCustomerLookupScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCustomerLookupScreen').then((module) => module.DesktopPosCustomerLookupScreen));
+const DesktopPosOrderLookupScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosOrderLookupScreen').then((module) => module.DesktopPosOrderLookupScreen));
+const DesktopPosCustomerDossierScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCustomerDossierScreen').then((module) => module.DesktopPosCustomerDossierScreen));
+const DesktopPosTransactionDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosTransactionDetailScreen').then((module) => module.DesktopPosTransactionDetailScreen));
+const DesktopPublicPosCartScreen = lazyScreen(() => import('./scripts/desktop/DesktopPublicPosCartScreen').then((module) => module.DesktopPublicPosCartScreen));
+const DesktopPublicPosTrackingScreen = lazyScreen(() => import('./scripts/desktop/DesktopPublicPosTrackingScreen').then((module) => module.DesktopPublicPosTrackingScreen));
+const DesktopPublicPosMenuScreen = lazyScreen(() => import('./scripts/desktop/DesktopPublicPosMenuScreen').then((module) => module.DesktopPublicPosMenuScreen));
+const DesktopPosGeneralSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosGeneralSettingsScreen').then((module) => module.DesktopPosGeneralSettingsScreen));
+const DesktopStoreOrderingQrScreen = lazyScreen(() => import('./scripts/desktop/DesktopStoreOrderingQrScreen').then((module) => module.DesktopStoreOrderingQrScreen));
+const DesktopStoreOrderingSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopStoreOrderingSettingsScreen').then((module) => module.DesktopStoreOrderingSettingsScreen));
+const StoreOrderingScreen = lazyScreen(() => import('./scripts/StoreOrderingScreen').then((module) => module.StoreOrderingScreen));
+const ClusterOnboardingScreen = lazyScreen(() => import('./scripts/ClusterOnboardingScreen').then((module) => module.ClusterOnboardingScreen));
+const DesktopClusterOnboardingScreen = lazyScreen(() => import('./scripts/desktop/DesktopClusterOnboardingScreen').then((module) => module.DesktopClusterOnboardingScreen));
+const ClusterSystemScreen = lazyScreen(() => import('./scripts/ClusterSystemScreen').then((module) => module.ClusterSystemScreen));
+const DesktopClusterSystemScreen = lazyScreen(() => import('./scripts/desktop/DesktopClusterSystemScreen').then((module) => module.DesktopClusterSystemScreen));
+const ClusterBoostFlow = lazyScreen(() => import('./scripts/ClusterBoostFlow').then((module) => module.ClusterBoostFlow));
+const ClusterBoostListScreen = lazyScreen(() => import('./scripts/ClusterBoostListScreen').then((module) => module.ClusterBoostListScreen));
+const DesktopStoreOrderingDashboard = lazyScreen(() => import('./scripts/desktop/DesktopStoreOrderingDashboard').then((module) => module.DesktopStoreOrderingDashboard));
+
 export default function App() {
   return (
     <AuthProvider>
@@ -1112,7 +1118,9 @@ export default function App() {
                     <AccountDeletionProvider>
                       <PosSettingsProvider>
                         <PosOfflineProvider>
-                          <AppInner />
+                          <Suspense fallback={null}>
+                            <AppInner />
+                          </Suspense>
                           <BranchSwitchOverlay />
                         </PosOfflineProvider>
                       </PosSettingsProvider>
@@ -2611,6 +2619,15 @@ function AppInner() {
     setMyDealsOpensGifted(true);
     setRouteState('my-deals');
   }, [onlyClaimsForOthers]);
+  // The claim steps open straight from the deal page, so fetch them while it's being read.
+  useEffect(() => {
+    if (route !== 'deal-detail') return;
+    const next = isDesktop
+      ? [DesktopDealTermsScreen, DesktopClaimSuccessScreen, DesktopClaimedDealScreen]
+      : [DealTermsScreen, HowToClaimScreen, ClaimSuccessScreen, ClaimedDealScreen];
+    next.forEach((screen) => screen.preload());
+  }, [route, isDesktop]);
+
   const openDashboardVoucher = (claim: ClaimRecord, target: 'claimed-deal' | 'claimed-contact') => {
     setDashboardClaimRef(claim.ref);
     setClaimedFrom('dashboard');
@@ -7051,17 +7068,21 @@ function AppInner() {
     }
   };
 
+  const routeLoading = (
+    <SkeletonGroup label="Loading" className="mx-auto w-full max-w-5xl space-y-4 p-6">
+      <Skeleton className="h-10 w-1/2" />
+      <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-48 w-full" />
+    </SkeletonGroup>
+  );
+
   return (
     <StoreOrderingProvider>
     <>
       {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending ? (
-        <SkeletonGroup label="Loading" className="mx-auto w-full max-w-5xl space-y-4 p-6">
-          <Skeleton className="h-10 w-1/2" />
-          <Skeleton className="h-48 w-full" />
-          <Skeleton className="h-48 w-full" />
-        </SkeletonGroup>
+        routeLoading
       ) : (
-        renderRoute()
+        <Suspense fallback={routeLoading}>{renderRoute()}</Suspense>
       )}
 
       {claimPopupOpen &&
