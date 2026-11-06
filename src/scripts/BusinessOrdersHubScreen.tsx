@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
@@ -12,16 +12,9 @@ interface BusinessOrdersHubScreenProps {
   onOpenOrder: () => void;
 }
 
+type ChannelFilterKey = 'all' | 'storefront' | 'deals' | 'pos';
 type StatusChipKey = 'all' | 'new' | 'processing' | 'ready' | 'completed' | 'cancelled';
-
-const STATUS_CHIPS: { key: StatusChipKey; label: string; pulse?: boolean }[] = [
-  { key: 'all', label: 'All (24)' },
-  { key: 'new', label: 'New (3)', pulse: true },
-  { key: 'processing', label: 'Processing (2)' },
-  { key: 'ready', label: 'Ready (1)' },
-  { key: 'completed', label: 'Completed (18)' },
-  { key: 'cancelled', label: 'Cancelled (1)' },
-];
+type PaymentFilterKey = 'all' | 'cash' | 'card' | 'transfer';
 
 interface OrderRow {
   id: string;
@@ -35,16 +28,19 @@ interface OrderRow {
   borderClass: string;
   customer: string;
   customerClass: string;
+  phone?: string;
   items: string;
   price: string;
   time: string;
   timeClass: string;
   ping?: boolean;
+  paymentType?: 'cash' | 'card' | 'transfer';
   paymentIcon: string;
   paymentText: string;
   paymentChipClass: string;
   paymentIconClass?: string;
   source: {
+    channelKey: 'storefront' | 'deals' | 'pos' | 'cluster';
     name: string;
     sub: string;
     icon: string;
@@ -63,17 +59,20 @@ const ORDER_ROWS: OrderRow[] = [
     borderClass: 'border-primary',
     customer: 'Amina Bello',
     customerClass: 'text-text-primary font-semibold',
+    phone: '0803 456 7890',
     items: '3 items (Ribeye Steak + 2)',
     price: '₦34,500',
     time: '4m ago',
     timeClass: 'text-primary font-semibold',
     ping: true,
+    paymentType: 'card',
     paymentIcon: 'credit_card',
     paymentIconClass: 'text-primary',
     paymentText: 'POS Terminal • Pay at Counter',
     paymentChipClass: 'bg-surface-container-high text-on-surface-variant',
     source: {
-      name: 'Deals',
+      channelKey: 'deals',
+      name: 'Deals & Vouchers',
       sub: '20% Lunch Promo Voucher',
       icon: 'local_offer',
       badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
@@ -82,27 +81,57 @@ const ORDER_ROWS: OrderRow[] = [
   },
   {
     id: '#POS-1049',
-    badgeLabel: 'POS',
+    badgeLabel: 'New',
     badgeClass: 'bg-secondary-container text-on-secondary-container',
     typeChip: 'Table 04',
     typeChipClass: 'bg-surface-tint-blue text-primary',
     borderClass: 'border-secondary-container',
     customer: 'Walk-In Guest',
     customerClass: 'text-text-primary font-semibold',
+    phone: '0802 111 2233',
     items: '2 items (Lunch Combo + 1)',
     price: '₦11,200',
     time: '7m ago',
     timeClass: 'text-text-secondary font-medium',
+    paymentType: 'card',
     paymentIcon: 'point_of_sale',
     paymentText: 'POS / Card • Settle at Table',
     paymentChipClass: 'bg-surface-container-highest text-secondary',
     source: {
+      channelKey: 'storefront',
       name: 'Store Front',
       sub: 'Table 04 Digital QR',
-      icon: 'qr_code_scanner',
+      icon: 'storefront',
       badgeClass: 'bg-surface-tint-blue text-primary',
     },
     action: { label: 'Kitchen', icon: 'skillet', buttonClass: 'bg-surface-container text-on-surface' },
+  },
+  {
+    id: '#POS-1050',
+    badgeLabel: 'Processing',
+    badgeClass: 'bg-surface-tint-blue text-primary',
+    typeChip: 'Counter Walk-in',
+    typeChipClass: 'bg-surface-container text-secondary',
+    borderClass: 'border-surface-tint-blue',
+    customer: 'Chidi Eze',
+    customerClass: 'text-text-primary font-semibold',
+    phone: '0814 333 4455',
+    items: '4 items (Family Feast Combo)',
+    price: '₦28,000',
+    time: '14m ago',
+    timeClass: 'text-text-secondary font-medium',
+    paymentType: 'cash',
+    paymentIcon: 'payments',
+    paymentText: 'Cash • Paid at Till',
+    paymentChipClass: 'bg-surface-container-high text-on-surface-variant',
+    source: {
+      channelKey: 'pos',
+      name: 'POS Walk-in',
+      sub: 'Till 02 Cashier Station',
+      icon: 'point_of_sale',
+      badgeClass: 'bg-surface-container text-on-surface-variant',
+    },
+    action: { label: 'Pack', icon: 'inventory_2', textClass: 'text-primary' },
   },
   {
     id: '#VG-93988',
@@ -115,14 +144,17 @@ const ORDER_ROWS: OrderRow[] = [
     borderClass: 'border-surface-tint-blue',
     customer: 'Tunde Bakare',
     customerClass: 'text-text-primary font-semibold',
+    phone: '0809 555 6677',
     items: '2 items (Burger Duo + 1)',
     price: '₦18,200',
     time: '28m ago',
     timeClass: 'text-text-secondary font-medium',
+    paymentType: 'transfer',
     paymentIcon: 'account_balance',
     paymentText: 'Bank Transfer • Verified',
     paymentChipClass: 'bg-badge-discount-bg text-badge-discount-text',
     source: {
+      channelKey: 'cluster',
       name: 'Cluster Network',
       sub: 'Amaka Mall Cluster Cross-Promo',
       icon: 'hub',
@@ -141,16 +173,19 @@ const ORDER_ROWS: OrderRow[] = [
     borderClass: 'border-badge-discount-text',
     customer: 'Zainab Ahmed',
     customerClass: 'text-text-primary font-semibold',
+    phone: '0807 888 9900',
     items: '1 item • Packed at Counter',
     price: '₦9,600',
     time: '40m ago',
     timeClass: 'text-text-secondary font-medium',
+    paymentType: 'cash',
     paymentIcon: 'payments',
     paymentIconClass: 'text-badge-discount-text',
     paymentText: 'Cash • Pay on Delivery',
     paymentChipClass: 'bg-surface-container-high text-on-surface-variant',
     source: {
-      name: 'Counter POS',
+      channelKey: 'pos',
+      name: 'POS Walk-in',
       sub: 'Till 01 Cashier Register',
       icon: 'point_of_sale',
       badgeClass: 'bg-surface-container text-on-surface-variant',
@@ -166,14 +201,17 @@ const ORDER_ROWS: OrderRow[] = [
     borderClass: '',
     customer: 'David O.',
     customerClass: 'text-text-primary font-medium',
+    phone: '0901 222 3344',
     items: '3 items (Jollof Fiesta Box + 2)',
     price: '₦14,800',
     time: '1:15 PM',
     timeClass: 'text-text-tertiary font-medium',
+    paymentType: 'card',
     paymentIcon: 'credit_card',
     paymentText: 'POS at Counter • Collected',
     paymentChipClass: 'bg-surface-container-low text-text-secondary',
     source: {
+      channelKey: 'storefront',
       name: 'Store Front',
       sub: 'Online Store Direct',
       icon: 'storefront',
@@ -189,18 +227,47 @@ const ORDER_ROWS: OrderRow[] = [
     borderClass: '',
     customer: 'Samuel A.',
     customerClass: 'text-text-primary font-medium',
+    phone: '0805 777 8899',
     items: '1 item (Spicy Wings Platter)',
     price: '₦6,500',
     time: '12:40 PM',
     timeClass: 'text-text-tertiary font-medium',
+    paymentType: 'transfer',
     paymentIcon: 'account_balance',
     paymentText: 'Bank Transfer • Verified',
     paymentChipClass: 'bg-badge-discount-bg text-badge-discount-text',
     source: {
-      name: 'Deals',
+      channelKey: 'deals',
+      name: 'Deals & Vouchers',
       sub: 'Flash Deal Promo',
       icon: 'local_offer',
       badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
+    },
+  },
+  {
+    id: '#VG-93701',
+    badgeLabel: 'Cancelled',
+    badgeClass: 'bg-error-container text-on-error-container',
+    typeChip: 'Delivery',
+    typeChipClass: 'bg-surface-container-low text-secondary',
+    borderClass: '',
+    customer: 'Folake Davies',
+    customerClass: 'text-text-primary font-medium',
+    phone: '0802 999 1122',
+    items: '2 items (Grilled Fish + Fries)',
+    price: '₦12,500',
+    time: 'Yesterday',
+    timeClass: 'text-text-tertiary font-medium',
+    paymentType: 'transfer',
+    paymentIcon: 'cancel',
+    paymentText: 'Refunded • Bank Transfer',
+    paymentChipClass: 'bg-error-container/30 text-error',
+    source: {
+      channelKey: 'storefront',
+      name: 'Store Front',
+      sub: 'Cancelled by Customer',
+      icon: 'storefront',
+      badgeClass: 'bg-surface-tint-blue text-primary',
     },
   },
 ];
@@ -210,7 +277,12 @@ export function BusinessOrdersHubScreen({
   onSwitchBookings,
   onOpenOrder,
 }: BusinessOrdersHubScreenProps) {
-  const [statusChip, setStatusChip] = useState<StatusChipKey>('new');
+  const [channelFilter, setChannelFilter] = useState<ChannelFilterKey>('all');
+  const [statusChip, setStatusChip] = useState<StatusChipKey>('all');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilterKey>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortNewest, setSortNewest] = useState<boolean>(true);
+  const [showFilterSheet, setShowFilterSheet] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -218,157 +290,551 @@ export function BusinessOrdersHubScreen({
     window.setTimeout(() => setToast(null), 2400);
   };
 
+  // Channel counts computed from ORDER_ROWS
+  const originCounts = useMemo(() => {
+    return {
+      all: ORDER_ROWS.length,
+      storefront: ORDER_ROWS.filter((o) => o.source.channelKey === 'storefront').length,
+      deals: ORDER_ROWS.filter((o) => o.source.channelKey === 'deals').length,
+      pos: ORDER_ROWS.filter((o) => o.source.channelKey === 'pos').length,
+    };
+  }, []);
+
+  // Status counts computed from ORDER_ROWS
+  const statusCounts = useMemo(() => {
+    return {
+      all: ORDER_ROWS.length,
+      new: ORDER_ROWS.filter((o) => o.badgeLabel === 'New').length,
+      processing: ORDER_ROWS.filter((o) => o.badgeLabel === 'Processing').length,
+      ready: ORDER_ROWS.filter((o) => o.badgeLabel === 'Ready').length,
+      completed: ORDER_ROWS.filter((o) => o.badgeLabel === 'Completed').length,
+      cancelled: ORDER_ROWS.filter((o) => o.badgeLabel === 'Cancelled').length,
+    };
+  }, []);
+
+  // Filter & search logic
+  const filteredOrders = useMemo(() => {
+    let result = ORDER_ROWS.filter((row) => {
+      // 1. Channel filter
+      if (channelFilter === 'storefront' && row.source.channelKey !== 'storefront') return false;
+      if (channelFilter === 'deals' && row.source.channelKey !== 'deals') return false;
+      if (channelFilter === 'pos' && row.source.channelKey !== 'pos') return false;
+
+      // 2. Status filter
+      if (statusChip !== 'all') {
+        const rowStatus = row.badgeLabel.toLowerCase();
+        if (statusChip === 'new' && rowStatus !== 'new') return false;
+        if (statusChip === 'processing' && rowStatus !== 'processing') return false;
+        if (statusChip === 'ready' && rowStatus !== 'ready') return false;
+        if (statusChip === 'completed' && rowStatus !== 'completed') return false;
+        if (statusChip === 'cancelled' && rowStatus !== 'cancelled') return false;
+      }
+
+      // 3. Payment filter
+      if (paymentFilter !== 'all' && row.paymentType !== paymentFilter) return false;
+
+      // 4. Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesId = row.id.toLowerCase().includes(q);
+        const matchesCust = row.customer.toLowerCase().includes(q);
+        const matchesPhone = row.phone ? row.phone.toLowerCase().includes(q) : false;
+        const matchesItems = row.items.toLowerCase().includes(q);
+        const matchesSource = row.source.name.toLowerCase().includes(q) || row.source.sub.toLowerCase().includes(q);
+        if (!matchesId && !matchesCust && !matchesPhone && !matchesItems && !matchesSource) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (!sortNewest) {
+      result = [...result].reverse();
+    }
+
+    return result;
+  }, [channelFilter, statusChip, paymentFilter, searchQuery, sortNewest]);
+
+  const hasActiveFilters =
+    channelFilter !== 'all' ||
+    statusChip !== 'all' ||
+    paymentFilter !== 'all' ||
+    Boolean(searchQuery.trim()) ||
+    !sortNewest;
+
+  const resetAllFilters = () => {
+    setChannelFilter('all');
+    setStatusChip('all');
+    setPaymentFilter('all');
+    setSearchQuery('');
+    setSortNewest(true);
+    showToast('Filters cleared');
+  };
+
   return (
     <AppScreen>
       <BusinessModeHeader title="Orders" />
       <div className="flex flex-col w-full flex-1 pb-24">
         {/* Header Controls & Context */}
-        <div className="bg-surface/95 backdrop-blur-md px-margin pt-space-xs pb-space-sm flex flex-col gap-space-sm shadow-[0_4px_12px_-4px_rgba(20,27,43,0.03)]">
-          {/* Quick Actions */}
-          <div className="flex items-center justify-end">
-            <div className="flex items-center gap-space-2xs">
-              <button
-                aria-label="Search orders"
-                className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-low hover:bg-surface-container text-on-surface transition-transform active:scale-95"
-                type="button"
-                onClick={() => showToast('Search orders coming soon')}
-              >
-                <Icon name="search" className="text-[20px]" />
-              </button>
-              <button
-                aria-label="Filter orders"
-                className="w-10 h-10 rounded-full flex items-center justify-center bg-surface-container-low hover:bg-surface-container text-on-surface transition-transform active:scale-95 relative"
-                type="button"
-                onClick={() => showToast('Filters: payment type, branch, time range')}
-              >
-                <Icon name="tune" className="text-[20px]" />
-                <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary-container" />
-              </button>
-            </div>
-          </div>
+        <div className="bg-surface/95 backdrop-blur-md px-margin pt-space-xs pb-space-xs flex flex-col gap-2 shadow-[0_4px_12px_-4px_rgba(20,27,43,0.03)]">
           {/* Switcher: Orders vs Bookings — only while the Bookings tool is on */}
           {onSwitchBookings && (
-          <div className="p-1 bg-surface-container-high rounded-xl flex items-center gap-1">
+            <div className="p-1 bg-surface-container-high rounded-xl flex items-center gap-1">
+              <button
+                className="flex-1 py-1.5 rounded-lg bg-surface-container-lowest text-primary font-button-primary text-[12px] font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all"
+                type="button"
+              >
+                <span>Orders</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-surface-tint-blue text-primary font-caption text-[10px] font-semibold">
+                  {ORDER_ROWS.length}
+                </span>
+              </button>
+              <button
+                className="flex-1 py-1.5 rounded-lg text-text-secondary hover:text-on-surface font-button-secondary text-[12px] flex items-center justify-center gap-1.5 transition-all"
+                type="button"
+                onClick={onSwitchBookings}
+              >
+                <span>Bookings</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-surface-container text-text-secondary font-caption text-[10px] font-medium">
+                  3
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Search, Sort and Filter Control Bar */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Icon
+                name="search"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-text-tertiary"
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search order #, customer name, phone, item..."
+                className="w-full h-8 pl-9 pr-7 rounded-xl border border-border bg-surface-container-lowest text-[12px] text-on-surface placeholder:text-text-tertiary focus:outline-hidden focus:border-primary transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-on-surface p-0.5"
+                  aria-label="Clear search"
+                >
+                  <Icon name="close" className="text-[14px]" />
+                </button>
+              )}
+            </div>
+
+            {/* Sort Newest/Oldest Button */}
             <button
-              className="flex-1 py-2 rounded-lg bg-surface-container-lowest text-primary-container font-button-primary text-button-primary shadow-sm flex items-center justify-center gap-space-xs transition-all"
               type="button"
+              onClick={() => setSortNewest((v) => !v)}
+              className="h-8 px-2 rounded-xl border border-border bg-surface-container-lowest text-text-secondary hover:text-on-surface text-[11px] font-medium flex items-center gap-1 shrink-0 active:scale-95 transition-all"
+              title={sortNewest ? 'Showing Newest first' : 'Showing Oldest first'}
             >
-              <span>Orders</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                8
-              </span>
+              <Icon name="swap_vert" className="text-[14px]" />
+              <span>{sortNewest ? 'Newest' : 'Oldest'}</span>
             </button>
+
+            {/* Filter Tune Icon Button */}
             <button
-              className="flex-1 py-2 rounded-lg text-text-secondary hover:text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs transition-all"
+              aria-label="Filter orders"
               type="button"
-              onClick={onSwitchBookings}
+              onClick={() => setShowFilterSheet(true)}
+              className={`w-8 h-8 rounded-xl flex items-center justify-center border transition-all active:scale-95 relative shrink-0 ${
+                hasActiveFilters
+                  ? 'bg-surface-tint-blue text-primary border-primary/40 shadow-xs'
+                  : 'bg-surface-container-lowest text-on-surface border-border hover:bg-surface-container-low'
+              }`}
             >
-              <span>Bookings</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-caption font-medium">
-                3
-              </span>
+              <Icon name="tune" className="text-[16px]" />
+              {hasActiveFilters && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary ring-2 ring-surface" />
+              )}
             </button>
           </div>
-          )}
-          {/* Status Chips Bar */}
-          <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
-            {STATUS_CHIPS.map((chip) => {
-              const active = chip.key === statusChip;
+
+          {/* Channel Filter Chips: All Channels, Store Front, Deals & Vouchers, POS Walk-in */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
+            {[
+              { key: 'all' as const, label: 'All Channels', icon: 'apps', count: originCounts.all },
+              { key: 'storefront' as const, label: 'Store Front', icon: 'storefront', count: originCounts.storefront },
+              { key: 'deals' as const, label: 'Deals & Vouchers', icon: 'local_offer', count: originCounts.deals },
+              { key: 'pos' as const, label: 'POS Walk-in', icon: 'point_of_sale', count: originCounts.pos },
+            ].map((ch) => {
+              const active = channelFilter === ch.key;
               return (
                 <button
-                  className={`shrink-0 h-9 px-3.5 rounded-full font-label-md text-label-md active:scale-95 transition-all ${
-                    active
-                      ? 'bg-surface-tint-blue text-primary flex items-center gap-1.5 shadow-sm'
-                      : 'bg-surface-container-low text-text-secondary'
-                  }`}
-                  key={chip.key}
+                  key={ch.key}
                   type="button"
-                  onClick={() => setStatusChip(chip.key)}
+                  onClick={() => setChannelFilter(ch.key)}
+                  className={`shrink-0 h-8 px-2.5 rounded-full text-[12px] font-medium active:scale-95 transition-all flex items-center gap-1.5 border ${
+                    active
+                      ? 'bg-surface-tint-blue text-primary border-primary/30 shadow-2xs font-semibold'
+                      : 'bg-surface-container-low text-text-secondary border-transparent hover:bg-surface-container'
+                  }`}
                 >
-                  {active && chip.pulse && <span className="w-2 h-2 rounded-full bg-primary-container animate-pulse" />}
-                  <span>{chip.label}</span>
+                  <Icon name={ch.icon} className={`text-[15px] ${active ? 'text-primary' : 'text-text-tertiary'}`} />
+                  <span>{ch.label}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      active ? 'bg-primary/15 text-primary' : 'bg-surface-container-high text-text-tertiary'
+                    }`}
+                  >
+                    {ch.count}
+                  </span>
                 </button>
               );
             })}
           </div>
+
+          {/* Status Chips Bar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
+            {[
+              { key: 'all' as const, label: 'All', count: statusCounts.all },
+              { key: 'new' as const, label: 'New', count: statusCounts.new, pulse: statusCounts.new > 0 },
+              { key: 'processing' as const, label: 'Processing', count: statusCounts.processing },
+              { key: 'ready' as const, label: 'Ready', count: statusCounts.ready },
+              { key: 'completed' as const, label: 'Completed', count: statusCounts.completed },
+              { key: 'cancelled' as const, label: 'Cancelled', count: statusCounts.cancelled },
+            ].map((chip) => {
+              const active = chip.key === statusChip;
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => setStatusChip(chip.key)}
+                  className={`shrink-0 h-7 px-2.5 rounded-full text-[11px] font-medium active:scale-95 transition-all flex items-center gap-1 ${
+                    active
+                      ? 'bg-primary text-white shadow-2xs font-semibold'
+                      : 'bg-surface-container-low text-text-secondary hover:bg-surface-container'
+                  }`}
+                >
+                  {active && chip.pulse && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+                  <span>{chip.label}</span>
+                  <span className={`text-[10px] ${active ? 'text-white/80' : 'text-text-tertiary'}`}>
+                    ({chip.count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Filter Tags (if any active non-default filter) */}
+          {hasActiveFilters && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5 pb-0.5 text-[11px]">
+              <span className="text-text-tertiary text-[10px] font-medium">Filtered by:</span>
+              {channelFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary text-[10px] font-semibold">
+                  <span>{channelFilter === 'storefront' ? 'Store Front' : channelFilter === 'deals' ? 'Deals & Vouchers' : 'POS Walk-in'}</span>
+                  <button type="button" onClick={() => setChannelFilter('all')}>
+                    <Icon name="close" className="text-[11px]" />
+                  </button>
+                </span>
+              )}
+              {statusChip !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-on-surface text-[10px] font-semibold">
+                  <span className="capitalize">{statusChip}</span>
+                  <button type="button" onClick={() => setStatusChip('all')}>
+                    <Icon name="close" className="text-[11px]" />
+                  </button>
+                </span>
+              )}
+              {paymentFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-on-surface text-[10px] font-semibold">
+                  <span className="capitalize">Pay: {paymentFilter}</span>
+                  <button type="button" onClick={() => setPaymentFilter('all')}>
+                    <Icon name="close" className="text-[11px]" />
+                  </button>
+                </span>
+              )}
+              {searchQuery.trim() && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-on-surface text-[10px] font-semibold">
+                  <span>"{searchQuery.slice(0, 10)}"</span>
+                  <button type="button" onClick={() => setSearchQuery('')}>
+                    <Icon name="close" className="text-[11px]" />
+                  </button>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="text-primary hover:underline text-[10px] font-semibold ml-auto"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Main Scrollable Body Content */}
-        <div className="px-margin pt-space-md pb-space-xl flex flex-col gap-space-md">
+        <div className="px-margin pt-space-xs pb-space-xl flex flex-col gap-2.5">
           {/* Action Required Alert Strip */}
           <button
-            className="bg-surface-tint-blue rounded-xl p-space-xs flex items-center justify-between text-left"
+            className="bg-surface-tint-blue rounded-xl p-2.5 flex items-center justify-between text-left border border-primary/15"
             type="button"
             onClick={onOpenOrder}
           >
-            <div className="flex items-center gap-space-xs min-w-0">
-              <Icon name="touch_app" className="text-primary text-[18px] shrink-0" />
-              <span className="font-caption text-caption text-primary font-medium truncate">
+            <div className="flex items-center gap-2 min-w-0">
+              <Icon name="touch_app" className="text-primary text-[16px] shrink-0" />
+              <span className="text-[11px] text-primary font-medium truncate">
                 Tap an order to view details, accept or decline
               </span>
             </div>
-            <span className="px-2 py-0.5 rounded-full bg-primary-container text-on-primary font-caption text-caption font-semibold shrink-0">
-              3 to action
+            <span className="px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold shrink-0">
+              {statusCounts.new} to action
             </span>
           </button>
 
-          {/* Compact Orders Feed */}
-          <div className="flex flex-col gap-2">
-            {ORDER_ROWS.map((row) => (
+          {/* Orders Feed */}
+          {filteredOrders.length === 0 ? (
+            <div className="py-10 px-4 flex flex-col items-center justify-center text-center bg-surface-canvas rounded-xl border border-dashed border-border/80">
+              <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center mb-2.5 text-text-tertiary">
+                <Icon name="search_off" className="text-[20px]" />
+              </div>
+              <p className="text-[12px] font-bold text-on-surface">No matching orders found</p>
+              <p className="text-[11px] text-text-secondary mt-1 max-w-[240px]">
+                No orders match your selected channel, status, or search filters.
+              </p>
               <button
-                className={`w-full flex flex-col gap-1.5 p-3 rounded-xl bg-surface-canvas shadow-xs border border-border-subtle/50 active:scale-[0.99] transition-transform text-left ${
-                  row.borderClass ? `border-l-4 ${row.borderClass}` : ''
-                } ${row.badgeLabel === 'Completed' ? 'opacity-75' : ''}`}
-                key={row.id}
                 type="button"
-                onClick={onOpenOrder}
+                onClick={resetAllFilters}
+                className="mt-3 px-3 py-1 rounded-lg bg-surface-tint-blue text-primary text-[11px] font-semibold hover:bg-primary hover:text-white transition-all active:scale-95"
               >
-                {/* Top Row: ID + Customer + Status + Price */}
-                <div className="flex items-center justify-between gap-2 w-full">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${row.ping ? 'bg-primary animate-pulse' : 'bg-surface-container-highest'}`} />
-                    <span className="font-label-sm text-[13px] font-bold text-on-surface tracking-tight shrink-0">
-                      {row.id}
-                    </span>
-                    <span className="font-caption text-[11px] text-text-secondary truncate">
-                      {row.customer}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${row.badgeClass}`}>
-                      {row.badgeLabel}
-                    </span>
-                    <span className="font-label-sm text-[13px] font-bold text-on-surface">
-                      {row.price}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Bottom Row: Source Attributed Tag + Items Summary + Time */}
-                <div className="flex items-center justify-between gap-2 pt-0.5 text-[11px] w-full">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-caption text-[10px] font-semibold shrink-0 ${row.source.badgeClass}`}>
-                      <Icon name={row.source.icon} className="text-[12px]" />
-                      <span>{row.source.name}</span>
-                    </span>
-                    <span className="font-caption text-[10px] text-text-tertiary truncate">
-                      {row.source.sub} • {row.items}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 text-text-tertiary font-caption text-[10px]">
-                    <span>{row.time}</span>
-                    <Icon name="chevron_right" className="text-[15px]" />
-                  </div>
-                </div>
+                Reset all filters
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {filteredOrders.map((row) => (
+                <button
+                  className={`w-full flex flex-col gap-1.5 p-3 rounded-xl bg-surface-canvas shadow-xs border border-border-subtle/50 active:scale-[0.99] transition-transform text-left ${
+                    row.borderClass ? `border-l-4 ${row.borderClass}` : ''
+                  } ${row.badgeLabel === 'Completed' || row.badgeLabel === 'Cancelled' ? 'opacity-80' : ''}`}
+                  key={row.id}
+                  type="button"
+                  onClick={onOpenOrder}
+                >
+                  {/* Top Row: ID + Customer + Status + Price */}
+                  <div className="flex items-center justify-between gap-2 w-full">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${row.ping ? 'bg-primary animate-pulse' : 'bg-surface-container-highest'}`} />
+                      <span className="text-[12px] font-bold text-on-surface tracking-tight shrink-0">
+                        {row.id}
+                      </span>
+                      <span className="text-[11px] text-text-secondary truncate">
+                        {row.customer}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${row.badgeClass}`}>
+                        {row.badgeLabel}
+                      </span>
+                      <span className="text-[12px] font-bold text-on-surface">
+                        {row.price}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bottom Row: Source Attributed Tag + Items Summary + Time */}
+                  <div className="flex items-center justify-between gap-2 pt-0.5 text-[11px] w-full">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${row.source.badgeClass}`}>
+                        <Icon name={row.source.icon} className="text-[12px]" />
+                        <span>{row.source.name}</span>
+                      </span>
+                      <span className="text-[10px] text-text-tertiary truncate">
+                        {row.source.sub} • {row.items}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 text-text-tertiary text-[10px]">
+                      <span>{row.time}</span>
+                      <Icon name="chevron_right" className="text-[14px]" />
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="h-4" />
         </div>
       </div>
+
+      {/* Filter Bottom Sheet Modal */}
+      {showFilterSheet && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
+            onClick={() => setShowFilterSheet(false)}
+          />
+
+          {/* Sheet Body */}
+          <div className="relative w-full max-w-[430px] mx-auto bg-surface rounded-t-2xl shadow-2xl border-t border-border p-4 flex flex-col gap-3.5 max-h-[85vh] overflow-y-auto z-10 animate-in slide-in-from-bottom duration-200">
+            {/* Sheet Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Icon name="tune" className="text-[18px] text-primary" />
+                <h3 className="text-[14px] font-bold text-on-surface">Filter Orders</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFilterSheet(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-tertiary hover:text-on-surface hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            {/* Filter by Channel */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">
+                Order Placement Channel
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { key: 'all' as const, label: 'All Channels', icon: 'apps' },
+                  { key: 'storefront' as const, label: 'Store Front', icon: 'storefront' },
+                  { key: 'deals' as const, label: 'Deals & Vouchers', icon: 'local_offer' },
+                  { key: 'pos' as const, label: 'POS Walk-in', icon: 'point_of_sale' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setChannelFilter(item.key)}
+                    className={`h-8 px-2.5 rounded-lg text-[11px] font-medium flex items-center gap-1.5 border transition-all ${
+                      channelFilter === item.key
+                        ? 'bg-surface-tint-blue text-primary border-primary font-semibold'
+                        : 'bg-surface-container-low text-text-secondary border-transparent hover:bg-surface-container'
+                    }`}
+                  >
+                    <Icon name={item.icon} className="text-[14px]" />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filter by Status */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">
+                Order Status
+              </span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { key: 'all' as const, label: 'All' },
+                  { key: 'new' as const, label: 'New' },
+                  { key: 'processing' as const, label: 'Processing' },
+                  { key: 'ready' as const, label: 'Ready' },
+                  { key: 'completed' as const, label: 'Completed' },
+                  { key: 'cancelled' as const, label: 'Cancelled' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setStatusChip(item.key)}
+                    className={`h-8 px-2 rounded-lg text-[11px] font-medium flex items-center justify-center border transition-all ${
+                      statusChip === item.key
+                        ? 'bg-primary text-white border-primary font-semibold'
+                        : 'bg-surface-container-low text-text-secondary border-transparent hover:bg-surface-container'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filter by Payment Method */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">
+                Payment Method
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { key: 'all' as const, label: 'All Payments', icon: 'payments' },
+                  { key: 'cash' as const, label: 'Cash Only', icon: 'payments' },
+                  { key: 'card' as const, label: 'POS / Card', icon: 'credit_card' },
+                  { key: 'transfer' as const, label: 'Bank Transfer', icon: 'account_balance' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setPaymentFilter(item.key)}
+                    className={`h-8 px-2.5 rounded-lg text-[11px] font-medium flex items-center gap-1.5 border transition-all ${
+                      paymentFilter === item.key
+                        ? 'bg-surface-tint-blue text-primary border-primary font-semibold'
+                        : 'bg-surface-container-low text-text-secondary border-transparent hover:bg-surface-container'
+                    }`}
+                  >
+                    <Icon name={item.icon} className="text-[14px]" />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sort Order */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">
+                Sort Order
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSortNewest(true)}
+                  className={`h-8 px-2.5 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 border transition-all ${
+                    sortNewest
+                      ? 'bg-surface-tint-blue text-primary border-primary font-semibold'
+                      : 'bg-surface-container-low text-text-secondary border-transparent'
+                  }`}
+                >
+                  <Icon name="arrow_upward" className="text-[14px]" />
+                  <span>Newest First</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSortNewest(false)}
+                  className={`h-8 px-2.5 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 border transition-all ${
+                    !sortNewest
+                      ? 'bg-surface-tint-blue text-primary border-primary font-semibold'
+                      : 'bg-surface-container-low text-text-secondary border-transparent'
+                  }`}
+                >
+                  <Icon name="arrow_downward" className="text-[14px]" />
+                  <span>Oldest First</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-2 flex items-center gap-2 border-t border-border mt-1">
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="flex-1 h-9 rounded-xl border border-border text-[12px] font-semibold text-text-secondary hover:text-on-surface hover:bg-surface-container active:scale-95 transition-all"
+              >
+                Reset All
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFilterSheet(false)}
+                className="flex-1 h-9 rounded-xl bg-primary text-white text-[12px] font-semibold shadow-xs hover:bg-primary/95 active:scale-95 transition-all"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BusinessTabBar onTab={onTab} />
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-[12px] font-medium shadow-lg">
           {toast}
         </div>
       )}
