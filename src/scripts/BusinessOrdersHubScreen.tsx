@@ -16,6 +16,22 @@ type ChannelFilterKey = 'all' | 'storefront' | 'deals' | 'pos';
 type StatusChipKey = 'all' | 'new' | 'processing' | 'ready' | 'completed' | 'cancelled';
 type PaymentFilterKey = 'all' | 'cash' | 'card' | 'transfer';
 
+const CHANNEL_OPTIONS: { key: ChannelFilterKey; label: string; icon: string }[] = [
+  { key: 'all', label: 'All Channels', icon: 'apps' },
+  { key: 'storefront', label: 'Store Front', icon: 'storefront' },
+  { key: 'deals', label: 'Deals & Vouchers', icon: 'local_offer' },
+  { key: 'pos', label: 'POS Walk-in', icon: 'point_of_sale' },
+];
+
+const STATUS_OPTIONS: { key: StatusChipKey; label: string; pulse?: boolean }[] = [
+  { key: 'all', label: 'All Orders' },
+  { key: 'new', label: 'New', pulse: true },
+  { key: 'processing', label: 'Processing' },
+  { key: 'ready', label: 'Ready' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
+
 interface OrderRow {
   id: string;
   badgeLabel: string;
@@ -283,6 +299,8 @@ export function BusinessOrdersHubScreen({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortNewest, setSortNewest] = useState<boolean>(true);
   const [showFilterSheet, setShowFilterSheet] = useState<boolean>(false);
+  const [channelMenuOpen, setChannelMenuOpen] = useState<boolean>(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (message: string) => {
@@ -362,6 +380,9 @@ export function BusinessOrdersHubScreen({
     paymentFilter !== 'all' ||
     Boolean(searchQuery.trim()) ||
     !sortNewest;
+
+  const currentChannel = CHANNEL_OPTIONS.find((c) => c.key === channelFilter) || CHANNEL_OPTIONS[0];
+  const currentStatus = STATUS_OPTIONS.find((s) => s.key === statusChip) || STATUS_OPTIONS[0];
 
   const resetAllFilters = () => {
     setChannelFilter('all');
@@ -458,70 +479,187 @@ export function BusinessOrdersHubScreen({
             </button>
           </div>
 
-          {/* Channel Filter Chips: All Channels, Store Front, Deals & Vouchers, POS Walk-in */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
-            {[
-              { key: 'all' as const, label: 'All Channels', icon: 'apps', count: originCounts.all },
-              { key: 'storefront' as const, label: 'Store Front', icon: 'storefront', count: originCounts.storefront },
-              { key: 'deals' as const, label: 'Deals & Vouchers', icon: 'local_offer', count: originCounts.deals },
-              { key: 'pos' as const, label: 'POS Walk-in', icon: 'point_of_sale', count: originCounts.pos },
-            ].map((ch) => {
-              const active = channelFilter === ch.key;
-              return (
-                <button
-                  key={ch.key}
-                  type="button"
-                  onClick={() => setChannelFilter(ch.key)}
-                  className={`shrink-0 h-8 px-2.5 rounded-full text-[12px] font-medium active:scale-95 transition-all flex items-center gap-1.5 border ${
-                    active
-                      ? 'bg-surface-tint-blue text-primary border-primary/30 shadow-2xs font-semibold'
-                      : 'bg-surface-container-low text-text-secondary border-transparent hover:bg-surface-container'
-                  }`}
-                >
-                  <Icon name={ch.icon} className={`text-[15px] ${active ? 'text-primary' : 'text-text-tertiary'}`} />
-                  <span>{ch.label}</span>
+          {/* Side by side dropdowns: Channels & Orders */}
+          <div className="flex items-center gap-2 relative">
+            {/* Left: Channels Dropdown */}
+            <div className="relative flex-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setChannelMenuOpen((v) => !v);
+                  setStatusMenuOpen(false);
+                }}
+                className={`w-full h-8 px-2.5 rounded-xl border text-[11px] font-medium flex items-center justify-between gap-1.5 transition-all shadow-2xs active:scale-[0.98] ${
+                  channelFilter !== 'all' || channelMenuOpen
+                    ? 'bg-surface-tint-blue text-primary border-primary/40 font-semibold shadow-xs'
+                    : 'bg-surface-container-lowest border-border text-on-surface hover:bg-surface-container-low'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Icon
+                    name={currentChannel.icon}
+                    className={`text-[15px] shrink-0 ${channelFilter !== 'all' ? 'text-primary' : 'text-text-tertiary'}`}
+                  />
+                  <span className="truncate">{currentChannel.label}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
                   <span
                     className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                      active ? 'bg-primary/15 text-primary' : 'bg-surface-container-high text-text-tertiary'
+                      channelFilter !== 'all' ? 'bg-primary/15 text-primary' : 'bg-surface-container text-text-tertiary'
                     }`}
                   >
-                    {ch.count}
+                    {originCounts[channelFilter]}
                   </span>
-                </button>
-              );
-            })}
-          </div>
+                  <Icon
+                    name="expand_more"
+                    className={`text-[16px] text-text-tertiary transition-transform duration-200 ${channelMenuOpen ? 'rotate-180' : ''}`}
+                  />
+                </div>
+              </button>
 
-          {/* Status Chips Bar */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
-            {[
-              { key: 'all' as const, label: 'All', count: statusCounts.all },
-              { key: 'new' as const, label: 'New', count: statusCounts.new, pulse: statusCounts.new > 0 },
-              { key: 'processing' as const, label: 'Processing', count: statusCounts.processing },
-              { key: 'ready' as const, label: 'Ready', count: statusCounts.ready },
-              { key: 'completed' as const, label: 'Completed', count: statusCounts.completed },
-              { key: 'cancelled' as const, label: 'Cancelled', count: statusCounts.cancelled },
-            ].map((chip) => {
-              const active = chip.key === statusChip;
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  onClick={() => setStatusChip(chip.key)}
-                  className={`shrink-0 h-7 px-2.5 rounded-full text-[11px] font-medium active:scale-95 transition-all flex items-center gap-1 ${
-                    active
-                      ? 'bg-primary text-white shadow-2xs font-semibold'
-                      : 'bg-surface-container-low text-text-secondary hover:bg-surface-container'
-                  }`}
-                >
-                  {active && chip.pulse && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-                  <span>{chip.label}</span>
-                  <span className={`text-[10px] ${active ? 'text-white/80' : 'text-text-tertiary'}`}>
-                    ({chip.count})
+              {/* Channels Dropdown Menu */}
+              {channelMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setChannelMenuOpen(false)} />
+                  <div className="absolute top-full mt-1.5 left-0 w-full min-w-[170px] bg-surface rounded-xl shadow-xl border border-border py-1 z-40 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2.5 py-1 text-[10px] font-bold text-text-tertiary uppercase tracking-wider border-b border-border/50 mb-0.5">
+                      Filter Channel
+                    </div>
+                    {CHANNEL_OPTIONS.map((opt) => {
+                      const active = channelFilter === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => {
+                            setChannelFilter(opt.key);
+                            setChannelMenuOpen(false);
+                          }}
+                          className={`w-full px-2.5 py-2 text-left text-[11px] flex items-center justify-between transition-colors ${
+                            active
+                              ? 'bg-surface-tint-blue text-primary font-semibold'
+                              : 'text-on-surface hover:bg-surface-container-low'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Icon
+                              name={opt.icon}
+                              className={`text-[15px] ${active ? 'text-primary' : 'text-text-tertiary'}`}
+                            />
+                            <span className="truncate">{opt.label}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                active ? 'bg-primary/20 text-primary' : 'bg-surface-container text-text-tertiary'
+                              }`}
+                            >
+                              {originCounts[opt.key]}
+                            </span>
+                            {active && <Icon name="check" className="text-[14px] text-primary" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Right: Order Status Dropdown */}
+            <div className="relative flex-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusMenuOpen((v) => !v);
+                  setChannelMenuOpen(false);
+                }}
+                className={`w-full h-8 px-2.5 rounded-xl border text-[11px] font-medium flex items-center justify-between gap-1.5 transition-all shadow-2xs active:scale-[0.98] ${
+                  statusChip !== 'all' || statusMenuOpen
+                    ? 'bg-surface-tint-blue text-primary border-primary/40 font-semibold shadow-xs'
+                    : 'bg-surface-container-lowest border-border text-on-surface hover:bg-surface-container-low'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      statusChip === 'new'
+                        ? 'bg-primary animate-pulse'
+                        : statusChip !== 'all'
+                        ? 'bg-primary'
+                        : 'bg-surface-container-highest'
+                    }`}
+                  />
+                  <span className="truncate">{currentStatus.label}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      statusChip !== 'all' ? 'bg-primary/15 text-primary' : 'bg-surface-container text-text-tertiary'
+                    }`}
+                  >
+                    {statusCounts[statusChip]}
                   </span>
-                </button>
-              );
-            })}
+                  <Icon
+                    name="expand_more"
+                    className={`text-[16px] text-text-tertiary transition-transform duration-200 ${statusMenuOpen ? 'rotate-180' : ''}`}
+                  />
+                </div>
+              </button>
+
+              {/* Status Dropdown Menu */}
+              {statusMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setStatusMenuOpen(false)} />
+                  <div className="absolute top-full mt-1.5 right-0 w-full min-w-[160px] bg-surface rounded-xl shadow-xl border border-border py-1 z-40 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2.5 py-1 text-[10px] font-bold text-text-tertiary uppercase tracking-wider border-b border-border/50 mb-0.5">
+                      Order Status
+                    </div>
+                    {STATUS_OPTIONS.map((opt) => {
+                      const active = statusChip === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => {
+                            setStatusChip(opt.key);
+                            setStatusMenuOpen(false);
+                          }}
+                          className={`w-full px-2.5 py-2 text-left text-[11px] flex items-center justify-between transition-colors ${
+                            active
+                              ? 'bg-surface-tint-blue text-primary font-semibold'
+                              : 'text-on-surface hover:bg-surface-container-low'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`w-2 h-2 rounded-full shrink-0 ${
+                                opt.pulse
+                                  ? 'bg-primary animate-pulse'
+                                  : active
+                                  ? 'bg-primary'
+                                  : 'bg-surface-container-highest'
+                              }`}
+                            />
+                            <span className="truncate">{opt.label}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                active ? 'bg-primary/20 text-primary' : 'bg-surface-container text-text-tertiary'
+                              }`}
+                            >
+                              {statusCounts[opt.key]}
+                            </span>
+                            {active && <Icon name="check" className="text-[14px] text-primary" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Active Filter Tags (if any active non-default filter) */}
