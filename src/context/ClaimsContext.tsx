@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiGet, apiPost, hasApiConfig } from '../lib/api';
 import { claimsService } from '../services/claimsService';
+import { useAuth } from './AuthContext';
 import { useSessionUser } from '../hooks/useSessionUser';
 
 /**
@@ -152,6 +153,7 @@ export const voucherExpiryLabel = (claim: ClaimRecord): string =>
 
 const CLAIMS_KEY = 'vemtap_claims';
 const LEGACY_CLAIMED_KEY = 'vemtap_claimed';
+const CLAIMS_OWNER_KEY = 'vemtap_claims_owner';
 
 /** Generic default values used only when the backend does not return claim metadata. */
 export const DEFAULT_CLAIMED_DEAL = {
@@ -181,6 +183,24 @@ const writeClaims = (claims: ClaimRecord[]) => {
     window.localStorage.setItem(CLAIMS_KEY, JSON.stringify(claims));
   } catch {
     // storage unavailable; records stay in memory for this session only
+  }
+};
+
+/** Which account the saved claims belong to; null when nobody's are saved. */
+const readClaimsOwner = () => {
+  try {
+    return window.localStorage.getItem(CLAIMS_OWNER_KEY);
+  } catch {
+    return null;
+  }
+};
+
+const writeClaimsOwner = (userId: string | null) => {
+  try {
+    if (userId) window.localStorage.setItem(CLAIMS_OWNER_KEY, userId);
+    else window.localStorage.removeItem(CLAIMS_OWNER_KEY);
+  } catch {
+    // storage unavailable; the in-memory list is still reset
   }
 };
 
@@ -346,11 +366,24 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
   const [claims, setClaims] = useState<ClaimRecord[]>(readClaims);
   // `/me/claims` and `/me/gifts` are customer-only: business accounts and
   // signed-out visitors would only get a 403/401, so they don't ask.
+  const { authed } = useAuth();
   const session = useSessionUser();
   const isCustomer = session.data?.role === 'Customer';
+  const userId = session.data?.id;
   const [hydrated, setHydrated] = useState(false);
   // Still loading while the session is unknown, so saved claims aren't read as the final list.
   const claimsLoading = hasApiConfig() && (session.isLoading || (isCustomer && !hydrated));
+
+  // Vouchers belong to one account: another account on this browser never inherits them.
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+    const owner = authed ? userId : null;
+    if (authed && !owner) return;
+    if (owner && readClaimsOwner() === owner) return;
+    setClaims([]);
+    writeClaims([]);
+    writeClaimsOwner(owner ?? null);
+  }, [authed, userId]);
 
   useEffect(() => {
     setHydrated(false);
@@ -402,7 +435,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
     return () => {
       ignore = true;
     };
-  }, [isCustomer]);
+  }, [isCustomer, userId]);
 
   const recordClaim = useCallback(
     async (input: ClaimInput): Promise<ClaimRecord> => {

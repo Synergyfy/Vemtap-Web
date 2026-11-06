@@ -389,7 +389,7 @@ export function DesktopAccountSettingsScreen({ onNav, onOpenAddresses }: Desktop
                 <div className="flex items-center gap-3 mb-4 relative">
                   <div className="relative w-16 h-16 rounded-full overflow-hidden shrink-0 shadow-md bg-primary flex items-center justify-center">
                     {avatarUrl ? (
-                      <img alt={fullName} className="w-full h-full object-cover" src={avatarUrl} />
+                      <img alt={fullName} className="w-full h-full object-cover bg-surface-canvas" src={avatarUrl} />
                     ) : (
                       <span className="font-heading-sm text-heading-sm text-on-primary font-semibold">
                         {profile.initials || 'U'}

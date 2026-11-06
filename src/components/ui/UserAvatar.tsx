@@ -12,7 +12,7 @@ interface UserAvatarProps {
 export function UserAvatar({ textClassName = 'text-on-primary text-[13px]' }: UserAvatarProps) {
   const { avatarUrl, initials, fullName } = useProfile();
   if (avatarUrl) {
-    return <img alt={fullName ? `${fullName}'s profile photo` : 'Your profile photo'} className="w-full h-full rounded-full object-cover" src={avatarUrl} />;
+    return <img alt={fullName ? `${fullName}'s profile photo` : 'Your profile photo'} className="w-full h-full rounded-full object-cover bg-surface-canvas" src={avatarUrl} />;
   }
   return (
     <span aria-hidden="true" className={`font-bold leading-none tracking-wide select-none ${textClassName}`}>
