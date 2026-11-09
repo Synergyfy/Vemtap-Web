@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
-import { loyaltyService, type CreateRewardInput, type GivePointsInput, type LoyaltyRulesPatch } from '../../services/loyaltyService';
+import {
+  loyaltyService,
+  type CreateRewardInput,
+  type DeductPointsInput,
+  type GivePointsInput,
+  type LoyaltyRulesPatch,
+  type RegisterCustomerInput,
+} from '../../services/loyaltyService';
 import { customerKeys } from './useBusinessCustomers';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { useMyBusiness } from './useMyBusiness';
@@ -44,6 +51,20 @@ export function useLoyaltyMutations() {
   return {
     givePoints: useMutation({
       mutationFn: (input: GivePointsInput) => loyaltyService.givePoints(input),
+      onSuccess: () => {
+        void refresh();
+        void queryClient.invalidateQueries({ queryKey: customerKeys.all });
+      },
+    }),
+    deductPoints: useMutation({
+      mutationFn: (input: DeductPointsInput) => loyaltyService.deductPoints(input),
+      onSuccess: () => {
+        void refresh();
+        void queryClient.invalidateQueries({ queryKey: customerKeys.all });
+      },
+    }),
+    registerCustomer: useMutation({
+      mutationFn: (input: RegisterCustomerInput) => loyaltyService.registerCustomer(input),
       onSuccess: () => {
         void refresh();
         void queryClient.invalidateQueries({ queryKey: customerKeys.all });
